@@ -1,0 +1,139 @@
+{
+  "name": "pycharm-git-for-vscode",
+  "displayName": "PyCharm Git for VS Code",
+  "description": "Brings PyCharm's Git Log view to VS Code: commit graph, branch tree, commit details, and file change explorer.",
+  "version": "0.1.0",
+  "publisher": "pycharm-git",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pycharm-git/vscode"
+  },
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "pycharm",
+    "log",
+    "graph",
+    "scm"
+  ],
+  "activationEvents": [
+    "workspaceContains:.git",
+    "onView:pycharmGit.branches",
+    "onView:pycharmGit.commitGraph",
+    "onView:pycharmGit.commitFiles"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "pycharmGit",
+          "title": "PyCharm Git",
+          "icon": "media/pycharm-git.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "pycharmGitPanel",
+          "title": "PyCharm Git",
+          "icon": "media/pycharm-git.svg"
+        }
+      ]
+    },
+    "views": {
+      "pycharmGit": [
+        {
+          "id": "pycharmGit.branches",
+          "name": "Branches"
+        }
+      ],
+      "pycharmGitPanel": [
+        {
+          "id": "pycharmGit.commitGraph",
+          "name": "Commit Graph",
+          "type": "webview"
+        },
+        {
+          "id": "pycharmGit.commitFiles",
+          "name": "Changed Files",
+          "when": "pycharmGit.hasSelectedCommit"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "pycharmGit.showGitLog",
+        "title": "Show Git Log",
+        "category": "PyCharm Git",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "pycharmGit.refresh",
+        "title": "Refresh",
+        "category": "PyCharm Git",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "pycharmGit.filterByBranch",
+        "title": "Filter by Branch",
+        "category": "PyCharm Git"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "pycharmGit.refresh",
+          "when": "view == pycharmGit.branches",
+          "group": "navigation"
+        },
+        {
+          "command": "pycharmGit.refresh",
+          "when": "view == pycharmGit.commitGraph",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "pycharmGit.showGitLog",
+        "key": "alt+9",
+        "mac": "alt+9"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "bun scripts/build.js",
+    "build:prod": "bun scripts/build.js --production",
+    "watch": "bun scripts/watch.js",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "bun vitest run",
+    "test:watch": "bun vitest",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/vscode": "^1.96.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/test-electron": "^2.3.9",
+    "@vscode/vsce": "^2.22.0",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.56.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  },
+  "dependencies": {
+    "simple-git": "^3.22.0"
+  }
+}
