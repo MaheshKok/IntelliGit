@@ -1,45 +1,45 @@
 // esbuild configuration for building the extension host bundle and webview bundles.
 // Produces dist/extension.js (CJS for VS Code) and dist/webview-*.js (ESM for webviews).
 
-const esbuild = require('esbuild');
-const path = require('path');
+const esbuild = require("esbuild");
+const path = require("path");
 
 const extensionConfig = {
-    entryPoints: [path.resolve(__dirname, '../src/extension.ts')],
+    entryPoints: [path.resolve(__dirname, "../src/extension.ts")],
     bundle: true,
-    outfile: path.resolve(__dirname, '../dist/extension.js'),
-    external: ['vscode'],
-    format: 'cjs',
-    platform: 'node',
-    target: 'node20',
+    outfile: path.resolve(__dirname, "../dist/extension.js"),
+    external: ["vscode"],
+    format: "cjs",
+    platform: "node",
+    target: "node20",
     sourcemap: true,
-    minify: process.argv.includes('--production'),
+    minify: process.argv.includes("--production"),
     treeShaking: true,
 };
 
-const webviewConfigs = [
-    { entry: 'react/CommitGraphApp', out: 'webview-commitgraph' },
-].map(({ entry, out }) => ({
-    entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
-    bundle: true,
-    outfile: path.resolve(__dirname, `../dist/${out}.js`),
-    format: 'esm',
-    platform: 'browser',
-    target: 'es2022',
-    sourcemap: true,
-    minify: process.argv.includes('--production'),
-    treeShaking: true,
-    define: {
-        'process.env.NODE_ENV': process.argv.includes('--production')
-            ? '"production"'
-            : '"development"',
-    },
-}));
+const webviewConfigs = [{ entry: "react/CommitGraphApp", out: "webview-commitgraph" }].map(
+    ({ entry, out }) => ({
+        entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
+        bundle: true,
+        outfile: path.resolve(__dirname, `../dist/${out}.js`),
+        format: "esm",
+        platform: "browser",
+        target: "es2022",
+        sourcemap: true,
+        minify: process.argv.includes("--production"),
+        treeShaking: true,
+        define: {
+            "process.env.NODE_ENV": process.argv.includes("--production")
+                ? '"production"'
+                : '"development"',
+        },
+    }),
+);
 
 async function build() {
     try {
         await esbuild.build(extensionConfig);
-        console.log('Extension bundle built.');
+        console.log("Extension bundle built.");
 
         for (const config of webviewConfigs) {
             try {
@@ -51,9 +51,9 @@ async function build() {
             }
         }
 
-        console.log('Build complete.');
+        console.log("Build complete.");
     } catch (error) {
-        console.error('Build failed:', error);
+        console.error("Build failed:", error);
         process.exit(1);
     }
 }

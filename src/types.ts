@@ -21,7 +21,7 @@ export interface Commit {
 
 export interface CommitFile {
     path: string;
-    status: 'A' | 'M' | 'D' | 'R' | 'C' | 'T';
+    status: "A" | "M" | "D" | "R" | "C" | "T";
     additions: number;
     deletions: number;
 }
@@ -40,16 +40,22 @@ export interface CommitDetail {
 }
 
 export type GitLogRequest =
-    | { type: 'getInitialData' }
-    | { type: 'loadMore' }
-    | { type: 'selectCommit'; hash: string }
-    | { type: 'filterBranch'; branch: string | null }
-    | { type: 'filterText'; text: string }
-    | { type: 'checkoutBranch'; name: string }
-    | { type: 'refresh' };
+    | { type: "getInitialData" }
+    | { type: "loadMore" }
+    | { type: "selectCommit"; hash: string }
+    | { type: "filterBranch"; branch: string | null }
+    | { type: "filterText"; text: string }
+    | { type: "checkoutBranch"; name: string }
+    | { type: "refresh" };
 
 export type GitLogResponse =
-    | { type: 'initialData'; branches: Branch[]; commits: Commit[]; currentBranch: string; hasMore: boolean }
-    | { type: 'moreCommits'; commits: Commit[]; hasMore: boolean }
-    | { type: 'commitDetails'; detail: CommitDetail }
-    | { type: 'error'; message: string };
+    | {
+          type: "initialData";
+          branches: Branch[];
+          commits: Commit[];
+          currentBranch: string;
+          hasMore: boolean;
+      }
+    | { type: "moreCommits"; commits: Commit[]; hasMore: boolean }
+    | { type: "commitDetails"; detail: CommitDetail }
+    | { type: "error"; message: string };

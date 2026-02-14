@@ -1,6 +1,14 @@
 export const COLORS = [
-    '#4CAF50', '#2196F3', '#FF9800', '#E91E63', '#9C27B0',
-    '#00BCD4', '#FF5722', '#8BC34A', '#3F51B5', '#FFC107',
+    "#4CAF50",
+    "#2196F3",
+    "#FF9800",
+    "#E91E63",
+    "#9C27B0",
+    "#00BCD4",
+    "#FF5722",
+    "#8BC34A",
+    "#3F51B5",
+    "#FFC107",
 ];
 
 export const LANE_WIDTH = 20;
@@ -15,9 +23,7 @@ export interface GraphRow {
     connectionsDown: Array<{ fromCol: number; toCol: number; color: string }>;
 }
 
-export function computeGraph(
-    commits: Array<{ hash: string; parentHashes: string[] }>,
-): GraphRow[] {
+export function computeGraph(commits: Array<{ hash: string; parentHashes: string[] }>): GraphRow[] {
     const lanes: (string | null)[] = [];
     const rows: GraphRow[] = [];
 
@@ -48,14 +54,26 @@ export function computeGraph(
             let pCol = lanes.indexOf(ph);
 
             if (pCol >= 0) {
-                connectionsDown.push({ fromCol: col, toCol: pCol, color: COLORS[pCol % COLORS.length] });
+                connectionsDown.push({
+                    fromCol: col,
+                    toCol: pCol,
+                    color: COLORS[pCol % COLORS.length],
+                });
             } else if (p === 0) {
                 lanes[col] = ph;
-                connectionsDown.push({ fromCol: col, toCol: col, color: COLORS[col % COLORS.length] });
+                connectionsDown.push({
+                    fromCol: col,
+                    toCol: col,
+                    color: COLORS[col % COLORS.length],
+                });
             } else {
                 const nc = findFree();
                 lanes[nc] = ph;
-                connectionsDown.push({ fromCol: col, toCol: nc, color: COLORS[nc % COLORS.length] });
+                connectionsDown.push({
+                    fromCol: col,
+                    toCol: nc,
+                    color: COLORS[nc % COLORS.length],
+                });
             }
         }
 

@@ -2,16 +2,16 @@
 // Loads the CommitGraphApp React app, handles pagination, branch filtering,
 // and posts selected commit hashes back to the extension host.
 
-import * as vscode from 'vscode';
-import { GitOps } from '../git/operations';
-import type { Branch } from '../types';
+import * as vscode from "vscode";
+import { GitOps } from "../git/operations";
+import type { Branch } from "../types";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = 'pycharmGit.commitGraph';
+    public static readonly viewType = "pycharmGit.commitGraph";
 
     private view?: vscode.WebviewView;
     private currentBranch: string | null = null;
-    private filterText = '';
+    private filterText = "";
     private offset = 0;
     private readonly PAGE_SIZE = 500;
 
@@ -37,29 +37,29 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
+            localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
-                case 'ready':
+                case "ready":
                     this.sendBranches();
                     await this.loadInitial();
                     break;
-                case 'selectCommit':
+                case "selectCommit":
                     this._onCommitSelected.fire(msg.hash);
                     break;
-                case 'loadMore':
+                case "loadMore":
                     await this.loadMore();
                     break;
-                case 'filterText':
+                case "filterText":
                     await this.filterByText(msg.text);
                     break;
-                case 'filterBranch':
+                case "filterBranch":
                     this.currentBranch = msg.branch;
-                    this.filterText = '';
+                    this.filterText = "";
                     this._onBranchFilterChanged.fire(msg.branch);
                     await this.loadInitial();
                     break;
@@ -74,7 +74,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     async filterByBranch(branch: string | null): Promise<void> {
         this.currentBranch = branch;
-        this.filterText = '';
+        this.filterText = "";
         await this.loadInitial();
     }
 
@@ -84,7 +84,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private sendBranches(): void {
-        this.postToWebview({ type: 'setBranches', branches: this.branches });
+        this.postToWebview({ type: "setBranches", branches: this.branches });
     }
 
     private async loadInitial(): Promise<void> {
@@ -97,7 +97,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             );
             this.offset = commits.length;
             this.postToWebview({
-                type: 'loadCommits',
+                type: "loadCommits",
                 commits,
                 hasMore: commits.length >= this.PAGE_SIZE,
                 append: false,
@@ -118,7 +118,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             const newCommits = commits.slice(this.offset);
             this.offset = commits.length;
             this.postToWebview({
-                type: 'loadCommits',
+                type: "loadCommits",
                 commits: newCommits,
                 hasMore: newCommits.length > 0,
                 append: true,
@@ -140,7 +140,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private getHtml(webview: vscode.Webview): string {
         const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview-commitgraph.js'),
+            vscode.Uri.joinPath(this.extensionUri, "dist", "webview-commitgraph.js"),
         );
         const nonce = getNonce();
 
@@ -177,8 +177,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 }
 
 function getNonce(): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let r = '';
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let r = "";
     for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
     return r;
 }

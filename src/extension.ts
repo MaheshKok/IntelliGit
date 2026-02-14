@@ -2,12 +2,12 @@
 // bottom-panel commit graph (webview), and bottom-panel changed files tree.
 // The extension host is the sole data coordinator -- views never talk directly.
 
-import * as vscode from 'vscode';
-import { GitExecutor } from './git/executor';
-import { GitOps } from './git/operations';
-import { BranchTreeProvider } from './views/BranchTreeProvider';
-import { CommitGraphViewProvider } from './views/CommitGraphViewProvider';
-import { CommitFilesTreeProvider } from './views/CommitFilesTreeProvider';
+import * as vscode from "vscode";
+import { GitExecutor } from "./git/executor";
+import { GitOps } from "./git/operations";
+import { BranchTreeProvider } from "./views/BranchTreeProvider";
+import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
+import { CommitFilesTreeProvider } from "./views/CommitFilesTreeProvider";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -33,12 +33,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Register views ---
 
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('pycharmGit.branches', branchTree),
-        vscode.window.registerWebviewViewProvider(
-            CommitGraphViewProvider.viewType,
-            commitGraph,
-        ),
-        vscode.window.registerTreeDataProvider('pycharmGit.commitFiles', commitFiles),
+        vscode.window.registerTreeDataProvider("pycharmGit.branches", branchTree),
+        vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
+        vscode.window.registerTreeDataProvider("pycharmGit.commitFiles", commitFiles),
     );
 
     // --- Wire data flow ---
@@ -50,8 +47,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const detail = await gitOps.getCommitDetail(hash);
                 commitFiles.setCommitDetail(detail);
                 await vscode.commands.executeCommand(
-                    'setContext',
-                    'pycharmGit.hasSelectedCommit',
+                    "setContext",
+                    "pycharmGit.hasSelectedCommit",
                     true,
                 );
             } catch (err) {
@@ -66,8 +63,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitGraph.onBranchFilterChanged(async () => {
             commitFiles.clear();
             await vscode.commands.executeCommand(
-                'setContext',
-                'pycharmGit.hasSelectedCommit',
+                "setContext",
+                "pycharmGit.hasSelectedCommit",
                 false,
             );
         }),
@@ -76,33 +73,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Commands ---
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('pycharmGit.refresh', async () => {
+        vscode.commands.registerCommand("pycharmGit.refresh", async () => {
             const branches = await gitOps.getBranches();
             branchTree.refresh(branches);
             commitGraph.setBranches(branches);
             await commitGraph.refresh();
             commitFiles.clear();
             await vscode.commands.executeCommand(
-                'setContext',
-                'pycharmGit.hasSelectedCommit',
+                "setContext",
+                "pycharmGit.hasSelectedCommit",
                 false,
             );
         }),
 
-        vscode.commands.registerCommand('pycharmGit.filterByBranch', async (branchName?: string) => {
-            await commitGraph.filterByBranch(branchName ?? null);
-            commitFiles.clear();
-            await vscode.commands.executeCommand(
-                'setContext',
-                'pycharmGit.hasSelectedCommit',
-                false,
-            );
-        }),
+        vscode.commands.registerCommand(
+            "pycharmGit.filterByBranch",
+            async (branchName?: string) => {
+                await commitGraph.filterByBranch(branchName ?? null);
+                commitFiles.clear();
+                await vscode.commands.executeCommand(
+                    "setContext",
+                    "pycharmGit.hasSelectedCommit",
+                    false,
+                );
+            },
+        ),
 
-        vscode.commands.registerCommand('pycharmGit.showGitLog', async () => {
+        vscode.commands.registerCommand("pycharmGit.showGitLog", async () => {
             // Reveal the sidebar and panel views
-            await vscode.commands.executeCommand('pycharmGit.branches.focus');
-            await vscode.commands.executeCommand('pycharmGit.commitGraph.focus');
+            await vscode.commands.executeCommand("pycharmGit.branches.focus");
+            await vscode.commands.executeCommand("pycharmGit.commitGraph.focus");
         }),
     );
 
