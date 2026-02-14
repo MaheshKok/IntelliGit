@@ -22,18 +22,18 @@ export class BranchItem extends vscode.TreeItem {
                 this.description = branch?.hash.slice(0, 7);
                 break;
             case 'section':
-                this.iconPath = new vscode.ThemeIcon('folder');
+                this.iconPath = new vscode.ThemeIcon('folder-opened');
                 this.contextValue = 'section';
                 break;
             case 'remote-group':
-                this.iconPath = new vscode.ThemeIcon('cloud');
+                this.iconPath = new vscode.ThemeIcon('repo');
                 this.contextValue = 'remote-group';
                 break;
             case 'branch':
                 this.contextValue = branch?.isRemote ? 'remoteBranch' : 'localBranch';
-                this.iconPath = new vscode.ThemeIcon(
-                    branch?.isCurrent ? 'circle-filled' : 'circle-outline',
-                );
+                this.iconPath = branch?.isCurrent
+                    ? new vscode.ThemeIcon('git-branch', new vscode.ThemeColor('charts.green'))
+                    : new vscode.ThemeIcon('git-branch');
                 if (branch) {
                     this.description = formatTrackingInfo(branch);
                     this.command = {

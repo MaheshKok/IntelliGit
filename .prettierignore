@@ -1,0 +1,9 @@
+dist
+build
+coverage
+node_modules
+out
+*.vsix
+.claude
+.claude-flow
+package-lock.json

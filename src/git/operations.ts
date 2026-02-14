@@ -17,17 +17,18 @@ export class GitOps {
     }
 
     async getBranches(): Promise<Branch[]> {
-        const format = '%(refname:short)\t%(objectname:short)\t%(upstream:track,nobracket)\t%(HEAD)';
+        const format = '%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:track,nobracket)\t%(HEAD)';
         const result = await this.executor.run(['branch', '-a', `--format=${format}`]);
 
         const branches: Branch[] = [];
         for (const line of result.trim().split('\n')) {
             if (!line.trim()) continue;
-            const [name, hash, track, head] = line.split('\t');
+            const [refname, name, hash, track, head] = line.split('\t');
 
-            const isRemote = name.startsWith('remotes/') || name.includes('/');
+            const isRemote = refname.startsWith('refs/remotes/');
             let remote: string | undefined;
             if (isRemote) {
+                // refname:short for remote is "origin/main", first segment is the remote name
                 remote = name.split('/')[0];
             }
 

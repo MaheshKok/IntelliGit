@@ -1,3 +1,7 @@
+// Renders the commit graph canvas alongside a scrollable commit list.
+// Layout: [Graph lanes] [Commit message + inline ref badges] [Author] [Date].
+// Includes a text search filter bar. Branch filtering is handled by the sidebar.
+
 import React, { useRef, useEffect, useMemo } from 'react';
 import type { Commit } from '../../types';
 import { computeGraph, COLORS, LANE_WIDTH, DOT_RADIUS, ROW_HEIGHT } from './graph';
@@ -6,7 +10,6 @@ interface Props {
     commits: Commit[];
     selectedHash: string | null;
     filterText: string;
-    filterBranch: string | null;
     hasMore: boolean;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
@@ -14,7 +17,7 @@ interface Props {
 }
 
 export function CommitList({
-    commits, selectedHash, filterText, filterBranch, hasMore,
+    commits, selectedHash, filterText, hasMore,
     onSelectCommit, onFilterText, onLoadMore,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,6 +31,9 @@ export function CommitList({
         if (!canvas || commits.length === 0) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
+
+        const bgColor = getComputedStyle(document.documentElement)
+            .getPropertyValue('--vscode-editor-background').trim() || '#1e1e1e';
 
         const dpr = window.devicePixelRatio || 1;
         const totalHeight = commits.length * ROW_HEIGHT;
@@ -45,18 +51,18 @@ export function CommitList({
             const cy = y + ROW_HEIGHT / 2;
             const cx = row.column * LANE_WIDTH + LANE_WIDTH / 2 + 4;
 
-            // Pass-through vertical lines (full row height)
+            // Pass-through vertical lines
             for (const lane of row.passThroughLanes) {
                 const lx = lane.column * LANE_WIDTH + LANE_WIDTH / 2 + 4;
                 ctx.beginPath();
                 ctx.strokeStyle = lane.color;
-                ctx.lineWidth = 1.5;
+                ctx.lineWidth = 2;
                 ctx.moveTo(lx, y);
                 ctx.lineTo(lx, y + ROW_HEIGHT);
                 ctx.stroke();
             }
 
-            // Line from top of row to commit dot (continuation from previous row)
+            // Line from top of row to commit dot
             if (i > 0) {
                 const prev = graphRows[i - 1];
                 const incoming = prev.connectionsDown.some(c => c.toCol === row.column)
@@ -64,20 +70,20 @@ export function CommitList({
                 if (incoming) {
                     ctx.beginPath();
                     ctx.strokeStyle = row.color;
-                    ctx.lineWidth = 1.5;
+                    ctx.lineWidth = 2;
                     ctx.moveTo(cx, y);
                     ctx.lineTo(cx, cy);
                     ctx.stroke();
                 }
             }
 
-            // Connection lines from commit dot to parents (going down)
+            // Connection lines down to parents
             for (const conn of row.connectionsDown) {
                 const fx = conn.fromCol * LANE_WIDTH + LANE_WIDTH / 2 + 4;
                 const tx = conn.toCol * LANE_WIDTH + LANE_WIDTH / 2 + 4;
                 ctx.beginPath();
                 ctx.strokeStyle = conn.color;
-                ctx.lineWidth = 1.5;
+                ctx.lineWidth = 2;
                 if (conn.fromCol === conn.toCol) {
                     ctx.moveTo(fx, cy);
                     ctx.lineTo(tx, y + ROW_HEIGHT);
@@ -92,18 +98,22 @@ export function CommitList({
                 ctx.stroke();
             }
 
-            // Commit dot
+            // Commit dot -- ring style
             ctx.beginPath();
-            ctx.fillStyle = row.color;
-            ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = bgColor;
+            ctx.arc(cx, cy, DOT_RADIUS + 1, 0, Math.PI * 2);
             ctx.fill();
 
-            // Bright ring around dot
             ctx.beginPath();
             ctx.strokeStyle = row.color;
-            ctx.lineWidth = 1.5;
-            ctx.arc(cx, cy, DOT_RADIUS + 0.5, 0, Math.PI * 2);
+            ctx.lineWidth = 2.5;
+            ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
+
+            ctx.beginPath();
+            ctx.fillStyle = row.color;
+            ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+            ctx.fill();
         }
     }, [graphRows, graphWidth, commits.length]);
 
@@ -124,26 +134,16 @@ export function CommitList({
                     value={filterText}
                     onChange={(e) => onFilterText(e.target.value)}
                     style={{
-                        flex: 1, maxWidth: 200, padding: '3px 8px',
+                        flex: 1, maxWidth: 300, padding: '3px 8px',
                         background: 'var(--vscode-input-background)',
                         color: 'var(--vscode-input-foreground)',
                         border: '1px solid var(--vscode-input-border)',
                         borderRadius: '3px', fontSize: '12px', outline: 'none',
                     }}
                 />
-                {filterBranch && (
-                    <span style={{
-                        padding: '2px 8px',
-                        background: 'var(--vscode-badge-background)',
-                        color: 'var(--vscode-badge-foreground)',
-                        borderRadius: '10px', fontSize: '11px',
-                    }}>
-                        Branch: {filterBranch}
-                    </span>
-                )}
             </div>
 
-            {/* Header row */}
+            {/* Column headers */}
             <div style={{
                 display: 'flex', alignItems: 'center', height: 22, fontSize: '11px',
                 borderBottom: '1px solid var(--vscode-panel-border)',
@@ -169,7 +169,8 @@ export function CommitList({
                         ref={canvasRef}
                         style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }}
                     />
-                    {commits.map((commit, i) => (
+
+                    {commits.map((commit) => (
                         <div
                             key={commit.hash}
                             onClick={() => onSelectCommit(commit.hash)}
@@ -231,12 +232,29 @@ export function CommitList({
 function RefLabel({ name }: { name: string }) {
     const isHead = name.includes('HEAD');
     const isTag = name.startsWith('tag:');
-    const bg = isHead ? '#4CAF50' : isTag ? '#FF9800' : 'var(--vscode-badge-background)';
-    const fg = isHead || isTag ? '#fff' : 'var(--vscode-badge-foreground)';
+    let bg: string;
+    let fg: string;
+
+    if (isHead) {
+        bg = '#4CAF50';
+        fg = '#fff';
+    } else if (isTag) {
+        bg = '#FF9800';
+        fg = '#fff';
+    } else if (name.startsWith('origin/')) {
+        bg = '#2196F3';
+        fg = '#fff';
+    } else {
+        bg = '#6d6dea';
+        fg = '#fff';
+    }
+
     return (
         <span style={{
-            padding: '1px 5px', borderRadius: '3px', fontSize: '10px',
+            padding: '1px 6px', borderRadius: '3px', fontSize: '10px',
             background: bg, color: fg, lineHeight: '16px',
+            overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160,
+            display: 'inline-block',
         }}>
             {name}
         </span>

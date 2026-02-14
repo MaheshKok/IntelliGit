@@ -3,9 +3,9 @@ export const COLORS = [
     '#00BCD4', '#FF5722', '#8BC34A', '#3F51B5', '#FFC107',
 ];
 
-export const LANE_WIDTH = 16;
-export const DOT_RADIUS = 4;
-export const ROW_HEIGHT = 24;
+export const LANE_WIDTH = 20;
+export const DOT_RADIUS = 5;
+export const ROW_HEIGHT = 28;
 
 export interface GraphRow {
     column: number;

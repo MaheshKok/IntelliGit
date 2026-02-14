@@ -4,7 +4,7 @@
 
 import * as vscode from 'vscode';
 import { GitOps } from '../git/operations';
-import type { Commit } from '../types';
+import type { Branch } from '../types';
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'pycharmGit.commitGraph';
@@ -15,8 +15,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private offset = 0;
     private readonly PAGE_SIZE = 500;
 
+    private branches: Branch[] = [];
+
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
+
+    private readonly _onBranchFilterChanged = new vscode.EventEmitter<string | null>();
+    readonly onBranchFilterChanged = this._onBranchFilterChanged.event;
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -40,6 +45,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'ready':
+                    this.sendBranches();
                     await this.loadInitial();
                     break;
                 case 'selectCommit':
@@ -51,8 +57,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 case 'filterText':
                     await this.filterByText(msg.text);
                     break;
+                case 'filterBranch':
+                    this.currentBranch = msg.branch;
+                    this.filterText = '';
+                    this._onBranchFilterChanged.fire(msg.branch);
+                    await this.loadInitial();
+                    break;
             }
         });
+    }
+
+    setBranches(branches: Branch[]): void {
+        this.branches = branches;
+        this.sendBranches();
     }
 
     async filterByBranch(branch: string | null): Promise<void> {
@@ -62,7 +79,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     async refresh(): Promise<void> {
+        this.sendBranches();
         await this.loadInitial();
+    }
+
+    private sendBranches(): void {
+        this.postToWebview({ type: 'setBranches', branches: this.branches });
     }
 
     private async loadInitial(): Promise<void> {
@@ -150,6 +172,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     dispose(): void {
         this._onCommitSelected.dispose();
+        this._onBranchFilterChanged.dispose();
     }
 }
 

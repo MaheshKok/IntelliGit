@@ -48,7 +48,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitGraph.onCommitSelected(async (hash) => {
             try {
                 const detail = await gitOps.getCommitDetail(hash);
-                commitFiles.setFiles(detail.files);
+                commitFiles.setCommitDetail(detail);
                 await vscode.commands.executeCommand(
                     'setContext',
                     'pycharmGit.hasSelectedCommit',
@@ -61,12 +61,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
+    // When a branch is selected in the webview's inline branch column, clear changed files
+    context.subscriptions.push(
+        commitGraph.onBranchFilterChanged(async () => {
+            commitFiles.clear();
+            await vscode.commands.executeCommand(
+                'setContext',
+                'pycharmGit.hasSelectedCommit',
+                false,
+            );
+        }),
+    );
+
     // --- Commands ---
 
     context.subscriptions.push(
         vscode.commands.registerCommand('pycharmGit.refresh', async () => {
             const branches = await gitOps.getBranches();
             branchTree.refresh(branches);
+            commitGraph.setBranches(branches);
             await commitGraph.refresh();
             commitFiles.clear();
             await vscode.commands.executeCommand(
@@ -97,6 +110,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const branches = await gitOps.getBranches();
     branchTree.refresh(branches);
+    commitGraph.setBranches(branches);
 
     // --- Disposables ---
 
