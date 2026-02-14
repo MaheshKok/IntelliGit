@@ -71,11 +71,16 @@ class SeparatorItem extends vscode.TreeItem {
 
 class CommitInfoItem extends vscode.TreeItem {
     readonly kind = "commitInfo" as const;
-    constructor(label: string, description: string, icon: string) {
+    constructor(label: string, description: string, icon: string, fullTooltip?: string) {
         super(label, vscode.TreeItemCollapsibleState.None);
         this.description = description;
         this.iconPath = new vscode.ThemeIcon(icon);
         this.contextValue = "commitInfo";
+        if (fullTooltip) {
+            const md = new vscode.MarkdownString(fullTooltip);
+            md.supportHtml = true;
+            this.tooltip = md;
+        }
     }
 }
 
@@ -181,18 +186,47 @@ export class CommitFilesTreeProvider implements vscode.TreeDataProvider<TreeElem
             items.push(new FileItem(f, true));
         }
 
-        // Separator + commit details
+        // Separator + commit details (PyCharm format, one piece per line to avoid truncation)
         if (this.detail) {
-            items.push(new SeparatorItem());
-            items.push(
-                new CommitInfoItem(this.detail.shortHash, this.detail.message, "git-commit"),
-            );
-            items.push(
-                new CommitInfoItem(this.detail.author, fmtRelativeDate(this.detail.date), "person"),
-            );
+            const d = this.detail;
+            const datePart = fmtPyCharmDate(d.date);
             const count = this.files.length;
+
+            // Full tooltip shown on hover
+            const fullTooltip = [
+                `**${d.message}**`,
+                d.body ? `\n\n${d.body}` : "",
+                `\n\n---`,
+                `\n\n\`${d.shortHash}\` ${d.author}`,
+                d.email ? `\n\n<${d.email}>` : "",
+                `\n\n${datePart}`,
+                `\n\n${count} file${count !== 1 ? "s" : ""} changed`,
+            ].join("");
+
+            items.push(new SeparatorItem());
+
+            // Commit message
+            items.push(new CommitInfoItem(d.message, "", "git-commit", fullTooltip));
+
+            // Hash + author (separate line so it doesn't truncate)
+            items.push(new CommitInfoItem(`${d.shortHash} ${d.author}`, "", "person", fullTooltip));
+
+            // Email on its own line
+            if (d.email) {
+                items.push(new CommitInfoItem(`<${d.email}>`, "", "mail", fullTooltip));
+            }
+
+            // Date on its own line
+            items.push(new CommitInfoItem(datePart, "", "calendar", fullTooltip));
+
+            // File count
             items.push(
-                new CommitInfoItem(`${count} file${count !== 1 ? "s" : ""} changed`, "", "diff"),
+                new CommitInfoItem(
+                    `${count} file${count !== 1 ? "s" : ""} changed`,
+                    "",
+                    "diff",
+                    fullTooltip,
+                ),
             );
         }
 
@@ -239,22 +273,17 @@ export class CommitFilesTreeProvider implements vscode.TreeDataProvider<TreeElem
     }
 }
 
-function fmtRelativeDate(iso: string): string {
+function fmtPyCharmDate(iso: string): string {
     try {
         const d = new Date(iso);
-        const now = new Date();
-        const diffMs = now.getTime() - d.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-        if (diffDays === 0) return "today";
-        if (diffDays === 1) return "yesterday";
-        if (diffDays < 7) return `${diffDays} days ago`;
-        const weeks = Math.floor(diffDays / 7);
-        if (diffDays < 30) return `${weeks} week${weeks !== 1 ? "s" : ""} ago`;
-        const months = Math.floor(diffDays / 30);
-        if (diffDays < 365) return `${months} month${months !== 1 ? "s" : ""} ago`;
-        const years = Math.floor(diffDays / 365);
-        return `${years} year${years !== 1 ? "s" : ""} ago`;
+        const month = d.getMonth() + 1;
+        const day = d.getDate();
+        const year = String(d.getFullYear()).slice(-2);
+        const hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, "0");
+        const ampm = hours >= 12 ? "PM" : "AM";
+        const h12 = hours % 12 || 12;
+        return `${month}/${day}/${year} at ${h12}:${minutes} ${ampm}`;
     } catch {
         return iso;
     }

@@ -27,6 +27,10 @@ export class GitOps {
             const [refname, name, hash, track, head] = line.split("\t");
 
             const isRemote = refname.startsWith("refs/remotes/");
+
+            // Skip symbolic refs like origin/HEAD (refname:short resolves to just "origin")
+            if (refname.endsWith("/HEAD")) continue;
+
             let remote: string | undefined;
             if (isRemote) {
                 // refname:short for remote is "origin/main", first segment is the remote name
