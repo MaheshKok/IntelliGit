@@ -2,7 +2,7 @@
 // Shows HEAD, local branches grouped by prefix, and remote branches grouped by remote.
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
-import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import type { Branch } from "../../types";
 
 interface Props {
@@ -138,6 +138,25 @@ function ContextMenu({
     onClose: () => void;
 }): React.ReactElement {
     const ref = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState({ left: x, top: y });
+
+    // Clamp to viewport after first render so the menu never goes off-screen
+    useLayoutEffect(() => {
+        if (!ref.current) return;
+        const rect = ref.current.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const pad = 4;
+        let left = x;
+        let top = y;
+        if (top + rect.height > vh - pad) {
+            top = Math.max(pad, vh - rect.height - pad);
+        }
+        if (left + rect.width > vw - pad) {
+            left = Math.max(pad, vw - rect.width - pad);
+        }
+        setPos({ left, top });
+    }, [x, y]);
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
@@ -148,11 +167,14 @@ function ContextMenu({
         const handleKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose();
         };
+        const handleBlur = () => onClose();
         document.addEventListener("mousedown", handleClick);
         document.addEventListener("keydown", handleKey);
+        window.addEventListener("blur", handleBlur);
         return () => {
             document.removeEventListener("mousedown", handleClick);
             document.removeEventListener("keydown", handleKey);
+            window.removeEventListener("blur", handleBlur);
         };
     }, [onClose]);
 
@@ -161,14 +183,14 @@ function ContextMenu({
             ref={ref}
             style={{
                 position: "fixed",
-                left: x,
-                top: y,
-                background: "var(--vscode-menu-background, var(--vscode-dropdown-background))",
-                border: "1px solid var(--vscode-menu-border, var(--vscode-dropdown-border))",
+                left: pos.left,
+                top: pos.top,
+                background: "var(--vscode-editor-background)",
+                border: "1px solid var(--vscode-panel-border, var(--vscode-widget-border, #3c3f41))",
                 borderRadius: 4,
                 padding: "4px 0",
                 zIndex: 9999,
-                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
                 minWidth: 340,
                 maxWidth: 640,
             }}
@@ -181,7 +203,7 @@ function ContextMenu({
                             style={{
                                 height: 1,
                                 background:
-                                    "var(--vscode-menu-separatorBackground, var(--vscode-widget-border))",
+                                    "var(--vscode-panel-border, var(--vscode-widget-border, #3c3f41))",
                                 margin: "4px 0",
                             }}
                         />
@@ -202,9 +224,9 @@ function ContextMenu({
                         }}
                         onMouseEnter={(e) => {
                             (e.currentTarget as HTMLDivElement).style.background =
-                                "var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground))";
+                                "var(--vscode-list-activeSelectionBackground)";
                             (e.currentTarget as HTMLDivElement).style.color =
-                                "var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground))";
+                                "var(--vscode-list-activeSelectionForeground)";
                         }}
                         onMouseLeave={(e) => {
                             (e.currentTarget as HTMLDivElement).style.background = "";
@@ -300,23 +322,29 @@ export function BranchColumn({
                 userSelect: "none",
             }}
         >
+            <style>{`
+                .branch-row:hover {
+                    background: var(--vscode-list-hoverBackground) !important;
+                }
+                .branch-row.selected {
+                    background: var(--vscode-list-activeSelectionBackground) !important;
+                    color: var(--vscode-list-activeSelectionForeground) !important;
+                }
+                .branch-row.selected:hover {
+                    background: var(--vscode-list-activeSelectionBackground) !important;
+                    color: var(--vscode-list-activeSelectionForeground) !important;
+                }
+            `}</style>
             {/* HEAD */}
             {current && (
                 <div style={{ padding: "4px 0" }}>
                     <div
+                        className={`branch-row${selectedBranch === null ? " selected" : ""}`}
                         onClick={() => onSelectBranch(null)}
                         onContextMenu={(e) => handleBranchContextMenu(e, current)}
                         style={{
                             ...rowStyle,
                             fontWeight: 600,
-                            background:
-                                selectedBranch === null
-                                    ? "var(--vscode-list-activeSelectionBackground)"
-                                    : undefined,
-                            color:
-                                selectedBranch === null
-                                    ? "var(--vscode-list-activeSelectionForeground)"
-                                    : undefined,
                         }}
                     >
                         <GitBranchIcon color="#4CAF50" />
@@ -363,6 +391,7 @@ export function BranchColumn({
                         return (
                             <div key={remote}>
                                 <div
+                                    className="branch-row"
                                     onClick={() => toggleFolder(remoteKey)}
                                     style={{ ...rowStyle, paddingLeft: 12 }}
                                 >
@@ -431,6 +460,7 @@ function TreeNodeRow({
         return (
             <>
                 <div
+                    className="branch-row"
                     onClick={() => onToggleFolder(folderKey)}
                     style={{ ...rowStyle, paddingLeft: depth * 12 }}
                 >
@@ -461,6 +491,7 @@ function TreeNodeRow({
 
     return (
         <div
+            className={`branch-row${isSelected ? " selected" : ""}`}
             onClick={() => onSelectBranch(node.fullName!)}
             onContextMenu={(e) => {
                 if (node.branch) onContextMenu(e, node.branch);
@@ -468,8 +499,6 @@ function TreeNodeRow({
             style={{
                 ...rowStyle,
                 paddingLeft: depth * 12,
-                background: isSelected ? "var(--vscode-list-activeSelectionBackground)" : undefined,
-                color: isSelected ? "var(--vscode-list-activeSelectionForeground)" : undefined,
             }}
         >
             <GitBranchIcon color={isCurrent ? "#4CAF50" : undefined} />
