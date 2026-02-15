@@ -1,14 +1,15 @@
 // Renders a branch tree inside the commit graph webview panel, to the left of the graph.
 // Shows HEAD, local branches grouped by prefix, and remote branches grouped by remote.
-// Clicking a branch filters the graph. Mirrors the sidebar branch tree but lives inside the webview.
+// Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import type { Branch } from "../../types";
 
 interface Props {
     branches: Branch[];
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
+    onBranchAction: (action: string, branchName: string) => void;
 }
 
 interface TreeNode {
@@ -46,10 +47,185 @@ function buildPrefixTree(branches: Branch[], nameMapper?: (b: Branch) => string)
     return root;
 }
 
+// --- Context menu items ---
+
+interface MenuItem {
+    label: string;
+    action: string;
+    separator?: boolean;
+}
+
+// PyCharm-style middle-ellipsis: keeps start and end of branch name
+function trim(name: string, max = 40): string {
+    if (name.length <= max) return name;
+    const endLen = Math.min(8, name.length);
+    const startLen = max - 3 - endLen;
+    return name.slice(0, startLen) + "..." + name.slice(-endLen);
+}
+
+function q(name: string): string {
+    return `'${trim(name)}'`;
+}
+
+function getMenuItems(branch: Branch, currentBranchName: string): MenuItem[] {
+    const cur = q(currentBranchName);
+    const sel = q(branch.name);
+
+    if (branch.isCurrent) {
+        return [
+            { label: `New Branch from ${cur}...`, action: "newBranchFrom" },
+            { label: "", action: "", separator: true },
+            { label: "Show Diff with Working Tree", action: "showDiffWithWorkingTree" },
+            { label: "", action: "", separator: true },
+            { label: "Update", action: "updateBranch" },
+            { label: "Push...", action: "pushBranch" },
+            { label: "", action: "", separator: true },
+            { label: "Rename...", action: "renameBranch" },
+        ];
+    }
+
+    if (branch.isRemote) {
+        return [
+            { label: "Checkout", action: "checkout" },
+            { label: `New Branch from ${sel}...`, action: "newBranchFrom" },
+            { label: `Checkout and Rebase onto ${cur}`, action: "checkoutAndRebase" },
+            { label: "", action: "", separator: true },
+            { label: `Compare with ${cur}`, action: "compareWithCurrent" },
+            { label: "Show Diff with Working Tree", action: "showDiffWithWorkingTree" },
+            { label: "", action: "", separator: true },
+            { label: `Rebase ${cur} onto ${sel}`, action: "rebaseCurrentOnto" },
+            { label: `Merge ${sel} into ${cur}`, action: "mergeIntoCurrent" },
+            { label: "", action: "", separator: true },
+            { label: "Update", action: "updateBranch" },
+            { label: "", action: "", separator: true },
+            { label: "Delete", action: "deleteBranch" },
+        ];
+    }
+
+    // Local non-current branch
+    return [
+        { label: "Checkout", action: "checkout" },
+        { label: `New Branch from ${sel}...`, action: "newBranchFrom" },
+        { label: `Checkout and Rebase onto ${cur}`, action: "checkoutAndRebase" },
+        { label: "", action: "", separator: true },
+        { label: `Compare with ${cur}`, action: "compareWithCurrent" },
+        { label: "Show Diff with Working Tree", action: "showDiffWithWorkingTree" },
+        { label: "", action: "", separator: true },
+        { label: `Rebase ${cur} onto ${sel}`, action: "rebaseCurrentOnto" },
+        { label: `Merge ${sel} into ${cur}`, action: "mergeIntoCurrent" },
+        { label: "", action: "", separator: true },
+        { label: "Update", action: "updateBranch" },
+        { label: "Push...", action: "pushBranch" },
+        { label: "", action: "", separator: true },
+        { label: "Rename...", action: "renameBranch" },
+        { label: "Delete", action: "deleteBranch" },
+    ];
+}
+
+// --- Context menu component ---
+
+function ContextMenu({
+    x,
+    y,
+    items,
+    onSelect,
+    onClose,
+}: {
+    x: number;
+    y: number;
+    items: MenuItem[];
+    onSelect: (action: string) => void;
+    onClose: () => void;
+}): React.ReactElement {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (ref.current && !ref.current.contains(e.target as Node)) {
+                onClose();
+            }
+        };
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") onClose();
+        };
+        document.addEventListener("mousedown", handleClick);
+        document.addEventListener("keydown", handleKey);
+        return () => {
+            document.removeEventListener("mousedown", handleClick);
+            document.removeEventListener("keydown", handleKey);
+        };
+    }, [onClose]);
+
+    return (
+        <div
+            ref={ref}
+            style={{
+                position: "fixed",
+                left: x,
+                top: y,
+                background: "var(--vscode-menu-background, var(--vscode-dropdown-background))",
+                border: "1px solid var(--vscode-menu-border, var(--vscode-dropdown-border))",
+                borderRadius: 4,
+                padding: "4px 0",
+                zIndex: 9999,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                minWidth: 340,
+                maxWidth: 640,
+            }}
+        >
+            {items.map((item, i) => {
+                if (item.separator) {
+                    return (
+                        <div
+                            key={`sep-${i}`}
+                            style={{
+                                height: 1,
+                                background:
+                                    "var(--vscode-menu-separatorBackground, var(--vscode-widget-border))",
+                                margin: "4px 0",
+                            }}
+                        />
+                    );
+                }
+                return (
+                    <div
+                        key={item.action}
+                        onClick={() => {
+                            onSelect(item.action);
+                            onClose();
+                        }}
+                        style={{
+                            padding: "4px 20px",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            whiteSpace: "nowrap",
+                        }}
+                        onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLDivElement).style.background =
+                                "var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground))";
+                            (e.currentTarget as HTMLDivElement).style.color =
+                                "var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground))";
+                        }}
+                        onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLDivElement).style.background = "";
+                            (e.currentTarget as HTMLDivElement).style.color = "";
+                        }}
+                    >
+                        {item.label}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// --- Main component ---
+
 export function BranchColumn({
     branches,
     selectedBranch,
     onSelectBranch,
+    onBranchAction,
 }: Props): React.ReactElement {
     const current = branches.find((b) => b.isCurrent);
     const locals = useMemo(() => branches.filter((b) => !b.isRemote), [branches]);
@@ -64,7 +240,7 @@ export function BranchColumn({
             if (!groups.has(remote)) groups.set(remote, { branches: [], tree: [] });
             groups.get(remote)!.branches.push(b);
         }
-        for (const [remote, group] of groups) {
+        for (const [, group] of groups) {
             const stripRemote = (b: Branch) => b.name.split("/").slice(1).join("/");
             group.tree = buildPrefixTree(group.branches, stripRemote);
         }
@@ -75,6 +251,11 @@ export function BranchColumn({
         () => new Set(["local", "remote"]),
     );
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set<string>());
+    const [contextMenu, setContextMenu] = useState<{
+        x: number;
+        y: number;
+        branch: Branch;
+    } | null>(null);
 
     const toggleSection = (key: string) => {
         setExpandedSections((prev) => {
@@ -92,6 +273,23 @@ export function BranchColumn({
         });
     };
 
+    const handleBranchContextMenu = useCallback((e: React.MouseEvent, branch: Branch) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY, branch });
+    }, []);
+
+    const handleContextMenuAction = useCallback(
+        (action: string) => {
+            if (contextMenu) {
+                onBranchAction(action, contextMenu.branch.name);
+            }
+        },
+        [contextMenu, onBranchAction],
+    );
+
+    const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
     return (
         <div
             style={{
@@ -107,6 +305,7 @@ export function BranchColumn({
                 <div style={{ padding: "4px 0" }}>
                     <div
                         onClick={() => onSelectBranch(null)}
+                        onContextMenu={(e) => handleBranchContextMenu(e, current)}
                         style={{
                             ...rowStyle,
                             fontWeight: 600,
@@ -143,6 +342,7 @@ export function BranchColumn({
                             expandedFolders={expandedFolders}
                             onSelectBranch={onSelectBranch}
                             onToggleFolder={toggleFolder}
+                            onContextMenu={handleBranchContextMenu}
                             prefix="local"
                         />
                     ))}
@@ -180,6 +380,7 @@ export function BranchColumn({
                                             expandedFolders={expandedFolders}
                                             onSelectBranch={onSelectBranch}
                                             onToggleFolder={toggleFolder}
+                                            onContextMenu={handleBranchContextMenu}
                                             prefix={`remote/${remote}`}
                                         />
                                     ))}
@@ -187,6 +388,17 @@ export function BranchColumn({
                         );
                     })}
                 </div>
+            )}
+
+            {/* Context menu */}
+            {contextMenu && (
+                <ContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    items={getMenuItems(contextMenu.branch, current?.name ?? "HEAD")}
+                    onSelect={handleContextMenuAction}
+                    onClose={closeContextMenu}
+                />
             )}
         </div>
     );
@@ -199,6 +411,7 @@ function TreeNodeRow({
     expandedFolders,
     onSelectBranch,
     onToggleFolder,
+    onContextMenu,
     prefix,
 }: {
     node: TreeNode;
@@ -207,6 +420,7 @@ function TreeNodeRow({
     expandedFolders: Set<string>;
     onSelectBranch: (name: string | null) => void;
     onToggleFolder: (key: string) => void;
+    onContextMenu: (e: React.MouseEvent, branch: Branch) => void;
     prefix: string;
 }): React.ReactElement {
     const isFolder = node.children.length > 0 && !node.branch;
@@ -234,6 +448,7 @@ function TreeNodeRow({
                             expandedFolders={expandedFolders}
                             onSelectBranch={onSelectBranch}
                             onToggleFolder={onToggleFolder}
+                            onContextMenu={onContextMenu}
                             prefix={folderKey}
                         />
                     ))}
@@ -247,6 +462,9 @@ function TreeNodeRow({
     return (
         <div
             onClick={() => onSelectBranch(node.fullName!)}
+            onContextMenu={(e) => {
+                if (node.branch) onContextMenu(e, node.branch);
+            }}
             style={{
                 ...rowStyle,
                 paddingLeft: depth * 12,
