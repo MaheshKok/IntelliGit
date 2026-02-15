@@ -51,7 +51,7 @@ export function computeGraph(commits: Array<{ hash: string; parentHashes: string
 
         for (let p = 0; p < commit.parentHashes.length; p++) {
             const ph = commit.parentHashes[p];
-            let pCol = lanes.indexOf(ph);
+            const pCol = lanes.indexOf(ph);
 
             if (pCol >= 0) {
                 connectionsDown.push({

@@ -226,7 +226,7 @@
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
-        "lint": "eslint src --ext .ts,.tsx",
+        "lint": "eslint src",
         "test": "bun vitest run",
         "test:watch": "bun vitest",
         "package": "vsce package",
