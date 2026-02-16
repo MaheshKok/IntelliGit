@@ -2,7 +2,7 @@
 // date, and action buttons (apply, pop, delete).
 
 import React from "react";
-import { Flex, Box, IconButton, Tooltip } from "@chakra-ui/react";
+import { Flex, Box, Button, Tooltip } from "@chakra-ui/react";
 import type { StashEntry } from "../../../../types";
 import { formatDateTime } from "../../shared/date";
 
@@ -37,12 +37,12 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                 {formatDateTime(stash.date)}
             </Box>
             <Tooltip label="Apply" fontSize="11px">
-                <IconButton
+                <Button
                     aria-label="Apply"
                     variant="toolbarGhost"
                     size="xs"
                     onClick={() => onApply(stash.index)}
-                    icon={
+                    leftIcon={
                         <svg width="12" height="12" viewBox="0 0 16 16">
                             <path
                                 fill="currentColor"
@@ -50,15 +50,20 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             />
                         </svg>
                     }
-                />
+                    minW="50px"
+                    h="20px"
+                    px="6px"
+                >
+                    Apply
+                </Button>
             </Tooltip>
             <Tooltip label="Pop (apply and remove)" fontSize="11px">
-                <IconButton
+                <Button
                     aria-label="Pop"
                     variant="toolbarGhost"
                     size="xs"
                     onClick={() => onPop(stash.index)}
-                    icon={
+                    leftIcon={
                         <svg width="12" height="12" viewBox="0 0 16 16">
                             <path
                                 fill="currentColor"
@@ -67,15 +72,20 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             />
                         </svg>
                     }
-                />
+                    minW="44px"
+                    h="20px"
+                    px="6px"
+                >
+                    Pop
+                </Button>
             </Tooltip>
             <Tooltip label="Delete" fontSize="11px">
-                <IconButton
+                <Button
                     aria-label="Delete"
                     variant="toolbarGhost"
                     size="xs"
                     onClick={() => onDrop(stash.index)}
-                    icon={
+                    leftIcon={
                         <svg width="12" height="12" viewBox="0 0 16 16">
                             <path
                                 fill="currentColor"
@@ -83,7 +93,12 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             />
                         </svg>
                     }
-                />
+                    minW="58px"
+                    h="20px"
+                    px="6px"
+                >
+                    Delete
+                </Button>
             </Tooltip>
         </Flex>
     );

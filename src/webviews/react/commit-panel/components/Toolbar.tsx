@@ -26,7 +26,7 @@ export function Toolbar({
     return (
         <Flex
             align="center"
-            gap="2px"
+            gap="6px"
             px="8px"
             py="4px"
             borderBottom="1px solid var(--vscode-panel-border, #444)"

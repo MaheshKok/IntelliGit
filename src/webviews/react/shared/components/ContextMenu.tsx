@@ -79,12 +79,14 @@ export function ContextMenu({
                 left: pos.left,
                 top: pos.top,
                 zIndex: 9999,
-                background: "var(--vscode-menu-background, #252526)",
+                background:
+                    "var(--vscode-sideBar-background, var(--vscode-editor-background, #252526))",
                 border: "1px solid var(--vscode-menu-border, #454545)",
                 borderRadius: 5,
                 padding: "4px 0",
                 minWidth,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+                boxShadow:
+                    "0 14px 32px rgba(0,0,0,0.58), 0 4px 12px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}
         >
             {items.map((item, i) => {
