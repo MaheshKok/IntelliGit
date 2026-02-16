@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git experience for VS Code: commit graph, branch tree, commit details, and file change explorer.",
-    "version": "0.1.2",
+    "version": "0.2.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -144,6 +144,36 @@
                 "command": "intelligit.deleteBranch",
                 "title": "Delete",
                 "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileRollback",
+                "title": "Rollback",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileJumpToSource",
+                "title": "Jump to Source",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileDelete",
+                "title": "Delete",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileShelve",
+                "title": "Shelve Changes",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileShowHistory",
+                "title": "Show History",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileRefresh",
+                "title": "Refresh",
+                "category": "IntelliGit"
             }
         ],
         "menus": {
@@ -215,6 +245,38 @@
                     "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "5_modify@2"
                 }
+            ],
+            "webview/context": [
+                {
+                    "command": "intelligit.fileRollback",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "1_actions@1"
+                },
+                {
+                    "command": "intelligit.fileJumpToSource",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "1_actions@2"
+                },
+                {
+                    "command": "intelligit.fileDelete",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "2_destructive@1"
+                },
+                {
+                    "command": "intelligit.fileShelve",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "2_destructive@2"
+                },
+                {
+                    "command": "intelligit.fileShowHistory",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "3_info@1"
+                },
+                {
+                    "command": "intelligit.fileRefresh",
+                    "when": "webviewId == 'intelligit.commitPanel'",
+                    "group": "3_info@2"
+                }
             ]
         },
         "keybindings": [
@@ -233,13 +295,18 @@
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "lint": "eslint src",
-        "typecheck": "tsc --noEmit",
+        "typecheck:ext": "tsc -p tsconfig.json --noEmit",
+        "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
+        "typecheck": "bun run typecheck:ext && bun run typecheck:webview",
         "test": "bun vitest run",
         "test:watch": "bun vitest",
         "package": "vsce package --no-dependencies",
         "publish": "vsce publish --no-dependencies"
     },
     "devDependencies": {
+        "@chakra-ui/react": "^2.8.2",
+        "@emotion/react": "^11.11.3",
+        "@emotion/styled": "^11.11.0",
         "@eslint/js": "^10.0.1",
         "@types/node": "^20.11.0",
         "@types/react": "^18.2.48",
@@ -252,6 +319,7 @@
         "esbuild": "^0.20.0",
         "eslint": "^10.0.0",
         "eslint-plugin-react": "^7.37.5",
+        "framer-motion": "^11.0.0",
         "globals": "^17.3.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",

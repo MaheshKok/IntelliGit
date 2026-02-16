@@ -5,6 +5,8 @@
 import React, { useRef, useEffect, useMemo } from "react";
 import type { Commit } from "../../types";
 import { computeGraph, LANE_WIDTH, DOT_RADIUS, ROW_HEIGHT } from "./graph";
+import { formatDateTime } from "./shared/date";
+import { REF_BADGE_COLORS } from "./shared/tokens";
 
 interface Props {
     commits: Commit[];
@@ -272,7 +274,7 @@ export function CommitList({
                                     fontSize: "11px",
                                 }}
                             >
-                                {fmtDate(commit.date)}
+                                {formatDateTime(commit.date)}
                             </span>
                         </div>
                     ))}
@@ -302,17 +304,17 @@ function RefLabel({ name }: { name: string }) {
     let fg: string;
 
     if (isHead) {
-        bg = "#4CAF50";
-        fg = "#fff";
+        bg = REF_BADGE_COLORS.head.bg;
+        fg = REF_BADGE_COLORS.head.fg;
     } else if (isTag) {
-        bg = "#FF9800";
-        fg = "#fff";
+        bg = REF_BADGE_COLORS.tag.bg;
+        fg = REF_BADGE_COLORS.tag.fg;
     } else if (name.startsWith("origin/")) {
-        bg = "#2196F3";
-        fg = "#fff";
+        bg = REF_BADGE_COLORS.remote.bg;
+        fg = REF_BADGE_COLORS.remote.fg;
     } else {
-        bg = "#6d6dea";
-        fg = "#fff";
+        bg = REF_BADGE_COLORS.local.bg;
+        fg = REF_BADGE_COLORS.local.fg;
     }
 
     return (
@@ -333,19 +335,4 @@ function RefLabel({ name }: { name: string }) {
             {name}
         </span>
     );
-}
-
-function fmtDate(iso: string): string {
-    try {
-        const d = new Date(iso);
-        return d.toLocaleDateString("en-US", {
-            month: "numeric",
-            day: "numeric",
-            year: "2-digit",
-            hour: "numeric",
-            minute: "2-digit",
-        });
-    } catch {
-        return iso;
-    }
 }

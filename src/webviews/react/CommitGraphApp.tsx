@@ -7,14 +7,17 @@ import { createRoot } from "react-dom/client";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit } from "../../types";
+import { getVsCodeApi } from "./shared/vscodeApi";
 
-declare function acquireVsCodeApi(): {
-    postMessage(msg: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+type OutboundMessage =
+    | { type: "ready" }
+    | { type: "selectCommit"; hash: string }
+    | { type: "filterText"; text: string }
+    | { type: "loadMore" }
+    | { type: "filterBranch"; branch: string | null }
+    | { type: "branchAction"; action: string; branchName: string };
 
-const vscode = acquireVsCodeApi();
+const vscode = getVsCodeApi<OutboundMessage, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 200;
@@ -28,6 +31,7 @@ function App(): React.ReactElement {
     const [filterText, setFilterText] = useState("");
     const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
     const dragging = useRef(false);
+    const loadingMore = useRef(false);
 
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
@@ -36,6 +40,7 @@ function App(): React.ReactElement {
             const data = event.data;
             switch (data.type) {
                 case "loadCommits":
+                    loadingMore.current = false;
                     if (data.append) {
                         setCommits((prev) => [...prev, ...data.commits]);
                     } else {
@@ -53,6 +58,9 @@ function App(): React.ReactElement {
                 case "setBranches":
                     setBranches(data.branches);
                     break;
+                case "setSelectedBranch":
+                    setSelectedBranch(data.branch ?? null);
+                    break;
             }
         };
 
@@ -68,16 +76,20 @@ function App(): React.ReactElement {
     const handleFilterText = useCallback((text: string) => {
         setFilterText(text);
         if (text.length >= 3 || text.length === 0) {
+            loadingMore.current = false;
             vscode.postMessage({ type: "filterText", text });
         }
     }, []);
 
     const handleLoadMore = useCallback(() => {
+        if (loadingMore.current) return;
+        loadingMore.current = true;
         vscode.postMessage({ type: "loadMore" });
     }, []);
 
     const handleSelectBranch = useCallback((name: string | null) => {
         setSelectedBranch(name);
+        loadingMore.current = false;
         vscode.postMessage({ type: "filterBranch", branch: name });
     }, []);
 

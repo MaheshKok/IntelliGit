@@ -17,24 +17,26 @@ const extensionConfig = {
     treeShaking: true,
 };
 
-const webviewConfigs = [{ entry: "react/CommitGraphApp", out: "webview-commitgraph" }].map(
-    ({ entry, out }) => ({
-        entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
-        bundle: true,
-        outfile: path.resolve(__dirname, `../dist/${out}.js`),
-        format: "esm",
-        platform: "browser",
-        target: "es2022",
-        sourcemap: true,
-        minify: process.argv.includes("--production"),
-        treeShaking: true,
-        define: {
-            "process.env.NODE_ENV": process.argv.includes("--production")
-                ? '"production"'
-                : '"development"',
-        },
-    }),
-);
+const webviewConfigs = [
+    { entry: "react/CommitGraphApp", out: "webview-commitgraph" },
+    { entry: "react/commit-panel/CommitPanelApp", out: "webview-commitpanel" },
+    { entry: "react/CommitInfoApp", out: "webview-commitinfo" },
+].map(({ entry, out }) => ({
+    entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
+    bundle: true,
+    outfile: path.resolve(__dirname, `../dist/${out}.js`),
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    sourcemap: true,
+    minify: process.argv.includes("--production"),
+    treeShaking: true,
+    define: {
+        "process.env.NODE_ENV": process.argv.includes("--production")
+            ? '"production"'
+            : '"development"',
+    },
+}));
 
 async function build() {
     try {

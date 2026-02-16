@@ -1,15 +1,6 @@
-export const COLORS = [
-    "#4CAF50",
-    "#2196F3",
-    "#FF9800",
-    "#E91E63",
-    "#9C27B0",
-    "#00BCD4",
-    "#FF5722",
-    "#8BC34A",
-    "#3F51B5",
-    "#FFC107",
-];
+import { GRAPH_LANE_COLORS } from "./shared/tokens";
+
+export const COLORS = GRAPH_LANE_COLORS;
 
 export const LANE_WIDTH = 20;
 export const DOT_RADIUS = 5;

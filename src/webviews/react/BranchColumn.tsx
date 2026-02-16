@@ -2,8 +2,11 @@
 // Shows HEAD, local branches grouped by prefix, and remote branches grouped by remote.
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
-import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import type { Branch } from "../../types";
+import { ContextMenu, type MenuItem } from "./shared/components/ContextMenu";
+
+const TREE_INDENT_STEP = 16;
 
 interface Props {
     branches: Branch[];
@@ -48,12 +51,6 @@ function buildPrefixTree(branches: Branch[], nameMapper?: (b: Branch) => string)
 }
 
 // --- Context menu items ---
-
-interface MenuItem {
-    label: string;
-    action: string;
-    separator?: boolean;
-}
 
 // Middle-ellipsis: keeps start and end of branch name
 function trim(name: string, max = 40): string {
@@ -120,125 +117,6 @@ function getMenuItems(branch: Branch, currentBranchName: string): MenuItem[] {
         { label: "Rename...", action: "renameBranch" },
         { label: "Delete", action: "deleteBranch" },
     ];
-}
-
-// --- Context menu component ---
-
-function ContextMenu({
-    x,
-    y,
-    items,
-    onSelect,
-    onClose,
-}: {
-    x: number;
-    y: number;
-    items: MenuItem[];
-    onSelect: (action: string) => void;
-    onClose: () => void;
-}): React.ReactElement {
-    const ref = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState({ left: x, top: y });
-
-    // Clamp to viewport after first render so the menu never goes off-screen
-    useLayoutEffect(() => {
-        if (!ref.current) return;
-        const rect = ref.current.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        const pad = 4;
-        let left = x;
-        let top = y;
-        if (top + rect.height > vh - pad) {
-            top = Math.max(pad, vh - rect.height - pad);
-        }
-        if (left + rect.width > vw - pad) {
-            left = Math.max(pad, vw - rect.width - pad);
-        }
-        setPos({ left, top });
-    }, [x, y]);
-
-    useEffect(() => {
-        const handleClick = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) {
-                onClose();
-            }
-        };
-        const handleKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
-        };
-        const handleBlur = () => onClose();
-        document.addEventListener("mousedown", handleClick);
-        document.addEventListener("keydown", handleKey);
-        window.addEventListener("blur", handleBlur);
-        return () => {
-            document.removeEventListener("mousedown", handleClick);
-            document.removeEventListener("keydown", handleKey);
-            window.removeEventListener("blur", handleBlur);
-        };
-    }, [onClose]);
-
-    return (
-        <div
-            ref={ref}
-            style={{
-                position: "fixed",
-                left: pos.left,
-                top: pos.top,
-                background: "var(--vscode-editor-background)",
-                border: "1px solid var(--vscode-panel-border, var(--vscode-widget-border, #3c3f41))",
-                borderRadius: 4,
-                padding: "4px 0",
-                zIndex: 9999,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-                minWidth: 340,
-                maxWidth: 640,
-            }}
-        >
-            {items.map((item, i) => {
-                if (item.separator) {
-                    return (
-                        <div
-                            key={`sep-${i}`}
-                            style={{
-                                height: 1,
-                                background:
-                                    "var(--vscode-panel-border, var(--vscode-widget-border, #3c3f41))",
-                                margin: "4px 0",
-                            }}
-                        />
-                    );
-                }
-                return (
-                    <div
-                        key={item.action}
-                        onClick={() => {
-                            onSelect(item.action);
-                            onClose();
-                        }}
-                        style={{
-                            padding: "4px 20px",
-                            cursor: "pointer",
-                            fontSize: "12px",
-                            whiteSpace: "nowrap",
-                        }}
-                        onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLDivElement).style.background =
-                                "var(--vscode-list-activeSelectionBackground)";
-                            (e.currentTarget as HTMLDivElement).style.color =
-                                "var(--vscode-list-activeSelectionForeground)";
-                        }}
-                        onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLDivElement).style.background = "";
-                            (e.currentTarget as HTMLDivElement).style.color = "";
-                        }}
-                    >
-                        {item.label}
-                    </div>
-                );
-            })}
-        </div>
-    );
 }
 
 // --- Main component ---
@@ -363,9 +241,9 @@ export function BranchColumn({
             />
             {expandedSections.has("local") && (
                 <div>
-                    {localTree.map((node) => (
+                    {localTree.map((node, index) => (
                         <TreeNodeRow
-                            key={node.label}
+                            key={`local-${node.branch?.name ?? node.label}-${index}`}
                             node={node}
                             depth={1}
                             selectedBranch={selectedBranch}
@@ -395,16 +273,16 @@ export function BranchColumn({
                                 <div
                                     className="branch-row"
                                     onClick={() => toggleFolder(remoteKey)}
-                                    style={{ ...rowStyle, paddingLeft: 12 }}
+                                    style={{ ...rowStyle, paddingLeft: TREE_INDENT_STEP }}
                                 >
                                     <ChevronIcon expanded={isExpanded} />
                                     <RepoIcon />
                                     <span>{remote}</span>
                                 </div>
                                 {isExpanded &&
-                                    group.tree.map((node) => (
+                                    group.tree.map((node, index) => (
                                         <TreeNodeRow
-                                            key={node.label}
+                                            key={`remote-${remote}-${node.branch?.name ?? node.label}-${index}`}
                                             node={node}
                                             depth={2}
                                             selectedBranch={selectedBranch}
@@ -427,6 +305,7 @@ export function BranchColumn({
                     x={contextMenu.x}
                     y={contextMenu.y}
                     items={getMenuItems(contextMenu.branch, current?.name ?? "HEAD")}
+                    minWidth={340}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}
                 />
@@ -464,16 +343,16 @@ function TreeNodeRow({
                 <div
                     className="branch-row"
                     onClick={() => onToggleFolder(folderKey)}
-                    style={{ ...rowStyle, paddingLeft: depth * 12 }}
+                    style={{ ...rowStyle, paddingLeft: depth * TREE_INDENT_STEP }}
                 >
                     <ChevronIcon expanded={isExpanded} />
                     <FolderIcon />
                     <span>{node.label}</span>
                 </div>
                 {isExpanded &&
-                    node.children.map((child) => (
+                    node.children.map((child, index) => (
                         <TreeNodeRow
-                            key={child.label}
+                            key={`${folderKey}/${child.branch?.name ?? child.label}-${index}`}
                             node={child}
                             depth={depth + 1}
                             selectedBranch={selectedBranch}
@@ -500,7 +379,7 @@ function TreeNodeRow({
             }}
             style={{
                 ...rowStyle,
-                paddingLeft: depth * 12,
+                paddingLeft: depth * TREE_INDENT_STEP,
             }}
         >
             <GitBranchIcon color={isCurrent ? "#4CAF50" : undefined} />

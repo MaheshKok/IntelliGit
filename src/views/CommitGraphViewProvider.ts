@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
+import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitGraph";
@@ -13,6 +14,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private currentBranch: string | null = null;
     private filterText = "";
     private offset = 0;
+    private loadingMore = false;
+    private requestSeq = 0;
     private readonly PAGE_SIZE = 500;
 
     private branches: Branch[] = [];
@@ -67,6 +70,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     this.currentBranch = msg.branch;
                     this.filterText = "";
                     this._onBranchFilterChanged.fire(msg.branch);
+                    this.postToWebview({ type: "setSelectedBranch", branch: msg.branch });
                     await this.loadInitial();
                     break;
                 case "branchAction":
@@ -87,6 +91,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     async filterByBranch(branch: string | null): Promise<void> {
         this.currentBranch = branch;
         this.filterText = "";
+        this.postToWebview({ type: "setSelectedBranch", branch });
         await this.loadInitial();
     }
 
@@ -100,13 +105,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async loadInitial(): Promise<void> {
+        const requestId = ++this.requestSeq;
         this.offset = 0;
+        this.loadingMore = false;
         try {
             const commits = await this.gitOps.getLog(
                 this.PAGE_SIZE,
                 this.currentBranch ?? undefined,
                 this.filterText || undefined,
+                0,
             );
+            if (requestId !== this.requestSeq) return;
             this.offset = commits.length;
             this.postToWebview({
                 type: "loadCommits",
@@ -121,23 +130,30 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async loadMore(): Promise<void> {
+        if (this.loadingMore) return;
+        this.loadingMore = true;
+        const requestId = ++this.requestSeq;
         try {
             const commits = await this.gitOps.getLog(
-                this.PAGE_SIZE + this.offset,
+                this.PAGE_SIZE,
                 this.currentBranch ?? undefined,
                 this.filterText || undefined,
+                this.offset,
             );
-            const newCommits = commits.slice(this.offset);
-            this.offset = commits.length;
+            if (requestId !== this.requestSeq) return;
+            const newCommits = commits;
+            this.offset += newCommits.length;
             this.postToWebview({
                 type: "loadCommits",
                 commits: newCommits,
-                hasMore: newCommits.length > 0,
+                hasMore: newCommits.length >= this.PAGE_SIZE,
                 append: true,
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`Git log error: ${message}`);
+        } finally {
+            this.loadingMore = false;
         }
     }
 
@@ -151,35 +167,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getHtml(webview: vscode.Webview): string {
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, "dist", "webview-commitgraph.js"),
-        );
-        const nonce = getNonce();
-
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
-    <title>Commit Graph</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body, #root {
-            width: 100%; height: 100%; overflow: hidden;
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            color: var(--vscode-foreground);
-            background: var(--vscode-editor-background);
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+        return buildWebviewShellHtml({
+            extensionUri: this.extensionUri,
+            webview,
+            scriptFile: "webview-commitgraph.js",
+            title: "Commit Graph",
+            backgroundVar: "var(--vscode-editor-background)",
+        });
     }
 
     dispose(): void {
@@ -187,11 +181,4 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
     }
-}
-
-function getNonce(): string {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let r = "";
-    for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
-    return r;
 }

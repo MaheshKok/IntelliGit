@@ -3,6 +3,8 @@
 // The extension host is the sole data coordinator -- views never talk directly.
 
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
 import { GitExecutor } from "./git/executor";
 import { GitOps } from "./git/operations";
 import { BranchTreeProvider, BranchItem } from "./views/BranchTreeProvider";
@@ -28,12 +30,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Cached branch list for webview context menu lookups
     let currentBranches: Branch[] = [];
+    let commitDetailRequestSeq = 0;
 
     // --- Providers ---
 
     const branchTree = new BranchTreeProvider();
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
-    const commitInfo = new CommitInfoViewProvider();
+    const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
 
     // --- Register views ---
@@ -64,8 +67,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         commitGraph.onCommitSelected(async (hash) => {
+            const requestId = ++commitDetailRequestSeq;
             try {
                 const detail = await gitOps.getCommitDetail(hash);
+                if (requestId !== commitDetailRequestSeq) return;
                 commitInfo.setCommitDetail(detail);
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
@@ -94,6 +99,59 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const clearSelection = () => {
         commitInfo.clear();
+    };
+
+    const getErrorMessage = (error: unknown): string =>
+        error instanceof Error ? error.message : String(error);
+
+    const isUntrackedPathspecError = (error: unknown): boolean => {
+        const message = getErrorMessage(error).toLowerCase();
+        const code =
+            typeof error === "object" && error !== null && "code" in error
+                ? String((error as { code?: unknown }).code ?? "").toLowerCase()
+                : "";
+
+        return (
+            message.includes("did not match any files") ||
+            (message.includes("pathspec") && message.includes("did not match")) ||
+            code === "enoent"
+        );
+    };
+
+    const getCurrentBranchName = () => currentBranches.find((b) => b.isCurrent)?.name;
+
+    const getLocalNameFromRemote = (remoteBranchName: string) =>
+        remoteBranchName.split("/").slice(1).join("/");
+
+    const checkoutBranch = async (branch: Branch): Promise<string> => {
+        if (!branch.isRemote) {
+            await executor.run(["checkout", branch.name]);
+            return branch.name;
+        }
+
+        const localName = getLocalNameFromRemote(branch.name);
+        const existingLocal = currentBranches.find((b) => !b.isRemote && b.name === localName);
+        if (existingLocal) {
+            await executor.run(["checkout", existingLocal.name]);
+            return existingLocal.name;
+        }
+
+        await executor.run(["checkout", "--track", branch.name]);
+        return localName;
+    };
+
+    const resolveRemoteName = async (branch: Branch): Promise<string | null> => {
+        if (branch.remote) return branch.remote;
+        try {
+            const raw = await executor.run(["remote"]);
+            const remotes = raw
+                .split("\n")
+                .map((r) => r.trim())
+                .filter(Boolean);
+            return remotes[0] ?? null;
+        } catch {
+            return null;
+        }
     };
 
     // --- Commands ---
@@ -131,11 +189,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.checkout",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                if (!branch) return;
                 try {
-                    await executor.run(["checkout", name]);
-                    vscode.window.showInformationMessage(`Checked out ${name}`);
+                    const checkedOut = await checkoutBranch(branch);
+                    vscode.window.showInformationMessage(`Checked out ${checkedOut}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -166,12 +224,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.checkoutAndRebase",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                if (!branch) return;
+                const onto = getCurrentBranchName();
+                if (!onto) {
+                    vscode.window.showErrorMessage("No current branch found.");
+                    return;
+                }
                 try {
-                    await executor.run(["rebase", "HEAD", name]);
-                    await executor.run(["checkout", name]);
-                    vscode.window.showInformationMessage(`Checked out and rebased ${name}`);
+                    const checkedOut = await checkoutBranch(branch);
+                    if (checkedOut === onto) {
+                        vscode.window.showInformationMessage(
+                            `${checkedOut} is already the current branch.`,
+                        );
+                        return;
+                    }
+                    await executor.run(["rebase", onto]);
+                    vscode.window.showInformationMessage(
+                        `Checked out ${checkedOut} and rebased onto ${onto}`,
+                    );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -278,11 +349,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.pushBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                if (!branch || branch.isRemote) return;
                 try {
-                    await executor.run(["push", "-u", "origin", name]);
-                    vscode.window.showInformationMessage(`Pushed ${name}`);
+                    const remote = await resolveRemoteName(branch);
+                    if (branch.isCurrent) {
+                        if (branch.remote) {
+                            await executor.run(["push", branch.remote, branch.name]);
+                        } else {
+                            await executor.run(["push"]);
+                        }
+                    } else {
+                        if (!remote) {
+                            vscode.window.showErrorMessage(
+                                `No remote configured for branch ${branch.name}.`,
+                            );
+                            return;
+                        }
+                        await executor.run(["push", "-u", remote, branch.name]);
+                    }
+                    vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -344,6 +430,119 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
     }
 
+    // --- Commit panel file context menu commands ---
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "intelligit.fileRollback",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const confirm = await vscode.window.showWarningMessage(
+                    `Rollback ${ctx.filePath}?`,
+                    { modal: true },
+                    "Rollback",
+                );
+                if (confirm !== "Rollback") return;
+                try {
+                    await gitOps.rollbackFiles([ctx.filePath]);
+                    vscode.window.showInformationMessage("Changes rolled back.");
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Failed to rollback file:", error);
+                    vscode.window.showErrorMessage(`Rollback failed: ${message}`);
+                } finally {
+                    await commitPanel.refresh();
+                }
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileJumpToSource",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const uri = vscode.Uri.joinPath(workspaceFolder.uri, ctx.filePath);
+                await vscode.window.showTextDocument(uri);
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileDelete",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const confirm = await vscode.window.showWarningMessage(
+                    `Delete ${ctx.filePath}?`,
+                    { modal: true },
+                    "Delete",
+                );
+                if (confirm !== "Delete") return;
+
+                try {
+                    await gitOps.deleteFile(ctx.filePath, true);
+                } catch (error) {
+                    if (!isUntrackedPathspecError(error)) {
+                        const message = getErrorMessage(error);
+                        console.error("Failed to delete file with git rm:", error);
+                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
+                        return;
+                    }
+
+                    try {
+                        const uri = vscode.Uri.joinPath(workspaceFolder.uri, ctx.filePath);
+                        await vscode.workspace.fs.delete(uri);
+                    } catch (fsError) {
+                        const message = getErrorMessage(fsError);
+                        console.error("Failed to delete file from filesystem:", fsError);
+                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
+                        return;
+                    }
+                }
+
+                vscode.window.showInformationMessage(`Deleted ${ctx.filePath}`);
+                await commitPanel.refresh();
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileShelve",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const name = await vscode.window.showInputBox({
+                    prompt: "Shelf name",
+                    value: "Shelved changes",
+                });
+                if (name === undefined) return;
+                try {
+                    await gitOps.stashSave(name || "Shelved changes", [ctx.filePath]);
+                    vscode.window.showInformationMessage("Changes shelved.");
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Failed to shelve file:", error);
+                    vscode.window.showErrorMessage(`Shelve failed: ${message}`);
+                } finally {
+                    await commitPanel.refresh();
+                }
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileShowHistory",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                try {
+                    const history = await gitOps.getFileHistory(ctx.filePath);
+                    const doc = await vscode.workspace.openTextDocument({
+                        content: history || "No history found.",
+                        language: "git-commit",
+                    });
+                    await vscode.window.showTextDocument(doc, { preview: true });
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Failed to load file history:", error);
+                    vscode.window.showErrorMessage(`Show history failed: ${message}`);
+                }
+            },
+        ),
+        vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
+            await commitPanel.refresh();
+        }),
+    );
+
     // --- Initial load ---
 
     currentBranches = await gitOps.getBranches();
@@ -352,22 +551,69 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Auto-refresh on file changes ---
 
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-    const debouncedRefresh = () => {
-        if (refreshTimer) clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(async () => {
+    // Light refresh: working tree changes -> commit panel only
+    let lightTimer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedLightRefresh = () => {
+        if (lightTimer) clearTimeout(lightTimer);
+        lightTimer = setTimeout(async () => {
             await commitPanel.refresh();
         }, 300);
     };
 
-    const gitWatcher = vscode.workspace.createFileSystemWatcher("**/*");
     context.subscriptions.push(
-        gitWatcher,
-        gitWatcher.onDidChange(debouncedRefresh),
-        gitWatcher.onDidCreate(debouncedRefresh),
-        gitWatcher.onDidDelete(debouncedRefresh),
-        vscode.workspace.onDidSaveTextDocument(debouncedRefresh),
+        vscode.workspace.onDidChangeTextDocument(debouncedLightRefresh),
+        vscode.workspace.onDidSaveTextDocument(debouncedLightRefresh),
+        vscode.workspace.onDidCreateFiles(debouncedLightRefresh),
+        vscode.workspace.onDidDeleteFiles(debouncedLightRefresh),
+        vscode.workspace.onDidRenameFiles(debouncedLightRefresh),
     );
+
+    // Full refresh: git state changes -> branches + commit graph + commit panel
+    let fullTimer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedFullRefresh = () => {
+        if (fullTimer) clearTimeout(fullTimer);
+        fullTimer = setTimeout(async () => {
+            currentBranches = await gitOps.getBranches();
+            branchTree.refresh(currentBranches);
+            commitGraph.setBranches(currentBranches);
+            await commitGraph.refresh();
+            await commitPanel.refresh();
+        }, 500);
+    };
+
+    // VS Code's file watcher excludes .git/ by default, so use Node's fs.watch
+    // to detect git state changes (new commits, branch changes, fetches)
+    const gitDir = path.join(repoRoot, ".git");
+    const gitStateFiles = new Set([
+        "HEAD",
+        "FETCH_HEAD",
+        "packed-refs",
+        "MERGE_HEAD",
+        "REBASE_HEAD",
+    ]);
+    const fsWatchers: fs.FSWatcher[] = [];
+
+    try {
+        const dirWatcher = fs.watch(gitDir, (_event, filename) => {
+            if (filename && gitStateFiles.has(filename)) {
+                debouncedFullRefresh();
+            }
+        });
+        fsWatchers.push(dirWatcher);
+    } catch {
+        /* .git dir may not be watchable */
+    }
+
+    try {
+        const refsWatcher = fs.watch(path.join(gitDir, "refs"), { recursive: true }, () =>
+            debouncedFullRefresh(),
+        );
+        fsWatchers.push(refsWatcher);
+    } catch {
+        /* refs dir may not exist yet */
+    }
+
+    context.subscriptions.push(new vscode.Disposable(() => fsWatchers.forEach((w) => w.close())));
 
     // --- Disposables ---
 
