@@ -854,9 +854,9 @@ html, body {
         return renderTreeNode(tree, 0);
     }
 
-    var INDENT_STEP = 35;
-    var INDENT_BASE = 30;
-    var GUIDE_BASE = 37; // INDENT_BASE(30) + chevron_center(7) = 37
+    var INDENT_STEP = 18;
+    var INDENT_BASE = 24;
+    var GUIDE_BASE = 31; // INDENT_BASE(24) + chevron_center(7) = 31
     var SECTION_GUIDE = 13; // section header: padding(6) + chevron_center(7) = 13
 
     function indentGuides(treeDepth) {
@@ -931,6 +931,7 @@ html, body {
 
         var html = '<div class="file-row" data-path="' + esc(f.path) + '" style="padding-left:' + padLeft + 'px" title="' + esc(f.path) + '">';
         html += indentGuides(depth);
+        html += '<span style="width:13px;flex-shrink:0"></span>';
         html += '<input type="checkbox" data-path-check="' + esc(f.path) + '" ' + checked + '>';
         html += fileTypeIcon(fileName, f.status);
         html += '<span class="fname ' + fnClass + '">' + esc(fileName) + '</span>';
