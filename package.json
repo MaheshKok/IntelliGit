@@ -2,8 +2,9 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git experience for VS Code: commit graph, branch tree, commit details, and file change explorer.",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "publisher": "MaheshKok",
+    "icon": "media/intelligit-icon.png",
     "license": "MIT",
     "repository": {
         "type": "git",
