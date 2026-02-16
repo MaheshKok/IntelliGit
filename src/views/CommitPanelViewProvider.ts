@@ -7,7 +7,7 @@ import { GitOps } from "../git/operations";
 import type { WorkingFile, StashEntry } from "../types";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = "pycharmGit.commitPanel";
+    public static readonly viewType = "intelligit.commitPanel";
 
     private view?: vscode.WebviewView;
     private files: WorkingFile[] = [];
@@ -350,10 +350,24 @@ html, body {
 .add-stat { color: var(--vscode-gitDecoration-addedResourceForeground, #2ea043); }
 .del-stat { color: var(--vscode-gitDecoration-deletedResourceForeground, #f85149); }
 
+/* --- Drag handle --- */
+.drag-handle {
+    flex: 0 0 5px; cursor: row-resize;
+    background: var(--vscode-panel-border, #444);
+    position: relative;
+}
+.drag-handle::after {
+    content: ''; position: absolute;
+    left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 30px; height: 2px;
+    background: var(--vscode-descriptionForeground);
+    opacity: 0.4; border-radius: 1px;
+}
+.drag-handle:hover { background: var(--vscode-focusBorder, #007acc); }
+
 /* --- Bottom area --- */
 .bottom-area {
-    flex-shrink: 0;
-    border-top: 1px solid var(--vscode-panel-border, #444);
+    flex-shrink: 0; overflow: hidden;
     display: flex; flex-direction: column;
 }
 .amend-row {
@@ -362,9 +376,9 @@ html, body {
 }
 .amend-row input { cursor: pointer; }
 .amend-row label { cursor: pointer; user-select: none; }
-.commit-box { padding: 4px 8px; }
+.commit-box { padding: 4px 8px; flex: 1; overflow: hidden; }
 .commit-box textarea {
-    width: 100%; min-height: 60px; max-height: 150px; resize: vertical;
+    width: 100%; height: 100%; resize: none;
     background: var(--vscode-input-background);
     color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #444));
@@ -462,8 +476,11 @@ html, body {
         <!-- File list -->
         <div class="scroll-area" id="scrollArea"></div>
 
+        <!-- Drag handle -->
+        <div class="drag-handle" id="dragHandle"></div>
+
         <!-- Bottom: amend + message + buttons -->
-        <div class="bottom-area">
+        <div class="bottom-area" id="bottomArea">
             <div class="amend-row">
                 <input type="checkbox" id="amendCheckbox">
                 <label for="amendCheckbox">Amend</label>
@@ -492,19 +509,56 @@ html, body {
 <script nonce="${nonce}">
 (function() {
     const vscode = acquireVsCodeApi();
+    var savedState = vscode.getState() || {};
     let files = [];
     let stashes = [];
-    let checkedPaths = new Set();
+    let checkedPaths = new Set(savedState.checked || []);
     let groupByDir = true;
     let expandedDirs = new Set();
     let changesOpen = true;
     let unversionedOpen = true;
     let allDirsExpanded = true;
 
+    function saveState() {
+        vscode.setState({ checked: Array.from(checkedPaths) });
+    }
+
     const scrollArea = document.getElementById('scrollArea');
     const commitMessage = document.getElementById('commitMessage');
     const amendCheckbox = document.getElementById('amendCheckbox');
+    const bottomArea = document.getElementById('bottomArea');
+    const dragHandle = document.getElementById('dragHandle');
+    const commitTab = document.getElementById('commitTab');
     const shelfList = document.getElementById('shelfList');
+
+    // --- Drag to resize bottom area ---
+    var bottomHeight = 140;
+    bottomArea.style.height = bottomHeight + 'px';
+    var dragging = false;
+    var dragStartY = 0;
+    var dragStartH = 0;
+
+    dragHandle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        dragging = true;
+        dragStartY = e.clientY;
+        dragStartH = bottomArea.offsetHeight;
+        document.body.style.cursor = 'row-resize';
+        document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!dragging) return;
+        var delta = dragStartY - e.clientY;
+        var newH = Math.max(80, Math.min(commitTab.clientHeight - 60, dragStartH + delta));
+        bottomHeight = newH;
+        bottomArea.style.height = newH + 'px';
+    });
+    document.addEventListener('mouseup', function() {
+        if (!dragging) return;
+        dragging = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
 
     // --- Tab switching ---
     document.querySelectorAll('.tab-bar .tab').forEach(function(tab) {
@@ -595,7 +649,8 @@ html, body {
             case 'update':
                 files = msg.files || [];
                 stashes = msg.stashes || [];
-                checkedPaths = new Set(files.map(function(f) { return f.path; }));
+                var validPaths = new Set(files.map(function(f) { return f.path; }));
+                checkedPaths.forEach(function(p) { if (!validPaths.has(p)) checkedPaths.delete(p); });
                 if (allDirsExpanded) {
                     collectAllDirs(files).forEach(function(d) { expandedDirs.add(d); });
                 }
@@ -706,8 +761,8 @@ html, body {
         if (tracked.length > 0) {
             var allTrackedChecked = tracked.every(function(f) { return checkedPaths.has(f.path); });
             html += '<div class="section-header" data-section="changes">';
-            html += '<input type="checkbox" data-section-check="changes" ' + (allTrackedChecked ? 'checked' : '') + '>';
             html += '<span class="chevron ' + (changesOpen ? 'open' : '') + '">&#9654;</span>';
+            html += '<input type="checkbox" data-section-check="changes" ' + (allTrackedChecked ? 'checked' : '') + '>';
             html += ' Changes';
             html += '<span class="count">' + tracked.length + '</span>';
             html += '</div>';
@@ -726,8 +781,8 @@ html, body {
         if (unversioned.length > 0) {
             var allUnvChecked = unversioned.every(function(f) { return checkedPaths.has(f.path); });
             html += '<div class="section-header" data-section="unversioned">';
-            html += '<input type="checkbox" data-section-check="unversioned" ' + (allUnvChecked ? 'checked' : '') + '>';
             html += '<span class="chevron ' + (unversionedOpen ? 'open' : '') + '">&#9654;</span>';
+            html += '<input type="checkbox" data-section-check="unversioned" ' + (allUnvChecked ? 'checked' : '') + '>';
             html += ' Unversioned Files';
             html += '<span class="count">' + unversioned.length + '</span>';
             html += '</div>';
@@ -799,10 +854,10 @@ html, body {
         return renderTreeNode(tree, 0);
     }
 
-    var INDENT_STEP = 30;
-    var INDENT_BASE = 36;
-    var GUIDE_BASE = 60; // INDENT_BASE(36) + checkbox(13) + gap(4) + chevron_center(7) = 60
-    var SECTION_GUIDE = 30; // section header: padding(6) + checkbox(13) + gap(4) + chevron_center(7) = 30
+    var INDENT_STEP = 18;
+    var INDENT_BASE = 24;
+    var GUIDE_BASE = 31; // INDENT_BASE(24) + chevron_center(7) = 31
+    var SECTION_GUIDE = 13; // section header: padding(6) + chevron_center(7) = 13
 
     function indentGuides(treeDepth) {
         var html = '<span class="indent-guide" style="left:' + SECTION_GUIDE + 'px"></span>';
@@ -827,8 +882,8 @@ html, body {
 
             html += '<div class="folder-row" data-dir="' + esc(dir) + '" style="padding-left:' + padLeft + 'px" title="' + esc(dir) + '">';
             html += indentGuides(depth);
-            html += '<input type="checkbox" data-dir-check="' + esc(dir) + '" ' + (allDirChecked ? 'checked' : '') + '>';
             html += '<span class="chevron ' + (isExpanded ? 'open' : '') + '">&#9654;</span>';
+            html += '<input type="checkbox" data-dir-check="' + esc(dir) + '" ' + (allDirChecked ? 'checked' : '') + '>';
             html += FOLDER_SVG;
             html += '<span class="fname">' + esc(key) + '</span>';
             html += '<span class="count">' + dirFiles.length + '</span>';
@@ -876,6 +931,7 @@ html, body {
 
         var html = '<div class="file-row" data-path="' + esc(f.path) + '" style="padding-left:' + padLeft + 'px" title="' + esc(f.path) + '">';
         html += indentGuides(depth);
+        html += '<span style="width:13px;flex-shrink:0"></span>';
         html += '<input type="checkbox" data-path-check="' + esc(f.path) + '" ' + checked + '>';
         html += fileTypeIcon(fileName, f.status);
         html += '<span class="fname ' + fnClass + '">' + esc(fileName) + '</span>';
@@ -910,6 +966,7 @@ html, body {
                 if (el.checked) checkedPaths.add(sectionFiles[j].path);
                 else checkedPaths.delete(sectionFiles[j].path);
             }
+            saveState();
             renderFiles();
             return;
         }
@@ -918,6 +975,7 @@ html, body {
         if (pathCheck) {
             if (el.checked) checkedPaths.add(pathCheck);
             else checkedPaths.delete(pathCheck);
+            saveState();
             renderFiles();
             return;
         }
@@ -937,6 +995,7 @@ html, body {
                 if (el.checked) checkedPaths.add(dirPaths[m]);
                 else checkedPaths.delete(dirPaths[m]);
             }
+            saveState();
             renderFiles();
             return;
         }

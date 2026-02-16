@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import type { CommitDetail, CommitFile } from "../types";
 
 export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = "pycharmGit.commitFiles";
+    public static readonly viewType = "intelligit.commitFiles";
 
     private view?: vscode.WebviewView;
     private detail?: CommitDetail;
@@ -51,7 +51,7 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 
         const d = this.detail;
         const filesHtml = this.buildFileTreeHtml(d.files);
-        const date = fmtPyCharmDate(d.date);
+        const date = fmtDate(d.date);
         const nonce = getNonce();
 
         return `<!DOCTYPE html>
@@ -408,7 +408,7 @@ function esc(text: string): string {
         .replace(/"/g, "&quot;");
 }
 
-function fmtPyCharmDate(iso: string): string {
+function fmtDate(iso: string): string {
     const d = new Date(iso);
     const m = d.getMonth() + 1;
     const day = d.getDate();

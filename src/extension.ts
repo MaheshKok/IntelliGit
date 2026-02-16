@@ -38,7 +38,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Register views ---
 
-    const branchTreeView = vscode.window.createTreeView("pycharmGit.branches", {
+    const branchTreeView = vscode.window.createTreeView("intelligit.branches", {
         treeDataProvider: branchTree,
     });
 
@@ -86,7 +86,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const branch = currentBranches.find((b) => b.name === branchName);
             if (!branch) return;
             const item = new BranchItem(branch.name, "branch", branch);
-            vscode.commands.executeCommand(`pycharmGit.${action}`, item);
+            vscode.commands.executeCommand(`intelligit.${action}`, item);
         }),
     );
 
@@ -99,7 +99,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Commands ---
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("pycharmGit.refresh", async () => {
+        vscode.commands.registerCommand("intelligit.refresh", async () => {
             currentBranches = await gitOps.getBranches();
             branchTree.refresh(currentBranches);
             commitGraph.setBranches(currentBranches);
@@ -109,16 +109,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
 
         vscode.commands.registerCommand(
-            "pycharmGit.filterByBranch",
+            "intelligit.filterByBranch",
             async (branchName?: string) => {
                 await commitGraph.filterByBranch(branchName ?? null);
                 await clearSelection();
             },
         ),
 
-        vscode.commands.registerCommand("pycharmGit.showGitLog", async () => {
-            await vscode.commands.executeCommand("pycharmGit.branches.focus");
-            await vscode.commands.executeCommand("pycharmGit.commitGraph.focus");
+        vscode.commands.registerCommand("intelligit.showGitLog", async () => {
+            await vscode.commands.executeCommand("intelligit.branches.focus");
+            await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
     );
 
@@ -129,14 +129,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         handler: (item: BranchItem) => Promise<void>;
     }> = [
         {
-            id: "pycharmGit.checkout",
+            id: "intelligit.checkout",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
                 try {
                     await executor.run(["checkout", name]);
                     vscode.window.showInformationMessage(`Checked out ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Checkout failed: ${msg}`);
@@ -144,7 +144,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.newBranchFrom",
+            id: "intelligit.newBranchFrom",
             handler: async (item) => {
                 const base = item.branch?.name;
                 if (!base) return;
@@ -156,7 +156,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 try {
                     await executor.run(["checkout", "-b", newName, base]);
                     vscode.window.showInformationMessage(`Created and checked out ${newName}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Failed to create branch: ${msg}`);
@@ -164,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.checkoutAndRebase",
+            id: "intelligit.checkoutAndRebase",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -172,7 +172,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     await executor.run(["rebase", "HEAD", name]);
                     await executor.run(["checkout", name]);
                     vscode.window.showInformationMessage(`Checked out and rebased ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Checkout and rebase failed: ${msg}`);
@@ -180,7 +180,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.compareWithCurrent",
+            id: "intelligit.compareWithCurrent",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -198,7 +198,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.showDiffWithWorkingTree",
+            id: "intelligit.showDiffWithWorkingTree",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -216,7 +216,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.rebaseCurrentOnto",
+            id: "intelligit.rebaseCurrentOnto",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -229,7 +229,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 try {
                     await executor.run(["rebase", name]);
                     vscode.window.showInformationMessage(`Rebased onto ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Rebase failed: ${msg}`);
@@ -237,7 +237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.mergeIntoCurrent",
+            id: "intelligit.mergeIntoCurrent",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -250,7 +250,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 try {
                     await executor.run(["merge", name]);
                     vscode.window.showInformationMessage(`Merged ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Merge failed: ${msg}`);
@@ -258,7 +258,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.updateBranch",
+            id: "intelligit.updateBranch",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -268,7 +268,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         await executor.run(["pull", "--ff-only"]);
                     }
                     vscode.window.showInformationMessage(`Updated ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Update failed: ${msg}`);
@@ -276,14 +276,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.pushBranch",
+            id: "intelligit.pushBranch",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
                 try {
                     await executor.run(["push", "-u", "origin", name]);
                     vscode.window.showInformationMessage(`Pushed ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Push failed: ${msg}`);
@@ -291,7 +291,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.renameBranch",
+            id: "intelligit.renameBranch",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -303,7 +303,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 try {
                     await executor.run(["branch", "-m", name, newName]);
                     vscode.window.showInformationMessage(`Renamed ${name} to ${newName}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Rename failed: ${msg}`);
@@ -311,7 +311,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "pycharmGit.deleteBranch",
+            id: "intelligit.deleteBranch",
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
@@ -329,7 +329,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         await executor.run(["branch", "-d", name]);
                     }
                     vscode.window.showInformationMessage(`Deleted ${name}`);
-                    await vscode.commands.executeCommand("pycharmGit.refresh");
+                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Delete failed: ${msg}`);

@@ -7,7 +7,7 @@ import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
-    public static readonly viewType = "pycharmGit.commitGraph";
+    public static readonly viewType = "intelligit.commitGraph";
 
     private view?: vscode.WebviewView;
     private currentBranch: string | null = null;

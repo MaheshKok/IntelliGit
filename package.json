@@ -1,13 +1,13 @@
 {
-    "name": "pycharm-git-for-vscode",
-    "displayName": "PyCharm Git for VS Code",
-    "description": "Brings PyCharm's Git Log view to VS Code: commit graph, branch tree, commit details, and file change explorer.",
+    "name": "intelligit",
+    "displayName": "IntelliGit",
+    "description": "IntelliJ-style Git experience for VS Code: commit graph, branch tree, commit details, and file change explorer.",
     "version": "0.1.0",
-    "publisher": "pycharm-git",
+    "publisher": "intelligit",
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/pycharm-git/vscode"
+        "url": "https://github.com/MaheshKok/IntelliGit"
     },
     "engines": {
         "vscode": "^1.96.0"
@@ -17,55 +17,55 @@
     ],
     "keywords": [
         "git",
-        "pycharm",
+        "intellij",
         "log",
         "graph",
         "scm"
     ],
     "activationEvents": [
         "workspaceContains:.git",
-        "onView:pycharmGit.branches",
-        "onView:pycharmGit.commitGraph",
-        "onView:pycharmGit.commitFiles"
+        "onView:intelligit.branches",
+        "onView:intelligit.commitGraph",
+        "onView:intelligit.commitFiles"
     ],
     "main": "./dist/extension.js",
     "contributes": {
         "viewsContainers": {
             "activitybar": [
                 {
-                    "id": "pycharmGit",
-                    "title": "PyCharm Git",
-                    "icon": "media/pycharm-git.svg"
+                    "id": "intelligit",
+                    "title": "IntelliGit",
+                    "icon": "media/intelligit.svg"
                 }
             ],
             "panel": [
                 {
-                    "id": "pycharmGitPanel",
-                    "title": "PyCharm Git",
-                    "icon": "media/pycharm-git.svg"
+                    "id": "intelligitPanel",
+                    "title": "IntelliGit",
+                    "icon": "media/intelligit.svg"
                 }
             ]
         },
         "views": {
-            "pycharmGit": [
+            "intelligit": [
                 {
-                    "id": "pycharmGit.commitPanel",
+                    "id": "intelligit.commitPanel",
                     "name": "Commit",
                     "type": "webview"
                 },
                 {
-                    "id": "pycharmGit.branches",
+                    "id": "intelligit.branches",
                     "name": "Branches"
                 }
             ],
-            "pycharmGitPanel": [
+            "intelligitPanel": [
                 {
-                    "id": "pycharmGit.commitGraph",
+                    "id": "intelligit.commitGraph",
                     "name": "Commit Graph",
                     "type": "webview"
                 },
                 {
-                    "id": "pycharmGit.commitFiles",
+                    "id": "intelligit.commitFiles",
                     "name": "Changed Files",
                     "type": "webview"
                 }
@@ -73,168 +73,170 @@
         },
         "commands": [
             {
-                "command": "pycharmGit.showGitLog",
+                "command": "intelligit.showGitLog",
                 "title": "Show Git Log",
-                "category": "PyCharm Git",
+                "category": "IntelliGit",
                 "icon": "$(git-commit)"
             },
             {
-                "command": "pycharmGit.refresh",
+                "command": "intelligit.refresh",
                 "title": "Refresh",
-                "category": "PyCharm Git",
+                "category": "IntelliGit",
                 "icon": "$(refresh)"
             },
             {
-                "command": "pycharmGit.filterByBranch",
+                "command": "intelligit.filterByBranch",
                 "title": "Filter by Branch",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.checkout",
+                "command": "intelligit.checkout",
                 "title": "Checkout",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.newBranchFrom",
+                "command": "intelligit.newBranchFrom",
                 "title": "New Branch from...",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.checkoutAndRebase",
+                "command": "intelligit.checkoutAndRebase",
                 "title": "Checkout and Rebase onto Current",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.compareWithCurrent",
+                "command": "intelligit.compareWithCurrent",
                 "title": "Compare with Current",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.showDiffWithWorkingTree",
+                "command": "intelligit.showDiffWithWorkingTree",
                 "title": "Show Diff with Working Tree",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.rebaseCurrentOnto",
+                "command": "intelligit.rebaseCurrentOnto",
                 "title": "Rebase Current onto Selected",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.mergeIntoCurrent",
+                "command": "intelligit.mergeIntoCurrent",
                 "title": "Merge into Current",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.updateBranch",
+                "command": "intelligit.updateBranch",
                 "title": "Update",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.pushBranch",
+                "command": "intelligit.pushBranch",
                 "title": "Push",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.renameBranch",
+                "command": "intelligit.renameBranch",
                 "title": "Rename...",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             },
             {
-                "command": "pycharmGit.deleteBranch",
+                "command": "intelligit.deleteBranch",
                 "title": "Delete",
-                "category": "PyCharm Git"
+                "category": "IntelliGit"
             }
         ],
         "menus": {
             "view/title": [
                 {
-                    "command": "pycharmGit.refresh",
-                    "when": "view == pycharmGit.branches",
+                    "command": "intelligit.refresh",
+                    "when": "view == intelligit.branches",
                     "group": "navigation"
                 },
                 {
-                    "command": "pycharmGit.refresh",
-                    "when": "view == pycharmGit.commitGraph",
+                    "command": "intelligit.refresh",
+                    "when": "view == intelligit.commitGraph",
                     "group": "navigation"
                 }
             ],
             "view/item/context": [
                 {
-                    "command": "pycharmGit.checkout",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "command": "intelligit.checkout",
+                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "1_checkout@1"
                 },
                 {
-                    "command": "pycharmGit.newBranchFrom",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
+                    "command": "intelligit.newBranchFrom",
+                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
                     "group": "1_checkout@2"
                 },
                 {
-                    "command": "pycharmGit.checkoutAndRebase",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "command": "intelligit.checkoutAndRebase",
+                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "1_checkout@3"
                 },
                 {
-                    "command": "pycharmGit.compareWithCurrent",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "command": "intelligit.compareWithCurrent",
+                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "2_compare@1"
                 },
                 {
-                    "command": "pycharmGit.showDiffWithWorkingTree",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
+                    "command": "intelligit.showDiffWithWorkingTree",
+                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
                     "group": "2_compare@2"
                 },
                 {
-                    "command": "pycharmGit.rebaseCurrentOnto",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "command": "intelligit.rebaseCurrentOnto",
+                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "3_merge@1"
                 },
                 {
-                    "command": "pycharmGit.mergeIntoCurrent",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "command": "intelligit.mergeIntoCurrent",
+                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "3_merge@2"
                 },
                 {
-                    "command": "pycharmGit.updateBranch",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
+                    "command": "intelligit.updateBranch",
+                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
                     "group": "4_remote@1"
                 },
                 {
-                    "command": "pycharmGit.pushBranch",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
+                    "command": "intelligit.pushBranch",
+                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
                     "group": "4_remote@2"
                 },
                 {
-                    "command": "pycharmGit.renameBranch",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
+                    "command": "intelligit.renameBranch",
+                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
                     "group": "5_modify@1"
                 },
                 {
-                    "command": "pycharmGit.deleteBranch",
-                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "command": "intelligit.deleteBranch",
+                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "5_modify@2"
                 }
             ]
         },
         "keybindings": [
             {
-                "command": "pycharmGit.showGitLog",
+                "command": "intelligit.showGitLog",
                 "key": "alt+9",
                 "mac": "alt+9"
             }
         ]
     },
     "scripts": {
+        "vscode:prepublish": "bun scripts/build.js --production",
         "build": "bun scripts/build.js",
         "build:prod": "bun scripts/build.js --production",
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "lint": "eslint src",
+        "typecheck": "tsc --noEmit",
         "test": "bun vitest run",
         "test:watch": "bun vitest",
         "package": "vsce package --no-dependencies",
-        "publish": "vsce publish"
+        "publish": "vsce publish --no-dependencies"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

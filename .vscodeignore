@@ -1,0 +1,62 @@
+# Source files (compiled versions are in dist/)
+src/**
+
+# Node modules (dependencies bundled in dist/)
+node_modules/**
+
+# TypeScript config
+tsconfig*.json
+
+# Test files
+tests/**
+**/*.test.ts
+**/*.spec.ts
+vitest.config.ts
+coverage/**
+
+# Development configuration
+.eslintrc*
+eslint.config.*
+.prettierrc*
+.prettierignore
+.editorconfig
+
+# Build tools and caches
+.vscode/**
+.idea/**
+*.log
+*.map
+.cache/**
+
+# Git files
+.git/**
+.gitignore
+.gitattributes
+
+# CI/CD files
+.github/**
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+bun.lock
+
+# Misc development files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Claude and swarm data
+.claude/**
+.claude-flow/**
+.mcp.json
+CLAUDE.md
+*.db
+*.db-shm
+*.db-wal
+
+# Build scripts
+scripts/**

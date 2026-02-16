@@ -41,7 +41,7 @@ export class BranchItem extends vscode.TreeItem {
                 if (branch) {
                     this.description = formatTrackingInfo(branch);
                     this.command = {
-                        command: "pycharmGit.filterByBranch",
+                        command: "intelligit.filterByBranch",
                         title: "Filter by Branch",
                         arguments: [branch.name],
                     };
