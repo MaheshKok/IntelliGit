@@ -3,7 +3,7 @@
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git experience for VS Code: commit graph, branch tree, commit details, and file change explorer.",
     "version": "0.1.0",
-    "publisher": "intelligit",
+    "publisher": "MaheshKok",
     "license": "MIT",
     "repository": {
         "type": "git",

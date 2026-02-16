@@ -101,8 +101,8 @@ The IntelliGit icon in the activity bar shows a badge with the number of changed
 ### From Marketplace
 
 Search for **IntelliGit** in the VS Code Extensions view, or install from:
-- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=intelligit.intelligit)
-- [Open VSX Registry](https://open-vsx.org/extension/intelligit/intelligit)
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=MaheshKok.intelligit)
+- [Open VSX Registry](https://open-vsx.org/extension/MaheshKok/intelligit)
 
 ### From VSIX
 
