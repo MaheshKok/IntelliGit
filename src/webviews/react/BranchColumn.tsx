@@ -6,6 +6,8 @@ import React, { useState, useMemo, useCallback } from "react";
 import type { Branch } from "../../types";
 import { ContextMenu, type MenuItem } from "./shared/components/ContextMenu";
 
+const TREE_INDENT_STEP = 16;
+
 interface Props {
     branches: Branch[];
     selectedBranch: string | null;
@@ -271,7 +273,7 @@ export function BranchColumn({
                                 <div
                                     className="branch-row"
                                     onClick={() => toggleFolder(remoteKey)}
-                                    style={{ ...rowStyle, paddingLeft: 12 }}
+                                    style={{ ...rowStyle, paddingLeft: TREE_INDENT_STEP }}
                                 >
                                     <ChevronIcon expanded={isExpanded} />
                                     <RepoIcon />
@@ -341,7 +343,7 @@ function TreeNodeRow({
                 <div
                     className="branch-row"
                     onClick={() => onToggleFolder(folderKey)}
-                    style={{ ...rowStyle, paddingLeft: depth * 12 }}
+                    style={{ ...rowStyle, paddingLeft: depth * TREE_INDENT_STEP }}
                 >
                     <ChevronIcon expanded={isExpanded} />
                     <FolderIcon />
@@ -377,7 +379,7 @@ function TreeNodeRow({
             }}
             style={{
                 ...rowStyle,
-                paddingLeft: depth * 12,
+                paddingLeft: depth * TREE_INDENT_STEP,
             }}
         >
             <GitBranchIcon color={isCurrent ? "#4CAF50" : undefined} />

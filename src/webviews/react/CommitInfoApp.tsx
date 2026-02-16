@@ -6,7 +6,6 @@ import { getVsCodeApi } from "./shared/vscodeApi";
 import { formatDateTime } from "./shared/date";
 import { FileTypeIcon } from "./commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "./commit-panel/components/StatusBadge";
-import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./commit-panel/components/IndentGuides";
 import theme from "./commit-panel/theme";
 
 type InboundMessage =
@@ -30,6 +29,10 @@ interface TreeFile {
 }
 
 const vscode = getVsCodeApi<OutboundMessage, unknown>();
+const INFO_INDENT_BASE = 18;
+const INFO_INDENT_STEP = 14;
+const INFO_GUIDE_BASE = 23;
+const INFO_SECTION_GUIDE = 7;
 
 function App(): React.ReactElement {
     const [detail, setDetail] = useState<CommitDetail | null>(null);
@@ -250,7 +253,7 @@ function CommitFolderRow({
     fileCount: number;
     onToggle: () => void;
 }): React.ReactElement {
-    const padLeft = INDENT_BASE + depth * INDENT_STEP;
+    const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
     return (
         <Flex
             align="center"
@@ -265,7 +268,7 @@ function CommitFolderRow({
             onClick={onToggle}
             title={folder.path}
         >
-            <IndentGuides treeDepth={depth} />
+            <InfoIndentGuides treeDepth={depth} />
             <Box
                 as="span"
                 fontSize="11px"
@@ -298,7 +301,7 @@ function CommitFolderRow({
 }
 
 function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): React.ReactElement {
-    const padLeft = INDENT_BASE + depth * INDENT_STEP;
+    const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
     const fileName = file.path.split("/").pop() ?? file.path;
 
     return (
@@ -314,9 +317,8 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
             title={file.path}
         >
-            <IndentGuides treeDepth={depth} />
-            <Box as="span" w="13px" flexShrink={0} />
-            <Box as="span" w="16px" flexShrink={0} />
+            <InfoIndentGuides treeDepth={depth} />
+            <Box as="span" w="14px" flexShrink={0} />
             <FileTypeIcon filename={fileName} status={file.status} />
             <Box as="span" flex={1} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                 {fileName}
@@ -344,6 +346,34 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
             )}
             <StatusBadge status={file.status} />
         </Flex>
+    );
+}
+
+function InfoIndentGuides({ treeDepth }: { treeDepth: number }): React.ReactElement {
+    return (
+        <>
+            <Box
+                as="span"
+                position="absolute"
+                top={0}
+                bottom={0}
+                w="1px"
+                bg="var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.12))"
+                left={`${INFO_SECTION_GUIDE}px`}
+            />
+            {Array.from({ length: treeDepth }, (_, i) => (
+                <Box
+                    key={i}
+                    as="span"
+                    position="absolute"
+                    top={0}
+                    bottom={0}
+                    w="1px"
+                    bg="var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.12))"
+                    left={`${INFO_GUIDE_BASE + i * INFO_INDENT_STEP}px`}
+                />
+            ))}
+        </>
     );
 }
 
