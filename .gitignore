@@ -7,3 +7,5 @@ package-lock.json
 
 .claude/
 .vscode/
+
+.idea/
