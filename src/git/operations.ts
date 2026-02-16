@@ -339,4 +339,19 @@ export class GitOps {
     async stashDrop(index: number): Promise<string> {
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
+
+    async getFileHistory(filePath: string, maxCount: number = 50): Promise<string> {
+        return this.executor.run([
+            "log",
+            `--max-count=${maxCount}`,
+            "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
+            "--follow",
+            "--",
+            filePath,
+        ]);
+    }
+
+    async deleteFile(filePath: string): Promise<void> {
+        await this.executor.run(["rm", "-f", "--", filePath]);
+    }
 }

@@ -388,7 +388,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // VS Code's file watcher excludes .git/ by default, so use Node's fs.watch
     // to detect git state changes (new commits, branch changes, fetches)
     const gitDir = path.join(repoRoot, ".git");
-    const gitStateFiles = new Set(["HEAD", "FETCH_HEAD", "packed-refs", "MERGE_HEAD", "REBASE_HEAD"]);
+    const gitStateFiles = new Set([
+        "HEAD",
+        "FETCH_HEAD",
+        "packed-refs",
+        "MERGE_HEAD",
+        "REBASE_HEAD",
+    ]);
     const fsWatchers: fs.FSWatcher[] = [];
 
     try {
@@ -403,19 +409,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     try {
-        const refsWatcher = fs.watch(
-            path.join(gitDir, "refs"),
-            { recursive: true },
-            () => debouncedFullRefresh(),
+        const refsWatcher = fs.watch(path.join(gitDir, "refs"), { recursive: true }, () =>
+            debouncedFullRefresh(),
         );
         fsWatchers.push(refsWatcher);
     } catch {
         /* refs dir may not exist yet */
     }
 
-    context.subscriptions.push(
-        new vscode.Disposable(() => fsWatchers.forEach((w) => w.close())),
-    );
+    context.subscriptions.push(new vscode.Disposable(() => fsWatchers.forEach((w) => w.close())));
 
     // --- Disposables ---
 

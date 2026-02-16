@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git experience for VS Code: commit graph, branch tree, commit details, and file change explorer.",
-    "version": "0.2.0",
+    "version": "0.2.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -240,6 +240,9 @@
         "publish": "vsce publish --no-dependencies"
     },
     "devDependencies": {
+        "@chakra-ui/react": "^2.8.2",
+        "@emotion/react": "^11.11.3",
+        "@emotion/styled": "^11.11.0",
         "@eslint/js": "^10.0.1",
         "@types/node": "^20.11.0",
         "@types/react": "^18.2.48",
@@ -252,6 +255,7 @@
         "esbuild": "^0.20.0",
         "eslint": "^10.0.0",
         "eslint-plugin-react": "^7.37.5",
+        "framer-motion": "^11.0.0",
         "globals": "^17.3.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",

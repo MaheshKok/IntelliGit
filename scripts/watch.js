@@ -30,6 +30,20 @@ async function watch() {
     });
     await webviewCtx.watch();
     console.log("Watching webview: commitgraph");
+
+    const commitPanelCtx = await esbuild.context({
+        entryPoints: [
+            path.resolve(__dirname, "../src/webviews/react/commit-panel/CommitPanelApp.tsx"),
+        ],
+        bundle: true,
+        outfile: path.resolve(__dirname, "../dist/webview-commitpanel.js"),
+        format: "esm",
+        platform: "browser",
+        target: "es2022",
+        sourcemap: true,
+    });
+    await commitPanelCtx.watch();
+    console.log("Watching webview: commitpanel");
 }
 
 watch().catch((err) => {
