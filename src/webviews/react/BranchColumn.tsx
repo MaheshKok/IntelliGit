@@ -55,7 +55,7 @@ interface MenuItem {
     separator?: boolean;
 }
 
-// PyCharm-style middle-ellipsis: keeps start and end of branch name
+// Middle-ellipsis: keeps start and end of branch name
 function trim(name: string, max = 40): string {
     if (name.length <= max) return name;
     const endLen = Math.min(8, name.length);

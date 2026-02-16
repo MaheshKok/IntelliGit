@@ -1,6 +1,6 @@
-# PyCharm Git for VS Code
+# IntelliGit
 
-Brings PyCharm's complete Git UX to VS Code.
+IntelliJ-style Git experience for VS Code.
 
 ## Features
 - Changelists
