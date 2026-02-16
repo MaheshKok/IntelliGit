@@ -13,6 +13,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private currentBranch: string | null = null;
     private filterText = "";
     private offset = 0;
+    private loadingMore = false;
+    private requestSeq = 0;
     private readonly PAGE_SIZE = 500;
 
     private branches: Branch[] = [];
@@ -67,6 +69,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     this.currentBranch = msg.branch;
                     this.filterText = "";
                     this._onBranchFilterChanged.fire(msg.branch);
+                    this.postToWebview({ type: "setSelectedBranch", branch: msg.branch });
                     await this.loadInitial();
                     break;
                 case "branchAction":
@@ -87,6 +90,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     async filterByBranch(branch: string | null): Promise<void> {
         this.currentBranch = branch;
         this.filterText = "";
+        this.postToWebview({ type: "setSelectedBranch", branch });
         await this.loadInitial();
     }
 
@@ -100,13 +104,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async loadInitial(): Promise<void> {
+        const requestId = ++this.requestSeq;
         this.offset = 0;
+        this.loadingMore = false;
         try {
             const commits = await this.gitOps.getLog(
                 this.PAGE_SIZE,
                 this.currentBranch ?? undefined,
                 this.filterText || undefined,
+                0,
             );
+            if (requestId !== this.requestSeq) return;
             this.offset = commits.length;
             this.postToWebview({
                 type: "loadCommits",
@@ -121,23 +129,30 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async loadMore(): Promise<void> {
+        if (this.loadingMore) return;
+        this.loadingMore = true;
+        const requestId = ++this.requestSeq;
         try {
             const commits = await this.gitOps.getLog(
-                this.PAGE_SIZE + this.offset,
+                this.PAGE_SIZE,
                 this.currentBranch ?? undefined,
                 this.filterText || undefined,
+                this.offset,
             );
-            const newCommits = commits.slice(this.offset);
-            this.offset = commits.length;
+            if (requestId !== this.requestSeq) return;
+            const newCommits = commits;
+            this.offset += newCommits.length;
             this.postToWebview({
                 type: "loadCommits",
                 commits: newCommits,
-                hasMore: newCommits.length > 0,
+                hasMore: newCommits.length >= this.PAGE_SIZE,
                 append: true,
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`Git log error: ${message}`);
+        } finally {
+            this.loadingMore = false;
         }
     }
 

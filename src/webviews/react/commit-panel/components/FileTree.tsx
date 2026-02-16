@@ -1,7 +1,7 @@
 // Main file tree component for the commit panel. Renders tracked changes
 // and unversioned files as collapsible sections with directory grouping.
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { Box } from "@chakra-ui/react";
 import { SectionHeader } from "./SectionHeader";
 import { FolderRow } from "./FolderRow";
@@ -40,26 +40,19 @@ export function FileTree({
     const [changesOpen, setChangesOpen] = useState(true);
     const [unversionedOpen, setUnversionedOpen] = useState(true);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
+    const lastExpandSignal = useRef(0);
+    const lastCollapseSignal = useRef(0);
 
-    // Deduplicate files
-    const uniqueFiles = useMemo(() => {
-        const seen = new Set<string>();
-        return files.filter((f) => {
-            if (seen.has(f.path)) return false;
-            seen.add(f.path);
-            return true;
-        });
-    }, [files]);
-
-    const tracked = useMemo(() => uniqueFiles.filter((f) => f.status !== "?"), [uniqueFiles]);
-    const unversioned = useMemo(() => uniqueFiles.filter((f) => f.status === "?"), [uniqueFiles]);
+    const tracked = useMemo(() => files.filter((f) => f.status !== "?"), [files]);
+    const unversioned = useMemo(() => files.filter((f) => f.status === "?"), [files]);
 
     const trackedTree = useFileTree(tracked, groupByDir);
     const unversionedTree = useFileTree(unversioned, groupByDir);
 
     // Respond to expand/collapse all signals
     React.useEffect(() => {
-        if (expandAllSignal === 0) return;
+        if (expandAllSignal === 0 || expandAllSignal === lastExpandSignal.current) return;
+        lastExpandSignal.current = expandAllSignal;
         setChangesOpen(true);
         setUnversionedOpen(true);
         const allDirs = [
@@ -67,10 +60,11 @@ export function FileTree({
             ...collectAllDirPaths(unversionedTree),
         ];
         setExpandedDirs(new Set(allDirs));
-    }, [expandAllSignal]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [expandAllSignal, trackedTree, unversionedTree]);
 
     React.useEffect(() => {
-        if (collapseAllSignal === 0) return;
+        if (collapseAllSignal === 0 || collapseAllSignal === lastCollapseSignal.current) return;
+        lastCollapseSignal.current = collapseAllSignal;
         setChangesOpen(false);
         setUnversionedOpen(false);
         setExpandedDirs(new Set());
@@ -105,7 +99,7 @@ export function FileTree({
         });
     }, []);
 
-    if (uniqueFiles.length === 0) {
+    if (files.length === 0) {
         return (
             <Box
                 color="var(--vscode-descriptionForeground)"
@@ -217,7 +211,7 @@ function TreeEntries({
                 if (entry.type === "file") {
                     return (
                         <FileRow
-                            key={entry.file.path}
+                            key={`${entry.file.path}:${entry.file.staged ? "staged" : "unstaged"}`}
                             file={entry.file}
                             depth={depth}
                             isChecked={checkedPaths.has(entry.file.path)}

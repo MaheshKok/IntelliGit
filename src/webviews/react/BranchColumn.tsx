@@ -363,9 +363,9 @@ export function BranchColumn({
             />
             {expandedSections.has("local") && (
                 <div>
-                    {localTree.map((node) => (
+                    {localTree.map((node, index) => (
                         <TreeNodeRow
-                            key={node.label}
+                            key={`local-${node.branch?.name ?? node.label}-${index}`}
                             node={node}
                             depth={1}
                             selectedBranch={selectedBranch}
@@ -402,9 +402,9 @@ export function BranchColumn({
                                     <span>{remote}</span>
                                 </div>
                                 {isExpanded &&
-                                    group.tree.map((node) => (
+                                    group.tree.map((node, index) => (
                                         <TreeNodeRow
-                                            key={node.label}
+                                            key={`remote-${remote}-${node.branch?.name ?? node.label}-${index}`}
                                             node={node}
                                             depth={2}
                                             selectedBranch={selectedBranch}
@@ -471,9 +471,9 @@ function TreeNodeRow({
                     <span>{node.label}</span>
                 </div>
                 {isExpanded &&
-                    node.children.map((child) => (
+                    node.children.map((child, index) => (
                         <TreeNodeRow
-                            key={child.label}
+                            key={`${folderKey}/${child.branch?.name ?? child.label}-${index}`}
                             node={child}
                             depth={depth + 1}
                             selectedBranch={selectedBranch}

@@ -18,13 +18,13 @@ export class GitOps {
 
     async getBranches(): Promise<Branch[]> {
         const format =
-            "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:track,nobracket)\t%(HEAD)";
+            "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)";
         const result = await this.executor.run(["branch", "-a", `--format=${format}`]);
 
         const branches: Branch[] = [];
         for (const line of result.trim().split("\n")) {
             if (!line.trim()) continue;
-            const [refname, name, hash, track, head] = line.split("\t");
+            const [refname, name, hash, upstream, track, head] = line.split("\t");
 
             const isRemote = refname.startsWith("refs/remotes/");
 
@@ -35,6 +35,8 @@ export class GitOps {
             if (isRemote) {
                 // refname:short for remote is "origin/main", first segment is the remote name
                 remote = name.split("/")[0];
+            } else if (upstream) {
+                remote = upstream.split("/")[0];
             }
 
             let ahead = 0,
@@ -46,16 +48,33 @@ export class GitOps {
                 if (b) behind = parseInt(b[1]);
             }
 
-            branches.push({ name, hash, isRemote, isCurrent: head === "*", remote, ahead, behind });
+            branches.push({
+                name,
+                hash,
+                isRemote,
+                isCurrent: head === "*",
+                upstream: upstream || undefined,
+                remote,
+                ahead,
+                behind,
+            });
         }
         return branches;
     }
 
-    async getLog(maxCount: number = 500, branch?: string, filterText?: string): Promise<Commit[]> {
+    async getLog(
+        maxCount: number = 500,
+        branch?: string,
+        filterText?: string,
+        skip: number = 0,
+    ): Promise<Commit[]> {
         const format =
             ["%H", "%h", "%s", "%an", "%ae", "%aI", "%P", "%D"].join(FIELD_SEP) + RECORD_SEP;
 
         const args = ["log", `--max-count=${maxCount}`, `--pretty=format:${format}`];
+        if (skip > 0) {
+            args.push(`--skip=${skip}`);
+        }
 
         if (branch) {
             args.push(branch);
@@ -102,25 +121,43 @@ export class GitOps {
         const info = await this.executor.run(["show", `--format=${format}`, "--no-patch", hash]);
         const parts = info.trim().split(FIELD_SEP);
 
+        const filesByPath = new Map<string, CommitFile>();
+        const upsertFile = (path: string, status: CommitFile["status"]): CommitFile => {
+            const existing = filesByPath.get(path);
+            if (existing) {
+                // Prefer more specific status if we already inserted a fallback.
+                if (existing.status === "M" && status !== "M") {
+                    existing.status = status;
+                }
+                return existing;
+            }
+            const created: CommitFile = {
+                path,
+                status,
+                additions: 0,
+                deletions: 0,
+            };
+            filesByPath.set(path, created);
+            return created;
+        };
+
         const nameStatus = await this.executor.run([
             "diff-tree",
             "--no-commit-id",
             "-r",
+            "-m",
             "--name-status",
             hash,
         ]);
 
-        const files: CommitFile[] = [];
         for (const line of nameStatus.trim().split("\n")) {
             if (!line.trim()) continue;
             const cols = line.split("\t");
             if (cols.length >= 2) {
-                files.push({
-                    path: cols[cols.length - 1],
-                    status: cols[0].charAt(0) as CommitFile["status"],
-                    additions: 0,
-                    deletions: 0,
-                });
+                const status = cols[0].charAt(0) as CommitFile["status"];
+                const isRenameOrCopy = status === "R" || status === "C";
+                const path = isRenameOrCopy && cols.length >= 3 ? cols[2] : cols[cols.length - 1];
+                upsertFile(path, status);
             }
         }
 
@@ -129,17 +166,22 @@ export class GitOps {
                 "diff-tree",
                 "--no-commit-id",
                 "-r",
+                "-m",
                 "--numstat",
                 hash,
             ]);
             for (const line of numstat.trim().split("\n")) {
                 if (!line.trim()) continue;
-                const [add, del, filePath] = line.split("\t");
-                const file = files.find((f) => f.path === filePath);
-                if (file) {
-                    file.additions = add === "-" ? 0 : parseInt(add);
-                    file.deletions = del === "-" ? 0 : parseInt(del);
-                }
+                const cols = line.split("\t");
+                if (cols.length < 3) continue;
+                const add = cols[0];
+                const del = cols[1];
+                const filePath = cols[cols.length - 1];
+                const file = upsertFile(filePath, "M");
+                const parsedAdd = add === "-" ? 0 : parseInt(add);
+                const parsedDel = del === "-" ? 0 : parseInt(del);
+                file.additions = Math.max(file.additions, Number.isNaN(parsedAdd) ? 0 : parsedAdd);
+                file.deletions = Math.max(file.deletions, Number.isNaN(parsedDel) ? 0 : parsedDel);
             }
         } catch {
             /* numstat may fail for binary files */
@@ -160,60 +202,74 @@ export class GitOps {
                       .map((r) => r.trim())
                       .filter(Boolean)
                 : [],
-            files,
+            files: Array.from(filesByPath.values()),
         };
     }
 
     // --- Working tree operations ---
 
     async getStatus(): Promise<WorkingFile[]> {
-        const result = await this.executor.run(["status", "--porcelain=v1", "-uall"]);
+        const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
         const files: WorkingFile[] = [];
+        const entries = result.split("\0");
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (!entry) continue;
+            if (entry.length < 4) continue;
 
-        for (const line of result.split("\n")) {
-            if (!line) continue;
-            const index = line.charAt(0);
-            const worktree = line.charAt(1);
-            const path = line.slice(3).trim();
+            const index = entry.charAt(0);
+            const worktree = entry.charAt(1);
+            const hasStaged = index !== " " && index !== "?";
+            const hasUnstaged = worktree !== " ";
+
+            const stagedStatus = mapStatusCode(index);
+            const unstagedStatus = mapStatusCode(worktree);
+
+            const path = entry.slice(3);
             if (!path) continue;
 
-            // Determine status and staged state
-            const staged = index !== " " && index !== "?";
-            let status: WorkingFile["status"];
-            const code = staged ? index : worktree;
-            switch (code) {
-                case "M":
-                    status = "M";
-                    break;
-                case "A":
-                    status = "A";
-                    break;
-                case "D":
-                    status = "D";
-                    break;
-                case "R":
-                    status = "R";
-                    break;
-                case "C":
-                    status = "C";
-                    break;
-                case "?":
-                    status = "?";
-                    break;
-                case "U":
-                    status = "U";
-                    break;
-                default:
-                    status = "M";
-                    break;
+            const isRenameOrCopy =
+                index === "R" || index === "C" || worktree === "R" || worktree === "C";
+            if (isRenameOrCopy && i + 1 < entries.length) {
+                // In porcelain -z output, rename/copy emits an extra NUL-terminated source path.
+                i += 1;
             }
 
-            // If both index and worktree have changes, emit two entries
-            if (index !== " " && index !== "?" && worktree !== " ") {
-                files.push({ path, status, staged: true, additions: 0, deletions: 0 });
-                files.push({ path, status, staged: false, additions: 0, deletions: 0 });
-            } else {
-                files.push({ path, status, staged, additions: 0, deletions: 0 });
+            if (hasStaged && hasUnstaged) {
+                if (stagedStatus) {
+                    files.push({
+                        path,
+                        status: stagedStatus,
+                        staged: true,
+                        additions: 0,
+                        deletions: 0,
+                    });
+                }
+                if (unstagedStatus) {
+                    files.push({
+                        path,
+                        status: unstagedStatus,
+                        staged: false,
+                        additions: 0,
+                        deletions: 0,
+                    });
+                }
+            } else if (hasStaged && stagedStatus) {
+                files.push({
+                    path,
+                    status: stagedStatus,
+                    staged: true,
+                    additions: 0,
+                    deletions: 0,
+                });
+            } else if (hasUnstaged && unstagedStatus) {
+                files.push({
+                    path,
+                    status: unstagedStatus,
+                    staged: false,
+                    additions: 0,
+                    deletions: 0,
+                });
             }
         }
 
@@ -222,11 +278,18 @@ export class GitOps {
             const diffStat = await this.executor.run(["diff", "--numstat"]);
             for (const line of diffStat.trim().split("\n")) {
                 if (!line.trim()) continue;
-                const [add, del, filePath] = line.split("\t");
-                const file = files.find((f) => f.path === filePath && !f.staged);
-                if (file) {
-                    file.additions = add === "-" ? 0 : parseInt(add);
-                    file.deletions = del === "-" ? 0 : parseInt(del);
+                const cols = line.split("\t");
+                if (cols.length < 3) continue;
+                const add = cols[0];
+                const del = cols[1];
+                const filePath = cols[cols.length - 1];
+                const parsedAdd = add === "-" ? 0 : parseInt(add);
+                const parsedDel = del === "-" ? 0 : parseInt(del);
+                for (const file of files) {
+                    if (file.path === filePath && !file.staged) {
+                        file.additions = Number.isNaN(parsedAdd) ? 0 : parsedAdd;
+                        file.deletions = Number.isNaN(parsedDel) ? 0 : parsedDel;
+                    }
                 }
             }
         } catch {
@@ -238,11 +301,18 @@ export class GitOps {
             const stagedStat = await this.executor.run(["diff", "--cached", "--numstat"]);
             for (const line of stagedStat.trim().split("\n")) {
                 if (!line.trim()) continue;
-                const [add, del, filePath] = line.split("\t");
-                const file = files.find((f) => f.path === filePath && f.staged);
-                if (file) {
-                    file.additions = add === "-" ? 0 : parseInt(add);
-                    file.deletions = del === "-" ? 0 : parseInt(del);
+                const cols = line.split("\t");
+                if (cols.length < 3) continue;
+                const add = cols[0];
+                const del = cols[1];
+                const filePath = cols[cols.length - 1];
+                const parsedAdd = add === "-" ? 0 : parseInt(add);
+                const parsedDel = del === "-" ? 0 : parseInt(del);
+                for (const file of files) {
+                    if (file.path === filePath && file.staged) {
+                        file.additions = Number.isNaN(parsedAdd) ? 0 : parsedAdd;
+                        file.deletions = Number.isNaN(parsedDel) ? 0 : parsedDel;
+                    }
                 }
             }
         } catch {
@@ -353,5 +423,28 @@ export class GitOps {
 
     async deleteFile(filePath: string): Promise<void> {
         await this.executor.run(["rm", "-f", "--", filePath]);
+    }
+}
+
+function mapStatusCode(code: string): WorkingFile["status"] | null {
+    switch (code) {
+        case "M":
+            return "M";
+        case "A":
+            return "A";
+        case "D":
+            return "D";
+        case "R":
+            return "R";
+        case "C":
+            return "C";
+        case "?":
+            return "?";
+        case "U":
+            return "U";
+        case " ":
+            return null;
+        default:
+            return "M";
     }
 }

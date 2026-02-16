@@ -82,6 +82,30 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.refreshData();
                 break;
 
+            case "commitSelected": {
+                const message = msg.message as string;
+                const amend = msg.amend as boolean;
+                const push = msg.push as boolean;
+                const paths = msg.paths as string[];
+                if (!message.trim() && !amend) {
+                    vscode.window.showWarningMessage("Commit message cannot be empty.");
+                    return;
+                }
+                if (paths.length > 0) {
+                    await this.gitOps.stageFiles(paths);
+                }
+                if (push) {
+                    await this.gitOps.commitAndPush(message, amend);
+                    vscode.window.showInformationMessage("Committed and pushed successfully.");
+                } else {
+                    await this.gitOps.commit(message, amend);
+                    vscode.window.showInformationMessage("Committed successfully.");
+                }
+                this.postToWebview({ type: "committed" });
+                await this.refreshData();
+                break;
+            }
+
             case "commit": {
                 const message = msg.message as string;
                 const amend = msg.amend as boolean;

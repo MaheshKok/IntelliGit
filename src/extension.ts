@@ -30,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Cached branch list for webview context menu lookups
     let currentBranches: Branch[] = [];
+    let commitDetailRequestSeq = 0;
 
     // --- Providers ---
 
@@ -66,8 +67,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         commitGraph.onCommitSelected(async (hash) => {
+            const requestId = ++commitDetailRequestSeq;
             try {
                 const detail = await gitOps.getCommitDetail(hash);
+                if (requestId !== commitDetailRequestSeq) return;
                 commitInfo.setCommitDetail(detail);
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
@@ -96,6 +99,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const clearSelection = () => {
         commitInfo.clear();
+    };
+
+    const getCurrentBranchName = () => currentBranches.find((b) => b.isCurrent)?.name;
+
+    const getLocalNameFromRemote = (remoteBranchName: string) =>
+        remoteBranchName.split("/").slice(1).join("/");
+
+    const checkoutBranch = async (branch: Branch): Promise<string> => {
+        if (!branch.isRemote) {
+            await executor.run(["checkout", branch.name]);
+            return branch.name;
+        }
+
+        const localName = getLocalNameFromRemote(branch.name);
+        const existingLocal = currentBranches.find(
+            (b) => !b.isRemote && b.name === localName,
+        );
+        if (existingLocal) {
+            await executor.run(["checkout", existingLocal.name]);
+            return existingLocal.name;
+        }
+
+        await executor.run(["checkout", "--track", branch.name]);
+        return localName;
+    };
+
+    const resolveRemoteName = async (branch: Branch): Promise<string | null> => {
+        if (branch.remote) return branch.remote;
+        try {
+            const raw = await executor.run(["remote"]);
+            const remotes = raw
+                .split("\n")
+                .map((r) => r.trim())
+                .filter(Boolean);
+            return remotes[0] ?? null;
+        } catch {
+            return null;
+        }
     };
 
     // --- Commands ---
@@ -133,11 +174,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.checkout",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                if (!branch) return;
                 try {
-                    await executor.run(["checkout", name]);
-                    vscode.window.showInformationMessage(`Checked out ${name}`);
+                    const checkedOut = await checkoutBranch(branch);
+                    vscode.window.showInformationMessage(`Checked out ${checkedOut}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -168,12 +209,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.checkoutAndRebase",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                if (!branch) return;
+                const onto = getCurrentBranchName();
+                if (!onto) {
+                    vscode.window.showErrorMessage("No current branch found.");
+                    return;
+                }
                 try {
-                    await executor.run(["rebase", "HEAD", name]);
-                    await executor.run(["checkout", name]);
-                    vscode.window.showInformationMessage(`Checked out and rebased ${name}`);
+                    const checkedOut = await checkoutBranch(branch);
+                    if (checkedOut === onto) {
+                        vscode.window.showInformationMessage(
+                            `${checkedOut} is already the current branch.`,
+                        );
+                        return;
+                    }
+                    await executor.run(["rebase", onto]);
+                    vscode.window.showInformationMessage(
+                        `Checked out ${checkedOut} and rebased onto ${onto}`,
+                    );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -280,11 +334,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.pushBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                if (!branch || branch.isRemote) return;
                 try {
-                    await executor.run(["push", "-u", "origin", name]);
-                    vscode.window.showInformationMessage(`Pushed ${name}`);
+                    const remote = await resolveRemoteName(branch);
+                    if (branch.isCurrent) {
+                        if (branch.remote) {
+                            await executor.run(["push", branch.remote, branch.name]);
+                        } else {
+                            await executor.run(["push"]);
+                        }
+                    } else {
+                        if (!remote) {
+                            vscode.window.showErrorMessage(
+                                `No remote configured for branch ${branch.name}.`,
+                            );
+                            return;
+                        }
+                        await executor.run(["push", "-u", remote, branch.name]);
+                    }
+                    vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
@@ -446,13 +515,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }, 300);
     };
 
-    const gitWatcher = vscode.workspace.createFileSystemWatcher("**/*");
     context.subscriptions.push(
-        gitWatcher,
-        gitWatcher.onDidChange(debouncedLightRefresh),
-        gitWatcher.onDidCreate(debouncedLightRefresh),
-        gitWatcher.onDidDelete(debouncedLightRefresh),
+        vscode.workspace.onDidChangeTextDocument(debouncedLightRefresh),
         vscode.workspace.onDidSaveTextDocument(debouncedLightRefresh),
+        vscode.workspace.onDidCreateFiles(debouncedLightRefresh),
+        vscode.workspace.onDidDeleteFiles(debouncedLightRefresh),
+        vscode.workspace.onDidRenameFiles(debouncedLightRefresh),
     );
 
     // Full refresh: git state changes -> branches + commit graph + commit panel

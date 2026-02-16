@@ -37,33 +37,26 @@ function App(): React.ReactElement {
     );
 
     const stageCheckedAndCommit = useCallback(
-        (action: "commit" | "commitAndPush") => {
+        (push: boolean) => {
             const msg = state.commitMessage.trim();
             if (!msg && !state.isAmend) return;
-            const toStage = Array.from(checkedPaths);
-            if (toStage.length > 0) {
-                vscode.postMessage({ type: "stageFiles", paths: toStage });
-            }
-            setTimeout(
-                () => {
-                    vscode.postMessage({
-                        type: action,
-                        message: msg,
-                        amend: state.isAmend,
-                    });
-                },
-                toStage.length > 0 ? 300 : 0,
-            );
+            vscode.postMessage({
+                type: "commitSelected",
+                paths: Array.from(checkedPaths),
+                message: msg,
+                amend: state.isAmend,
+                push,
+            });
         },
         [vscode, state.commitMessage, state.isAmend, checkedPaths],
     );
 
     const handleCommit = useCallback(() => {
-        stageCheckedAndCommit("commit");
+        stageCheckedAndCommit(false);
     }, [stageCheckedAndCommit]);
 
     const handleCommitAndPush = useCallback(() => {
-        stageCheckedAndCommit("commitAndPush");
+        stageCheckedAndCommit(true);
     }, [stageCheckedAndCommit]);
 
     return (

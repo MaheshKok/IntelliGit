@@ -33,9 +33,9 @@ describe("GitOps", () => {
     describe("getBranches", () => {
         it("parses local and remote branches", async () => {
             const output = [
-                "refs/heads/main\tmain\tabc1234\tahead 2\t*",
-                "refs/heads/feature\tfeature\tdef5678\t\t ",
-                "refs/remotes/origin/main\torigin/main\tabc1234\t\t ",
+                "refs/heads/main\tmain\tabc1234\torigin/main\tahead 2\t*",
+                "refs/heads/feature\tfeature\tdef5678\torigin/feature\t\t ",
+                "refs/remotes/origin/main\torigin/main\tabc1234\t\t\t ",
             ].join("\n");
 
             const executor = createMockExecutor({ "branch": output });
@@ -48,6 +48,8 @@ describe("GitOps", () => {
             expect(branches[0].isCurrent).toBe(true);
             expect(branches[0].ahead).toBe(2);
             expect(branches[0].isRemote).toBe(false);
+            expect(branches[0].remote).toBe("origin");
+            expect(branches[0].upstream).toBe("origin/main");
 
             expect(branches[1].name).toBe("feature");
             expect(branches[1].isCurrent).toBe(false);
@@ -58,7 +60,7 @@ describe("GitOps", () => {
         });
 
         it("skips symbolic HEAD refs", async () => {
-            const output = "refs/remotes/origin/HEAD\torigin\tabc1234\t\t \n";
+            const output = "refs/remotes/origin/HEAD\torigin\tabc1234\t\t\t \n";
             const executor = createMockExecutor({ "branch": output });
             const ops = new GitOps(executor);
             const branches = await ops.getBranches();
@@ -66,7 +68,7 @@ describe("GitOps", () => {
         });
 
         it("parses behind count", async () => {
-            const output = "refs/heads/main\tmain\tabc1234\tbehind 3\t*\n";
+            const output = "refs/heads/main\tmain\tabc1234\torigin/main\tbehind 3\t*\n";
             const executor = createMockExecutor({ "branch": output });
             const ops = new GitOps(executor);
             const branches = await ops.getBranches();
@@ -141,6 +143,15 @@ describe("GitOps", () => {
             expect(call).toContain("--grep=fix bug");
             expect(call).toContain("-i");
         });
+
+        it("passes skip argument for pagination", async () => {
+            const executor = createMockExecutor({ "log": "" });
+            const ops = new GitOps(executor);
+            await ops.getLog(100, undefined, undefined, 200);
+
+            const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
+            expect(call).toContain("--skip=200");
+        });
     });
 
     describe("getCommitDetail", () => {
@@ -184,7 +195,7 @@ describe("GitOps", () => {
 
     describe("getStatus", () => {
         it("parses porcelain status output", async () => {
-            const statusOutput = " M src/foo.ts\n?? src/new.ts\nA  src/added.ts\n";
+            const statusOutput = " M src/foo.ts\0?? src/new.ts\0A  src/added.ts\0";
             const diffStatOutput = "3\t1\tsrc/foo.ts\n";
             const stagedStatOutput = "5\t0\tsrc/added.ts\n";
 
@@ -209,7 +220,7 @@ describe("GitOps", () => {
         });
 
         it("emits two entries for files with both staged and unstaged changes", async () => {
-            const statusOutput = "MM src/both.ts\n";
+            const statusOutput = "MM src/both.ts\0";
 
             const executor = {
                 run: vi.fn(async (args: string[]) => {
@@ -225,6 +236,27 @@ describe("GitOps", () => {
             expect(bothEntries).toHaveLength(2);
             expect(bothEntries.some(f => f.staged)).toBe(true);
             expect(bothEntries.some(f => !f.staged)).toBe(true);
+        });
+
+        it("parses rename entries from porcelain -z output", async () => {
+            const statusOutput = "R  src/new-name.ts\0src/old-name.ts\0";
+            const stagedStatOutput = "1\t0\tsrc/new-name.ts\n";
+
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.includes("--porcelain=v1")) return statusOutput;
+                    if (args.includes("--cached")) return stagedStatOutput;
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+
+            const ops = new GitOps(executor);
+            const files = await ops.getStatus();
+
+            expect(files).toHaveLength(1);
+            expect(files[0].path).toBe("src/new-name.ts");
+            expect(files[0].status).toBe("R");
+            expect(files[0].staged).toBe(true);
         });
     });
 

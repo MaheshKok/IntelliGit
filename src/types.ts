@@ -3,6 +3,7 @@ export interface Branch {
     hash: string;
     isRemote: boolean;
     isCurrent: boolean;
+    upstream?: string;
     remote?: string;
     ahead: number;
     behind: number;

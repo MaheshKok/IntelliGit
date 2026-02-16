@@ -9,6 +9,7 @@ export type OutboundMessage =
     | { type: "refresh" }
     | { type: "stageFiles"; paths: string[] }
     | { type: "unstageFiles"; paths: string[] }
+    | { type: "commitSelected"; paths: string[]; message: string; amend: boolean; push: boolean }
     | { type: "commit"; message: string; amend: boolean }
     | { type: "commitAndPush"; message: string; amend: boolean }
     | { type: "getLastCommitMessage" }
