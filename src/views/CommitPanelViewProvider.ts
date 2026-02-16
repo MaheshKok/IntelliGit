@@ -282,10 +282,10 @@ html, body {
 .scroll-area { flex: 1 1 auto; overflow-y: auto; min-height: 40px; }
 .section-header {
     display: flex; align-items: center; gap: 4px;
-    padding: 4px 6px; cursor: pointer; user-select: none;
+    padding: 2px 6px; cursor: pointer; user-select: none;
     font-weight: 700; font-size: 11px;
     text-transform: uppercase; letter-spacing: 0.3px;
-    line-height: 24px; position: relative;
+    line-height: 20px; position: relative;
 }
 .section-header:hover { background: var(--vscode-list-hoverBackground); }
 .section-header .count {
@@ -303,7 +303,7 @@ html, body {
 /* --- File & folder rows --- */
 .file-row, .folder-row {
     display: flex; align-items: center; gap: 4px;
-    padding: 1px 6px 1px 6px; line-height: 24px; font-size: 13px;
+    padding: 0px 6px; line-height: 20px; font-size: 13px;
     cursor: pointer; position: relative;
 }
 .file-row:hover, .folder-row:hover { background: var(--vscode-list-hoverBackground); }
@@ -325,10 +325,10 @@ html, body {
 /* Indent guide lines */
 .indent-guide {
     position: absolute; top: 0; bottom: 0; width: 1px;
-    background: var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.1));
+    background: var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.12));
 }
 .file-row:hover .indent-guide, .folder-row:hover .indent-guide {
-    background: var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.2));
+    background: var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.22));
 }
 
 /* File-type icon badge */
@@ -765,7 +765,7 @@ html, body {
             row.addEventListener('click', function(e) {
                 if (e.target.tagName === 'INPUT') return;
                 var dir = row.getAttribute('data-dir');
-                if (expandedDirs.has(dir)) expandedDirs.delete(dir);
+                if (expandedDirs.has(dir)) { expandedDirs.delete(dir); allDirsExpanded = false; }
                 else expandedDirs.add(dir);
                 renderFiles();
             });
@@ -800,7 +800,7 @@ html, body {
 
     var INDENT_STEP = 24;
     var INDENT_BASE = 30;
-    var GUIDE_BASE = 17;
+    var GUIDE_BASE = 47; // checkbox(13) + gap(4) = 17 offset from padLeft => 30+17=47
 
     function indentGuides(treeDepth) {
         var html = '';

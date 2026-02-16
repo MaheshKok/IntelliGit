@@ -233,7 +233,7 @@
         "lint": "eslint src",
         "test": "bun vitest run",
         "test:watch": "bun vitest",
-        "package": "vsce package",
+        "package": "vsce package --no-dependencies",
         "publish": "vsce publish"
     },
     "devDependencies": {

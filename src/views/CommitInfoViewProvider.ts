@@ -84,27 +84,31 @@ html, body {
     min-height: 40px;
     padding: 4px 0;
 }
-details { margin: 0; }
-summary {
+/* --- Folder & file rows (matches commit panel) --- */
+.folder-row, .file-row {
     display: flex; align-items: center; gap: 4px;
-    padding: 2px 0 2px 4px; cursor: pointer;
-    list-style: none; line-height: 22px;
-    user-select: none;
+    padding-top: 1px; padding-right: 6px; padding-bottom: 1px;
+    line-height: 22px; font-size: 13px;
+    cursor: pointer; position: relative;
 }
-summary::-webkit-details-marker { display: none; }
-summary::marker { display: none; }
-summary::before {
-    content: '\\25B6'; display: inline-block; font-size: 9px;
-    width: 16px; text-align: center; flex-shrink: 0;
-    transition: transform 0.1s; opacity: 0.6;
+.folder-row:hover, .file-row:hover { background: var(--vscode-list-hoverBackground); }
+.chevron {
+    font-size: 11px; width: 14px; text-align: center;
+    flex-shrink: 0; opacity: 0.7;
+    transition: transform 0.15s ease; display: inline-block;
 }
-details[open] > summary::before { transform: rotate(90deg); }
-.file-row {
-    display: flex; align-items: center; gap: 4px;
-    padding: 2px 0 2px 4px; line-height: 22px;
+.chevron.open { transform: rotate(90deg); }
+/* Indent guide lines */
+.indent-guide {
+    position: absolute; top: 0; bottom: 0; width: 1px;
+    background: var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.1));
 }
-.indent { display: inline-block; width: 16px; flex-shrink: 0; }
+.folder-row:hover .indent-guide, .file-row:hover .indent-guide {
+    background: var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.2));
+}
 .icon { width: 16px; height: 16px; flex-shrink: 0; }
+.fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-row .fname { opacity: 0.85; }
 .stats {
     margin-left: auto; font-size: 0.9em; flex-shrink: 0;
     color: var(--vscode-descriptionForeground);
@@ -112,10 +116,9 @@ details[open] > summary::before { transform: rotate(90deg); }
 .add-stat { color: #2EA043; }
 .del-stat { color: #F85149; }
 .folder-count {
+    margin-left: auto; font-size: 11px;
     color: var(--vscode-descriptionForeground);
-    font-size: 0.9em; margin-left: 4px;
 }
-.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* --- Drag handle --- */
 .drag-handle {
@@ -255,6 +258,20 @@ details[open] > summary::before { transform: rotate(90deg); }
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
     });
+
+    // --- Tree expand/collapse ---
+    filesSection.querySelectorAll('.folder-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            var dir = row.getAttribute('data-dir');
+            var children = filesSection.querySelector('.folder-children[data-parent="' + dir + '"]');
+            var chevron = row.querySelector('.chevron');
+            if (children) {
+                var isOpen = children.style.display !== 'none';
+                children.style.display = isOpen ? 'none' : '';
+                chevron.classList.toggle('open', !isOpen);
+            }
+        });
+    });
 })();
 </script>
 </body>
@@ -306,29 +323,47 @@ details[open] > summary::before { transform: rotate(90deg); }
             return c;
         };
 
+        const INDENT_STEP = 24;
+        const INDENT_BASE = 24;
+        const GUIDE_BASE = 31; // INDENT_BASE + 7 = chevron center
+
+        const indentGuides = (treeDepth: number): string => {
+            let h = "";
+            for (let g = 0; g < treeDepth; g++) {
+                h += `<span class="indent-guide" style="left:${GUIDE_BASE + g * INDENT_STEP}px"></span>`;
+            }
+            return h;
+        };
+
         const renderDir = (node: DirNode, depth: number): string => {
-            const indent = '<span class="indent"></span>'.repeat(depth);
+            const padLeft = INDENT_BASE + depth * INDENT_STEP;
             const count = countFiles(node);
-            let h = `<details open>
-<summary>${indent}${FOLDER_SVG}${esc(node.name)}<span class="folder-count">${count} file${count !== 1 ? "s" : ""}</span></summary>`;
+            let h = `<div class="folder-row" data-dir="${esc(node.fullPath)}" style="padding-left:${padLeft}px" title="${esc(node.fullPath)}">`;
+            h += indentGuides(depth);
+            h += `<span class="chevron open">&#9654;</span>`;
+            h += FOLDER_SVG;
+            h += `<span class="fname">${esc(node.name)}</span>`;
+            h += `<span class="folder-count">${count} file${count !== 1 ? "s" : ""}</span>`;
+            h += `</div>`;
+            h += `<div class="folder-children" data-parent="${esc(node.fullPath)}">`;
             for (const child of node.children.values()) {
                 h += renderDir(child, depth + 1);
             }
             for (const f of node.files) {
                 h += renderFile(f, depth + 1);
             }
-            h += "</details>";
+            h += "</div>";
             return h;
         };
 
         const renderFile = (f: CommitFile, depth: number): string => {
-            const indent = '<span class="indent"></span>'.repeat(depth);
+            const padLeft = INDENT_BASE + depth * INDENT_STEP;
             const fileName = f.path.split("/").pop()!;
             const icon = STATUS_SVGS[f.status] ?? FILE_SVG;
             const stats: string[] = [];
             if (f.additions > 0) stats.push(`<span class="add-stat">+${f.additions}</span>`);
             if (f.deletions > 0) stats.push(`<span class="del-stat">-${f.deletions}</span>`);
-            return `<div class="file-row">${indent}${icon}<span class="file-name">${esc(fileName)}</span><span class="stats">${stats.join(" ")}</span></div>`;
+            return `<div class="file-row" style="padding-left:${padLeft}px">${indentGuides(depth)}${icon}<span class="fname">${esc(fileName)}</span><span class="stats">${stats.join(" ")}</span></div>`;
         };
 
         let html = "";
