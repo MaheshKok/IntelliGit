@@ -89,9 +89,13 @@ jobs:
                   CURRENT_VERSION=$(node -p "require('./package.json').version")
                   echo "Current version: $CURRENT_VERSION"
 
-                  git checkout HEAD~1 -- package.json 2>/dev/null || true
-                  PREVIOUS_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
-                  git checkout HEAD -- package.json
+                  if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
+                    git checkout HEAD~1 -- package.json
+                    PREVIOUS_VERSION=$(node -p "require('./package.json').version")
+                    git checkout HEAD -- package.json
+                  else
+                    PREVIOUS_VERSION="0.0.0"
+                  fi
 
                   echo "Previous version: $PREVIOUS_VERSION"
 
@@ -153,7 +157,7 @@ jobs:
 
             - name: Create GitHub Release and upload VSIX
               if: steps.version-check.outputs.version_changed == 'true'
-              uses: softprops/action-gh-release@v1
+              uses: softprops/action-gh-release@v2
               with:
                   generate_release_notes: true
                   tag_name: v${{ steps.version-check.outputs.new_version }}

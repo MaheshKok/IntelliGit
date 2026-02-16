@@ -7,7 +7,7 @@
     "license": "MIT",
     "repository": {
         "type": "git",
-        "url": "https://github.com/MaheshKok/intelligit-vscode"
+        "url": "https://github.com/MaheshKok/IntelliGit"
     },
     "engines": {
         "vscode": "^1.96.0"
