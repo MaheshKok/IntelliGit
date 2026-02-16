@@ -756,7 +756,8 @@ html, body {
             cb.addEventListener('change', handleCheckboxChange);
         });
         scrollArea.querySelectorAll('.file-row').forEach(function(row) {
-            row.addEventListener('dblclick', function() {
+            row.addEventListener('click', function(e) {
+                if (e.target.tagName === 'INPUT') return;
                 var path = row.getAttribute('data-path');
                 if (path) vscode.postMessage({ type: 'showDiff', path: path });
             });
@@ -798,13 +799,14 @@ html, body {
         return renderTreeNode(tree, 0);
     }
 
-    var INDENT_STEP = 24;
-    var INDENT_BASE = 30;
-    var GUIDE_BASE = 47; // checkbox(13) + gap(4) = 17 offset from padLeft => 30+17=47
+    var INDENT_STEP = 30;
+    var INDENT_BASE = 36;
+    var GUIDE_BASE = 60; // INDENT_BASE(36) + checkbox(13) + gap(4) + chevron_center(7) = 60
+    var SECTION_GUIDE = 30; // section header: padding(6) + checkbox(13) + gap(4) + chevron_center(7) = 30
 
     function indentGuides(treeDepth) {
-        var html = '';
-        for (var g = 0; g <= treeDepth; g++) {
+        var html = '<span class="indent-guide" style="left:' + SECTION_GUIDE + 'px"></span>';
+        for (var g = 0; g < treeDepth; g++) {
             html += '<span class="indent-guide" style="left:' + (GUIDE_BASE + g * INDENT_STEP) + 'px"></span>';
         }
         return html;
