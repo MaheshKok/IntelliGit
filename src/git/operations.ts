@@ -1,5 +1,5 @@
 import { GitExecutor } from "./executor";
-import type { Branch, Commit, CommitDetail, CommitFile } from "../types";
+import type { Branch, Commit, CommitDetail, CommitFile, WorkingFile, StashEntry } from "../types";
 
 const FIELD_SEP = "<<|>>";
 const RECORD_SEP = "<<||>>";
@@ -162,5 +162,163 @@ export class GitOps {
                 : [],
             files,
         };
+    }
+
+    // --- Working tree operations ---
+
+    async getStatus(): Promise<WorkingFile[]> {
+        const result = await this.executor.run(["status", "--porcelain=v1", "-uall"]);
+        const files: WorkingFile[] = [];
+
+        for (const line of result.split("\n")) {
+            if (!line) continue;
+            const index = line.charAt(0);
+            const worktree = line.charAt(1);
+            const path = line.slice(3).trim();
+            if (!path) continue;
+
+            // Determine status and staged state
+            const staged = index !== " " && index !== "?";
+            let status: WorkingFile["status"];
+            const code = staged ? index : worktree;
+            switch (code) {
+                case "M": status = "M"; break;
+                case "A": status = "A"; break;
+                case "D": status = "D"; break;
+                case "R": status = "R"; break;
+                case "C": status = "C"; break;
+                case "?": status = "?"; break;
+                case "U": status = "U"; break;
+                default: status = "M"; break;
+            }
+
+            // If both index and worktree have changes, emit two entries
+            if (index !== " " && index !== "?" && worktree !== " ") {
+                files.push({ path, status, staged: true, additions: 0, deletions: 0 });
+                files.push({ path, status, staged: false, additions: 0, deletions: 0 });
+            } else {
+                files.push({ path, status, staged, additions: 0, deletions: 0 });
+            }
+        }
+
+        // Get numstat for unstaged changes
+        try {
+            const diffStat = await this.executor.run(["diff", "--numstat"]);
+            for (const line of diffStat.trim().split("\n")) {
+                if (!line.trim()) continue;
+                const [add, del, filePath] = line.split("\t");
+                const file = files.find((f) => f.path === filePath && !f.staged);
+                if (file) {
+                    file.additions = add === "-" ? 0 : parseInt(add);
+                    file.deletions = del === "-" ? 0 : parseInt(del);
+                }
+            }
+        } catch { /* ignore */ }
+
+        // Get numstat for staged changes
+        try {
+            const stagedStat = await this.executor.run(["diff", "--cached", "--numstat"]);
+            for (const line of stagedStat.trim().split("\n")) {
+                if (!line.trim()) continue;
+                const [add, del, filePath] = line.split("\t");
+                const file = files.find((f) => f.path === filePath && f.staged);
+                if (file) {
+                    file.additions = add === "-" ? 0 : parseInt(add);
+                    file.deletions = del === "-" ? 0 : parseInt(del);
+                }
+            }
+        } catch { /* ignore */ }
+
+        return files;
+    }
+
+    async stageFiles(paths: string[]): Promise<void> {
+        if (paths.length === 0) return;
+        await this.executor.run(["add", "--", ...paths]);
+    }
+
+    async unstageFiles(paths: string[]): Promise<void> {
+        if (paths.length === 0) return;
+        await this.executor.run(["reset", "HEAD", "--", ...paths]);
+    }
+
+    async commit(message: string, amend: boolean = false): Promise<string> {
+        const args = ["commit", "-m", message];
+        if (amend) args.push("--amend");
+        return this.executor.run(args);
+    }
+
+    async push(): Promise<string> {
+        return this.executor.run(["push"]);
+    }
+
+    async commitAndPush(message: string, amend: boolean = false): Promise<string> {
+        await this.commit(message, amend);
+        return this.push();
+    }
+
+    async getLastCommitMessage(): Promise<string> {
+        try {
+            return (await this.executor.run(["log", "-1", "--format=%B"])).trim();
+        } catch {
+            return "";
+        }
+    }
+
+    async rollbackFiles(paths: string[]): Promise<void> {
+        if (paths.length === 0) return;
+        // Restore working tree changes
+        await this.executor.run(["checkout", "--", ...paths]);
+    }
+
+    async rollbackAll(): Promise<void> {
+        await this.executor.run(["checkout", "."]);
+        // Also clean untracked files
+        await this.executor.run(["clean", "-fd"]);
+    }
+
+    // --- Stash (Shelf) operations ---
+
+    async stashSave(message: string, paths?: string[]): Promise<string> {
+        const args = ["stash", "push", "-m", message];
+        if (paths && paths.length > 0) {
+            args.push("--", ...paths);
+        }
+        return this.executor.run(args);
+    }
+
+    async stashPop(index: number = 0): Promise<string> {
+        return this.executor.run(["stash", "pop", `stash@{${index}}`]);
+    }
+
+    async stashApply(index: number = 0): Promise<string> {
+        return this.executor.run(["stash", "apply", `stash@{${index}}`]);
+    }
+
+    async stashList(): Promise<StashEntry[]> {
+        try {
+            const result = await this.executor.run([
+                "stash", "list", "--format=%H\t%gd\t%gs\t%aI",
+            ]);
+            const entries: StashEntry[] = [];
+            for (const line of result.trim().split("\n")) {
+                if (!line.trim()) continue;
+                const [hash, ref, message, date] = line.split("\t");
+                const indexMatch = ref.match(/\{(\d+)\}/);
+                entries.push({
+                    index: indexMatch ? parseInt(indexMatch[1]) : entries.length,
+                    message: message || "",
+                    date: date || "",
+                    hash: hash || "",
+                });
+            }
+            return entries;
+        } catch {
+            return [];
+        }
+    }
+
+    async stashDrop(index: number): Promise<string> {
+        return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
 }

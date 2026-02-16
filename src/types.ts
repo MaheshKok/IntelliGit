@@ -39,6 +39,21 @@ export interface CommitDetail {
     files: CommitFile[];
 }
 
+export interface WorkingFile {
+    path: string;
+    status: "M" | "A" | "D" | "U" | "?" | "R" | "C";
+    staged: boolean;
+    additions: number;
+    deletions: number;
+}
+
+export interface StashEntry {
+    index: number;
+    message: string;
+    date: string;
+    hash: string;
+}
+
 export type GitLogRequest =
     | { type: "getInitialData" }
     | { type: "loadMore" }

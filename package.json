@@ -49,6 +49,11 @@
         "views": {
             "pycharmGit": [
                 {
+                    "id": "pycharmGit.commitPanel",
+                    "name": "Commit",
+                    "type": "webview"
+                },
+                {
                     "id": "pycharmGit.branches",
                     "name": "Branches"
                 }

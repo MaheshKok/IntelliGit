@@ -8,6 +8,7 @@ import { GitOps } from "./git/operations";
 import { BranchTreeProvider, BranchItem } from "./views/BranchTreeProvider";
 import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
+import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
 import type { Branch } from "./types";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -33,6 +34,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const branchTree = new BranchTreeProvider();
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
     const commitInfo = new CommitInfoViewProvider();
+    const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
 
     // --- Register views ---
 
@@ -40,6 +42,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.registerTreeDataProvider("pycharmGit.branches", branchTree),
         vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
         vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
+        vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanel),
     );
 
     // --- Wire data flow ---
@@ -86,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             branchTree.refresh(currentBranches);
             commitGraph.setBranches(currentBranches);
             await commitGraph.refresh();
+            await commitPanel.refresh();
             await clearSelection();
         }),
 
@@ -333,7 +337,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Disposables ---
 
-    context.subscriptions.push(branchTree, commitGraph, commitInfo);
+    context.subscriptions.push(branchTree, commitGraph, commitInfo, commitPanel);
 }
 
 export function deactivate(): void {}
