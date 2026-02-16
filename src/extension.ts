@@ -49,11 +49,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             try {
                 const detail = await gitOps.getCommitDetail(hash);
                 commitInfo.setCommitDetail(detail);
-                await vscode.commands.executeCommand(
-                    "setContext",
-                    "pycharmGit.hasSelectedCommit",
-                    true,
-                );
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
                 vscode.window.showErrorMessage(`Failed to load commit: ${message}`);
@@ -62,13 +57,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     context.subscriptions.push(
-        commitGraph.onBranchFilterChanged(async () => {
+        commitGraph.onBranchFilterChanged(() => {
             commitInfo.clear();
-            await vscode.commands.executeCommand(
-                "setContext",
-                "pycharmGit.hasSelectedCommit",
-                false,
-            );
         }),
     );
 
@@ -84,9 +74,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Helper ---
 
-    const clearSelection = async () => {
+    const clearSelection = () => {
         commitInfo.clear();
-        await vscode.commands.executeCommand("setContext", "pycharmGit.hasSelectedCommit", false);
     };
 
     // --- Commands ---

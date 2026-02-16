@@ -62,8 +62,7 @@
                 {
                     "id": "pycharmGit.commitFiles",
                     "name": "Changed Files",
-                    "type": "webview",
-                    "when": "pycharmGit.hasSelectedCommit"
+                    "type": "webview"
                 }
             ]
         },

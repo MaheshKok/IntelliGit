@@ -18,6 +18,9 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     ): void {
         this.view = webviewView;
         webviewView.webview.options = { enableScripts: true };
+        webviewView.onDidDispose(() => {
+            this.view = undefined;
+        });
         this.render();
     }
 
