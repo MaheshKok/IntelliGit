@@ -2,7 +2,8 @@
 // chevron toggle, section-level checkbox, label, and file count badge.
 
 import React from "react";
-import { Flex, Box, Checkbox } from "@chakra-ui/react";
+import { Flex, Box } from "@chakra-ui/react";
+import { VscCheckbox } from "./VscCheckbox";
 
 interface Props {
     label: string;
@@ -56,8 +57,7 @@ export function SectionHeader({
             >
                 &#9654;
             </Box>
-            <Checkbox
-                size="sm"
+            <VscCheckbox
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}
                 onChange={onToggleCheck}

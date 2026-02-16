@@ -1,7 +1,7 @@
 // Entry point for the commit panel React webview. Wraps the app in
 // ChakraProvider with the VS Code theme and composes all panels.
 
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import theme from "./theme";
@@ -13,6 +13,13 @@ import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
 
 function App(): React.ReactElement {
+    // Suppress VS Code's default webview context menu globally
+    useEffect(() => {
+        const suppress = (e: Event) => e.preventDefault();
+        document.addEventListener("contextmenu", suppress);
+        return () => document.removeEventListener("contextmenu", suppress);
+    }, []);
+
     const [state, dispatch] = useExtensionMessages();
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
         useCheckedFiles(state.files);

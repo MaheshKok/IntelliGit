@@ -104,8 +104,8 @@ export function CommitTab({
         [vscode],
     );
 
-    const handleFileContextMenu = useCallback((e: React.MouseEvent, path: string) => {
-        setContextMenu({ x: e.clientX, y: e.clientY, path });
+    const handleFileContextMenu = useCallback((x: number, y: number, path: string) => {
+        setContextMenu({ x, y, path });
     }, []);
 
     const handleContextMenuSelect = useCallback(

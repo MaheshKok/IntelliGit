@@ -10,7 +10,6 @@ interface CheckedFilesAPI {
     toggleFile: (path: string) => void;
     toggleFolder: (dirPrefix: string, files: WorkingFile[]) => void;
     toggleSection: (files: WorkingFile[]) => void;
-    isFileChecked: (path: string) => boolean;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
 }
@@ -76,8 +75,6 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         });
     }, []);
 
-    const isFileChecked = useCallback((path: string) => checkedPaths.has(path), [checkedPaths]);
-
     const isAllChecked = useCallback(
         (files: WorkingFile[]) => files.length > 0 && files.every((f) => checkedPaths.has(f.path)),
         [checkedPaths],
@@ -95,7 +92,6 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         toggleFile,
         toggleFolder,
         toggleSection,
-        isFileChecked,
         isAllChecked,
         isSomeChecked,
     };

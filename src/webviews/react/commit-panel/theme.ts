@@ -60,52 +60,6 @@ const theme = extendTheme({
                 },
             },
         },
-        Checkbox: {
-            baseStyle: {
-                control: {
-                    borderColor: "var(--vscode-checkbox-border, #6b6b6b)",
-                    _checked: {
-                        bg: "var(--vscode-checkbox-background, #4a6edb)",
-                        borderColor: "var(--vscode-checkbox-border, #4a6edb)",
-                    },
-                },
-            },
-        },
-        Textarea: {
-            variants: {
-                vscode: {
-                    bg: "var(--vscode-input-background)",
-                    color: "var(--vscode-input-foreground)",
-                    border: "1px solid",
-                    borderColor: "var(--vscode-input-border, var(--vscode-panel-border, #444))",
-                    borderRadius: "3px",
-                    fontFamily: "var(--vscode-font-family)",
-                    fontSize: "var(--vscode-font-size)",
-                    _placeholder: { color: "var(--vscode-input-placeholderForeground)" },
-                    _focus: { borderColor: "var(--vscode-focusBorder)" },
-                },
-            },
-        },
-        Tabs: {
-            variants: {
-                vscode: {
-                    tab: {
-                        fontWeight: 600,
-                        fontSize: "12px",
-                        opacity: 0.6,
-                        borderBottom: "2px solid transparent",
-                        _selected: {
-                            opacity: 1,
-                            borderBottomColor: "var(--vscode-focusBorder, #007acc)",
-                        },
-                        _hover: { opacity: 0.85 },
-                    },
-                    tablist: {
-                        borderBottom: "1px solid var(--vscode-panel-border, #444)",
-                    },
-                },
-            },
-        },
     },
 });
 

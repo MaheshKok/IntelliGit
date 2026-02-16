@@ -20,7 +20,7 @@ interface Props {
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onFileClick: (path: string) => void;
-    onFileContextMenu: (e: React.MouseEvent, path: string) => void;
+    onFileContextMenu: (x: number, y: number, path: string) => void;
     expandAllSignal: number;
     collapseAllSignal: number;
 }
@@ -199,7 +199,7 @@ interface TreeEntriesProps {
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onToggleDir: (dirPath: string) => void;
     onFileClick: (path: string) => void;
-    onFileContextMenu: (e: React.MouseEvent, path: string) => void;
+    onFileContextMenu: (x: number, y: number, path: string) => void;
 }
 
 function TreeEntries({

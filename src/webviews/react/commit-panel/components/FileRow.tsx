@@ -2,7 +2,8 @@
 // icon, filename (colored by status), stats (+/-), and status badge.
 
 import React from "react";
-import { Flex, Box, Checkbox } from "@chakra-ui/react";
+import { Flex, Box } from "@chakra-ui/react";
+import { VscCheckbox } from "./VscCheckbox";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { StatusBadge } from "./StatusBadge";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
@@ -24,7 +25,7 @@ interface Props {
     groupByDir: boolean;
     onToggle: (path: string) => void;
     onClick: (path: string) => void;
-    onContextMenu: (e: React.MouseEvent, path: string) => void;
+    onContextMenu: (x: number, y: number, path: string) => void;
 }
 
 function FileRowInner({
@@ -56,15 +57,18 @@ function FileRowInner({
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onClick(file.path);
             }}
-            onContextMenu={(e) => {
-                e.preventDefault();
-                onContextMenu(e, file.path);
+            onMouseDown={(e) => {
+                if (e.button === 2) {
+                    e.preventDefault();
+                    onContextMenu(e.clientX, e.clientY, file.path);
+                }
             }}
+            onContextMenu={(e) => e.preventDefault()}
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
             <Box as="span" w="13px" flexShrink={0} />
-            <Checkbox size="sm" isChecked={isChecked} onChange={() => onToggle(file.path)} />
+            <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
             <FileTypeIcon filename={fileName} status={file.status} />
             <Box
                 as="span"

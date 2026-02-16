@@ -2,7 +2,8 @@
 // checkbox (checked/indeterminate), folder icon, name, and file count.
 
 import React from "react";
-import { Flex, Box, Checkbox } from "@chakra-ui/react";
+import { Flex, Box } from "@chakra-ui/react";
+import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 
 interface Props {
@@ -61,8 +62,7 @@ function FolderRowInner({
             >
                 &#9654;
             </Box>
-            <Checkbox
-                size="sm"
+            <VscCheckbox
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}

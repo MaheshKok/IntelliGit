@@ -2,7 +2,7 @@
 // document body level, positioned at cursor coordinates with viewport clamping.
 
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
-import { Box } from "@chakra-ui/react";
+import { createPortal } from "react-dom";
 
 export interface ContextMenuItem {
     label: string;
@@ -19,7 +19,7 @@ interface Props {
     onClose: () => void;
 }
 
-export function ContextMenu({ x, y, items, onSelect, onClose }: Props): React.ReactElement {
+export function ContextMenu({ x, y, items, onSelect, onClose }: Props) {
     const ref = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ left: x, top: y });
 
@@ -47,19 +47,14 @@ export function ContextMenu({ x, y, items, onSelect, onClose }: Props): React.Re
         const handleKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose();
         };
-        const handleContextMenu = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) {
-                e.preventDefault();
-                onClose();
-            }
-        };
+        const handleBlur = () => onClose();
         document.addEventListener("mousedown", handleClick);
         document.addEventListener("keydown", handleKey);
-        document.addEventListener("contextmenu", handleContextMenu);
+        window.addEventListener("blur", handleBlur);
         return () => {
             document.removeEventListener("mousedown", handleClick);
             document.removeEventListener("keydown", handleKey);
-            document.removeEventListener("contextmenu", handleContextMenu);
+            window.removeEventListener("blur", handleBlur);
         };
     }, [onClose]);
 
@@ -71,61 +66,70 @@ export function ContextMenu({ x, y, items, onSelect, onClose }: Props): React.Re
         [onSelect, onClose],
     );
 
-    return (
-        <Box
+    return createPortal(
+        <div
             ref={ref}
-            position="fixed"
-            left={`${pos.left}px`}
-            top={`${pos.top}px`}
-            zIndex={1000}
-            bg="var(--vscode-menu-background, #252526)"
-            border="1px solid"
-            borderColor="var(--vscode-menu-border, #454545)"
-            borderRadius="5px"
-            py="4px"
-            minW="180px"
-            boxShadow="0 2px 8px rgba(0,0,0,0.35)"
+            style={{
+                position: "fixed",
+                left: pos.left,
+                top: pos.top,
+                zIndex: 9999,
+                background: "var(--vscode-menu-background, #252526)",
+                border: "1px solid var(--vscode-menu-border, #454545)",
+                borderRadius: 5,
+                padding: "4px 0",
+                minWidth: 180,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+            }}
         >
             {items.map((item, i) => {
                 if (item.separator) {
                     return (
-                        <Box
+                        <div
                             key={`sep-${i}`}
-                            h="1px"
-                            mx="8px"
-                            my="4px"
-                            bg="var(--vscode-menu-separatorBackground, #454545)"
+                            style={{
+                                height: 1,
+                                margin: "4px 8px",
+                                background: "var(--vscode-menu-separatorBackground, #454545)",
+                            }}
                         />
                     );
                 }
                 return (
-                    <Box
+                    <div
                         key={item.action}
-                        display="flex"
-                        alignItems="center"
-                        gap="8px"
-                        px="10px"
-                        pr="20px"
-                        py="4px"
-                        cursor="pointer"
-                        fontSize="12px"
-                        color="var(--vscode-menu-foreground, #ccc)"
-                        whiteSpace="nowrap"
-                        _hover={{
-                            bg: "var(--vscode-menu-selectionBackground, #094771)",
-                            color: "var(--vscode-menu-selectionForeground, #fff)",
-                        }}
                         onClick={() => handleItemClick(item.action)}
+                        onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLDivElement).style.background =
+                                "var(--vscode-menu-selectionBackground, #094771)";
+                            (e.currentTarget as HTMLDivElement).style.color =
+                                "var(--vscode-menu-selectionForeground, #fff)";
+                        }}
+                        onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLDivElement).style.background = "";
+                            (e.currentTarget as HTMLDivElement).style.color = "";
+                        }}
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "4px 20px 4px 10px",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            color: "var(--vscode-menu-foreground, #ccc)",
+                            whiteSpace: "nowrap",
+                        }}
                     >
                         {item.icon && (
-                            <Box as="span" w="14px" h="14px" flexShrink={0}>
+                            <span style={{ width: 14, height: 14, flexShrink: 0 }}>
                                 {item.icon}
-                            </Box>
+                            </span>
                         )}
                         {item.label}
-                    </Box>
+                    </div>
                 );
             })}
-        </Box>
+        </div>,
+        document.body,
     );
 }
