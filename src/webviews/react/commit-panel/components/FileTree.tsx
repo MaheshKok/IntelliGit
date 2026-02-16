@@ -20,7 +20,6 @@ interface Props {
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onFileClick: (path: string) => void;
-    onFileContextMenu: (x: number, y: number, path: string) => void;
     expandAllSignal: number;
     collapseAllSignal: number;
 }
@@ -35,7 +34,6 @@ export function FileTree({
     isAllChecked,
     isSomeChecked,
     onFileClick,
-    onFileContextMenu,
     expandAllSignal,
     collapseAllSignal,
 }: Props): React.ReactElement {
@@ -147,7 +145,6 @@ export function FileTree({
                             isSomeChecked={isSomeChecked}
                             onToggleDir={toggleDir}
                             onFileClick={onFileClick}
-                            onFileContextMenu={onFileContextMenu}
                         />
                     )}
                 </>
@@ -177,7 +174,6 @@ export function FileTree({
                             isSomeChecked={isSomeChecked}
                             onToggleDir={toggleDir}
                             onFileClick={onFileClick}
-                            onFileContextMenu={onFileContextMenu}
                         />
                     )}
                 </>
@@ -199,7 +195,6 @@ interface TreeEntriesProps {
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onToggleDir: (dirPath: string) => void;
     onFileClick: (path: string) => void;
-    onFileContextMenu: (x: number, y: number, path: string) => void;
 }
 
 function TreeEntries({
@@ -215,7 +210,6 @@ function TreeEntries({
     isSomeChecked,
     onToggleDir,
     onFileClick,
-    onFileContextMenu,
 }: TreeEntriesProps): React.ReactElement {
     return (
         <>
@@ -230,7 +224,6 @@ function TreeEntries({
                             groupByDir={groupByDir}
                             onToggle={onToggleFile}
                             onClick={onFileClick}
-                            onContextMenu={onFileContextMenu}
                         />
                     );
                 }
@@ -265,7 +258,6 @@ function TreeEntries({
                                 isSomeChecked={isSomeChecked}
                                 onToggleDir={onToggleDir}
                                 onFileClick={onFileClick}
-                                onFileContextMenu={onFileContextMenu}
                             />
                         )}
                     </React.Fragment>

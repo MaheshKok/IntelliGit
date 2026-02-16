@@ -346,6 +346,89 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
     }
 
+    // --- Commit panel file context menu commands ---
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand(
+            "intelligit.fileRollback",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const confirm = await vscode.window.showWarningMessage(
+                    `Rollback ${ctx.filePath}?`,
+                    { modal: true },
+                    "Rollback",
+                );
+                if (confirm !== "Rollback") return;
+                await gitOps.rollbackFiles([ctx.filePath]);
+                vscode.window.showInformationMessage("Changes rolled back.");
+                await commitPanel.refresh();
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileJumpToSource",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const uri = vscode.Uri.joinPath(
+                    vscode.workspace.workspaceFolders![0].uri,
+                    ctx.filePath,
+                );
+                await vscode.window.showTextDocument(uri);
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileDelete",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const confirm = await vscode.window.showWarningMessage(
+                    `Delete ${ctx.filePath}?`,
+                    { modal: true },
+                    "Delete",
+                );
+                if (confirm !== "Delete") return;
+                try {
+                    await gitOps.deleteFile(ctx.filePath);
+                } catch {
+                    const uri = vscode.Uri.joinPath(
+                        vscode.workspace.workspaceFolders![0].uri,
+                        ctx.filePath,
+                    );
+                    await vscode.workspace.fs.delete(uri);
+                }
+                vscode.window.showInformationMessage(`Deleted ${ctx.filePath}`);
+                await commitPanel.refresh();
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileShelve",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const name = await vscode.window.showInputBox({
+                    prompt: "Shelf name",
+                    value: "Shelved changes",
+                });
+                if (name === undefined) return;
+                await gitOps.stashSave(name || "Shelved changes", [ctx.filePath]);
+                vscode.window.showInformationMessage("Changes shelved.");
+                await commitPanel.refresh();
+            },
+        ),
+        vscode.commands.registerCommand(
+            "intelligit.fileShowHistory",
+            async (ctx: { filePath?: string }) => {
+                if (!ctx?.filePath) return;
+                const history = await gitOps.getFileHistory(ctx.filePath);
+                const doc = await vscode.workspace.openTextDocument({
+                    content: history || "No history found.",
+                    language: "git-commit",
+                });
+                await vscode.window.showTextDocument(doc, { preview: true });
+            },
+        ),
+        vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
+            await commitPanel.refresh();
+        }),
+    );
+
     // --- Initial load ---
 
     currentBranches = await gitOps.getBranches();

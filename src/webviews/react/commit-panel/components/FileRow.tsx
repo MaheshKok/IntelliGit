@@ -25,7 +25,6 @@ interface Props {
     groupByDir: boolean;
     onToggle: (path: string) => void;
     onClick: (path: string) => void;
-    onContextMenu: (x: number, y: number, path: string) => void;
 }
 
 function FileRowInner({
@@ -35,7 +34,6 @@ function FileRowInner({
     groupByDir,
     onToggle,
     onClick,
-    onContextMenu,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = file.path.split("/").pop() ?? file.path;
@@ -53,17 +51,15 @@ function FileRowInner({
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
+            data-vscode-context={JSON.stringify({
+                webviewSection: "file",
+                filePath: file.path,
+                preventDefaultContextMenuItems: true,
+            })}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onClick(file.path);
             }}
-            onMouseDown={(e) => {
-                if (e.button === 2) {
-                    e.preventDefault();
-                    onContextMenu(e.clientX, e.clientY, file.path);
-                }
-            }}
-            onContextMenu={(e) => e.preventDefault()}
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />

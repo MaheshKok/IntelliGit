@@ -6,22 +6,9 @@ import { Flex, Box } from "@chakra-ui/react";
 import { Toolbar } from "./Toolbar";
 import { FileTree } from "./FileTree";
 import { CommitArea } from "./CommitArea";
-import { ContextMenu } from "./ContextMenu";
-import type { ContextMenuItem } from "./ContextMenu";
 import { useDragResize } from "../hooks/useDragResize";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import type { WorkingFile } from "../../../../types";
-
-const CONTEXT_MENU_ITEMS: ContextMenuItem[] = [
-    { label: "Rollback", action: "rollback" },
-    { label: "Jump to Source", action: "jumpToSource" },
-    { label: "", action: "", separator: true },
-    { label: "Delete", action: "delete" },
-    { label: "Shelve Changes", action: "shelve" },
-    { label: "", action: "", separator: true },
-    { label: "Show History", action: "showHistory" },
-    { label: "Refresh", action: "refresh" },
-];
 
 interface Props {
     files: WorkingFile[];
@@ -63,12 +50,6 @@ export function CommitTab({
     const [groupByDir, setGroupByDir] = useState(true);
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
-    const [contextMenu, setContextMenu] = useState<{
-        x: number;
-        y: number;
-        path: string;
-    } | null>(null);
-
     const vscode = getVsCodeApi();
 
     const handleRefresh = useCallback(() => {
@@ -104,42 +85,6 @@ export function CommitTab({
         [vscode],
     );
 
-    const handleFileContextMenu = useCallback((x: number, y: number, path: string) => {
-        setContextMenu({ x, y, path });
-    }, []);
-
-    const handleContextMenuSelect = useCallback(
-        (action: string) => {
-            if (!contextMenu) return;
-            const path = contextMenu.path;
-            switch (action) {
-                case "rollback":
-                    vscode.postMessage({ type: "rollback", paths: [path] });
-                    break;
-                case "jumpToSource":
-                    vscode.postMessage({ type: "openFile", path });
-                    break;
-                case "delete":
-                    vscode.postMessage({ type: "deleteFile", path });
-                    break;
-                case "shelve": {
-                    const name = prompt("Shelf name:", "Shelved changes");
-                    if (name !== null) {
-                        vscode.postMessage({ type: "stashSave", name, paths: [path] });
-                    }
-                    break;
-                }
-                case "showHistory":
-                    vscode.postMessage({ type: "showHistory", path });
-                    break;
-                case "refresh":
-                    vscode.postMessage({ type: "refresh" });
-                    break;
-            }
-        },
-        [vscode, contextMenu],
-    );
-
     return (
         <Flex ref={containerRef} direction="column" flex={1} overflow="hidden">
             <Toolbar
@@ -163,7 +108,6 @@ export function CommitTab({
                     isAllChecked={isAllChecked}
                     isSomeChecked={isSomeChecked}
                     onFileClick={handleFileClick}
-                    onFileContextMenu={handleFileContextMenu}
                     expandAllSignal={expandAllSignal}
                     collapseAllSignal={collapseAllSignal}
                 />
@@ -209,15 +153,6 @@ export function CommitTab({
                 />
             </Box>
 
-            {contextMenu && (
-                <ContextMenu
-                    x={contextMenu.x}
-                    y={contextMenu.y}
-                    items={CONTEXT_MENU_ITEMS}
-                    onSelect={handleContextMenuSelect}
-                    onClose={() => setContextMenu(null)}
-                />
-            )}
         </Flex>
     );
 }

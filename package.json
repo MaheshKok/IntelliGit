@@ -144,6 +144,36 @@
                 "command": "intelligit.deleteBranch",
                 "title": "Delete",
                 "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileRollback",
+                "title": "Rollback",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileJumpToSource",
+                "title": "Jump to Source",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileDelete",
+                "title": "Delete",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileShelve",
+                "title": "Shelve Changes",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileShowHistory",
+                "title": "Show History",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.fileRefresh",
+                "title": "Refresh",
+                "category": "IntelliGit"
             }
         ],
         "menus": {
@@ -214,6 +244,38 @@
                     "command": "intelligit.deleteBranch",
                     "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "5_modify@2"
+                }
+            ],
+            "webview/context": [
+                {
+                    "command": "intelligit.fileRollback",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "1_actions@1"
+                },
+                {
+                    "command": "intelligit.fileJumpToSource",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "1_actions@2"
+                },
+                {
+                    "command": "intelligit.fileDelete",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "2_destructive@1"
+                },
+                {
+                    "command": "intelligit.fileShelve",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "2_destructive@2"
+                },
+                {
+                    "command": "intelligit.fileShowHistory",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "group": "3_info@1"
+                },
+                {
+                    "command": "intelligit.fileRefresh",
+                    "when": "webviewId == 'intelligit.commitPanel'",
+                    "group": "3_info@2"
                 }
             ]
         },
