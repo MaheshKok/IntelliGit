@@ -1,7 +1,14 @@
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-  <circle cx="17" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-  <circle cx="7" cy="19" r="2.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-  <line x1="7" y1="7.5" x2="7" y2="16.5" stroke="currentColor" stroke-width="1.5"/>
-  <path d="M17 7.5V12C17 14.2091 15.2091 16 13 16H9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+<svg width="24" height="24" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Circle border -->
+  <circle cx="64" cy="64" r="58" stroke="currentColor" stroke-width="5" fill="none"/>
+  <!-- Main trunk - bottom to top -->
+  <line x1="50" y1="105" x2="50" y2="25" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  <!-- Branch curving right and upward -->
+  <path d="M50 75 C60 75 80 65 85 45" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- Dot - bottom (root) -->
+  <circle cx="50" cy="105" r="10" fill="currentColor"/>
+  <!-- Dot - top (head) -->
+  <circle cx="50" cy="25" r="10" fill="currentColor"/>
+  <!-- Dot - branch tip -->
+  <circle cx="85" cy="45" r="10" fill="currentColor"/>
 </svg>
