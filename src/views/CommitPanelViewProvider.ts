@@ -380,12 +380,12 @@ html, body {
 .btn-primary:hover { background: #5a7ee8; }
 .btn-secondary {
     background: transparent; color: var(--vscode-foreground);
-    border: 1px solid var(--vscode-button-secondaryBackground, #555);
+    border: 1px solid #6b6b6b;
     border-radius: 4px; padding: 4px 14px;
 }
 .btn-secondary:hover {
-    background: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.08));
-    border-color: var(--vscode-button-secondaryForeground, #888);
+    background: rgba(255,255,255,0.06);
+    border-color: #999;
 }
 
 /* --- Tab content visibility --- */

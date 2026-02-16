@@ -335,6 +335,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     branchTree.refresh(currentBranches);
     commitGraph.setBranches(currentBranches);
 
+    // --- Auto-refresh on file changes ---
+
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedRefresh = () => {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(async () => {
+            await commitPanel.refresh();
+        }, 300);
+    };
+
+    const gitWatcher = vscode.workspace.createFileSystemWatcher("**/*");
+    context.subscriptions.push(
+        gitWatcher,
+        gitWatcher.onDidChange(debouncedRefresh),
+        gitWatcher.onDidCreate(debouncedRefresh),
+        gitWatcher.onDidDelete(debouncedRefresh),
+        vscode.workspace.onDidSaveTextDocument(debouncedRefresh),
+    );
+
     // --- Disposables ---
 
     context.subscriptions.push(branchTree, commitGraph, commitInfo, commitPanel);
