@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
+import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitGraph";
@@ -166,35 +167,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getHtml(webview: vscode.Webview): string {
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, "dist", "webview-commitgraph.js"),
-        );
-        const nonce = getNonce();
-
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
-    <title>Commit Graph</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body, #root {
-            width: 100%; height: 100%; overflow: hidden;
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            color: var(--vscode-foreground);
-            background: var(--vscode-editor-background);
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+        return buildWebviewShellHtml({
+            extensionUri: this.extensionUri,
+            webview,
+            scriptFile: "webview-commitgraph.js",
+            title: "Commit Graph",
+            backgroundVar: "var(--vscode-editor-background)",
+        });
     }
 
     dispose(): void {
@@ -202,11 +181,4 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
     }
-}
-
-function getNonce(): string {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let r = "";
-    for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
-    return r;
 }

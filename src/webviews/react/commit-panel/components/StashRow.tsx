@@ -4,25 +4,13 @@
 import React from "react";
 import { Flex, Box, IconButton, Tooltip } from "@chakra-ui/react";
 import type { StashEntry } from "../../../../types";
+import { formatDateTime } from "../../shared/date";
 
 interface Props {
     stash: StashEntry;
     onApply: (index: number) => void;
     onPop: (index: number) => void;
     onDrop: (index: number) => void;
-}
-
-function formatDate(iso: string): string {
-    if (!iso) return "";
-    const d = new Date(iso);
-    const m = d.getMonth() + 1;
-    const day = d.getDate();
-    const yr = d.getFullYear().toString().slice(-2);
-    let hr = d.getHours();
-    const ampm = hr >= 12 ? "PM" : "AM";
-    hr = hr % 12 || 12;
-    const min = d.getMinutes().toString().padStart(2, "0");
-    return `${m}/${day}/${yr} ${hr}:${min} ${ampm}`;
 }
 
 function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactElement {
@@ -46,7 +34,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                 {stash.message}
             </Box>
             <Box color="var(--vscode-descriptionForeground)" fontSize="11px" flexShrink={0}>
-                {formatDate(stash.date)}
+                {formatDateTime(stash.date)}
             </Box>
             <Tooltip label="Apply" fontSize="11px">
                 <IconButton

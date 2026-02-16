@@ -7,14 +7,17 @@ import { createRoot } from "react-dom/client";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit } from "../../types";
+import { getVsCodeApi } from "./shared/vscodeApi";
 
-declare function acquireVsCodeApi(): {
-    postMessage(msg: unknown): void;
-    getState(): unknown;
-    setState(state: unknown): void;
-};
+type OutboundMessage =
+    | { type: "ready" }
+    | { type: "selectCommit"; hash: string }
+    | { type: "filterText"; text: string }
+    | { type: "loadMore" }
+    | { type: "filterBranch"; branch: string | null }
+    | { type: "branchAction"; action: string; branchName: string };
 
-const vscode = acquireVsCodeApi();
+const vscode = getVsCodeApi<OutboundMessage, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 200;

@@ -44,6 +44,18 @@ async function watch() {
     });
     await commitPanelCtx.watch();
     console.log("Watching webview: commitpanel");
+
+    const commitInfoCtx = await esbuild.context({
+        entryPoints: [path.resolve(__dirname, "../src/webviews/react/CommitInfoApp.tsx")],
+        bundle: true,
+        outfile: path.resolve(__dirname, "../dist/webview-commitinfo.js"),
+        format: "esm",
+        platform: "browser",
+        target: "es2022",
+        sourcemap: true,
+    });
+    await commitInfoCtx.watch();
+    console.log("Watching webview: commitinfo");
 }
 
 watch().catch((err) => {

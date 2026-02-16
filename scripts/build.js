@@ -20,6 +20,7 @@ const extensionConfig = {
 const webviewConfigs = [
     { entry: "react/CommitGraphApp", out: "webview-commitgraph" },
     { entry: "react/commit-panel/CommitPanelApp", out: "webview-commitpanel" },
+    { entry: "react/CommitInfoApp", out: "webview-commitinfo" },
 ].map(({ entry, out }) => ({
     entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
     bundle: true,

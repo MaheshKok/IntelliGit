@@ -8,15 +8,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { StatusBadge } from "./StatusBadge";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
-
-const STATUS_COLORS: Record<string, string> = {
-    M: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
-    A: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
-    D: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
-    R: "var(--vscode-gitDecoration-renamedResourceForeground, #a371f7)",
-    U: "var(--vscode-gitDecoration-conflictingResourceForeground, #e5c07b)",
-    "?": "var(--vscode-gitDecoration-untrackedResourceForeground, #73c991)",
-};
+import { GIT_STATUS_COLORS } from "../../shared/tokens";
 
 interface Props {
     file: WorkingFile;
@@ -38,7 +30,7 @@ function FileRowInner({
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = file.path.split("/").pop() ?? file.path;
     const dir = file.path.split("/").slice(0, -1).join("/");
-    const fnColor = STATUS_COLORS[file.status] ?? "var(--vscode-foreground)";
+    const fnColor = GIT_STATUS_COLORS[file.status] ?? "var(--vscode-foreground)";
 
     return (
         <Flex

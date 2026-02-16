@@ -36,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const branchTree = new BranchTreeProvider();
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
-    const commitInfo = new CommitInfoViewProvider();
+    const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
 
     // --- Register views ---

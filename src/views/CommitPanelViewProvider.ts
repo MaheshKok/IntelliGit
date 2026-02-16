@@ -6,6 +6,7 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { WorkingFile, StashEntry } from "../types";
+import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
@@ -263,45 +264,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getHtml(webview: vscode.Webview): string {
-        const scriptUri = webview.asWebviewUri(
-            vscode.Uri.joinPath(this.extensionUri, "dist", "webview-commitpanel.js"),
-        );
-        const nonce = getNonce();
-
-        return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
-    <title>Commit</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body, #root {
-            width: 100%; height: 100%; overflow: hidden;
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            color: var(--vscode-foreground);
-            background: var(--vscode-sideBar-background, var(--vscode-editor-background));
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+        return buildWebviewShellHtml({
+            extensionUri: this.extensionUri,
+            webview,
+            scriptFile: "webview-commitpanel.js",
+            title: "Commit",
+            backgroundVar: "var(--vscode-sideBar-background, var(--vscode-editor-background))",
+        });
     }
 
     dispose(): void {
         this._onDidChangeFileCount.dispose();
     }
-}
-
-function getNonce(): string {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let r = "";
-    for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
-    return r;
 }
