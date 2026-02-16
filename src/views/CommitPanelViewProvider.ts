@@ -25,7 +25,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     ): void {
         this.view = webviewView;
         webviewView.webview.options = { enableScripts: true };
-        webviewView.onDidDispose(() => { this.view = undefined; });
+        webviewView.onDidDispose(() => {
+            this.view = undefined;
+        });
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             try {
@@ -109,13 +111,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const paths = msg.paths as string[];
                 if (paths.length === 0) {
                     const confirm = await vscode.window.showWarningMessage(
-                        "Rollback all changes?", { modal: true }, "Rollback",
+                        "Rollback all changes?",
+                        { modal: true },
+                        "Rollback",
                     );
                     if (confirm !== "Rollback") return;
                     await this.gitOps.rollbackAll();
                 } else {
                     const confirm = await vscode.window.showWarningMessage(
-                        `Rollback ${paths.length} file(s)?`, { modal: true }, "Rollback",
+                        `Rollback ${paths.length} file(s)?`,
+                        { modal: true },
+                        "Rollback",
                     );
                     if (confirm !== "Rollback") return;
                     await this.gitOps.rollbackFiles(paths);
@@ -162,7 +168,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "stashDrop": {
                 const index = msg.index as number;
                 const confirm = await vscode.window.showWarningMessage(
-                    "Delete this shelved change?", { modal: true }, "Delete",
+                    "Delete this shelved change?",
+                    { modal: true },
+                    "Delete",
                 );
                 if (confirm !== "Delete") return;
                 await this.gitOps.stashDrop(index);
@@ -240,22 +248,39 @@ html, body {
     flex-shrink: 0;
 }
 .toolbar button {
-    background: none; border: none; color: var(--vscode-foreground);
-    cursor: pointer; padding: 3px 5px; border-radius: 3px;
+    background: none; border: none; color: #abb2bf;
+    cursor: pointer; padding: 4px 6px; border-radius: 3px;
     display: flex; align-items: center; justify-content: center;
-    opacity: 0.8;
+    position: relative;
 }
-.toolbar button:hover { background: var(--vscode-list-hoverBackground); opacity: 1; }
-.toolbar button svg { width: 16px; height: 16px; }
+.toolbar button:hover { background: var(--vscode-list-hoverBackground); color: #d4d8e0; }
+.toolbar button svg { width: 18px; height: 18px; }
 .toolbar .spacer { flex: 1; }
+
+/* Custom tooltip for toolbar buttons */
+.toolbar button::after {
+    content: attr(data-tip);
+    position: absolute; bottom: -26px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--vscode-editorWidget-background, #1e1e1e);
+    color: var(--vscode-editorWidget-foreground, #ccc);
+    border: 1px solid var(--vscode-editorWidget-border, #454545);
+    padding: 2px 8px; border-radius: 3px;
+    font-size: 11px; white-space: nowrap;
+    pointer-events: none; opacity: 0;
+    transition: opacity 0.15s ease;
+    z-index: 100;
+}
+.toolbar button:hover::after { opacity: 1; }
 
 /* --- Sections --- */
 .scroll-area { flex: 1 1 auto; overflow-y: auto; min-height: 40px; }
 .section-header {
     display: flex; align-items: center; gap: 4px;
-    padding: 4px 8px; cursor: pointer; user-select: none;
-    font-weight: 600; font-size: 11px;
+    padding: 4px 6px; cursor: pointer; user-select: none;
+    font-weight: 700; font-size: 11px;
     text-transform: uppercase; letter-spacing: 0.3px;
+    line-height: 24px; position: relative;
 }
 .section-header:hover { background: var(--vscode-list-hoverBackground); }
 .section-header .count {
@@ -264,16 +289,16 @@ html, body {
     margin-left: auto;
 }
 .chevron {
-    font-size: 9px; width: 16px; text-align: center;
-    flex-shrink: 0; opacity: 0.6;
-    transition: transform 0.1s; display: inline-block;
+    font-size: 11px; width: 14px; text-align: center;
+    flex-shrink: 0; opacity: 0.7;
+    transition: transform 0.15s ease; display: inline-block;
 }
 .chevron.open { transform: rotate(90deg); }
 
 /* --- File & folder rows --- */
 .file-row, .folder-row {
     display: flex; align-items: center; gap: 4px;
-    padding: 1px 8px 1px 12px; line-height: 22px; font-size: 12px;
+    padding: 1px 6px 1px 6px; line-height: 24px; font-size: 13px;
     cursor: pointer; position: relative;
 }
 .file-row:hover, .folder-row:hover { background: var(--vscode-list-hoverBackground); }
@@ -345,21 +370,23 @@ html, body {
 }
 .commit-box textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .commit-box textarea:focus { border-color: var(--vscode-focusBorder); }
-.button-row { display: flex; gap: 6px; padding: 6px 8px; }
-.button-row button {
-    padding: 4px 12px; border-radius: 3px; cursor: pointer;
-    font-size: 12px; border: none;
-}
+.button-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; }
+.button-row button { cursor: pointer; font-size: 13px; font-family: var(--vscode-font-family); }
 .btn-primary {
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
+    background: #4a6edb; color: #fff;
+    border: none; border-radius: 4px;
+    padding: 5px 18px; font-weight: 600;
 }
-.btn-primary:hover { background: var(--vscode-button-hoverBackground); }
+.btn-primary:hover { background: #5a7ee8; }
 .btn-secondary {
-    background: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
+    background: transparent; color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-button-secondaryBackground, #555);
+    border-radius: 4px; padding: 4px 14px;
 }
-.btn-secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.btn-secondary:hover {
+    background: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.08));
+    border-color: var(--vscode-button-secondaryForeground, #888);
+}
 
 /* --- Tab content visibility --- */
 .tab-content { display: none; flex-direction: column; flex: 1; overflow: hidden; }
@@ -403,26 +430,26 @@ html, body {
     <div class="tab-content active" id="commitTab">
         <!-- Toolbar -->
         <div class="toolbar">
-            <button id="btnRefresh" title="Refresh">
+            <button id="btnRefresh" title="Refresh" data-tip="Refresh">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949a4.093 4.093 0 0 1-4.09 4.09 4.093 4.093 0 0 1-4.09-4.09 4.088 4.088 0 0 1 3.354-4.027v1.938l4.308-2.906L7.43.002v1.906a5.593 5.593 0 0 0-4.856 5.617A5.594 5.594 0 0 0 8.166 13.1a5.594 5.594 0 0 0 5.592-5.575c0-1.755-.461-2.381-1.307-3.416l1-.5z"/></svg>
             </button>
-            <button id="btnRollback" title="Rollback">
+            <button id="btnRollback" title="Rollback" data-tip="Rollback">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M2.5 2l3.068 3.069L4.856 5.78l.707-.707L3.594 3.1H7A4.505 4.505 0 0 1 11.5 7.609 4.505 4.505 0 0 1 7 12.109H3.5v1H7a5.506 5.506 0 0 0 5.5-5.5A5.506 5.506 0 0 0 7 2.109H3.594l1.97-1.97-.708-.707L1.788 2.5z"/></svg>
             </button>
-            <button id="btnGroupBy" title="Group by Directory">
+            <button id="btnGroupBy" title="Group by Directory" data-tip="Group by Directory">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M14.5 3H7.71l-.85-.85A.5.5 0 0 0 6.5 2H1.5A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 14.5 4V3zM1.5 3h4.79l.85.85a.5.5 0 0 0 .36.15h7a.5.5 0 0 1 .5.5v.5H1V3.5a.5.5 0 0 1 .5-.5zM1 12.5V6h14v6.5a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5z"/></svg>
             </button>
-            <button id="btnShelve" title="Shelve Changes">
+            <button id="btnShelve" title="Shelve Changes" data-tip="Shelve Changes">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"/></svg>
             </button>
-            <button id="btnShowDiff" title="Show Diff Preview">
+            <button id="btnShowDiff" title="Show Diff Preview" data-tip="Show Diff Preview">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M2 3.5A1.5 1.5 0 0 1 3.5 2h5.586a1.5 1.5 0 0 1 1.06.44l2.415 2.414A1.5 1.5 0 0 1 13 5.914V12.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V5.914L9.086 2.5H3.5zM7 7V5h1v2h2v1H8v2H7V8H5V7h2z"/></svg>
             </button>
             <span class="spacer"></span>
-            <button id="btnExpandAll" title="Expand All">
+            <button id="btnExpandAll" title="Expand All" data-tip="Expand All">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M9 9H4v1h5V9zM9 4H4v1h5V4z"/><path fill="currentColor" d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11z"/></svg>
             </button>
-            <button id="btnCollapseAll" title="Collapse All">
+            <button id="btnCollapseAll" title="Collapse All" data-tip="Collapse All">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M9 9H4v1h5V9z"/><path fill="currentColor" d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 13.5v-11zM2.5 2a.5.5 0 0 0-.5.5v11a.5.5 0 0 0 .5.5h11a.5.5 0 0 0 .5-.5v-11a.5.5 0 0 0-.5-.5h-11z"/></svg>
             </button>
         </div>
@@ -449,7 +476,7 @@ html, body {
     <!-- === SHELF TAB === -->
     <div class="tab-content" id="shelfTab">
         <div class="toolbar">
-            <button id="btnShelfRefresh" title="Refresh">
+            <button id="btnShelfRefresh" title="Refresh" data-tip="Refresh">
                 <svg viewBox="0 0 16 16"><path fill="currentColor" d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949a4.093 4.093 0 0 1-4.09 4.09 4.093 4.093 0 0 1-4.09-4.09 4.088 4.088 0 0 1 3.354-4.027v1.938l4.308-2.906L7.43.002v1.906a5.593 5.593 0 0 0-4.856 5.617A5.594 5.594 0 0 0 8.166 13.1a5.594 5.594 0 0 0 5.592-5.575c0-1.755-.461-2.381-1.307-3.416l1-.5z"/></svg>
             </button>
         </div>
@@ -627,17 +654,21 @@ html, body {
         // Dim the background slightly for deleted files
         var bg = info.bg;
         if (status === 'D') { bg = '#6b6b6b'; }
-        return '<span class="ft-icon" style="background:' + esc(bg) + ';color:' + esc(fg) + '">' + esc(info.label) + '</span>';
+        return '<span class="ft-icon" style="background:' + esc(bg) + ';color:' + esc(fg) + '" title="' + esc(ext.toUpperCase() + ' file') + '">' + esc(info.label) + '</span>';
     }
 
     // --- Folder icon ---
-    var FOLDER_SVG = '<svg class="icon16" viewBox="0 0 16 16"><path fill="#c09553" d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"/></svg>';
+    var FOLDER_SVG = '<svg class="icon16" viewBox="0 0 16 16" title="Directory"><path fill="#c09553" d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"/></svg>';
 
     // --- Status letter for right side ---
+    var STATUS_LABELS = { M: 'Modified', A: 'Added', D: 'Deleted', R: 'Renamed', U: 'Conflicting', '?': 'Unversioned', C: 'Copied' };
+
     function statusLetter(status) {
         var colors = { M: '#d19a66', A: '#73c991', D: '#c74e39', R: '#a371f7', U: '#e5c07b', '?': '#73c991', C: '#73c991' };
         var c = colors[status] || '#888';
-        return '<span style="color:' + c + ';font-size:11px;font-weight:600;width:14px;text-align:center;flex-shrink:0">' + esc(status === '?' ? 'U' : status) + '</span>';
+        var label = STATUS_LABELS[status] || status;
+        var letter = status === '?' ? 'U' : status;
+        return '<span style="color:' + c + ';font-size:11px;font-weight:600;width:14px;text-align:center;flex-shrink:0" title="' + esc(label) + '">' + esc(letter) + '</span>';
     }
 
     // --- Render files ---
@@ -762,17 +793,21 @@ html, body {
         return renderTreeNode(tree, 0);
     }
 
-    function indentGuides(depth) {
+    var INDENT_STEP = 24;
+    var INDENT_BASE = 30;
+    var GUIDE_BASE = 17;
+
+    function indentGuides(treeDepth) {
         var html = '';
-        for (var g = 0; g < depth; g++) {
-            html += '<span class="indent-guide" style="left:' + (22 + g * 20) + 'px"></span>';
+        for (var g = 0; g <= treeDepth; g++) {
+            html += '<span class="indent-guide" style="left:' + (GUIDE_BASE + g * INDENT_STEP) + 'px"></span>';
         }
         return html;
     }
 
     function renderTreeNode(node, depth) {
         var html = '';
-        var indent = depth * 20;
+        var padLeft = INDENT_BASE + depth * INDENT_STEP;
         var keys = Object.keys(node).filter(function(k) { return k !== '__dir' && k !== '__files'; });
 
         for (var ki = 0; ki < keys.length; ki++) {
@@ -783,7 +818,7 @@ html, body {
             var dirFiles = collectDirFiles(sub);
             var allDirChecked = dirFiles.every(function(f) { return checkedPaths.has(f.path); });
 
-            html += '<div class="folder-row" data-dir="' + esc(dir) + '" style="padding-left:' + (12 + indent) + 'px">';
+            html += '<div class="folder-row" data-dir="' + esc(dir) + '" style="padding-left:' + padLeft + 'px" title="' + esc(dir) + '">';
             html += indentGuides(depth);
             html += '<input type="checkbox" data-dir-check="' + esc(dir) + '" ' + (allDirChecked ? 'checked' : '') + '>';
             html += '<span class="chevron ' + (isExpanded ? 'open' : '') + '">&#9654;</span>';
@@ -822,7 +857,7 @@ html, body {
     }
 
     function renderFileRow(f, depth) {
-        var indent = depth * 20;
+        var padLeft = INDENT_BASE + depth * INDENT_STEP;
         var fileName = f.path.split('/').pop();
         var dir = f.path.split('/').slice(0, -1).join('/');
         var checked = checkedPaths.has(f.path) ? 'checked' : '';
@@ -832,7 +867,7 @@ html, body {
         if (f.additions > 0) stats += '<span class="add-stat">+' + f.additions + '</span> ';
         if (f.deletions > 0) stats += '<span class="del-stat">-' + f.deletions + '</span>';
 
-        var html = '<div class="file-row" data-path="' + esc(f.path) + '" style="padding-left:' + (12 + indent) + 'px">';
+        var html = '<div class="file-row" data-path="' + esc(f.path) + '" style="padding-left:' + padLeft + 'px" title="' + esc(f.path) + '">';
         html += indentGuides(depth);
         html += '<input type="checkbox" data-path-check="' + esc(f.path) + '" ' + checked + '>';
         html += fileTypeIcon(fileName, f.status);

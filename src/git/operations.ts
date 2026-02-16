@@ -182,14 +182,30 @@ export class GitOps {
             let status: WorkingFile["status"];
             const code = staged ? index : worktree;
             switch (code) {
-                case "M": status = "M"; break;
-                case "A": status = "A"; break;
-                case "D": status = "D"; break;
-                case "R": status = "R"; break;
-                case "C": status = "C"; break;
-                case "?": status = "?"; break;
-                case "U": status = "U"; break;
-                default: status = "M"; break;
+                case "M":
+                    status = "M";
+                    break;
+                case "A":
+                    status = "A";
+                    break;
+                case "D":
+                    status = "D";
+                    break;
+                case "R":
+                    status = "R";
+                    break;
+                case "C":
+                    status = "C";
+                    break;
+                case "?":
+                    status = "?";
+                    break;
+                case "U":
+                    status = "U";
+                    break;
+                default:
+                    status = "M";
+                    break;
             }
 
             // If both index and worktree have changes, emit two entries
@@ -213,7 +229,9 @@ export class GitOps {
                     file.deletions = del === "-" ? 0 : parseInt(del);
                 }
             }
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
 
         // Get numstat for staged changes
         try {
@@ -227,7 +245,9 @@ export class GitOps {
                     file.deletions = del === "-" ? 0 : parseInt(del);
                 }
             }
-        } catch { /* ignore */ }
+        } catch {
+            /* ignore */
+        }
 
         return files;
     }
@@ -297,9 +317,7 @@ export class GitOps {
 
     async stashList(): Promise<StashEntry[]> {
         try {
-            const result = await this.executor.run([
-                "stash", "list", "--format=%H\t%gd\t%gs\t%aI",
-            ]);
+            const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
             const entries: StashEntry[] = [];
             for (const line of result.trim().split("\n")) {
                 if (!line.trim()) continue;

@@ -282,7 +282,8 @@ export function BranchColumn({
     const toggleSection = (key: string) => {
         setExpandedSections((prev) => {
             const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return next;
         });
     };
@@ -290,7 +291,8 @@ export function BranchColumn({
     const toggleFolder = (key: string) => {
         setExpandedFolders((prev) => {
             const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
             return next;
         });
     };
