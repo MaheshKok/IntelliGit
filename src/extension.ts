@@ -3,6 +3,8 @@
 // The extension host is the sole data coordinator -- views never talk directly.
 
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
 import { GitExecutor } from "./git/executor";
 import { GitOps } from "./git/operations";
 import { BranchTreeProvider, BranchItem } from "./views/BranchTreeProvider";
@@ -352,10 +354,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Auto-refresh on file changes ---
 
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-    const debouncedRefresh = () => {
-        if (refreshTimer) clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(async () => {
+    // Light refresh: working tree changes -> commit panel only
+    let lightTimer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedLightRefresh = () => {
+        if (lightTimer) clearTimeout(lightTimer);
+        lightTimer = setTimeout(async () => {
             await commitPanel.refresh();
         }, 300);
     };
@@ -363,10 +366,55 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const gitWatcher = vscode.workspace.createFileSystemWatcher("**/*");
     context.subscriptions.push(
         gitWatcher,
-        gitWatcher.onDidChange(debouncedRefresh),
-        gitWatcher.onDidCreate(debouncedRefresh),
-        gitWatcher.onDidDelete(debouncedRefresh),
-        vscode.workspace.onDidSaveTextDocument(debouncedRefresh),
+        gitWatcher.onDidChange(debouncedLightRefresh),
+        gitWatcher.onDidCreate(debouncedLightRefresh),
+        gitWatcher.onDidDelete(debouncedLightRefresh),
+        vscode.workspace.onDidSaveTextDocument(debouncedLightRefresh),
+    );
+
+    // Full refresh: git state changes -> branches + commit graph + commit panel
+    let fullTimer: ReturnType<typeof setTimeout> | undefined;
+    const debouncedFullRefresh = () => {
+        if (fullTimer) clearTimeout(fullTimer);
+        fullTimer = setTimeout(async () => {
+            currentBranches = await gitOps.getBranches();
+            branchTree.refresh(currentBranches);
+            commitGraph.setBranches(currentBranches);
+            await commitGraph.refresh();
+            await commitPanel.refresh();
+        }, 500);
+    };
+
+    // VS Code's file watcher excludes .git/ by default, so use Node's fs.watch
+    // to detect git state changes (new commits, branch changes, fetches)
+    const gitDir = path.join(repoRoot, ".git");
+    const gitStateFiles = new Set(["HEAD", "FETCH_HEAD", "packed-refs", "MERGE_HEAD", "REBASE_HEAD"]);
+    const fsWatchers: fs.FSWatcher[] = [];
+
+    try {
+        const dirWatcher = fs.watch(gitDir, (_event, filename) => {
+            if (filename && gitStateFiles.has(filename)) {
+                debouncedFullRefresh();
+            }
+        });
+        fsWatchers.push(dirWatcher);
+    } catch {
+        /* .git dir may not be watchable */
+    }
+
+    try {
+        const refsWatcher = fs.watch(
+            path.join(gitDir, "refs"),
+            { recursive: true },
+            () => debouncedFullRefresh(),
+        );
+        fsWatchers.push(refsWatcher);
+    } catch {
+        /* refs dir may not exist yet */
+    }
+
+    context.subscriptions.push(
+        new vscode.Disposable(() => fsWatchers.forEach((w) => w.close())),
     );
 
     // --- Disposables ---
