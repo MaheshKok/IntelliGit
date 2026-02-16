@@ -41,7 +41,7 @@ export function ContextMenu({
             left = Math.max(pad, window.innerWidth - rect.width - pad);
         }
         setPos({ left, top });
-    }, [x, y]);
+    }, [x, y, items.length]);
 
     useEffect(() => {
         const handleClick = (e: MouseEvent) => {
@@ -134,4 +134,3 @@ export function ContextMenu({
         document.body,
     );
 }
-

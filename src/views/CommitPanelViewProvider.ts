@@ -8,6 +8,24 @@ import { GitOps } from "../git/operations";
 import type { WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function isUntrackedPathspecError(error: unknown): boolean {
+    const message = getErrorMessage(error).toLowerCase();
+    const code =
+        typeof error === "object" && error !== null && "code" in error
+            ? String((error as { code?: unknown }).code ?? "").toLowerCase()
+            : "";
+
+    return (
+        message.includes("did not match any files") ||
+        (message.includes("pathspec") && message.includes("did not match")) ||
+        code === "enoent"
+    );
+}
+
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
 
@@ -41,7 +59,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             try {
                 await this.handleMessage(msg);
             } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
+                const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(message);
                 this.postToWebview({ type: "error", message });
             }
@@ -167,9 +185,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "showDiff": {
                 const filePath = msg.path as string;
-                const uri = vscode.Uri.file(
-                    vscode.workspace.workspaceFolders![0].uri.fsPath + "/" + filePath,
-                );
+                const workspaceRoot = this.getWorkspaceRoot();
+                const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
                 await vscode.commands.executeCommand("git.openChange", uri);
                 break;
             }
@@ -215,10 +232,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "openFile": {
                 const filePath = msg.path as string;
-                const uri = vscode.Uri.joinPath(
-                    vscode.workspace.workspaceFolders![0].uri,
-                    filePath,
-                );
+                const workspaceRoot = this.getWorkspaceRoot();
+                const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
                 await vscode.window.showTextDocument(uri);
                 break;
             }
@@ -232,14 +247,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 );
                 if (confirm !== "Delete") return;
                 try {
-                    await this.gitOps.deleteFile(filePath);
-                } catch {
-                    // If git rm fails (untracked file), delete via filesystem
-                    const uri = vscode.Uri.joinPath(
-                        vscode.workspace.workspaceFolders![0].uri,
-                        filePath,
-                    );
-                    await vscode.workspace.fs.delete(uri);
+                    await this.gitOps.deleteFile(filePath, true);
+                } catch (error) {
+                    if (!isUntrackedPathspecError(error)) {
+                        const message = getErrorMessage(error);
+                        console.error("Failed to delete file with git rm:", error);
+                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
+                        return;
+                    }
+
+                    try {
+                        const workspaceRoot = this.getWorkspaceRoot();
+                        const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
+                        await vscode.workspace.fs.delete(uri);
+                    } catch (fsError) {
+                        const message = getErrorMessage(fsError);
+                        console.error("Failed to delete file from filesystem:", fsError);
+                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
+                        return;
+                    }
                 }
                 vscode.window.showInformationMessage(`Deleted ${filePath}`);
                 await this.refreshData();
@@ -261,6 +287,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     private postToWebview(msg: unknown): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    private getWorkspaceRoot(): vscode.Uri {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
+        if (!workspaceRoot) {
+            throw new Error("No workspace folder is open.");
+        }
+        return workspaceRoot;
     }
 
     private getHtml(webview: vscode.Webview): string {

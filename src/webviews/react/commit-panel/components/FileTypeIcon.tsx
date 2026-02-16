@@ -12,7 +12,9 @@ interface Props {
 
 function FileTypeIconInner({ filename, status }: Props): React.ReactElement {
     let ext = filename.split(".").pop()?.toLowerCase() ?? "";
-    if (filename.startsWith(".")) ext = filename.slice(1);
+    if (filename.startsWith(".") && filename.indexOf(".", 1) === -1) {
+        ext = filename.slice(1).toLowerCase();
+    }
 
     const info = FILE_TYPE_BADGES[ext] ?? { label: ext.slice(0, 2).toUpperCase(), bg: "#6b6b6b" };
     const bg = status === "D" ? "#6b6b6b" : info.bg;

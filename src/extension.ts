@@ -101,6 +101,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitInfo.clear();
     };
 
+    const getErrorMessage = (error: unknown): string =>
+        error instanceof Error ? error.message : String(error);
+
+    const isUntrackedPathspecError = (error: unknown): boolean => {
+        const message = getErrorMessage(error).toLowerCase();
+        const code =
+            typeof error === "object" && error !== null && "code" in error
+                ? String((error as { code?: unknown }).code ?? "").toLowerCase()
+                : "";
+
+        return (
+            message.includes("did not match any files") ||
+            (message.includes("pathspec") && message.includes("did not match")) ||
+            code === "enoent"
+        );
+    };
+
     const getCurrentBranchName = () => currentBranches.find((b) => b.isCurrent)?.name;
 
     const getLocalNameFromRemote = (remoteBranchName: string) =>
@@ -426,19 +443,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Rollback",
                 );
                 if (confirm !== "Rollback") return;
-                await gitOps.rollbackFiles([ctx.filePath]);
-                vscode.window.showInformationMessage("Changes rolled back.");
-                await commitPanel.refresh();
+                try {
+                    await gitOps.rollbackFiles([ctx.filePath]);
+                    vscode.window.showInformationMessage("Changes rolled back.");
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Failed to rollback file:", error);
+                    vscode.window.showErrorMessage(`Rollback failed: ${message}`);
+                } finally {
+                    await commitPanel.refresh();
+                }
             },
         ),
         vscode.commands.registerCommand(
             "intelligit.fileJumpToSource",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
-                const uri = vscode.Uri.joinPath(
-                    vscode.workspace.workspaceFolders![0].uri,
-                    ctx.filePath,
-                );
+                const uri = vscode.Uri.joinPath(workspaceFolder.uri, ctx.filePath);
                 await vscode.window.showTextDocument(uri);
             },
         ),
@@ -452,15 +473,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Delete",
                 );
                 if (confirm !== "Delete") return;
+
                 try {
-                    await gitOps.deleteFile(ctx.filePath);
-                } catch {
-                    const uri = vscode.Uri.joinPath(
-                        vscode.workspace.workspaceFolders![0].uri,
-                        ctx.filePath,
-                    );
-                    await vscode.workspace.fs.delete(uri);
+                    await gitOps.deleteFile(ctx.filePath, true);
+                } catch (error) {
+                    if (!isUntrackedPathspecError(error)) {
+                        const message = getErrorMessage(error);
+                        console.error("Failed to delete file with git rm:", error);
+                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
+                        return;
+                    }
+
+                    try {
+                        const uri = vscode.Uri.joinPath(workspaceFolder.uri, ctx.filePath);
+                        await vscode.workspace.fs.delete(uri);
+                    } catch (fsError) {
+                        const message = getErrorMessage(fsError);
+                        console.error("Failed to delete file from filesystem:", fsError);
+                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
+                        return;
+                    }
                 }
+
                 vscode.window.showInformationMessage(`Deleted ${ctx.filePath}`);
                 await commitPanel.refresh();
             },
@@ -474,21 +508,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     value: "Shelved changes",
                 });
                 if (name === undefined) return;
-                await gitOps.stashSave(name || "Shelved changes", [ctx.filePath]);
-                vscode.window.showInformationMessage("Changes shelved.");
-                await commitPanel.refresh();
+                try {
+                    await gitOps.stashSave(name || "Shelved changes", [ctx.filePath]);
+                    vscode.window.showInformationMessage("Changes shelved.");
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Failed to shelve file:", error);
+                    vscode.window.showErrorMessage(`Shelve failed: ${message}`);
+                } finally {
+                    await commitPanel.refresh();
+                }
             },
         ),
         vscode.commands.registerCommand(
             "intelligit.fileShowHistory",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
-                const history = await gitOps.getFileHistory(ctx.filePath);
-                const doc = await vscode.workspace.openTextDocument({
-                    content: history || "No history found.",
-                    language: "git-commit",
-                });
-                await vscode.window.showTextDocument(doc, { preview: true });
+                try {
+                    const history = await gitOps.getFileHistory(ctx.filePath);
+                    const doc = await vscode.workspace.openTextDocument({
+                        content: history || "No history found.",
+                        language: "git-commit",
+                    });
+                    await vscode.window.showTextDocument(doc, { preview: true });
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error("Failed to load file history:", error);
+                    vscode.window.showErrorMessage(`Show history failed: ${message}`);
+                }
             },
         ),
         vscode.commands.registerCommand("intelligit.fileRefresh", async () => {

@@ -38,7 +38,7 @@ export const FILE_TYPE_BADGES: Record<string, { label: string; bg: string; fg?: 
     tsx: { label: "TX", bg: "#3178c6" },
     js: { label: "JS", bg: "#f0db4f", fg: "#323330" },
     jsx: { label: "JX", bg: "#f0db4f", fg: "#323330" },
-    json: { label: "JS", bg: "#5b5b5b" },
+    json: { label: "JN", bg: "#5b5b5b" },
     md: { label: "M", bg: "#519aba" },
     css: { label: "CS", bg: "#563d7c" },
     scss: { label: "SC", bg: "#c6538c" },

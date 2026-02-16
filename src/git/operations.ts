@@ -421,8 +421,9 @@ export class GitOps {
         ]);
     }
 
-    async deleteFile(filePath: string): Promise<void> {
-        await this.executor.run(["rm", "-f", "--", filePath]);
+    async deleteFile(filePath: string, force: boolean = false): Promise<void> {
+        const args = force ? ["rm", "-f", "--", filePath] : ["rm", "--", filePath];
+        await this.executor.run(args);
     }
 }
 
