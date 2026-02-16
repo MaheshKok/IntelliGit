@@ -1,141 +1,262 @@
 {
-  "name": "pycharm-git-for-vscode",
-  "displayName": "PyCharm Git for VS Code",
-  "description": "Brings PyCharm's Git Log view to VS Code: commit graph, branch tree, commit details, and file change explorer.",
-  "version": "0.1.0",
-  "publisher": "pycharm-git",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/pycharm-git/vscode"
-  },
-  "engines": {
-    "vscode": "^1.96.0"
-  },
-  "categories": [
-    "SCM Providers"
-  ],
-  "keywords": [
-    "git",
-    "pycharm",
-    "log",
-    "graph",
-    "scm"
-  ],
-  "activationEvents": [
-    "workspaceContains:.git",
-    "onView:pycharmGit.branches",
-    "onView:pycharmGit.commitGraph",
-    "onView:pycharmGit.commitFiles"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "pycharmGit",
-          "title": "PyCharm Git",
-          "icon": "media/pycharm-git.svg"
-        }
-      ],
-      "panel": [
-        {
-          "id": "pycharmGitPanel",
-          "title": "PyCharm Git",
-          "icon": "media/pycharm-git.svg"
-        }
-      ]
+    "name": "pycharm-git-for-vscode",
+    "displayName": "PyCharm Git for VS Code",
+    "description": "Brings PyCharm's Git Log view to VS Code: commit graph, branch tree, commit details, and file change explorer.",
+    "version": "0.1.0",
+    "publisher": "pycharm-git",
+    "license": "MIT",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/pycharm-git/vscode"
     },
-    "views": {
-      "pycharmGit": [
-        {
-          "id": "pycharmGit.branches",
-          "name": "Branches"
-        }
-      ],
-      "pycharmGitPanel": [
-        {
-          "id": "pycharmGit.commitGraph",
-          "name": "Commit Graph",
-          "type": "webview"
-        },
-        {
-          "id": "pycharmGit.commitFiles",
-          "name": "Changed Files",
-          "when": "pycharmGit.hasSelectedCommit"
-        }
-      ]
+    "engines": {
+        "vscode": "^1.96.0"
     },
-    "commands": [
-      {
-        "command": "pycharmGit.showGitLog",
-        "title": "Show Git Log",
-        "category": "PyCharm Git",
-        "icon": "$(git-commit)"
-      },
-      {
-        "command": "pycharmGit.refresh",
-        "title": "Refresh",
-        "category": "PyCharm Git",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "pycharmGit.filterByBranch",
-        "title": "Filter by Branch",
-        "category": "PyCharm Git"
-      }
+    "categories": [
+        "SCM Providers"
     ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "pycharmGit.refresh",
-          "when": "view == pycharmGit.branches",
-          "group": "navigation"
+    "keywords": [
+        "git",
+        "pycharm",
+        "log",
+        "graph",
+        "scm"
+    ],
+    "activationEvents": [
+        "workspaceContains:.git",
+        "onView:pycharmGit.branches",
+        "onView:pycharmGit.commitGraph",
+        "onView:pycharmGit.commitFiles"
+    ],
+    "main": "./dist/extension.js",
+    "contributes": {
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "pycharmGit",
+                    "title": "PyCharm Git",
+                    "icon": "media/pycharm-git.svg"
+                }
+            ],
+            "panel": [
+                {
+                    "id": "pycharmGitPanel",
+                    "title": "PyCharm Git",
+                    "icon": "media/pycharm-git.svg"
+                }
+            ]
         },
-        {
-          "command": "pycharmGit.refresh",
-          "when": "view == pycharmGit.commitGraph",
-          "group": "navigation"
-        }
-      ]
+        "views": {
+            "pycharmGit": [
+                {
+                    "id": "pycharmGit.commitPanel",
+                    "name": "Commit",
+                    "type": "webview"
+                },
+                {
+                    "id": "pycharmGit.branches",
+                    "name": "Branches"
+                }
+            ],
+            "pycharmGitPanel": [
+                {
+                    "id": "pycharmGit.commitGraph",
+                    "name": "Commit Graph",
+                    "type": "webview"
+                },
+                {
+                    "id": "pycharmGit.commitFiles",
+                    "name": "Changed Files",
+                    "type": "webview"
+                }
+            ]
+        },
+        "commands": [
+            {
+                "command": "pycharmGit.showGitLog",
+                "title": "Show Git Log",
+                "category": "PyCharm Git",
+                "icon": "$(git-commit)"
+            },
+            {
+                "command": "pycharmGit.refresh",
+                "title": "Refresh",
+                "category": "PyCharm Git",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "pycharmGit.filterByBranch",
+                "title": "Filter by Branch",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.checkout",
+                "title": "Checkout",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.newBranchFrom",
+                "title": "New Branch from...",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.checkoutAndRebase",
+                "title": "Checkout and Rebase onto Current",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.compareWithCurrent",
+                "title": "Compare with Current",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.showDiffWithWorkingTree",
+                "title": "Show Diff with Working Tree",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.rebaseCurrentOnto",
+                "title": "Rebase Current onto Selected",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.mergeIntoCurrent",
+                "title": "Merge into Current",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.updateBranch",
+                "title": "Update",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.pushBranch",
+                "title": "Push",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.renameBranch",
+                "title": "Rename...",
+                "category": "PyCharm Git"
+            },
+            {
+                "command": "pycharmGit.deleteBranch",
+                "title": "Delete",
+                "category": "PyCharm Git"
+            }
+        ],
+        "menus": {
+            "view/title": [
+                {
+                    "command": "pycharmGit.refresh",
+                    "when": "view == pycharmGit.branches",
+                    "group": "navigation"
+                },
+                {
+                    "command": "pycharmGit.refresh",
+                    "when": "view == pycharmGit.commitGraph",
+                    "group": "navigation"
+                }
+            ],
+            "view/item/context": [
+                {
+                    "command": "pycharmGit.checkout",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "group": "1_checkout@1"
+                },
+                {
+                    "command": "pycharmGit.newBranchFrom",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
+                    "group": "1_checkout@2"
+                },
+                {
+                    "command": "pycharmGit.checkoutAndRebase",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "group": "1_checkout@3"
+                },
+                {
+                    "command": "pycharmGit.compareWithCurrent",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "group": "2_compare@1"
+                },
+                {
+                    "command": "pycharmGit.showDiffWithWorkingTree",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
+                    "group": "2_compare@2"
+                },
+                {
+                    "command": "pycharmGit.rebaseCurrentOnto",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "group": "3_merge@1"
+                },
+                {
+                    "command": "pycharmGit.mergeIntoCurrent",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "group": "3_merge@2"
+                },
+                {
+                    "command": "pycharmGit.updateBranch",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
+                    "group": "4_remote@1"
+                },
+                {
+                    "command": "pycharmGit.pushBranch",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
+                    "group": "4_remote@2"
+                },
+                {
+                    "command": "pycharmGit.renameBranch",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
+                    "group": "5_modify@1"
+                },
+                {
+                    "command": "pycharmGit.deleteBranch",
+                    "when": "view == pycharmGit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
+                    "group": "5_modify@2"
+                }
+            ]
+        },
+        "keybindings": [
+            {
+                "command": "pycharmGit.showGitLog",
+                "key": "alt+9",
+                "mac": "alt+9"
+            }
+        ]
     },
-    "keybindings": [
-      {
-        "command": "pycharmGit.showGitLog",
-        "key": "alt+9",
-        "mac": "alt+9"
-      }
-    ]
-  },
-  "scripts": {
-    "build": "bun scripts/build.js",
-    "build:prod": "bun scripts/build.js --production",
-    "watch": "bun scripts/watch.js",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
-    "lint": "eslint src --ext .ts,.tsx",
-    "test": "bun vitest run",
-    "test:watch": "bun vitest",
-    "package": "vsce package",
-    "publish": "vsce publish"
-  },
-  "devDependencies": {
-    "@types/node": "^20.11.0",
-    "@types/react": "^18.2.48",
-    "@types/react-dom": "^18.2.18",
-    "@types/vscode": "^1.96.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "@vscode/test-electron": "^2.3.9",
-    "@vscode/vsce": "^2.22.0",
-    "esbuild": "^0.20.0",
-    "eslint": "^8.56.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "typescript": "^5.3.3",
-    "vitest": "^1.2.0"
-  },
-  "dependencies": {
-    "simple-git": "^3.22.0"
-  }
+    "scripts": {
+        "build": "bun scripts/build.js",
+        "build:prod": "bun scripts/build.js --production",
+        "watch": "bun scripts/watch.js",
+        "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
+        "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
+        "lint": "eslint src",
+        "test": "bun vitest run",
+        "test:watch": "bun vitest",
+        "package": "vsce package --no-dependencies",
+        "publish": "vsce publish"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/node": "^20.11.0",
+        "@types/react": "^18.2.48",
+        "@types/react-dom": "^18.2.18",
+        "@types/vscode": "^1.96.0",
+        "@typescript-eslint/eslint-plugin": "^7.0.0",
+        "@typescript-eslint/parser": "^7.0.0",
+        "@vscode/test-electron": "^2.3.9",
+        "@vscode/vsce": "^2.22.0",
+        "esbuild": "^0.20.0",
+        "eslint": "^10.0.0",
+        "eslint-plugin-react": "^7.37.5",
+        "globals": "^17.3.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "typescript": "^5.3.3",
+        "typescript-eslint": "^8.55.0",
+        "vitest": "^1.2.0"
+    },
+    "dependencies": {
+        "simple-git": "^3.22.0"
+    }
 }

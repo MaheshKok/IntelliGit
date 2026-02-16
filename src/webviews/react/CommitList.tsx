@@ -4,7 +4,7 @@
 
 import React, { useRef, useEffect, useMemo } from "react";
 import type { Commit } from "../../types";
-import { computeGraph, COLORS, LANE_WIDTH, DOT_RADIUS, ROW_HEIGHT } from "./graph";
+import { computeGraph, LANE_WIDTH, DOT_RADIUS, ROW_HEIGHT } from "./graph";
 
 interface Props {
     commits: Commit[];

@@ -23,6 +23,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private readonly _onBranchFilterChanged = new vscode.EventEmitter<string | null>();
     readonly onBranchFilterChanged = this._onBranchFilterChanged.event;
 
+    private readonly _onBranchAction = new vscode.EventEmitter<{
+        action: string;
+        branchName: string;
+    }>();
+    readonly onBranchAction = this._onBranchAction.event;
+
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
@@ -62,6 +68,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     this.filterText = "";
                     this._onBranchFilterChanged.fire(msg.branch);
                     await this.loadInitial();
+                    break;
+                case "branchAction":
+                    this._onBranchAction.fire({
+                        action: msg.action,
+                        branchName: msg.branchName,
+                    });
                     break;
             }
         });
@@ -173,6 +185,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     dispose(): void {
         this._onCommitSelected.dispose();
         this._onBranchFilterChanged.dispose();
+        this._onBranchAction.dispose();
     }
 }
 

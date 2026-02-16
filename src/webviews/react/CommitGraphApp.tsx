@@ -81,6 +81,10 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "filterBranch", branch: name });
     }, []);
 
+    const handleBranchAction = useCallback((action: string, branchName: string) => {
+        vscode.postMessage({ type: "branchAction", action, branchName });
+    }, []);
+
     // Resizable divider via mouse events on document
     const onDividerMouseDown = useCallback(
         (e: React.MouseEvent) => {
@@ -123,6 +127,7 @@ function App(): React.ReactElement {
                     branches={branches}
                     selectedBranch={selectedBranch}
                     onSelectBranch={handleSelectBranch}
+                    onBranchAction={handleBranchAction}
                 />
             </div>
 

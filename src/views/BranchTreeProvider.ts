@@ -30,7 +30,11 @@ export class BranchItem extends vscode.TreeItem {
                 this.contextValue = "remote-group";
                 break;
             case "branch":
-                this.contextValue = branch?.isRemote ? "remoteBranch" : "localBranch";
+                if (branch?.isCurrent) {
+                    this.contextValue = "currentBranch";
+                } else {
+                    this.contextValue = branch?.isRemote ? "remoteBranch" : "localBranch";
+                }
                 this.iconPath = branch?.isCurrent
                     ? new vscode.ThemeIcon("git-branch", new vscode.ThemeColor("charts.green"))
                     : new vscode.ThemeIcon("git-branch");
