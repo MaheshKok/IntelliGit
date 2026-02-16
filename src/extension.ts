@@ -38,11 +38,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Register views ---
 
+    const branchTreeView = vscode.window.createTreeView("pycharmGit.branches", {
+        treeDataProvider: branchTree,
+    });
+
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider("pycharmGit.branches", branchTree),
+        branchTreeView,
         vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
         vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
         vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanel),
+    );
+
+    // --- Activity bar badge (file count) ---
+
+    context.subscriptions.push(
+        commitPanel.onDidChangeFileCount((count) => {
+            branchTreeView.badge =
+                count > 0
+                    ? { value: count, tooltip: `${count} file${count !== 1 ? "s" : ""} changed` }
+                    : undefined;
+        }),
     );
 
     // --- Wire data flow ---
