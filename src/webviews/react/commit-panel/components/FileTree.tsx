@@ -42,6 +42,7 @@ export function FileTree({
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
     const lastExpandSignal = useRef(0);
     const lastCollapseSignal = useRef(0);
+    const seenDirsRef = useRef<Set<string>>(new Set());
 
     const tracked = useMemo(() => files.filter((f) => f.status !== "?"), [files]);
     const unversioned = useMemo(() => files.filter((f) => f.status === "?"), [files]);
@@ -59,14 +60,18 @@ export function FileTree({
             ...collectAllDirPaths(trackedTree),
             ...collectAllDirPaths(unversionedTree),
         ];
+        for (const dir of allDirs) {
+            seenDirsRef.current.add(dir);
+        }
         setExpandedDirs(new Set(allDirs));
     }, [expandAllSignal, trackedTree, unversionedTree]);
 
     React.useEffect(() => {
         if (collapseAllSignal === 0 || collapseAllSignal === lastCollapseSignal.current) return;
         lastCollapseSignal.current = collapseAllSignal;
-        setChangesOpen(false);
-        setUnversionedOpen(false);
+        // Keep top-level sections visible; collapse only nested directory expansion state.
+        setChangesOpen(true);
+        setUnversionedOpen(true);
         setExpandedDirs(new Set());
     }, [collapseAllSignal]);
 
@@ -81,7 +86,9 @@ export function FileTree({
             const next = new Set(prev);
             let changed = false;
             for (const d of allDirs) {
-                if (!next.has(d)) {
+                // Auto-expand only directories that appear for the first time.
+                if (!seenDirsRef.current.has(d)) {
+                    seenDirsRef.current.add(d);
                     next.add(d);
                     changed = true;
                 }

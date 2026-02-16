@@ -113,9 +113,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
 
         const localName = getLocalNameFromRemote(branch.name);
-        const existingLocal = currentBranches.find(
-            (b) => !b.isRemote && b.name === localName,
-        );
+        const existingLocal = currentBranches.find((b) => !b.isRemote && b.name === localName);
         if (existingLocal) {
             await executor.run(["checkout", existingLocal.name]);
             return existingLocal.name;

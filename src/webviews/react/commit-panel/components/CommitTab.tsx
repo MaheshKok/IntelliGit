@@ -152,7 +152,6 @@ export function CommitTab({
                     onCommitAndPush={onCommitAndPush}
                 />
             </Box>
-
         </Flex>
     );
 }
