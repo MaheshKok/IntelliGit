@@ -130,6 +130,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         );
     };
 
+    const isBranchNotFullyMergedError = (error: unknown): boolean =>
+        getErrorMessage(error).toLowerCase().includes("is not fully merged");
+
+    const getCheckedOutBranchName = async (): Promise<string | null> => {
+        try {
+            const head = (await executor.run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+            if (head && head !== "HEAD") return head;
+        } catch {
+            // Fall back to cached branch metadata.
+        }
+        return getCurrentBranchName() ?? null;
+    };
+
+    const getLocalBranchMergeStatusForDelete = async (
+        branchName: string,
+        currentBranchName: string | null,
+    ): Promise<{ merged: boolean; target: string }> => {
+        const target = currentBranchName?.trim() || "HEAD";
+        try {
+            await executor.run(["merge-base", "--is-ancestor", branchName, target]);
+            return { merged: true, target };
+        } catch {
+            return { merged: false, target };
+        }
+    };
+
     const getCurrentBranchName = () => currentBranches.find((b) => b.isCurrent)?.name;
 
     const getLocalNameFromRemote = (remoteBranchName: string) =>
@@ -718,23 +744,72 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
+                const isRemote = !!item.branch?.isRemote;
+                const checkedOutBranch = isRemote ? null : await getCheckedOutBranchName();
+
+                if (!isRemote && checkedOutBranch && checkedOutBranch === name) {
+                    await vscode.window.showWarningMessage(
+                        `Cannot delete '${name}' because it is currently checked out. Switch to another branch and try again.`,
+                        { modal: true },
+                        "OK",
+                    );
+                    return;
+                }
+
+                let confirmLabel = "Delete";
+                let confirmMessage = `Delete branch ${name}?`;
+                if (!isRemote) {
+                    const mergeStatus = await getLocalBranchMergeStatusForDelete(
+                        name,
+                        checkedOutBranch,
+                    );
+                    if (!mergeStatus.merged) {
+                        const targetLabel =
+                            mergeStatus.target === "HEAD"
+                                ? "the current branch"
+                                : `'${mergeStatus.target}'`;
+                        confirmLabel = "Delete Anyway";
+                        confirmMessage =
+                            `Branch ${name} has unmerged commits relative to ${targetLabel}. Delete anyway?\n` +
+                            `This may permanently lose commits not reachable from ${targetLabel}.`;
+                    }
+                }
+
                 const confirm = await vscode.window.showWarningMessage(
-                    `Delete branch ${name}?`,
+                    confirmMessage,
                     { modal: true },
-                    "Delete",
+                    confirmLabel,
                 );
-                if (confirm !== "Delete") return;
+                if (confirm !== confirmLabel) return;
                 try {
-                    if (item.branch?.isRemote && item.branch?.remote) {
+                    if (isRemote && item.branch?.remote) {
                         const remoteBranch = name.split("/").slice(1).join("/");
                         await executor.run(["push", item.branch.remote, "--delete", remoteBranch]);
                     } else {
-                        await executor.run(["branch", "-d", name]);
+                        const forceDelete = confirmLabel === "Delete Anyway";
+                        await executor.run(["branch", forceDelete ? "-D" : "-d", name]);
                     }
                     vscode.window.showInformationMessage(`Deleted ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    if (!isRemote && isBranchNotFullyMergedError(err)) {
+                        const forceConfirm = await vscode.window.showWarningMessage(
+                            `Branch '${name}' has unmerged commits. Do you still want to delete it?\nThis may permanently lose commits not reachable from the current branch.`,
+                            { modal: true },
+                            "Delete Anyway",
+                        );
+                        if (forceConfirm !== "Delete Anyway") return;
+                        try {
+                            await executor.run(["branch", "-D", name]);
+                            vscode.window.showInformationMessage(`Deleted ${name}`);
+                            await vscode.commands.executeCommand("intelligit.refresh");
+                        } catch (forceErr) {
+                            const msg = getErrorMessage(forceErr);
+                            vscode.window.showErrorMessage(`Delete failed: ${msg}`);
+                        }
+                        return;
+                    }
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Delete failed: ${msg}`);
                 }
             },
