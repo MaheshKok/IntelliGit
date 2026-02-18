@@ -1,5 +1,4 @@
-// Chakra UI v2 theme mapped to VS Code CSS custom properties.
-// Provides consistent theming that adapts to light/dark VS Code themes.
+// Chakra UI v2 theme provides consistent theming that adapts to light/dark VS Code themes.
 
 import { extendTheme } from "@chakra-ui/react";
 
