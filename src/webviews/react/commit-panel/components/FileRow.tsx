@@ -33,11 +33,7 @@ function FileRowInner({
     const fnColor =
         file.status === "D"
             ? "var(--vscode-disabledForeground)"
-            : file.status === "M"
-              ? "#d2bf8a"
-              : file.status === "A"
-                ? "#8fc7a1"
-                : (GIT_STATUS_COLORS[file.status] ?? "var(--vscode-foreground)");
+            : (GIT_STATUS_COLORS[file.status] ?? "var(--vscode-foreground)");
 
     return (
         <Flex

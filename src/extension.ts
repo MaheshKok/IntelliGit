@@ -167,6 +167,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
 
     const isHashMatch = (a: string, b: string): boolean => a.startsWith(b) || b.startsWith(a);
+    const isValidGitHash = (value: string): boolean => /^[0-9a-fA-F]{7,40}$/.test(value);
 
     const isCommitUnpushed = async (hash: string): Promise<boolean> => {
         const unpushed = await gitOps.getUnpushedCommitHashes();
@@ -225,11 +226,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         targetBranch?: string;
     }): Promise<void> => {
         const { action, hash, targetBranch } = params;
-        const short = hash.slice(0, 8);
+        const validatedHash = hash.trim();
+        if (!isValidGitHash(validatedHash)) {
+            console.error("Blocked commit action due to invalid hash:", { action, hash });
+            vscode.window.showErrorMessage("Invalid commit hash received for commit action.");
+            return;
+        }
+        const short = validatedHash.slice(0, 8);
 
         switch (action) {
             case "copyRevision": {
-                await vscode.env.clipboard.writeText(hash);
+                await vscode.env.clipboard.writeText(validatedHash);
                 vscode.window.showInformationMessage(`Copied revision ${short}.`);
                 return;
             }
@@ -240,7 +247,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     filters: { Patch: ["patch", "diff"] },
                 });
                 if (!targetUri) return;
-                const patchText = await executor.run(["format-patch", "-1", "--stdout", hash]);
+                const patchText = await executor.run([
+                    "format-patch",
+                    "-1",
+                    "--stdout",
+                    validatedHash,
+                ]);
                 await vscode.workspace.fs.writeFile(targetUri, Buffer.from(patchText, "utf8"));
                 vscode.window.showInformationMessage(
                     `Patch created: ${path.basename(targetUri.fsPath)}`,
@@ -255,12 +267,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 if (confirm !== "Cherry-pick") return;
 
-                const mainlineParent = await pickMainlineParent(hash, "Cherry-pick");
+                const mainlineParent = await pickMainlineParent(validatedHash, "Cherry-pick");
                 if (mainlineParent === null) return;
                 const args =
                     mainlineParent === undefined
-                        ? ["cherry-pick", hash]
-                        : ["cherry-pick", "-m", String(mainlineParent), hash];
+                        ? ["cherry-pick", validatedHash]
+                        : ["cherry-pick", "-m", String(mainlineParent), validatedHash];
                 await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
                 await refreshAll();
@@ -284,7 +296,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Checkout",
                 );
                 if (confirm !== "Checkout") return;
-                await executor.run(["checkout", hash]);
+                await executor.run(["checkout", validatedHash]);
                 vscode.window.showInformationMessage(`Checked out revision ${short}.`);
                 await refreshAll();
                 return;
@@ -296,13 +308,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Reset",
                 );
                 if (confirm !== "Reset") return;
-                await executor.run(["reset", "--hard", hash]);
+                await executor.run(["reset", "--hard", validatedHash]);
                 vscode.window.showInformationMessage(`Reset current branch to ${short}.`);
                 await refreshAll();
                 return;
             }
             case "revertCommit": {
-                if (await isMergeCommitHash(hash)) {
+                if (await isMergeCommitHash(validatedHash)) {
                     vscode.window.showErrorMessage(
                         "Revert Commit is not available for merge commits.",
                     );
@@ -314,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Revert",
                 );
                 if (confirm !== "Revert") return;
-                await executor.run(["revert", "--no-edit", hash]);
+                await executor.run(["revert", "--no-edit", validatedHash]);
                 vscode.window.showInformationMessage(`Reverted ${short}.`);
                 await refreshAll();
                 return;
@@ -325,7 +337,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     placeHolder: "branch-name",
                 });
                 if (!branchName) return;
-                await executor.run(["branch", branchName, hash]);
+                await executor.run(["branch", branchName, validatedHash]);
                 vscode.window.showInformationMessage(`Created branch ${branchName} at ${short}.`);
                 await refreshAll();
                 return;
@@ -336,19 +348,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     placeHolder: "v1.0.0",
                 });
                 if (!tagName) return;
-                await executor.run(["tag", tagName, hash]);
+                await executor.run(["tag", tagName, validatedHash]);
                 vscode.window.showInformationMessage(`Created tag ${tagName}.`);
                 await refreshAll();
                 return;
             }
             case "undoCommit": {
-                if (!(await isCommitUnpushed(hash))) {
+                if (!(await isCommitUnpushed(validatedHash))) {
                     vscode.window.showErrorMessage(
                         "Undo Commit is available only for unpushed commits.",
                     );
                     return;
                 }
-                if (await isMergeCommitHash(hash)) {
+                if (await isMergeCommitHash(validatedHash)) {
                     vscode.window.showErrorMessage(
                         "Undo Commit is not available for merge commits.",
                     );
@@ -360,19 +372,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Undo",
                 );
                 if (confirm !== "Undo") return;
-                await executor.run(["reset", "--soft", `${hash}^`]);
+                await executor.run(["reset", "--soft", `${validatedHash}^`]);
                 vscode.window.showInformationMessage(`Undo complete up to ${short}.`);
                 await refreshAll();
                 return;
             }
             case "editCommitMessage": {
-                if (!(await isCommitUnpushed(hash))) {
+                if (!(await isCommitUnpushed(validatedHash))) {
                     vscode.window.showErrorMessage(
                         "Edit Commit Message is available only for unpushed commits.",
                     );
                     return;
                 }
-                if (await isMergeCommitHash(hash)) {
+                if (await isMergeCommitHash(validatedHash)) {
                     vscode.window.showErrorMessage(
                         "Edit Commit Message is not available for merge commits.",
                     );
@@ -380,9 +392,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 }
 
                 const headHash = (await executor.run(["rev-parse", "HEAD"])).trim();
-                if (isHashMatch(hash, headHash)) {
+                if (isHashMatch(validatedHash, headHash)) {
                     const currentMessage = (
-                        await executor.run(["log", "-1", "--format=%s"])
+                        await executor.run(["log", "-1", "--format=%B"])
                     ).trim();
                     const nextMessage = await vscode.window.showInputBox({
                         prompt: "Edit commit message",
@@ -400,20 +412,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     cwd: repoRoot,
                 });
                 terminal.show();
-                terminal.sendText(`git rebase -i ${hash}^`);
+                terminal.sendText(`git rebase -i ${validatedHash}^`);
                 vscode.window.showInformationMessage(
                     "Interactive rebase opened. Mark the commit as 'reword' in the todo list.",
                 );
                 return;
             }
             case "dropCommits": {
-                if (!(await isCommitUnpushed(hash))) {
+                if (!(await isCommitUnpushed(validatedHash))) {
                     vscode.window.showErrorMessage(
                         "Drop Commits is available only for unpushed commits.",
                     );
                     return;
                 }
-                if (await isMergeCommitHash(hash)) {
+                if (await isMergeCommitHash(validatedHash)) {
                     vscode.window.showErrorMessage(
                         "Drop Commits is not available for merge commits.",
                     );
@@ -425,19 +437,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Drop",
                 );
                 if (confirm !== "Drop") return;
-                await executor.run(["rebase", "--onto", `${hash}^`, hash, "HEAD"]);
+                await executor.run(["rebase", "--onto", `${validatedHash}^`, validatedHash, "HEAD"]);
                 vscode.window.showInformationMessage(`Dropped ${short} from history.`);
                 await refreshAll();
                 return;
             }
             case "interactiveRebaseFromHere": {
-                if (!(await isCommitUnpushed(hash))) {
+                if (!(await isCommitUnpushed(validatedHash))) {
                     vscode.window.showErrorMessage(
                         "Interactive Rebase from Here is available only for unpushed commits.",
                     );
                     return;
                 }
-                if (await isMergeCommitHash(hash)) {
+                if (await isMergeCommitHash(validatedHash)) {
                     vscode.window.showErrorMessage(
                         "Interactive Rebase from Here is not available for merge commits.",
                     );
@@ -448,7 +460,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     cwd: repoRoot,
                 });
                 terminal.show();
-                terminal.sendText(`git rebase -i ${hash}^`);
+                terminal.sendText(`git rebase -i ${validatedHash}^`);
                 vscode.window.showInformationMessage(`Opened interactive rebase from ${short}.`);
                 return;
             }

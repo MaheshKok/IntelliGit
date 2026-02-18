@@ -25,7 +25,7 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
                     borderBottom="2px solid transparent"
                     _selected={{
                         opacity: 1,
-                        borderBottomColor: "#5a8fe9",
+                        borderBottomColor: "var(--vscode-focusBorder, #007acc)",
                     }}
                     _hover={{ opacity: 0.85 }}
                 >
@@ -42,7 +42,7 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
                     borderBottom="2px solid transparent"
                     _selected={{
                         opacity: 1,
-                        borderBottomColor: "#5a8fe9",
+                        borderBottomColor: "var(--vscode-focusBorder, #007acc)",
                     }}
                     _hover={{ opacity: 0.85 }}
                 >

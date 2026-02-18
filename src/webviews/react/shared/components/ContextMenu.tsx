@@ -163,15 +163,16 @@ export function ContextMenu({
                                 {item.icon}
                             </span>
                         )}
-                        <span style={{ flex: 1 }}>{item.label}</span>
+                        <span style={{ flex: 1, flexShrink: 1 }}>{item.label}</span>
                         {hasAnyTrailing && (
                             <span
                                 style={{
-                                    width: 58,
+                                    minWidth: 58,
                                     display: "inline-flex",
                                     alignItems: "center",
                                     justifyContent: "flex-end",
                                     flexShrink: 0,
+                                    overflow: "visible",
                                     fontSize: 11,
                                     opacity: 0.7,
                                     color: item.disabled

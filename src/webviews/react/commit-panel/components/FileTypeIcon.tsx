@@ -29,7 +29,7 @@ function FileTypeIconInner({ filename, status }: Props): React.ReactElement {
             w="14px"
             h="14px"
             flexShrink={0}
-            fontSize="6.5px"
+            fontSize="7px"
             fontWeight={700}
             borderRadius="2px"
             fontFamily="monospace"

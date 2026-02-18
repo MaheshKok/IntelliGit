@@ -448,7 +448,6 @@ export class GitOps {
                 "stash",
                 "show",
                 "--name-status",
-                "--format=",
                 ref,
             ]);
             for (const line of nameStatus.trim().split("\n")) {
@@ -473,7 +472,6 @@ export class GitOps {
                 "stash",
                 "show",
                 "--numstat",
-                "--format=",
                 ref,
             ]);
             for (const line of numstat.trim().split("\n")) {
