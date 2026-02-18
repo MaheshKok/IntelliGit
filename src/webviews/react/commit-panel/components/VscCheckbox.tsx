@@ -9,13 +9,13 @@ interface Props {
     onChange: () => void;
 }
 
-const SIZE = 15;
+const SIZE = 14;
 const BORDER_RADIUS = 2;
 const UNCHECKED_BG = "transparent";
-const UNCHECKED_BORDER = "rgba(221, 226, 237, 0.66)";
-const CHECKED_BG = "rgba(90, 128, 197, 0.18)";
-const CHECKED_BORDER = "#7ea2dc";
-const CHECK_COLOR = "#cfe2ff";
+const UNCHECKED_BORDER = "rgba(206, 214, 230, 0.62)";
+const CHECKED_BG = "rgba(98, 135, 199, 0.14)";
+const CHECKED_BORDER = "#7b9fd5";
+const CHECK_COLOR = "#c8ddff";
 
 function VscCheckboxInner({ isChecked, isIndeterminate, onChange }: Props): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +72,7 @@ function VscCheckboxInner({ isChecked, isIndeterminate, onChange }: Props): Reac
                 }}
             >
                 {isChecked && !isIndeterminate && (
-                    <svg width="10" height="10" viewBox="0 0 12 12">
+                    <svg width="9" height="9" viewBox="0 0 12 12">
                         <path
                             d="M10 3.25L4.7 8.45 2.2 6"
                             fill="none"
@@ -86,7 +86,7 @@ function VscCheckboxInner({ isChecked, isIndeterminate, onChange }: Props): Reac
                 {isIndeterminate && (
                     <span
                         style={{
-                            width: 7,
+                            width: 6,
                             height: 2,
                             background: CHECK_COLOR,
                             borderRadius: 1,

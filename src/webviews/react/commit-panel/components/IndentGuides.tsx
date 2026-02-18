@@ -4,10 +4,10 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 
-const INDENT_STEP = 18;
-const INDENT_BASE = 24;
-const GUIDE_BASE = 31; // INDENT_BASE(24) + chevron_center(7) = 31
-const SECTION_GUIDE = 13; // section header: padding(6) + chevron_center(7) = 13
+const INDENT_STEP = 16;
+const INDENT_BASE = 20;
+const GUIDE_BASE = 26; // INDENT_BASE(20) + chevron_center(6) = 26
+const SECTION_GUIDE = 11; // section header: padding(5) + chevron_center(6) = 11
 
 interface Props {
     treeDepth: number;

@@ -72,4 +72,3 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         // no-op
     }
 }
-

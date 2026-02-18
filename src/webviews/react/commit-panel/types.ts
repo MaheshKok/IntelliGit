@@ -15,17 +15,25 @@ export type OutboundMessage =
     | { type: "getLastCommitMessage" }
     | { type: "rollback"; paths: string[] }
     | { type: "showDiff"; path: string }
-    | { type: "stashSave"; name: string; paths?: string[] }
-    | { type: "stashPop"; index: number }
-    | { type: "stashApply"; index: number }
-    | { type: "stashDrop"; index: number }
+    | { type: "shelveSave"; name?: string; paths?: string[] }
+    | { type: "shelfPop"; index: number }
+    | { type: "shelfApply"; index: number }
+    | { type: "shelfDelete"; index: number }
+    | { type: "shelfSelect"; index: number }
+    | { type: "showShelfDiff"; index: number; path: string }
     | { type: "openFile"; path: string }
     | { type: "deleteFile"; path: string }
     | { type: "showHistory"; path: string };
 
 /** Messages sent FROM the extension host TO the webview. */
 export type InboundMessage =
-    | { type: "update"; files: WorkingFile[]; stashes: StashEntry[] }
+    | {
+          type: "update";
+          files: WorkingFile[];
+          stashes: StashEntry[];
+          shelfFiles: WorkingFile[];
+          selectedShelfIndex: number | null;
+      }
     | { type: "lastCommitMessage"; message: string }
     | { type: "committed" }
     | { type: "error"; message: string };
@@ -34,6 +42,8 @@ export type InboundMessage =
 export interface CommitPanelState {
     files: WorkingFile[];
     stashes: StashEntry[];
+    shelfFiles: WorkingFile[];
+    selectedShelfIndex: number | null;
     commitMessage: string;
     isAmend: boolean;
     error: string | null;
@@ -41,7 +51,13 @@ export interface CommitPanelState {
 
 /** Actions dispatched by the message handler and UI events. */
 export type CommitPanelAction =
-    | { type: "SET_FILES_AND_STASHES"; files: WorkingFile[]; stashes: StashEntry[] }
+    | {
+          type: "SET_FILES_AND_STASHES";
+          files: WorkingFile[];
+          stashes: StashEntry[];
+          shelfFiles: WorkingFile[];
+          selectedShelfIndex: number | null;
+      }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
     | { type: "COMMITTED" }
     | { type: "SET_ERROR"; message: string }

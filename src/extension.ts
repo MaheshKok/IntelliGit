@@ -95,6 +95,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
+    context.subscriptions.push(
+        commitGraph.onCommitAction(async ({ action, hash, targetBranch }) => {
+            try {
+                await handleCommitContextAction({ action, hash, targetBranch });
+            } catch (error) {
+                const message = getErrorMessage(error);
+                console.error(`Commit action '${action}' failed:`, error);
+                vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+            }
+        }),
+    );
+
     // --- Helper ---
 
     const clearSelection = () => {
@@ -116,6 +128,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             (message.includes("pathspec") && message.includes("did not match")) ||
             code === "enoent"
         );
+    };
+
+    const isBranchNotFullyMergedError = (error: unknown): boolean =>
+        getErrorMessage(error).toLowerCase().includes("is not fully merged");
+
+    const getCheckedOutBranchName = async (): Promise<string | null> => {
+        try {
+            const head = (await executor.run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
+            if (head && head !== "HEAD") return head;
+        } catch {
+            // Fall back to cached branch metadata.
+        }
+        return getCurrentBranchName() ?? null;
+    };
+
+    const getLocalBranchMergeStatusForDelete = async (
+        branchName: string,
+        currentBranchName: string | null,
+    ): Promise<{ merged: boolean; target: string }> => {
+        const target = currentBranchName?.trim() || "HEAD";
+        try {
+            await executor.run(["merge-base", "--is-ancestor", branchName, target]);
+            return { merged: true, target };
+        } catch {
+            return { merged: false, target };
+        }
     };
 
     const getCurrentBranchName = () => currentBranches.find((b) => b.isCurrent)?.name;
@@ -151,6 +189,359 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return remotes[0] ?? null;
         } catch {
             return null;
+        }
+    };
+
+    const isHashMatch = (a: string, b: string): boolean => a.startsWith(b) || b.startsWith(a);
+    const isValidGitHash = (value: string): boolean => /^[0-9a-fA-F]{7,40}$/.test(value);
+    const isValidBranchName = (value: string): boolean =>
+        value.length > 0 && !value.startsWith("-") && /^[A-Za-z0-9._/-]+$/.test(value);
+
+    const isCommitUnpushed = async (hash: string): Promise<boolean> => {
+        const unpushed = await gitOps.getUnpushedCommitHashes();
+        return unpushed.some((h) => isHashMatch(h, hash));
+    };
+
+    const getCommitParentHashes = async (hash: string): Promise<string[]> => {
+        const raw = (await executor.run(["rev-list", "--parents", "-n", "1", hash])).trim();
+        const parts = raw.split(/\s+/).filter(Boolean);
+        return parts.slice(1);
+    };
+
+    const isMergeCommitHash = async (hash: string): Promise<boolean> =>
+        (await getCommitParentHashes(hash)).length > 1;
+
+    type MainlineParentPickResult =
+        | { kind: "notMerge" }
+        | { kind: "cancelled" }
+        | { kind: "selected"; parentNumber: number };
+
+    const pickMainlineParent = async (
+        hash: string,
+        actionLabel: string,
+    ): Promise<MainlineParentPickResult> => {
+        const parents = await getCommitParentHashes(hash);
+        if (parents.length <= 1) return { kind: "notMerge" };
+
+        const pick = await vscode.window.showQuickPick(
+            parents.map((parent, idx) => ({
+                label: `Parent ${idx + 1} (${parent.slice(0, 8)})`,
+                detail:
+                    idx === 0
+                        ? "Usually the target branch side of the merge."
+                        : "Alternate merge parent.",
+                parentNumber: idx + 1,
+            })),
+            {
+                title: `${actionLabel}: select mainline parent`,
+                placeHolder: "Pick the parent number to use with -m",
+            },
+        );
+
+        if (!pick) return { kind: "cancelled" };
+        return { kind: "selected", parentNumber: pick.parentNumber };
+    };
+
+    const getUndoCommitCount = async (hash: string): Promise<number> => {
+        const raw = (await executor.run(["rev-list", "--count", `${hash}^..HEAD`])).trim();
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    };
+
+    const getDefaultLocalBranch = (): string | null => {
+        const localNames = currentBranches.filter((b) => !b.isRemote).map((b) => b.name);
+        if (localNames.includes("main")) return "main";
+        if (localNames.includes("master")) return "master";
+        return localNames[0] ?? null;
+    };
+
+    const refreshAll = async (): Promise<void> => {
+        await vscode.commands.executeCommand("intelligit.refresh");
+    };
+
+    const handleCommitContextAction = async (params: {
+        action: string;
+        hash: string;
+        targetBranch?: string;
+    }): Promise<void> => {
+        const { action, hash, targetBranch } = params;
+        const validatedHash = hash.trim();
+        if (!isValidGitHash(validatedHash)) {
+            console.error("Blocked commit action due to invalid hash:", { action, hash });
+            vscode.window.showErrorMessage("Invalid commit hash received for commit action.");
+            return;
+        }
+        const short = validatedHash.slice(0, 8);
+
+        switch (action) {
+            case "copyRevision": {
+                await vscode.env.clipboard.writeText(validatedHash);
+                vscode.window.showInformationMessage(`Copied revision ${short}.`);
+                return;
+            }
+            case "createPatch": {
+                const defaultUri = vscode.Uri.file(path.join(repoRoot, `${short}.patch`));
+                const targetUri = await vscode.window.showSaveDialog({
+                    defaultUri,
+                    filters: { Patch: ["patch", "diff"] },
+                });
+                if (!targetUri) return;
+                const patchText = await executor.run([
+                    "format-patch",
+                    "-1",
+                    "--stdout",
+                    validatedHash,
+                ]);
+                await vscode.workspace.fs.writeFile(targetUri, Buffer.from(patchText, "utf8"));
+                vscode.window.showInformationMessage(
+                    `Patch created: ${path.basename(targetUri.fsPath)}`,
+                );
+                return;
+            }
+            case "cherryPick": {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Cherry-pick commit ${short}?`,
+                    { modal: true },
+                    "Cherry-pick",
+                );
+                if (confirm !== "Cherry-pick") return;
+
+                const mainlineParent = await pickMainlineParent(validatedHash, "Cherry-pick");
+                if (mainlineParent.kind === "cancelled") return;
+                const args =
+                    mainlineParent.kind === "notMerge"
+                        ? ["cherry-pick", validatedHash]
+                        : [
+                              "cherry-pick",
+                              "-m",
+                              String(mainlineParent.parentNumber),
+                              validatedHash,
+                          ];
+                await executor.run(args);
+                vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
+                await refreshAll();
+                return;
+            }
+            case "checkoutMain": {
+                const branchName = (targetBranch ?? getDefaultLocalBranch())?.trim();
+                if (!branchName) {
+                    vscode.window.showErrorMessage("No local branch available to checkout.");
+                    return;
+                }
+                if (!isValidBranchName(branchName)) {
+                    vscode.window.showErrorMessage("Invalid branch name for checkout.");
+                    return;
+                }
+                const knownBranchNames = new Set(currentBranches.map((b) => b.name));
+                if (!knownBranchNames.has(branchName)) {
+                    vscode.window.showErrorMessage(
+                        `Cannot checkout unknown branch '${branchName}'.`,
+                    );
+                    return;
+                }
+                await executor.run(["checkout", branchName]);
+                vscode.window.showInformationMessage(`Checked out ${branchName}.`);
+                await refreshAll();
+                return;
+            }
+            case "checkoutRevision": {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Checkout commit ${short}? This creates a detached HEAD state.`,
+                    { modal: true },
+                    "Checkout",
+                );
+                if (confirm !== "Checkout") return;
+                await executor.run(["checkout", validatedHash]);
+                vscode.window.showInformationMessage(`Checked out revision ${short}.`);
+                await refreshAll();
+                return;
+            }
+            case "resetCurrentToHere": {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Hard reset current branch to ${short}? This will reset the index and working tree and permanently discard any uncommitted changes.`,
+                    { modal: true },
+                    "Reset",
+                );
+                if (confirm !== "Reset") return;
+                await executor.run(["reset", "--hard", validatedHash]);
+                vscode.window.showInformationMessage(`Reset current branch to ${short}.`);
+                await refreshAll();
+                return;
+            }
+            case "revertCommit": {
+                const confirm = await vscode.window.showWarningMessage(
+                    `Revert commit ${short}?`,
+                    { modal: true },
+                    "Revert",
+                );
+                if (confirm !== "Revert") return;
+                const mainlineParent = await pickMainlineParent(validatedHash, "Revert");
+                if (mainlineParent.kind === "cancelled") return;
+                const args =
+                    mainlineParent.kind === "notMerge"
+                        ? ["revert", "--no-edit", validatedHash]
+                        : [
+                              "revert",
+                              "-m",
+                              String(mainlineParent.parentNumber),
+                              "--no-edit",
+                              validatedHash,
+                          ];
+                await executor.run(args);
+                vscode.window.showInformationMessage(`Reverted ${short}.`);
+                await refreshAll();
+                return;
+            }
+            case "newBranch": {
+                const branchName = await vscode.window.showInputBox({
+                    prompt: `New branch from ${short}`,
+                    placeHolder: "branch-name",
+                });
+                if (!branchName) return;
+                if (!isValidBranchName(branchName)) {
+                    vscode.window.showErrorMessage(
+                        `Invalid branch name '${branchName}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.`,
+                    );
+                    return;
+                }
+                await executor.run(["branch", branchName, validatedHash]);
+                vscode.window.showInformationMessage(`Created branch ${branchName} at ${short}.`);
+                await refreshAll();
+                return;
+            }
+            case "newTag": {
+                const tagName = await vscode.window.showInputBox({
+                    prompt: `New tag at ${short}`,
+                    placeHolder: "v1.0.0",
+                });
+                if (!tagName) return;
+                if (!isValidBranchName(tagName)) {
+                    vscode.window.showErrorMessage(
+                        `Invalid tag name '${tagName}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.`,
+                    );
+                    return;
+                }
+                await executor.run(["tag", tagName, validatedHash]);
+                vscode.window.showInformationMessage(`Created tag ${tagName}.`);
+                await refreshAll();
+                return;
+            }
+            case "undoCommit": {
+                if (!(await isCommitUnpushed(validatedHash))) {
+                    vscode.window.showErrorMessage(
+                        "Undo Commit is available only for unpushed commits.",
+                    );
+                    return;
+                }
+                if (await isMergeCommitHash(validatedHash)) {
+                    vscode.window.showErrorMessage(
+                        "Undo Commit is not available for merge commits.",
+                    );
+                    return;
+                }
+                const undoCount = await getUndoCommitCount(validatedHash);
+                const confirm = await vscode.window.showWarningMessage(
+                    `Undo ${undoCount} commit(s) up to ${short} (soft reset)?`,
+                    { modal: true },
+                    "Undo",
+                );
+                if (confirm !== "Undo") return;
+                await executor.run(["reset", "--soft", `${validatedHash}^`]);
+                vscode.window.showInformationMessage(
+                    `Undid ${undoCount} commit(s) up to ${short}.`,
+                );
+                await refreshAll();
+                return;
+            }
+            case "editCommitMessage": {
+                if (!(await isCommitUnpushed(validatedHash))) {
+                    vscode.window.showErrorMessage(
+                        "Edit Commit Message is available only for unpushed commits.",
+                    );
+                    return;
+                }
+                if (await isMergeCommitHash(validatedHash)) {
+                    vscode.window.showErrorMessage(
+                        "Edit Commit Message is not available for merge commits.",
+                    );
+                    return;
+                }
+
+                const headHash = (await executor.run(["rev-parse", "HEAD"])).trim();
+                if (isHashMatch(validatedHash, headHash)) {
+                    const currentMessage = (
+                        await executor.run(["log", "-1", "--format=%B"])
+                    ).trim();
+                    const nextMessage = await vscode.window.showInputBox({
+                        prompt: "Edit commit message",
+                        value: currentMessage,
+                    });
+                    if (!nextMessage) return;
+                    await executor.run(["commit", "--amend", "-m", nextMessage]);
+                    vscode.window.showInformationMessage("Commit message updated.");
+                    await refreshAll();
+                    return;
+                }
+
+                const terminal = vscode.window.createTerminal({
+                    name: "IntelliGit Reword Commit",
+                    cwd: repoRoot,
+                });
+                terminal.show();
+                terminal.sendText(`git rebase -i ${validatedHash}^`);
+                vscode.window.showInformationMessage(
+                    "Interactive rebase opened. Mark the commit as 'reword' in the todo list.",
+                );
+                return;
+            }
+            case "dropCommit": {
+                if (!(await isCommitUnpushed(validatedHash))) {
+                    vscode.window.showErrorMessage(
+                        "Drop Commit is available only for unpushed commits.",
+                    );
+                    return;
+                }
+                if (await isMergeCommitHash(validatedHash)) {
+                    vscode.window.showErrorMessage(
+                        "Drop Commit is not available for merge commits.",
+                    );
+                    return;
+                }
+                const confirm = await vscode.window.showWarningMessage(
+                    `Drop commit ${short} from current branch history?`,
+                    { modal: true },
+                    "Drop",
+                );
+                if (confirm !== "Drop") return;
+                await executor.run(["rebase", "--onto", `${validatedHash}^`, validatedHash, "HEAD"]);
+                vscode.window.showInformationMessage(`Dropped ${short} from history.`);
+                await refreshAll();
+                return;
+            }
+            case "interactiveRebaseFromHere": {
+                if (!(await isCommitUnpushed(validatedHash))) {
+                    vscode.window.showErrorMessage(
+                        "Interactive Rebase from Here is available only for unpushed commits.",
+                    );
+                    return;
+                }
+                if (await isMergeCommitHash(validatedHash)) {
+                    vscode.window.showErrorMessage(
+                        "Interactive Rebase from Here is not available for merge commits.",
+                    );
+                    return;
+                }
+                const terminal = vscode.window.createTerminal({
+                    name: "IntelliGit Interactive Rebase",
+                    cwd: repoRoot,
+                });
+                terminal.show();
+                terminal.sendText(`git rebase -i ${validatedHash}^`);
+                vscode.window.showInformationMessage(`Opened interactive rebase from ${short}.`);
+                return;
+            }
+            default:
+                return;
         }
     };
 
@@ -247,42 +638,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 } catch (err) {
                     const msg = err instanceof Error ? err.message : String(err);
                     vscode.window.showErrorMessage(`Checkout and rebase failed: ${msg}`);
-                }
-            },
-        },
-        {
-            id: "intelligit.compareWithCurrent",
-            handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
-                try {
-                    const diff = await executor.run(["diff", "--stat", `HEAD...${name}`]);
-                    const doc = await vscode.workspace.openTextDocument({
-                        content: diff || "No differences.",
-                        language: "diff",
-                    });
-                    await vscode.window.showTextDocument(doc);
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    vscode.window.showErrorMessage(`Compare failed: ${msg}`);
-                }
-            },
-        },
-        {
-            id: "intelligit.showDiffWithWorkingTree",
-            handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
-                try {
-                    const diff = await executor.run(["diff", name]);
-                    const doc = await vscode.workspace.openTextDocument({
-                        content: diff || "No differences.",
-                        language: "diff",
-                    });
-                    await vscode.window.showTextDocument(doc);
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    vscode.window.showErrorMessage(`Diff failed: ${msg}`);
                 }
             },
         },
@@ -401,23 +756,72 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
+                const isRemote = !!item.branch?.isRemote;
+                const checkedOutBranch = isRemote ? null : await getCheckedOutBranchName();
+
+                if (!isRemote && checkedOutBranch && checkedOutBranch === name) {
+                    await vscode.window.showWarningMessage(
+                        `Cannot delete '${name}' because it is currently checked out. Switch to another branch and try again.`,
+                        { modal: true },
+                        "OK",
+                    );
+                    return;
+                }
+
+                let confirmLabel = "Delete";
+                let confirmMessage = `Delete branch ${name}?`;
+                if (!isRemote) {
+                    const mergeStatus = await getLocalBranchMergeStatusForDelete(
+                        name,
+                        checkedOutBranch,
+                    );
+                    if (!mergeStatus.merged) {
+                        const targetLabel =
+                            mergeStatus.target === "HEAD"
+                                ? "the current branch"
+                                : `'${mergeStatus.target}'`;
+                        confirmLabel = "Delete Anyway";
+                        confirmMessage =
+                            `Branch ${name} has unmerged commits relative to ${targetLabel}. Delete anyway?\n` +
+                            `This may permanently lose commits not reachable from ${targetLabel}.`;
+                    }
+                }
+
                 const confirm = await vscode.window.showWarningMessage(
-                    `Delete branch ${name}?`,
+                    confirmMessage,
                     { modal: true },
-                    "Delete",
+                    confirmLabel,
                 );
-                if (confirm !== "Delete") return;
+                if (confirm !== confirmLabel) return;
                 try {
-                    if (item.branch?.isRemote && item.branch?.remote) {
+                    if (isRemote && item.branch?.remote) {
                         const remoteBranch = name.split("/").slice(1).join("/");
                         await executor.run(["push", item.branch.remote, "--delete", remoteBranch]);
                     } else {
-                        await executor.run(["branch", "-d", name]);
+                        const forceDelete = confirmLabel === "Delete Anyway";
+                        await executor.run(["branch", forceDelete ? "-D" : "-d", name]);
                     }
                     vscode.window.showInformationMessage(`Deleted ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    if (!isRemote && isBranchNotFullyMergedError(err)) {
+                        const forceConfirm = await vscode.window.showWarningMessage(
+                            `Branch '${name}' has unmerged commits. Do you still want to delete it?\nThis may permanently lose commits not reachable from the current branch.`,
+                            { modal: true },
+                            "Delete Anyway",
+                        );
+                        if (forceConfirm !== "Delete Anyway") return;
+                        try {
+                            await executor.run(["branch", "-D", name]);
+                            vscode.window.showInformationMessage(`Deleted ${name}`);
+                            await vscode.commands.executeCommand("intelligit.refresh");
+                        } catch (forceErr) {
+                            const msg = getErrorMessage(forceErr);
+                            vscode.window.showErrorMessage(`Delete failed: ${msg}`);
+                        }
+                        return;
+                    }
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Delete failed: ${msg}`);
                 }
             },
@@ -503,14 +907,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             "intelligit.fileShelve",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
-                const name = await vscode.window.showInputBox({
-                    prompt: "Shelf name",
-                    value: "Shelved changes",
-                });
-                if (name === undefined) return;
                 try {
-                    await gitOps.stashSave(name || "Shelved changes", [ctx.filePath]);
-                    vscode.window.showInformationMessage("Changes shelved.");
+                    await gitOps.shelveSave([ctx.filePath]);
+                    vscode.window.showInformationMessage(`Shelved ${ctx.filePath}.`);
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error("Failed to shelve file:", error);

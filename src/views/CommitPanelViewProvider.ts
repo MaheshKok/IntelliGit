@@ -32,6 +32,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private files: WorkingFile[] = [];
     private stashes: StashEntry[] = [];
+    private selectedShelfIndex: number | null = null;
+    private shelfFiles: WorkingFile[] = [];
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
@@ -75,10 +77,30 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     private async refreshData(): Promise<void> {
         this.files = await this.gitOps.getStatus();
-        this.stashes = await this.gitOps.stashList();
+        this.stashes = await this.gitOps.listShelved();
+
+        const hasSelected =
+            this.selectedShelfIndex !== null &&
+            this.stashes.some((entry) => entry.index === this.selectedShelfIndex);
+        if (!hasSelected) {
+            this.selectedShelfIndex = this.stashes.length > 0 ? this.stashes[0].index : null;
+        }
+
+        if (this.selectedShelfIndex !== null) {
+            this.shelfFiles = await this.gitOps.getShelvedFiles(this.selectedShelfIndex);
+        } else {
+            this.shelfFiles = [];
+        }
+
         const uniquePaths = new Set(this.files.map((f) => f.path));
         this._onDidChangeFileCount.fire(uniquePaths.size);
-        this.postToWebview({ type: "update", files: this.files, stashes: this.stashes });
+        this.postToWebview({
+            type: "update",
+            files: this.files,
+            stashes: this.stashes,
+            shelfFiles: this.shelfFiles,
+            selectedShelfIndex: this.selectedShelfIndex,
+        });
     }
 
     private async handleMessage(msg: { type: string; [key: string]: unknown }): Promise<void> {
@@ -191,31 +213,35 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
 
+            case "shelveSave":
             case "stashSave": {
-                const name = msg.name as string;
+                const name = (msg.name as string | undefined) || "Shelved changes";
                 const paths = msg.paths as string[] | undefined;
-                await this.gitOps.stashSave(name || "Shelved changes", paths);
+                await this.gitOps.shelveSave(paths, name);
                 vscode.window.showInformationMessage("Changes shelved.");
                 await this.refreshData();
                 break;
             }
 
+            case "shelfPop":
             case "stashPop": {
                 const index = msg.index as number;
-                await this.gitOps.stashPop(index);
+                await this.gitOps.shelvePop(index);
                 vscode.window.showInformationMessage("Unshelved changes.");
                 await this.refreshData();
                 break;
             }
 
+            case "shelfApply":
             case "stashApply": {
                 const index = msg.index as number;
-                await this.gitOps.stashApply(index);
+                await this.gitOps.shelveApply(index);
                 vscode.window.showInformationMessage("Applied shelved changes.");
                 await this.refreshData();
                 break;
             }
 
+            case "shelfDelete":
             case "stashDrop": {
                 const index = msg.index as number;
                 const confirm = await vscode.window.showWarningMessage(
@@ -224,9 +250,39 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     "Delete",
                 );
                 if (confirm !== "Delete") return;
-                await this.gitOps.stashDrop(index);
+                await this.gitOps.shelveDelete(index);
                 vscode.window.showInformationMessage("Shelved change deleted.");
                 await this.refreshData();
+                break;
+            }
+
+            case "shelfSelect": {
+                const index = msg.index as number;
+                this.selectedShelfIndex = Number.isFinite(index) ? index : null;
+                if (this.selectedShelfIndex !== null) {
+                    this.shelfFiles = await this.gitOps.getShelvedFiles(this.selectedShelfIndex);
+                } else {
+                    this.shelfFiles = [];
+                }
+                this.postToWebview({
+                    type: "update",
+                    files: this.files,
+                    stashes: this.stashes,
+                    shelfFiles: this.shelfFiles,
+                    selectedShelfIndex: this.selectedShelfIndex,
+                });
+                break;
+            }
+
+            case "showShelfDiff": {
+                const index = msg.index as number;
+                const filePath = msg.path as string;
+                const patch = await this.gitOps.getShelvedFilePatch(index, filePath);
+                const doc = await vscode.workspace.openTextDocument({
+                    content: patch || `No shelved diff found for ${filePath}.`,
+                    language: "diff",
+                });
+                await vscode.window.showTextDocument(doc, { preview: true });
                 break;
             }
 

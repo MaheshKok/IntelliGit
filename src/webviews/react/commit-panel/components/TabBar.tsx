@@ -15,12 +15,13 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
         <Tabs variant="unstyled" display="flex" flexDirection="column" h="100%">
             <TabList borderBottom="1px solid var(--vscode-panel-border, #444)" flexShrink={0}>
                 <Tab
-                    px="16px"
+                    px="14px"
                     py="6px"
+                    minH="32px"
                     fontSize="12px"
                     fontWeight={600}
                     color="var(--vscode-foreground)"
-                    opacity={0.6}
+                    opacity={0.75}
                     borderBottom="2px solid transparent"
                     _selected={{
                         opacity: 1,
@@ -31,12 +32,13 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
                     Commit
                 </Tab>
                 <Tab
-                    px="16px"
+                    px="14px"
                     py="6px"
+                    minH="32px"
                     fontSize="12px"
                     fontWeight={600}
                     color="var(--vscode-foreground)"
-                    opacity={0.6}
+                    opacity={0.75}
                     borderBottom="2px solid transparent"
                     _selected={{
                         opacity: 1,

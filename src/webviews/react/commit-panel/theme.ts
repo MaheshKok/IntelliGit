@@ -1,5 +1,4 @@
-// Chakra UI v2 theme mapped to VS Code CSS custom properties.
-// Provides consistent theming that adapts to light/dark VS Code themes.
+// Chakra UI v2 theme provides consistent theming that adapts to light/dark VS Code themes.
 
 import { extendTheme } from "@chakra-ui/react";
 
@@ -7,6 +6,11 @@ const theme = extendTheme({
     config: {
         initialColorMode: "system",
         useSystemColorMode: true,
+    },
+    fonts: {
+        heading: "var(--vscode-font-family)",
+        body: "var(--vscode-font-family)",
+        mono: "var(--vscode-editor-font-family, var(--vscode-font-family))",
     },
     styles: {
         global: {
@@ -30,32 +34,38 @@ const theme = extendTheme({
         Button: {
             variants: {
                 primary: {
-                    bg: "#4a6edb",
+                    bg: "#4f6fd6",
                     color: "#fff",
                     fontWeight: 600,
                     borderRadius: "4px",
-                    _hover: { bg: "#5a7ee8" },
+                    minH: "24px",
+                    h: "24px",
+                    px: "10px",
+                    _hover: { bg: "#5d7fe6" },
                 },
                 secondary: {
-                    bg: "transparent",
+                    bg: "rgba(255,255,255,0.04)",
                     color: "var(--vscode-foreground)",
-                    border: "1px solid #6b6b6b",
+                    border: "1px solid rgba(176, 186, 205, 0.5)",
                     borderRadius: "4px",
+                    minH: "24px",
+                    h: "24px",
+                    px: "10px",
                     _hover: {
-                        bg: "rgba(255,255,255,0.06)",
-                        borderColor: "#999",
+                        bg: "rgba(255,255,255,0.08)",
+                        borderColor: "rgba(202, 212, 231, 0.7)",
                     },
                 },
                 toolbarGhost: {
                     bg: "none",
-                    color: "#abb2bf",
+                    color: "var(--vscode-icon-foreground, #b9c0cf)",
                     borderRadius: "3px",
-                    padding: "4px 6px",
+                    padding: "2px 4px",
                     minW: "auto",
-                    h: "auto",
+                    h: "22px",
                     _hover: {
-                        bg: "var(--vscode-list-hoverBackground)",
-                        color: "#d4d8e0",
+                        bg: "rgba(255,255,255,0.06)",
+                        color: "var(--vscode-foreground)",
                     },
                 },
             },

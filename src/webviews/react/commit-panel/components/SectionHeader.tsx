@@ -28,16 +28,19 @@ export function SectionHeader({
         <Flex
             align="center"
             gap="4px"
-            px="6px"
+            px="5px"
             py="2px"
+            mx="4px"
+            my="1px"
+            borderRadius="5px"
             cursor="pointer"
             userSelect="none"
             fontWeight={700}
-            fontSize="11px"
-            textTransform="uppercase"
-            letterSpacing="0.3px"
+            fontSize="12px"
             lineHeight="20px"
             position="relative"
+            color="var(--vscode-foreground)"
+            bg="rgba(121, 140, 183, 0.26)"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
@@ -46,8 +49,8 @@ export function SectionHeader({
         >
             <Box
                 as="span"
-                fontSize="11px"
-                w="14px"
+                fontSize="10px"
+                w="13px"
                 textAlign="center"
                 flexShrink={0}
                 opacity={0.7}
@@ -65,12 +68,11 @@ export function SectionHeader({
             <Box as="span">{label}</Box>
             <Box
                 as="span"
-                ml="auto"
                 color="var(--vscode-descriptionForeground)"
                 fontWeight="normal"
                 fontSize="11px"
             >
-                {count}
+                {count} {count === 1 ? "file" : "files"}
             </Box>
         </Flex>
     );

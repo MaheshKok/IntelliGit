@@ -8,9 +8,7 @@ import { FileTypeIcon } from "./commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "./commit-panel/components/StatusBadge";
 import theme from "./commit-panel/theme";
 
-type InboundMessage =
-    | { type: "setCommitDetail"; detail: CommitDetail }
-    | { type: "clear" };
+type InboundMessage = { type: "setCommitDetail"; detail: CommitDetail } | { type: "clear" };
 
 type OutboundMessage = { type: "ready" };
 
@@ -141,7 +139,11 @@ function App(): React.ReactElement {
                 }}
             />
 
-            <Box flexShrink={0} h={detailCollapsed ? "30px" : `${bottomHeight}px`} overflow="hidden">
+            <Box
+                flexShrink={0}
+                h={detailCollapsed ? "30px" : `${bottomHeight}px`}
+                overflow="hidden"
+            >
                 <Box
                     px="8px"
                     py="4px"
@@ -168,7 +170,11 @@ function App(): React.ReactElement {
                                 {detail.body}
                             </Box>
                         )}
-                        <Box color="var(--vscode-descriptionForeground)" fontSize="12px" lineHeight="1.5">
+                        <Box
+                            color="var(--vscode-descriptionForeground)"
+                            fontSize="12px"
+                            lineHeight="1.5"
+                        >
                             <span
                                 style={{
                                     fontFamily: "var(--vscode-editor-font-family, monospace)",
@@ -179,7 +185,11 @@ function App(): React.ReactElement {
                             </span>{" "}
                             by {detail.author}
                         </Box>
-                        <Box color="var(--vscode-descriptionForeground)" fontSize="12px" lineHeight="1.5">
+                        <Box
+                            color="var(--vscode-descriptionForeground)"
+                            fontSize="12px"
+                            lineHeight="1.5"
+                        >
                             {detail.email} on {formatDateTime(detail.date)}
                         </Box>
                         <Box

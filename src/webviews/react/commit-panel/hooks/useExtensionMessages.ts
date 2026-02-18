@@ -8,6 +8,8 @@ import type { CommitPanelState, CommitPanelAction, InboundMessage } from "../typ
 const initialState: CommitPanelState = {
     files: [],
     stashes: [],
+    shelfFiles: [],
+    selectedShelfIndex: null,
     commitMessage: "",
     isAmend: false,
     error: null,
@@ -16,7 +18,14 @@ const initialState: CommitPanelState = {
 function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPanelState {
     switch (action.type) {
         case "SET_FILES_AND_STASHES":
-            return { ...state, files: action.files, stashes: action.stashes, error: null };
+            return {
+                ...state,
+                files: action.files,
+                stashes: action.stashes,
+                shelfFiles: action.shelfFiles,
+                selectedShelfIndex: action.selectedShelfIndex,
+                error: null,
+            };
         case "SET_LAST_COMMIT_MESSAGE":
             return { ...state, commitMessage: action.message };
         case "COMMITTED":
@@ -44,6 +53,8 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         type: "SET_FILES_AND_STASHES",
                         files: msg.files,
                         stashes: msg.stashes,
+                        shelfFiles: msg.shelfFiles,
+                        selectedShelfIndex: msg.selectedShelfIndex,
                     });
                     break;
                 case "lastCommitMessage":

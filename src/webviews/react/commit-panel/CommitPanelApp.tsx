@@ -80,7 +80,13 @@ function App(): React.ReactElement {
                         onCommitAndPush={handleCommitAndPush}
                     />
                 }
-                shelfContent={<ShelfTab stashes={state.stashes} />}
+                shelfContent={
+                    <ShelfTab
+                        stashes={state.stashes}
+                        shelfFiles={state.shelfFiles}
+                        selectedIndex={state.selectedShelfIndex}
+                    />
+                }
             />
         </Box>
     );
