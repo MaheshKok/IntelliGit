@@ -7,6 +7,11 @@ const theme = extendTheme({
         initialColorMode: "system",
         useSystemColorMode: true,
     },
+    fonts: {
+        heading: "var(--vscode-font-family)",
+        body: "var(--vscode-font-family)",
+        mono: "var(--vscode-editor-font-family, var(--vscode-font-family))",
+    },
     styles: {
         global: {
             "*, *::before, *::after": {
