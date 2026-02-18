@@ -185,12 +185,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const isMergeCommitHash = async (hash: string): Promise<boolean> =>
         (await getCommitParentHashes(hash)).length > 1;
 
+    type MainlineParentPickResult =
+        | { kind: "notMerge" }
+        | { kind: "cancelled" }
+        | { kind: "selected"; parentNumber: number };
+
     const pickMainlineParent = async (
         hash: string,
         actionLabel: string,
-    ): Promise<number | null | undefined> => {
+    ): Promise<MainlineParentPickResult> => {
         const parents = await getCommitParentHashes(hash);
-        if (parents.length <= 1) return undefined;
+        if (parents.length <= 1) return { kind: "notMerge" };
 
         const pick = await vscode.window.showQuickPick(
             parents.map((parent, idx) => ({
@@ -207,8 +212,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         );
 
-        if (!pick) return null;
-        return pick.parentNumber;
+        if (!pick) return { kind: "cancelled" };
+        return { kind: "selected", parentNumber: pick.parentNumber };
+    };
+
+    const getUndoCommitCount = async (hash: string): Promise<number> => {
+        const raw = (await executor.run(["rev-list", "--count", `${hash}^..HEAD`])).trim();
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
     };
 
     const getDefaultLocalBranch = (): string | null => {
@@ -270,11 +281,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 if (confirm !== "Cherry-pick") return;
 
                 const mainlineParent = await pickMainlineParent(validatedHash, "Cherry-pick");
-                if (mainlineParent === null) return;
+                if (mainlineParent.kind === "cancelled") return;
                 const args =
-                    mainlineParent === undefined
+                    mainlineParent.kind === "notMerge"
                         ? ["cherry-pick", validatedHash]
-                        : ["cherry-pick", "-m", String(mainlineParent), validatedHash];
+                        : [
+                              "cherry-pick",
+                              "-m",
+                              String(mainlineParent.parentNumber),
+                              validatedHash,
+                          ];
                 await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
                 await refreshAll();
@@ -327,19 +343,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return;
             }
             case "revertCommit": {
-                if (await isMergeCommitHash(validatedHash)) {
-                    vscode.window.showErrorMessage(
-                        "Revert Commit is not available for merge commits.",
-                    );
-                    return;
-                }
                 const confirm = await vscode.window.showWarningMessage(
                     `Revert commit ${short}?`,
                     { modal: true },
                     "Revert",
                 );
                 if (confirm !== "Revert") return;
-                await executor.run(["revert", "--no-edit", validatedHash]);
+                const mainlineParent = await pickMainlineParent(validatedHash, "Revert");
+                if (mainlineParent.kind === "cancelled") return;
+                const args =
+                    mainlineParent.kind === "notMerge"
+                        ? ["revert", "--no-edit", validatedHash]
+                        : [
+                              "revert",
+                              "-m",
+                              String(mainlineParent.parentNumber),
+                              "--no-edit",
+                              validatedHash,
+                          ];
+                await executor.run(args);
                 vscode.window.showInformationMessage(`Reverted ${short}.`);
                 await refreshAll();
                 return;
@@ -379,14 +401,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     );
                     return;
                 }
+                const undoCount = await getUndoCommitCount(validatedHash);
                 const confirm = await vscode.window.showWarningMessage(
-                    `Undo commits up to ${short} (soft reset)?`,
+                    `Undo ${undoCount} commit(s) up to ${short} (soft reset)?`,
                     { modal: true },
                     "Undo",
                 );
                 if (confirm !== "Undo") return;
                 await executor.run(["reset", "--soft", `${validatedHash}^`]);
-                vscode.window.showInformationMessage(`Undo complete up to ${short}.`);
+                vscode.window.showInformationMessage(
+                    `Undid ${undoCount} commit(s) up to ${short}.`,
+                );
                 await refreshAll();
                 return;
             }
@@ -431,16 +456,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 return;
             }
-            case "dropCommits": {
+            case "dropCommit": {
                 if (!(await isCommitUnpushed(validatedHash))) {
                     vscode.window.showErrorMessage(
-                        "Drop Commits is available only for unpushed commits.",
+                        "Drop Commit is available only for unpushed commits.",
                     );
                     return;
                 }
                 if (await isMergeCommitHash(validatedHash)) {
                     vscode.window.showErrorMessage(
-                        "Drop Commits is not available for merge commits.",
+                        "Drop Commit is not available for merge commits.",
                     );
                     return;
                 }

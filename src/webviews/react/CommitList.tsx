@@ -389,7 +389,7 @@ function getCommitMenuItems(
         action: "resetCurrentToHere",
         icon: iconReset(),
     });
-    items.push({ label: "Revert Commit", action: "revertCommit", disabled: isMergeCommit });
+    items.push({ label: "Revert Commit", action: "revertCommit" });
     items.push({
         label: "Undo Commit...",
         action: "undoCommit",
@@ -403,8 +403,8 @@ function getCommitMenuItems(
         disabled: isPushed || isMergeCommit,
     });
     items.push({
-        label: "Drop Commits",
-        action: "dropCommits",
+        label: "Drop Commit",
+        action: "dropCommit",
         disabled: isPushed || isMergeCommit,
     });
     items.push({
