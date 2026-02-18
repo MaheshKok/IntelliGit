@@ -50,4 +50,3 @@ function createNonce(): string {
     for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
     return r;
 }
-

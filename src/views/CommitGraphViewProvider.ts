@@ -32,6 +32,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }>();
     readonly onBranchAction = this._onBranchAction.event;
 
+    private readonly _onCommitAction = new vscode.EventEmitter<{
+        action: string;
+        hash: string;
+        targetBranch?: string;
+    }>();
+    readonly onCommitAction = this._onCommitAction.event;
+
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
@@ -79,6 +86,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         branchName: msg.branchName,
                     });
                     break;
+                case "commitAction":
+                    this._onCommitAction.fire({
+                        action: msg.action,
+                        hash: msg.hash,
+                        targetBranch: msg.targetBranch,
+                    });
+                    break;
             }
         });
     }
@@ -122,6 +136,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 commits,
                 hasMore: commits.length >= this.PAGE_SIZE,
                 append: false,
+                unpushedHashes: await this.gitOps.getUnpushedCommitHashes(),
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -148,6 +163,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 commits: newCommits,
                 hasMore: newCommits.length >= this.PAGE_SIZE,
                 append: true,
+                unpushedHashes: await this.gitOps.getUnpushedCommitHashes(),
             });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -180,5 +196,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onCommitSelected.dispose();
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
+        this._onCommitAction.dispose();
     }
 }

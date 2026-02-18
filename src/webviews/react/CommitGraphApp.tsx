@@ -15,7 +15,8 @@ type OutboundMessage =
     | { type: "filterText"; text: string }
     | { type: "loadMore" }
     | { type: "filterBranch"; branch: string | null }
-    | { type: "branchAction"; action: string; branchName: string };
+    | { type: "branchAction"; action: string; branchName: string }
+    | { type: "commitAction"; action: string; hash: string; targetBranch?: string };
 
 const vscode = getVsCodeApi<OutboundMessage, unknown>();
 const MIN_BRANCH_WIDTH = 80;
@@ -30,6 +31,7 @@ function App(): React.ReactElement {
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
+    const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const dragging = useRef(false);
     const loadingMore = useRef(false);
 
@@ -54,6 +56,7 @@ function App(): React.ReactElement {
                         }
                     }
                     setHasMore(data.hasMore);
+                    setUnpushedHashes(new Set(data.unpushedHashes ?? []));
                     break;
                 case "setBranches":
                     setBranches(data.branches);
@@ -96,6 +99,20 @@ function App(): React.ReactElement {
     const handleBranchAction = useCallback((action: string, branchName: string) => {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
+
+    const handleCommitAction = useCallback(
+        (action: string, hash: string, targetBranch?: string) => {
+            vscode.postMessage({ type: "commitAction", action, hash, targetBranch });
+        },
+        [],
+    );
+
+    const defaultCheckoutBranch = (() => {
+        const localBranches = branches.filter((b) => !b.isRemote).map((b) => b.name);
+        if (localBranches.includes("main")) return "main";
+        if (localBranches.includes("master")) return "master";
+        return localBranches[0] ?? null;
+    })();
 
     // Resizable divider via mouse events on document
     const onDividerMouseDown = useCallback(
@@ -161,9 +178,12 @@ function App(): React.ReactElement {
                     selectedHash={selectedHash}
                     filterText={filterText}
                     hasMore={hasMore}
+                    unpushedHashes={unpushedHashes}
+                    defaultCheckoutBranch={defaultCheckoutBranch}
                     onSelectCommit={handleSelectCommit}
                     onFilterText={handleFilterText}
                     onLoadMore={handleLoadMore}
+                    onCommitAction={handleCommitAction}
                 />
             </div>
         </div>

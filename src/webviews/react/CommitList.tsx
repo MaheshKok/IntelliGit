@@ -2,20 +2,24 @@
 // Layout: [Graph lanes] [Commit message + inline ref badges] [Author] [Date].
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
-import React, { useRef, useEffect, useMemo } from "react";
+import React, { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import type { Commit } from "../../types";
 import { computeGraph, LANE_WIDTH, DOT_RADIUS, ROW_HEIGHT } from "./graph";
 import { formatDateTime } from "./shared/date";
 import { REF_BADGE_COLORS } from "./shared/tokens";
+import { ContextMenu, type MenuItem } from "./shared/components/ContextMenu";
 
 interface Props {
     commits: Commit[];
     selectedHash: string | null;
     filterText: string;
     hasMore: boolean;
+    unpushedHashes: Set<string>;
+    defaultCheckoutBranch: string | null;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
     onLoadMore: () => void;
+    onCommitAction: (action: string, hash: string, targetBranch?: string) => void;
 }
 
 export function CommitList({
@@ -23,11 +27,19 @@ export function CommitList({
     selectedHash,
     filterText,
     hasMore,
+    unpushedHashes,
+    defaultCheckoutBranch,
     onSelectCommit,
     onFilterText,
     onLoadMore,
+    onCommitAction,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [contextMenu, setContextMenu] = useState<{
+        x: number;
+        y: number;
+        commit: Commit;
+    } | null>(null);
 
     const graphRows = useMemo(() => computeGraph(commits), [commits]);
     const maxCols = useMemo(() => Math.max(1, ...graphRows.map((r) => r.numColumns)), [graphRows]);
@@ -130,6 +142,33 @@ export function CommitList({
         }
     }, [graphRows, graphWidth, commits.length]);
 
+    const isUnpushedCommit = useCallback(
+        (hash: string): boolean => {
+            for (const unpushed of unpushedHashes) {
+                if (hash.startsWith(unpushed) || unpushed.startsWith(hash)) return true;
+            }
+            return false;
+        },
+        [unpushedHashes],
+    );
+
+    const handleRowContextMenu = useCallback((e: React.MouseEvent, commit: Commit) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY, commit });
+    }, []);
+
+    const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+    const handleContextMenuAction = useCallback(
+        (action: string) => {
+            if (!contextMenu) return;
+            const target =
+                action === "checkoutMain" ? (defaultCheckoutBranch ?? undefined) : undefined;
+            onCommitAction(action, contextMenu.commit.hash, target);
+        },
+        [contextMenu, defaultCheckoutBranch, onCommitAction],
+    );
+
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
             {/* Filter bar */}
@@ -212,6 +251,7 @@ export function CommitList({
                         <div
                             key={commit.hash}
                             onClick={() => onSelectCommit(commit.hash)}
+                            onContextMenu={(e) => handleRowContextMenu(e, commit)}
                             style={{
                                 height: ROW_HEIGHT,
                                 display: "flex",
@@ -293,7 +333,73 @@ export function CommitList({
                     )}
                 </div>
             </div>
+            {contextMenu && (
+                <ContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    items={getCommitMenuItems(
+                        isUnpushedCommit(contextMenu.commit.hash),
+                        defaultCheckoutBranch,
+                    )}
+                    onSelect={handleContextMenuAction}
+                    onClose={closeContextMenu}
+                    minWidth={380}
+                />
+            )}
         </div>
+    );
+}
+
+function getCommitMenuItems(isUnpushed: boolean, defaultCheckoutBranch: string | null): MenuItem[] {
+    const isPushed = !isUnpushed;
+
+    const items: MenuItem[] = [
+        { label: "Copy Revision Number", action: "copyRevision", icon: iconCopy() },
+        { label: "Create Patch...", action: "createPatch", icon: iconPatch() },
+        { label: "Cherry-Pick", action: "cherryPick", icon: iconCherry() },
+        { separator: true, label: "", action: "sep-checkout" },
+    ];
+
+    items.push({
+        label: defaultCheckoutBranch ? `Checkout '${defaultCheckoutBranch}'` : "Checkout",
+        action: "checkoutMain",
+        disabled: !defaultCheckoutBranch,
+    });
+    items.push({ label: "Checkout Revision", action: "checkoutRevision" });
+
+    items.push({ separator: true, label: "", action: "sep-reset" });
+    items.push({
+        label: "Reset Current Branch to Here...",
+        action: "resetCurrentToHere",
+        icon: iconReset(),
+    });
+    items.push({ label: "Revert Commit", action: "revertCommit" });
+    items.push({
+        label: "Undo Commit...",
+        action: "undoCommit",
+        disabled: isPushed,
+    });
+
+    items.push({ separator: true, label: "", action: "sep-history" });
+    items.push({
+        label: "Edit Commit Message...",
+        action: "editCommitMessage",
+        disabled: isPushed,
+    });
+    items.push({ label: "Drop Commits", action: "dropCommits", disabled: isPushed });
+    items.push({
+        label: "Interactively Rebase from Here...",
+        action: "interactiveRebaseFromHere",
+        disabled: isPushed,
+    });
+
+    items.push({ separator: true, label: "", action: "sep-create" });
+    items.push({ label: "New Branch...", action: "newBranch" });
+    items.push({ label: "New Tag...", action: "newTag" });
+
+    // Ensure stable unique keys for separators.
+    return items.map((item, idx) =>
+        item.separator ? { ...item, action: `${item.action}-${idx}` } : item,
     );
 }
 
@@ -334,5 +440,49 @@ function RefLabel({ name }: { name: string }) {
         >
             {name}
         </span>
+    );
+}
+
+function iconCopy(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+            <path
+                fill="currentColor"
+                d="M3 2h8a1 1 0 0 1 1 1v1h-1V3H3v8H2V3a1 1 0 0 1 1-1zm2 3h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm0 1v8h8V6H5z"
+            />
+        </svg>
+    );
+}
+
+function iconPatch(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+            <path
+                fill="currentColor"
+                d="M6.5 1a2.5 2.5 0 0 0 0 5h1V4h1v2h1a2.5 2.5 0 1 0 0-5h-1v2h-1V1h-1zm-4 7h4v1h-4V8zm0 3h7v1h-7v-1zm6 1.5a2.5 2.5 0 1 0 5 0 2.5 2.5 0 0 0-5 0zm1 0a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0z"
+            />
+        </svg>
+    );
+}
+
+function iconCherry(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+            <path
+                fill="currentColor"
+                d="M8.2 3.2a2.2 2.2 0 1 0-2.4-2.2h1a1.2 1.2 0 1 1 1.2 1.2H6.9c-2.6 0-4.7 2-4.7 4.6 0 2.2 1.8 4 4 4a3.9 3.9 0 0 0 2-7.2V3.2zm-2 6.6a2.9 2.9 0 1 1 0-5.8 2.9 2.9 0 0 1 0 5.8zm4.6-5.2a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8z"
+            />
+        </svg>
+    );
+}
+
+function iconReset(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+            <path
+                fill="currentColor"
+                d="M8 2a6 6 0 1 1-4.8 2.4L1 6.6V2h4.6L4 3.6A5 5 0 1 0 8 3v-1z"
+            />
+        </svg>
     );
 }

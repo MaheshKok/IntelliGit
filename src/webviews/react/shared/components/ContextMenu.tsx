@@ -6,6 +6,9 @@ export interface MenuItem {
     action: string;
     separator?: boolean;
     icon?: React.ReactNode;
+    disabled?: boolean;
+    hint?: string;
+    submenu?: boolean;
 }
 
 interface Props {
@@ -27,6 +30,7 @@ export function ContextMenu({
 }: Props): React.ReactElement {
     const ref = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ left: x, top: y });
+    const menuBodyPaddingX = 6;
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -79,14 +83,13 @@ export function ContextMenu({
                 left: pos.left,
                 top: pos.top,
                 zIndex: 9999,
-                background:
-                    "var(--vscode-sideBar-background, var(--vscode-editor-background, #252526))",
-                border: "1px solid var(--vscode-menu-border, #454545)",
-                borderRadius: 5,
-                padding: "4px 0",
+                background: "var(--vscode-menu-background, #3a4254)",
+                border: "1px solid var(--vscode-menu-border, rgba(255,255,255,0.14))",
+                borderRadius: 9,
+                padding: "5px 0",
                 minWidth,
                 boxShadow:
-                    "0 14px 32px rgba(0,0,0,0.58), 0 4px 12px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.05)",
+                    "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}
         >
             {items.map((item, i) => {
@@ -96,8 +99,9 @@ export function ContextMenu({
                             key={`sep-${i}`}
                             style={{
                                 height: 1,
-                                margin: "4px 8px",
-                                background: "var(--vscode-menu-separatorBackground, #454545)",
+                                margin: `5px ${menuBodyPaddingX + 4}px`,
+                                background:
+                                    "var(--vscode-menu-separatorBackground, rgba(255,255,255,0.12))",
                             }}
                         />
                     );
@@ -105,30 +109,79 @@ export function ContextMenu({
                 return (
                     <div
                         key={item.action}
-                        onClick={() => handleItemClick(item.action)}
-                        onMouseEnter={(e) => {
-                            (e.currentTarget as HTMLDivElement).style.background =
-                                "var(--vscode-menu-selectionBackground, #094771)";
-                            (e.currentTarget as HTMLDivElement).style.color =
-                                "var(--vscode-menu-selectionForeground, #fff)";
-                        }}
-                        onMouseLeave={(e) => {
-                            (e.currentTarget as HTMLDivElement).style.background = "";
-                            (e.currentTarget as HTMLDivElement).style.color = "";
-                        }}
+                        onClick={item.disabled ? undefined : () => handleItemClick(item.action)}
+                        onMouseEnter={
+                            item.disabled
+                                ? undefined
+                                : (e) => {
+                                      (e.currentTarget as HTMLDivElement).style.background =
+                                          "var(--vscode-menu-selectionBackground, #094771)";
+                                      (e.currentTarget as HTMLDivElement).style.color =
+                                          "var(--vscode-menu-selectionForeground, #fff)";
+                                  }
+                        }
+                        onMouseLeave={
+                            item.disabled
+                                ? undefined
+                                : (e) => {
+                                      (e.currentTarget as HTMLDivElement).style.background = "";
+                                      (e.currentTarget as HTMLDivElement).style.color = "";
+                                  }
+                        }
                         style={{
                             display: "flex",
                             alignItems: "center",
                             gap: 8,
-                            padding: "4px 20px 4px 10px",
-                            cursor: "pointer",
-                            fontSize: 12,
-                            color: "var(--vscode-menu-foreground, #ccc)",
+                            minHeight: 29,
+                            padding: `4px 10px 4px 8px`,
+                            margin: `0 ${menuBodyPaddingX}px`,
+                            borderRadius: 4,
+                            cursor: item.disabled ? "default" : "pointer",
+                            fontSize: 13,
+                            lineHeight: "18px",
+                            color: item.disabled
+                                ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"
+                                : "var(--vscode-menu-foreground, #d8dbe2)",
                             whiteSpace: "nowrap",
+                            opacity: item.disabled ? 0.72 : 1,
                         }}
                     >
-                        {item.icon && <span style={{ width: 14, height: 14 }}>{item.icon}</span>}
-                        {item.label}
+                        <span
+                            style={{
+                                width: 18,
+                                height: 16,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                                opacity: item.icon ? 0.95 : 0,
+                            }}
+                        >
+                            {item.icon}
+                        </span>
+                        <span style={{ flex: 1 }}>{item.label}</span>
+                        <span
+                            style={{
+                                width: 58,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                flexShrink: 0,
+                                fontSize: 11,
+                                opacity: 0.7,
+                                color: item.disabled
+                                    ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"
+                                    : "var(--vscode-descriptionForeground, #9ea4b3)",
+                            }}
+                        >
+                            {item.submenu ? (
+                                <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+                                    <path fill="currentColor" d="M6 4l4 4-4 4z" />
+                                </svg>
+                            ) : (
+                                (item.hint ?? "")
+                            )}
+                        </span>
                     </div>
                 );
             })}

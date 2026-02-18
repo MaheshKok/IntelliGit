@@ -115,6 +115,21 @@ export class GitOps {
         return commits;
     }
 
+    async getUnpushedCommitHashes(): Promise<string[]> {
+        try {
+            // Commits reachable from local branches but not from any remote-tracking ref.
+            // This works even when the current branch has no upstream configured.
+            const out = await this.executor.run(["rev-list", "--branches", "--not", "--remotes"]);
+            return out
+                .trim()
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean);
+        } catch {
+            return [];
+        }
+    }
+
     async getCommitDetail(hash: string): Promise<CommitDetail> {
         const format = ["%H", "%h", "%s", "%b", "%an", "%ae", "%aI", "%P", "%D"].join(FIELD_SEP);
 
