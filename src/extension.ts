@@ -806,14 +806,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             "intelligit.fileShelve",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
-                const name = await vscode.window.showInputBox({
-                    prompt: "Shelf name",
-                    value: "Shelved changes",
-                });
-                if (name === undefined) return;
                 try {
-                    await gitOps.stashSave(name || "Shelved changes", [ctx.filePath]);
-                    vscode.window.showInformationMessage("Changes shelved.");
+                    await gitOps.shelveSave([ctx.filePath]);
+                    vscode.window.showInformationMessage(`Shelved ${ctx.filePath}.`);
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error("Failed to shelve file:", error);

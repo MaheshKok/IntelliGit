@@ -382,9 +382,9 @@ export class GitOps {
         await this.executor.run(["clean", "-fd"]);
     }
 
-    // --- Stash (Shelf) operations ---
+    // --- Shelf operations (implemented via git stash) ---
 
-    async stashSave(message: string, paths?: string[]): Promise<string> {
+    async shelveSave(paths?: string[], message: string = "Shelved changes"): Promise<string> {
         const args = ["stash", "push", "-m", message];
         if (paths && paths.length > 0) {
             args.push("--", ...paths);
@@ -392,15 +392,15 @@ export class GitOps {
         return this.executor.run(args);
     }
 
-    async stashPop(index: number = 0): Promise<string> {
+    async shelvePop(index: number = 0): Promise<string> {
         return this.executor.run(["stash", "pop", `stash@{${index}}`]);
     }
 
-    async stashApply(index: number = 0): Promise<string> {
+    async shelveApply(index: number = 0): Promise<string> {
         return this.executor.run(["stash", "apply", `stash@{${index}}`]);
     }
 
-    async stashList(): Promise<StashEntry[]> {
+    async listShelved(): Promise<StashEntry[]> {
         try {
             const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
             const entries: StashEntry[] = [];
@@ -421,8 +421,102 @@ export class GitOps {
         }
     }
 
-    async stashDrop(index: number): Promise<string> {
+    async shelveDelete(index: number): Promise<string> {
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
+    }
+
+    async getShelvedFiles(index: number): Promise<WorkingFile[]> {
+        const ref = `stash@{${index}}`;
+        const files = new Map<string, WorkingFile>();
+
+        const upsert = (path: string, status: WorkingFile["status"] = "M"): WorkingFile => {
+            const existing = files.get(path);
+            if (existing) return existing;
+            const created: WorkingFile = {
+                path,
+                status,
+                staged: false,
+                additions: 0,
+                deletions: 0,
+            };
+            files.set(path, created);
+            return created;
+        };
+
+        try {
+            const nameStatus = await this.executor.run([
+                "stash",
+                "show",
+                "--name-status",
+                "--format=",
+                ref,
+            ]);
+            for (const line of nameStatus.trim().split("\n")) {
+                if (!line.trim()) continue;
+                const parts = line.split("\t");
+                if (parts.length < 2) continue;
+                const code = parts[0].trim();
+                const status = mapStatusCode(code[0]) ?? "M";
+                const path =
+                    code.startsWith("R") || code.startsWith("C")
+                        ? (parts[2]?.trim() ?? parts[1]?.trim())
+                        : parts[1]?.trim();
+                if (!path) continue;
+                upsert(path, status);
+            }
+        } catch {
+            // Keep empty; we'll still try numstat.
+        }
+
+        try {
+            const numstat = await this.executor.run([
+                "stash",
+                "show",
+                "--numstat",
+                "--format=",
+                ref,
+            ]);
+            for (const line of numstat.trim().split("\n")) {
+                if (!line.trim()) continue;
+                const parts = line.split("\t");
+                if (parts.length < 3) continue;
+                const adds = parts[0] === "-" ? 0 : Number(parts[0]) || 0;
+                const dels = parts[1] === "-" ? 0 : Number(parts[1]) || 0;
+                const path = parts[2].trim();
+                if (!path) continue;
+                const entry = upsert(path);
+                entry.additions = adds;
+                entry.deletions = dels;
+            }
+        } catch {
+            // If numstat fails, keep status-only entries.
+        }
+
+        return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path));
+    }
+
+    async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
+        return this.executor.run(["stash", "show", "-p", `stash@{${index}}`, "--", filePath]);
+    }
+
+    async stashSave(message: string, paths?: string[]): Promise<string> {
+        return this.shelveSave(paths, message);
+    }
+
+    async stashPop(index: number = 0): Promise<string> {
+        return this.shelvePop(index);
+    }
+
+    async stashApply(index: number = 0): Promise<string> {
+        return this.shelveApply(index);
+    }
+
+    async stashList(): Promise<StashEntry[]> {
+        return this.listShelved();
+    }
+
+    async stashDrop(index: number): Promise<string> {
+        return this.shelveDelete(index);
     }
 
     async getFileHistory(filePath: string, maxCount: number = 50): Promise<string> {

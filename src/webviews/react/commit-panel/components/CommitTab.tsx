@@ -61,12 +61,9 @@ export function CommitTab({
     }, [vscode, checkedPaths]);
 
     const handleShelve = useCallback(() => {
-        const name = prompt("Shelf name:", "Shelved changes");
-        if (name === null) return;
         const selected = Array.from(checkedPaths);
         vscode.postMessage({
-            type: "stashSave",
-            name,
+            type: "shelveSave",
             paths: selected.length > 0 ? selected : undefined,
         });
     }, [vscode, checkedPaths]);
