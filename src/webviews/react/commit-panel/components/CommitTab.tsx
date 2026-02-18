@@ -115,7 +115,7 @@ export function CommitTab({
 
             {/* Drag handle */}
             <Box
-                flex="0 0 5px"
+                flex="0 0 4px"
                 cursor="row-resize"
                 bg="var(--vscode-panel-border, #444)"
                 position="relative"
@@ -127,10 +127,10 @@ export function CommitTab({
                     left: "50%",
                     top: "50%",
                     transform: "translate(-50%, -50%)",
-                    w: "30px",
+                    w: "26px",
                     h: "2px",
                     bg: "var(--vscode-descriptionForeground)",
-                    opacity: 0.4,
+                    opacity: 0.35,
                     borderRadius: "1px",
                 }}
             />

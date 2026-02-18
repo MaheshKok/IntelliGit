@@ -18,9 +18,9 @@ function StatusBadgeInner({ status }: Props): React.ReactElement {
         <Box
             as="span"
             color={color}
-            fontSize="11px"
+            fontSize="10px"
             fontWeight={600}
-            w="14px"
+            w="12px"
             textAlign="center"
             flexShrink={0}
             title={label}

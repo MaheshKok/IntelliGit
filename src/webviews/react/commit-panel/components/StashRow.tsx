@@ -17,14 +17,14 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
     return (
         <Flex
             align="center"
-            gap="6px"
-            px="8px"
-            py="4px"
-            lineHeight="22px"
-            fontSize="12px"
+            gap="4px"
+            px="6px"
+            py="2px"
+            lineHeight="18px"
+            fontSize="11.5px"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
         >
-            <Box as="svg" w="16px" h="16px" flexShrink={0} opacity={0.7} viewBox="0 0 16 16">
+            <Box as="svg" w="14px" h="14px" flexShrink={0} opacity={0.7} viewBox="0 0 16 16">
                 <path
                     fill="currentColor"
                     d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2z"
@@ -33,7 +33,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
             <Box flex={1} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                 {stash.message}
             </Box>
-            <Box color="var(--vscode-descriptionForeground)" fontSize="11px" flexShrink={0}>
+            <Box color="var(--vscode-descriptionForeground)" fontSize="10.5px" flexShrink={0}>
                 {formatDateTime(stash.date)}
             </Box>
             <Tooltip label="Apply" fontSize="11px">
@@ -50,8 +50,8 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             />
                         </svg>
                     }
-                    minW="50px"
-                    h="20px"
+                    minW="48px"
+                    h="18px"
                     px="6px"
                 >
                     Apply
@@ -72,8 +72,8 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             />
                         </svg>
                     }
-                    minW="44px"
-                    h="20px"
+                    minW="42px"
+                    h="18px"
                     px="6px"
                 >
                     Pop
@@ -93,8 +93,8 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             />
                         </svg>
                     }
-                    minW="58px"
-                    h="20px"
+                    minW="54px"
+                    h="18px"
                     px="6px"
                 >
                     Delete

@@ -30,16 +30,24 @@ function FileRowInner({
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = file.path.split("/").pop() ?? file.path;
     const dir = file.path.split("/").slice(0, -1).join("/");
-    const fnColor = GIT_STATUS_COLORS[file.status] ?? "var(--vscode-foreground)";
+    const fnColor =
+        file.status === "D"
+            ? "var(--vscode-disabledForeground)"
+            : file.status === "M"
+              ? "#d2bf8a"
+              : file.status === "A"
+                ? "#8fc7a1"
+                : (GIT_STATUS_COLORS[file.status] ?? "var(--vscode-foreground)");
 
     return (
         <Flex
             align="center"
-            gap="4px"
+            gap="3px"
             pl={`${padLeft}px`}
-            pr="6px"
+            pr="5px"
+            minH="20px"
             lineHeight="20px"
-            fontSize="13px"
+            fontSize="12px"
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -55,7 +63,7 @@ function FileRowInner({
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
-            <Box as="span" w="13px" flexShrink={0} />
+            <Box as="span" w="12px" flexShrink={0} />
             <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
             <FileTypeIcon filename={fileName} status={file.status} />
             <Box
@@ -70,17 +78,22 @@ function FileRowInner({
                 {fileName}
             </Box>
             {!groupByDir && dir && (
-                <Box as="span" color="var(--vscode-descriptionForeground)" fontSize="11px" ml="4px">
+                <Box
+                    as="span"
+                    color="var(--vscode-descriptionForeground)"
+                    fontSize="10.5px"
+                    ml="3px"
+                >
                     {dir}
                 </Box>
             )}
             {(file.additions > 0 || file.deletions > 0) && (
-                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                <Box as="span" ml="auto" fontSize="10.5px" flexShrink={0}>
                     {file.additions > 0 && (
                         <Box
                             as="span"
                             color="var(--vscode-gitDecoration-addedResourceForeground, #2ea043)"
-                            mr="4px"
+                            mr="3px"
                         >
                             +{file.additions}
                         </Box>

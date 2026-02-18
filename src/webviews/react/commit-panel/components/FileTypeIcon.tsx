@@ -26,10 +26,10 @@ function FileTypeIconInner({ filename, status }: Props): React.ReactElement {
             display="inline-flex"
             alignItems="center"
             justifyContent="center"
-            w="16px"
-            h="16px"
+            w="14px"
+            h="14px"
             flexShrink={0}
-            fontSize="7px"
+            fontSize="6.5px"
             fontWeight={700}
             borderRadius="2px"
             fontFamily="monospace"

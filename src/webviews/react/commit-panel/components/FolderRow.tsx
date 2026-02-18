@@ -34,13 +34,15 @@ function FolderRowInner({
     return (
         <Flex
             align="center"
-            gap="4px"
+            gap="3px"
             pl={`${padLeft}px`}
-            pr="6px"
+            pr="5px"
+            minH="20px"
             lineHeight="20px"
-            fontSize="13px"
+            fontSize="12px"
             cursor="pointer"
             position="relative"
+            whiteSpace="nowrap"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
@@ -51,8 +53,8 @@ function FolderRowInner({
             <IndentGuides treeDepth={depth} />
             <Box
                 as="span"
-                fontSize="11px"
-                w="14px"
+                fontSize="10px"
+                w="12px"
                 textAlign="center"
                 flexShrink={0}
                 opacity={0.7}
@@ -67,17 +69,24 @@ function FolderRowInner({
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}
             />
-            <Box as="svg" w="16px" h="16px" flexShrink={0} viewBox="0 0 16 16">
+            <Box as="svg" w="14px" h="14px" flexShrink={0} viewBox="0 0 16 16">
                 <path
-                    fill="#c09553"
+                    fill="#b89d68"
                     d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"
                 />
             </Box>
-            <Box as="span" flex={1} opacity={0.85}>
+            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.92}>
                 {name}
             </Box>
-            <Box as="span" ml="auto" fontSize="11px" color="var(--vscode-descriptionForeground)">
-                {fileCount}
+            <Box
+                as="span"
+                ml="6px"
+                flexShrink={0}
+                whiteSpace="nowrap"
+                fontSize="11px"
+                color="var(--vscode-descriptionForeground)"
+            >
+                {fileCount} {fileCount === 1 ? "file" : "files"}
             </Box>
         </Flex>
     );
