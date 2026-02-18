@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git experience for VS Code: commit graph, branch tree, commit details, and file change explorer.",
-    "version": "0.3",
+    "version": "0.3.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -106,16 +106,6 @@
                 "category": "IntelliGit"
             },
             {
-                "command": "intelligit.compareWithCurrent",
-                "title": "Compare with Current",
-                "category": "IntelliGit"
-            },
-            {
-                "command": "intelligit.showDiffWithWorkingTree",
-                "title": "Show Diff with Working Tree",
-                "category": "IntelliGit"
-            },
-            {
                 "command": "intelligit.rebaseCurrentOnto",
                 "title": "Rebase Current onto Selected",
                 "category": "IntelliGit"
@@ -204,16 +194,6 @@
                     "command": "intelligit.checkoutAndRebase",
                     "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
                     "group": "1_checkout@3"
-                },
-                {
-                    "command": "intelligit.compareWithCurrent",
-                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
-                    "group": "2_compare@1"
-                },
-                {
-                    "command": "intelligit.showDiffWithWorkingTree",
-                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
-                    "group": "2_compare@2"
                 },
                 {
                     "command": "intelligit.rebaseCurrentOnto",
@@ -328,6 +308,7 @@
         "vitest": "^1.2.0"
     },
     "dependencies": {
+        "react-icons": "^5.5.0",
         "simple-git": "^3.22.0"
     }
 }

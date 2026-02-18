@@ -21,7 +21,7 @@ type OutboundMessage =
 const vscode = getVsCodeApi<OutboundMessage, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
-const DEFAULT_BRANCH_WIDTH = 200;
+const DEFAULT_BRANCH_WIDTH = 260;
 
 function App(): React.ReactElement {
     const [commits, setCommits] = useState<Commit[]>([]);

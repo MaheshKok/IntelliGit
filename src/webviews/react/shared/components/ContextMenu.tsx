@@ -30,7 +30,9 @@ export function ContextMenu({
 }: Props): React.ReactElement {
     const ref = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ left: x, top: y });
-    const menuBodyPaddingX = 6;
+    const menuBodyPaddingX = 4;
+    const hasAnyIcon = items.some((item) => !item.separator && !!item.icon);
+    const hasAnyTrailing = items.some((item) => !item.separator && (!!item.hint || !!item.submenu));
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -99,7 +101,7 @@ export function ContextMenu({
                             key={`sep-${i}`}
                             style={{
                                 height: 1,
-                                margin: `5px ${menuBodyPaddingX + 4}px`,
+                                margin: `5px ${menuBodyPaddingX + 2}px`,
                                 background:
                                     "var(--vscode-menu-separatorBackground, rgba(255,255,255,0.12))",
                             }}
@@ -131,9 +133,9 @@ export function ContextMenu({
                         style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 8,
+                            gap: hasAnyIcon ? 8 : 0,
                             minHeight: 29,
-                            padding: `4px 10px 4px 8px`,
+                            padding: `4px ${hasAnyTrailing ? 10 : 4}px 4px ${hasAnyIcon ? 8 : 4}px`,
                             margin: `0 ${menuBodyPaddingX}px`,
                             borderRadius: 4,
                             cursor: item.disabled ? "default" : "pointer",
@@ -146,42 +148,46 @@ export function ContextMenu({
                             opacity: item.disabled ? 0.72 : 1,
                         }}
                     >
-                        <span
-                            style={{
-                                width: 18,
-                                height: 16,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                                opacity: item.icon ? 0.95 : 0,
-                            }}
-                        >
-                            {item.icon}
-                        </span>
+                        {hasAnyIcon && (
+                            <span
+                                style={{
+                                    width: 16,
+                                    height: 16,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                    opacity: item.icon ? 0.95 : 0,
+                                }}
+                            >
+                                {item.icon}
+                            </span>
+                        )}
                         <span style={{ flex: 1 }}>{item.label}</span>
-                        <span
-                            style={{
-                                width: 58,
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "flex-end",
-                                flexShrink: 0,
-                                fontSize: 11,
-                                opacity: 0.7,
-                                color: item.disabled
-                                    ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"
-                                    : "var(--vscode-descriptionForeground, #9ea4b3)",
-                            }}
-                        >
-                            {item.submenu ? (
-                                <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
-                                    <path fill="currentColor" d="M6 4l4 4-4 4z" />
-                                </svg>
-                            ) : (
-                                (item.hint ?? "")
-                            )}
-                        </span>
+                        {hasAnyTrailing && (
+                            <span
+                                style={{
+                                    width: 58,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "flex-end",
+                                    flexShrink: 0,
+                                    fontSize: 11,
+                                    opacity: 0.7,
+                                    color: item.disabled
+                                        ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"
+                                        : "var(--vscode-descriptionForeground, #9ea4b3)",
+                                }}
+                            >
+                                {item.submenu ? (
+                                    <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
+                                        <path fill="currentColor" d="M6 4l4 4-4 4z" />
+                                    </svg>
+                                ) : (
+                                    (item.hint ?? "")
+                                )}
+                            </span>
+                        )}
                     </div>
                 );
             })}

@@ -554,42 +554,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         },
         {
-            id: "intelligit.compareWithCurrent",
-            handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
-                try {
-                    const diff = await executor.run(["diff", "--stat", `HEAD...${name}`]);
-                    const doc = await vscode.workspace.openTextDocument({
-                        content: diff || "No differences.",
-                        language: "diff",
-                    });
-                    await vscode.window.showTextDocument(doc);
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    vscode.window.showErrorMessage(`Compare failed: ${msg}`);
-                }
-            },
-        },
-        {
-            id: "intelligit.showDiffWithWorkingTree",
-            handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
-                try {
-                    const diff = await executor.run(["diff", name]);
-                    const doc = await vscode.workspace.openTextDocument({
-                        content: diff || "No differences.",
-                        language: "diff",
-                    });
-                    await vscode.window.showTextDocument(doc);
-                } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
-                    vscode.window.showErrorMessage(`Diff failed: ${msg}`);
-                }
-            },
-        },
-        {
             id: "intelligit.rebaseCurrentOnto",
             handler: async (item) => {
                 const name = item.branch?.name;

@@ -3,10 +3,11 @@
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
 import React, { useState, useMemo, useCallback } from "react";
+import { LuSearch, LuX } from "react-icons/lu";
 import type { Branch } from "../../types";
 import { ContextMenu, type MenuItem } from "./shared/components/ContextMenu";
 
-const TREE_INDENT_STEP = 16;
+const TREE_INDENT_STEP = 18;
 
 interface Props {
     branches: Branch[];
@@ -64,6 +65,37 @@ function q(name: string): string {
     return `'${trim(name)}'`;
 }
 
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function renderHighlightedLabel(label: string, needle: string): React.ReactNode {
+    if (!needle) return label;
+    const regex = new RegExp(`(${escapeRegExp(needle)})`, "ig");
+    const parts = label.split(regex);
+    return (
+        <>
+            {parts.map((part, idx) =>
+                part.toLowerCase() === needle.toLowerCase() ? (
+                    <mark
+                        key={`${part}-${idx}`}
+                        style={{
+                            background: "rgba(227, 196, 93, 0.95)",
+                            color: "#1b1b1b",
+                            borderRadius: 3,
+                            padding: "0 1px",
+                        }}
+                    >
+                        {part}
+                    </mark>
+                ) : (
+                    <React.Fragment key={`${part}-${idx}`}>{part}</React.Fragment>
+                ),
+            )}
+        </>
+    );
+}
+
 function getMenuItems(branch: Branch, currentBranchName: string): MenuItem[] {
     const cur = q(currentBranchName);
     const sel = q(branch.name);
@@ -71,8 +103,6 @@ function getMenuItems(branch: Branch, currentBranchName: string): MenuItem[] {
     if (branch.isCurrent) {
         return [
             { label: `New Branch from ${cur}...`, action: "newBranchFrom" },
-            { label: "", action: "", separator: true },
-            { label: "Show Diff with Working Tree", action: "showDiffWithWorkingTree" },
             { label: "", action: "", separator: true },
             { label: "Update", action: "updateBranch" },
             { label: "Push...", action: "pushBranch" },
@@ -86,9 +116,6 @@ function getMenuItems(branch: Branch, currentBranchName: string): MenuItem[] {
             { label: "Checkout", action: "checkout" },
             { label: `New Branch from ${sel}...`, action: "newBranchFrom" },
             { label: `Checkout and Rebase onto ${cur}`, action: "checkoutAndRebase" },
-            { label: "", action: "", separator: true },
-            { label: `Compare with ${cur}`, action: "compareWithCurrent" },
-            { label: "Show Diff with Working Tree", action: "showDiffWithWorkingTree" },
             { label: "", action: "", separator: true },
             { label: `Rebase ${cur} onto ${sel}`, action: "rebaseCurrentOnto" },
             { label: `Merge ${sel} into ${cur}`, action: "mergeIntoCurrent" },
@@ -104,9 +131,6 @@ function getMenuItems(branch: Branch, currentBranchName: string): MenuItem[] {
         { label: "Checkout", action: "checkout" },
         { label: `New Branch from ${sel}...`, action: "newBranchFrom" },
         { label: `Checkout and Rebase onto ${cur}`, action: "checkoutAndRebase" },
-        { label: "", action: "", separator: true },
-        { label: `Compare with ${cur}`, action: "compareWithCurrent" },
-        { label: "Show Diff with Working Tree", action: "showDiffWithWorkingTree" },
         { label: "", action: "", separator: true },
         { label: `Rebase ${cur} onto ${sel}`, action: "rebaseCurrentOnto" },
         { label: `Merge ${sel} into ${cur}`, action: "mergeIntoCurrent" },
@@ -127,9 +151,23 @@ export function BranchColumn({
     onSelectBranch,
     onBranchAction,
 }: Props): React.ReactElement {
-    const current = branches.find((b) => b.isCurrent);
-    const locals = useMemo(() => branches.filter((b) => !b.isRemote), [branches]);
-    const remotes = useMemo(() => branches.filter((b) => b.isRemote), [branches]);
+    const [branchFilter, setBranchFilter] = useState("");
+    const filterNeedle = branchFilter.trim().toLowerCase();
+    const actualCurrent = useMemo(() => branches.find((b) => b.isCurrent), [branches]);
+
+    const filteredBranches = useMemo(() => {
+        if (!filterNeedle) return branches;
+        return branches.filter((b) => b.name.toLowerCase().includes(filterNeedle));
+    }, [branches, filterNeedle]);
+
+    const current = useMemo(() => {
+        if (!actualCurrent) return undefined;
+        if (!filterNeedle) return actualCurrent;
+        return actualCurrent.name.toLowerCase().includes(filterNeedle) ? actualCurrent : undefined;
+    }, [actualCurrent, filterNeedle]);
+
+    const locals = useMemo(() => filteredBranches.filter((b) => !b.isRemote), [filteredBranches]);
+    const remotes = useMemo(() => filteredBranches.filter((b) => b.isRemote), [filteredBranches]);
 
     const localTree = useMemo(() => buildPrefixTree(locals), [locals]);
 
@@ -178,7 +216,15 @@ export function BranchColumn({
     const handleBranchContextMenu = useCallback((e: React.MouseEvent, branch: Branch) => {
         e.preventDefault();
         e.stopPropagation();
-        setContextMenu({ x: e.clientX, y: e.clientY, branch });
+        const row = e.currentTarget as HTMLElement;
+        const rowRect = row.getBoundingClientRect();
+        const firstIcon = row.querySelector("svg");
+        const iconAnchorX = firstIcon
+            ? firstIcon.getBoundingClientRect().right + 2
+            : rowRect.left + 20;
+        const anchorX = Math.max(iconAnchorX, e.clientX + 2);
+        const anchorY = rowRect.top + 1;
+        setContextMenu({ x: anchorX, y: anchorY, branch });
     }, []);
 
     const handleContextMenuAction = useCallback(
@@ -207,17 +253,74 @@ export function BranchColumn({
                     background: var(--vscode-list-hoverBackground) !important;
                 }
                 .branch-row.selected {
-                    background: var(--vscode-list-activeSelectionBackground) !important;
+                    background: rgba(120, 138, 179, 0.32) !important;
                     color: var(--vscode-list-activeSelectionForeground) !important;
+                    border-radius: 7px;
                 }
                 .branch-row.selected:hover {
-                    background: var(--vscode-list-activeSelectionBackground) !important;
+                    background: rgba(120, 138, 179, 0.32) !important;
                     color: var(--vscode-list-activeSelectionForeground) !important;
                 }
             `}</style>
+            <div
+                style={{
+                    minHeight: 22,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "1px 8px",
+                    color: "#77d4cf",
+                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                }}
+            >
+                <LuSearch size={16} style={{ opacity: 0.95, flexShrink: 0 }} />
+                <input
+                    type="text"
+                    aria-label="Search branches"
+                    placeholder="Search branches"
+                    value={branchFilter}
+                    onChange={(e) => setBranchFilter(e.target.value)}
+                    style={{
+                        flex: 1,
+                        minWidth: 0,
+                        height: 18,
+                        borderRadius: 3,
+                        border: "1px solid var(--vscode-input-border, rgba(255,255,255,0.15))",
+                        background: "var(--vscode-input-background, rgba(0,0,0,0.22))",
+                        color: "var(--vscode-input-foreground, #d8dbe2)",
+                        padding: "0 6px",
+                        fontSize: 12,
+                        outline: "none",
+                    }}
+                />
+                {branchFilter.length > 0 && (
+                    <button
+                        type="button"
+                        aria-label="Clear branch search"
+                        title="Clear"
+                        onClick={() => setBranchFilter("")}
+                        style={{
+                            width: 16,
+                            height: 16,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "var(--vscode-descriptionForeground, #9ea4b3)",
+                            background: "transparent",
+                            border: "none",
+                            padding: 0,
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            lineHeight: "14px",
+                        }}
+                    >
+                        <LuX size={14} />
+                    </button>
+                )}
+            </div>
             {/* HEAD */}
             {current && (
-                <div style={{ padding: "4px 0" }}>
+                <div style={{ padding: "2px 10px 1px" }}>
                     <div
                         className={`branch-row${selectedBranch === null ? " selected" : ""}`}
                         onClick={() => onSelectBranch(null)}
@@ -225,10 +328,12 @@ export function BranchColumn({
                         style={{
                             ...rowStyle,
                             fontWeight: 600,
+                            fontSize: "13px",
+                            paddingLeft: 8,
                         }}
                     >
-                        <GitBranchIcon color="#4CAF50" />
-                        <span>HEAD &rarr; {current.name}</span>
+                        <TagIcon />
+                        <span style={{ opacity: 0.95 }}>HEAD ({current.name})</span>
                     </div>
                 </div>
             )}
@@ -240,7 +345,7 @@ export function BranchColumn({
                 onToggle={() => toggleSection("local")}
             />
             {expandedSections.has("local") && (
-                <div>
+                <div style={{ paddingLeft: 4 }}>
                     {localTree.map((node, index) => (
                         <TreeNodeRow
                             key={`local-${node.branch?.name ?? node.label}-${index}`}
@@ -251,6 +356,7 @@ export function BranchColumn({
                             onSelectBranch={onSelectBranch}
                             onToggleFolder={toggleFolder}
                             onContextMenu={handleBranchContextMenu}
+                            filterNeedle={filterNeedle}
                             prefix="local"
                         />
                     ))}
@@ -264,7 +370,7 @@ export function BranchColumn({
                 onToggle={() => toggleSection("remote")}
             />
             {expandedSections.has("remote") && (
-                <div>
+                <div style={{ paddingLeft: 4 }}>
                     {Array.from(remoteGroups.entries()).map(([remote, group]) => {
                         const remoteKey = `remote-${remote}`;
                         const isExpanded = expandedFolders.has(remoteKey);
@@ -290,6 +396,7 @@ export function BranchColumn({
                                             onSelectBranch={onSelectBranch}
                                             onToggleFolder={toggleFolder}
                                             onContextMenu={handleBranchContextMenu}
+                                            filterNeedle={filterNeedle}
                                             prefix={`remote/${remote}`}
                                         />
                                     ))}
@@ -299,12 +406,24 @@ export function BranchColumn({
                 </div>
             )}
 
+            {filterNeedle && locals.length === 0 && remotes.length === 0 && !current && (
+                <div
+                    style={{
+                        padding: "6px 12px",
+                        fontSize: 11,
+                        opacity: 0.7,
+                    }}
+                >
+                    No matching branches
+                </div>
+            )}
+
             {/* Context menu */}
             {contextMenu && (
                 <ContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    items={getMenuItems(contextMenu.branch, current?.name ?? "HEAD")}
+                    items={getMenuItems(contextMenu.branch, actualCurrent?.name ?? "HEAD")}
                     minWidth={340}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}
@@ -322,6 +441,7 @@ function TreeNodeRow({
     onSelectBranch,
     onToggleFolder,
     onContextMenu,
+    filterNeedle,
     prefix,
 }: {
     node: TreeNode;
@@ -331,6 +451,7 @@ function TreeNodeRow({
     onSelectBranch: (name: string | null) => void;
     onToggleFolder: (key: string) => void;
     onContextMenu: (e: React.MouseEvent, branch: Branch) => void;
+    filterNeedle: string;
     prefix: string;
 }): React.ReactElement {
     const isFolder = node.children.length > 0 && !node.branch;
@@ -347,7 +468,7 @@ function TreeNodeRow({
                 >
                     <ChevronIcon expanded={isExpanded} />
                     <FolderIcon />
-                    <span>{node.label}</span>
+                    <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
                 </div>
                 {isExpanded &&
                     node.children.map((child, index) => (
@@ -360,6 +481,7 @@ function TreeNodeRow({
                             onSelectBranch={onSelectBranch}
                             onToggleFolder={onToggleFolder}
                             onContextMenu={onContextMenu}
+                            filterNeedle={filterNeedle}
                             prefix={folderKey}
                         />
                     ))}
@@ -368,6 +490,8 @@ function TreeNodeRow({
     }
 
     const isCurrent = node.branch?.isCurrent;
+    const isMainLike =
+        node.branch && (node.branch.name === "main" || node.branch.name === "master");
     const isSelected = selectedBranch === node.fullName;
 
     return (
@@ -382,8 +506,16 @@ function TreeNodeRow({
                 paddingLeft: depth * TREE_INDENT_STEP,
             }}
         >
-            <GitBranchIcon color={isCurrent ? "#4CAF50" : undefined} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{node.label}</span>
+            {isCurrent ? (
+                <TagIcon />
+            ) : isMainLike ? (
+                <StarIcon />
+            ) : (
+                <GitBranchIcon color="#59c3ff" />
+            )}
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                {renderHighlightedLabel(node.label, filterNeedle)}
+            </span>
             {node.branch && <TrackingBadge branch={node.branch} />}
         </div>
     );
@@ -405,10 +537,10 @@ function SectionHeader({
                 ...rowStyle,
                 fontWeight: 600,
                 fontSize: "11px",
-                textTransform: "uppercase",
-                opacity: 0.7,
-                paddingLeft: 4,
-                marginTop: 4,
+                opacity: 0.82,
+                paddingLeft: 8,
+                marginTop: 1,
+                marginBottom: 0,
             }}
         >
             <ChevronIcon expanded={expanded} />
@@ -440,16 +572,38 @@ function GitBranchIcon({ color }: { color?: string }): React.ReactElement {
     );
 }
 
+function TagIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" style={{ flexShrink: 0, marginRight: 4 }}>
+            <path
+                fill="#86d8cf"
+                d="M9.28 1.5H5.5A2.5 2.5 0 0 0 3 4v8a2.5 2.5 0 0 0 2.5 2.5h3.78a1.5 1.5 0 0 0 1.06-.44l3.72-3.72a1.5 1.5 0 0 0 0-2.12L10.34 1.94a1.5 1.5 0 0 0-1.06-.44zM5.5 3h3.78l3.72 3.72-3.72 3.72H5.5A1 1 0 0 1 4.5 9.44V4A1 1 0 0 1 5.5 3zm1.25 2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"
+            />
+        </svg>
+    );
+}
+
+function StarIcon(): React.ReactElement {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" style={{ flexShrink: 0, marginRight: 4 }}>
+            <path
+                fill="#ebd25d"
+                d="M8 1.5l1.8 3.64 4.02.58-2.91 2.83.69 4-3.6-1.9-3.6 1.9.69-4L2.18 5.72l4.02-.58L8 1.5z"
+            />
+        </svg>
+    );
+}
+
 function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactElement {
     return (
         <svg
-            width="16"
-            height="16"
+            width="14"
+            height="14"
             viewBox="0 0 16 16"
             style={{
                 flexShrink: 0,
-                marginRight: 2,
-                opacity: 0.6,
+                marginRight: 4,
+                opacity: 0.68,
                 transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
                 transition: "transform 0.1s",
             }}
@@ -468,7 +622,7 @@ function FolderIcon(): React.ReactElement {
             style={{ flexShrink: 0, marginRight: 4, opacity: 0.7 }}
         >
             <path
-                fill="currentColor"
+                fill="#bdc3cf"
                 d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H7.71L6.85 2.85A.5.5 0 0 0 6.5 2.5H1.5z"
             />
         </svg>
@@ -484,7 +638,7 @@ function RepoIcon(): React.ReactElement {
             style={{ flexShrink: 0, marginRight: 4, opacity: 0.7 }}
         >
             <path
-                fill="currentColor"
+                fill="#bdc3cf"
                 d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8zM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.25.25 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2z"
             />
         </svg>
@@ -498,5 +652,5 @@ const rowStyle: React.CSSProperties = {
     cursor: "pointer",
     whiteSpace: "nowrap",
     overflow: "hidden",
-    lineHeight: "22px",
+    lineHeight: "20px",
 };
