@@ -168,6 +168,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const isHashMatch = (a: string, b: string): boolean => a.startsWith(b) || b.startsWith(a);
     const isValidGitHash = (value: string): boolean => /^[0-9a-fA-F]{7,40}$/.test(value);
+    const isValidBranchName = (value: string): boolean =>
+        value.length > 0 && !value.startsWith("-") && /^[A-Za-z0-9._/-]+$/.test(value);
 
     const isCommitUnpushed = async (hash: string): Promise<boolean> => {
         const unpushed = await gitOps.getUnpushedCommitHashes();
@@ -279,9 +281,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return;
             }
             case "checkoutMain": {
-                const branchName = targetBranch ?? getDefaultLocalBranch();
+                const branchName = (targetBranch ?? getDefaultLocalBranch())?.trim();
                 if (!branchName) {
                     vscode.window.showErrorMessage("No local branch available to checkout.");
+                    return;
+                }
+                if (!isValidBranchName(branchName)) {
+                    vscode.window.showErrorMessage("Invalid branch name for checkout.");
+                    return;
+                }
+                const knownBranchNames = new Set(currentBranches.map((b) => b.name));
+                if (!knownBranchNames.has(branchName)) {
+                    vscode.window.showErrorMessage(
+                        `Cannot checkout unknown branch '${branchName}'.`,
+                    );
                     return;
                 }
                 await executor.run(["checkout", branchName]);

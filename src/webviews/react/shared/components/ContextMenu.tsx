@@ -111,6 +111,8 @@ export function ContextMenu({
                 return (
                     <div
                         key={item.action}
+                        aria-disabled={item.disabled}
+                        tabIndex={item.disabled ? -1 : 0}
                         onClick={item.disabled ? undefined : () => handleItemClick(item.action)}
                         onMouseEnter={
                             item.disabled
