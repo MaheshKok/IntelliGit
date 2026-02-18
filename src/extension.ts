@@ -173,6 +173,41 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return unpushed.some((h) => isHashMatch(h, hash));
     };
 
+    const getCommitParentHashes = async (hash: string): Promise<string[]> => {
+        const raw = (await executor.run(["rev-list", "--parents", "-n", "1", hash])).trim();
+        const parts = raw.split(/\s+/).filter(Boolean);
+        return parts.slice(1);
+    };
+
+    const isMergeCommitHash = async (hash: string): Promise<boolean> =>
+        (await getCommitParentHashes(hash)).length > 1;
+
+    const pickMainlineParent = async (
+        hash: string,
+        actionLabel: string,
+    ): Promise<number | null | undefined> => {
+        const parents = await getCommitParentHashes(hash);
+        if (parents.length <= 1) return undefined;
+
+        const pick = await vscode.window.showQuickPick(
+            parents.map((parent, idx) => ({
+                label: `Parent ${idx + 1} (${parent.slice(0, 8)})`,
+                detail:
+                    idx === 0
+                        ? "Usually the target branch side of the merge."
+                        : "Alternate merge parent.",
+                parentNumber: idx + 1,
+            })),
+            {
+                title: `${actionLabel}: select mainline parent`,
+                placeHolder: "Pick the parent number to use with -m",
+            },
+        );
+
+        if (!pick) return null;
+        return pick.parentNumber;
+    };
+
     const getDefaultLocalBranch = (): string | null => {
         const localNames = currentBranches.filter((b) => !b.isRemote).map((b) => b.name);
         if (localNames.includes("main")) return "main";
@@ -219,7 +254,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Cherry-pick",
                 );
                 if (confirm !== "Cherry-pick") return;
-                await executor.run(["cherry-pick", hash]);
+
+                const mainlineParent = await pickMainlineParent(hash, "Cherry-pick");
+                if (mainlineParent === null) return;
+                const args =
+                    mainlineParent === undefined
+                        ? ["cherry-pick", hash]
+                        : ["cherry-pick", "-m", String(mainlineParent), hash];
+                await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
                 await refreshAll();
                 return;
@@ -260,6 +302,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return;
             }
             case "revertCommit": {
+                if (await isMergeCommitHash(hash)) {
+                    vscode.window.showErrorMessage(
+                        "Revert Commit is not available for merge commits.",
+                    );
+                    return;
+                }
                 const confirm = await vscode.window.showWarningMessage(
                     `Revert commit ${short}?`,
                     { modal: true },
@@ -300,6 +348,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     );
                     return;
                 }
+                if (await isMergeCommitHash(hash)) {
+                    vscode.window.showErrorMessage(
+                        "Undo Commit is not available for merge commits.",
+                    );
+                    return;
+                }
                 const confirm = await vscode.window.showWarningMessage(
                     `Undo commits up to ${short} (soft reset)?`,
                     { modal: true },
@@ -315,6 +369,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 if (!(await isCommitUnpushed(hash))) {
                     vscode.window.showErrorMessage(
                         "Edit Commit Message is available only for unpushed commits.",
+                    );
+                    return;
+                }
+                if (await isMergeCommitHash(hash)) {
+                    vscode.window.showErrorMessage(
+                        "Edit Commit Message is not available for merge commits.",
                     );
                     return;
                 }
@@ -353,6 +413,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     );
                     return;
                 }
+                if (await isMergeCommitHash(hash)) {
+                    vscode.window.showErrorMessage(
+                        "Drop Commits is not available for merge commits.",
+                    );
+                    return;
+                }
                 const confirm = await vscode.window.showWarningMessage(
                     `Drop commit ${short} from current branch history?`,
                     { modal: true },
@@ -368,6 +434,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 if (!(await isCommitUnpushed(hash))) {
                     vscode.window.showErrorMessage(
                         "Interactive Rebase from Here is available only for unpushed commits.",
+                    );
+                    return;
+                }
+                if (await isMergeCommitHash(hash)) {
+                    vscode.window.showErrorMessage(
+                        "Interactive Rebase from Here is not available for merge commits.",
                     );
                     return;
                 }

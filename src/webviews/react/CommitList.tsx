@@ -247,77 +247,87 @@ export function CommitList({
                         style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
                     />
 
-                    {commits.map((commit) => (
-                        <div
-                            key={commit.hash}
-                            onClick={() => onSelectCommit(commit.hash)}
-                            onContextMenu={(e) => handleRowContextMenu(e, commit)}
-                            style={{
-                                height: ROW_HEIGHT,
-                                display: "flex",
-                                alignItems: "center",
-                                paddingLeft: graphWidth,
-                                paddingRight: 8,
-                                cursor: "pointer",
-                                fontSize: "12px",
-                                whiteSpace: "nowrap",
-                                background:
-                                    selectedHash === commit.hash
+                    {commits.map((commit) => {
+                        const isSelected = selectedHash === commit.hash;
+                        const isMergeCommit = commit.parentHashes.length > 1;
+                        return (
+                            <div
+                                key={commit.hash}
+                                onClick={() => onSelectCommit(commit.hash)}
+                                onContextMenu={(e) => handleRowContextMenu(e, commit)}
+                                style={{
+                                    height: ROW_HEIGHT,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    paddingLeft: graphWidth,
+                                    paddingRight: 8,
+                                    cursor: "pointer",
+                                    fontSize: "12px",
+                                    whiteSpace: "nowrap",
+                                    background: isSelected
                                         ? "var(--vscode-list-activeSelectionBackground)"
                                         : "transparent",
-                                color:
-                                    selectedHash === commit.hash
+                                    color: isSelected
                                         ? "var(--vscode-list-activeSelectionForeground)"
-                                        : "inherit",
-                            }}
-                        >
-                            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {commit.message}
-                            </span>
-
-                            {commit.refs.length > 0 && (
+                                        : isMergeCommit
+                                          ? "var(--vscode-disabledForeground)"
+                                          : "inherit",
+                                }}
+                            >
                                 <span
                                     style={{
-                                        display: "flex",
-                                        gap: "3px",
-                                        marginLeft: 8,
-                                        flexShrink: 0,
+                                        flex: 1,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
                                     }}
                                 >
-                                    {commit.refs.map((ref) => (
-                                        <RefLabel key={ref} name={ref} />
-                                    ))}
+                                    {commit.message}
                                 </span>
-                            )}
 
-                            <span
-                                style={{
-                                    width: 120,
-                                    textAlign: "right",
-                                    opacity: 0.7,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    flexShrink: 0,
-                                    marginLeft: 8,
-                                }}
-                            >
-                                {commit.author}
-                            </span>
+                                {commit.refs.length > 0 && (
+                                    <span
+                                        style={{
+                                            display: "flex",
+                                            gap: "3px",
+                                            marginLeft: 8,
+                                            flexShrink: 0,
+                                        }}
+                                    >
+                                        {commit.refs.map((ref) => (
+                                            <RefLabel key={ref} name={ref} />
+                                        ))}
+                                    </span>
+                                )}
 
-                            <span
-                                style={{
-                                    width: 140,
-                                    textAlign: "right",
-                                    opacity: 0.5,
-                                    flexShrink: 0,
-                                    marginLeft: 8,
-                                    fontSize: "11px",
-                                }}
-                            >
-                                {formatDateTime(commit.date)}
-                            </span>
-                        </div>
-                    ))}
+                                <span
+                                    style={{
+                                        width: 120,
+                                        textAlign: "right",
+                                        opacity: isMergeCommit ? 1 : 0.7,
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        flexShrink: 0,
+                                        marginLeft: 8,
+                                    }}
+                                >
+                                    {commit.author}
+                                </span>
+
+                                <span
+                                    style={{
+                                        width: 140,
+                                        textAlign: "right",
+                                        opacity: isMergeCommit ? 0.8 : 0.5,
+                                        flexShrink: 0,
+                                        marginLeft: 8,
+                                        fontSize: "11px",
+                                    }}
+                                >
+                                    {formatDateTime(commit.date)}
+                                </span>
+                            </div>
+                        );
+                    })}
 
                     {hasMore && (
                         <div
@@ -338,6 +348,7 @@ export function CommitList({
                     x={contextMenu.x}
                     y={contextMenu.y}
                     items={getCommitMenuItems(
+                        contextMenu.commit,
                         isUnpushedCommit(contextMenu.commit.hash),
                         defaultCheckoutBranch,
                     )}
@@ -350,8 +361,13 @@ export function CommitList({
     );
 }
 
-function getCommitMenuItems(isUnpushed: boolean, defaultCheckoutBranch: string | null): MenuItem[] {
+function getCommitMenuItems(
+    commit: Commit,
+    isUnpushed: boolean,
+    defaultCheckoutBranch: string | null,
+): MenuItem[] {
     const isPushed = !isUnpushed;
+    const isMergeCommit = commit.parentHashes.length > 1;
 
     const items: MenuItem[] = [
         { label: "Copy Revision Number", action: "copyRevision", icon: iconCopy() },
@@ -373,24 +389,28 @@ function getCommitMenuItems(isUnpushed: boolean, defaultCheckoutBranch: string |
         action: "resetCurrentToHere",
         icon: iconReset(),
     });
-    items.push({ label: "Revert Commit", action: "revertCommit" });
+    items.push({ label: "Revert Commit", action: "revertCommit", disabled: isMergeCommit });
     items.push({
         label: "Undo Commit...",
         action: "undoCommit",
-        disabled: isPushed,
+        disabled: isPushed || isMergeCommit,
     });
 
     items.push({ separator: true, label: "", action: "sep-history" });
     items.push({
         label: "Edit Commit Message...",
         action: "editCommitMessage",
-        disabled: isPushed,
+        disabled: isPushed || isMergeCommit,
     });
-    items.push({ label: "Drop Commits", action: "dropCommits", disabled: isPushed });
+    items.push({
+        label: "Drop Commits",
+        action: "dropCommits",
+        disabled: isPushed || isMergeCommit,
+    });
     items.push({
         label: "Interactively Rebase from Here...",
         action: "interactiveRebaseFromHere",
-        disabled: isPushed,
+        disabled: isPushed || isMergeCommit,
     });
 
     items.push({ separator: true, label: "", action: "sep-create" });
