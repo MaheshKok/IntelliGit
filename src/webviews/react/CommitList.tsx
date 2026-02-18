@@ -247,9 +247,11 @@ export function CommitList({
                         style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
                     />
 
-                    {commits.map((commit) => {
+                    {commits.map((commit, idx) => {
                         const isSelected = selectedHash === commit.hash;
                         const isMergeCommit = commit.parentHashes.length > 1;
+                        const isUnpushed = unpushedHashes.has(commit.hash);
+                        const laneColor = graphRows[idx]?.color;
                         return (
                             <div
                                 key={commit.hash}
@@ -264,6 +266,9 @@ export function CommitList({
                                     cursor: "pointer",
                                     fontSize: "12px",
                                     whiteSpace: "nowrap",
+                                    borderLeft: isUnpushed
+                                        ? `2px solid ${laneColor ?? "#4CAF50"}`
+                                        : "2px solid transparent",
                                     background: isSelected
                                         ? "var(--vscode-list-activeSelectionBackground)"
                                         : "transparent",
@@ -417,10 +422,7 @@ function getCommitMenuItems(
     items.push({ label: "New Branch...", action: "newBranch" });
     items.push({ label: "New Tag...", action: "newTag" });
 
-    // Ensure stable unique keys for separators.
-    return items.map((item, idx) =>
-        item.separator ? { ...item, action: `${item.action}-${idx}` } : item,
-    );
+    return items;
 }
 
 function RefLabel({ name }: { name: string }) {

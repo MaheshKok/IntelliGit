@@ -358,7 +358,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
             case "resetCurrentToHere": {
                 const confirm = await vscode.window.showWarningMessage(
-                    `Hard reset current branch to ${short}?`,
+                    `Hard reset current branch to ${short}? This will reset the index and working tree and permanently discard any uncommitted changes.`,
                     { modal: true },
                     "Reset",
                 );
@@ -398,6 +398,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     placeHolder: "branch-name",
                 });
                 if (!branchName) return;
+                if (!isValidBranchName(branchName)) {
+                    vscode.window.showErrorMessage(
+                        `Invalid branch name '${branchName}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.`,
+                    );
+                    return;
+                }
                 await executor.run(["branch", branchName, validatedHash]);
                 vscode.window.showInformationMessage(`Created branch ${branchName} at ${short}.`);
                 await refreshAll();
@@ -409,6 +415,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     placeHolder: "v1.0.0",
                 });
                 if (!tagName) return;
+                if (!isValidBranchName(tagName)) {
+                    vscode.window.showErrorMessage(
+                        `Invalid tag name '${tagName}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.`,
+                    );
+                    return;
+                }
                 await executor.run(["tag", tagName, validatedHash]);
                 vscode.window.showInformationMessage(`Created tag ${tagName}.`);
                 await refreshAll();
