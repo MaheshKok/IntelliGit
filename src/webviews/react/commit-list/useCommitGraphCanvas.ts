@@ -1,17 +1,18 @@
 import { useEffect } from "react";
 import { DOT_RADIUS, LANE_WIDTH, ROW_HEIGHT, type GraphRow } from "../graph";
 
+const GRAPH_LEFT_PAD = 4;
+
 interface Args {
     canvasRef: React.RefObject<HTMLCanvasElement | null>;
     rows: GraphRow[];
     graphWidth: number;
-    rowCount: number;
 }
 
-export function useCommitGraphCanvas({ canvasRef, rows, graphWidth, rowCount }: Args): void {
+export function useCommitGraphCanvas({ canvasRef, rows, graphWidth }: Args): void {
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas || rowCount === 0) return;
+        if (!canvas || rows.length === 0) return;
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
 
@@ -21,7 +22,7 @@ export function useCommitGraphCanvas({ canvasRef, rows, graphWidth, rowCount }: 
                 .trim() || "#1e1e1e";
 
         const dpr = window.devicePixelRatio || 1;
-        const totalHeight = rowCount * ROW_HEIGHT;
+        const totalHeight = rows.length * ROW_HEIGHT;
         canvas.width = graphWidth * dpr;
         canvas.height = totalHeight * dpr;
         canvas.style.width = `${graphWidth}px`;
@@ -34,10 +35,10 @@ export function useCommitGraphCanvas({ canvasRef, rows, graphWidth, rowCount }: 
             const row = rows[i];
             const y = i * ROW_HEIGHT;
             const cy = y + ROW_HEIGHT / 2;
-            const cx = row.column * LANE_WIDTH + LANE_WIDTH / 2 + 4;
+            const cx = row.column * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PAD;
 
             for (const lane of row.passThroughLanes) {
-                const lx = lane.column * LANE_WIDTH + LANE_WIDTH / 2 + 4;
+                const lx = lane.column * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PAD;
                 ctx.beginPath();
                 ctx.strokeStyle = lane.color;
                 ctx.lineWidth = 2;
@@ -62,8 +63,8 @@ export function useCommitGraphCanvas({ canvasRef, rows, graphWidth, rowCount }: 
             }
 
             for (const conn of row.connectionsDown) {
-                const fx = conn.fromCol * LANE_WIDTH + LANE_WIDTH / 2 + 4;
-                const tx = conn.toCol * LANE_WIDTH + LANE_WIDTH / 2 + 4;
+                const fx = conn.fromCol * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PAD;
+                const tx = conn.toCol * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PAD;
                 ctx.beginPath();
                 ctx.strokeStyle = conn.color;
                 ctx.lineWidth = 2;
@@ -100,5 +101,5 @@ export function useCommitGraphCanvas({ canvasRef, rows, graphWidth, rowCount }: 
             ctx.arc(cx, cy, 2, 0, Math.PI * 2);
             ctx.fill();
         }
-    }, [canvasRef, graphWidth, rowCount, rows]);
+    }, [canvasRef, graphWidth, rows]);
 }

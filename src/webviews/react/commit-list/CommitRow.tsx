@@ -44,7 +44,7 @@ function RefLabel({ name }: { name: string }): React.ReactElement {
     return <span style={{ ...REF_LABEL_STYLE, background: bg, color: fg }}>{name}</span>;
 }
 
-export function CommitRow({
+function CommitRowInner({
     commit,
     graphWidth,
     isSelected,
@@ -122,3 +122,22 @@ export function CommitRow({
         </div>
     );
 }
+
+function areEqual(prev: Props, next: Props): boolean {
+    return (
+        prev.commit.hash === next.commit.hash &&
+        prev.commit.message === next.commit.message &&
+        prev.commit.author === next.commit.author &&
+        prev.commit.date === next.commit.date &&
+        prev.commit.refs === next.commit.refs &&
+        prev.commit.parentHashes === next.commit.parentHashes &&
+        prev.isSelected === next.isSelected &&
+        prev.isUnpushed === next.isUnpushed &&
+        prev.laneColor === next.laneColor &&
+        prev.graphWidth === next.graphWidth &&
+        prev.onSelect === next.onSelect &&
+        prev.onContextMenu === next.onContextMenu
+    );
+}
+
+export const CommitRow = React.memo(CommitRowInner, areEqual);

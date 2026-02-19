@@ -46,8 +46,15 @@ export function buildRemoteGroups(remotes: Branch[]): Map<string, RemoteGroup> {
         groups.get(remote)!.branches.push(branch);
     }
 
-    for (const [, group] of groups) {
-        const stripRemote = (b: Branch) => b.name.split("/").slice(1).join("/");
+    for (const [remote, group] of groups) {
+        const remotePrefix = `${remote}/`;
+        const stripRemote = (b: Branch): string => {
+            if (b.name.startsWith(remotePrefix)) {
+                return b.name.slice(remotePrefix.length);
+            }
+            const firstSlash = b.name.indexOf("/");
+            return firstSlash >= 0 ? b.name.slice(firstSlash + 1) : b.name;
+        };
         group.tree = buildPrefixTree(group.branches, stripRemote);
     }
 

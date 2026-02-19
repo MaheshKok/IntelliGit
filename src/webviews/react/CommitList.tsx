@@ -4,11 +4,12 @@
 
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import type { Commit } from "../../types";
-import { computeGraph, LANE_WIDTH } from "./graph";
+import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitRow } from "./commit-list/CommitRow";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
+import { isCommitAction, type CommitAction } from "./commitGraphTypes";
 import {
     AUTHOR_COL_WIDTH,
     CANVAS_STYLE,
@@ -33,7 +34,7 @@ interface Props {
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
     onLoadMore: () => void;
-    onCommitAction: (action: string, hash: string, targetBranch?: string) => void;
+    onCommitAction: (action: CommitAction, hash: string, targetBranch?: string) => void;
 }
 
 export function CommitList({
@@ -49,9 +50,12 @@ export function CommitList({
     onCommitAction,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const viewportRef = useRef<HTMLDivElement>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: Commit } | null>(
         null,
     );
+    const [scrollTop, setScrollTop] = useState(0);
+    const [viewportHeight, setViewportHeight] = useState(0);
 
     const graphRows = useMemo(() => computeGraph(commits), [commits]);
     const maxCols = useMemo(
@@ -64,8 +68,24 @@ export function CommitList({
         canvasRef,
         rows: graphRows,
         graphWidth,
-        rowCount: commits.length,
     });
+
+    React.useEffect(() => {
+        const viewport = viewportRef.current;
+        if (!viewport) return;
+
+        const updateHeight = () => setViewportHeight(viewport.clientHeight);
+        updateHeight();
+
+        const observer = new ResizeObserver(updateHeight);
+        observer.observe(viewport);
+        window.addEventListener("resize", updateHeight);
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener("resize", updateHeight);
+        };
+    }, []);
 
     const isUnpushedCommit = useCallback(
         (hash: string): boolean => {
@@ -87,6 +107,7 @@ export function CommitList({
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
+            if (!isCommitAction(action)) return;
             const target =
                 action === "checkoutMain" ? (defaultCheckoutBranch ?? undefined) : undefined;
             onCommitAction(action, contextMenu.commit.hash, target);
@@ -97,11 +118,30 @@ export function CommitList({
     const handleScroll = useCallback(
         (event: React.UIEvent<HTMLDivElement>) => {
             const el = event.currentTarget;
+            setScrollTop(el.scrollTop);
             if (hasMore && el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
                 onLoadMore();
             }
         },
         [hasMore, onLoadMore],
+    );
+
+    const visibleRange = useMemo(() => {
+        if (commits.length === 0) {
+            return { start: 0, end: 0 };
+        }
+        const overscan = 8;
+        const start = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - overscan);
+        const end = Math.min(
+            commits.length,
+            Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + overscan,
+        );
+        return { start, end };
+    }, [commits.length, scrollTop, viewportHeight]);
+
+    const visibleCommits = useMemo(
+        () => commits.slice(visibleRange.start, visibleRange.end),
+        [commits, visibleRange.end, visibleRange.start],
     );
 
     return (
@@ -130,24 +170,48 @@ export function CommitList({
                 </span>
             </div>
 
-            <div style={SCROLL_VIEWPORT_STYLE} onScroll={handleScroll}>
-                <div style={contentContainerStyle(commits.length)}>
+            <div ref={viewportRef} style={SCROLL_VIEWPORT_STYLE} onScroll={handleScroll}>
+                <div style={contentContainerStyle(commits.length + (hasMore ? 1 : 0))}>
                     <canvas ref={canvasRef} style={CANVAS_STYLE} />
 
-                    {commits.map((commit, idx) => (
-                        <CommitRow
-                            key={commit.hash}
-                            commit={commit}
-                            graphWidth={graphWidth}
-                            isSelected={selectedHash === commit.hash}
-                            isUnpushed={isUnpushedCommit(commit.hash)}
-                            laneColor={graphRows[idx]?.color}
-                            onSelect={onSelectCommit}
-                            onContextMenu={handleRowContextMenu}
-                        />
-                    ))}
+                    <div
+                        style={{
+                            position: "absolute",
+                            left: 0,
+                            right: 0,
+                            top: visibleRange.start * ROW_HEIGHT,
+                        }}
+                    >
+                        {visibleCommits.map((commit, offset) => {
+                            const idx = visibleRange.start + offset;
+                            return (
+                                <CommitRow
+                                    key={commit.hash}
+                                    commit={commit}
+                                    graphWidth={graphWidth}
+                                    isSelected={selectedHash === commit.hash}
+                                    isUnpushed={isUnpushedCommit(commit.hash)}
+                                    laneColor={graphRows[idx]?.color}
+                                    onSelect={onSelectCommit}
+                                    onContextMenu={handleRowContextMenu}
+                                />
+                            );
+                        })}
+                    </div>
 
-                    {hasMore && <div style={LOADING_MORE_STYLE}>Loading more...</div>}
+                    {hasMore && (
+                        <div
+                            style={{
+                                ...LOADING_MORE_STYLE,
+                                position: "absolute",
+                                left: 0,
+                                right: 0,
+                                top: commits.length * ROW_HEIGHT,
+                            }}
+                        >
+                            Loading more...
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -162,7 +226,7 @@ export function CommitList({
                     )}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}
-                    minWidth={380}
+                    minWidth={320}
                 />
             )}
         </div>

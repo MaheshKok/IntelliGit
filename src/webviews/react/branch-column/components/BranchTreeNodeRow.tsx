@@ -74,8 +74,8 @@ export function BranchTreeNodeRow({
     }
 
     const isCurrent = node.branch?.isCurrent;
-    const isMainLike =
-        node.branch && (node.branch.name === "main" || node.branch.name === "master");
+    const shortName = node.branch?.name.replace(/^.*\//, "") ?? "";
+    const isMainLike = !!node.branch && (shortName === "main" || shortName === "master");
     const isSelected = selectedBranch === node.fullName;
 
     return (

@@ -1,7 +1,7 @@
 {
     "name": "intelligit",
-    "displayName": "IntelliGit (PyCharm Git)",
-    "description": "PyCharm/IntelliJ-style Git UI for VS Code with commit graph, branch tree, commit details, shelf workflow, and file change explorer.",
+    "displayName": "IntelliGit",
+    "description": "IDE-style Git UI for VS Code with commit graph, branch tree, commit details, shelf workflow, and file change explorer.",
     "version": "0.3.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
@@ -292,6 +292,7 @@
         "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
         "typecheck": "bun run typecheck:ext && bun run typecheck:webview",
         "test": "bun vitest run",
+        "test:coverage": "bun vitest run --coverage",
         "test:watch": "bun vitest",
         "package": "vsce package --no-dependencies",
         "publish": "vsce publish --no-dependencies"
@@ -307,6 +308,7 @@
         "@types/vscode": "^1.96.0",
         "@typescript-eslint/eslint-plugin": "^7.0.0",
         "@typescript-eslint/parser": "^7.0.0",
+        "@vitest/coverage-v8": "1.6.1",
         "@vscode/test-electron": "^2.3.9",
         "@vscode/vsce": "^2.22.0",
         "esbuild": "^0.20.0",
@@ -315,8 +317,8 @@
         "framer-motion": "^11.0.0",
         "globals": "^17.3.0",
         "react": "^18.2.0",
-        "react-icons": "^5.5.0",
         "react-dom": "^18.2.0",
+        "react-icons": "^5.5.0",
         "typescript": "^5.3.3",
         "typescript-eslint": "^8.55.0",
         "vitest": "^1.2.0"

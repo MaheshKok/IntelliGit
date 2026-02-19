@@ -62,19 +62,15 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         });
     }, []);
 
-    const toggleFolder = useCallback(
+    const toggleGroup = useCallback(
         (files: WorkingFile[]) => {
             toggleMany(files.map((file) => file.path));
         },
         [toggleMany],
     );
 
-    const toggleSection = useCallback(
-        (files: WorkingFile[]) => {
-            toggleMany(files.map((f) => f.path));
-        },
-        [toggleMany],
-    );
+    const toggleFolder = toggleGroup;
+    const toggleSection = toggleGroup;
 
     const isAllChecked = useCallback(
         (files: WorkingFile[]) => files.length > 0 && files.every((f) => checkedPaths.has(f.path)),

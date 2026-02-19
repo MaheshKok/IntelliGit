@@ -7,7 +7,7 @@ function escapeRegExp(value: string): string {
 
 export function renderHighlightedLabel(label: string, needle: string): React.ReactNode {
     if (!needle) return label;
-    const regex = new RegExp(`(${escapeRegExp(needle)})`, "ig");
+    const regex = new RegExp(`(${escapeRegExp(needle)})`, "i");
     const parts = label.split(regex);
     const lowerNeedle = needle.toLowerCase();
 

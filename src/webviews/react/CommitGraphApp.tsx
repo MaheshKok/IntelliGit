@@ -7,7 +7,12 @@ import { createRoot } from "react-dom/client";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit } from "../../types";
-import type { CommitGraphOutbound, CommitGraphInbound } from "./commitGraphTypes";
+import type {
+    BranchAction,
+    CommitAction,
+    CommitGraphOutbound,
+    CommitGraphInbound,
+} from "./commitGraphTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 
 const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
@@ -88,12 +93,12 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "filterBranch", branch: name });
     }, []);
 
-    const handleBranchAction = useCallback((action: string, branchName: string) => {
+    const handleBranchAction = useCallback((action: BranchAction, branchName: string) => {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
     const handleCommitAction = useCallback(
-        (action: string, hash: string, targetBranch?: string) => {
+        (action: CommitAction, hash: string, targetBranch?: string) => {
             vscode.postMessage({ type: "commitAction", action, hash, targetBranch });
         },
         [],

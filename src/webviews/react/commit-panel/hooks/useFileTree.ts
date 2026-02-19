@@ -32,7 +32,6 @@ function withFolderMetadata(folder: GenericTreeFolder<WorkingFile>): TreeNode {
         path: folder.path,
         children,
         descendantFiles,
-        fileCount: descendantFiles.length,
     };
 }
 

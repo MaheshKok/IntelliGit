@@ -1,8 +1,57 @@
 import { GitExecutor } from "./executor";
 import type { Branch, Commit, CommitDetail, CommitFile, WorkingFile, StashEntry } from "../types";
 
+declare const require: (id: string) => unknown;
+
 const FIELD_SEP = "<<|>>";
 const RECORD_SEP = "<<||>>";
+const OUTPUT_CHANNEL_NAME = "IntelliGit";
+
+type VsCodeApi = typeof import("vscode");
+type OutputChannelLike = { appendLine: (value: string) => void };
+
+let cachedVsCodeApi: VsCodeApi | null | undefined;
+let outputChannel: OutputChannelLike | undefined;
+
+function getVsCodeApi(): VsCodeApi | null {
+    if (cachedVsCodeApi !== undefined) return cachedVsCodeApi;
+    try {
+        cachedVsCodeApi = require("vscode") as VsCodeApi;
+    } catch {
+        cachedVsCodeApi = null;
+    }
+    return cachedVsCodeApi;
+}
+
+function getOutputChannel(): OutputChannelLike {
+    if (outputChannel) return outputChannel;
+    const vscode = getVsCodeApi();
+    outputChannel = vscode
+        ? vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME)
+        : { appendLine: (value: string) => console.warn(value) };
+    return outputChannel;
+}
+
+function getErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+function logGitOpsWarning(context: string, err: unknown, options?: { notifyUser?: boolean }): void {
+    const channel = getOutputChannel();
+    const message = getErrorMessage(err);
+    channel.appendLine(`[GitOps] ${context}: ${message}`);
+    if (err instanceof Error && err.stack) {
+        channel.appendLine(err.stack);
+    }
+    if (options?.notifyUser) {
+        const vscode = getVsCodeApi();
+        if (vscode) {
+            void vscode.window.showWarningMessage(
+                `${context}. Some change stats may be unavailable.`,
+            );
+        }
+    }
+}
 
 function assertStashIndex(index: number): void {
     if (!Number.isInteger(index) || index < 0) {
@@ -205,7 +254,7 @@ export class GitOps {
                 file.deletions = Math.max(file.deletions, Number.isNaN(parsedDel) ? 0 : parsedDel);
             }
         } catch (err) {
-            console.warn("Failed to get commit numstat:", err);
+            logGitOpsWarning("Failed to get commit numstat", err, { notifyUser: true });
         }
 
         return {
@@ -314,7 +363,7 @@ export class GitOps {
                 }
             }
         } catch (err) {
-            console.warn("Failed to get unstaged numstat:", err);
+            logGitOpsWarning("Failed to get unstaged numstat", err, { notifyUser: true });
         }
 
         // Get numstat for staged changes
@@ -337,7 +386,7 @@ export class GitOps {
                 }
             }
         } catch (err) {
-            console.warn("Failed to get staged numstat:", err);
+            logGitOpsWarning("Failed to get staged numstat", err, { notifyUser: true });
         }
 
         return files;
@@ -468,8 +517,8 @@ export class GitOps {
                 if (!path) continue;
                 upsert(path, status);
             }
-        } catch {
-            // Keep empty; we'll still try numstat.
+        } catch (err) {
+            logGitOpsWarning(`Failed stash show --name-status for ${ref}`, err);
         }
 
         try {
@@ -486,8 +535,8 @@ export class GitOps {
                 entry.additions = adds;
                 entry.deletions = dels;
             }
-        } catch {
-            // If numstat fails, keep status-only entries.
+        } catch (err) {
+            logGitOpsWarning(`Failed stash show --numstat for ${ref}`, err);
         }
 
         return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path));

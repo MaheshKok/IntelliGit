@@ -5,6 +5,42 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-02-19
+
+### Added
+
+- Commit graph action types are now strict literal unions (`BranchAction`, `CommitAction`) with runtime guards for safer webview-to-extension messaging.
+
+### Changed
+
+- Marketplace metadata tuned for discoverability while keeping package name/description genericized for safer trademark posture.
+- README project structure updated to reflect current modular React layout (`branch-column`, `commit-list`, `commit-panel`, shared modules).
+- Commit list rendering switched from full list rendering to viewport virtualization for large-history performance.
+- Branch remote-group header rendering now reuses `BranchSectionHeader` for consistent structure and reduced duplication.
+- `useCommitGraphCanvas` now derives size from `rows.length` and uses a named left-padding constant.
+- `TabBar` shared tab style object hoisted to module scope to avoid per-render reallocation.
+
+### Fixed
+
+- Branch remote grouping now strips the exact grouped remote prefix instead of always stripping the first path segment.
+- Context menu keyboard focus now has an accessible visible indicator (outline + focus ring) instead of suppressing outline.
+- Commit info webview message handler now uses explicit discriminant handling before accessing `detail`.
+- Branch section headers are now keyboard-accessible (`role="button"`, `tabIndex`, `Enter/Space`, `aria-expanded`).
+- Main/master icon detection now uses normalized branch short names (handles `origin/main`, etc.).
+- Branch highlight regex no longer uses unnecessary global flag.
+- Branch name trimming logic now safely handles small max lengths without negative slicing.
+- Branch selected-row background now follows VS Code theme token (`--vscode-list-activeSelectionBackground`).
+- `useCheckedFiles` folder/section toggle wrappers consolidated through a shared callback.
+- `DragResizeOptions` is now exported for external typing/re-export.
+- Commit panel tree types no longer store redundant `fileCount`; callsites now derive from `descendantFiles.length`.
+- `collectDirPaths` now uses an accumulator to avoid recursive array spreading overhead.
+
+### Stability and Error Handling
+
+- Extension branch command handlers and commit selection errors now consistently use shared `getErrorMessage(...)`.
+- Git numstat/stash-show warnings now log via a shared IntelliGit output channel (with fallback) instead of silent/console-only catches.
+- Status/numstat failures now provide short user-facing warnings when displayed diff statistics may be incomplete.
+
 ## [0.3.0] - 2026-02-18
 
 ### Added

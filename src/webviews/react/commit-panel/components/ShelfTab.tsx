@@ -88,15 +88,23 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                                 key={stash.index}
                                 align="center"
                                 px="9px"
-                                py="3px"
-                                minH="28px"
+                                py="2px"
+                                minH="24px"
                                 fontSize="12px"
                                 cursor="pointer"
-                                bg={isSelected ? "rgba(120, 138, 179, 0.3)" : "transparent"}
-                                color={isSelected ? "#dde5f4" : "var(--vscode-foreground)"}
+                                bg={
+                                    isSelected
+                                        ? "var(--vscode-list-activeSelectionBackground)"
+                                        : "transparent"
+                                }
+                                color={
+                                    isSelected
+                                        ? "var(--vscode-list-activeSelectionForeground)"
+                                        : "var(--vscode-foreground)"
+                                }
                                 _hover={{
                                     bg: isSelected
-                                        ? "rgba(120, 138, 179, 0.3)"
+                                        ? "var(--vscode-list-activeSelectionBackground)"
                                         : "var(--vscode-list-hoverBackground)",
                                 }}
                                 onClick={() => handleSelect(stash.index)}
@@ -173,9 +181,9 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
 
             <Flex
                 align="center"
-                gap="10px"
+                gap="8px"
                 px="8px"
-                py="10px"
+                py="8px"
                 borderTop="1px solid var(--vscode-panel-border)"
             >
                 <Button
@@ -184,9 +192,9 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                     onClick={() => handleShelfAction(selectedIndex, "apply")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="30px"
-                    minW="92px"
-                    px="14px"
+                    h="28px"
+                    minW="86px"
+                    px="12px"
                     bg="rgba(255,255,255,0.07)"
                     borderColor="rgba(184, 194, 214, 0.5)"
                 >
@@ -198,9 +206,9 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                     onClick={() => handleShelfAction(selectedIndex, "pop")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="30px"
-                    minW="74px"
-                    px="14px"
+                    h="28px"
+                    minW="68px"
+                    px="12px"
                     bg="rgba(255,255,255,0.07)"
                     borderColor="rgba(184, 194, 214, 0.5)"
                 >
@@ -212,9 +220,9 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                     onClick={() => handleShelfAction(selectedIndex, "delete")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="30px"
-                    minW="84px"
-                    px="14px"
+                    h="28px"
+                    minW="78px"
+                    px="12px"
                     bg="rgba(255,255,255,0.07)"
                     borderColor="rgba(184, 194, 214, 0.5)"
                 >
@@ -284,7 +292,7 @@ function ShelfFileTree({
                 }
 
                 const isExpanded = expandedDirs.has(entry.path);
-                const fileCount = entry.fileCount;
+                const fileCount = entry.descendantFiles.length;
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex

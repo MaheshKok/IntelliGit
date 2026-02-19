@@ -8,12 +8,12 @@ export const BRANCH_ROW_CLASS_CSS = `
         background: var(--vscode-list-hoverBackground) !important;
     }
     .branch-row.selected {
-        background: rgba(120, 138, 179, 0.32) !important;
+        background: var(--vscode-list-activeSelectionBackground) !important;
         color: var(--vscode-list-activeSelectionForeground) !important;
         border-radius: 7px;
     }
     .branch-row.selected:hover {
-        background: rgba(120, 138, 179, 0.32) !important;
+        background: var(--vscode-list-activeSelectionBackground) !important;
         color: var(--vscode-list-activeSelectionForeground) !important;
     }
 `;

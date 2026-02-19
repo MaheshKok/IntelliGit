@@ -44,12 +44,15 @@ function App(): React.ReactElement {
     useEffect(() => {
         const handler = (event: MessageEvent<CommitInfoInbound>) => {
             const msg = event.data;
-            if (msg.type === "clear") {
-                setDetail(null);
-                setExpandedDirs(new Set());
-                return;
+            switch (msg.type) {
+                case "clear":
+                    setDetail(null);
+                    setExpandedDirs(new Set());
+                    return;
+                case "setCommitDetail":
+                    setDetail(msg.detail);
+                    return;
             }
-            setDetail(msg.detail);
         };
 
         window.addEventListener("message", handler);

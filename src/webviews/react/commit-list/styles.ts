@@ -59,7 +59,7 @@ export const SCROLL_VIEWPORT_STYLE: CSSProperties = {
 export function contentContainerStyle(rowCount: number): CSSProperties {
     return {
         position: "relative",
-        minHeight: rowCount * ROW_HEIGHT,
+        height: rowCount * ROW_HEIGHT,
     };
 }
 

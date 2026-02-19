@@ -10,6 +10,22 @@ interface Props {
     shelfContent: React.ReactNode;
 }
 
+const sharedTabStyles = {
+    px: "14px",
+    py: "6px",
+    minH: "32px",
+    fontSize: "12px",
+    fontWeight: 600,
+    color: "var(--vscode-foreground)",
+    opacity: 0.75,
+    borderBottom: "2px solid transparent",
+    _selected: {
+        opacity: 1,
+        borderBottomColor: "var(--vscode-focusBorder, #007acc)",
+    },
+    _hover: { opacity: 0.85 },
+} as const;
+
 export function TabBar({ stashCount, commitContent, shelfContent }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: "Commit", content: commitContent },
@@ -19,22 +35,6 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
             content: shelfContent,
         },
     ];
-
-    const sharedTabStyles = {
-        px: "14px",
-        py: "6px",
-        minH: "32px",
-        fontSize: "12px",
-        fontWeight: 600,
-        color: "var(--vscode-foreground)",
-        opacity: 0.75,
-        borderBottom: "2px solid transparent",
-        _selected: {
-            opacity: 1,
-            borderBottomColor: "var(--vscode-focusBorder, #007acc)",
-        },
-        _hover: { opacity: 0.85 },
-    } as const;
 
     return (
         <Tabs variant="unstyled" display="flex" flexDirection="column" h="100%">

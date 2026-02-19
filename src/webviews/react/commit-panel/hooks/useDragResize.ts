@@ -8,7 +8,7 @@ interface DragResizeAPI {
     onMouseDown: (e: React.MouseEvent) => void;
 }
 
-interface DragResizeOptions {
+export interface DragResizeOptions {
     maxReservedHeight?: number;
     onResize?: (height: number) => void;
 }

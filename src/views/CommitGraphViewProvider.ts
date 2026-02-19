@@ -5,7 +5,11 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
-import type { CommitGraphInbound } from "../webviews/react/commitGraphTypes";
+import type {
+    BranchAction,
+    CommitAction,
+    CommitGraphInbound,
+} from "../webviews/react/commitGraphTypes";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
@@ -28,13 +32,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     readonly onBranchFilterChanged = this._onBranchFilterChanged.event;
 
     private readonly _onBranchAction = new vscode.EventEmitter<{
-        action: string;
+        action: BranchAction;
         branchName: string;
     }>();
     readonly onBranchAction = this._onBranchAction.event;
 
     private readonly _onCommitAction = new vscode.EventEmitter<{
-        action: string;
+        action: CommitAction;
         hash: string;
         targetBranch?: string;
     }>();

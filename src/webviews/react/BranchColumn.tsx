@@ -4,13 +4,14 @@
 
 import React, { useMemo, useState, useCallback } from "react";
 import type { Branch } from "../../types";
+import { isBranchAction, type BranchAction } from "./commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { getBranchMenuItems } from "./branch-column/menu";
 import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";
 import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
-import { ChevronIcon, RepoIcon, TagIcon } from "./branch-column/icons";
+import { RepoIcon, TagIcon } from "./branch-column/icons";
 import {
     BRANCH_ROW_CLASS_CSS,
     HEAD_LABEL_STYLE,
@@ -18,7 +19,6 @@ import {
     HEAD_WRAPPER_STYLE,
     NO_MATCH_STYLE,
     PANEL_STYLE,
-    ROW_STYLE,
     TREE_INDENT_STEP,
     TREE_SECTION_STYLE,
 } from "./branch-column/styles";
@@ -27,7 +27,7 @@ interface Props {
     branches: Branch[];
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
-    onBranchAction: (action: string, branchName: string) => void;
+    onBranchAction: (action: BranchAction, branchName: string) => void;
 }
 
 export function BranchColumn({
@@ -101,6 +101,7 @@ export function BranchColumn({
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
+            if (!isBranchAction(action)) return;
             onBranchAction(action, contextMenu.branch.name);
         },
         [contextMenu, onBranchAction],
@@ -168,14 +169,13 @@ export function BranchColumn({
                         const isExpanded = expandedFolders.has(remoteKey);
                         return (
                             <div key={remote}>
-                                <div
-                                    className="branch-row"
-                                    onClick={() => toggleFolder(remoteKey)}
-                                    style={{ ...ROW_STYLE, paddingLeft: TREE_INDENT_STEP }}
-                                >
-                                    <ChevronIcon expanded={isExpanded} />
-                                    <RepoIcon />
-                                    <span>{remote}</span>
+                                <div style={{ paddingLeft: TREE_INDENT_STEP }}>
+                                    <BranchSectionHeader
+                                        label={remote}
+                                        expanded={isExpanded}
+                                        onToggle={() => toggleFolder(remoteKey)}
+                                        leadingIcon={<RepoIcon />}
+                                    />
                                 </div>
                                 {isExpanded &&
                                     group.tree.map((node, index) => (
@@ -207,7 +207,7 @@ export function BranchColumn({
                     x={contextMenu.x}
                     y={contextMenu.y}
                     items={getBranchMenuItems(contextMenu.branch, actualCurrent?.name ?? "HEAD")}
-                    minWidth={340}
+                    minWidth={310}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}
                 />

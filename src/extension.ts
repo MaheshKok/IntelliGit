@@ -12,6 +12,7 @@ import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
 import type { Branch } from "./types";
+import type { CommitAction } from "./webviews/react/commitGraphTypes";
 import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
 import { deleteFileWithFallback } from "./utils/fileOps";
 
@@ -75,8 +76,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 if (requestId !== commitDetailRequestSeq) return;
                 commitInfo.setCommitDetail(detail);
             } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                vscode.window.showErrorMessage(`Failed to load commit: ${message}`);
+                const msg = getErrorMessage(err);
+                vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
             }
         }),
     );
@@ -242,7 +243,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
 
     const handleCommitContextAction = async (params: {
-        action: string;
+        action: CommitAction;
         hash: string;
         targetBranch?: string;
     }): Promise<void> => {
@@ -570,7 +571,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Checked out ${checkedOut}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Checkout failed: ${msg}`);
                 }
             },
@@ -590,7 +591,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Created and checked out ${newName}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Failed to create branch: ${msg}`);
                 }
             },
@@ -619,7 +620,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Checkout and rebase failed: ${msg}`);
                 }
             },
@@ -640,7 +641,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Rebased onto ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Rebase failed: ${msg}`);
                 }
             },
@@ -661,7 +662,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Merged ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Merge failed: ${msg}`);
                 }
             },
@@ -679,7 +680,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Updated ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Update failed: ${msg}`);
                 }
             },
@@ -709,7 +710,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Push failed: ${msg}`);
                 }
             },
@@ -729,7 +730,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Renamed ${name} to ${newName}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Rename failed: ${msg}`);
                 }
             },

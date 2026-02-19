@@ -2,7 +2,7 @@ import React from "react";
 import { LuSearch, LuX } from "react-icons/lu";
 import { SEARCH_CLEAR_BUTTON_STYLE, SEARCH_CONTAINER_STYLE, SEARCH_INPUT_STYLE } from "../styles";
 
-interface Props {
+export interface Props {
     value: string;
     onChange: (value: string) => void;
     onClear: () => void;

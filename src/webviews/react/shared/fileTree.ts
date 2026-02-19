@@ -73,15 +73,14 @@ function convertBuild<F>(node: { dirs: Map<string, DirBuild<F>>; files: F[] }): 
 }
 
 /** Collect all directory paths in a tree. */
-export function collectDirPaths<F>(entries: TreeEntry<F>[]): string[] {
-    const paths: string[] = [];
+export function collectDirPaths<F>(entries: TreeEntry<F>[], acc: string[] = []): string[] {
     for (const entry of entries) {
         if (entry.type === "folder") {
-            paths.push(entry.path);
-            paths.push(...collectDirPaths(entry.children));
+            acc.push(entry.path);
+            collectDirPaths(entry.children, acc);
         }
     }
-    return paths;
+    return acc;
 }
 
 /** Count total files (leaves) in a tree. */

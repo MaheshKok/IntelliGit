@@ -1,16 +1,20 @@
 import React from "react";
 import type { Commit } from "../../../types";
+import type { CommitAction } from "../commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
+
+type SeparatorAction = `sep-${string}`;
+type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
 
 export function getCommitMenuItems(
     commit: Commit,
     isUnpushed: boolean,
     defaultCheckoutBranch: string | null,
-): MenuItem[] {
+): CommitMenuItem[] {
     const isPushed = !isUnpushed;
     const isMergeCommit = commit.parentHashes.length > 1;
 
-    const items: MenuItem[] = [
+    const items: CommitMenuItem[] = [
         { label: "Copy Revision Number", action: "copyRevision", icon: iconCopy() },
         { label: "Create Patch...", action: "createPatch", icon: iconPatch() },
         { label: "Cherry-Pick", action: "cherryPick", icon: iconCherry() },
