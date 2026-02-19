@@ -16,6 +16,9 @@ export const BRANCH_ROW_CLASS_CSS = `
         background: var(--vscode-list-activeSelectionBackground) !important;
         color: var(--vscode-list-activeSelectionForeground) !important;
     }
+    .branch-search-input:focus-visible {
+        outline-color: var(--vscode-focusBorder, #007acc);
+    }
 `;
 
 export const PANEL_STYLE: CSSProperties = {
@@ -46,7 +49,7 @@ export const SEARCH_INPUT_STYLE: CSSProperties = {
     color: "var(--vscode-input-foreground, #d8dbe2)",
     padding: "0 6px",
     fontSize: 12,
-    outline: "none",
+    outline: "2px solid transparent",
 };
 
 export const SEARCH_CLEAR_BUTTON_STYLE: CSSProperties = {
@@ -123,8 +126,8 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
 };
 
 export const BRANCH_HIGHLIGHT_STYLE: CSSProperties = {
-    background: "rgba(227, 196, 93, 0.95)",
-    color: "#1b1b1b",
+    background: "var(--vscode-editor-findMatchHighlightBackground, rgba(227, 196, 93, 0.95))",
+    color: "var(--vscode-editor-foreground, #1b1b1b)",
     borderRadius: 3,
     padding: "0 1px",
 };

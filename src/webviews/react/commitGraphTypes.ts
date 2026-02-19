@@ -3,33 +3,7 @@
 
 import type { Branch, Commit } from "../../types";
 
-export type BranchAction =
-    | "checkout"
-    | "newBranchFrom"
-    | "checkoutAndRebase"
-    | "rebaseCurrentOnto"
-    | "mergeIntoCurrent"
-    | "updateBranch"
-    | "pushBranch"
-    | "renameBranch"
-    | "deleteBranch";
-
-export type CommitAction =
-    | "copyRevision"
-    | "createPatch"
-    | "cherryPick"
-    | "checkoutMain"
-    | "checkoutRevision"
-    | "resetCurrentToHere"
-    | "revertCommit"
-    | "undoCommit"
-    | "editCommitMessage"
-    | "dropCommit"
-    | "interactiveRebaseFromHere"
-    | "newBranch"
-    | "newTag";
-
-export const BRANCH_ACTION_VALUES: readonly BranchAction[] = [
+export const BRANCH_ACTION_VALUES = [
     "checkout",
     "newBranchFrom",
     "checkoutAndRebase",
@@ -41,7 +15,7 @@ export const BRANCH_ACTION_VALUES: readonly BranchAction[] = [
     "deleteBranch",
 ] as const;
 
-export const COMMIT_ACTION_VALUES: readonly CommitAction[] = [
+export const COMMIT_ACTION_VALUES = [
     "copyRevision",
     "createPatch",
     "cherryPick",
@@ -56,6 +30,9 @@ export const COMMIT_ACTION_VALUES: readonly CommitAction[] = [
     "newBranch",
     "newTag",
 ] as const;
+
+export type BranchAction = (typeof BRANCH_ACTION_VALUES)[number];
+export type CommitAction = (typeof COMMIT_ACTION_VALUES)[number];
 
 export function isBranchAction(value: string): value is BranchAction {
     return BRANCH_ACTION_VALUES.includes(value as BranchAction);

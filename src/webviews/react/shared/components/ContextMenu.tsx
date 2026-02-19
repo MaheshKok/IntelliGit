@@ -82,6 +82,7 @@ export function ContextMenu({
     return createPortal(
         <div
             ref={ref}
+            role="menu"
             style={{
                 position: "fixed",
                 left: pos.left,
@@ -129,6 +130,7 @@ export function ContextMenu({
                     <div
                         key={item.action}
                         className="intelligit-context-item"
+                        role="menuitem"
                         data-disabled={item.disabled ? "true" : "false"}
                         aria-disabled={item.disabled}
                         tabIndex={item.disabled ? -1 : 0}

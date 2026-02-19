@@ -51,6 +51,7 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
     }, []);
 
     const toggleMany = useCallback((paths: string[]) => {
+        if (paths.length === 0) return;
         setCheckedPaths((prev) => {
             const next = new Set(prev);
             const allChecked = paths.every((path) => next.has(path));

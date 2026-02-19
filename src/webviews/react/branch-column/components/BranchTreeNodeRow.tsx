@@ -37,6 +37,16 @@ export function BranchTreeNodeRow({
     filterNeedle,
     prefix,
 }: Props): React.ReactElement {
+    const handleActivateKey = (
+        event: React.KeyboardEvent<HTMLDivElement>,
+        action: () => void,
+    ): void => {
+        if (event.key === "Enter" || event.key === " ") {
+            if (event.key === " ") event.preventDefault();
+            action();
+        }
+    };
+
     const isFolder = node.children.length > 0 && !node.branch;
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
@@ -48,6 +58,10 @@ export function BranchTreeNodeRow({
                 <div
                     className="branch-row"
                     onClick={() => onToggleFolder(folderKey)}
+                    onKeyDown={(event) => handleActivateKey(event, () => onToggleFolder(folderKey))}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
                     style={rowStyle}
                 >
                     <ChevronIcon expanded={isExpanded} />
@@ -77,14 +91,21 @@ export function BranchTreeNodeRow({
     const shortName = node.branch?.name.replace(/^.*\//, "") ?? "";
     const isMainLike = !!node.branch && (shortName === "main" || shortName === "master");
     const isSelected = selectedBranch === node.fullName;
+    const handleSelectBranch = (): void => {
+        if (!node.fullName) return;
+        onSelectBranch(node.fullName);
+    };
 
     return (
         <div
             className={`branch-row${isSelected ? " selected" : ""}`}
-            onClick={() => onSelectBranch(node.fullName!)}
+            onClick={handleSelectBranch}
+            onKeyDown={(event) => handleActivateKey(event, handleSelectBranch)}
             onContextMenu={(event) => {
                 if (node.branch) onContextMenu(event, node.branch);
             }}
+            role="button"
+            tabIndex={0}
             style={rowStyle}
         >
             {isCurrent ? <TagIcon /> : isMainLike ? <StarIcon /> : <GitBranchIcon />}

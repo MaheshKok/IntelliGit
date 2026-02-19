@@ -52,6 +52,9 @@ function App(): React.ReactElement {
                 case "setCommitDetail":
                     setDetail(msg.detail);
                     return;
+                default:
+                    console.warn("Unknown CommitInfo message type:", msg.type);
+                    return;
             }
         };
 

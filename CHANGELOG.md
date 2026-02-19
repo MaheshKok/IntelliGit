@@ -35,8 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Commit panel tree types no longer store redundant `fileCount`; callsites now derive from `descendantFiles.length`.
 - `collectDirPaths` now uses an accumulator to avoid recursive array spreading overhead.
 
-### Stability and Error Handling
-
 - Extension branch command handlers and commit selection errors now consistently use shared `getErrorMessage(...)`.
 - Git numstat/stash-show warnings now log via a shared IntelliGit output channel (with fallback) instead of silent/console-only catches.
 - Status/numstat failures now provide short user-facing warnings when displayed diff statistics may be incomplete.
@@ -128,8 +126,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - JSON label is now distinct from JavaScript badge text.
 - Context menu viewport clamping:
     - reposition recalculates when menu item count/content changes.
-
-### Stability and Error Handling
 
 - File context command handlers now have safer async error handling:
     - `fileRollback`

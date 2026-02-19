@@ -66,6 +66,7 @@ export function CommitList({
 
     useCommitGraphCanvas({
         canvasRef,
+        viewportRef,
         rows: graphRows,
         graphWidth,
     });
@@ -79,22 +80,32 @@ export function CommitList({
 
         const observer = new ResizeObserver(updateHeight);
         observer.observe(viewport);
-        window.addEventListener("resize", updateHeight);
 
         return () => {
             observer.disconnect();
-            window.removeEventListener("resize", updateHeight);
         };
     }, []);
 
+    const unpushedLookup = useMemo(() => {
+        const exact = new Set(unpushedHashes);
+        const prefixes = new Set<string>();
+        for (const hash of unpushedHashes) {
+            for (let i = 1; i <= hash.length; i++) {
+                prefixes.add(hash.slice(0, i));
+            }
+        }
+        return { exact, prefixes };
+    }, [unpushedHashes]);
+
     const isUnpushedCommit = useCallback(
         (hash: string): boolean => {
-            for (const unpushed of unpushedHashes) {
-                if (hash.startsWith(unpushed) || unpushed.startsWith(hash)) return true;
+            if (unpushedLookup.prefixes.has(hash)) return true;
+            for (let i = 1; i <= hash.length; i++) {
+                if (unpushedLookup.exact.has(hash.slice(0, i))) return true;
             }
             return false;
         },
-        [unpushedHashes],
+        [unpushedLookup],
     );
 
     const handleRowContextMenu = useCallback((event: React.MouseEvent, commit: Commit) => {

@@ -183,6 +183,17 @@ describe("shared file tree helpers", () => {
         );
     });
 
+    it("handles root-level files without creating folder entries", () => {
+        const rootOnly = [
+            { path: "README.md", status: "M", staged: false, additions: 1, deletions: 0 },
+            { path: "LICENSE", status: "A", staged: false, additions: 1, deletions: 0 },
+        ];
+        const tree = buildFileTree(rootOnly);
+        expect(tree.every((entry) => entry.type === "file")).toBe(true);
+        expect(collectDirPaths(tree)).toEqual([]);
+        expect(countFiles(tree)).toBe(2);
+    });
+
     it("collects directory paths recursively with accumulator support", () => {
         const tree = buildFileTree(files);
         const acc: string[] = ["existing"];

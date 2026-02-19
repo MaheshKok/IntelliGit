@@ -1,7 +1,7 @@
 // Handles vertical drag-to-resize logic for the bottom commit area.
 // Returns the current height and a mousedown handler for the drag handle.
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 interface DragResizeAPI {
     height: number;
@@ -22,6 +22,11 @@ export function useDragResize(
     const [height, setHeight] = useState(initialHeight);
     const dragging = useRef(false);
     const { maxReservedHeight = 60, onResize } = options;
+    const onResizeRef = useRef(onResize);
+
+    useEffect(() => {
+        onResizeRef.current = onResize;
+    }, [onResize]);
 
     const onMouseDown = useCallback(
         (e: React.MouseEvent) => {
@@ -38,7 +43,7 @@ export function useDragResize(
                     : 500;
                 const nextHeight = Math.max(minHeight, Math.min(maxH, startH + delta));
                 setHeight(nextHeight);
-                onResize?.(nextHeight);
+                onResizeRef.current?.(nextHeight);
             };
 
             const onMouseUp = () => {
@@ -54,7 +59,7 @@ export function useDragResize(
             document.body.style.cursor = "row-resize";
             document.body.style.userSelect = "none";
         },
-        [containerRef, height, maxReservedHeight, minHeight, onResize],
+        [containerRef, height, maxReservedHeight, minHeight],
     );
 
     return { height, onMouseDown };

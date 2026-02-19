@@ -15,6 +15,8 @@ interface Props {
     selectedIndex: number | null;
 }
 
+type ShelfActionKind = "apply" | "pop" | "delete";
+
 export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
     const tree = useFileTree(shelfFiles, true);
@@ -28,17 +30,23 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
     );
 
     const handleShelfAction = useCallback(
-        (index: number | null, kind: "apply" | "pop" | "delete") => {
+        (index: number | null, kind: ShelfActionKind) => {
             if (index === null) return;
-            if (kind === "apply") {
-                vscode.postMessage({ type: "shelfApply", index });
-                return;
+            switch (kind) {
+                case "apply":
+                    vscode.postMessage({ type: "shelfApply", index });
+                    return;
+                case "pop":
+                    vscode.postMessage({ type: "shelfPop", index });
+                    return;
+                case "delete":
+                    vscode.postMessage({ type: "shelfDelete", index });
+                    return;
+                default: {
+                    const exhaustive: never = kind;
+                    throw new Error(`Unhandled shelf action: ${String(exhaustive)}`);
+                }
             }
-            if (kind === "pop") {
-                vscode.postMessage({ type: "shelfPop", index });
-                return;
-            }
-            vscode.postMessage({ type: "shelfDelete", index });
         },
         [vscode],
     );

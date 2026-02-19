@@ -7,7 +7,8 @@ type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | Separa
 
 function trim(name: string, max = 40): string {
     if (name.length <= max) return name;
-    const safeMax = Math.max(4, max);
+    // Keep output readable for tiny max values while never expanding beyond input length.
+    const safeMax = Math.min(name.length, Math.max(4, max));
     const endLen = Math.min(8, Math.max(1, safeMax - 3));
     const startLen = Math.max(0, safeMax - 3 - endLen);
     return name.slice(0, startLen) + "..." + name.slice(-endLen);

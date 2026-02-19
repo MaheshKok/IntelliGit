@@ -316,6 +316,7 @@
         "eslint-plugin-react": "^7.37.5",
         "framer-motion": "^11.0.0",
         "globals": "^17.3.0",
+        "jsdom": "^28.1.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-icons": "^5.5.0",

@@ -13,6 +13,7 @@ export function BranchSearchBar({ value, onChange, onClear }: Props): React.Reac
         <div style={SEARCH_CONTAINER_STYLE}>
             <LuSearch size={16} style={{ opacity: 0.95, flexShrink: 0 }} />
             <input
+                className="branch-search-input"
                 type="text"
                 aria-label="Search branches"
                 placeholder="Search branches"

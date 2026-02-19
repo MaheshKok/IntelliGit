@@ -179,6 +179,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const isValidGitHash = (value: string): boolean => /^[0-9a-fA-F]{7,40}$/.test(value);
     const isValidBranchName = (value: string): boolean =>
         value.length > 0 && !value.startsWith("-") && /^[A-Za-z0-9._/-]+$/.test(value);
+    const assertNever = (value: never): never => {
+        throw new Error(`Unhandled commit action: ${String(value)}`);
+    };
 
     const isCommitUnpushed = async (hash: string): Promise<boolean> => {
         const unpushed = await gitOps.getUnpushedCommitHashes();
@@ -525,7 +528,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return;
             }
             default:
-                return;
+                return assertNever(action);
         }
     };
 

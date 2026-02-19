@@ -30,6 +30,19 @@ interface Props {
     onBranchAction: (action: BranchAction, branchName: string) => void;
 }
 
+function makeToggle(
+    setState: React.Dispatch<React.SetStateAction<Set<string>>>,
+): (key: string) => void {
+    return (key: string) => {
+        setState((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+}
+
 export function BranchColumn({
     branches,
     selectedBranch,
@@ -66,23 +79,8 @@ export function BranchColumn({
     const localTree = useMemo(() => buildPrefixTree(locals), [locals]);
     const remoteGroups = useMemo(() => buildRemoteGroups(remotes), [remotes]);
 
-    const toggleSection = useCallback((key: string) => {
-        setExpandedSections((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-        });
-    }, []);
-
-    const toggleFolder = useCallback((key: string) => {
-        setExpandedFolders((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-        });
-    }, []);
+    const toggleSection = useCallback(makeToggle(setExpandedSections), []);
+    const toggleFolder = useCallback(makeToggle(setExpandedFolders), []);
 
     const handleBranchContextMenu = useCallback((event: React.MouseEvent, branch: Branch) => {
         event.preventDefault();
