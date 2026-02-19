@@ -1,6 +1,6 @@
-# IntelliGit
+# IntelliGit - PyCharm Git for VS Code
 
-IntelliJ-style Git experience for VS Code. A full-featured Git GUI with commit graph visualization, branch management, intelligent file staging, and a shelf (stash) system — all designed to match the workflow developers know from IntelliJ IDEA and PyCharm.
+IntelliGit is an IntelliJ/PyCharm-style Git extension for VS Code. It provides an intelligent Git workflow with commit graph visualization, branch management, file staging, and a Shelf workflow designed to feel familiar to PyCharm Git users.
 
 ## Features
 
