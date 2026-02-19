@@ -7,24 +7,9 @@ import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
-
-function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
-
-function isUntrackedPathspecError(error: unknown): boolean {
-    const message = getErrorMessage(error).toLowerCase();
-    const code =
-        typeof error === "object" && error !== null && "code" in error
-            ? String((error as { code?: unknown }).code ?? "").toLowerCase()
-            : "";
-
-    return (
-        message.includes("did not match any files") ||
-        (message.includes("pathspec") && message.includes("did not match")) ||
-        code === "enoent"
-    );
-}
+import { getErrorMessage } from "../utils/errors";
+import { deleteFileWithFallback } from "../utils/fileOps";
+import type { InboundMessage } from "../webviews/react/commit-panel/types";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
@@ -302,27 +287,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     "Delete",
                 );
                 if (confirm !== "Delete") return;
-                try {
-                    await this.gitOps.deleteFile(filePath, true);
-                } catch (error) {
-                    if (!isUntrackedPathspecError(error)) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to delete file with git rm:", error);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-
-                    try {
-                        const workspaceRoot = this.getWorkspaceRoot();
-                        const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
-                        await vscode.workspace.fs.delete(uri);
-                    } catch (fsError) {
-                        const message = getErrorMessage(fsError);
-                        console.error("Failed to delete file from filesystem:", fsError);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-                }
+                const workspaceRoot = this.getWorkspaceRoot();
+                const deleted = await deleteFileWithFallback(this.gitOps, workspaceRoot, filePath);
+                if (!deleted) return;
                 vscode.window.showInformationMessage(`Deleted ${filePath}`);
                 await this.refreshData();
                 break;
@@ -341,7 +308,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private postToWebview(msg: unknown): void {
+    private postToWebview(msg: InboundMessage): void {
         this.view?.webview.postMessage(msg);
     }
 

@@ -12,6 +12,8 @@ import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
 import type { Branch } from "./types";
+import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
+import { deleteFileWithFallback } from "./utils/fileOps";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -112,26 +114,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const clearSelection = () => {
         commitInfo.clear();
     };
-
-    const getErrorMessage = (error: unknown): string =>
-        error instanceof Error ? error.message : String(error);
-
-    const isUntrackedPathspecError = (error: unknown): boolean => {
-        const message = getErrorMessage(error).toLowerCase();
-        const code =
-            typeof error === "object" && error !== null && "code" in error
-                ? String((error as { code?: unknown }).code ?? "").toLowerCase()
-                : "";
-
-        return (
-            message.includes("did not match any files") ||
-            (message.includes("pathspec") && message.includes("did not match")) ||
-            code === "enoent"
-        );
-    };
-
-    const isBranchNotFullyMergedError = (error: unknown): boolean =>
-        getErrorMessage(error).toLowerCase().includes("is not fully merged");
 
     const getCheckedOutBranchName = async (): Promise<string | null> => {
         try {
@@ -311,12 +293,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const args =
                     mainlineParent.kind === "notMerge"
                         ? ["cherry-pick", validatedHash]
-                        : [
-                              "cherry-pick",
-                              "-m",
-                              String(mainlineParent.parentNumber),
-                              validatedHash,
-                          ];
+                        : ["cherry-pick", "-m", String(mainlineParent.parentNumber), validatedHash];
                 await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
                 await refreshAll();
@@ -513,7 +490,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Drop",
                 );
                 if (confirm !== "Drop") return;
-                await executor.run(["rebase", "--onto", `${validatedHash}^`, validatedHash, "HEAD"]);
+                await executor.run([
+                    "rebase",
+                    "--onto",
+                    `${validatedHash}^`,
+                    validatedHash,
+                    "HEAD",
+                ]);
                 vscode.window.showInformationMessage(`Dropped ${short} from history.`);
                 await refreshAll();
                 return;
@@ -878,26 +861,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 if (confirm !== "Delete") return;
 
-                try {
-                    await gitOps.deleteFile(ctx.filePath, true);
-                } catch (error) {
-                    if (!isUntrackedPathspecError(error)) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to delete file with git rm:", error);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-
-                    try {
-                        const uri = vscode.Uri.joinPath(workspaceFolder.uri, ctx.filePath);
-                        await vscode.workspace.fs.delete(uri);
-                    } catch (fsError) {
-                        const message = getErrorMessage(fsError);
-                        console.error("Failed to delete file from filesystem:", fsError);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-                }
+                const deleted = await deleteFileWithFallback(
+                    gitOps,
+                    workspaceFolder.uri,
+                    ctx.filePath,
+                );
+                if (!deleted) return;
 
                 vscode.window.showInformationMessage(`Deleted ${ctx.filePath}`);
                 await commitPanel.refresh();

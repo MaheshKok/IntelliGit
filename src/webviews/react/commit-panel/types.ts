@@ -64,18 +64,19 @@ export type CommitPanelAction =
     | { type: "SET_COMMIT_MESSAGE"; message: string }
     | { type: "SET_AMEND"; isAmend: boolean };
 
+import type {
+    TreeFolder as GenericTreeFolder,
+    TreeLeaf as GenericTreeLeaf,
+} from "../shared/fileTree";
+
 /** A node in the directory tree used for grouped file display. */
-export interface TreeNode {
-    type: "folder";
-    name: string;
-    path: string;
+export interface TreeNode extends Omit<GenericTreeFolder<WorkingFile>, "children"> {
     children: TreeEntry[];
+    fileCount: number;
+    descendantFiles: WorkingFile[];
 }
 
 /** A leaf file node in the directory tree. */
-export interface TreeFile {
-    type: "file";
-    file: WorkingFile;
-}
+export type TreeFile = GenericTreeLeaf<WorkingFile>;
 
 export type TreeEntry = TreeNode | TreeFile;

@@ -27,25 +27,17 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
         [vscode],
     );
 
-    const handleApply = useCallback(
-        (index: number | null) => {
+    const handleShelfAction = useCallback(
+        (index: number | null, kind: "apply" | "pop" | "delete") => {
             if (index === null) return;
-            vscode.postMessage({ type: "shelfApply", index });
-        },
-        [vscode],
-    );
-
-    const handlePop = useCallback(
-        (index: number | null) => {
-            if (index === null) return;
-            vscode.postMessage({ type: "shelfPop", index });
-        },
-        [vscode],
-    );
-
-    const handleDrop = useCallback(
-        (index: number | null) => {
-            if (index === null) return;
+            if (kind === "apply") {
+                vscode.postMessage({ type: "shelfApply", index });
+                return;
+            }
+            if (kind === "pop") {
+                vscode.postMessage({ type: "shelfPop", index });
+                return;
+            }
             vscode.postMessage({ type: "shelfDelete", index });
         },
         [vscode],
@@ -189,7 +181,7 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handleApply(selectedIndex)}
+                    onClick={() => handleShelfAction(selectedIndex, "apply")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
                     h="30px"
@@ -203,7 +195,7 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handlePop(selectedIndex)}
+                    onClick={() => handleShelfAction(selectedIndex, "pop")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
                     h="30px"
@@ -217,7 +209,7 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handleDrop(selectedIndex)}
+                    onClick={() => handleShelfAction(selectedIndex, "delete")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
                     h="30px"
@@ -292,7 +284,7 @@ function ShelfFileTree({
                 }
 
                 const isExpanded = expandedDirs.has(entry.path);
-                const fileCount = countFiles(entry.children);
+                const fileCount = entry.fileCount;
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex
@@ -354,13 +346,4 @@ function ShelfFileTree({
             })}
         </>
     );
-}
-
-function countFiles(entries: TreeEntry[]): number {
-    let count = 0;
-    for (const entry of entries) {
-        if (entry.type === "file") count += 1;
-        else count += countFiles(entry.children);
-    }
-    return count;
 }

@@ -94,6 +94,13 @@ export function ContextMenu({
                     "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}
         >
+            <style>{`
+                .intelligit-context-item[data-disabled="false"]:hover,
+                .intelligit-context-item[data-disabled="false"]:focus-visible {
+                    background: var(--vscode-menu-selectionBackground, #094771);
+                    color: var(--vscode-menu-selectionForeground, #fff);
+                }
+            `}</style>
             {items.map((item, i) => {
                 if (item.separator) {
                     return (
@@ -111,25 +118,19 @@ export function ContextMenu({
                 return (
                     <div
                         key={item.action}
+                        className="intelligit-context-item"
+                        data-disabled={item.disabled ? "true" : "false"}
                         aria-disabled={item.disabled}
                         tabIndex={item.disabled ? -1 : 0}
                         onClick={item.disabled ? undefined : () => handleItemClick(item.action)}
-                        onMouseEnter={
+                        onKeyDown={
                             item.disabled
                                 ? undefined
                                 : (e) => {
-                                      (e.currentTarget as HTMLDivElement).style.background =
-                                          "var(--vscode-menu-selectionBackground, #094771)";
-                                      (e.currentTarget as HTMLDivElement).style.color =
-                                          "var(--vscode-menu-selectionForeground, #fff)";
-                                  }
-                        }
-                        onMouseLeave={
-                            item.disabled
-                                ? undefined
-                                : (e) => {
-                                      (e.currentTarget as HTMLDivElement).style.background = "";
-                                      (e.currentTarget as HTMLDivElement).style.color = "";
+                                      if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          handleItemClick(item.action);
+                                      }
                                   }
                         }
                         style={{
@@ -148,6 +149,7 @@ export function ContextMenu({
                                 : "var(--vscode-menu-foreground, #d8dbe2)",
                             whiteSpace: "nowrap",
                             opacity: item.disabled ? 0.72 : 1,
+                            outline: "none",
                         }}
                     >
                         {hasAnyIcon && (

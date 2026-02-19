@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
+import type { CommitGraphInbound } from "../webviews/react/commitGraphTypes";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
@@ -178,7 +179,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         await this.loadInitial();
     }
 
-    private postToWebview(msg: unknown): void {
+    private postToWebview(msg: CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
     }
 

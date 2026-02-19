@@ -4,6 +4,12 @@ import type { Branch, Commit, CommitDetail, CommitFile, WorkingFile, StashEntry 
 const FIELD_SEP = "<<|>>";
 const RECORD_SEP = "<<||>>";
 
+function assertStashIndex(index: number): void {
+    if (!Number.isInteger(index) || index < 0) {
+        throw new Error(`Invalid stash index: ${index}`);
+    }
+}
+
 export class GitOps {
     constructor(private readonly executor: GitExecutor) {}
 
@@ -198,8 +204,8 @@ export class GitOps {
                 file.additions = Math.max(file.additions, Number.isNaN(parsedAdd) ? 0 : parsedAdd);
                 file.deletions = Math.max(file.deletions, Number.isNaN(parsedDel) ? 0 : parsedDel);
             }
-        } catch {
-            /* numstat may fail for binary files */
+        } catch (err) {
+            console.warn("Failed to get commit numstat:", err);
         }
 
         return {
@@ -307,8 +313,8 @@ export class GitOps {
                     }
                 }
             }
-        } catch {
-            /* ignore */
+        } catch (err) {
+            console.warn("Failed to get unstaged numstat:", err);
         }
 
         // Get numstat for staged changes
@@ -330,8 +336,8 @@ export class GitOps {
                     }
                 }
             }
-        } catch {
-            /* ignore */
+        } catch (err) {
+            console.warn("Failed to get staged numstat:", err);
         }
 
         return files;
@@ -393,10 +399,12 @@ export class GitOps {
     }
 
     async shelvePop(index: number = 0): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "pop", `stash@{${index}}`]);
     }
 
     async shelveApply(index: number = 0): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "apply", `stash@{${index}}`]);
     }
 
@@ -422,10 +430,12 @@ export class GitOps {
     }
 
     async shelveDelete(index: number): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
 
     async getShelvedFiles(index: number): Promise<WorkingFile[]> {
+        assertStashIndex(index);
         const ref = `stash@{${index}}`;
         const files = new Map<string, WorkingFile>();
 
@@ -444,12 +454,7 @@ export class GitOps {
         };
 
         try {
-            const nameStatus = await this.executor.run([
-                "stash",
-                "show",
-                "--name-status",
-                ref,
-            ]);
+            const nameStatus = await this.executor.run(["stash", "show", "--name-status", ref]);
             for (const line of nameStatus.trim().split("\n")) {
                 if (!line.trim()) continue;
                 const parts = line.split("\t");
@@ -468,12 +473,7 @@ export class GitOps {
         }
 
         try {
-            const numstat = await this.executor.run([
-                "stash",
-                "show",
-                "--numstat",
-                ref,
-            ]);
+            const numstat = await this.executor.run(["stash", "show", "--numstat", ref]);
             for (const line of numstat.trim().split("\n")) {
                 if (!line.trim()) continue;
                 const parts = line.split("\t");
@@ -494,6 +494,7 @@ export class GitOps {
     }
 
     async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "show", "-p", `stash@{${index}}`, "--", filePath]);
     }
 

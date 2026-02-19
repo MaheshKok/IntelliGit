@@ -8,13 +8,20 @@ interface DragResizeAPI {
     onMouseDown: (e: React.MouseEvent) => void;
 }
 
+interface DragResizeOptions {
+    maxReservedHeight?: number;
+    onResize?: (height: number) => void;
+}
+
 export function useDragResize(
     initialHeight: number,
     minHeight: number,
     containerRef: React.RefObject<HTMLDivElement | null>,
+    options: DragResizeOptions = {},
 ): DragResizeAPI {
     const [height, setHeight] = useState(initialHeight);
     const dragging = useRef(false);
+    const { maxReservedHeight = 60, onResize } = options;
 
     const onMouseDown = useCallback(
         (e: React.MouseEvent) => {
@@ -26,8 +33,12 @@ export function useDragResize(
             const onMouseMove = (ev: MouseEvent) => {
                 if (!dragging.current) return;
                 const delta = startY - ev.clientY;
-                const maxH = containerRef.current ? containerRef.current.clientHeight - 60 : 500;
-                setHeight(Math.max(minHeight, Math.min(maxH, startH + delta)));
+                const maxH = containerRef.current
+                    ? containerRef.current.clientHeight - maxReservedHeight
+                    : 500;
+                const nextHeight = Math.max(minHeight, Math.min(maxH, startH + delta));
+                setHeight(nextHeight);
+                onResize?.(nextHeight);
             };
 
             const onMouseUp = () => {
@@ -43,7 +54,7 @@ export function useDragResize(
             document.body.style.cursor = "row-resize";
             document.body.style.userSelect = "none";
         },
-        [height, minHeight, containerRef],
+        [containerRef, height, maxReservedHeight, minHeight, onResize],
     );
 
     return { height, onMouseDown };

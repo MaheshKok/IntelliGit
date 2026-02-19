@@ -2,23 +2,15 @@
 // Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar].
 // Branch filtering from the inline branch tree posts back to the extension host.
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createRoot } from "react-dom/client";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit } from "../../types";
+import type { CommitGraphOutbound, CommitGraphInbound } from "./commitGraphTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 
-type OutboundMessage =
-    | { type: "ready" }
-    | { type: "selectCommit"; hash: string }
-    | { type: "filterText"; text: string }
-    | { type: "loadMore" }
-    | { type: "filterBranch"; branch: string | null }
-    | { type: "branchAction"; action: string; branchName: string }
-    | { type: "commitAction"; action: string; hash: string; targetBranch?: string };
-
-const vscode = getVsCodeApi<OutboundMessage, unknown>();
+const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 260;
@@ -38,7 +30,7 @@ function App(): React.ReactElement {
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
 
-        const handler = (event: MessageEvent) => {
+        const handler = (event: MessageEvent<CommitGraphInbound>) => {
             const data = event.data;
             switch (data.type) {
                 case "loadCommits":
@@ -107,12 +99,12 @@ function App(): React.ReactElement {
         [],
     );
 
-    const defaultCheckoutBranch = (() => {
+    const defaultCheckoutBranch = useMemo(() => {
         const localBranches = branches.filter((b) => !b.isRemote).map((b) => b.name);
         if (localBranches.includes("main")) return "main";
         if (localBranches.includes("master")) return "master";
         return localBranches[0] ?? null;
-    })();
+    }, [branches]);
 
     // Resizable divider via mouse events on document
     const onDividerMouseDown = useCallback(

@@ -2,31 +2,25 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Box, Flex, ChakraProvider } from "@chakra-ui/react";
 import type { CommitDetail, CommitFile } from "../../types";
+import type { CommitInfoOutbound, CommitInfoInbound } from "./commitInfoTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import { formatDateTime } from "./shared/date";
 import { FileTypeIcon } from "./commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "./commit-panel/components/StatusBadge";
+import { useDragResize } from "./commit-panel/hooks/useDragResize";
 import theme from "./commit-panel/theme";
+import {
+    buildFileTree,
+    collectDirPaths,
+    countFiles,
+    type TreeEntry as GenericTreeEntry,
+    type TreeFolder as GenericTreeFolder,
+} from "./shared/fileTree";
 
-type InboundMessage = { type: "setCommitDetail"; detail: CommitDetail } | { type: "clear" };
+type TreeEntry = GenericTreeEntry<CommitFile>;
+type TreeFolder = GenericTreeFolder<CommitFile>;
 
-type OutboundMessage = { type: "ready" };
-
-type TreeEntry = TreeFolder | TreeFile;
-
-interface TreeFolder {
-    type: "folder";
-    path: string;
-    name: string;
-    children: TreeEntry[];
-}
-
-interface TreeFile {
-    type: "file";
-    file: CommitFile;
-}
-
-const vscode = getVsCodeApi<OutboundMessage, unknown>();
+const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
 const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
@@ -37,10 +31,18 @@ function App(): React.ReactElement {
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
     const [detailCollapsed, setDetailCollapsed] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
-    const [bottomHeight, setBottomHeight] = useState(220);
+    const { height: bottomHeight, onMouseDown: onResizeStart } = useDragResize(
+        220,
+        70,
+        containerRef,
+        {
+            maxReservedHeight: 80,
+            onResize: () => setDetailCollapsed(false),
+        },
+    );
 
     useEffect(() => {
-        const handler = (event: MessageEvent<InboundMessage>) => {
+        const handler = (event: MessageEvent<CommitInfoInbound>) => {
             const msg = event.data;
             if (msg.type === "clear") {
                 setDetail(null);
@@ -61,31 +63,6 @@ function App(): React.ReactElement {
         if (!detail) return;
         setExpandedDirs(new Set(collectDirPaths(tree)));
     }, [detail, tree]);
-
-    const onResizeStart = (e: React.MouseEvent) => {
-        e.preventDefault();
-        const startY = e.clientY;
-        const startH = bottomHeight;
-
-        const onMove = (ev: MouseEvent) => {
-            const delta = startY - ev.clientY;
-            const maxH = containerRef.current ? containerRef.current.clientHeight - 80 : 500;
-            setBottomHeight(Math.max(70, Math.min(maxH, startH + delta)));
-            setDetailCollapsed(false);
-        };
-
-        const onUp = () => {
-            document.removeEventListener("mousemove", onMove);
-            document.removeEventListener("mouseup", onUp);
-            document.body.style.cursor = "";
-            document.body.style.userSelect = "";
-        };
-
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
-        document.body.style.cursor = "row-resize";
-        document.body.style.userSelect = "none";
-    };
 
     if (!detail) {
         return (
@@ -385,80 +362,6 @@ function InfoIndentGuides({ treeDepth }: { treeDepth: number }): React.ReactElem
             ))}
         </>
     );
-}
-
-function buildFileTree(files: CommitFile[]): TreeEntry[] {
-    const root: { dirs: Map<string, BuildDir>; files: CommitFile[] } = {
-        dirs: new Map(),
-        files: [],
-    };
-
-    for (const file of files) {
-        const parts = file.path.split("/");
-        if (parts.length === 1) {
-            root.files.push(file);
-            continue;
-        }
-        let current = root;
-        for (let i = 0; i < parts.length - 1; i++) {
-            const name = parts[i];
-            if (!current.dirs.has(name)) {
-                current.dirs.set(name, {
-                    name,
-                    path: parts.slice(0, i + 1).join("/"),
-                    dirs: new Map(),
-                    files: [],
-                });
-            }
-            current = current.dirs.get(name)!;
-        }
-        current.files.push(file);
-    }
-
-    return convertBuild(root);
-}
-
-interface BuildDir {
-    name: string;
-    path: string;
-    dirs: Map<string, BuildDir>;
-    files: CommitFile[];
-}
-
-function convertBuild(node: { dirs: Map<string, BuildDir>; files: CommitFile[] }): TreeEntry[] {
-    const entries: TreeEntry[] = [];
-    for (const dir of node.dirs.values()) {
-        entries.push({
-            type: "folder",
-            path: dir.path,
-            name: dir.name,
-            children: convertBuild(dir),
-        });
-    }
-    for (const file of node.files) {
-        entries.push({ type: "file", file });
-    }
-    return entries;
-}
-
-function countFiles(entries: TreeEntry[]): number {
-    let c = 0;
-    for (const entry of entries) {
-        if (entry.type === "file") c += 1;
-        else c += countFiles(entry.children);
-    }
-    return c;
-}
-
-function collectDirPaths(entries: TreeEntry[]): string[] {
-    const paths: string[] = [];
-    for (const entry of entries) {
-        if (entry.type === "folder") {
-            paths.push(entry.path);
-            paths.push(...collectDirPaths(entry.children));
-        }
-    }
-    return paths;
 }
 
 const root = createRoot(document.getElementById("root")!);
