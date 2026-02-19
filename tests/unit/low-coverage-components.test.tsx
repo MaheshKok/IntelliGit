@@ -242,6 +242,7 @@ describe("low coverage components", () => {
             'input[placeholder="Search branches"]',
         ) as HTMLInputElement;
         act(() => {
+            // React-controlled inputs in jsdom need the native value setter + input/change events.
             const valueSetter = Object.getOwnPropertyDescriptor(
                 HTMLInputElement.prototype,
                 "value",

@@ -159,6 +159,7 @@ function App(): React.ReactElement {
 
             {/* Resizable divider */}
             <div
+                data-testid="commit-graph-divider"
                 onMouseDown={onDividerMouseDown}
                 style={{
                     width: 4,

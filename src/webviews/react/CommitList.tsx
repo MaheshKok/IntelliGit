@@ -24,6 +24,8 @@ import {
     SCROLL_VIEWPORT_STYLE,
 } from "./commit-list/styles";
 
+const MIN_PREFIX_LENGTH = 7;
+
 interface Props {
     commits: Commit[];
     selectedHash: string | null;
@@ -92,7 +94,8 @@ export function CommitList({
         const prefixes = new Set<string>();
         // Build prefix lookup so truncated hashes match full hashes (and vice versa).
         for (const hash of unpushedHashes) {
-            for (let i = 1; i <= hash.length; i++) {
+            const start = Math.min(MIN_PREFIX_LENGTH, hash.length);
+            for (let i = start; i <= hash.length; i++) {
                 prefixes.add(hash.slice(0, i));
             }
         }
@@ -102,7 +105,8 @@ export function CommitList({
     const isUnpushedCommit = useCallback(
         (hash: string): boolean => {
             if (unpushedLookup.prefixes.has(hash)) return true;
-            for (let i = 1; i <= hash.length; i++) {
+            const start = Math.min(MIN_PREFIX_LENGTH, hash.length);
+            for (let i = start; i <= hash.length; i++) {
                 if (unpushedLookup.exact.has(hash.slice(0, i))) return true;
             }
             return false;

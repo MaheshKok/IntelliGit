@@ -331,16 +331,19 @@ vi.mock("../../src/utils/fileOps", () => ({
 }));
 
 async function waitForAsync(): Promise<void> {
-    await Promise.resolve();
-    try {
-        await vi.runAllTimersAsync();
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        const isExpectedTimerError =
-            message.includes("Timers are not mocked") ||
-            message.includes("Cannot call") ||
-            message.includes("runAllTimers");
-        if (!isExpectedTimerError) throw error;
+    const maxPasses = 8;
+    for (let i = 0; i < maxPasses; i++) {
+        await Promise.resolve();
+        try {
+            await vi.runAllTimersAsync();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            const isExpectedTimerError =
+                message.includes("Timers are not mocked") ||
+                message.includes("Cannot call") ||
+                message.includes("runAllTimers");
+            if (!isExpectedTimerError) throw error;
+        }
     }
     await Promise.resolve();
 }
@@ -489,23 +492,31 @@ describe("extension integration", () => {
 
         await activate(context);
 
-        latestCommitGraphProvider!.emitCommitAction({ action: "copyRevision", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "createPatch", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "cherryPick", hash: "deadbee" });
-        latestCommitGraphProvider!.emitCommitAction({
+        const emitCommitAction = async (payload: {
+            action: string;
+            hash: string;
+            targetBranch?: string;
+        }) => {
+            latestCommitGraphProvider!.emitCommitAction(payload);
+            await waitForAsync();
+        };
+        await emitCommitAction({ action: "copyRevision", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "createPatch", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "cherryPick", hash: "deadbee" });
+        await emitCommitAction({
             action: "checkoutMain",
             hash: "a1b2c3d4",
             targetBranch: "main",
         });
-        latestCommitGraphProvider!.emitCommitAction({ action: "checkoutRevision", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "resetCurrentToHere", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "revertCommit", hash: "deadbee" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "newBranch", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "newTag", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "undoCommit", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "editCommitMessage", hash: "feed1234" });
-        latestCommitGraphProvider!.emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
-        latestCommitGraphProvider!.emitCommitAction({
+        await emitCommitAction({ action: "checkoutRevision", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "resetCurrentToHere", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "revertCommit", hash: "deadbee" });
+        await emitCommitAction({ action: "newBranch", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "newTag", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "undoCommit", hash: "a1b2c3d4" });
+        await emitCommitAction({ action: "editCommitMessage", hash: "feed1234" });
+        await emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
+        await emitCommitAction({
             action: "interactiveRebaseFromHere",
             hash: "a1b2c3d4",
         });
@@ -513,9 +524,10 @@ describe("extension integration", () => {
             action: "checkout",
             branchName: "main",
         });
+        await waitForAsync();
         latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");
+        await waitForAsync();
         latestCommitGraphProvider!.emitBranchFilterChanged("main");
-
         await waitForAsync();
 
         expect(clipboardWriteText).toHaveBeenCalledWith("a1b2c3d4");

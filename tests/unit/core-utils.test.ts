@@ -115,18 +115,26 @@ describe("core utilities", () => {
     });
 
     it("buildWebviewShellHtml includes CSP, nonce, title and script URI", async () => {
-        const joinPath = vi.fn((_base: any, ...parts: string[]) => ({ path: `/${parts.join("/")}` }));
+        const joinPath = vi.fn(
+            (_base: { path?: string }, ...parts: string[]): { path: string } => ({
+                path: `/${parts.join("/")}`,
+            }),
+        );
         vi.doMock("vscode", () => ({
             Uri: { joinPath },
         }));
         const { buildWebviewShellHtml } = await import("../../src/views/webviewHtml");
+        const extensionUri = { path: "/ext" } as unknown as Parameters<
+            typeof buildWebviewShellHtml
+        >[0]["extensionUri"];
+        const webview = {
+            cspSource: "vscode-resource:",
+            asWebviewUri: (uri: { path: string }) => `webview://${uri.path}`,
+        } as unknown as Parameters<typeof buildWebviewShellHtml>[0]["webview"];
 
         const html = buildWebviewShellHtml({
-            extensionUri: { path: "/ext" } as any,
-            webview: {
-                cspSource: "vscode-resource:",
-                asWebviewUri: (uri: { path: string }) => `webview://${uri.path}`,
-            } as any,
+            extensionUri,
+            webview,
             scriptFile: "webview-commitgraph.js",
             title: "Commit Graph",
             backgroundVar: "#123",

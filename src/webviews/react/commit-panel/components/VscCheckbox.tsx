@@ -8,6 +8,7 @@ interface Props {
     isIndeterminate?: boolean;
     onChange: () => void;
     inputTestId?: string;
+    inputId?: string;
 }
 
 const SIZE = 14;
@@ -23,6 +24,7 @@ function VscCheckboxInner({
     isIndeterminate,
     onChange,
     inputTestId,
+    inputId,
 }: Props): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +51,7 @@ function VscCheckboxInner({
             <input
                 ref={inputRef}
                 type="checkbox"
+                id={inputId}
                 data-testid={inputTestId}
                 checked={isChecked}
                 onChange={(e) => {

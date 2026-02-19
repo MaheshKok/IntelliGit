@@ -104,9 +104,7 @@ describe("app logic coverage", () => {
             document.getElementById("load-more")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        const divider = Array.from(document.querySelectorAll("div")).find(
-            (el) => (el as HTMLDivElement).style.cursor === "col-resize",
-        ) as HTMLElement;
+        const divider = document.querySelector('[data-testid="commit-graph-divider"]') as HTMLElement;
         expect(divider).toBeTruthy();
         act(() => {
             divider.dispatchEvent(

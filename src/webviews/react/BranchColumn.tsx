@@ -94,12 +94,18 @@ export function BranchColumn({
     const localTree = useMemo(() => buildPrefixTree(locals), [locals]);
     const remoteGroups = useMemo(() => buildRemoteGroups(remotes), [remotes]);
 
-    const toggleSection = useCallback((key: string) => {
-        toggleSetKey(setExpandedSections, key);
-    }, []);
-    const toggleFolder = useCallback((key: string) => {
-        toggleSetKey(setExpandedFolders, key);
-    }, []);
+    const toggleSection = useCallback(
+        (key: string) => {
+            toggleSetKey(setExpandedSections, key);
+        },
+        [setExpandedSections],
+    );
+    const toggleFolder = useCallback(
+        (key: string) => {
+            toggleSetKey(setExpandedFolders, key);
+        },
+        [setExpandedFolders],
+    );
 
     const handleBranchContextMenu = useCallback((event: React.MouseEvent, branch: Branch) => {
         event.preventDefault();
