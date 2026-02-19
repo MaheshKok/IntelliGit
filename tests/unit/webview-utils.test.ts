@@ -67,7 +67,8 @@ describe("branch menu", () => {
         const items = getBranchMenuItems(makeBranch({ name: veryLong }), "main");
         const newBranchFrom = items.find((item) => item.action === "newBranchFrom");
         expect(newBranchFrom?.label).not.toContain(veryLong);
-        expect(newBranchFrom?.label).toContain("...");
+        const untrimmedLabel = `New Branch from '${veryLong}'...`;
+        expect((newBranchFrom?.label ?? "").length).toBeLessThan(untrimmedLabel.length);
     });
 });
 

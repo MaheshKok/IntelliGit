@@ -31,6 +31,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
         const draw = () => {
             raf = 0;
             const dpr = window.devicePixelRatio || 1;
+            // Read theme background on every draw so theme switches repaint correctly.
             const bgColor =
                 getComputedStyle(document.documentElement)
                     .getPropertyValue("--vscode-editor-background")
@@ -132,6 +133,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
 
         const observer = new ResizeObserver(scheduleDraw);
         observer.observe(viewport);
+        // Observe theme-related attribute changes and redraw with updated colors.
         const themeObserver = new MutationObserver(scheduleDraw);
         themeObserver.observe(document.documentElement, {
             attributes: true,

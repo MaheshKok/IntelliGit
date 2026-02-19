@@ -1,8 +1,30 @@
-import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
+import React, {
+    useRef,
+    useEffect,
+    useLayoutEffect,
+    useState,
+    useCallback,
+    useInsertionEffect,
+} from "react";
 import { createPortal } from "react-dom";
 
 const ITEM_HEIGHT = 28;
 const ITEM_FONT_SIZE = 13;
+const CONTEXT_MENU_STYLE_ID = "intelligit-ctx-styles";
+const CONTEXT_MENU_STYLE_RULES = `
+    .intelligit-context-item[data-disabled="false"]:hover,
+    .intelligit-context-item[data-disabled="false"]:focus-visible {
+        background: var(--vscode-menu-selectionBackground, #094771);
+        color: var(--vscode-menu-selectionForeground, #fff);
+    }
+    .intelligit-context-item[data-disabled="false"]:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder, #007acc);
+        box-shadow:
+            0 0 0 1px var(--vscode-focusBorder, #007acc),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        outline-offset: -1px;
+    }
+`;
 
 export interface MenuItem {
     label: string;
@@ -36,6 +58,15 @@ export function ContextMenu({
     const menuBodyPaddingX = 4;
     const hasAnyIcon = items.some((item) => !item.separator && !!item.icon);
     const hasAnyTrailing = items.some((item) => !item.separator && (!!item.hint || !!item.submenu));
+
+    useInsertionEffect(() => {
+        if (typeof document === "undefined") return;
+        if (document.getElementById(CONTEXT_MENU_STYLE_ID)) return;
+        const style = document.createElement("style");
+        style.id = CONTEXT_MENU_STYLE_ID;
+        style.textContent = CONTEXT_MENU_STYLE_RULES;
+        document.head.appendChild(style);
+    }, []);
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -99,20 +130,6 @@ export function ContextMenu({
                     "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}
         >
-            <style>{`
-                .intelligit-context-item[data-disabled="false"]:hover,
-                .intelligit-context-item[data-disabled="false"]:focus-visible {
-                    background: var(--vscode-menu-selectionBackground, #094771);
-                    color: var(--vscode-menu-selectionForeground, #fff);
-                }
-                .intelligit-context-item[data-disabled="false"]:focus-visible {
-                    outline: 1px solid var(--vscode-focusBorder, #007acc);
-                    box-shadow:
-                        0 0 0 1px var(--vscode-focusBorder, #007acc),
-                        inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-                    outline-offset: -1px;
-                }
-            `}</style>
             {items.map((item, i) => {
                 if (item.separator) {
                     return (

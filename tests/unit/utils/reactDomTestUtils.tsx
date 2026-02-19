@@ -4,6 +4,8 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, vi } from "vitest";
 
+const mountedRoots = new Set<{ root: Root; container: HTMLDivElement }>();
+
 export function mount(node: React.ReactElement): { container: HTMLDivElement; root: Root } {
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -11,6 +13,7 @@ export function mount(node: React.ReactElement): { container: HTMLDivElement; ro
     act(() => {
         root.render(node);
     });
+    mountedRoots.add({ root, container });
     return { container, root };
 }
 
@@ -19,6 +22,11 @@ export function unmount(root: Root, container: HTMLDivElement): void {
         root.unmount();
     });
     container.remove();
+    for (const entry of mountedRoots) {
+        if (entry.root === root || entry.container === container) {
+            mountedRoots.delete(entry);
+        }
+    }
 }
 
 export async function flush(): Promise<void> {
@@ -76,6 +84,14 @@ export function initReactDomTestEnvironment(): void {
     });
 
     afterEach(() => {
+        for (const entry of Array.from(mountedRoots)) {
+            const { root, container } = entry;
+            act(() => {
+                root.unmount();
+            });
+            container.remove();
+            mountedRoots.delete(entry);
+        }
         document.body.innerHTML = "";
         vi.clearAllMocks();
     });

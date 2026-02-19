@@ -30,17 +30,32 @@ interface Props {
     onBranchAction: (action: BranchAction, branchName: string) => void;
 }
 
-function makeToggle(
+function toggleSetKey(
     setState: React.Dispatch<React.SetStateAction<Set<string>>>,
-): (key: string) => void {
-    return (key: string) => {
-        setState((prev) => {
-            const next = new Set(prev);
-            if (next.has(key)) next.delete(key);
-            else next.add(key);
-            return next;
-        });
-    };
+    key: string,
+): void {
+    setState((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+    });
+}
+
+function getIconAnchorX(row: HTMLElement): number {
+    const rowRect = row.getBoundingClientRect();
+    const firstIcon = row.querySelector("svg");
+    return firstIcon ? firstIcon.getBoundingClientRect().right + 2 : rowRect.left + 20;
+}
+
+function computeAnchorPosition(
+    row: HTMLElement,
+    minimumX: number,
+): { anchorX: number; anchorY: number } {
+    const rowRect = row.getBoundingClientRect();
+    const anchorX = Math.max(getIconAnchorX(row), minimumX);
+    const anchorY = rowRect.top + 1;
+    return { anchorX, anchorY };
 }
 
 export function BranchColumn({
@@ -79,31 +94,24 @@ export function BranchColumn({
     const localTree = useMemo(() => buildPrefixTree(locals), [locals]);
     const remoteGroups = useMemo(() => buildRemoteGroups(remotes), [remotes]);
 
-    const toggleSection = useCallback(makeToggle(setExpandedSections), []);
-    const toggleFolder = useCallback(makeToggle(setExpandedFolders), []);
+    const toggleSection = useCallback((key: string) => {
+        toggleSetKey(setExpandedSections, key);
+    }, []);
+    const toggleFolder = useCallback((key: string) => {
+        toggleSetKey(setExpandedFolders, key);
+    }, []);
 
     const handleBranchContextMenu = useCallback((event: React.MouseEvent, branch: Branch) => {
         event.preventDefault();
         event.stopPropagation();
         const row = event.currentTarget as HTMLElement;
-        const rowRect = row.getBoundingClientRect();
-        const firstIcon = row.querySelector("svg");
-        const iconAnchorX = firstIcon
-            ? firstIcon.getBoundingClientRect().right + 2
-            : rowRect.left + 20;
-        const anchorX = Math.max(iconAnchorX, event.clientX + 2);
-        const anchorY = rowRect.top + 1;
+        const { anchorX, anchorY } = computeAnchorPosition(row, event.clientX + 2);
         setContextMenu({ x: anchorX, y: anchorY, branch });
     }, []);
 
     const openBranchContextMenuFromRow = useCallback((row: HTMLElement, branch: Branch): void => {
         const rowRect = row.getBoundingClientRect();
-        const firstIcon = row.querySelector("svg");
-        const iconAnchorX = firstIcon
-            ? firstIcon.getBoundingClientRect().right + 2
-            : rowRect.left + 20;
-        const anchorX = Math.max(iconAnchorX, rowRect.left + 22);
-        const anchorY = rowRect.top + 1;
+        const { anchorX, anchorY } = computeAnchorPosition(row, rowRect.left + 22);
         setContextMenu({ x: anchorX, y: anchorY, branch });
     }, []);
 

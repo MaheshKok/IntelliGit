@@ -25,7 +25,11 @@ export function CommitArea({
     return (
         <Flex direction="column" overflow="hidden" flex={1}>
             <Flex align="center" gap="5px" px="7px" py="3px" fontSize="12px" minH="24px">
-                <VscCheckbox isChecked={isAmend} onChange={() => onAmendChange(!isAmend)} />
+                <VscCheckbox
+                    isChecked={isAmend}
+                    onChange={() => onAmendChange(!isAmend)}
+                    inputTestId="amend-checkbox"
+                />
                 <Box as="span" color="var(--vscode-foreground)" opacity={0.9}>
                     Amend
                 </Box>

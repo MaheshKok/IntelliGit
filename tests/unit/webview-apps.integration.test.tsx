@@ -2,6 +2,7 @@
 
 import { act } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { flush } from "./utils/reactDomTestUtils";
 
 interface MockVsCodeApi {
     postMessage: ReturnType<typeof vi.fn>;
@@ -30,12 +31,6 @@ function fireInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): v
         el.value = value;
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-}
-
-async function flush(): Promise<void> {
-    await act(async () => {
-        await Promise.resolve();
     });
 }
 
@@ -185,11 +180,7 @@ describe("CommitPanelApp integration", () => {
             ) ?? null,
         );
 
-        fireClick(
-            Array.from(document.querySelectorAll("*")).find((el) =>
-                el.textContent?.trim() === "Amend",
-            )?.parentElement?.querySelector('input[type="checkbox"]') ?? null,
-        );
+        fireClick(document.querySelector('[data-testid="amend-checkbox"]'));
 
         act(() => {
             window.dispatchEvent(

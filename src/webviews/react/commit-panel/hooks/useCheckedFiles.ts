@@ -70,7 +70,8 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         [toggleMany],
     );
 
-    // Keep both names for call-site clarity; both intentionally delegate to toggleGroup.
+    // Intentional aliases for call-site clarity. If folder/section behavior diverges,
+    // split these into separate callbacks to keep memo/dependency behavior explicit.
     const toggleFolder = toggleGroup;
     const toggleSection = toggleGroup;
 

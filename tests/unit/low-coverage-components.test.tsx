@@ -215,6 +215,7 @@ describe("low coverage components", () => {
         const headRow = Array.from(container.querySelectorAll(".branch-row")).find((row) =>
             row.textContent?.includes("HEAD (main)"),
         ) as HTMLElement;
+        // Force the no-icon fallback path so anchor math uses rowRect.left + 20.
         Object.defineProperty(headRow, "querySelector", {
             value: () => null,
             configurable: true,

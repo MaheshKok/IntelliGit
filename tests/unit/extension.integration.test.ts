@@ -334,8 +334,13 @@ async function waitForAsync(): Promise<void> {
     await Promise.resolve();
     try {
         await vi.runAllTimersAsync();
-    } catch {
-        // real timers mode
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const isExpectedTimerError =
+            message.includes("Timers are not mocked") ||
+            message.includes("Cannot call") ||
+            message.includes("runAllTimers");
+        if (!isExpectedTimerError) throw error;
     }
     await Promise.resolve();
 }
@@ -560,11 +565,16 @@ describe("extension integration", () => {
                 if (args[0] === "reset" && args[1] === "--hard") throw new Error("reset failed");
                 return defaultExecutorRunImpl(args);
             });
-            latestCommitGraphProvider!.emitCommitAction({
-                action: "resetCurrentToHere",
-                hash: "a1b2c3d4",
-            });
-            await waitForAsync();
+            const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+            try {
+                latestCommitGraphProvider!.emitCommitAction({
+                    action: "resetCurrentToHere",
+                    hash: "a1b2c3d4",
+                });
+                await waitForAsync();
+            } finally {
+                consoleErrorSpy.mockRestore();
+            }
             expect(showErrorMessage).toHaveBeenCalledWith(
                 expect.stringContaining("Commit action failed: reset failed"),
             );

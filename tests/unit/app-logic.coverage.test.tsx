@@ -2,6 +2,7 @@
 
 import React, { act } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BranchAction } from "../../src/webviews/react/commitGraphTypes";
 
 function setupRoot(): void {
     document.body.innerHTML = "";
@@ -47,7 +48,7 @@ describe("app logic coverage", () => {
         const postMessage = vi.fn();
         type BranchColumnMockProps = {
             onSelectBranch: (branch: string | null) => void;
-            onBranchAction: (action: string, branch: string) => void;
+            onBranchAction: (action: BranchAction, branch: string) => void;
         };
         type CommitListMockProps = {
             onSelectCommit: (hash: string) => void;

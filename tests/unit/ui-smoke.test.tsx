@@ -6,6 +6,7 @@ import { ChakraProvider } from "@chakra-ui/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Branch } from "../../src/types";
 import theme from "../../src/webviews/react/commit-panel/theme";
+import { renderHighlightedLabel } from "../../src/webviews/react/branch-column/highlight";
 import { BranchSearchBar } from "../../src/webviews/react/branch-column/components/BranchSearchBar";
 import { BranchSectionHeader } from "../../src/webviews/react/branch-column/components/BranchSectionHeader";
 import { BranchTreeNodeRow } from "../../src/webviews/react/branch-column/components/BranchTreeNodeRow";
@@ -103,8 +104,13 @@ describe("webview ui smoke", () => {
                 prefix="root"
             />,
         );
-        // "tures" is the suffix of "features" rendered after highlighting "fea".
-        expect(folderHtml).toContain("tures");
+        expect(folderHtml).toContain("<mark");
+        const highlighted = renderToStaticMarkup(
+            <>{renderHighlightedLabel("features", "fea")}</>,
+        );
+        const plainText = highlighted.replace(/<[^>]*>/g, "");
+        expect(plainText).toContain("features");
+        expect(highlighted.toLowerCase()).toContain(">fea<");
 
         const leafHtml = renderUi(
             <BranchTreeNodeRow

@@ -44,7 +44,11 @@ const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
 
-const workspaceState = {
+const workspaceState: {
+    workspaceFolders:
+        | Array<{ uri: { fsPath: string; path: string } }>
+        | undefined;
+} = {
     workspaceFolders: [{ uri: { fsPath: "/repo", path: "/repo" } }],
 };
 
@@ -203,7 +207,7 @@ describe("view providers integration", () => {
     });
 
     it("BranchTreeProvider builds sections, local and remote children", async () => {
-        const { BranchTreeProvider, BranchItem } = await import("../../src/views/BranchTreeProvider");
+        const { BranchTreeProvider } = await import("../../src/views/BranchTreeProvider");
         const provider = new BranchTreeProvider();
 
         provider.refresh([
@@ -228,7 +232,7 @@ describe("view providers integration", () => {
 
         const root = provider.getChildren();
         expect(root.length).toBeGreaterThanOrEqual(3);
-        expect((root[0] as BranchItem).label).toContain("HEAD");
+        expect((root[0] as { label: string }).label).toContain("HEAD");
 
         const localSection = root.find((item) => item.label === "Local")!;
         const remoteSection = root.find((item) => item.label === "Remote")!;
@@ -333,9 +337,10 @@ describe("view providers integration", () => {
             targetBranch: undefined,
         });
 
+        const logCallsBeforePagedFetch = gitOps.getLog.mock.calls.length;
         await webview.send({ type: "filterText", text: "feat" });
         await webview.send({ type: "loadMore" });
-        expect(gitOps.getLog.mock.calls.length).toBeGreaterThanOrEqual(3);
+        expect(gitOps.getLog.mock.calls.length - logCallsBeforePagedFetch).toBe(2);
 
         gitOps.getLog.mockRejectedValueOnce(new Error("git failed"));
         await provider.refresh();
@@ -419,6 +424,13 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ selectedShelfIndex: null }));
 
         await webview.send({ type: "showShelfDiff", index: 0, path: "src/a.ts" });
+        expect(gitOps.getShelvedFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(openTextDocument).toHaveBeenCalledWith(
+            expect.objectContaining({
+                content: "diff --git a b",
+                language: "diff",
+            }),
+        );
         provider.dispose();
     });
 

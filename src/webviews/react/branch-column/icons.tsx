@@ -11,6 +11,8 @@ export function GitBranchIcon({
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
             style={BASE_ICON_STYLE}
         >
             <path
@@ -21,32 +23,44 @@ export function GitBranchIcon({
     );
 }
 
-export function TagIcon(): React.ReactElement {
+export function TagIcon({
+    color = "var(--vscode-gitDecoration-addedResourceForeground, #86d8cf)",
+}: {
+    color?: string;
+}): React.ReactElement {
     return (
         <svg
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
             style={BASE_ICON_STYLE}
         >
             <path
-                fill="var(--vscode-gitDecoration-addedResourceForeground, #86d8cf)"
+                fill={color}
                 d="M9.28 1.5H5.5A2.5 2.5 0 0 0 3 4v8a2.5 2.5 0 0 0 2.5 2.5h3.78a1.5 1.5 0 0 0 1.06-.44l3.72-3.72a1.5 1.5 0 0 0 0-2.12L10.34 1.94a1.5 1.5 0 0 0-1.06-.44zM5.5 3h3.78l3.72 3.72-3.72 3.72H5.5A1 1 0 0 1 4.5 9.44V4A1 1 0 0 1 5.5 3zm1.25 2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"
             />
         </svg>
     );
 }
 
-export function StarIcon(): React.ReactElement {
+export function StarIcon({
+    color = "var(--vscode-editorLightBulb-foreground, #ebd25d)",
+}: {
+    color?: string;
+}): React.ReactElement {
     return (
         <svg
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
             style={BASE_ICON_STYLE}
         >
             <path
-                fill="var(--vscode-editorLightBulb-foreground, #ebd25d)"
+                fill={color}
                 d="M8 1.5l1.8 3.64 4.02.58-2.91 2.83.69 4-3.6-1.9-3.6 1.9.69-4L2.18 5.72l4.02-.58L8 1.5z"
             />
         </svg>
@@ -59,6 +73,8 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
             style={getChevronIconStyle(expanded)}
         >
             <path fill="currentColor" d="M6 4l4 4-4 4z" />
@@ -66,32 +82,44 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
     );
 }
 
-export function FolderIcon(): React.ReactElement {
+export function FolderIcon({
+    color = "var(--vscode-icon-foreground, #bdc3cf)",
+}: {
+    color?: string;
+}): React.ReactElement {
     return (
         <svg
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
             style={BASE_ICON_STYLE}
         >
             <path
-                fill="var(--vscode-icon-foreground, #bdc3cf)"
+                fill={color}
                 d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H7.71L6.85 2.85A.5.5 0 0 0 6.5 2.5H1.5z"
             />
         </svg>
     );
 }
 
-export function RepoIcon(): React.ReactElement {
+export function RepoIcon({
+    color = "var(--vscode-icon-foreground, #bdc3cf)",
+}: {
+    color?: string;
+}): React.ReactElement {
     return (
         <svg
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
             style={BASE_ICON_STYLE}
         >
             <path
-                fill="var(--vscode-icon-foreground, #bdc3cf)"
+                fill={color}
                 d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8zM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.25.25 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2z"
             />
         </svg>

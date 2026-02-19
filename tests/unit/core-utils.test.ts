@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import type { GitOps } from "../../src/git/operations";
 import { computeGraph } from "../../src/webviews/react/graph";
 import { formatDateTime } from "../../src/webviews/react/shared/date";
 import { FILE_TYPE_BADGES, GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../../src/webviews/react/shared/tokens";
@@ -35,9 +36,13 @@ describe("core utilities", () => {
             Uri: { joinPath: (root: { fsPath: string }, filePath: string) => ({ fsPath: `${root.fsPath}/${filePath}` }) },
         }));
         const { deleteFileWithFallback } = await import("../../src/utils/fileOps");
+        type GitDeleteMock = Pick<GitOps, "deleteFile">;
 
-        const gitOps = { deleteFile: vi.fn(async () => {}) } as any;
-        const ok = await deleteFileWithFallback(gitOps, { fsPath: "/repo" } as any, "a.txt");
+        const gitOps: GitDeleteMock = { deleteFile: vi.fn(async () => {}) };
+        const workspaceRoot = { fsPath: "/repo" } as unknown as Parameters<
+            typeof deleteFileWithFallback
+        >[1];
+        const ok = await deleteFileWithFallback(gitOps as GitOps, workspaceRoot, "a.txt");
 
         expect(ok).toBe(true);
         expect(gitOps.deleteFile).toHaveBeenCalledWith("a.txt", true);
@@ -54,13 +59,17 @@ describe("core utilities", () => {
             Uri: { joinPath: (root: { fsPath: string }, filePath: string) => ({ fsPath: `${root.fsPath}/${filePath}` }) },
         }));
         const { deleteFileWithFallback } = await import("../../src/utils/fileOps");
+        type GitDeleteMock = Pick<GitOps, "deleteFile">;
 
-        const gitOps = {
+        const gitOps: GitDeleteMock = {
             deleteFile: vi.fn(async () => {
                 throw new Error("pathspec 'a.txt' did not match any files");
             }),
-        } as any;
-        const ok = await deleteFileWithFallback(gitOps, { fsPath: "/repo" } as any, "a.txt");
+        };
+        const workspaceRoot = { fsPath: "/repo" } as unknown as Parameters<
+            typeof deleteFileWithFallback
+        >[1];
+        const ok = await deleteFileWithFallback(gitOps as GitOps, workspaceRoot, "a.txt");
 
         expect(ok).toBe(true);
         expect(fsDelete).toHaveBeenCalledTimes(1);
@@ -78,21 +87,29 @@ describe("core utilities", () => {
             Uri: { joinPath: (_root: { fsPath: string }, filePath: string) => ({ fsPath: `/repo/${filePath}` }) },
         }));
         const { deleteFileWithFallback } = await import("../../src/utils/fileOps");
+        type GitDeleteMock = Pick<GitOps, "deleteFile">;
 
-        const gitUnexpected = {
+        const gitUnexpected: GitDeleteMock = {
             deleteFile: vi.fn(async () => {
                 throw new Error("index lock");
             }),
-        } as any;
-        const okUnexpected = await deleteFileWithFallback(gitUnexpected, { fsPath: "/repo" } as any, "a.txt");
+        };
+        const workspaceRoot = { fsPath: "/repo" } as unknown as Parameters<
+            typeof deleteFileWithFallback
+        >[1];
+        const okUnexpected = await deleteFileWithFallback(
+            gitUnexpected as GitOps,
+            workspaceRoot,
+            "a.txt",
+        );
         expect(okUnexpected).toBe(false);
 
-        const gitUntracked = {
+        const gitUntracked: GitDeleteMock = {
             deleteFile: vi.fn(async () => {
                 throw new Error("pathspec did not match");
             }),
-        } as any;
-        const okFsFail = await deleteFileWithFallback(gitUntracked, { fsPath: "/repo" } as any, "a.txt");
+        };
+        const okFsFail = await deleteFileWithFallback(gitUntracked as GitOps, workspaceRoot, "a.txt");
         expect(okFsFail).toBe(false);
         expect(showErrorMessage).toHaveBeenCalled();
     });

@@ -90,6 +90,7 @@ export function CommitList({
     const unpushedLookup = useMemo(() => {
         const exact = new Set(unpushedHashes);
         const prefixes = new Set<string>();
+        // Build prefix lookup so truncated hashes match full hashes (and vice versa).
         for (const hash of unpushedHashes) {
             for (let i = 1; i <= hash.length; i++) {
                 prefixes.add(hash.slice(0, i));
