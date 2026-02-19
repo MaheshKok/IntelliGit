@@ -2,7 +2,14 @@ import React from "react";
 import type { Branch } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
 import { ChevronIcon, FolderIcon, GitBranchIcon, StarIcon, TagIcon } from "../icons";
-import { NODE_LABEL_STYLE, ROW_STYLE, TRACKING_BADGE_STYLE, TREE_INDENT_STEP } from "../styles";
+import {
+    NODE_LABEL_STYLE,
+    ROW_STYLE,
+    TRACKING_BADGE_STYLE,
+    TRACKING_PULL_STYLE,
+    TRACKING_PUSH_STYLE,
+    TREE_INDENT_STEP,
+} from "../styles";
 import type { TreeNode } from "../types";
 
 interface Props {
@@ -18,12 +25,24 @@ interface Props {
 }
 
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
-    const parts: string[] = [];
-    if (branch.ahead > 0) parts.push(`\u2191${branch.ahead}`);
-    if (branch.behind > 0) parts.push(`\u2193${branch.behind}`);
-    if (parts.length === 0) return null;
+    if (branch.ahead <= 0 && branch.behind <= 0) return null;
 
-    return <span style={TRACKING_BADGE_STYLE}>{parts.join(" ")}</span>;
+    return (
+        <span style={TRACKING_BADGE_STYLE}>
+            {branch.ahead > 0 && (
+                <span className="branch-track-push" style={TRACKING_PUSH_STYLE}>
+                    {"\u2191"}
+                    {branch.ahead}
+                </span>
+            )}
+            {branch.behind > 0 && (
+                <span className="branch-track-pull" style={TRACKING_PULL_STYLE}>
+                    {"\u2193"}
+                    {branch.behind}
+                </span>
+            )}
+        </span>
+    );
 }
 
 export function BranchTreeNodeRow({

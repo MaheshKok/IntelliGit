@@ -121,8 +121,22 @@ export const NODE_LABEL_STYLE: CSSProperties = {
 export const TRACKING_BADGE_STYLE: CSSProperties = {
     marginLeft: "auto",
     fontSize: "10px",
-    opacity: 0.6,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
     flexShrink: 0,
+};
+
+export const TRACKING_PUSH_STYLE: CSSProperties = {
+    color: "var(--vscode-charts-blue, #59c3ff)",
+    opacity: 0.95,
+    fontWeight: 600,
+};
+
+export const TRACKING_PULL_STYLE: CSSProperties = {
+    color: "var(--vscode-charts-orange, #e0a15d)",
+    opacity: 0.95,
+    fontWeight: 600,
 };
 
 export const BRANCH_HIGHLIGHT_STYLE: CSSProperties = {

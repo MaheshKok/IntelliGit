@@ -256,6 +256,49 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
+    it("BranchColumn shows ahead/behind counts with push/pull colors", () => {
+        const branches: Branch[] = [
+            {
+                name: "main",
+                hash: "feed1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "feature-demo",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 2,
+                behind: 3,
+            },
+        ];
+        const { root, container } = mount(
+            <BranchColumn
+                branches={branches}
+                selectedBranch={null}
+                onSelectBranch={vi.fn()}
+                onBranchAction={vi.fn()}
+            />,
+        );
+
+        const branchRow = Array.from(container.querySelectorAll(".branch-row")).find((row) =>
+            row.textContent?.includes("feature-demo"),
+        ) as HTMLElement;
+        expect(branchRow).toBeTruthy();
+
+        const push = branchRow.querySelector(".branch-track-push") as HTMLElement;
+        const pull = branchRow.querySelector(".branch-track-pull") as HTMLElement;
+        expect(push?.textContent).toBe("\u21912");
+        expect(pull?.textContent).toBe("\u21933");
+        expect(push?.getAttribute("style")).toContain("--vscode-charts-blue");
+        expect(pull?.getAttribute("style")).toContain("--vscode-charts-orange");
+
+        unmount(root, container);
+    });
+
     it("CommitList triggers context action and load-more", () => {
         const onCommitAction = vi.fn();
         const onLoadMore = vi.fn();
