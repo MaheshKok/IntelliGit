@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Branch remote-group header rendering now reuses `BranchSectionHeader` for consistent structure and reduced duplication.
 - `useCommitGraphCanvas` now derives size from `rows.length` and uses a named left-padding constant.
 - `TabBar` shared tab style object hoisted to module scope to avoid per-render reallocation.
+- Commit list canvas rendering now clamps to viewport+overscan and redraws on scroll/resize/theme changes.
+- Commit list load-more flow now guards against repeated triggers while a prior load is still in flight.
 
 ### Fixed
 
@@ -26,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Context menu keyboard focus now has an accessible visible indicator (outline + focus ring) instead of suppressing outline.
 - Commit info webview message handler now uses explicit discriminant handling before accessing `detail`.
 - Branch section headers are now keyboard-accessible (`role="button"`, `tabIndex`, `Enter/Space`, `aria-expanded`).
+- HEAD row now supports keyboard activation and keyboard context-menu invocation.
 - Main/master icon detection now uses normalized branch short names (handles `origin/main`, etc.).
 - Branch highlight regex no longer uses unnecessary global flag.
 - Branch name trimming logic now safely handles small max lengths without negative slicing.
@@ -34,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DragResizeOptions` is now exported for external typing/re-export.
 - Commit panel tree types no longer store redundant `fileCount`; callsites now derive from `descendantFiles.length`.
 - `collectDirPaths` now uses an accumulator to avoid recursive array spreading overhead.
+- Commit/branch/context-menu integration tests were hardened with shared jsdom React test utilities and more realistic interaction assertions.
 
 - Extension branch command handlers and commit selection errors now consistently use shared `getErrorMessage(...)`.
 - Git numstat/stash-show warnings now log via a shared IntelliGit output channel (with fallback) instead of silent/console-only catches.

@@ -52,9 +52,12 @@ function App(): React.ReactElement {
                 case "setCommitDetail":
                     setDetail(msg.detail);
                     return;
-                default:
-                    console.warn("Unknown CommitInfo message type:", msg.type);
+                default: {
+                    const exhaustive: never = msg;
+                    void exhaustive;
+                    console.warn("Unknown CommitInfo message payload.");
                     return;
+                }
             }
         };
 

@@ -1,6 +1,9 @@
 import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 
+const ITEM_HEIGHT = 28;
+const ITEM_FONT_SIZE = 13;
+
 export interface MenuItem {
     label: string;
     action: string;
@@ -31,8 +34,6 @@ export function ContextMenu({
     const ref = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ left: x, top: y });
     const menuBodyPaddingX = 4;
-    const ITEM_HEIGHT = 28;
-    const ITEM_FONT_SIZE = 13;
     const hasAnyIcon = items.some((item) => !item.separator && !!item.icon);
     const hasAnyTrailing = items.some((item) => !item.separator && (!!item.hint || !!item.submenu));
 

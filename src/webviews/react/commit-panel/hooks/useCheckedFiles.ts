@@ -70,6 +70,7 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         [toggleMany],
     );
 
+    // Keep both names for call-site clarity; both intentionally delegate to toggleGroup.
     const toggleFolder = toggleGroup;
     const toggleSection = toggleGroup;
 

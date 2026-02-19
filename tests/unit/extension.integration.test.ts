@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type CommandHandler = (...args: any[]) => any;
+type CommandHandler = (...args: unknown[]) => unknown;
 
 const registeredCommands = new Map<string, CommandHandler>();
 const mockDisposables: Array<{ dispose: () => void }> = [];
@@ -31,7 +31,8 @@ const saveDocListeners: Array<() => void> = [];
 const createFileListeners: Array<() => void> = [];
 const deleteFileListeners: Array<() => void> = [];
 const renameFileListeners: Array<() => void> = [];
-const fsWatchCallbacks: Array<(...args: any[]) => void> = [];
+type FsWatchCallback = (...args: unknown[]) => void;
+const fsWatchCallbacks: FsWatchCallback[] = [];
 
 let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined = [
     { uri: { fsPath: "/repo", path: "/repo" } },
@@ -60,7 +61,7 @@ class MockBranchItem {
     constructor(
         public readonly label: string,
         public readonly _itemType: string,
-        public readonly branch?: any,
+        public readonly branch?: { name?: string; path?: string; isRemote?: boolean },
     ) {}
 }
 
@@ -129,9 +130,13 @@ const gitOpsState = {
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
+type MockExtensionContext = {
+    extensionUri: { fsPath: string; path: string };
+    subscriptions: Array<{ dispose: () => void }>;
+};
 
-let latestCommitGraphProvider: any;
-let latestCommitPanelProvider: any;
+let latestCommitGraphProvider: MockCommitGraphViewProvider | undefined;
+let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
 
 class MockCommitGraphViewProvider {
     static readonly viewType = "intelligit.commitGraph";
@@ -145,6 +150,7 @@ class MockCommitGraphViewProvider {
     }>();
 
     constructor(_uri: unknown, _gitOps: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         latestCommitGraphProvider = this;
     }
     onCommitSelected = this.commitSelectedEmitter.event;
@@ -181,6 +187,7 @@ class MockCommitPanelViewProvider {
     static readonly viewType = "intelligit.commitPanel";
     private fileCountEmitter = new MockEventEmitter<number>();
     constructor(_uri: unknown, _gitOps: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         latestCommitPanelProvider = this;
     }
     onDidChangeFileCount = this.fileCountEmitter.event;
@@ -197,7 +204,7 @@ class MockBranchTreeProvider {
 }
 
 vi.mock("fs", () => ({
-    watch: vi.fn((...args: any[]) => {
+    watch: vi.fn((...args: unknown[]) => {
         const callback = args[args.length - 1];
         if (typeof callback === "function") fsWatchCallbacks.push(callback);
         return { close: vi.fn() };
@@ -324,9 +331,13 @@ vi.mock("../../src/utils/fileOps", () => ({
 }));
 
 async function waitForAsync(): Promise<void> {
-    for (let i = 0; i < 8; i += 1) {
-        await Promise.resolve();
+    await Promise.resolve();
+    try {
+        await vi.runAllTimersAsync();
+    } catch {
+        // real timers mode
     }
+    await Promise.resolve();
 }
 
 describe("extension integration", () => {
@@ -393,7 +404,10 @@ describe("extension integration", () => {
             if (opts.prompt.includes("Edit commit message")) return "edited message";
             return "input";
         });
-        showSaveDialog.mockResolvedValue({ fsPath: "/tmp/patch.diff", path: "/tmp/patch.diff" } as any);
+        showSaveDialog.mockResolvedValue({
+            fsPath: "/tmp/patch.diff",
+            path: "/tmp/patch.diff",
+        } as unknown as { fsPath: string; path: string });
         showQuickPick.mockImplementation(async (items: Array<{ parentNumber: number }>) => items[0]);
     });
 
@@ -402,7 +416,7 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: mockDisposables,
-        } as any;
+        } as unknown as MockExtensionContext;
 
         await activate(context);
 
@@ -466,42 +480,44 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: [],
-        } as any;
+        } as unknown as MockExtensionContext;
 
         await activate(context);
 
-        latestCommitGraphProvider.emitCommitAction({ action: "copyRevision", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "createPatch", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "cherryPick", hash: "deadbee" });
-        latestCommitGraphProvider.emitCommitAction({
+        latestCommitGraphProvider!.emitCommitAction({ action: "copyRevision", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "createPatch", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "cherryPick", hash: "deadbee" });
+        latestCommitGraphProvider!.emitCommitAction({
             action: "checkoutMain",
             hash: "a1b2c3d4",
             targetBranch: "main",
         });
-        latestCommitGraphProvider.emitCommitAction({ action: "checkoutRevision", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "resetCurrentToHere", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "revertCommit", hash: "deadbee" });
-        latestCommitGraphProvider.emitCommitAction({ action: "newBranch", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "newTag", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "undoCommit", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({ action: "editCommitMessage", hash: "feed1234" });
-        latestCommitGraphProvider.emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
-        latestCommitGraphProvider.emitCommitAction({
+        latestCommitGraphProvider!.emitCommitAction({ action: "checkoutRevision", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "resetCurrentToHere", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "revertCommit", hash: "deadbee" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "newBranch", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "newTag", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "undoCommit", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "editCommitMessage", hash: "feed1234" });
+        latestCommitGraphProvider!.emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
+        latestCommitGraphProvider!.emitCommitAction({
             action: "interactiveRebaseFromHere",
             hash: "a1b2c3d4",
         });
-        latestCommitGraphProvider.emitBranchAction({
+        latestCommitGraphProvider!.emitBranchAction({
             action: "checkout",
             branchName: "main",
         });
-        latestCommitGraphProvider.emitCommitSelected("a1b2c3d4");
-        latestCommitGraphProvider.emitBranchFilterChanged("main");
+        latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");
+        latestCommitGraphProvider!.emitBranchFilterChanged("main");
 
         await waitForAsync();
 
         expect(clipboardWriteText).toHaveBeenCalledWith("a1b2c3d4");
-        expect(writeFile).toHaveBeenCalled();
-        expect(createTerminal).toHaveBeenCalled();
+        expect(showSaveDialog).toHaveBeenCalled();
+        expect(executorRun).toHaveBeenCalledWith(
+            expect.arrayContaining(["format-patch", "-1", "--stdout", "a1b2c3d4"]),
+        );
         expect(showErrorMessage).not.toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
@@ -512,7 +528,7 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: [],
-        } as any;
+        } as unknown as MockExtensionContext;
 
         workspaceFolders = undefined;
         await activate(context);
@@ -527,14 +543,14 @@ describe("extension integration", () => {
         try {
             await activate(context);
 
-            latestCommitPanelProvider.emitFileCount(2);
+            latestCommitPanelProvider!.emitFileCount(2);
             const treeView = createTreeView.mock.results.at(-1)?.value as { badge?: unknown };
             expect(treeView.badge).toEqual({ value: 2, tooltip: "2 files changed" });
-            latestCommitPanelProvider.emitFileCount(0);
+            latestCommitPanelProvider!.emitFileCount(0);
             expect(treeView.badge).toBeUndefined();
 
             gitOpsState.getCommitDetail.mockRejectedValueOnce(new Error("detail failed"));
-            latestCommitGraphProvider.emitCommitSelected("a1b2c3d4");
+            latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");
             await waitForAsync();
             expect(showErrorMessage).toHaveBeenCalledWith(
                 expect.stringContaining("Failed to load commit: detail failed"),
@@ -544,7 +560,7 @@ describe("extension integration", () => {
                 if (args[0] === "reset" && args[1] === "--hard") throw new Error("reset failed");
                 return defaultExecutorRunImpl(args);
             });
-            latestCommitGraphProvider.emitCommitAction({
+            latestCommitGraphProvider!.emitCommitAction({
                 action: "resetCurrentToHere",
                 hash: "a1b2c3d4",
             });
@@ -553,7 +569,7 @@ describe("extension integration", () => {
                 expect.stringContaining("Commit action failed: reset failed"),
             );
 
-            latestCommitGraphProvider.emitBranchAction({
+            latestCommitGraphProvider!.emitBranchAction({
                 action: "checkout",
                 branchName: "missing-branch",
             });
@@ -570,8 +586,8 @@ describe("extension integration", () => {
             vi.advanceTimersByTime(1200);
             await waitForAsync();
 
-            expect(latestCommitPanelProvider.refresh).toHaveBeenCalled();
-            expect(latestCommitGraphProvider.refresh).toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalled();
+            expect(latestCommitGraphProvider!.refresh).toHaveBeenCalled();
             deactivate();
         } finally {
             vi.useRealTimers();
@@ -583,7 +599,7 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: [],
-        } as any;
+        } as unknown as MockExtensionContext;
         await activate(context);
 
         const emitCommitAction = async (payload: {
@@ -591,7 +607,7 @@ describe("extension integration", () => {
             hash: string;
             targetBranch?: string;
         }) => {
-            latestCommitGraphProvider.emitCommitAction(payload);
+            latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
         };
 
@@ -695,7 +711,7 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: [],
-        } as any;
+        } as unknown as MockExtensionContext;
         await activate(context);
 
         executorRun.mockImplementation(async (args: string[]) => {
@@ -811,7 +827,7 @@ describe("extension integration", () => {
 
     it("handles fs.watch setup failures and exposes deactivate", async () => {
         const fs = await import("fs");
-        const watchMock = vi.mocked(fs.watch as any);
+        const watchMock = vi.mocked(fs.watch as unknown as (...args: unknown[]) => unknown);
         watchMock
             .mockImplementationOnce(() => {
                 throw new Error("watch .git failed");
@@ -824,7 +840,7 @@ describe("extension integration", () => {
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: [],
-        } as any;
+        } as unknown as MockExtensionContext;
         await activate(context);
         deactivate();
         expect(watchMock).toHaveBeenCalled();

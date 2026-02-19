@@ -138,7 +138,7 @@ export const BASE_ICON_STYLE: CSSProperties = {
     opacity: 0.88,
 };
 
-export function CHEVRON_ICON_STYLE(expanded: boolean): CSSProperties {
+export function getChevronIconStyle(expanded: boolean): CSSProperties {
     return {
         ...BASE_ICON_STYLE,
         opacity: 0.68,

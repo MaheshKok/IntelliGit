@@ -27,15 +27,14 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
             return;
         }
 
-        const bgColor =
-            getComputedStyle(document.documentElement)
-                .getPropertyValue("--vscode-editor-background")
-                .trim() || "#1e1e1e";
-
         let raf = 0;
         const draw = () => {
             raf = 0;
             const dpr = window.devicePixelRatio || 1;
+            const bgColor =
+                getComputedStyle(document.documentElement)
+                    .getPropertyValue("--vscode-editor-background")
+                    .trim() || "#1e1e1e";
             const scrollTop = viewport.scrollTop;
             const viewportHeight = viewport.clientHeight;
             const visibleStart = Math.floor(scrollTop / ROW_HEIGHT);
@@ -50,11 +49,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
             canvas.style.height = `${drawHeight}px`;
             canvas.style.top = `${drawStart * ROW_HEIGHT}px`;
 
-            if (typeof ctx.setTransform === "function") {
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            } else {
-                ctx.scale(dpr, dpr);
-            }
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             ctx.clearRect(0, 0, graphWidth, drawHeight);
             ctx.lineCap = "round";
 
@@ -137,6 +132,15 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
 
         const observer = new ResizeObserver(scheduleDraw);
         observer.observe(viewport);
+        const themeObserver = new MutationObserver(scheduleDraw);
+        themeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ["class", "style", "data-vscode-theme-id"],
+        });
+        themeObserver.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["class", "style", "data-vscode-theme-id"],
+        });
         viewport.addEventListener("scroll", scheduleDraw, { passive: true });
         window.addEventListener("resize", scheduleDraw);
         scheduleDraw();
@@ -146,6 +150,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
                 window.cancelAnimationFrame(raf);
             }
             observer.disconnect();
+            themeObserver.disconnect();
             viewport.removeEventListener("scroll", scheduleDraw);
             window.removeEventListener("resize", scheduleDraw);
         };

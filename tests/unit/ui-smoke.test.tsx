@@ -1,4 +1,6 @@
-import React from "react";
+// @vitest-environment jsdom
+
+import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChakraProvider } from "@chakra-ui/react";
 import { describe, expect, it, vi } from "vitest";
@@ -18,6 +20,7 @@ import { StatusBadge } from "../../src/webviews/react/commit-panel/components/St
 import { TabBar } from "../../src/webviews/react/commit-panel/components/TabBar";
 import { Toolbar } from "../../src/webviews/react/commit-panel/components/Toolbar";
 import { VscCheckbox } from "../../src/webviews/react/commit-panel/components/VscCheckbox";
+import { mount, unmount } from "./utils/reactDomTestUtils";
 
 function renderUi(node: React.ReactElement): string {
     return renderToStaticMarkup(<ChakraProvider theme={theme}>{node}</ChakraProvider>);
@@ -41,19 +44,25 @@ describe("webview ui smoke", () => {
         const onClear = vi.fn();
         const onToggle = vi.fn();
 
-        const searchHtml = renderToStaticMarkup(
+        const searchHtml = renderUi(
             <BranchSearchBar value="feature" onChange={onChange} onClear={onClear} />,
         );
         expect(searchHtml).toContain("Search branches");
         expect(searchHtml).toContain("Clear branch search");
 
-        const section = BranchSectionHeader({ label: "Local", expanded: true, onToggle });
-        expect(section.props["aria-expanded"]).toBe(true);
-        section.props.onKeyDown({ key: "Enter", preventDefault: vi.fn() });
-        section.props.onKeyDown({ key: " ", preventDefault: vi.fn() });
+        const mountedSection = mount(
+            <BranchSectionHeader label="Local" expanded={true} onToggle={onToggle} />,
+        );
+        const sectionElement = mountedSection.container.querySelector('[role="button"]') as HTMLElement;
+        expect(sectionElement.getAttribute("aria-expanded")).toBe("true");
+        act(() => {
+            sectionElement.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+            sectionElement.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+        });
         expect(onToggle).toHaveBeenCalledTimes(2);
+        unmount(mountedSection.root, mountedSection.container);
 
-        const iconsHtml = renderToStaticMarkup(
+        const iconsHtml = renderUi(
             <>
                 <GitBranchIcon />
                 <TagIcon />
@@ -81,7 +90,7 @@ describe("webview ui smoke", () => {
             children: [],
         };
 
-        const folderHtml = renderToStaticMarkup(
+        const folderHtml = renderUi(
             <BranchTreeNodeRow
                 node={folderNode}
                 depth={1}
@@ -94,9 +103,10 @@ describe("webview ui smoke", () => {
                 prefix="root"
             />,
         );
+        // "tures" is the suffix of "features" rendered after highlighting "fea".
         expect(folderHtml).toContain("tures");
 
-        const leafHtml = renderToStaticMarkup(
+        const leafHtml = renderUi(
             <BranchTreeNodeRow
                 node={leafNode}
                 depth={1}

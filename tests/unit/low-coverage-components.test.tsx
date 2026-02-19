@@ -1,89 +1,21 @@
 // @vitest-environment jsdom
 
 import React, { act, useRef } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Branch, Commit } from "../../src/types";
 import { BranchColumn } from "../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../src/webviews/react/CommitList";
 import { CommitRow } from "../../src/webviews/react/commit-list/CommitRow";
 import { useDragResize } from "../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
+import {
+    flush,
+    initReactDomTestEnvironment,
+    mount,
+    unmount,
+} from "./utils/reactDomTestUtils";
 
-function mount(node: React.ReactElement): { container: HTMLDivElement; root: Root } {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => {
-        root.render(node);
-    });
-    return { container, root };
-}
-
-function unmount(root: Root, container: HTMLDivElement): void {
-    act(() => {
-        root.unmount();
-    });
-    container.remove();
-}
-
-async function flush(): Promise<void> {
-    await act(async () => {
-        await Promise.resolve();
-    });
-}
-
-beforeAll(() => {
-    Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
-        value: true,
-        configurable: true,
-    });
-    Object.defineProperty(window, "matchMedia", {
-        value: vi.fn().mockImplementation((query: string) => ({
-            matches: false,
-            media: query,
-            onchange: null,
-            addListener: vi.fn(),
-            removeListener: vi.fn(),
-            addEventListener: vi.fn(),
-            removeEventListener: vi.fn(),
-            dispatchEvent: vi.fn(),
-        })),
-        configurable: true,
-    });
-
-    class ResizeObserverMock {
-        observe = vi.fn();
-        unobserve = vi.fn();
-        disconnect = vi.fn();
-    }
-    Object.defineProperty(globalThis, "ResizeObserver", {
-        value: ResizeObserverMock,
-        configurable: true,
-    });
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => {
-        return {
-            scale: vi.fn(),
-            clearRect: vi.fn(),
-            beginPath: vi.fn(),
-            arc: vi.fn(),
-            fill: vi.fn(),
-            stroke: vi.fn(),
-            moveTo: vi.fn(),
-            lineTo: vi.fn(),
-            bezierCurveTo: vi.fn(),
-            set lineCap(_: string) {},
-            set lineWidth(_: number) {},
-            set strokeStyle(_: string) {},
-            set fillStyle(_: string) {},
-        } as unknown as CanvasRenderingContext2D;
-    });
-});
-
-afterEach(() => {
-    document.body.innerHTML = "";
-    vi.clearAllMocks();
-});
+initReactDomTestEnvironment();
 
 describe("low coverage components", () => {
     it("useDragResize updates and clamps height", () => {
@@ -376,8 +308,9 @@ describe("low coverage components", () => {
         });
         expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aa11bb22", undefined);
 
-        const canvas = container.querySelector("canvas") as HTMLCanvasElement;
-        const viewport = canvas.parentElement?.parentElement as HTMLDivElement;
+        const viewport = container.querySelector(
+            '[data-testid="commit-list-viewport"]',
+        ) as HTMLDivElement;
         Object.defineProperty(viewport, "clientHeight", { value: 240, configurable: true });
         Object.defineProperty(viewport, "scrollHeight", { value: 300, configurable: true });
         Object.defineProperty(viewport, "scrollTop", { value: 90, configurable: true });

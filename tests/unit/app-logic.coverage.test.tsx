@@ -45,12 +45,22 @@ beforeEach(() => {
 describe("app logic coverage", () => {
     it("CommitGraphApp handles callback and drag branches", async () => {
         const postMessage = vi.fn();
+        type BranchColumnMockProps = {
+            onSelectBranch: (branch: string | null) => void;
+            onBranchAction: (action: string, branch: string) => void;
+        };
+        type CommitListMockProps = {
+            onSelectCommit: (hash: string) => void;
+            onFilterText: (text: string) => void;
+            onLoadMore: () => void;
+            onCommitAction: (action: string, hash: string) => void;
+        };
 
         vi.doMock("../../src/webviews/react/shared/vscodeApi", () => ({
             getVsCodeApi: () => ({ postMessage }),
         }));
         vi.doMock("../../src/webviews/react/BranchColumn", () => ({
-            BranchColumn: (props: any) => (
+            BranchColumn: (props: BranchColumnMockProps) => (
                 <div>
                     <button id="branch-main" onClick={() => props.onSelectBranch("main")} />
                     <button id="branch-null" onClick={() => props.onSelectBranch(null)} />
@@ -62,7 +72,7 @@ describe("app logic coverage", () => {
             ),
         }));
         vi.doMock("../../src/webviews/react/CommitList", () => ({
-            CommitList: (props: any) => (
+            CommitList: (props: CommitListMockProps) => (
                 <div>
                     <button id="commit-select" onClick={() => props.onSelectCommit("abc1234")} />
                     <button id="filter-short" onClick={() => props.onFilterText("ab")} />
@@ -111,7 +121,7 @@ describe("app logic coverage", () => {
         expect(types).toContain("branchAction");
         expect(types).toContain("commitAction");
         expect(types.filter((t) => t === "loadMore")).toHaveLength(1);
-        expect(types.filter((t) => t === "filterText")).toContain("filterText");
+        expect(types).toContain("filterText");
     });
 
     it("CommitPanelApp executes amend/message/commit handlers", async () => {
@@ -146,7 +156,12 @@ describe("app logic coverage", () => {
             getVsCodeApi: () => ({ postMessage }),
         }));
         vi.doMock("../../src/webviews/react/commit-panel/components/CommitTab", () => ({
-            CommitTab: (props: any) => (
+            CommitTab: (props: {
+                onMessageChange: (value: string) => void;
+                onAmendChange: (value: boolean) => void;
+                onCommit: () => void;
+                onCommitAndPush: () => void;
+            }) => (
                 <div>
                     <button id="msg" onClick={() => props.onMessageChange("next message")} />
                     <button id="amend" onClick={() => props.onAmendChange(true)} />
@@ -159,7 +174,7 @@ describe("app logic coverage", () => {
             ShelfTab: () => <div>Shelf</div>,
         }));
         vi.doMock("../../src/webviews/react/commit-panel/components/TabBar", () => ({
-            TabBar: (props: any) => (
+            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
                 <div>
                     <div>{props.commitContent}</div>
                     <div>{props.shelfContent}</div>

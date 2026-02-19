@@ -17,7 +17,9 @@ function createRootHost(): HTMLDivElement {
 }
 
 function fireClick(el: Element | null): void {
-    if (!el) return;
+    if (!el) {
+        throw new Error("expected button to exist for click");
+    }
     act(() => {
         el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -81,7 +83,7 @@ beforeAll(() => {
 
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => {
         return {
-            scale: vi.fn(),
+            setTransform: vi.fn(),
             clearRect: vi.fn(),
             beginPath: vi.fn(),
             arc: vi.fn(),
@@ -343,9 +345,12 @@ describe("CommitGraphApp integration", () => {
             ) ?? null,
         );
 
-        const commitRow = Array.from(document.querySelectorAll("div")).find((row) =>
-            row.textContent?.includes("feat: first commit"),
+        const commitRow = Array.from(document.querySelectorAll("div")).find(
+            (row) =>
+                (row as HTMLDivElement).style.cursor === "pointer" &&
+                row.textContent?.includes("feat: first commit"),
         ) as HTMLElement;
+        expect(commitRow).toBeTruthy();
         act(() => {
             commitRow.dispatchEvent(
                 new MouseEvent("contextmenu", {
@@ -358,7 +363,7 @@ describe("CommitGraphApp integration", () => {
         });
         fireClick(
             Array.from(document.querySelectorAll(".intelligit-context-item")).find((item) =>
-                item.textContent?.includes("New Tag"),
+                item.textContent?.includes("Copy Revision Number"),
             ) ?? null,
         );
 

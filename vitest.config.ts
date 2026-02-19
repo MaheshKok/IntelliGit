@@ -11,14 +11,7 @@ export default defineConfig({
             provider: "v8",
             reporter: ["text", "html"],
             all: true,
-            include: [
-                "src/webviews/react/branch-column/menu.ts",
-                "src/webviews/react/branch-column/treeModel.ts",
-                "src/webviews/react/branch-column/highlight.tsx",
-                "src/webviews/react/commit-list/commitMenu.tsx",
-                "src/webviews/react/commitGraphTypes.ts",
-                "src/webviews/react/shared/fileTree.ts",
-            ],
+            include: ["src/**/*.{ts,tsx}"],
             thresholds: {
                 lines: 90,
                 functions: 90,

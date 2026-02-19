@@ -55,16 +55,22 @@ const vscodeMock = {
     ThemeColor: FakeThemeColor,
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
-        joinPath: (...parts: unknown[]) => ({
-            fsPath: parts
-                .map((part) => (typeof part === "string" ? part : (part as { fsPath?: string; path?: string }).fsPath ?? (part as { path?: string }).path ?? ""))
-                .join("/")
-                .replace(/\/+/g, "/"),
-            path: parts
-                .map((part) => (typeof part === "string" ? part : (part as { path?: string; fsPath?: string }).path ?? (part as { fsPath?: string }).fsPath ?? ""))
-                .join("/")
-                .replace(/\/+/g, "/"),
-        }),
+        joinPath: (
+            base: { fsPath?: string; path?: string },
+            ...segments: string[]
+        ): { fsPath: string; path: string } => {
+            const basePath = base.fsPath ?? base.path;
+            if (!basePath) {
+                throw new Error("joinPath base must provide fsPath or path");
+            }
+            for (const segment of segments) {
+                if (typeof segment !== "string") {
+                    throw new Error("joinPath segments must be strings");
+                }
+            }
+            const joined = [basePath, ...segments].join("/").replace(/\/+/g, "/");
+            return { fsPath: joined, path: joined };
+        },
     },
     window: {
         showErrorMessage,
@@ -172,6 +178,23 @@ function makeGitOpsMock() {
     };
 }
 
+async function setupCommitPanelProvider() {
+    const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+    const gitOps = makeGitOpsMock();
+    const provider = new CommitPanelViewProvider(
+        { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+        gitOps as unknown as object,
+    );
+    const webview = createWebviewView();
+    provider.resolveWebviewView(
+        webview.view as unknown as object,
+        {} as unknown as object,
+        {} as unknown as object,
+    );
+    await webview.send({ type: "ready" });
+    return { provider, gitOps, webview };
+}
+
 describe("view providers integration", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -221,10 +244,16 @@ describe("view providers integration", () => {
 
     it("CommitInfoViewProvider handles ready/set/clear lifecycle", async () => {
         const { CommitInfoViewProvider } = await import("../../src/views/CommitInfoViewProvider");
-        const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as any);
+        const provider = new CommitInfoViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+        );
         const webview = createWebviewView();
 
-        provider.resolveWebviewView(webview.view as any, {} as any, {} as any);
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
         provider.setCommitDetail({
             hash: "abc",
             shortHash: "abc",
@@ -252,7 +281,10 @@ describe("view providers integration", () => {
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {
         const { CommitGraphViewProvider } = await import("../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
-        const provider = new CommitGraphViewProvider({ fsPath: "/ext", path: "/ext" } as any, gitOps as any);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
         const webview = createWebviewView();
 
         const selected = vi.fn();
@@ -265,7 +297,11 @@ describe("view providers integration", () => {
         provider.onBranchAction(branchAction);
         provider.onCommitAction(commitAction);
 
-        provider.resolveWebviewView(webview.view as any, {} as any, {} as any);
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
         await webview.send({ type: "ready" });
         expect(gitOps.getLog).toHaveBeenCalled();
 
@@ -308,14 +344,8 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider handles commit/shelf/file actions and errors", async () => {
-        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
-        const gitOps = makeGitOpsMock();
-        const provider = new CommitPanelViewProvider({ fsPath: "/ext", path: "/ext" } as any, gitOps as any);
-        const webview = createWebviewView();
-
-        provider.resolveWebviewView(webview.view as any, {} as any, {} as any);
-        await webview.send({ type: "ready" });
+    it("CommitPanelViewProvider handles staging and unstaging", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
         expect(gitOps.getStatus).toHaveBeenCalled();
         expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
 
@@ -323,7 +353,11 @@ describe("view providers integration", () => {
         await webview.send({ type: "unstageFiles", paths: ["src/a.ts"] });
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider handles commit flows", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "commit", message: "", amend: false });
         expect(showWarningMessage).toHaveBeenCalledWith("Commit message cannot be empty.");
 
@@ -344,17 +378,33 @@ describe("view providers integration", () => {
             type: "lastCommitMessage",
             message: "last message",
         });
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider handles rollback actions", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
         showWarningMessage.mockResolvedValueOnce("Rollback");
         await webview.send({ type: "rollback", paths: [] });
         showWarningMessage.mockResolvedValueOnce("Rollback");
         await webview.send({ type: "rollback", paths: ["src/a.ts"] });
         expect(gitOps.rollbackAll).toHaveBeenCalled();
         expect(gitOps.rollbackFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider handles diff/open/history actions", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(executeCommand).toHaveBeenCalledWith("git.openChange", expect.any(Object));
+        await webview.send({ type: "openFile", path: "src/a.ts" });
+        await webview.send({ type: "showHistory", path: "src/a.ts" });
+        expect(openTextDocument).toHaveBeenCalled();
+        expect(showTextDocument).toHaveBeenCalled();
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider handles shelf operations", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "shelveSave", name: "work", paths: ["src/a.ts"] });
         await webview.send({ type: "shelfPop", index: 0 });
         await webview.send({ type: "shelfApply", index: 0 });
@@ -369,20 +419,28 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ selectedShelfIndex: null }));
 
         await webview.send({ type: "showShelfDiff", index: 0, path: "src/a.ts" });
-        await webview.send({ type: "openFile", path: "src/a.ts" });
-        await webview.send({ type: "showHistory", path: "src/a.ts" });
-        expect(openTextDocument).toHaveBeenCalled();
-        expect(showTextDocument).toHaveBeenCalled();
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider handles file delete with confirmation", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
         showWarningMessage.mockResolvedValueOnce("Delete");
         await webview.send({ type: "deleteFile", path: "src/a.ts" });
         expect(deleteFileWithFallback).toHaveBeenCalled();
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider surfaces operation errors", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
         gitOps.stageFiles.mockRejectedValueOnce(new Error("stage failed"));
         await webview.send({ type: "stageFiles", paths: ["src/a.ts"] });
         expect(showErrorMessage).toHaveBeenCalledWith("stage failed");
         expect(postMessageSpy).toHaveBeenCalledWith({ type: "error", message: "stage failed" });
+        provider.dispose();
+    });
 
+    it("CommitPanelViewProvider guards workspace-dependent actions", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
         workspaceState.workspaceFolders = undefined;
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(showErrorMessage).toHaveBeenCalledWith("No workspace folder is open.");

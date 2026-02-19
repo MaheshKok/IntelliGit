@@ -21,6 +21,7 @@ export function useDragResize(
 ): DragResizeAPI {
     const [height, setHeight] = useState(initialHeight);
     const dragging = useRef(false);
+    const heightRef = useRef(height);
     const { maxReservedHeight = 60, onResize } = options;
     const onResizeRef = useRef(onResize);
 
@@ -28,12 +29,16 @@ export function useDragResize(
         onResizeRef.current = onResize;
     }, [onResize]);
 
+    useEffect(() => {
+        heightRef.current = height;
+    }, [height]);
+
     const onMouseDown = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
             dragging.current = true;
             const startY = e.clientY;
-            const startH = height;
+            const startH = heightRef.current;
 
             const onMouseMove = (ev: MouseEvent) => {
                 if (!dragging.current) return;
@@ -59,7 +64,7 @@ export function useDragResize(
             document.body.style.cursor = "row-resize";
             document.body.style.userSelect = "none";
         },
-        [containerRef, height, maxReservedHeight, minHeight],
+        [containerRef, maxReservedHeight, minHeight],
     );
 
     return { height, onMouseDown };

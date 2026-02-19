@@ -3,7 +3,7 @@ import { computeGraph } from "../../src/webviews/react/graph";
 import { formatDateTime } from "../../src/webviews/react/shared/date";
 import { FILE_TYPE_BADGES, GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../../src/webviews/react/shared/tokens";
 import { getErrorMessage, isBranchNotFullyMergedError, isUntrackedPathspecError } from "../../src/utils/errors";
-import { CHEVRON_ICON_STYLE } from "../../src/webviews/react/branch-column/styles";
+import { getChevronIconStyle } from "../../src/webviews/react/branch-column/styles";
 import { contentContainerStyle, headerRowStyle } from "../../src/webviews/react/commit-list/styles";
 
 describe("core utilities", () => {
@@ -154,8 +154,8 @@ describe("core utilities", () => {
     });
 
     it("shared style helpers and tokens expose expected values", () => {
-        expect(CHEVRON_ICON_STYLE(true).transform).toContain("90deg");
-        expect(CHEVRON_ICON_STYLE(false).transform).toContain("0deg");
+        expect(getChevronIconStyle(true).transform).toContain("90deg");
+        expect(getChevronIconStyle(false).transform).toContain("0deg");
         expect(headerRowStyle(120).paddingLeft).toBe(120);
         expect(contentContainerStyle(5).height).toBe(140);
         expect(FILE_TYPE_BADGES.json.label).toBe("JN");
@@ -169,11 +169,22 @@ describe("core utilities", () => {
             getState: vi.fn(() => ({ x: 1 })),
             setState: vi.fn(),
         };
-        (globalThis as any).acquireVsCodeApi = vi.fn(() => fakeApi);
-        const { getVsCodeApi } = await import("../../src/webviews/react/shared/vscodeApi");
-        const api1 = getVsCodeApi();
-        const api2 = getVsCodeApi();
-        expect(api1).toBe(api2);
-        expect((globalThis as any).acquireVsCodeApi).toHaveBeenCalledTimes(1);
+        const originalAcquire = (globalThis as Record<string, unknown>).acquireVsCodeApi;
+        try {
+            (globalThis as Record<string, unknown>).acquireVsCodeApi = vi.fn(() => fakeApi);
+            const { getVsCodeApi } = await import("../../src/webviews/react/shared/vscodeApi");
+            const api1 = getVsCodeApi();
+            const api2 = getVsCodeApi();
+            expect(api1).toBe(api2);
+            const mockedAcquire = (globalThis as { acquireVsCodeApi: ReturnType<typeof vi.fn> })
+                .acquireVsCodeApi;
+            expect(mockedAcquire).toHaveBeenCalledTimes(1);
+        } finally {
+            if (typeof originalAcquire === "undefined") {
+                delete (globalThis as Record<string, unknown>).acquireVsCodeApi;
+            } else {
+                (globalThis as Record<string, unknown>).acquireVsCodeApi = originalAcquire;
+            }
+        }
     });
 });

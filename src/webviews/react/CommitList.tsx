@@ -2,7 +2,7 @@
 // Layout: [Graph lanes] [Commit message + inline ref badges] [Author] [Date].
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Commit } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -33,7 +33,7 @@ interface Props {
     defaultCheckoutBranch: string | null;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
-    onLoadMore: () => void;
+    onLoadMore: () => void | Promise<void>;
     onCommitAction: (action: CommitAction, hash: string, targetBranch?: string) => void;
 }
 
@@ -56,6 +56,7 @@ export function CommitList({
     );
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
+    const isLoadingMoreRef = useRef(false);
 
     const graphRows = useMemo(() => computeGraph(commits), [commits]);
     const maxCols = useMemo(
@@ -71,7 +72,7 @@ export function CommitList({
         graphWidth,
     });
 
-    React.useEffect(() => {
+    useEffect(() => {
         const viewport = viewportRef.current;
         if (!viewport) return;
 
@@ -130,8 +131,17 @@ export function CommitList({
         (event: React.UIEvent<HTMLDivElement>) => {
             const el = event.currentTarget;
             setScrollTop(el.scrollTop);
-            if (hasMore && el.scrollTop + el.clientHeight >= el.scrollHeight - 100) {
-                onLoadMore();
+            if (
+                hasMore &&
+                !isLoadingMoreRef.current &&
+                el.scrollTop + el.clientHeight >= el.scrollHeight - 100
+            ) {
+                isLoadingMoreRef.current = true;
+                Promise.resolve(onLoadMore())
+                    .catch(() => undefined)
+                    .finally(() => {
+                        isLoadingMoreRef.current = false;
+                    });
             }
         },
         [hasMore, onLoadMore],
@@ -181,7 +191,12 @@ export function CommitList({
                 </span>
             </div>
 
-            <div ref={viewportRef} style={SCROLL_VIEWPORT_STYLE} onScroll={handleScroll}>
+            <div
+                ref={viewportRef}
+                data-testid="commit-list-viewport"
+                style={SCROLL_VIEWPORT_STYLE}
+                onScroll={handleScroll}
+            >
                 <div style={contentContainerStyle(commits.length + (hasMore ? 1 : 0))}>
                     <canvas ref={canvasRef} style={CANVAS_STYLE} />
 

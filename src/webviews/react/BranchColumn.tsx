@@ -96,6 +96,17 @@ export function BranchColumn({
         setContextMenu({ x: anchorX, y: anchorY, branch });
     }, []);
 
+    const openBranchContextMenuFromRow = useCallback((row: HTMLElement, branch: Branch): void => {
+        const rowRect = row.getBoundingClientRect();
+        const firstIcon = row.querySelector("svg");
+        const iconAnchorX = firstIcon
+            ? firstIcon.getBoundingClientRect().right + 2
+            : rowRect.left + 20;
+        const anchorX = Math.max(iconAnchorX, rowRect.left + 22);
+        const anchorY = rowRect.top + 1;
+        setContextMenu({ x: anchorX, y: anchorY, branch });
+    }, []);
+
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
@@ -121,8 +132,27 @@ export function BranchColumn({
                 <div style={HEAD_WRAPPER_STYLE}>
                     <div
                         className={`branch-row${selectedBranch === null ? " selected" : ""}`}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => onSelectBranch(null)}
                         onContextMenu={(event) => handleBranchContextMenu(event, current)}
+                        onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                                if (event.key === " ") event.preventDefault();
+                                onSelectBranch(null);
+                                return;
+                            }
+                            if (
+                                event.key === "ContextMenu" ||
+                                (event.shiftKey && event.key === "F10")
+                            ) {
+                                event.preventDefault();
+                                openBranchContextMenuFromRow(
+                                    event.currentTarget as HTMLElement,
+                                    current,
+                                );
+                            }
+                        }}
                         style={HEAD_ROW_STYLE}
                     >
                         <TagIcon />

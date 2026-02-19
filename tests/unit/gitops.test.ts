@@ -542,15 +542,49 @@ describe("GitOps", () => {
             await expect(ops.getShelvedFiles(0)).resolves.toEqual([]);
         });
 
-        it("returns shelved patch and file history with expected git args", async () => {
+        it("returns shelved patch with expected git args", async () => {
             const executor = createMockExecutor({
                 "stash show -p stash@{0} -- src/a.ts": "diff --git a/src/a.ts b/src/a.ts",
-                "log --max-count=25": "a1b2c3  author  date  msg",
             });
             const ops = new GitOps(executor);
 
             await expect(ops.getShelvedFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                ["stash", "show", "-p", "stash@{0}", "--", "src/a.ts"],
+            ]);
+        });
+
+        it("returns file history with expected git args", async () => {
+            const executor = createMockExecutor({
+                "log --max-count=25": "a1b2c3  author  date  msg",
+            });
+            const ops = new GitOps(executor);
+
             await expect(ops.getFileHistory("src/a.ts", 25)).resolves.toContain("a1b2c3");
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                [
+                    "log",
+                    "--max-count=25",
+                    "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
+                    "--follow",
+                    "--",
+                    "src/a.ts",
+                ],
+            ]);
+        });
+
+        it("runs shelve pop/apply/delete commands for valid indexes", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await expect(ops.shelvePop(0)).resolves.toBe("");
+            await expect(ops.shelveApply(0)).resolves.toBe("");
+            await expect(ops.shelveDelete(0)).resolves.toBe("");
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toContainEqual(["stash", "pop", "stash@{0}"]);
+            expect(calls).toContainEqual(["stash", "apply", "stash@{0}"]);
+            expect(calls).toContainEqual(["stash", "drop", "stash@{0}"]);
         });
 
         it("honors force flag when deleting files", async () => {

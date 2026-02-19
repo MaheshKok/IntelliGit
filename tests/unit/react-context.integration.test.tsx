@@ -1,82 +1,14 @@
 // @vitest-environment jsdom
 
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Branch, Commit } from "../../src/types";
 import { BranchColumn } from "../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../src/webviews/react/CommitList";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
+import { initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
 
-function mount(node: React.ReactElement): { container: HTMLDivElement; root: Root } {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    act(() => {
-        root.render(node);
-    });
-    return { container, root };
-}
-
-function unmount(root: Root, container: HTMLDivElement): void {
-    act(() => {
-        root.unmount();
-    });
-    container.remove();
-}
-
-beforeAll(() => {
-    Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
-        value: true,
-        configurable: true,
-    });
-    Object.defineProperty(window, "matchMedia", {
-        value: vi.fn().mockImplementation((query: string) => ({
-            matches: false,
-            media: query,
-            onchange: null,
-            addListener: vi.fn(),
-            removeListener: vi.fn(),
-            addEventListener: vi.fn(),
-            removeEventListener: vi.fn(),
-            dispatchEvent: vi.fn(),
-        })),
-        configurable: true,
-    });
-
-    class ResizeObserverMock {
-        observe = vi.fn();
-        unobserve = vi.fn();
-        disconnect = vi.fn();
-    }
-    Object.defineProperty(globalThis, "ResizeObserver", {
-        value: ResizeObserverMock,
-        configurable: true,
-    });
-
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(() => {
-        return {
-            scale: vi.fn(),
-            clearRect: vi.fn(),
-            beginPath: vi.fn(),
-            arc: vi.fn(),
-            fill: vi.fn(),
-            stroke: vi.fn(),
-            moveTo: vi.fn(),
-            lineTo: vi.fn(),
-            bezierCurveTo: vi.fn(),
-            set lineCap(_: string) {},
-            set lineWidth(_: number) {},
-            set strokeStyle(_: string) {},
-            set fillStyle(_: string) {},
-        } as unknown as CanvasRenderingContext2D;
-    });
-});
-
-afterEach(() => {
-    document.body.innerHTML = "";
-    vi.clearAllMocks();
-});
+initReactDomTestEnvironment();
 
 describe("ContextMenu integration", () => {
     it("supports disabled state, selection, and outside close", () => {
@@ -170,11 +102,8 @@ describe("BranchColumn integration", () => {
         });
         expect(onSelectBranch).toHaveBeenCalledWith(null);
 
-        const branchRow = Array.from(container.querySelectorAll(".branch-row")).find((row) =>
-            row.textContent?.includes("HEAD (main)"),
-        ) as HTMLElement;
         act(() => {
-            branchRow.dispatchEvent(
+            headRow.dispatchEvent(
                 new MouseEvent("contextmenu", {
                     bubbles: true,
                     cancelable: true,
@@ -191,17 +120,14 @@ describe("BranchColumn integration", () => {
         act(() => {
             renameItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(onBranchAction).toHaveBeenCalledWith(
-            "renameBranch",
-            "main",
-        );
+        expect(onBranchAction).toHaveBeenCalledWith("renameBranch", "main");
 
         unmount(root, container);
     });
 });
 
 describe("CommitList integration", () => {
-    it("handles selection, context actions, disabled actions, and load-more", () => {
+    it("fires selection/action/filter/load-more callbacks through real interactions", () => {
         const commits: Commit[] = [
             {
                 hash: "aaa1111",
@@ -243,15 +169,60 @@ describe("CommitList integration", () => {
             />,
         );
 
-        const pointerRows = Array.from(container.querySelectorAll("div")).filter(
-            (el) => (el as HTMLDivElement).style.cursor === "pointer",
-        );
-        expect(pointerRows.length).toBeGreaterThan(0);
+        const filterInput = container.querySelector(
+            'input[placeholder="Text or hash"]',
+        ) as HTMLInputElement;
+        expect(filterInput).toBeTruthy();
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLInputElement.prototype,
+            "value",
+        )?.set;
+        act(() => {
+            valueSetter?.call(filterInput, "feat");
+            filterInput.dispatchEvent(new Event("input", { bubbles: true }));
+            filterInput.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        expect(onFilterText).toHaveBeenCalledWith("feat");
 
-        expect(onLoadMore).not.toHaveBeenCalledWith("invalid");
-        expect(onSelectCommit).not.toHaveBeenCalledWith("invalid");
-        expect(onFilterText).not.toHaveBeenCalledWith("invalid");
-        expect(onCommitAction).not.toHaveBeenCalledWith("invalid", "invalid", undefined);
+        const firstRow = Array.from(container.querySelectorAll("div")).find(
+            (el) =>
+                (el as HTMLDivElement).style.cursor === "pointer" &&
+                el.textContent?.includes("feat: first"),
+        ) as HTMLElement;
+        expect(firstRow).toBeTruthy();
+        act(() => {
+            firstRow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onSelectCommit).toHaveBeenCalledWith("aaa1111");
+
+        act(() => {
+            firstRow.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 140,
+                    clientY: 42,
+                }),
+            );
+        });
+        const copyRevisionItem = Array.from(
+            document.querySelectorAll(".intelligit-context-item"),
+        ).find((el) => el.textContent?.includes("Copy Revision Number")) as HTMLElement;
+        act(() => {
+            copyRevisionItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aaa1111", undefined);
+
+        const viewport = container.querySelector(
+            '[data-testid="commit-list-viewport"]',
+        ) as HTMLDivElement;
+        Object.defineProperty(viewport, "clientHeight", { value: 240, configurable: true });
+        Object.defineProperty(viewport, "scrollHeight", { value: 300, configurable: true });
+        Object.defineProperty(viewport, "scrollTop", { value: 90, configurable: true });
+        act(() => {
+            viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+        });
+        expect(onLoadMore).toHaveBeenCalled();
 
         unmount(root, container);
     });

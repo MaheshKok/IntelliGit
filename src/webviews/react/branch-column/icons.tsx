@@ -1,5 +1,5 @@
 import React from "react";
-import { BASE_ICON_STYLE, CHEVRON_ICON_STYLE, NODE_ICON_SIZE } from "./styles";
+import { BASE_ICON_STYLE, getChevronIconStyle, NODE_ICON_SIZE } from "./styles";
 
 export function GitBranchIcon({
     color = "var(--vscode-charts-blue, #59c3ff)",
@@ -59,7 +59,7 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
             width={NODE_ICON_SIZE}
             height={NODE_ICON_SIZE}
             viewBox="0 0 16 16"
-            style={CHEVRON_ICON_STYLE(expanded)}
+            style={getChevronIconStyle(expanded)}
         >
             <path fill="currentColor" d="M6 4l4 4-4 4z" />
         </svg>
