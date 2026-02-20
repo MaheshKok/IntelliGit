@@ -1,106 +1,108 @@
 # IntelliGit - PyCharm Git for VS Code
 
-IntelliGit is an IntelliJ/PyCharm-style Git extension for VS Code. It provides an intelligent Git workflow with commit graph visualization, branch management, file staging, and a Shelf workflow designed to feel familiar to PyCharm Git users.
+IntelliGit brings a JetBrains-style Git workflow into VS Code, so you can stage, commit, inspect history, and manage branches without bouncing between multiple tools.
 
-## Features
+## How Users Benefit
 
-### Commit Panel (Sidebar)
+- Move faster on daily Git work with one focused UI for commit, history, and branch actions.
+- Reduce context switching by keeping staging, diffs, commit graph, and commit details in IntelliGit panels.
+- Handle risky Git operations with guardrails (confirmations and action availability rules for pushed/merge commits).
+- Get familiar behavior if you are coming from IntelliJ/PyCharm Git tooling.
 
-A tabbed sidebar panel for staging, committing, and shelving changes.
+## Core Workflows
 
-**Commit Tab**
-- File tree with directory grouping, collapsible folders, and indent guide lines
-- Per-file checkboxes for selective staging (section, folder, and individual file level)
-- Checkbox state persists across navigation via webview state
-- File type icon badges with colored backgrounds for 20+ file types (TS, JS, PY, GO, RS, etc.)
-- Status-colored filenames (orange for modified, green for added, red with strikethrough for deleted, purple for renamed)
-- Addition/deletion stats per file (+X / -X)
-- Single-click any file to open its diff
-- Toolbar: Refresh, Rollback, Group by Directory, Shelve, Show Diff, Expand All, Collapse All
-- Amend mode with auto-filled last commit message
-- Commit and Commit & Push buttons
-- Drag-resizable divider between file list and commit message area
+### 1) Commit and Shelf Workflow (Sidebar)
 
-**Shelf Tab**
-- Full stash management with IntelliJ-style "Shelf" naming
-- Create shelves with custom messages (supports partial stash of selected files)
-- Apply, Pop (apply + remove), or Delete individual shelves
-- Formatted timestamps and stash count badge on tab
+- Commit tab with file tree, selective staging checkboxes (section/folder/file), diff open on click, and commit message area
+- Toolbar actions: Refresh, Rollback, Group by Directory, Shelve, Show Diff Preview, Expand All, Collapse All
+- Commit, Commit and Push, and Amend support
+- Shelf tab for stash-based "shelf" workflow: save full or partial changes, then Apply, Pop, or Delete
 
-### Commit Graph (Bottom Panel)
+Why this helps:
+- You can build clean commits quickly, even in large change sets.
+- You can park unfinished work safely and come back later without losing flow.
 
-A two-column resizable panel showing the full commit history.
+### 2) Commit Graph and History (Bottom Panel)
 
-**Branch Column (left)**
-- Hierarchical branch tree: HEAD, Local, and Remote sections
-- Prefix-based folder grouping (e.g. `feature/auth` and `feature/ui` grouped under `feature/`)
-- Current branch highlighted in green with tracking info (ahead/behind badges)
-- Click a branch to filter the graph; right-click for branch operations
-- Custom context menu with checkout, merge, rebase, push, rename, delete, and more
-- Drag-resizable column width (80px - 500px)
+- Three-pane layout: branch column, commit list/graph, and commit detail pane
+- Canvas-based lane graph with infinite scroll pagination for large histories
+- Text/hash search and branch filter
+- Selected commit shows changed files, file stats, and commit metadata
 
-**Commit List (right)**
-- Canvas-rendered lane-based commit graph with bezier merge curves
-- Ring-style commit dots with 10 rotating lane colors
-- Retina/HiDPI display support
-- Ref badges: HEAD (green), tags (orange), remote branches (blue), local branches (purple)
-- Author name and formatted date per row
-- Text/hash search with debounced filtering
-- Infinite scroll with 500-commit pagination
-- Click a commit to load its changed files and details below
+Why this helps:
+- You can understand branch history and merge paths faster.
+- You can inspect any commit without leaving the graph context.
 
-### Changed Files (Bottom Panel)
+### 3) Branch Management (From Branch Column Context Menu)
 
-Shows the files changed in the selected commit.
+Available actions:
 
-- Directory tree with status icons (Added, Modified, Deleted, Renamed, Copied)
-- Per-file addition/deletion line counts
-- Indent guide lines matching VS Code's native tree style
-- Drag-resizable divider between file tree and commit details
-- Collapsible commit details section: message, body, hash, author, email, date, file count
-
-### Branch Management (Sidebar Tree View)
-
-A native VS Code tree view for branch operations.
-
-- HEAD indicator with current branch and short hash
-- Local and remote branches with tracking info (ahead/behind)
-- Full context menu:
-
-| Action | Available On |
-|--------|-------------|
+| Action | Applies To |
+|--------|------------|
 | Checkout | Local, Remote |
 | New Branch from... | Current, Local, Remote |
 | Checkout and Rebase onto Current | Local, Remote |
-| Compare with Current | Local, Remote |
-| Show Diff with Working Tree | Current, Local, Remote |
 | Rebase Current onto Selected | Local, Remote |
 | Merge into Current | Local, Remote |
-| Update (fetch + pull) | Current, Local, Remote |
+| Update | Current, Local |
 | Push | Current, Local |
-| Rename | Current, Local |
+| Rename... | Current, Local |
 | Delete | Local, Remote |
 
-### Activity Bar Badge
+Why this helps:
+- Most branch operations are available directly where you browse history.
+- Less command-line overhead for common branch maintenance tasks.
 
-The IntelliGit icon in the activity bar shows a badge with the number of changed files in the workspace, updated automatically via a debounced file system watcher.
+### 4) Commit Context Actions (From Commit Row Context Menu)
 
-## Keyboard Shortcuts
+- Copy Revision Number
+- Create Patch
+- Cherry-Pick
+- Checkout Revision
+- Reset Current Branch to Here
+- Revert Commit
+- Undo Commit (unpushed, non-merge)
+- Edit Commit Message (unpushed, non-merge)
+- Drop Commit (unpushed, non-merge)
+- Interactively Rebase from Here (unpushed, non-merge)
+- New Branch
+- New Tag
+
+Why this helps:
+- Advanced history editing is available in-place, with safer availability rules.
+
+### 5) Workspace Change Badge
+
+- Activity bar badge shows current changed-file count in the workspace
+
+Why this helps:
+- You always know if your working tree is clean before pushing or switching context.
+
+## Quick Start
+
+1. Open a Git repository in VS Code.
+2. Open IntelliGit from the activity bar.
+3. Use the `Commit` tab to stage files, write a message, and commit.
+4. Open the bottom IntelliGit panel to inspect graph history, filter by branch, and review commit details.
+5. Use branch or commit context menus for advanced operations.
+
+## Keyboard Shortcut
 
 | Key | Command |
 |-----|---------|
-| `Alt+9` | Open IntelliGit (focus branches + commit graph) |
+| `Alt+9` | Focus IntelliGit commit graph panel |
 
 ## Requirements
 
-- VS Code 1.96.0 or later
-- Git installed and available on PATH
+- VS Code `1.96.0` or later
+- Git installed and available on `PATH`
 
 ## Installation
 
 ### From Marketplace
 
-Search for **IntelliGit** in the VS Code Extensions view, or install from:
+Search for **IntelliGit** in VS Code Extensions, or install from:
+
 - [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=MaheshKok.intelligit)
 - [Open VSX Registry](https://open-vsx.org/extension/MaheshKok/intelligit)
 
@@ -137,94 +139,38 @@ bun run test
 bun run format
 ```
 
-### Project Structure
+## Architecture (High Level)
 
-```
-src/
-  extension.ts              # Activation, command registration, view coordination
-  types.ts                  # Shared TypeScript types
-  git/
-    executor.ts             # simple-git wrapper (max 6 concurrent processes)
-    operations.ts           # High-level Git operations
-  views/
-    CommitPanelViewProvider.ts   # Sidebar commit/shelf webview
-    CommitGraphViewProvider.ts   # Bottom panel commit graph webview
-    CommitInfoViewProvider.ts    # Bottom panel changed files webview
-    BranchTreeProvider.ts        # Sidebar branch tree (native tree view)
-  webviews/react/
-    CommitGraphApp.tsx            # React app for commit graph container
-    CommitList.tsx                # Virtualized commit list + context menu
-    BranchColumn.tsx              # Branch tree column wrapper
-    CommitInfoApp.tsx             # Changed files + commit details webview app
-    commitGraphTypes.ts           # Typed commit graph message protocol
-    graph.ts                      # Lane-based graph layout algorithm
-    branch-column/                # Branch column modules
-      components/
-        BranchSearchBar.tsx
-        BranchSectionHeader.tsx
-        BranchTreeNodeRow.tsx
-      treeModel.ts
-      menu.ts
-      highlight.tsx
-      styles.ts
-      icons.tsx
-      types.ts
-    commit-list/                  # Commit list modules
-      CommitRow.tsx
-      commitMenu.tsx
-      useCommitGraphCanvas.ts
-      styles.ts
-    commit-panel/                 # Commit/Shelf panel modules
-      components/
-      hooks/
-      types.ts
-    shared/
-      components/ContextMenu.tsx
-      fileTree.ts
-media/
-  intelligit.svg            # Extension icon
-```
-
-### Architecture
-
-```
-GitExecutor (simple-git)
+```text
+GitExecutor (simple-git wrapper)
     |
 GitOps (operations layer)
     |
-View Providers (webview hosts)
+View Providers (extension host orchestration)
     |
-Webviews (HTML / React)
+Webviews (React apps for commit panel + commit graph panel)
 ```
 
-The extension host coordinates all views. Views never communicate directly — the extension acts as the sole data broker. Events flow through:
+Data flow highlights:
 
-1. Commit graph emits `onCommitSelected` -> extension loads commit detail -> Changed Files view updates
-2. Branch tree/graph emits `onBranchFilterChanged` -> commit graph filters
-3. File system watcher (debounced 300ms) -> commit panel auto-refreshes
-4. Commit panel emits `onDidChangeFileCount` -> activity bar badge updates
+1. Commit selection in graph requests commit details from extension host and updates detail pane.
+2. Branch selection filters the graph and clears stale commit detail state.
+3. Commit panel file count updates the activity badge.
+4. Refresh reloads branch state, history, and commit panel data together.
 
 ## Tech Stack
 
 | Component | Technology |
-|-----------|-----------|
+|-----------|------------|
 | Extension host | TypeScript (strict), ES2022 |
 | Git operations | simple-git v3 |
-| Commit graph UI | React 18 |
+| Webviews | React 18 |
 | Graph rendering | HTML5 Canvas |
 | Bundler | esbuild |
 | Package manager | Bun |
 | Testing | Vitest |
 | Linting | ESLint |
 | Formatting | Prettier |
-
-## CI/CD
-
-GitHub Actions workflow runs on every push to any branch:
-- Lint, typecheck, test, build, and package
-- On push to `main` with a version bump in `package.json`:
-  - Publishes to VS Code Marketplace and Open VSX Registry
-  - Creates a git tag and GitHub Release with the VSIX attached
 
 ## License
 
