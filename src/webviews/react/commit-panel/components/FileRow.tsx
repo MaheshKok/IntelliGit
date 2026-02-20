@@ -8,7 +8,6 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { StatusBadge } from "./StatusBadge";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
-import { GIT_STATUS_COLORS } from "../../shared/tokens";
 
 interface Props {
     file: WorkingFile;
@@ -30,20 +29,16 @@ function FileRowInner({
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = file.path.split("/").pop() ?? file.path;
     const dir = file.path.split("/").slice(0, -1).join("/");
-    const fnColor =
-        file.status === "D"
-            ? "var(--vscode-disabledForeground)"
-            : (GIT_STATUS_COLORS[file.status] ?? "var(--vscode-foreground)");
 
     return (
         <Flex
             align="center"
-            gap="3px"
+            gap="4px"
             pl={`${padLeft}px`}
-            pr="5px"
-            minH="20px"
-            lineHeight="20px"
-            fontSize="12px"
+            pr="6px"
+            minH="22px"
+            lineHeight="22px"
+            fontSize="13px"
             fontFamily="var(--vscode-font-family)"
             cursor="pointer"
             position="relative"
@@ -60,7 +55,7 @@ function FileRowInner({
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
-            <Box as="span" w="12px" flexShrink={0} />
+            <Box as="span" w="14px" flexShrink={0} />
             <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
             <FileTypeIcon filename={fileName} status={file.status} icon={file.icon} />
             <Box
@@ -69,7 +64,7 @@ function FileRowInner({
                 overflow="hidden"
                 textOverflow="ellipsis"
                 whiteSpace="nowrap"
-                color={fnColor}
+                color="var(--vscode-foreground)"
                 textDecoration={file.status === "D" ? "line-through" : undefined}
             >
                 {fileName}
@@ -78,14 +73,14 @@ function FileRowInner({
                 <Box
                     as="span"
                     color="var(--vscode-descriptionForeground)"
-                    fontSize="10.5px"
+                    fontSize="11px"
                     ml="3px"
                 >
                     {dir}
                 </Box>
             )}
             {(file.additions > 0 || file.deletions > 0) && (
-                <Box as="span" ml="auto" fontSize="10.5px" flexShrink={0}>
+                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
                     {file.additions > 0 && (
                         <Box
                             as="span"

@@ -35,10 +35,10 @@ export function SectionHeader({
             borderRadius="5px"
             cursor="pointer"
             userSelect="none"
-            fontWeight={700}
+            fontWeight={600}
             fontSize="12px"
             fontFamily="var(--vscode-font-family)"
-            lineHeight="20px"
+            lineHeight="22px"
             position="relative"
             color="var(--vscode-foreground)"
             bg="rgba(121, 140, 183, 0.26)"

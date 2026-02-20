@@ -48,12 +48,12 @@ function FolderRowInner({
     return (
         <Flex
             align="center"
-            gap="3px"
+            gap="4px"
             pl={`${padLeft}px`}
-            pr="5px"
-            minH="20px"
-            lineHeight="20px"
-            fontSize="12px"
+            pr="6px"
+            minH="22px"
+            lineHeight="22px"
+            fontSize="13px"
             fontFamily="var(--vscode-font-family)"
             cursor="pointer"
             position="relative"
@@ -68,8 +68,8 @@ function FolderRowInner({
             <IndentGuides treeDepth={depth} />
             <Box
                 as="span"
-                fontSize="10px"
-                w="12px"
+                fontSize="11px"
+                w="14px"
                 textAlign="center"
                 flexShrink={0}
                 opacity={0.7}
@@ -85,7 +85,7 @@ function FolderRowInner({
                 onChange={() => onToggleCheck(dirPath)}
             />
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
-            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.92}>
+            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.85}>
                 {name}
             </Box>
             <Box
