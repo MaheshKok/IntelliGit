@@ -217,7 +217,7 @@ describe("view providers integration", () => {
                 isRemote: false,
                 isCurrent: true,
                 ahead: 1,
-                behind: 0,
+                behind: 2,
             },
             {
                 name: "origin/main",
@@ -241,6 +241,11 @@ describe("view providers integration", () => {
         const remoteBranches = provider.getChildren(remoteGroups[0]);
 
         expect(locals.map((b) => b.label)).toContain("main");
+        const mainLocal = locals.find((b) => b.label === "main");
+        expect(mainLocal?.description).toContain("🔵⬆1");
+        expect(mainLocal?.description).toContain("🟠⬇2");
+        expect(String(mainLocal?.tooltip)).toContain("Ahead by 1 commit");
+        expect(String(mainLocal?.tooltip)).toContain("Behind by 2 commits");
         expect(remoteGroups.map((g) => g.label)).toContain("origin");
         expect(remoteBranches.map((b) => b.label)).toContain("main");
         provider.dispose();

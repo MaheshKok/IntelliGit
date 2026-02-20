@@ -40,6 +40,8 @@ export class BranchItem extends vscode.TreeItem {
                     : new vscode.ThemeIcon("git-branch");
                 if (branch) {
                     this.description = formatTrackingInfo(branch);
+                    const trackingTooltip = formatTrackingTooltip(branch);
+                    this.tooltip = trackingTooltip ? `${branch.name}\n${trackingTooltip}` : branch.name;
                     this.command = {
                         command: "intelligit.filterByBranch",
                         title: "Filter by Branch",
@@ -53,9 +55,20 @@ export class BranchItem extends vscode.TreeItem {
 
 function formatTrackingInfo(branch: Branch): string {
     const parts: string[] = [];
-    if (branch.ahead > 0) parts.push(`\u2191${branch.ahead}`);
-    if (branch.behind > 0) parts.push(`\u2193${branch.behind}`);
+    if (branch.ahead > 0) parts.push(`\u{1F535}\u2B06${branch.ahead}`);
+    if (branch.behind > 0) parts.push(`\u{1F7E0}\u2B07${branch.behind}`);
     return parts.join(" ");
+}
+
+function formatTrackingTooltip(branch: Branch): string {
+    const parts: string[] = [];
+    if (branch.ahead > 0) {
+        parts.push(`Ahead by ${branch.ahead} commit${branch.ahead === 1 ? "" : "s"} (to push)`);
+    }
+    if (branch.behind > 0) {
+        parts.push(`Behind by ${branch.behind} commit${branch.behind === 1 ? "" : "s"} (to pull)`);
+    }
+    return parts.join(" | ");
 }
 
 export class BranchTreeProvider implements vscode.TreeDataProvider<BranchItem> {

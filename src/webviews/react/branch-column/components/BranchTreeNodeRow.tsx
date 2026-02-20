@@ -30,14 +30,22 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     return (
         <span style={TRACKING_BADGE_STYLE}>
             {branch.ahead > 0 && (
-                <span className="branch-track-push" style={TRACKING_PUSH_STYLE}>
-                    {"\u2191"}
+                <span
+                    className="branch-track-push"
+                    style={TRACKING_PUSH_STYLE}
+                    title={`Ahead by ${branch.ahead} commit${branch.ahead === 1 ? "" : "s"} (to push)`}
+                >
+                    {"\u2B06"}
                     {branch.ahead}
                 </span>
             )}
             {branch.behind > 0 && (
-                <span className="branch-track-pull" style={TRACKING_PULL_STYLE}>
-                    {"\u2193"}
+                <span
+                    className="branch-track-pull"
+                    style={TRACKING_PULL_STYLE}
+                    title={`Behind by ${branch.behind} commit${branch.behind === 1 ? "" : "s"} (to pull)`}
+                >
+                    {"\u2B07"}
                     {branch.behind}
                 </span>
             )}

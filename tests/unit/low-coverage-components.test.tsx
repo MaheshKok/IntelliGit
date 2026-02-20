@@ -292,10 +292,12 @@ describe("low coverage components", () => {
 
         const push = branchRow.querySelector(".branch-track-push") as HTMLElement;
         const pull = branchRow.querySelector(".branch-track-pull") as HTMLElement;
-        expect(push?.textContent).toBe("\u21912");
-        expect(pull?.textContent).toBe("\u21933");
-        expect(push?.getAttribute("style")).toContain("--vscode-charts-blue");
-        expect(pull?.getAttribute("style")).toContain("--vscode-charts-orange");
+        expect(push?.textContent).toBe("\u2B062");
+        expect(pull?.textContent).toBe("\u2B073");
+        expect(push?.style.color).toBe("rgb(95, 156, 230)");
+        expect(pull?.style.color).toBe("rgb(146, 86, 78)");
+        expect(push?.getAttribute("title")).toContain("Ahead by 2 commits");
+        expect(pull?.getAttribute("title")).toContain("Behind by 3 commits");
 
         unmount(root, container);
     });

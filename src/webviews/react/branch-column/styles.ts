@@ -16,6 +16,12 @@ export const BRANCH_ROW_CLASS_CSS = `
         background: var(--vscode-list-activeSelectionBackground) !important;
         color: var(--vscode-list-activeSelectionForeground) !important;
     }
+    .branch-track-push {
+        color: #5f9ce6 !important;
+    }
+    .branch-track-pull {
+        color: #92564e !important;
+    }
     .branch-search-input:focus-visible {
         outline-color: var(--vscode-focusBorder, #007acc);
     }
@@ -120,23 +126,23 @@ export const NODE_LABEL_STYLE: CSSProperties = {
 
 export const TRACKING_BADGE_STYLE: CSSProperties = {
     marginLeft: "auto",
-    fontSize: "10px",
+    fontSize: "11px",
     display: "inline-flex",
     alignItems: "center",
-    gap: 4,
+    gap: 5,
     flexShrink: 0,
 };
 
 export const TRACKING_PUSH_STYLE: CSSProperties = {
-    color: "var(--vscode-charts-blue, #59c3ff)",
+    color: "#5f9ce6",
     opacity: 0.95,
-    fontWeight: 600,
+    fontWeight: 700,
 };
 
 export const TRACKING_PULL_STYLE: CSSProperties = {
-    color: "var(--vscode-charts-orange, #e0a15d)",
+    color: "#92564e",
     opacity: 0.95,
-    fontWeight: 600,
+    fontWeight: 700,
 };
 
 export const BRANCH_HIGHLIGHT_STYLE: CSSProperties = {
