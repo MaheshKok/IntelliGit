@@ -17,6 +17,7 @@ export class IconThemeService implements vscode.Disposable {
     private iconThemeInitialized = false;
     private lastThemeRootUri: string | undefined;
     private iconThemeDisposables: vscode.Disposable[] = [];
+    private disposed = false;
 
     constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -27,6 +28,7 @@ export class IconThemeService implements vscode.Disposable {
         this.webview = webview;
         this.iconResolver = new FileIconThemeResolver(webview);
         this.lastThemeRootUri = undefined;
+        this.disposed = false;
         this.markIconThemeDirty();
         this.registerIconThemeListeners();
     }
@@ -106,14 +108,17 @@ export class IconThemeService implements vscode.Disposable {
     }
 
     async getFolderIconsByCommitFiles(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
+        await this.initIconThemeData();
         return this.getFolderIconsByPaths(files.map((file) => file.path));
     }
 
     async getFolderIconsByWorkingFiles(files: WorkingFile[]): Promise<ThemeFolderIconMap> {
+        await this.initIconThemeData();
         return this.getFolderIconsByPaths(files.map((file) => file.path));
     }
 
     async getFolderIconsByBranches(branches: Branch[]): Promise<ThemeFolderIconMap> {
+        await this.initIconThemeData();
         const names: string[] = [];
 
         for (const branch of branches) {
@@ -141,11 +146,14 @@ export class IconThemeService implements vscode.Disposable {
     }
 
     async getFolderIconsByNames(names: string[]): Promise<ThemeFolderIconMap> {
+        await this.initIconThemeData();
         if (!this.iconResolver) return {};
         return this.iconResolver.getFolderIconsByName(names);
     }
 
     dispose(): void {
+        if (this.disposed) return;
+        this.disposed = true;
         this.disposeResolver();
         this.disposeIconThemeDisposables();
         this.webview = undefined;
@@ -176,32 +184,20 @@ export class IconThemeService implements vscode.Disposable {
     }
 
     private registerIconThemeListeners(): void {
-        const windowWithThemeEvents = vscode.window as unknown as {
-            onDidChangeActiveColorTheme?: (listener: () => void) => vscode.Disposable;
-        };
-        if (typeof windowWithThemeEvents.onDidChangeActiveColorTheme === "function") {
-            this.iconThemeDisposables.push(
-                windowWithThemeEvents.onDidChangeActiveColorTheme(() => this.markIconThemeDirty()),
-            );
-        }
+        this.iconThemeDisposables.push(
+            vscode.window.onDidChangeActiveColorTheme(() => this.markIconThemeDirty()),
+        );
 
-        const workspaceWithThemeEvents = vscode.workspace as unknown as {
-            onDidChangeConfiguration?: (
-                listener: (event: { affectsConfiguration: (section: string) => boolean }) => void,
-            ) => vscode.Disposable;
-        };
-        if (typeof workspaceWithThemeEvents.onDidChangeConfiguration === "function") {
-            this.iconThemeDisposables.push(
-                workspaceWithThemeEvents.onDidChangeConfiguration((event) => {
-                    if (
-                        event.affectsConfiguration("workbench.iconTheme") ||
-                        event.affectsConfiguration("workbench.colorTheme")
-                    ) {
-                        this.markIconThemeDirty();
-                    }
-                }),
-            );
-        }
+        this.iconThemeDisposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (
+                    event.affectsConfiguration("workbench.iconTheme") ||
+                    event.affectsConfiguration("workbench.colorTheme")
+                ) {
+                    this.markIconThemeDirty();
+                }
+            }),
+        );
     }
 
     private disposeResolver(): void {

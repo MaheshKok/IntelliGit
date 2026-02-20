@@ -207,9 +207,11 @@ function resolveExtendsPath(themePath: string, extendsValue: string): string {
 }
 
 function createFileUri(filePath: string): vscode.Uri | null {
-    const uriFactory = vscode.Uri as unknown as { file?: (v: string) => vscode.Uri };
-    if (typeof uriFactory.file === "function") return uriFactory.file(filePath);
-    return null;
+    try {
+        return vscode.Uri.file(filePath);
+    } catch {
+        return null;
+    }
 }
 
 function pickVariantSection(
@@ -316,6 +318,7 @@ export class FileIconThemeResolver {
               key: string;
               parsed: ParsedIconTheme;
               themeId: string;
+              fingerprint: string;
           }
         | undefined;
 
@@ -361,7 +364,7 @@ export class FileIconThemeResolver {
             }
         }
 
-        return "vs-seti";
+        return undefined;
     }
 
     private async resolveThemeContribution(): Promise<{
@@ -407,14 +410,24 @@ export class FileIconThemeResolver {
             contribution.extensionPath,
             contribution.contribution.path,
         );
-        const themeFileFingerprint = await this.getThemeFileFingerprint(themeFilePath);
-        const key = [
+
+        // Build a partial key without fingerprint to check if we can reuse cached fingerprint
+        const partialKey = [
             contribution.themeId,
             vscode.window.activeColorTheme.kind,
             contribution.extensionPath,
             contribution.contribution.path,
-            themeFileFingerprint,
         ].join("|");
+
+        // Reuse cached fingerprint if the contribution path hasn't changed
+        let themeFileFingerprint: string;
+        if (this.themeCache?.fingerprint && this.themeCache.key.startsWith(partialKey + "|")) {
+            themeFileFingerprint = this.themeCache.fingerprint;
+        } else {
+            themeFileFingerprint = await this.getThemeFileFingerprint(themeFilePath);
+        }
+
+        const key = `${partialKey}|${themeFileFingerprint}`;
         if (this.themeCache?.key === key) {
             return { themeId: this.themeCache.themeId, parsed: this.themeCache.parsed };
         }
@@ -425,7 +438,12 @@ export class FileIconThemeResolver {
                 vscode.window.activeColorTheme.kind,
                 new Set<string>(),
             );
-            this.themeCache = { key, parsed, themeId: contribution.themeId };
+            this.themeCache = {
+                key,
+                parsed,
+                themeId: contribution.themeId,
+                fingerprint: themeFileFingerprint,
+            };
             return { themeId: contribution.themeId, parsed };
         } catch {
             return null;

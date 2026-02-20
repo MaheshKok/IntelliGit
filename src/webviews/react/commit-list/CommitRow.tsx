@@ -244,7 +244,7 @@ function CommitMessageCell({
                                         >
                                             {branchRefs.map((name) => (
                                                 <TooltipRefRow
-                                                    key={name}
+                                                    key={`branch:${name}`}
                                                     kind="branch"
                                                     name={name}
                                                 />
@@ -259,7 +259,7 @@ function CommitMessageCell({
                                                 display: "block",
                                                 fontSize: 11,
                                                 opacity: 0.82,
-                                                marginTop: 12,
+                                                marginTop: branchRefs.length > 0 ? 12 : 0,
                                                 marginBottom: 5,
                                             }}
                                         >

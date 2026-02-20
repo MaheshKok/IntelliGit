@@ -125,7 +125,8 @@ export function ContextMenu({
                 borderRadius: 9,
                 padding: "4px 0",
                 minWidth,
-                fontFamily: "var(--vscode-font-family)",
+                fontFamily:
+                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
                 boxShadow:
                     "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}

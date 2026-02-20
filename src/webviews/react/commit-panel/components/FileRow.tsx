@@ -40,7 +40,7 @@ function FileRowInner({
             minH="22px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="var(--vscode-font-family)"
+            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}

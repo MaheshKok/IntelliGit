@@ -99,8 +99,8 @@ export function CommitInfoPane({
             <Box
                 p="8px 12px"
                 color="var(--vscode-descriptionForeground)"
-                fontFamily="var(--vscode-font-family)"
-                fontSize="var(--vscode-font-size)"
+                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+                fontSize="13px"
                 h="100%"
                 overflow="auto"
             >
@@ -387,7 +387,7 @@ function CommitFolderRow({
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="var(--vscode-font-family)"
+            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -431,7 +431,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="var(--vscode-font-family)"
+            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
             cursor="default"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}

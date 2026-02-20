@@ -419,14 +419,15 @@ export class GitOps {
             if (!isNoUpstreamPushError(err)) throw err;
 
             const suggested = parseSetUpstreamPushSuggestion(err);
-            const branch =
-                suggested?.branch ?? (await this.resolveCurrentBranchNameForPush()) ?? undefined;
-            const remote =
-                suggested?.remote ?? (await this.resolveDefaultRemoteNameForPush()) ?? undefined;
+            const branch = suggested?.branch ?? (await this.resolveCurrentBranchNameForPush());
+            const remote = suggested?.remote ?? (await this.resolveDefaultRemoteNameForPush());
             if (!branch || !remote) throw err;
 
             const allowSetUpstream = await this.requestSetUpstreamPush(remote, branch);
-            if (!allowSetUpstream) throw err;
+            if (!allowSetUpstream) {
+                (err as Record<string, unknown>).declined = true;
+                throw err;
+            }
 
             return this.executor.run(["push", "--set-upstream", remote, branch]);
         }

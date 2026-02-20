@@ -35,9 +35,13 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             if (msg?.type === "ready") {
-                this.ready = true;
-                await this.iconTheme.initIconThemeData();
-                this.postCurrentState();
+                try {
+                    await this.iconTheme.initIconThemeData();
+                    this.ready = true;
+                    this.postCurrentState();
+                } catch (err) {
+                    console.error("[IntelliGit] Failed to initialize icon theme data:", err);
+                }
             }
         });
 

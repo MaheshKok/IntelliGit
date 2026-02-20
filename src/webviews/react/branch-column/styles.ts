@@ -30,8 +30,9 @@ export const BRANCH_ROW_CLASS_CSS = `
 export const PANEL_STYLE: CSSProperties = {
     height: "100%",
     overflow: "auto",
-    fontSize: "var(--vscode-font-size)",
-    fontFamily: "var(--vscode-font-family)",
+    fontSize: 13,
+    fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     borderRight: "1px solid var(--vscode-panel-border)",
     userSelect: "none",
 };
@@ -56,7 +57,8 @@ export const SEARCH_INPUT_STYLE: CSSProperties = {
     color: "var(--vscode-input-foreground, #d8dbe2)",
     padding: "0 6px",
     fontSize: 12,
-    fontFamily: "var(--vscode-font-family)",
+    fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     outline: "2px solid transparent",
 };
 

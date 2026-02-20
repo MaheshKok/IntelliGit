@@ -37,7 +37,7 @@ export function SectionHeader({
             userSelect="none"
             fontWeight={600}
             fontSize="12px"
-            fontFamily="var(--vscode-font-family)"
+            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
             lineHeight="22px"
             position="relative"
             color="var(--vscode-foreground)"

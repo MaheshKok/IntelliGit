@@ -1,5 +1,8 @@
+// Returns the last non-empty segment of a path.
+// Handles trailing slashes so "src/" yields "src".
 export function getLeafName(path: string): string {
-    const leaf = path.split("/").pop();
+    const trimmed = path.replace(/\/+$/, "");
+    const leaf = trimmed.split("/").pop();
     if (leaf && leaf.length > 0) return leaf;
     return path;
 }

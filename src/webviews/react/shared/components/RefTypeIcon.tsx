@@ -1,11 +1,10 @@
 import React from "react";
 import { LuGitBranch, LuTag } from "react-icons/lu";
-import { REF_BADGE_COLORS } from "../tokens";
 
 export const BRANCH_REF_ICON_COLOR = "var(--vscode-charts-blue, #58a6ff)";
-export const TAG_REF_ICON_COLOR = REF_BADGE_COLORS.tag.bg;
+export const TAG_REF_ICON_COLOR = "var(--vscode-charts-orange, #FF9800)";
 
-export function RefTypeIcon({
+function RefTypeIconInner({
     kind,
     size = 12,
     branchColor = BRANCH_REF_ICON_COLOR,
@@ -20,3 +19,5 @@ export function RefTypeIcon({
     const color = kind === "branch" ? branchColor : tagColor;
     return <Icon size={size} color={color} />;
 }
+
+export const RefTypeIcon = React.memo(RefTypeIconInner);

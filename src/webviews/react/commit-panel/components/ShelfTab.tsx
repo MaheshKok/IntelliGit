@@ -111,7 +111,7 @@ export function ShelfTab({
                                 py="2px"
                                 minH="24px"
                                 fontSize="12px"
-                                fontFamily="var(--vscode-font-family)"
+                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
                                 cursor="pointer"
                                 bg={
                                     isSelected
@@ -300,7 +300,7 @@ function ShelfFileTree({
                             minH="20px"
                             gap="4px"
                             fontSize="12px"
-                            fontFamily="var(--vscode-font-family)"
+                            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
                             cursor="pointer"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onFileClick(entry.file.path)}
@@ -340,7 +340,7 @@ function ShelfFileTree({
                             minH="20px"
                             gap="4px"
                             fontSize="12px"
-                            fontFamily="var(--vscode-font-family)"
+                            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
                             cursor="pointer"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onToggleDir(entry.path)}

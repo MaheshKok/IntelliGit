@@ -196,6 +196,7 @@ function App(): React.ReactElement {
                     setCommitFolderIconsByName(undefined);
                     break;
                 case "error":
+                    console.error("[IntelliGit] Extension error:", data);
                     break;
             }
         };

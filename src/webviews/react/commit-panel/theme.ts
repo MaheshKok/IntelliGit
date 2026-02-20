@@ -8,8 +8,9 @@ const theme = extendTheme({
         useSystemColorMode: true,
     },
     fonts: {
-        heading: "var(--vscode-font-family)",
-        body: "var(--vscode-font-family)",
+        heading:
+            "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        body: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         mono: "var(--vscode-editor-font-family, var(--vscode-font-family))",
     },
     styles: {
@@ -23,8 +24,9 @@ const theme = extendTheme({
                 width: "100%",
                 height: "100%",
                 overflow: "hidden",
-                fontFamily: "var(--vscode-font-family)",
-                fontSize: "var(--vscode-font-size)",
+                fontFamily:
+                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                fontSize: "13px",
                 color: "var(--vscode-foreground)",
                 background: "var(--vscode-sideBar-background, var(--vscode-editor-background))",
             },
