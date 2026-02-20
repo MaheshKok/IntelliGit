@@ -3,14 +3,21 @@
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
+import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
+import { TreeFolderIcon } from "./TreeIcons";
+import { resolveFolderIcon } from "../../shared/utils";
 
 interface Props {
     name: string;
     dirPath: string;
     depth: number;
     isExpanded: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     fileCount: number;
     isAllChecked: boolean;
     isSomeChecked: boolean;
@@ -23,6 +30,9 @@ function FolderRowInner({
     dirPath,
     depth,
     isExpanded,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     fileCount,
     isAllChecked,
     isSomeChecked,
@@ -30,16 +40,24 @@ function FolderRowInner({
     onToggleCheck,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
+    const resolvedIcon = resolveFolderIcon(
+        dirPath || name,
+        isExpanded,
+        folderIconsByName,
+        folderIcon,
+        folderExpandedIcon,
+    );
 
     return (
         <Flex
             align="center"
-            gap="3px"
+            gap="4px"
             pl={`${padLeft}px`}
-            pr="5px"
-            minH="20px"
-            lineHeight="20px"
-            fontSize="12px"
+            pr="6px"
+            minH="22px"
+            lineHeight="22px"
+            fontSize="13px"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
             whiteSpace="nowrap"
@@ -53,8 +71,8 @@ function FolderRowInner({
             <IndentGuides treeDepth={depth} />
             <Box
                 as="span"
-                fontSize="10px"
-                w="12px"
+                fontSize="11px"
+                w="14px"
                 textAlign="center"
                 flexShrink={0}
                 opacity={0.7}
@@ -69,13 +87,8 @@ function FolderRowInner({
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}
             />
-            <Box as="svg" w="14px" h="14px" flexShrink={0} viewBox="0 0 16 16">
-                <path
-                    fill="#b89d68"
-                    d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"
-                />
-            </Box>
-            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.92}>
+            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
+            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.85}>
                 {name}
             </Box>
             <Box

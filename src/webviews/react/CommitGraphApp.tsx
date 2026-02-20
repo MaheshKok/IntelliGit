@@ -7,7 +7,14 @@ import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
-import type { Branch, Commit, CommitDetail } from "../../types";
+import type {
+    Branch,
+    Commit,
+    CommitDetail,
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    ThemeTreeIcon,
+} from "../../types";
 import type {
     BranchAction,
     CommitAction,
@@ -17,6 +24,7 @@ import type {
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
+import { ThemeIconFontFaces } from "./shared/components";
 
 const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
@@ -93,22 +101,53 @@ function App(): React.ReactElement {
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
+    const [branchFolderIcon, setBranchFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
+    const [branchFolderExpandedIcon, setBranchFolderExpandedIcon] = useState<
+        ThemeTreeIcon | undefined
+    >(undefined);
+    const [commitFolderIcon, setCommitFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
+    const [commitFolderExpandedIcon, setCommitFolderExpandedIcon] = useState<
+        ThemeTreeIcon | undefined
+    >(undefined);
+    const [commitFolderIconsByName, setCommitFolderIconsByName] = useState<
+        ThemeFolderIconMap | undefined
+    >(undefined);
+    const [branchFolderIconsByName, setBranchFolderIconsByName] = useState<
+        ThemeFolderIconMap | undefined
+    >(undefined);
+    const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
             return typeof w === "number" ? w : DEFAULT_BRANCH_WIDTH;
-        } catch { return DEFAULT_BRANCH_WIDTH; }
+        } catch {
+            return DEFAULT_BRANCH_WIDTH;
+        }
     });
     const [infoWidth, setInfoWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
             return typeof w === "number" ? w : DEFAULT_INFO_WIDTH;
-        } catch { return DEFAULT_INFO_WIDTH; }
+        } catch {
+            return DEFAULT_INFO_WIDTH;
+        }
     });
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
-    const onDividerMouseDown = useColumnDrag(branchWidth, setBranchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH, false);
-    const onInfoDividerMouseDown = useColumnDrag(infoWidth, setInfoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH, true);
+    const onDividerMouseDown = useColumnDrag(
+        branchWidth,
+        setBranchWidth,
+        MIN_BRANCH_WIDTH,
+        MAX_BRANCH_WIDTH,
+        false,
+    );
+    const onInfoDividerMouseDown = useColumnDrag(
+        infoWidth,
+        setInfoWidth,
+        MIN_INFO_WIDTH,
+        MAX_INFO_WIDTH,
+        true,
+    );
 
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
@@ -135,15 +174,29 @@ function App(): React.ReactElement {
                     break;
                 case "setBranches":
                     setBranches(data.branches);
+                    setBranchFolderIcon(data.folderIcon);
+                    setBranchFolderExpandedIcon(data.folderExpandedIcon);
+                    setBranchFolderIconsByName(data.folderIconsByName);
+                    if (data.iconFonts) setIconFonts(data.iconFonts);
                     break;
                 case "setSelectedBranch":
                     setSelectedBranch(data.branch ?? null);
                     break;
                 case "setCommitDetail":
                     setSelectedDetail(data.detail);
+                    setCommitFolderIcon(data.folderIcon);
+                    setCommitFolderExpandedIcon(data.folderExpandedIcon);
+                    setCommitFolderIconsByName(data.folderIconsByName);
+                    if (data.iconFonts) setIconFonts(data.iconFonts);
                     break;
                 case "clearCommitDetail":
                     setSelectedDetail(null);
+                    setCommitFolderIcon(undefined);
+                    setCommitFolderExpandedIcon(undefined);
+                    setCommitFolderIconsByName(undefined);
+                    break;
+                case "error":
+                    console.error("[IntelliGit] Extension error:", data);
                     break;
             }
         };
@@ -156,7 +209,9 @@ function App(): React.ReactElement {
         try {
             const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
             vscode.setState({ ...prev, branchWidth, infoWidth });
-        } catch { /* ignore persistence errors */ }
+        } catch {
+            /* ignore persistence errors */
+        }
     }, [branchWidth, infoWidth]);
 
     const handleSelectCommit = useCallback((hash: string) => {
@@ -193,48 +248,26 @@ function App(): React.ReactElement {
     }, []);
 
     return (
-        <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-            {/* Branch column */}
-            <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
-                <BranchColumn
-                    branches={branches}
-                    selectedBranch={selectedBranch}
-                    onSelectBranch={handleSelectBranch}
-                    onBranchAction={handleBranchAction}
-                />
-            </div>
-
-            {/* Resizable divider */}
-            <div
-                data-testid="commit-graph-divider"
-                onMouseDown={onDividerMouseDown}
-                style={{
-                    width: 4,
-                    flexShrink: 0,
-                    cursor: "col-resize",
-                    background: "var(--vscode-panel-border)",
-                }}
-            />
-
-            {/* Commit graph + files/details in one unified panel */}
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
-                <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
-                    <CommitList
-                        commits={commits}
-                        selectedHash={selectedHash}
-                        filterText={filterText}
-                        hasMore={hasMore}
-                        unpushedHashes={unpushedHashes}
+        <>
+            <ThemeIconFontFaces fonts={iconFonts} />
+            <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+                {/* Branch column */}
+                <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
+                    <BranchColumn
+                        branches={branches}
                         selectedBranch={selectedBranch}
-                        onSelectCommit={handleSelectCommit}
-                        onFilterText={handleFilterText}
-                        onLoadMore={handleLoadMore}
-                        onCommitAction={handleCommitAction}
+                        onSelectBranch={handleSelectBranch}
+                        onBranchAction={handleBranchAction}
+                        folderIcon={branchFolderIcon}
+                        folderExpandedIcon={branchFolderExpandedIcon}
+                        folderIconsByName={branchFolderIconsByName}
                     />
                 </div>
+
+                {/* Resizable divider */}
                 <div
-                    data-testid="commit-info-divider"
-                    onMouseDown={onInfoDividerMouseDown}
+                    data-testid="commit-graph-divider"
+                    onMouseDown={onDividerMouseDown}
                     style={{
                         width: 4,
                         flexShrink: 0,
@@ -242,17 +275,50 @@ function App(): React.ReactElement {
                         background: "var(--vscode-panel-border)",
                     }}
                 />
-                <div
-                    style={{
-                        width: infoWidth,
-                        flexShrink: 0,
-                        overflow: "hidden",
-                    }}
-                >
-                    <CommitInfoPane detail={selectedDetail} />
+
+                {/* Commit graph + files/details in one unified panel */}
+                <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
+                    <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                        <CommitList
+                            commits={commits}
+                            selectedHash={selectedHash}
+                            filterText={filterText}
+                            hasMore={hasMore}
+                            unpushedHashes={unpushedHashes}
+                            selectedBranch={selectedBranch}
+                            onSelectCommit={handleSelectCommit}
+                            onFilterText={handleFilterText}
+                            onLoadMore={handleLoadMore}
+                            onCommitAction={handleCommitAction}
+                        />
+                    </div>
+                    <div
+                        data-testid="commit-info-divider"
+                        onMouseDown={onInfoDividerMouseDown}
+                        style={{
+                            width: 4,
+                            flexShrink: 0,
+                            cursor: "col-resize",
+                            background: "var(--vscode-panel-border)",
+                        }}
+                    />
+                    <div
+                        style={{
+                            width: infoWidth,
+                            flexShrink: 0,
+                            overflow: "hidden",
+                        }}
+                    >
+                        <CommitInfoPane
+                            detail={selectedDetail}
+                            folderIcon={commitFolderIcon}
+                            folderExpandedIcon={commitFolderExpandedIcon}
+                            folderIconsByName={commitFolderIconsByName}
+                        />
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 }
 

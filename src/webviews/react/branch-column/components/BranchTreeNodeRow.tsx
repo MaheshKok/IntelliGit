@@ -1,7 +1,9 @@
 import React from "react";
-import type { Branch } from "../../../../types";
+import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
-import { ChevronIcon, FolderIcon, GitBranchIcon, StarIcon, TagIcon } from "../icons";
+import { ChevronIcon, GitBranchIcon, StarIcon, TagRightIcon } from "../icons";
+import { TreeFolderIcon } from "../../shared/components";
+import { resolveFolderIcon } from "../../shared/utils";
 import {
     NODE_LABEL_STYLE,
     ROW_STYLE,
@@ -11,6 +13,10 @@ import {
     TREE_INDENT_STEP,
 } from "../styles";
 import type { TreeNode } from "../types";
+
+const BRANCH_TREE_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
+const CURRENT_BRANCH_ICON_TEAL = "var(--vscode-charts-green, #7fd4cf)";
+const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
 interface Props {
     node: TreeNode;
@@ -22,6 +28,9 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, branch: Branch) => void;
     filterNeedle: string;
     prefix: string;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
 }
 
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
@@ -103,6 +112,9 @@ export function BranchTreeNodeRow({
     onContextMenu,
     filterNeedle,
     prefix,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
 }: Props): React.ReactElement {
     const handleActivateKey = (
         event: React.KeyboardEvent<HTMLDivElement>,
@@ -120,6 +132,13 @@ export function BranchTreeNodeRow({
     const rowStyle = { ...ROW_STYLE, paddingLeft: depth * TREE_INDENT_STEP };
 
     if (isFolder) {
+        const resolvedFolderIcon = resolveFolderIcon(
+            node.label,
+            isExpanded,
+            folderIconsByName,
+            folderIcon,
+            folderExpandedIcon,
+        );
         return (
             <>
                 <div
@@ -132,7 +151,12 @@ export function BranchTreeNodeRow({
                     style={rowStyle}
                 >
                     <ChevronIcon expanded={isExpanded} />
-                    <FolderIcon />
+                    <span
+                        data-branch-icon="folder"
+                        style={{ display: "inline-flex", marginRight: 4, flexShrink: 0 }}
+                    >
+                        <TreeFolderIcon isExpanded={isExpanded} icon={resolvedFolderIcon} />
+                    </span>
                     <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
                 </div>
                 {isExpanded &&
@@ -148,6 +172,9 @@ export function BranchTreeNodeRow({
                             onContextMenu={onContextMenu}
                             filterNeedle={filterNeedle}
                             prefix={folderKey}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                         />
                     ))}
             </>
@@ -175,7 +202,14 @@ export function BranchTreeNodeRow({
             tabIndex={0}
             style={rowStyle}
         >
-            {isCurrent ? <TagIcon /> : isMainLike ? <StarIcon /> : <GitBranchIcon />}
+            <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
+            {isCurrent ? (
+                <TagRightIcon color={CURRENT_BRANCH_ICON_TEAL} />
+            ) : isMainLike ? (
+                <StarIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
+            ) : (
+                <GitBranchIcon color={BRANCH_TREE_ICON_BLUE} />
+            )}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <TrackingBadge branch={node.branch} />}
         </div>

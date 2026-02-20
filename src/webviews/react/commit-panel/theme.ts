@@ -1,6 +1,7 @@
 // Chakra UI v2 theme provides consistent theming that adapts to light/dark VS Code themes.
 
 import { extendTheme } from "@chakra-ui/react";
+import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 
 const theme = extendTheme({
     config: {
@@ -8,8 +9,8 @@ const theme = extendTheme({
         useSystemColorMode: true,
     },
     fonts: {
-        heading: "var(--vscode-font-family)",
-        body: "var(--vscode-font-family)",
+        heading: SYSTEM_FONT_STACK,
+        body: SYSTEM_FONT_STACK,
         mono: "var(--vscode-editor-font-family, var(--vscode-font-family))",
     },
     styles: {
@@ -23,8 +24,8 @@ const theme = extendTheme({
                 width: "100%",
                 height: "100%",
                 overflow: "hidden",
-                fontFamily: "var(--vscode-font-family)",
-                fontSize: "var(--vscode-font-size)",
+                fontFamily: SYSTEM_FONT_STACK,
+                fontSize: "13px",
                 color: "var(--vscode-foreground)",
                 background: "var(--vscode-sideBar-background, var(--vscode-editor-background))",
             },

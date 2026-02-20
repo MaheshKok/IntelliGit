@@ -1,0 +1,1 @@
+export { IconThemeService } from "./IconThemeService";

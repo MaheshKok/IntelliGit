@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { SYSTEM_FONT_STACK } from "../utils/constants";
 
 interface WebviewShellOptions {
     extensionUri: vscode.Uri;
@@ -30,8 +31,8 @@ export function buildWebviewShellHtml({
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root {
             width: 100%; height: 100%; overflow: hidden;
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
+            font-family: ${SYSTEM_FONT_STACK};
+            font-size: 13px;
             color: var(--vscode-foreground);
             background: ${backgroundVar};
         }

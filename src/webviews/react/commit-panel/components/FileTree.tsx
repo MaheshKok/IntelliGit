@@ -7,12 +7,15 @@ import { SectionHeader } from "./SectionHeader";
 import { FolderRow } from "./FolderRow";
 import { FileRow } from "./FileRow";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
-import type { WorkingFile } from "../../../../types";
+import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import type { TreeEntry } from "../types";
 
 interface Props {
     files: WorkingFile[];
     groupByDir: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
     onToggleFolder: (files: WorkingFile[]) => void;
@@ -27,6 +30,9 @@ interface Props {
 export function FileTree({
     files,
     groupByDir,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     checkedPaths,
     onToggleFile,
     onToggleFolder,
@@ -137,6 +143,9 @@ export function FileTree({
                             entries={trackedTree}
                             depth={0}
                             groupByDir={groupByDir}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
                             onToggleFile={onToggleFile}
@@ -165,6 +174,9 @@ export function FileTree({
                             entries={unversionedTree}
                             depth={0}
                             groupByDir={groupByDir}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
                             onToggleFile={onToggleFile}
@@ -185,6 +197,9 @@ interface TreeEntriesProps {
     entries: TreeEntry[];
     depth: number;
     groupByDir: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     expandedDirs: Set<string>;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
@@ -199,6 +214,9 @@ function TreeEntries({
     entries,
     depth,
     groupByDir,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     expandedDirs,
     checkedPaths,
     onToggleFile,
@@ -235,6 +253,9 @@ function TreeEntries({
                             dirPath={entry.path}
                             depth={depth}
                             isExpanded={isExpanded}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                             fileCount={dirFiles.length}
                             isAllChecked={isAllChecked(dirFiles)}
                             isSomeChecked={isSomeChecked(dirFiles)}
@@ -246,6 +267,9 @@ function TreeEntries({
                                 entries={entry.children}
                                 depth={depth + 1}
                                 groupByDir={groupByDir}
+                                folderIcon={folderIcon}
+                                folderExpandedIcon={folderExpandedIcon}
+                                folderIconsByName={folderIconsByName}
                                 expandedDirs={expandedDirs}
                                 checkedPaths={checkedPaths}
                                 onToggleFile={onToggleFile}

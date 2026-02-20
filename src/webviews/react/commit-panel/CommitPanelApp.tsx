@@ -11,6 +11,7 @@ import { ShelfTab } from "./components/ShelfTab";
 import { useExtensionMessages } from "./hooks/useExtensionMessages";
 import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
+import { ThemeIconFontFaces } from "../shared/components";
 
 function App(): React.ReactElement {
     const [state, dispatch] = useExtensionMessages();
@@ -61,6 +62,7 @@ function App(): React.ReactElement {
 
     return (
         <Box display="flex" flexDirection="column" h="100%">
+            <ThemeIconFontFaces fonts={state.iconFonts} />
             <TabBar
                 stashCount={state.stashes.length}
                 commitContent={
@@ -79,6 +81,9 @@ function App(): React.ReactElement {
                         onAmendChange={handleAmendChange}
                         onCommit={handleCommit}
                         onCommitAndPush={handleCommitAndPush}
+                        folderIcon={state.folderIcon}
+                        folderExpandedIcon={state.folderExpandedIcon}
+                        folderIconsByName={state.folderIconsByName}
                     />
                 }
                 shelfContent={
@@ -86,6 +91,9 @@ function App(): React.ReactElement {
                         stashes={state.stashes}
                         shelfFiles={state.shelfFiles}
                         selectedIndex={state.selectedShelfIndex}
+                        folderIcon={state.folderIcon}
+                        folderExpandedIcon={state.folderExpandedIcon}
+                        folderIconsByName={state.folderIconsByName}
                     />
                 }
             />

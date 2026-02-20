@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { GitExecutor } from "./git/executor";
-import { GitOps } from "./git/operations";
+import { GitOps, UpstreamPushDeclinedError } from "./git/operations";
 import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
@@ -44,7 +44,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Register views ---
 
     const emptyTreeProvider: vscode.TreeDataProvider<never> = {
-        getTreeItem: () => { throw new Error("unreachable"); },
+        getTreeItem: () => {
+            throw new Error("unreachable");
+        },
         getChildren: () => [],
     };
     const badgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
@@ -52,9 +54,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
 
     const updateBadge = (count: number) => {
-        badgeView.badge = count > 0
-            ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
-            : undefined;
+        badgeView.badge =
+            count > 0
+                ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
+                : undefined;
     };
 
     context.subscriptions.push(
@@ -234,9 +237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const restoreLabel = "Restore";
         const deleteTrackedLabel = "Delete Tracked Branch";
         const tracked = resolveTrackedRemoteBranch(branch);
-        const buttons = tracked
-            ? [restoreLabel, deleteTrackedLabel]
-            : [restoreLabel];
+        const buttons = tracked ? [restoreLabel, deleteTrackedLabel] : [restoreLabel];
         const action = await vscode.window.showInformationMessage(
             `Deleted: ${branch.name}`,
             ...buttons,
@@ -805,7 +806,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             if (branch.remote) {
                                 await executor.run(["push", branch.remote, branch.name]);
                             } else {
-                                await executor.run(["push"]);
+                                await gitOps.push();
                             }
                         } else {
                             if (!remote) {
@@ -817,6 +818,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
+                    if (err instanceof UpstreamPushDeclinedError) return;
                     const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Push failed: ${msg}`);
                 }

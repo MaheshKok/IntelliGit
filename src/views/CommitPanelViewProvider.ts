@@ -5,12 +5,13 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { WorkingFile, StashEntry } from "../types";
+import type { ThemeFolderIconMap, WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";
 import { runWithStatusBar } from "../utils/statusBar";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
+import { IconThemeService } from "./shared";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
@@ -20,7 +21,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private stashes: StashEntry[] = [];
     private selectedShelfIndex: number | null = null;
     private shelfFiles: WorkingFile[] = [];
+    private folderIconsByName: ThemeFolderIconMap = {};
     private lastFileCount = 0;
+    private themeChangeDisposables: vscode.Disposable[] = [];
+    private readonly iconTheme: IconThemeService;
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
@@ -28,23 +32,31 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
-    ) {}
+    ) {
+        this.iconTheme = new IconThemeService(this.extensionUri);
+    }
 
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.disposeThemeChangeDisposables();
+        this.iconTheme.dispose();
         this.view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
+        this.iconTheme.attachWebview(webviewView.webview);
+        this.registerThemeChangeListeners();
         const thisView = webviewView;
         webviewView.onDidDispose(() => {
             if (this.view === thisView) {
                 this.view = undefined;
             }
+            this.iconTheme.dispose();
+            this.disposeThemeChangeDisposables();
         });
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
@@ -59,11 +71,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
         this.updateViewCount(this.lastFileCount);
-        this.refreshData().catch((err) => {
-            const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(message);
-            this.postToWebview({ type: "error", message });
-        });
+        this.refreshDataWithErrorHandling();
     }
 
     async refresh(): Promise<void> {
@@ -74,8 +82,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "refreshing", active: true });
         vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true);
         try {
-            const files = await this.gitOps.getStatus();
+            await this.iconTheme.initIconThemeData();
+            const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
+            const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
 
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -89,8 +99,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             const shelfFiles =
                 selectedShelfIndex !== null
-                    ? await this.gitOps.getShelvedFiles(selectedShelfIndex)
+                    ? await this.iconTheme.decorateWorkingFiles(
+                          await this.gitOps.getShelvedFiles(selectedShelfIndex),
+                      )
                     : [];
+            this.folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
+                ...files,
+                ...shelfFiles,
+            ]);
 
             this.files = files;
             this.stashes = stashes;
@@ -107,13 +123,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 stashes,
                 shelfFiles,
                 selectedShelfIndex,
+                folderIcon: folderIcons.folderIcon,
+                folderExpandedIcon: folderIcons.folderExpandedIcon,
+                folderIconsByName: this.folderIconsByName,
+                iconFonts,
             });
+        } finally {
             this.postToWebview({ type: "refreshing", active: false });
-            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
-        } catch (err) {
-            this.postToWebview({ type: "refreshing", active: false });
-            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
-            throw err;
+            vscode.commands.executeCommand(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
         }
     }
 
@@ -284,16 +305,27 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const index = msg.index as number;
                 this.selectedShelfIndex = Number.isFinite(index) ? index : null;
                 if (this.selectedShelfIndex !== null) {
-                    this.shelfFiles = await this.gitOps.getShelvedFiles(this.selectedShelfIndex);
+                    this.shelfFiles = await this.iconTheme.decorateWorkingFiles(
+                        await this.gitOps.getShelvedFiles(this.selectedShelfIndex),
+                    );
                 } else {
                     this.shelfFiles = [];
                 }
+                this.folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
+                    ...this.files,
+                    ...this.shelfFiles,
+                ]);
+                const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
                 this.postToWebview({
                     type: "update",
                     files: this.files,
                     stashes: this.stashes,
                     shelfFiles: this.shelfFiles,
                     selectedShelfIndex: this.selectedShelfIndex,
+                    folderIcon: folderIcons.folderIcon,
+                    folderExpandedIcon: folderIcons.folderExpandedIcon,
+                    folderIconsByName: this.folderIconsByName,
+                    iconFonts,
                 });
                 break;
             }
@@ -376,6 +408,42 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     dispose(): void {
+        this.iconTheme.dispose();
+        this.disposeThemeChangeDisposables();
         this._onDidChangeFileCount.dispose();
+    }
+
+    private refreshDataWithErrorHandling(): void {
+        this.refreshData().catch((err) => {
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(message);
+            this.postToWebview({ type: "error", message });
+        });
+    }
+
+    private registerThemeChangeListeners(): void {
+        this.themeChangeDisposables.push(
+            vscode.window.onDidChangeActiveColorTheme(() => {
+                this.refreshDataWithErrorHandling();
+            }),
+        );
+
+        this.themeChangeDisposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (
+                    event.affectsConfiguration("workbench.iconTheme") ||
+                    event.affectsConfiguration("workbench.colorTheme")
+                ) {
+                    this.refreshDataWithErrorHandling();
+                }
+            }),
+        );
+    }
+
+    private disposeThemeChangeDisposables(): void {
+        for (const disposable of this.themeChangeDisposables) {
+            disposable.dispose();
+        }
+        this.themeChangeDisposables = [];
     }
 }

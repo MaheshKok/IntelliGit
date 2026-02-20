@@ -9,6 +9,31 @@ export interface Branch {
     behind: number;
 }
 
+export interface ThemeTreeIcon {
+    uri?: string;
+    glyph?: string;
+    color?: string;
+    fontFamily?: string;
+    fontSize?: string;
+    fontWeight?: string;
+    fontStyle?: string;
+}
+
+export interface ThemeNamedFolderIcon {
+    collapsed?: ThemeTreeIcon;
+    expanded?: ThemeTreeIcon;
+}
+
+export type ThemeFolderIconMap = Record<string, ThemeNamedFolderIcon>;
+
+export interface ThemeIconFont {
+    fontFamily: string;
+    src: string;
+    format?: string;
+    weight?: string;
+    style?: string;
+}
+
 export interface Commit {
     hash: string;
     shortHash: string;
@@ -25,6 +50,7 @@ export interface CommitFile {
     status: "A" | "M" | "D" | "R" | "C" | "T";
     additions: number;
     deletions: number;
+    icon?: ThemeTreeIcon;
 }
 
 export interface CommitDetail {
@@ -46,6 +72,7 @@ export interface WorkingFile {
     staged: boolean;
     additions: number;
     deletions: number;
+    icon?: ThemeTreeIcon;
 }
 
 export interface StashEntry {

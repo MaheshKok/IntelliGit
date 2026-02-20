@@ -1,7 +1,13 @@
 // Typed message protocol for communication between the commit panel webview
 // and the extension host. Defines all inbound and outbound message shapes.
 
-import type { WorkingFile, StashEntry } from "../../../types";
+import type {
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    ThemeTreeIcon,
+    WorkingFile,
+    StashEntry,
+} from "../../../types";
 import type {
     TreeFolder as GenericTreeFolder,
     TreeLeaf as GenericTreeLeaf,
@@ -37,6 +43,10 @@ export type InboundMessage =
           stashes: StashEntry[];
           shelfFiles: WorkingFile[];
           selectedShelfIndex: number | null;
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
       }
     | { type: "lastCommitMessage"; message: string }
     | { type: "committed" }
@@ -49,6 +59,10 @@ export interface CommitPanelState {
     stashes: StashEntry[];
     shelfFiles: WorkingFile[];
     selectedShelfIndex: number | null;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+    iconFonts: ThemeIconFont[];
     commitMessage: string;
     isAmend: boolean;
     isRefreshing: boolean;
@@ -63,6 +77,10 @@ export type CommitPanelAction =
           stashes: StashEntry[];
           shelfFiles: WorkingFile[];
           selectedShelfIndex: number | null;
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
       }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
     | { type: "COMMITTED" }

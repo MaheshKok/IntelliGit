@@ -2,7 +2,7 @@ import React from "react";
 import { BASE_ICON_STYLE, getChevronIconStyle, NODE_ICON_SIZE } from "./styles";
 
 export function GitBranchIcon({
-    color = "var(--vscode-charts-blue, #59c3ff)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -24,7 +24,35 @@ export function GitBranchIcon({
 }
 
 export function TagIcon({
-    color = "var(--vscode-gitDecoration-addedResourceForeground, #86d8cf)",
+    color = "var(--vscode-icon-foreground, currentColor)",
+    stretchX = 1,
+}: {
+    color?: string;
+    stretchX?: number;
+}): React.ReactElement {
+    const iconStyle =
+        stretchX === 1
+            ? BASE_ICON_STYLE
+            : { ...BASE_ICON_STYLE, transform: `scaleX(${stretchX})`, transformOrigin: "center" };
+    return (
+        <svg
+            width={NODE_ICON_SIZE}
+            height={NODE_ICON_SIZE}
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
+            style={iconStyle}
+        >
+            <path
+                fill={color}
+                d="M9.28 1.5H5.5A2.5 2.5 0 0 0 3 4v8a2.5 2.5 0 0 0 2.5 2.5h3.78a1.5 1.5 0 0 0 1.06-.44l3.72-3.72a1.5 1.5 0 0 0 0-2.12L10.34 1.94a1.5 1.5 0 0 0-1.06-.44zM5.5 3h3.78l3.72 3.72-3.72 3.72H5.5A1 1 0 0 1 4.5 9.44V4A1 1 0 0 1 5.5 3zm1.25 2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"
+            />
+        </svg>
+    );
+}
+
+export function TagRightIcon({
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -39,14 +67,14 @@ export function TagIcon({
         >
             <path
                 fill={color}
-                d="M9.28 1.5H5.5A2.5 2.5 0 0 0 3 4v8a2.5 2.5 0 0 0 2.5 2.5h3.78a1.5 1.5 0 0 0 1.06-.44l3.72-3.72a1.5 1.5 0 0 0 0-2.12L10.34 1.94a1.5 1.5 0 0 0-1.06-.44zM5.5 3h3.78l3.72 3.72-3.72 3.72H5.5A1 1 0 0 1 4.5 9.44V4A1 1 0 0 1 5.5 3zm1.25 2a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"
+                d="M1.5 4A2.5 2.5 0 0 1 4 1.5h5.3a1.5 1.5 0 0 1 1.06.44l3.7 3.7a1.5 1.5 0 0 1 0 2.12l-3.7 3.7a1.5 1.5 0 0 1-1.06.44H4A2.5 2.5 0 0 1 1.5 9.4V4zm2.5-1a1 1 0 0 0-1 1v5.4a1 1 0 0 0 1 1h5.3L13 6.7 9.3 3H4zm1.8 1.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
             />
         </svg>
     );
 }
 
 export function StarIcon({
-    color = "var(--vscode-editorLightBulb-foreground, #ebd25d)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -83,7 +111,7 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
 }
 
 export function FolderIcon({
-    color = "var(--vscode-icon-foreground, #bdc3cf)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -105,7 +133,7 @@ export function FolderIcon({
 }
 
 export function RepoIcon({
-    color = "var(--vscode-icon-foreground, #bdc3cf)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {

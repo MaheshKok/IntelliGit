@@ -4,6 +4,7 @@
 import React from "react";
 import { Flex, Box, Textarea, Button } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 
 interface Props {
     commitMessage: string;
@@ -60,7 +61,7 @@ export function CommitArea({
                     borderColor="rgba(176, 186, 205, 0.35)"
                     borderRadius="3px"
                     p="7px 9px"
-                    fontFamily="var(--vscode-font-family)"
+                    fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
                     _placeholder={{ color: "var(--vscode-input-placeholderForeground)" }}
                     _focus={{ borderColor: "#5a8fe9" }}
@@ -72,7 +73,7 @@ export function CommitArea({
                     size="sm"
                     onClick={onCommit}
                     fontSize="12px"
-                    fontFamily="var(--vscode-font-family)"
+                    fontFamily={SYSTEM_FONT_STACK}
                 >
                     Commit
                 </Button>
@@ -81,7 +82,7 @@ export function CommitArea({
                     size="sm"
                     onClick={onCommitAndPush}
                     fontSize="12px"
-                    fontFamily="var(--vscode-font-family)"
+                    fontFamily={SYSTEM_FONT_STACK}
                 >
                     Commit and Push...
                 </Button>

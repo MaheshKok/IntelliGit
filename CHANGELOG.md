@@ -5,6 +5,26 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-02-20
+
+### Added
+
+- Native VS Code file icon theme support across IntelliGit trees, including file, folder, and expanded-folder icons from the active `workbench.iconTheme`.
+- Theme icon font support in webviews so icon themes that render glyph-based icons work correctly (not only SVG path icons).
+- Folder name specific icon resolution (`folderNames`, `folderNamesExpanded`, `rootFolderNames`, `rootFolderNamesExpanded`) to match native explorer/source-control icon behavior.
+
+### Changed
+
+- Changed Files, Commit Files, Shelf Files, and Branch folder trees now resolve icons through the same native theme mapping path for consistent visuals.
+- Commit panel file tree typography (row height, size, spacing, and weight) was adjusted to align with native Source Control list presentation.
+- Commit panel now uses VS Code foreground color for commit file names instead of status-colored file-name text, matching native Source Control behavior.
+
+### Fixed
+
+- Fixed cases where folder icons were missing or mismatched in Changed Files and Commit Files despite icon theme support being enabled.
+- Fixed icon mismatches for compact/derived folder labels by normalizing folder-name lookup keys and leaf-segment fallbacks.
+- Fixed branch tree folder icons not following the active file icon theme mappings.
+
 ## [0.3.1] - 2026-02-19
 
 ### Added

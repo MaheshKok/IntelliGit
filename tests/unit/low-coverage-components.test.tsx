@@ -101,7 +101,7 @@ describe("low coverage components", () => {
         expect(messageCell).toBeTruthy();
         const compactRefCell = container.querySelector("[data-commit-tooltip]") as HTMLElement;
         expect(compactRefCell?.getAttribute("data-commit-tooltip")).toContain(
-            "Labels: HEAD -> main",
+            "Branches: HEAD -> main",
         );
 
         const row = container.querySelector("div") as HTMLDivElement;
@@ -365,8 +365,12 @@ describe("low coverage components", () => {
         const pull = branchRow.querySelector(".branch-track-pull") as HTMLElement;
         expect(push?.textContent).toBe("\u2B062");
         expect(pull?.textContent).toBe("\u2B073");
-        expect(push?.style.color).toBe("rgb(95, 156, 230)");
-        expect(pull?.style.color).toBe("rgb(229, 138, 58)");
+        expect(push?.style.color).toBe(
+            "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
+        );
+        expect(pull?.style.color).toBe(
+            "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+        );
         const badge = branchRow.querySelector("[data-branch-tooltip]") as HTMLElement;
         expect(badge?.getAttribute("data-branch-tooltip")).toBe(
             "3 incoming commits and 2 outgoing commits",

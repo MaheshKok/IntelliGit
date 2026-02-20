@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
-import type { CommitDetail, CommitFile } from "../../../types";
+import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
-import { REF_BADGE_COLORS } from "../shared/tokens";
+import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
+import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
 import {
     buildFileTree,
     collectDirPaths,
@@ -22,48 +24,49 @@ const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
 const INFO_SECTION_GUIDE = 7;
 
-function CommitRefBadge({ name }: { name: string }): React.ReactElement {
-    const isHead = name.includes("HEAD");
-    const isTag = name.startsWith("tag:");
-    let bg: string;
-    let fg: string;
-
-    if (isHead) {
-        bg = REF_BADGE_COLORS.head.bg;
-        fg = REF_BADGE_COLORS.head.fg;
-    } else if (isTag) {
-        bg = REF_BADGE_COLORS.tag.bg;
-        fg = REF_BADGE_COLORS.tag.fg;
-    } else if (name.startsWith("origin/")) {
-        bg = REF_BADGE_COLORS.remote.bg;
-        fg = REF_BADGE_COLORS.remote.fg;
-    } else {
-        bg = REF_BADGE_COLORS.local.bg;
-        fg = REF_BADGE_COLORS.local.fg;
-    }
-
+function CommitRefRow({
+    kind,
+    name,
+}: {
+    kind: "branch" | "tag";
+    name: string;
+}): React.ReactElement {
     return (
-        <Box
-            as="span"
-            px="6px"
-            py="1px"
-            borderRadius="3px"
-            fontSize="10px"
+        <Flex
+            align="center"
+            gap="6px"
+            fontSize="11px"
             lineHeight="16px"
-            color={fg}
-            bg={bg}
+            color="var(--vscode-foreground)"
             title={name}
-            maxW="220px"
-            overflow="hidden"
-            textOverflow="ellipsis"
-            whiteSpace="nowrap"
         >
-            {name}
-        </Box>
+            <Box as="span" display="inline-flex" flexShrink={0}>
+                <RefTypeIcon kind={kind} size={12} />
+            </Box>
+            <Box
+                as="span"
+                maxW="300px"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+            >
+                {name}
+            </Box>
+        </Flex>
     );
 }
 
-export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): React.ReactElement {
+export function CommitInfoPane({
+    detail,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
+}: {
+    detail: CommitDetail | null;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+}): React.ReactElement {
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
     const [filesCollapsed, setFilesCollapsed] = useState(false);
     const [detailCollapsed, setDetailCollapsed] = useState(false);
@@ -79,6 +82,10 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
     );
 
     const tree = useMemo(() => buildFileTree(detail?.files ?? []), [detail?.files]);
+    const { branches: branchRefs, tags: tagRefs } = useMemo(
+        () => splitCommitRefs(detail?.refs ?? []),
+        [detail?.refs],
+    );
 
     useEffect(() => {
         if (!detail) {
@@ -93,8 +100,8 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
             <Box
                 p="8px 12px"
                 color="var(--vscode-descriptionForeground)"
-                fontFamily="var(--vscode-font-family)"
-                fontSize="var(--vscode-font-size)"
+                fontFamily={SYSTEM_FONT_STACK}
+                fontSize="13px"
                 h="100%"
                 overflow="auto"
             >
@@ -132,6 +139,9 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                         entries={tree}
                         depth={0}
                         expandedDirs={expandedDirs}
+                        folderIcon={folderIcon}
+                        folderExpandedIcon={folderExpandedIcon}
+                        folderIconsByName={folderIconsByName}
                         onToggleDir={(dir) =>
                             setExpandedDirs((prev) => {
                                 const next = new Set(prev);
@@ -231,21 +241,46 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                         >
                             {detail.email} on {formatDateTime(detail.date)}
                         </Box>
-                        {detail.refs.length > 0 && (
-                            <Box mt="6px">
-                                <Box
-                                    color="var(--vscode-descriptionForeground)"
-                                    fontSize="11px"
-                                    mb="4px"
-                                    opacity={0.85}
-                                >
-                                    Labels
-                                </Box>
-                                <Flex wrap="wrap" gap="4px">
-                                    {detail.refs.map((ref) => (
-                                        <CommitRefBadge key={ref} name={ref} />
-                                    ))}
-                                </Flex>
+                        {(branchRefs.length > 0 || tagRefs.length > 0) && (
+                            <Box mt="14px">
+                                {branchRefs.length > 0 && (
+                                    <Box mb={tagRefs.length > 0 ? "10px" : "0"}>
+                                        <Box
+                                            color="var(--vscode-descriptionForeground)"
+                                            fontSize="11px"
+                                            mb="4px"
+                                            opacity={0.85}
+                                        >
+                                            Branches
+                                        </Box>
+                                        <Flex direction="column" gap="3px">
+                                            {branchRefs.map((ref) => (
+                                                <CommitRefRow key={ref} kind="branch" name={ref} />
+                                            ))}
+                                        </Flex>
+                                    </Box>
+                                )}
+                                {tagRefs.length > 0 && (
+                                    <Box>
+                                        <Box
+                                            color="var(--vscode-descriptionForeground)"
+                                            fontSize="11px"
+                                            mb="4px"
+                                            opacity={0.85}
+                                        >
+                                            Tags
+                                        </Box>
+                                        <Flex direction="column" gap="3px">
+                                            {tagRefs.map((tag) => (
+                                                <CommitRefRow
+                                                    key={`tag:${tag}`}
+                                                    kind="tag"
+                                                    name={tag}
+                                                />
+                                            ))}
+                                        </Flex>
+                                    </Box>
+                                )}
                             </Box>
                         )}
                         <Box
@@ -267,11 +302,17 @@ function TreeRows({
     entries,
     depth,
     expandedDirs,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     onToggleDir,
 }: {
     entries: TreeEntry[];
     depth: number;
     expandedDirs: Set<string>;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     onToggleDir: (path: string) => void;
 }): React.ReactElement {
     return (
@@ -288,6 +329,9 @@ function TreeRows({
                             folder={entry}
                             depth={depth}
                             isExpanded={isExpanded}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                             fileCount={fileCount}
                             onToggle={() => onToggleDir(entry.path)}
                         />
@@ -296,6 +340,9 @@ function TreeRows({
                                 entries={entry.children}
                                 depth={depth + 1}
                                 expandedDirs={expandedDirs}
+                                folderIcon={folderIcon}
+                                folderExpandedIcon={folderExpandedIcon}
+                                folderIconsByName={folderIconsByName}
                                 onToggleDir={onToggleDir}
                             />
                         )}
@@ -310,16 +357,29 @@ function CommitFolderRow({
     folder,
     depth,
     isExpanded,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     fileCount,
     onToggle,
 }: {
     folder: TreeFolder;
     depth: number;
     isExpanded: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     fileCount: number;
     onToggle: () => void;
 }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
+    const resolvedIcon = resolveFolderIcon(
+        folder.path || folder.name,
+        isExpanded,
+        folderIconsByName,
+        folderIcon,
+        folderExpandedIcon,
+    );
     return (
         <Flex
             align="center"
@@ -328,6 +388,7 @@ function CommitFolderRow({
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -348,14 +409,7 @@ function CommitFolderRow({
             >
                 &#9654;
             </Box>
-            <Box as="span" w="16px" h="16px" flexShrink={0}>
-                <svg viewBox="0 0 16 16" width="16" height="16">
-                    <path
-                        fill="var(--vscode-icon-foreground, currentColor)"
-                        d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H7.71L6.85 2.85A.5.5 0 0 0 6.5 2.5H1.5z"
-                    />
-                </svg>
-            </Box>
+            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} opacity={0.85}>
                 {folder.name}
             </Box>
@@ -368,7 +422,7 @@ function CommitFolderRow({
 
 function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
-    const fileName = file.path.split("/").pop() ?? file.path;
+    const fileName = getLeafName(file.path);
 
     return (
         <Flex
@@ -378,6 +432,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="default"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -385,7 +440,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
         >
             <InfoIndentGuides treeDepth={depth} />
             <Box as="span" w="14px" flexShrink={0} />
-            <FileTypeIcon filename={fileName} status={file.status} />
+            <FileTypeIcon status={file.status} icon={file.icon} />
             <Box as="span" flex={1} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                 {fileName}
             </Box>

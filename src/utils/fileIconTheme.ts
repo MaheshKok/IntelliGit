@@ -1,0 +1,755 @@
+import * as fs from "fs/promises";
+import * as path from "path";
+import * as vscode from "vscode";
+import { parse as parseJsonc } from "jsonc-parser";
+import type {
+    CommitFile,
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    ThemeTreeIcon,
+    WorkingFile,
+} from "../types";
+
+interface IconDefinition {
+    iconPath?: string;
+    fontCharacter?: string;
+    fontColor?: string;
+    fontId?: string;
+    baseDir: string;
+}
+
+interface ThemeFontSource {
+    path: string;
+    format?: string;
+}
+
+interface ThemeFontDefinition {
+    id: string;
+    baseDir: string;
+    source: ThemeFontSource;
+    weight?: string;
+    style?: string;
+    size?: string;
+}
+
+interface ParsedIconTheme {
+    iconDefinitions: Record<string, IconDefinition>;
+    file?: string;
+    folder?: string;
+    folderExpanded?: string;
+    rootFolder?: string;
+    rootFolderExpanded?: string;
+    rootFolderNames: Record<string, string>;
+    rootFolderNamesExpanded: Record<string, string>;
+    fileExtensions: Record<string, string>;
+    fileNames: Record<string, string>;
+    languageIds: Record<string, string>;
+    folderNames: Record<string, string>;
+    folderNamesExpanded: Record<string, string>;
+    fonts: Record<string, ThemeFontDefinition>;
+    defaultFontId?: string;
+}
+
+interface IconThemeContribution {
+    id: string;
+    path: string;
+}
+
+export interface ThemeFolderIcons {
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+}
+
+const EMPTY_THEME: ParsedIconTheme = {
+    iconDefinitions: {},
+    fileExtensions: {},
+    fileNames: {},
+    languageIds: {},
+    rootFolderNames: {},
+    rootFolderNamesExpanded: {},
+    folderNames: {},
+    folderNamesExpanded: {},
+    fonts: {},
+};
+
+function normalizeMap(input: unknown): Record<string, string> {
+    if (!input || typeof input !== "object") return {};
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(input)) {
+        if (typeof value === "string") out[key.toLowerCase()] = value;
+    }
+    return out;
+}
+
+function parseFonts(
+    section: Record<string, unknown>,
+    baseDir: string,
+): {
+    fonts: Record<string, ThemeFontDefinition>;
+    defaultFontId?: string;
+} {
+    const out: Record<string, ThemeFontDefinition> = {};
+    const rawFonts = section.fonts;
+    if (!Array.isArray(rawFonts)) return { fonts: out };
+
+    for (const font of rawFonts) {
+        if (!font || typeof font !== "object") continue;
+        const typed = font as Record<string, unknown>;
+        const id = typeof typed.id === "string" ? typed.id : undefined;
+        if (!id) continue;
+        const srcArray = Array.isArray(typed.src) ? typed.src : [];
+        const validEntries = srcArray.filter(
+            (entry): entry is Record<string, unknown> =>
+                !!entry &&
+                typeof entry === "object" &&
+                typeof (entry as Record<string, unknown>).path === "string",
+        );
+        if (validEntries.length === 0) continue;
+
+        // Select best font format by priority
+        const preferredFormats = ["woff2", "woff", "ttf", "otf"];
+        const srcEntry =
+            preferredFormats.reduce<Record<string, unknown> | undefined>((best, fmt) => {
+                if (best) return best;
+                return validEntries.find((e) => {
+                    const p = String(e.path).toLowerCase();
+                    return p.endsWith(`.${fmt}`);
+                });
+            }, undefined) ?? validEntries[0];
+
+        const srcPath = srcEntry.path as string;
+        const format = typeof srcEntry.format === "string" ? srcEntry.format : undefined;
+        out[id] = {
+            id,
+            baseDir,
+            source: {
+                path: srcPath,
+                format,
+            },
+            weight: typeof typed.weight === "string" ? typed.weight : undefined,
+            style: typeof typed.style === "string" ? typed.style : undefined,
+            size: typeof typed.size === "string" ? typed.size : undefined,
+        };
+    }
+
+    const defaultFontId = Object.keys(out)[0];
+    return { fonts: out, defaultFontId };
+}
+
+function parseThemeSection(section: unknown, baseDir: string): ParsedIconTheme {
+    if (!section || typeof section !== "object") return { ...EMPTY_THEME };
+    const raw = section as Record<string, unknown>;
+    const iconDefinitions: Record<string, IconDefinition> = {};
+    const defs = raw.iconDefinitions;
+    if (defs && typeof defs === "object") {
+        for (const [iconId, def] of Object.entries(defs as Record<string, unknown>)) {
+            if (!def || typeof def !== "object") continue;
+            const typed = def as Record<string, unknown>;
+            const iconPath = typeof typed.iconPath === "string" ? typed.iconPath : undefined;
+            const fontCharacter =
+                typeof typed.fontCharacter === "string" ? typed.fontCharacter : undefined;
+            const fontColor = typeof typed.fontColor === "string" ? typed.fontColor : undefined;
+            const fontId = typeof typed.fontId === "string" ? typed.fontId : undefined;
+            if (!iconPath && !fontCharacter) continue;
+            iconDefinitions[iconId] = {
+                iconPath,
+                fontCharacter,
+                fontColor,
+                fontId,
+                baseDir,
+            };
+        }
+    }
+
+    const parsedFonts = parseFonts(raw, baseDir);
+    return {
+        iconDefinitions,
+        file: typeof raw.file === "string" ? raw.file : undefined,
+        folder: typeof raw.folder === "string" ? raw.folder : undefined,
+        folderExpanded: typeof raw.folderExpanded === "string" ? raw.folderExpanded : undefined,
+        rootFolder: typeof raw.rootFolder === "string" ? raw.rootFolder : undefined,
+        rootFolderExpanded:
+            typeof raw.rootFolderExpanded === "string" ? raw.rootFolderExpanded : undefined,
+        rootFolderNames: normalizeMap(raw.rootFolderNames),
+        rootFolderNamesExpanded: normalizeMap(raw.rootFolderNamesExpanded),
+        fileExtensions: normalizeMap(raw.fileExtensions),
+        fileNames: normalizeMap(raw.fileNames),
+        languageIds: normalizeMap(raw.languageIds),
+        folderNames: normalizeMap(raw.folderNames),
+        folderNamesExpanded: normalizeMap(raw.folderNamesExpanded),
+        fonts: parsedFonts.fonts,
+        defaultFontId: parsedFonts.defaultFontId,
+    };
+}
+
+function mergeTheme(base: ParsedIconTheme, overlay: ParsedIconTheme): ParsedIconTheme {
+    return {
+        iconDefinitions: { ...base.iconDefinitions, ...overlay.iconDefinitions },
+        file: overlay.file ?? base.file,
+        folder: overlay.folder ?? base.folder,
+        folderExpanded: overlay.folderExpanded ?? base.folderExpanded,
+        rootFolder: overlay.rootFolder ?? base.rootFolder,
+        rootFolderExpanded: overlay.rootFolderExpanded ?? base.rootFolderExpanded,
+        rootFolderNames: { ...base.rootFolderNames, ...overlay.rootFolderNames },
+        rootFolderNamesExpanded: {
+            ...base.rootFolderNamesExpanded,
+            ...overlay.rootFolderNamesExpanded,
+        },
+        fileExtensions: { ...base.fileExtensions, ...overlay.fileExtensions },
+        fileNames: { ...base.fileNames, ...overlay.fileNames },
+        languageIds: { ...base.languageIds, ...overlay.languageIds },
+        folderNames: { ...base.folderNames, ...overlay.folderNames },
+        folderNamesExpanded: { ...base.folderNamesExpanded, ...overlay.folderNamesExpanded },
+        fonts: { ...base.fonts, ...overlay.fonts },
+        defaultFontId: overlay.defaultFontId ?? base.defaultFontId,
+    };
+}
+
+function tryParseJson(text: string): Record<string, unknown> | null {
+    try {
+        return parseJsonc(text) as Record<string, unknown>;
+    } catch {
+        return null;
+    }
+}
+
+function resolveExtendsPath(themePath: string, extendsValue: string): string {
+    return path.resolve(path.dirname(themePath), extendsValue);
+}
+
+function createFileUri(filePath: string): vscode.Uri | null {
+    try {
+        return vscode.Uri.file(filePath);
+    } catch {
+        return null;
+    }
+}
+
+function pickVariantSection(
+    raw: Record<string, unknown>,
+    kind: vscode.ColorThemeKind,
+): Record<string, unknown> | null {
+    if (kind === vscode.ColorThemeKind.Light) {
+        const light = raw.light;
+        return light && typeof light === "object" ? (light as Record<string, unknown>) : null;
+    }
+    if (
+        kind === vscode.ColorThemeKind.HighContrast ||
+        kind === vscode.ColorThemeKind.HighContrastLight
+    ) {
+        const highContrast = raw.highContrast;
+        return highContrast && typeof highContrast === "object"
+            ? (highContrast as Record<string, unknown>)
+            : null;
+    }
+    return null;
+}
+
+async function loadThemeRecursive(
+    themeFilePath: string,
+    colorThemeKind: vscode.ColorThemeKind,
+    visited: Set<string>,
+): Promise<ParsedIconTheme> {
+    const normalizedPath = path.resolve(themeFilePath);
+    if (visited.has(normalizedPath)) return { ...EMPTY_THEME };
+    visited.add(normalizedPath);
+
+    const rawText = await fs.readFile(normalizedPath, "utf8");
+    const rawTheme = tryParseJson(rawText);
+    if (!rawTheme) return { ...EMPTY_THEME };
+
+    let merged = { ...EMPTY_THEME };
+    if (typeof rawTheme.extends === "string") {
+        const parentPath = resolveExtendsPath(normalizedPath, rawTheme.extends);
+        try {
+            const parentTheme = await loadThemeRecursive(parentPath, colorThemeKind, visited);
+            merged = mergeTheme(merged, parentTheme);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(
+                `Failed to load extended icon theme '${parentPath}' from '${normalizedPath}': ${message}`,
+            );
+            // Gracefully degrade to the current file when parent theme resolution fails.
+        }
+    }
+
+    merged = mergeTheme(merged, parseThemeSection(rawTheme, path.dirname(normalizedPath)));
+    const variant = pickVariantSection(rawTheme, colorThemeKind);
+    if (variant) {
+        merged = mergeTheme(merged, parseThemeSection(variant, path.dirname(normalizedPath)));
+    }
+    return merged;
+}
+
+function decodeFontCharacter(raw: string): string | undefined {
+    const value = raw.trim();
+    const slashHexMatch = value.match(/^\\([a-fA-F0-9]+)$/);
+    if (slashHexMatch) {
+        const codePoint = Number.parseInt(slashHexMatch[1], 16);
+        if (Number.isFinite(codePoint)) return String.fromCodePoint(codePoint);
+    }
+
+    const unicodeMatch = value.match(/^\\u([a-fA-F0-9]{4})$/);
+    if (unicodeMatch) {
+        const codePoint = Number.parseInt(unicodeMatch[1], 16);
+        if (Number.isFinite(codePoint)) return String.fromCodePoint(codePoint);
+    }
+
+    return value.length > 0 ? value : undefined;
+}
+
+function sanitizeFontToken(value: string): string {
+    return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function getFolderNameLookupKeys(name: string): string[] {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return [];
+
+    const keys = new Set<string>([normalized]);
+    const slashNormalized = normalized.replace(/\\/g, "/").replace(/\s*\/\s*/g, "/");
+    keys.add(slashNormalized);
+    const slashParts = slashNormalized.split("/").filter((part) => part.length > 0);
+    if (slashParts.length > 0) {
+        keys.add(slashParts[slashParts.length - 1]);
+    }
+    return Array.from(keys);
+}
+
+export class FileIconThemeResolver {
+    private languageCache:
+        | {
+              byExtension: Map<string, string>;
+              byFilename: Map<string, string>;
+          }
+        | undefined;
+
+    private themeCache:
+        | {
+              key: string;
+              parsed: ParsedIconTheme;
+              themeId: string;
+              fingerprint: string;
+          }
+        | undefined;
+
+    private readonly extensionsChangeDisposable: vscode.Disposable | undefined;
+
+    constructor(private readonly webview: vscode.Webview) {
+        try {
+            const extensionsApi = (
+                vscode as unknown as {
+                    extensions?: {
+                        onDidChange?: (listener: () => void) => vscode.Disposable;
+                    };
+                }
+            ).extensions;
+            if (typeof extensionsApi?.onDidChange === "function") {
+                this.extensionsChangeDisposable = extensionsApi.onDidChange(() => {
+                    this.languageCache = undefined;
+                    this.themeCache = undefined;
+                });
+            }
+        } catch {
+            // Ignore environments that do not expose vscode.extensions.
+        }
+    }
+
+    private resolveConfiguredThemeId(): string | undefined {
+        const config = vscode.workspace.getConfiguration("workbench");
+        const direct = config.get<string | null>("iconTheme");
+        if (typeof direct === "string" && direct.trim().length > 0) {
+            return direct.trim();
+        }
+
+        const inspected = config.inspect<string | null>("iconTheme");
+        const candidates = [
+            inspected?.workspaceFolderValue,
+            inspected?.workspaceValue,
+            inspected?.globalValue,
+            inspected?.defaultValue,
+        ];
+        for (const candidate of candidates) {
+            if (typeof candidate === "string" && candidate.trim().length > 0) {
+                return candidate.trim();
+            }
+        }
+
+        return undefined;
+    }
+
+    private async resolveThemeContribution(): Promise<{
+        extensionPath: string;
+        contribution: IconThemeContribution;
+        themeId: string;
+    } | null> {
+        try {
+            const themeId = this.resolveConfiguredThemeId();
+            if (!themeId) return null;
+            const allExtensions = (
+                vscode.extensions as unknown as { all?: vscode.Extension<unknown>[] }
+            ).all;
+            if (!Array.isArray(allExtensions)) return null;
+
+            for (const ext of allExtensions) {
+                const iconThemes = (
+                    ext.packageJSON as {
+                        contributes?: { iconThemes?: IconThemeContribution[] };
+                    }
+                )?.contributes?.iconThemes;
+                if (!Array.isArray(iconThemes)) continue;
+                const matched = iconThemes.find((theme) => theme.id === themeId);
+                if (matched) {
+                    return {
+                        extensionPath: ext.extensionPath,
+                        contribution: matched,
+                        themeId,
+                    };
+                }
+            }
+        } catch {
+            return null;
+        }
+        return null;
+    }
+
+    private async getParsedTheme(): Promise<{ themeId: string; parsed: ParsedIconTheme } | null> {
+        const contribution = await this.resolveThemeContribution();
+        if (!contribution) return null;
+
+        const themeFilePath = path.resolve(
+            contribution.extensionPath,
+            contribution.contribution.path,
+        );
+
+        // Build a partial key without fingerprint to check if we can reuse cached fingerprint
+        const partialKey = [
+            contribution.themeId,
+            vscode.window.activeColorTheme.kind,
+            contribution.extensionPath,
+            contribution.contribution.path,
+        ].join("|");
+
+        // Reuse cached fingerprint if the contribution path hasn't changed
+        let themeFileFingerprint: string;
+        if (this.themeCache?.fingerprint && this.themeCache.key.startsWith(partialKey + "|")) {
+            themeFileFingerprint = this.themeCache.fingerprint;
+        } else {
+            themeFileFingerprint = await this.getThemeFileFingerprint(themeFilePath);
+        }
+
+        const key = `${partialKey}|${themeFileFingerprint}`;
+        if (this.themeCache?.key === key) {
+            return { themeId: this.themeCache.themeId, parsed: this.themeCache.parsed };
+        }
+
+        try {
+            const parsed = await loadThemeRecursive(
+                themeFilePath,
+                vscode.window.activeColorTheme.kind,
+                new Set<string>(),
+            );
+            this.themeCache = {
+                key,
+                parsed,
+                themeId: contribution.themeId,
+                fingerprint: themeFileFingerprint,
+            };
+            return { themeId: contribution.themeId, parsed };
+        } catch {
+            return null;
+        }
+    }
+
+    private async getThemeFileFingerprint(themeFilePath: string): Promise<string> {
+        try {
+            const stat = await fs.stat(themeFilePath);
+            return `${stat.mtimeMs}:${stat.size}`;
+        } catch {
+            return "unknown";
+        }
+    }
+
+    private getLanguageAssociations(): {
+        byExtension: Map<string, string>;
+        byFilename: Map<string, string>;
+    } {
+        if (this.languageCache) return this.languageCache;
+
+        const byExtension = new Map<string, string>();
+        const byFilename = new Map<string, string>();
+        const allExtensions = (
+            vscode.extensions as unknown as { all?: vscode.Extension<unknown>[] }
+        ).all;
+        if (Array.isArray(allExtensions)) {
+            for (const ext of allExtensions) {
+                const contributedLanguages = (
+                    ext.packageJSON as {
+                        contributes?: {
+                            languages?: Array<{
+                                id?: string;
+                                extensions?: string[];
+                                filenames?: string[];
+                            }>;
+                        };
+                    }
+                )?.contributes?.languages;
+                if (!Array.isArray(contributedLanguages)) continue;
+                for (const language of contributedLanguages) {
+                    if (!language || typeof language.id !== "string") continue;
+                    const languageId = language.id.toLowerCase();
+
+                    if (Array.isArray(language.extensions)) {
+                        for (const extName of language.extensions) {
+                            if (typeof extName !== "string") continue;
+                            const key = extName.toLowerCase();
+                            if (!key.startsWith(".")) continue;
+                            if (!byExtension.has(key)) {
+                                byExtension.set(key, languageId);
+                            }
+                        }
+                    }
+
+                    if (Array.isArray(language.filenames)) {
+                        for (const filename of language.filenames) {
+                            if (typeof filename !== "string") continue;
+                            const key = filename.toLowerCase();
+                            if (!byFilename.has(key)) {
+                                byFilename.set(key, languageId);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        this.languageCache = { byExtension, byFilename };
+        return this.languageCache;
+    }
+
+    private resolveLanguageIdForPath(filePath: string): string | undefined {
+        const { byExtension, byFilename } = this.getLanguageAssociations();
+        const baseName = path.basename(filePath).toLowerCase();
+
+        const byName = byFilename.get(baseName);
+        if (byName) return byName;
+
+        const dotPositions: number[] = [];
+        for (let i = 0; i < baseName.length; i++) {
+            if (baseName.charAt(i) === ".") dotPositions.push(i);
+        }
+
+        for (const dotIndex of dotPositions) {
+            if (dotIndex >= baseName.length - 1) continue;
+            const candidate = baseName.slice(dotIndex);
+            const lang = byExtension.get(candidate);
+            if (lang) return lang;
+        }
+
+        return undefined;
+    }
+
+    private toWebviewUri(filePath: string): string | undefined {
+        const fileUri = createFileUri(filePath);
+        if (!fileUri) return undefined;
+        try {
+            return this.webview.asWebviewUri(fileUri).toString();
+        } catch {
+            return undefined;
+        }
+    }
+
+    private fontFamilyName(themeId: string, fontId: string): string {
+        return `intelligit-theme-${sanitizeFontToken(themeId)}-${sanitizeFontToken(fontId)}`;
+    }
+
+    private resolveIcon(
+        iconId: string | undefined,
+        themeId: string,
+        theme: ParsedIconTheme,
+    ): ThemeTreeIcon | undefined {
+        if (!iconId) return undefined;
+        const definition = theme.iconDefinitions[iconId];
+        if (!definition) return undefined;
+
+        if (definition.iconPath) {
+            const absolutePath = path.resolve(definition.baseDir, definition.iconPath);
+            const uri = this.toWebviewUri(absolutePath);
+            if (!uri) return undefined;
+            return { uri };
+        }
+
+        if (definition.fontCharacter) {
+            const glyph = decodeFontCharacter(definition.fontCharacter);
+            if (!glyph) return undefined;
+            const fontId = definition.fontId ?? theme.defaultFontId;
+            const font = fontId ? theme.fonts[fontId] : undefined;
+            return {
+                glyph,
+                color: definition.fontColor,
+                fontFamily: fontId ? this.fontFamilyName(themeId, fontId) : undefined,
+                fontSize: font?.size,
+                fontWeight: font?.weight,
+                fontStyle: font?.style,
+            };
+        }
+
+        return undefined;
+    }
+
+    private resolveFileIconForPath(
+        filePath: string,
+        themeId: string,
+        theme: ParsedIconTheme,
+    ): ThemeTreeIcon | undefined {
+        const baseName = path.basename(filePath).toLowerCase();
+
+        const fileNameIcon = this.resolveIcon(theme.fileNames[baseName], themeId, theme);
+        if (fileNameIcon) return fileNameIcon;
+
+        const firstDot = baseName.indexOf(".");
+        if (firstDot >= 0) {
+            let ext = baseName.slice(firstDot + 1);
+            while (ext.length > 0) {
+                const icon = this.resolveIcon(theme.fileExtensions[ext], themeId, theme);
+                if (icon) return icon;
+                const nextDot = ext.indexOf(".");
+                if (nextDot < 0) break;
+                ext = ext.slice(nextDot + 1);
+            }
+        }
+
+        const languageId = this.resolveLanguageIdForPath(filePath);
+        if (languageId) {
+            const languageIcon = this.resolveIcon(theme.languageIds[languageId], themeId, theme);
+            if (languageIcon) return languageIcon;
+        }
+
+        return this.resolveIcon(theme.file, themeId, theme);
+    }
+
+    private resolveFolderIconForName(
+        name: string,
+        isExpanded: boolean,
+        themeId: string,
+        theme: ParsedIconTheme,
+    ): ThemeTreeIcon | undefined {
+        const keys = getFolderNameLookupKeys(name);
+        if (keys.length === 0) {
+            const rootIconId = isExpanded
+                ? (theme.rootFolderExpanded ?? theme.folderExpanded)
+                : (theme.rootFolder ?? theme.folder);
+            return this.resolveIcon(rootIconId, themeId, theme);
+        }
+
+        for (const key of keys) {
+            const rootNamedIconId = isExpanded
+                ? (theme.rootFolderNamesExpanded[key] ?? theme.rootFolderNames[key])
+                : theme.rootFolderNames[key];
+            const rootNamedIcon = this.resolveIcon(rootNamedIconId, themeId, theme);
+            if (rootNamedIcon) return rootNamedIcon;
+
+            const namedIconId = isExpanded
+                ? (theme.folderNamesExpanded[key] ?? theme.folderNames[key])
+                : theme.folderNames[key];
+            const namedIcon = this.resolveIcon(namedIconId, themeId, theme);
+            if (namedIcon) return namedIcon;
+        }
+
+        const fallbackIconId = isExpanded ? (theme.folderExpanded ?? theme.folder) : theme.folder;
+
+        return this.resolveIcon(fallbackIconId, themeId, theme);
+    }
+
+    async decoratePathItems<T extends { path: string; icon?: ThemeTreeIcon }>(
+        files: T[],
+    ): Promise<T[]> {
+        const resolved = await this.getParsedTheme();
+        if (!resolved) return files;
+
+        return files.map((file) => ({
+            ...file,
+            icon: this.resolveFileIconForPath(file.path, resolved.themeId, resolved.parsed),
+        }));
+    }
+
+    async decorateWorkingFiles(files: WorkingFile[]): Promise<WorkingFile[]> {
+        return this.decoratePathItems(files);
+    }
+
+    async decorateCommitFiles(files: CommitFile[]): Promise<CommitFile[]> {
+        return this.decoratePathItems(files);
+    }
+
+    async getFolderIcons(): Promise<ThemeFolderIcons> {
+        const resolved = await this.getParsedTheme();
+        if (!resolved) return {};
+        return {
+            folderIcon: this.resolveIcon(resolved.parsed.folder, resolved.themeId, resolved.parsed),
+            folderExpandedIcon: this.resolveIcon(
+                resolved.parsed.folderExpanded,
+                resolved.themeId,
+                resolved.parsed,
+            ),
+        };
+    }
+
+    async getFolderIconsByName(folderNames: string[]): Promise<ThemeFolderIconMap> {
+        const resolved = await this.getParsedTheme();
+        if (!resolved) return {};
+
+        const byName: ThemeFolderIconMap = {};
+        const deduped = new Set<string>(
+            folderNames.map((name) => name.trim().toLowerCase()).filter((name) => name.length > 0),
+        );
+
+        for (const name of deduped) {
+            byName[name] = {
+                collapsed: this.resolveFolderIconForName(
+                    name,
+                    false,
+                    resolved.themeId,
+                    resolved.parsed,
+                ),
+                expanded: this.resolveFolderIconForName(
+                    name,
+                    true,
+                    resolved.themeId,
+                    resolved.parsed,
+                ),
+            };
+        }
+
+        return byName;
+    }
+
+    async getThemeFonts(): Promise<ThemeIconFont[]> {
+        const resolved = await this.getParsedTheme();
+        if (!resolved) return [];
+
+        const fonts: ThemeIconFont[] = [];
+        for (const font of Object.values(resolved.parsed.fonts)) {
+            const absolutePath = path.resolve(font.baseDir, font.source.path);
+            const src = this.toWebviewUri(absolutePath);
+            if (!src) continue;
+            fonts.push({
+                fontFamily: this.fontFamilyName(resolved.themeId, font.id),
+                src,
+                format: font.source.format,
+                weight: font.weight,
+                style: font.style,
+            });
+        }
+        return fonts;
+    }
+
+    async getThemeResourceRootUri(): Promise<vscode.Uri | null> {
+        const contribution = await this.resolveThemeContribution();
+        if (!contribution) return null;
+        return createFileUri(contribution.extensionPath);
+    }
+
+    dispose(): void {
+        this.extensionsChangeDisposable?.dispose();
+    }
+}

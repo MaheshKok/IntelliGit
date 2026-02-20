@@ -409,7 +409,8 @@ describe("CommitInfoApp integration", () => {
         await flush();
         expect(document.body.textContent).toContain("feat: commit info");
         expect(document.body.textContent).toContain("2 files changed");
-        expect(document.body.textContent).toContain("Labels");
+        expect(document.body.textContent).toContain("Branches");
+        expect(document.body.textContent).toContain("Tags");
         expect(document.body.textContent).toContain("HEAD -> main");
 
         fireClick(Array.from(document.querySelectorAll("*")).find((el) => el.textContent?.includes("Commit Details")));

@@ -3,7 +3,7 @@
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
 import React, { useMemo, useState, useCallback, useEffect } from "react";
-import type { Branch } from "../../types";
+import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../types";
 import { isBranchAction, type BranchAction } from "./commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { getBranchMenuItems } from "./branch-column/menu";
@@ -11,7 +11,7 @@ import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";
 import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
-import { RepoIcon, TagIcon } from "./branch-column/icons";
+import { RepoIcon, TagRightIcon } from "./branch-column/icons";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import {
     BRANCH_ROW_CLASS_CSS,
@@ -29,6 +29,9 @@ interface Props {
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
     onBranchAction: (action: BranchAction, branchName: string) => void;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
 }
 
 interface BranchColumnPersistState {
@@ -42,6 +45,7 @@ interface CommitGraphViewState {
 }
 
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote"];
+const CURRENT_BRANCH_ICON_TEAL = "#7fd4cf";
 
 function readPersistedBranchColumnState(): BranchColumnPersistState | null {
     try {
@@ -79,7 +83,7 @@ function toggleSetKey(
 
 function getIconAnchorX(row: HTMLElement): number {
     const rowRect = row.getBoundingClientRect();
-    const firstIcon = row.querySelector("svg");
+    const firstIcon = row.querySelector("[data-branch-icon], svg, img");
     return firstIcon ? firstIcon.getBoundingClientRect().right + 2 : rowRect.left + 20;
 }
 
@@ -98,6 +102,9 @@ export function BranchColumn({
     selectedBranch,
     onSelectBranch,
     onBranchAction,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
 }: Props): React.ReactElement {
     const [persistedState] = useState(readPersistedBranchColumnState);
     const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
@@ -220,7 +227,7 @@ export function BranchColumn({
                         }}
                         style={HEAD_ROW_STYLE}
                     >
-                        <TagIcon />
+                        <TagRightIcon color={CURRENT_BRANCH_ICON_TEAL} />
                         <span style={HEAD_LABEL_STYLE}>HEAD ({current.name})</span>
                     </div>
                 </div>
@@ -245,6 +252,9 @@ export function BranchColumn({
                             onContextMenu={handleBranchContextMenu}
                             filterNeedle={filterNeedle}
                             prefix="local"
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                         />
                     ))}
                 </div>
@@ -283,6 +293,9 @@ export function BranchColumn({
                                             onContextMenu={handleBranchContextMenu}
                                             filterNeedle={filterNeedle}
                                             prefix={`remote/${remote}`}
+                                            folderIcon={folderIcon}
+                                            folderExpandedIcon={folderExpandedIcon}
+                                            folderIconsByName={folderIconsByName}
                                         />
                                     ))}
                             </div>

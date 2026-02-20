@@ -4,6 +4,7 @@
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 
 interface Props {
     label: string;
@@ -35,9 +36,10 @@ export function SectionHeader({
             borderRadius="5px"
             cursor="pointer"
             userSelect="none"
-            fontWeight={700}
+            fontWeight={600}
             fontSize="12px"
-            lineHeight="20px"
+            fontFamily={SYSTEM_FONT_STACK}
+            lineHeight="22px"
             position="relative"
             color="var(--vscode-foreground)"
             bg="rgba(121, 140, 183, 0.26)"
