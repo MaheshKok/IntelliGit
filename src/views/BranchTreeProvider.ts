@@ -41,7 +41,9 @@ export class BranchItem extends vscode.TreeItem {
                 if (branch) {
                     this.description = formatTrackingInfo(branch);
                     const trackingTooltip = formatTrackingTooltip(branch);
-                    this.tooltip = trackingTooltip ? `${branch.name}\n${trackingTooltip}` : branch.name;
+                    this.tooltip = trackingTooltip
+                        ? `${branch.name}\n${trackingTooltip}`
+                        : branch.name;
                     this.command = {
                         command: "intelligit.filterByBranch",
                         title: "Filter by Branch",
@@ -62,13 +64,13 @@ function formatTrackingInfo(branch: Branch): string {
 
 function formatTrackingTooltip(branch: Branch): string {
     const parts: string[] = [];
-    if (branch.ahead > 0) {
-        parts.push(`Ahead by ${branch.ahead} commit${branch.ahead === 1 ? "" : "s"} (to push)`);
-    }
     if (branch.behind > 0) {
-        parts.push(`Behind by ${branch.behind} commit${branch.behind === 1 ? "" : "s"} (to pull)`);
+        parts.push(`${branch.behind} incoming commit${branch.behind === 1 ? "" : "s"}`);
     }
-    return parts.join(" | ");
+    if (branch.ahead > 0) {
+        parts.push(`${branch.ahead} outgoing commit${branch.ahead === 1 ? "" : "s"}`);
+    }
+    return parts.join(" and ");
 }
 
 export class BranchTreeProvider implements vscode.TreeDataProvider<BranchItem> {

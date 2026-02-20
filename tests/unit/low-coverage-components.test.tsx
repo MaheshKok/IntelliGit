@@ -8,12 +8,7 @@ import { CommitList } from "../../src/webviews/react/CommitList";
 import { CommitRow } from "../../src/webviews/react/commit-list/CommitRow";
 import { useDragResize } from "../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
-import {
-    flush,
-    initReactDomTestEnvironment,
-    mount,
-    unmount,
-} from "./utils/reactDomTestUtils";
+import { flush, initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
 
 initReactDomTestEnvironment();
 
@@ -197,8 +192,8 @@ describe("low coverage components", () => {
                 onBranchAction={onBranchAction}
             />,
         );
-        const localHeader = Array.from(container.querySelectorAll("div")).find((el) =>
-            el.textContent?.trim() === "Local",
+        const localHeader = Array.from(container.querySelectorAll("div")).find(
+            (el) => el.textContent?.trim() === "Local",
         ) as HTMLElement;
         act(() => {
             localHeader.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -230,8 +225,8 @@ describe("low coverage components", () => {
                 }),
             );
         });
-        const rename = Array.from(document.querySelectorAll(".intelligit-context-item")).find((el) =>
-            el.textContent?.includes("Rename"),
+        const rename = Array.from(document.querySelectorAll(".intelligit-context-item")).find(
+            (el) => el.textContent?.includes("Rename"),
         ) as HTMLElement;
         act(() => {
             rename.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -296,8 +291,10 @@ describe("low coverage components", () => {
         expect(pull?.textContent).toBe("\u2B073");
         expect(push?.style.color).toBe("rgb(95, 156, 230)");
         expect(pull?.style.color).toBe("rgb(146, 86, 78)");
-        expect(push?.getAttribute("title")).toContain("Ahead by 2 commits");
-        expect(pull?.getAttribute("title")).toContain("Behind by 3 commits");
+        const badge = branchRow.querySelector("[data-branch-tooltip]") as HTMLElement;
+        expect(badge?.getAttribute("data-branch-tooltip")).toBe(
+            "3 incoming commits and 2 outgoing commits",
+        );
 
         unmount(root, container);
     });
@@ -347,8 +344,8 @@ describe("low coverage components", () => {
                 }),
             );
         });
-        const action = Array.from(document.querySelectorAll(".intelligit-context-item")).find((el) =>
-            el.textContent?.includes("Copy Revision Number"),
+        const action = Array.from(document.querySelectorAll(".intelligit-context-item")).find(
+            (el) => el.textContent?.includes("Copy Revision Number"),
         ) as HTMLElement;
         act(() => {
             action.dispatchEvent(new MouseEvent("click", { bubbles: true }));

@@ -26,27 +26,67 @@ interface Props {
 
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
     if (branch.ahead <= 0 && branch.behind <= 0) return null;
+    const tooltipParts: string[] = [];
+    if (branch.behind > 0) {
+        tooltipParts.push(`${branch.behind} incoming commit${branch.behind === 1 ? "" : "s"}`);
+    }
+    if (branch.ahead > 0) {
+        tooltipParts.push(`${branch.ahead} outgoing commit${branch.ahead === 1 ? "" : "s"}`);
+    }
+    const tooltipText = tooltipParts.join(" and ");
+    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
+
+    const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setTooltipPos({
+            x: event.clientX > 0 ? event.clientX : rect.left + rect.width / 2,
+            y: rect.top - 6,
+        });
+    };
+
+    const hideTooltip = (): void => setTooltipPos(null);
 
     return (
-        <span style={TRACKING_BADGE_STYLE}>
+        <span
+            style={TRACKING_BADGE_STYLE}
+            data-branch-tooltip={tooltipText}
+            onPointerEnter={showTooltip}
+            onPointerMove={showTooltip}
+            onPointerLeave={hideTooltip}
+        >
             {branch.ahead > 0 && (
-                <span
-                    className="branch-track-push"
-                    style={TRACKING_PUSH_STYLE}
-                    title={`Ahead by ${branch.ahead} commit${branch.ahead === 1 ? "" : "s"} (to push)`}
-                >
+                <span className="branch-track-push" style={TRACKING_PUSH_STYLE}>
                     {"\u2B06"}
                     {branch.ahead}
                 </span>
             )}
             {branch.behind > 0 && (
-                <span
-                    className="branch-track-pull"
-                    style={TRACKING_PULL_STYLE}
-                    title={`Behind by ${branch.behind} commit${branch.behind === 1 ? "" : "s"} (to pull)`}
-                >
+                <span className="branch-track-pull" style={TRACKING_PULL_STYLE}>
                     {"\u2B07"}
                     {branch.behind}
+                </span>
+            )}
+            {tooltipPos && (
+                <span
+                    style={{
+                        position: "fixed",
+                        left: tooltipPos.x,
+                        top: tooltipPos.y,
+                        transform: "translate(-50%, -100%)",
+                        background: "var(--vscode-editorHoverWidget-background, #2f3646)",
+                        color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
+                        border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        lineHeight: "14px",
+                        padding: "3px 6px",
+                        whiteSpace: "nowrap",
+                        zIndex: 9999,
+                        pointerEvents: "none",
+                        boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+                    }}
+                >
+                    {tooltipText}
                 </span>
             )}
         </span>

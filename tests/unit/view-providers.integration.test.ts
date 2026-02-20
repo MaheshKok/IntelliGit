@@ -45,9 +45,7 @@ const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
 
 const workspaceState: {
-    workspaceFolders:
-        | Array<{ uri: { fsPath: string; path: string } }>
-        | undefined;
+    workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined;
 } = {
     workspaceFolders: [{ uri: { fsPath: "/repo", path: "/repo" } }],
 };
@@ -87,7 +85,9 @@ const vscodeMock = {
     },
     workspace: {
         get workspaceFolders() {
-            return workspaceState.workspaceFolders as Array<{ uri: { fsPath: string; path: string } }> | undefined;
+            return workspaceState.workspaceFolders as
+                | Array<{ uri: { fsPath: string; path: string } }>
+                | undefined;
         },
         set workspaceFolders(value: Array<{ uri: { fsPath: string; path: string } }> | undefined) {
             workspaceState.workspaceFolders = value;
@@ -162,7 +162,9 @@ function makeGitOpsMock() {
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]),
-        listShelved: vi.fn(async () => [{ index: 0, message: "On main: save", date: "2026-02-19T00:00:00Z", hash: "stashhash" }]),
+        listShelved: vi.fn(async () => [
+            { index: 0, message: "On main: save", date: "2026-02-19T00:00:00Z", hash: "stashhash" },
+        ]),
         getShelvedFiles: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 2, deletions: 1 },
         ]),
@@ -244,8 +246,7 @@ describe("view providers integration", () => {
         const mainLocal = locals.find((b) => b.label === "main");
         expect(mainLocal?.description).toContain("🔵⬆1");
         expect(mainLocal?.description).toContain("🟠⬇2");
-        expect(String(mainLocal?.tooltip)).toContain("Ahead by 1 commit");
-        expect(String(mainLocal?.tooltip)).toContain("Behind by 2 commits");
+        expect(String(mainLocal?.tooltip)).toContain("2 incoming commits and 1 outgoing commit");
         expect(remoteGroups.map((g) => g.label)).toContain("origin");
         expect(remoteBranches.map((b) => b.label)).toContain("main");
         provider.dispose();
@@ -253,9 +254,10 @@ describe("view providers integration", () => {
 
     it("CommitInfoViewProvider handles ready/set/clear lifecycle", async () => {
         const { CommitInfoViewProvider } = await import("../../src/views/CommitInfoViewProvider");
-        const provider = new CommitInfoViewProvider(
-            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
-        );
+        const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {
+            fsPath: string;
+            path: string;
+        });
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -275,10 +277,14 @@ describe("view providers integration", () => {
             refs: [],
             files: [],
         });
-        expect(postMessageSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "setCommitDetail" }));
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "setCommitDetail" }),
+        );
 
         await webview.send({ type: "ready" });
-        expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "setCommitDetail" }));
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "setCommitDetail" }),
+        );
 
         provider.clear();
         expect(postMessageSpy).toHaveBeenCalledWith({ type: "clear" });
@@ -324,7 +330,9 @@ describe("view providers integration", () => {
                 behind: 0,
             },
         ]);
-        expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "setBranches" }));
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "setBranches" }),
+        );
 
         await webview.send({ type: "selectCommit", hash: "abc1234" });
         expect(selected).toHaveBeenCalledWith("abc1234");
@@ -426,7 +434,9 @@ describe("view providers integration", () => {
         expect(gitOps.shelveDelete).toHaveBeenCalledWith(0);
 
         await webview.send({ type: "shelfSelect", index: Number.NaN });
-        expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ selectedShelfIndex: null }));
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ selectedShelfIndex: null }),
+        );
 
         await webview.send({ type: "showShelfDiff", index: 0, path: "src/a.ts" });
         expect(gitOps.getShelvedFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
