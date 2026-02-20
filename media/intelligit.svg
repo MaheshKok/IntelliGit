@@ -4,7 +4,7 @@
   <!-- Main trunk - bottom to top -->
   <line x1="50" y1="96" x2="50" y2="32" stroke="#3b82f6" stroke-width="6" stroke-linecap="round"/>
   <!-- Branch curving right and upward -->
-  <path d="M50 68 C50 54 92 54 92 40" stroke="#3b82f6" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M50 96 C50 68 92 68 92 40" stroke="#3b82f6" stroke-width="6" fill="none" stroke-linecap="round"/>
   <!-- Dot - bottom (root) -->
   <circle cx="50" cy="96" r="15" fill="#3b82f6"/>
   <!-- Dot - top (head) -->
