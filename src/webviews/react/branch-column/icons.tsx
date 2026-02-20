@@ -51,6 +51,28 @@ export function TagIcon({
     );
 }
 
+export function TagRightIcon({
+    color = "var(--vscode-icon-foreground, currentColor)",
+}: {
+    color?: string;
+}): React.ReactElement {
+    return (
+        <svg
+            width={NODE_ICON_SIZE}
+            height={NODE_ICON_SIZE}
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+            focusable="false"
+            style={BASE_ICON_STYLE}
+        >
+            <path
+                fill={color}
+                d="M1.5 4A2.5 2.5 0 0 1 4 1.5h5.3a1.5 1.5 0 0 1 1.06.44l3.7 3.7a1.5 1.5 0 0 1 0 2.12l-3.7 3.7a1.5 1.5 0 0 1-1.06.44H4A2.5 2.5 0 0 1 1.5 9.4V4zm2.5-1a1 1 0 0 0-1 1v5.4a1 1 0 0 0 1 1h5.3L13 6.7 9.3 3H4zm1.8 1.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
+            />
+        </svg>
+    );
+}
+
 export function StarIcon({
     color = "var(--vscode-icon-foreground, currentColor)",
 }: {

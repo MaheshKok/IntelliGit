@@ -11,7 +11,7 @@ import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";
 import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
-import { RepoIcon, TagIcon } from "./branch-column/icons";
+import { RepoIcon, TagRightIcon } from "./branch-column/icons";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import {
     BRANCH_ROW_CLASS_CSS,
@@ -227,7 +227,7 @@ export function BranchColumn({
                         }}
                         style={HEAD_ROW_STYLE}
                     >
-                        <TagIcon color={CURRENT_BRANCH_ICON_TEAL} stretchX={1.22} />
+                        <TagRightIcon color={CURRENT_BRANCH_ICON_TEAL} />
                         <span style={HEAD_LABEL_STYLE}>HEAD ({current.name})</span>
                     </div>
                 </div>

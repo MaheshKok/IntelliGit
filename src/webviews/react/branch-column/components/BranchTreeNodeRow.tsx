@@ -1,7 +1,7 @@
 import React from "react";
 import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
-import { ChevronIcon, GitBranchIcon, StarIcon, TagIcon } from "../icons";
+import { ChevronIcon, GitBranchIcon, StarIcon, TagRightIcon } from "../icons";
 import { TreeFolderIcon } from "../../commit-panel/components/TreeIcons";
 import {
     NODE_LABEL_STYLE,
@@ -201,7 +201,7 @@ export function BranchTreeNodeRow({
         >
             <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
             {isCurrent ? (
-                <TagIcon color={CURRENT_BRANCH_ICON_TEAL} stretchX={1.22} />
+                <TagRightIcon color={CURRENT_BRANCH_ICON_TEAL} />
             ) : isMainLike ? (
                 <StarIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
             ) : (
