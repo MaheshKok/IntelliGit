@@ -2,7 +2,7 @@
 // Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar].
 // Branch filtering from the inline branch tree posts back to the extension host.
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
@@ -107,19 +107,9 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
-    const handleCommitAction = useCallback(
-        (action: CommitAction, hash: string, targetBranch?: string) => {
-            vscode.postMessage({ type: "commitAction", action, hash, targetBranch });
-        },
-        [],
-    );
-
-    const defaultCheckoutBranch = useMemo(() => {
-        const localBranches = branches.filter((b) => !b.isRemote).map((b) => b.name);
-        if (localBranches.includes("main")) return "main";
-        if (localBranches.includes("master")) return "master";
-        return localBranches[0] ?? null;
-    }, [branches]);
+    const handleCommitAction = useCallback((action: CommitAction, hash: string) => {
+        vscode.postMessage({ type: "commitAction", action, hash });
+    }, []);
 
     // Resizable divider via mouse events on document
     const onDividerMouseDown = useCallback(
@@ -188,7 +178,6 @@ function App(): React.ReactElement {
                         filterText={filterText}
                         hasMore={hasMore}
                         unpushedHashes={unpushedHashes}
-                        defaultCheckoutBranch={defaultCheckoutBranch}
                         selectedBranch={selectedBranch}
                         onSelectCommit={handleSelectCommit}
                         onFilterText={handleFilterText}

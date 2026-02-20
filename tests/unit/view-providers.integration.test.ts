@@ -349,7 +349,6 @@ describe("view providers integration", () => {
         expect(commitAction).toHaveBeenCalledWith({
             action: "copyRevision",
             hash: "abc1234",
-            targetBranch: undefined,
         });
 
         const logCallsBeforePagedFetch = gitOps.getLog.mock.calls.length;

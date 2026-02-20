@@ -329,7 +329,6 @@ describe("low coverage components", () => {
                 filterText=""
                 hasMore={true}
                 unpushedHashes={new Set(["aa11bb22"])}
-                defaultCheckoutBranch="main"
                 selectedBranch="main"
                 onSelectCommit={vi.fn()}
                 onFilterText={vi.fn()}
@@ -359,7 +358,7 @@ describe("low coverage components", () => {
         act(() => {
             action.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aa11bb22", undefined);
+        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aa11bb22");
 
         const viewport = container.querySelector(
             '[data-testid="commit-list-viewport"]',

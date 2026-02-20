@@ -61,9 +61,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async runWithStatusBar<T>(message: string, task: () => Promise<T>): Promise<T> {
-        const disposable = vscode.window.setStatusBarMessage(
-            `$(sync~spin) IntelliGit: ${message}`,
-        );
+        const disposable = vscode.window.setStatusBarMessage(`$(sync~spin) IntelliGit: ${message}`);
         try {
             return await task();
         } finally {

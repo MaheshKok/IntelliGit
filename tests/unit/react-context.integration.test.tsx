@@ -161,7 +161,6 @@ describe("CommitList integration", () => {
                 filterText=""
                 hasMore={true}
                 unpushedHashes={new Set(["aaa1111"])}
-                defaultCheckoutBranch="main"
                 selectedBranch="main"
                 onSelectCommit={onSelectCommit}
                 onFilterText={onFilterText}
@@ -212,7 +211,7 @@ describe("CommitList integration", () => {
         act(() => {
             copyRevisionItem.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aaa1111", undefined);
+        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aaa1111");
 
         const viewport = container.querySelector(
             '[data-testid="commit-list-viewport"]',

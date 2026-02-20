@@ -127,7 +127,7 @@ describe("highlight rendering", () => {
 describe("commit menu", () => {
     it("disables history-rewrite actions for pushed merge commits", () => {
         const mergeCommit = makeCommit({ parentHashes: ["a", "b"] });
-        const items = getCommitMenuItems(mergeCommit, false, "main");
+        const items = getCommitMenuItems(mergeCommit, false);
         const undo = items.find((item) => item.action === "undoCommit");
         const edit = items.find((item) => item.action === "editCommitMessage");
         const drop = items.find((item) => item.action === "dropCommit");
@@ -139,18 +139,18 @@ describe("commit menu", () => {
     });
 
     it("enables actions for unpushed non-merge commits", () => {
-        const items = getCommitMenuItems(makeCommit({ parentHashes: ["parent"] }), true, "main");
+        const items = getCommitMenuItems(makeCommit({ parentHashes: ["parent"] }), true);
         const disabledActions = items
             .filter((item) => !item.separator && item.disabled)
             .map((item) => item.action);
         expect(disabledActions).toEqual([]);
     });
 
-    it("disables checkout-main when no default branch is available", () => {
-        const items = getCommitMenuItems(makeCommit(), true, null);
-        const checkoutMain = items.find((item) => item.action === "checkoutMain");
-        expect(checkoutMain?.disabled).toBe(true);
-        expect(checkoutMain?.label).toBe("Checkout");
+    it("keeps checkout revision action in commit menu", () => {
+        const items = getCommitMenuItems(makeCommit(), true);
+        const checkoutRevision = items.find((item) => item.action === "checkoutRevision");
+        expect(checkoutRevision).toBeDefined();
+        expect(items.some((item) => item.action === "checkoutMain")).toBe(false);
     });
 });
 

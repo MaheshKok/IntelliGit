@@ -19,7 +19,6 @@ export const COMMIT_ACTION_VALUES = [
     "copyRevision",
     "createPatch",
     "cherryPick",
-    "checkoutMain",
     "checkoutRevision",
     "resetCurrentToHere",
     "revertCommit",
@@ -50,7 +49,7 @@ export type CommitGraphOutbound =
     | { type: "loadMore" }
     | { type: "filterBranch"; branch: string | null }
     | { type: "branchAction"; action: BranchAction; branchName: string }
-    | { type: "commitAction"; action: CommitAction; hash: string; targetBranch?: string };
+    | { type: "commitAction"; action: CommitAction; hash: string };
 
 /** Messages sent FROM the extension host TO the webview. */
 export type CommitGraphInbound =

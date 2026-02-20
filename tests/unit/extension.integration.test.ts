@@ -147,7 +147,6 @@ class MockCommitGraphViewProvider {
     private commitActionEmitter = new MockEventEmitter<{
         action: string;
         hash: string;
-        targetBranch?: string;
     }>();
 
     constructor(_uri: unknown, _gitOps: unknown) {
@@ -174,7 +173,7 @@ class MockCommitGraphViewProvider {
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
     }
-    emitCommitAction(payload: { action: string; hash: string; targetBranch?: string }): void {
+    emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
 }
@@ -525,7 +524,6 @@ describe("extension integration", () => {
         const emitCommitAction = async (payload: {
             action: string;
             hash: string;
-            targetBranch?: string;
         }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
@@ -533,11 +531,6 @@ describe("extension integration", () => {
         await emitCommitAction({ action: "copyRevision", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "createPatch", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "cherryPick", hash: "deadbee" });
-        await emitCommitAction({
-            action: "checkoutMain",
-            hash: "a1b2c3d4",
-            targetBranch: "main",
-        });
         await emitCommitAction({ action: "checkoutRevision", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "resetCurrentToHere", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "revertCommit", hash: "deadbee" });
@@ -657,23 +650,12 @@ describe("extension integration", () => {
         const emitCommitAction = async (payload: {
             action: string;
             hash: string;
-            targetBranch?: string;
         }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
         };
 
         await emitCommitAction({ action: "copyRevision", hash: "not-a-hash" });
-        await emitCommitAction({
-            action: "checkoutMain",
-            hash: "a1b2c3d4",
-            targetBranch: "-bad",
-        });
-        await emitCommitAction({
-            action: "checkoutMain",
-            hash: "a1b2c3d4",
-            targetBranch: "unknown-branch",
-        });
 
         gitOpsState.getBranches.mockResolvedValueOnce([
             {
@@ -687,7 +669,6 @@ describe("extension integration", () => {
             },
         ]);
         await registeredCommands.get("intelligit.refresh")?.();
-        await emitCommitAction({ action: "checkoutMain", hash: "a1b2c3d4" });
 
         showWarningMessage.mockResolvedValueOnce("Cherry-pick");
         showQuickPick.mockResolvedValueOnce(undefined);
@@ -723,11 +704,6 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
-        expect(showErrorMessage).toHaveBeenCalledWith("Invalid branch name for checkout.");
-        expect(showErrorMessage).toHaveBeenCalledWith(
-            "Cannot checkout unknown branch 'unknown-branch'.",
-        );
-        expect(showErrorMessage).toHaveBeenCalledWith("No local branch available to checkout.");
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Invalid branch name '-bad-branch-name'"),
         );

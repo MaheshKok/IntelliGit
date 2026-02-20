@@ -105,9 +105,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     context.subscriptions.push(
-        commitGraph.onCommitAction(async ({ action, hash, targetBranch }) => {
+        commitGraph.onCommitAction(async ({ action, hash }) => {
             try {
-                await handleCommitContextAction({ action, hash, targetBranch });
+                await handleCommitContextAction({ action, hash });
             } catch (error) {
                 const message = getErrorMessage(error);
                 console.error(`Commit action '${action}' failed:`, error);
@@ -241,24 +241,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
     };
 
-    const getDefaultLocalBranch = (): string | null => {
-        const localNames = currentBranches.filter((b) => !b.isRemote).map((b) => b.name);
-        if (localNames.includes("main")) return "main";
-        if (localNames.includes("master")) return "master";
-        return localNames[0] ?? null;
-    };
-
     const refreshAll = async (): Promise<void> => {
         await vscode.commands.executeCommand("intelligit.refresh");
     };
 
-    const runWithStatusBar = async <T>(
-        message: string,
-        task: () => Promise<T>,
-    ): Promise<T> => {
-        const disposable = vscode.window.setStatusBarMessage(
-            `$(sync~spin) IntelliGit: ${message}`,
-        );
+    const runWithStatusBar = async <T>(message: string, task: () => Promise<T>): Promise<T> => {
+        const disposable = vscode.window.setStatusBarMessage(`$(sync~spin) IntelliGit: ${message}`);
         try {
             return await task();
         } finally {
@@ -269,9 +257,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const handleCommitContextAction = async (params: {
         action: CommitAction;
         hash: string;
-        targetBranch?: string;
     }): Promise<void> => {
-        const { action, hash, targetBranch } = params;
+        const { action, hash } = params;
         const validatedHash = hash.trim();
         if (!isValidGitHash(validatedHash)) {
             console.error("Blocked commit action due to invalid hash:", { action, hash });
@@ -321,28 +308,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         : ["cherry-pick", "-m", String(mainlineParent.parentNumber), validatedHash];
                 await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
-                await refreshAll();
-                return;
-            }
-            case "checkoutMain": {
-                const branchName = (targetBranch ?? getDefaultLocalBranch())?.trim();
-                if (!branchName) {
-                    vscode.window.showErrorMessage("No local branch available to checkout.");
-                    return;
-                }
-                if (!isValidBranchName(branchName)) {
-                    vscode.window.showErrorMessage("Invalid branch name for checkout.");
-                    return;
-                }
-                const knownBranchNames = new Set(currentBranches.map((b) => b.name));
-                if (!knownBranchNames.has(branchName)) {
-                    vscode.window.showErrorMessage(
-                        `Cannot checkout unknown branch '${branchName}'.`,
-                    );
-                    return;
-                }
-                await executor.run(["checkout", branchName]);
-                vscode.window.showInformationMessage(`Checked out ${branchName}.`);
                 await refreshAll();
                 return;
             }
@@ -746,9 +711,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             }
                         } else {
                             if (!remote) {
-                                throw new Error(
-                                    `No remote configured for branch ${branch.name}.`,
-                                );
+                                throw new Error(`No remote configured for branch ${branch.name}.`);
                             }
                             await executor.run(["push", "-u", remote, branch.name]);
                         }

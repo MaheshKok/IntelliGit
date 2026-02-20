@@ -138,8 +138,7 @@ function CommitMessageCell({
                     }}
                     title={`${hiddenTagCount} more tag${hiddenTagCount === 1 ? "" : "s"}`}
                 >
-                    <LuTag size={11} />
-                    +{hiddenTagCount}
+                    <LuTag size={11} />+{hiddenTagCount}
                 </span>
             )}
 

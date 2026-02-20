@@ -1,8 +1,8 @@
 {
     "name": "intelligit",
     "displayName": "IntelliGit",
-    "description": "IDE-style Git UI for VS Code with commit graph, branch tree, commit details, shelf workflow, and file change explorer.",
-    "version": "0.3.1",
+    "description": "IntelliJ-style Git UI for VS Code with commit graph, branch tree, commit details, shelf workflow, and file change explorer.",
+    "version": "0.3.2",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
