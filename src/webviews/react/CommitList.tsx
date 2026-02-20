@@ -208,7 +208,7 @@ export function CommitList({
             <div style={headerRowStyle(graphWidth)}>
                 <span style={{ flex: 1 }}>Commit</span>
                 <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>Author</span>
-                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 6 }}>
+                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 4 }}>
                     Date
                 </span>
             </div>

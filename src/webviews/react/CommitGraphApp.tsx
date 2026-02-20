@@ -22,6 +22,9 @@ const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 260;
+const MIN_INFO_WIDTH = 250;
+const MAX_INFO_WIDTH = 760;
+const DEFAULT_INFO_WIDTH = 330;
 
 function App(): React.ReactElement {
     const [commits, setCommits] = useState<Commit[]>([]);
@@ -32,8 +35,10 @@ function App(): React.ReactElement {
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
     const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
+    const [infoWidth, setInfoWidth] = useState(DEFAULT_INFO_WIDTH);
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const dragging = useRef(false);
+    const infoDragging = useRef(false);
     const loadingMore = useRef(false);
 
     useEffect(() => {
@@ -145,6 +150,39 @@ function App(): React.ReactElement {
         [branchWidth],
     );
 
+    const onInfoDividerMouseDown = useCallback(
+        (e: React.MouseEvent) => {
+            e.preventDefault();
+            infoDragging.current = true;
+            const startX = e.clientX;
+            const startWidth = infoWidth;
+
+            const onMouseMove = (ev: MouseEvent) => {
+                if (!infoDragging.current) return;
+                const delta = startX - ev.clientX;
+                const newWidth = Math.max(
+                    MIN_INFO_WIDTH,
+                    Math.min(MAX_INFO_WIDTH, startWidth + delta),
+                );
+                setInfoWidth(newWidth);
+            };
+
+            const onMouseUp = () => {
+                infoDragging.current = false;
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            };
+
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", onMouseUp);
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+        },
+        [infoWidth],
+    );
+
     return (
         <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
             {/* Branch column */}
@@ -186,10 +224,19 @@ function App(): React.ReactElement {
                     />
                 </div>
                 <div
+                    data-testid="commit-info-divider"
+                    onMouseDown={onInfoDividerMouseDown}
                     style={{
-                        width: 330,
+                        width: 4,
                         flexShrink: 0,
-                        borderLeft: "1px solid var(--vscode-panel-border)",
+                        cursor: "col-resize",
+                        background: "var(--vscode-panel-border)",
+                    }}
+                />
+                <div
+                    style={{
+                        width: infoWidth,
+                        flexShrink: 0,
                         overflow: "hidden",
                     }}
                 >

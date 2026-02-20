@@ -259,7 +259,7 @@ function CommitRowInner({
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     flexShrink: 0,
-                    marginLeft: 6,
+                    marginLeft: 4,
                 }}
             >
                 {commit.author}
@@ -271,7 +271,7 @@ function CommitRowInner({
                     textAlign: "right",
                     opacity: isMergeCommit ? 0.8 : 0.5,
                     flexShrink: 0,
-                    marginLeft: 6,
+                    marginLeft: 4,
                     fontSize: "11px",
                 }}
             >
