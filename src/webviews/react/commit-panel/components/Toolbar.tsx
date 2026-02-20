@@ -43,6 +43,7 @@ export function Toolbar({
                 onClick={onRefresh}
                 color="#4ec7d6"
                 spin={isRefreshing}
+                disabled={isRefreshing}
             >
                 <path
                     fill="currentColor"
@@ -97,12 +98,14 @@ function ToolbarButton({
     onClick,
     color,
     spin,
+    disabled,
     children,
 }: {
     label: string;
     onClick: () => void;
     color?: string;
     spin?: boolean;
+    disabled?: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
     const svgStyle: React.CSSProperties = {
@@ -115,7 +118,8 @@ function ToolbarButton({
                 aria-label={label}
                 variant="toolbarGhost"
                 size="sm"
-                onClick={onClick}
+                onClick={disabled ? undefined : onClick}
+                isDisabled={disabled}
                 icon={
                     <svg
                         width="16"

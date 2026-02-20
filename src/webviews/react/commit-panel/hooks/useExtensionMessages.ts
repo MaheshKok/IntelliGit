@@ -25,7 +25,6 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 stashes: action.stashes,
                 shelfFiles: action.shelfFiles,
                 selectedShelfIndex: action.selectedShelfIndex,
-                isRefreshing: false,
                 error: null,
             };
         case "SET_REFRESHING":

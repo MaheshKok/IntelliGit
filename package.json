@@ -222,7 +222,7 @@
                 },
                 {
                     "command": "intelligit.fileRefresh",
-                    "when": "webviewId == 'intelligit.commitPanel'",
+                    "when": "webviewId == 'intelligit.commitPanel' && !intelligit.commitPanel.refreshing",
                     "group": "3_info@2"
                 }
             ]

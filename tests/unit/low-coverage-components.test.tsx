@@ -8,8 +8,17 @@ import { CommitList } from "../../src/webviews/react/CommitList";
 import { CommitRow } from "../../src/webviews/react/commit-list/CommitRow";
 import { useDragResize } from "../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
-import { resetVsCodeApiCache } from "../../src/webviews/react/shared/vscodeApi";
 import { flush, initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
+
+const mockVscodeApi = vi.hoisted(() => ({
+    postMessage: vi.fn(),
+    getState: vi.fn((): unknown => undefined),
+    setState: vi.fn(),
+}));
+
+vi.mock("../../src/webviews/react/shared/vscodeApi", () => ({
+    getVsCodeApi: () => mockVscodeApi,
+}));
 
 initReactDomTestEnvironment();
 
@@ -262,22 +271,12 @@ describe("low coverage components", () => {
     });
 
     it("BranchColumn persists and restores expansion/filter state", async () => {
-        const originalAcquire = (globalThis as Record<string, unknown>).acquireVsCodeApi;
-        const setState = vi.fn();
-        const getState = vi.fn(() => ({
+        mockVscodeApi.getState.mockReturnValue({
             branchColumn: {
                 branchFilter: "main",
                 expandedSections: ["local"],
                 expandedFolders: [],
             },
-        }));
-        Object.defineProperty(globalThis, "acquireVsCodeApi", {
-            configurable: true,
-            value: vi.fn(() => ({
-                postMessage: vi.fn(),
-                getState,
-                setState,
-            })),
         });
 
         try {
@@ -314,7 +313,7 @@ describe("low coverage components", () => {
                 'input[placeholder="Search branches"]',
             ) as HTMLInputElement;
             expect(searchInput.value).toBe("main");
-            expect(setState).toHaveBeenCalledWith(
+            expect(mockVscodeApi.setState).toHaveBeenCalledWith(
                 expect.objectContaining({
                     branchColumn: expect.objectContaining({
                         branchFilter: "main",
@@ -324,15 +323,8 @@ describe("low coverage components", () => {
 
             unmount(root, container);
         } finally {
-            resetVsCodeApiCache();
-            if (typeof originalAcquire === "undefined") {
-                delete (globalThis as Record<string, unknown>).acquireVsCodeApi;
-            } else {
-                Object.defineProperty(globalThis, "acquireVsCodeApi", {
-                    configurable: true,
-                    value: originalAcquire,
-                });
-            }
+            mockVscodeApi.getState.mockReturnValue(undefined);
+            mockVscodeApi.setState.mockClear();
         }
     });
 

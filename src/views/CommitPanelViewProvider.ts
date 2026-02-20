@@ -65,34 +65,42 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "refreshing", active: true });
         vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true);
         try {
-            this.files = await this.gitOps.getStatus();
-            this.stashes = await this.gitOps.listShelved();
+            const files = await this.gitOps.getStatus();
+            const stashes = await this.gitOps.listShelved();
 
             const hasSelected =
                 this.selectedShelfIndex !== null &&
-                this.stashes.some((entry) => entry.index === this.selectedShelfIndex);
-            if (!hasSelected) {
-                this.selectedShelfIndex = this.stashes.length > 0 ? this.stashes[0].index : null;
-            }
-
-            if (this.selectedShelfIndex !== null) {
-                this.shelfFiles = await this.gitOps.getShelvedFiles(this.selectedShelfIndex);
+                stashes.some((entry) => entry.index === this.selectedShelfIndex);
+            let selectedShelfIndex: number | null;
+            if (hasSelected) {
+                selectedShelfIndex = this.selectedShelfIndex;
             } else {
-                this.shelfFiles = [];
+                selectedShelfIndex = stashes.length > 0 ? stashes[0].index : null;
             }
 
-            const uniquePaths = new Set(this.files.map((f) => f.path));
+            const shelfFiles =
+                selectedShelfIndex !== null
+                    ? await this.gitOps.getShelvedFiles(selectedShelfIndex)
+                    : [];
+
+            this.files = files;
+            this.stashes = stashes;
+            this.selectedShelfIndex = selectedShelfIndex;
+            this.shelfFiles = shelfFiles;
+
+            const uniquePaths = new Set(files.map((f) => f.path));
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
             if (this.view) {
                 this.view.badge = count > 0 ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count } : undefined;
             }
+            this.postToWebview({ type: "refreshing", active: false });
             this.postToWebview({
                 type: "update",
-                files: this.files,
-                stashes: this.stashes,
-                shelfFiles: this.shelfFiles,
-                selectedShelfIndex: this.selectedShelfIndex,
+                files,
+                stashes,
+                shelfFiles,
+                selectedShelfIndex,
             });
             vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
         } catch (err) {

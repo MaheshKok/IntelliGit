@@ -18,8 +18,3 @@ export function getVsCodeApi<Outbound = unknown, State = unknown>(): VsCodeApi<O
     return api as VsCodeApi<Outbound, State>;
 }
 
-/** @internal For test use only. Resets the cached API so tests don't leak state. */
-export function resetVsCodeApiCache(): void {
-    api = null;
-}
-

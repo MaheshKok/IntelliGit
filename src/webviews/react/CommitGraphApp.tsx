@@ -36,6 +36,8 @@ function useColumnDrag(
     const draggingRef = useRef(false);
     const moveRef = useRef<((ev: MouseEvent) => void) | null>(null);
     const upRef = useRef<(() => void) | null>(null);
+    const widthRef = useRef(width);
+    widthRef.current = width;
 
     useEffect(() => {
         return () => {
@@ -54,7 +56,7 @@ function useColumnDrag(
             e.preventDefault();
             draggingRef.current = true;
             const startX = e.clientX;
-            const startWidth = width;
+            const startWidth = widthRef.current;
 
             const onMouseMove = (ev: MouseEvent) => {
                 if (!draggingRef.current) return;
@@ -79,7 +81,7 @@ function useColumnDrag(
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
         },
-        [width, setWidth, min, max, invert],
+        [setWidth, min, max, invert],
     );
 }
 
@@ -91,8 +93,18 @@ function App(): React.ReactElement {
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
-    const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
-    const [infoWidth, setInfoWidth] = useState(DEFAULT_INFO_WIDTH);
+    const [branchWidth, setBranchWidth] = useState(() => {
+        try {
+            const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
+            return typeof w === "number" ? w : DEFAULT_BRANCH_WIDTH;
+        } catch { return DEFAULT_BRANCH_WIDTH; }
+    });
+    const [infoWidth, setInfoWidth] = useState(() => {
+        try {
+            const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
+            return typeof w === "number" ? w : DEFAULT_INFO_WIDTH;
+        } catch { return DEFAULT_INFO_WIDTH; }
+    });
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
     const onDividerMouseDown = useColumnDrag(branchWidth, setBranchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH, false);
@@ -139,6 +151,13 @@ function App(): React.ReactElement {
         window.addEventListener("message", handler);
         return () => window.removeEventListener("message", handler);
     }, []);
+
+    useEffect(() => {
+        try {
+            const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
+            vscode.setState({ ...prev, branchWidth, infoWidth });
+        } catch { /* ignore persistence errors */ }
+    }, [branchWidth, infoWidth]);
 
     const handleSelectCommit = useCallback((hash: string) => {
         setSelectedHash(hash);
