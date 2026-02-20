@@ -7,6 +7,7 @@ import React, {
     useInsertionEffect,
 } from "react";
 import { createPortal } from "react-dom";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 
 const ITEM_HEIGHT = 28;
 const ITEM_FONT_SIZE = 13;
@@ -125,8 +126,7 @@ export function ContextMenu({
                 borderRadius: 9,
                 padding: "4px 0",
                 minWidth,
-                fontFamily:
-                    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+                fontFamily: SYSTEM_FONT_STACK,
                 boxShadow:
                     "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}

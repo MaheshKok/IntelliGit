@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 
 export const TREE_INDENT_STEP = 18;
 export const NODE_ICON_SIZE = 14;
@@ -30,9 +31,8 @@ export const BRANCH_ROW_CLASS_CSS = `
 export const PANEL_STYLE: CSSProperties = {
     height: "100%",
     overflow: "auto",
-    fontSize: 13,
-    fontFamily:
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    fontSize: "13px",
+    fontFamily: SYSTEM_FONT_STACK,
     borderRight: "1px solid var(--vscode-panel-border)",
     userSelect: "none",
 };
@@ -57,8 +57,7 @@ export const SEARCH_INPUT_STYLE: CSSProperties = {
     color: "var(--vscode-input-foreground, #d8dbe2)",
     padding: "0 6px",
     fontSize: 12,
-    fontFamily:
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+    fontFamily: SYSTEM_FONT_STACK,
     outline: "2px solid transparent",
 };
 

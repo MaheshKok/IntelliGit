@@ -3,6 +3,7 @@
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
@@ -56,7 +57,7 @@ function FolderRowInner({
             minH="22px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
             whiteSpace="nowrap"

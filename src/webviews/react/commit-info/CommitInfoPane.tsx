@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
 import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
@@ -99,7 +100,7 @@ export function CommitInfoPane({
             <Box
                 p="8px 12px"
                 color="var(--vscode-descriptionForeground)"
-                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+                fontFamily={SYSTEM_FONT_STACK}
                 fontSize="13px"
                 h="100%"
                 overflow="auto"
@@ -387,7 +388,7 @@ function CommitFolderRow({
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -431,7 +432,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="default"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}

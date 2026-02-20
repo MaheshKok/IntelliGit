@@ -3,6 +3,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Flex, Box, Button } from "@chakra-ui/react";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
@@ -111,7 +112,7 @@ export function ShelfTab({
                                 py="2px"
                                 minH="24px"
                                 fontSize="12px"
-                                fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+                                fontFamily={SYSTEM_FONT_STACK}
                                 cursor="pointer"
                                 bg={
                                     isSelected
@@ -300,7 +301,7 @@ function ShelfFileTree({
                             minH="20px"
                             gap="4px"
                             fontSize="12px"
-                            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+                            fontFamily={SYSTEM_FONT_STACK}
                             cursor="pointer"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onFileClick(entry.file.path)}
@@ -340,7 +341,7 @@ function ShelfFileTree({
                             minH="20px"
                             gap="4px"
                             fontSize="12px"
-                            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+                            fontFamily={SYSTEM_FONT_STACK}
                             cursor="pointer"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onToggleDir(entry.path)}

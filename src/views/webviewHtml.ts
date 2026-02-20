@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { SYSTEM_FONT_STACK } from "../utils/constants";
 
 interface WebviewShellOptions {
     extensionUri: vscode.Uri;
@@ -30,7 +31,7 @@ export function buildWebviewShellHtml({
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root {
             width: 100%; height: 100%; overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: ${SYSTEM_FONT_STACK};
             font-size: 13px;
             color: var(--vscode-foreground);
             background: ${backgroundVar};

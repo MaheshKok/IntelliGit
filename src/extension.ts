@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
 import { GitExecutor } from "./git/executor";
-import { GitOps } from "./git/operations";
+import { GitOps, UpstreamPushDeclinedError } from "./git/operations";
 import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
@@ -818,6 +818,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
+                    if (err instanceof UpstreamPushDeclinedError) return;
                     const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Push failed: ${msg}`);
                 }

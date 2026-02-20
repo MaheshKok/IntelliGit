@@ -424,7 +424,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private registerThemeChangeListeners(): void {
         this.themeChangeDisposables.push(
             vscode.window.onDidChangeActiveColorTheme(() => {
-                this.reinitIconThemeAndRepost();
+                this.refreshDataWithErrorHandling();
             }),
         );
 
@@ -438,29 +438,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 }
             }),
         );
-    }
-
-    private reinitIconThemeAndRepost(): void {
-        this.iconTheme
-            .initIconThemeData()
-            .then(() => {
-                const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
-                this.postToWebview({
-                    type: "update",
-                    files: this.files,
-                    stashes: this.stashes,
-                    shelfFiles: this.shelfFiles,
-                    selectedShelfIndex: this.selectedShelfIndex,
-                    folderIcon: folderIcons.folderIcon,
-                    folderExpandedIcon: folderIcons.folderExpandedIcon,
-                    folderIconsByName: this.folderIconsByName,
-                    iconFonts,
-                });
-            })
-            .catch((err) => {
-                const message = getErrorMessage(err);
-                console.error("[IntelliGit] Failed to reinitialize icon theme:", message);
-            });
     }
 
     private disposeThemeChangeDisposables(): void {

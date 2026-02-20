@@ -60,6 +60,13 @@ function assertStashIndex(index: number): void {
     }
 }
 
+export class UpstreamPushDeclinedError extends Error {
+    constructor() {
+        super("Upstream push declined by user");
+        this.name = "UpstreamPushDeclinedError";
+    }
+}
+
 export class GitOps {
     constructor(
         private readonly executor: GitExecutor,
@@ -425,8 +432,7 @@ export class GitOps {
 
             const allowSetUpstream = await this.requestSetUpstreamPush(remote, branch);
             if (!allowSetUpstream) {
-                (err as Record<string, unknown>).declined = true;
-                throw err;
+                throw new UpstreamPushDeclinedError();
             }
 
             return this.executor.run(["push", "--set-upstream", remote, branch]);

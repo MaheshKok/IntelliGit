@@ -4,6 +4,7 @@
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
+import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { StatusBadge } from "./StatusBadge";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
@@ -40,7 +41,7 @@ function FileRowInner({
             minH="22px"
             lineHeight="22px"
             fontSize="13px"
-            fontFamily="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+            fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}

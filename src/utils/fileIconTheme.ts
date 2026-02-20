@@ -98,13 +98,24 @@ function parseFonts(
         const id = typeof typed.id === "string" ? typed.id : undefined;
         if (!id) continue;
         const srcArray = Array.isArray(typed.src) ? typed.src : [];
-        const srcEntry = srcArray.find(
-            (entry) =>
+        const validEntries = srcArray.filter(
+            (entry): entry is Record<string, unknown> =>
                 !!entry &&
                 typeof entry === "object" &&
                 typeof (entry as Record<string, unknown>).path === "string",
-        ) as Record<string, unknown> | undefined;
-        if (!srcEntry) continue;
+        );
+        if (validEntries.length === 0) continue;
+
+        // Select best font format by priority
+        const preferredFormats = ["woff2", "woff", "ttf", "otf"];
+        const srcEntry =
+            preferredFormats.reduce<Record<string, unknown> | undefined>((best, fmt) => {
+                if (best) return best;
+                return validEntries.find((e) => {
+                    const p = String(e.path).toLowerCase();
+                    return p.endsWith(`.${fmt}`);
+                });
+            }, undefined) ?? validEntries[0];
 
         const srcPath = srcEntry.path as string;
         const format = typeof srcEntry.format === "string" ? srcEntry.format : undefined;

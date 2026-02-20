@@ -3,6 +3,7 @@ import type { CommitDetail, ThemeFolderIconMap } from "../types";
 import type { CommitInfoInbound } from "../webviews/react/commitInfoTypes";
 import { IconThemeService } from "./shared";
 import { buildWebviewShellHtml } from "./webviewHtml";
+import { getErrorMessage } from "../utils/errors";
 
 export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitFiles";
@@ -37,11 +38,11 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             if (msg?.type === "ready") {
                 try {
                     await this.iconTheme.initIconThemeData();
-                    this.ready = true;
-                    this.postCurrentState();
                 } catch (err) {
                     console.error("[IntelliGit] Failed to initialize icon theme data:", err);
                 }
+                this.ready = true;
+                this.postCurrentState();
             }
         });
 
@@ -67,10 +68,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.postCurrentState();
         this.decorateAndStoreDetail(detail, requestId).catch((err) => {
             if (requestId !== this.requestSeq) return;
-            const message = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(
-                `Commit detail error (request ${requestId}): ${message}`,
-            );
+            const msg = getErrorMessage(err);
+            vscode.window.showErrorMessage(`Commit detail error: ${msg}`);
         });
     }
 

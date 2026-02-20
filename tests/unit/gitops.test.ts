@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GitOps } from "../../src/git/operations";
+import { GitOps, UpstreamPushDeclinedError } from "../../src/git/operations";
 import type { GitExecutor } from "../../src/git/executor";
 
 function createMockExecutor(responses: Record<string, string> = {}): GitExecutor {
@@ -404,7 +404,7 @@ describe("GitOps", () => {
             expect(confirmSetUpstream).toHaveBeenCalledWith("origin", "feature/no-upstream");
         });
 
-        it("throws original push error when upstream setup is declined", async () => {
+        it("throws UpstreamPushDeclinedError when upstream setup is declined", async () => {
             const noUpstreamError = new Error(
                 [
                     "fatal: The current branch feature/no-upstream has no upstream branch.",
@@ -422,7 +422,7 @@ describe("GitOps", () => {
             const confirmSetUpstream = vi.fn(async () => false);
             const ops = new GitOps(executor, confirmSetUpstream);
 
-            await expect(ops.push()).rejects.toThrow(noUpstreamError.message);
+            await expect(ops.push()).rejects.toThrow(UpstreamPushDeclinedError);
             expect(confirmSetUpstream).toHaveBeenCalledTimes(1);
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
         });

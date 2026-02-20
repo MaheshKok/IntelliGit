@@ -286,20 +286,24 @@ vi.mock("../../src/git/executor", () => ({
     },
 }));
 
-vi.mock("../../src/git/operations", () => ({
-    GitOps: class {
-        isRepository = gitOpsState.isRepository;
-        getBranches = gitOpsState.getBranches;
-        getCommitDetail = gitOpsState.getCommitDetail;
-        getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;
-        rollbackFiles = gitOpsState.rollbackFiles;
-        shelveSave = gitOpsState.shelveSave;
-        getFileHistory = gitOpsState.getFileHistory;
-        getStatus = gitOpsState.getStatus;
-        listShelved = gitOpsState.listShelved;
-        getShelvedFiles = gitOpsState.getShelvedFiles;
-    },
-}));
+vi.mock("../../src/git/operations", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../src/git/operations")>();
+    return {
+        UpstreamPushDeclinedError: actual.UpstreamPushDeclinedError,
+        GitOps: class {
+            isRepository = gitOpsState.isRepository;
+            getBranches = gitOpsState.getBranches;
+            getCommitDetail = gitOpsState.getCommitDetail;
+            getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;
+            rollbackFiles = gitOpsState.rollbackFiles;
+            shelveSave = gitOpsState.shelveSave;
+            getFileHistory = gitOpsState.getFileHistory;
+            getStatus = gitOpsState.getStatus;
+            listShelved = gitOpsState.listShelved;
+            getShelvedFiles = gitOpsState.getShelvedFiles;
+        },
+    };
+});
 
 vi.mock("../../src/views/CommitGraphViewProvider", () => ({
     CommitGraphViewProvider: MockCommitGraphViewProvider,
