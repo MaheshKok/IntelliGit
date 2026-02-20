@@ -6,6 +6,7 @@ export const LANE_WIDTH = 20;
 export const DOT_RADIUS = 5;
 export const ROW_HEIGHT = 28;
 
+console.log("Using graph lane colors:", COLORS);
 export interface GraphRow {
     column: number;
     color: string;
