@@ -5,12 +5,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type {
-    ThemeFolderIconMap,
-    ThemeIconFont,
-    WorkingFile,
-    StashEntry,
-} from "../types";
+import type { ThemeFolderIconMap, ThemeIconFont, WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";

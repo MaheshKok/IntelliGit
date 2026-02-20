@@ -38,11 +38,12 @@ function FolderRowInner({
     onToggleCheck,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
-    const nameKey = name.trim().toLowerCase();
+    const leafName = dirPath.split("/").pop() ?? name;
+    const nameKey = leafName.trim().toLowerCase();
     const namedIcons = folderIconsByName?.[nameKey];
     const resolvedIcon = isExpanded
-        ? namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon
-        : namedIcons?.collapsed ?? folderIcon;
+        ? (namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon)
+        : (namedIcons?.collapsed ?? folderIcon);
 
     return (
         <Flex
@@ -83,10 +84,7 @@ function FolderRowInner({
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}
             />
-            <TreeFolderIcon
-                isExpanded={isExpanded}
-                icon={resolvedIcon}
-            />
+            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.92}>
                 {name}
             </Box>

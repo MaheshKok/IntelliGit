@@ -1,11 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import type {
-    CommitDetail,
-    CommitFile,
-    ThemeFolderIconMap,
-    ThemeTreeIcon,
-} from "../../../types";
+import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
@@ -357,11 +352,12 @@ function CommitFolderRow({
     onToggle: () => void;
 }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
-    const nameKey = folder.name.trim().toLowerCase();
+    const leafName = folder.path.split("/").pop() ?? folder.name;
+    const nameKey = leafName.trim().toLowerCase();
     const namedIcons = folderIconsByName?.[nameKey];
     const resolvedIcon = isExpanded
-        ? namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon
-        : namedIcons?.collapsed ?? folderIcon;
+        ? (namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon)
+        : (namedIcons?.collapsed ?? folderIcon);
     return (
         <Flex
             align="center"
@@ -391,10 +387,7 @@ function CommitFolderRow({
             >
                 &#9654;
             </Box>
-            <TreeFolderIcon
-                isExpanded={isExpanded}
-                icon={resolvedIcon}
-            />
+            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} opacity={0.85}>
                 {folder.name}
             </Box>

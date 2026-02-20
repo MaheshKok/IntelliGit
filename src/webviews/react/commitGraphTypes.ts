@@ -67,7 +67,14 @@ export type CommitGraphInbound =
           append: boolean;
           unpushedHashes: string[];
       }
-    | { type: "setBranches"; branches: Branch[] }
+    | {
+          type: "setBranches";
+          branches: Branch[];
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
+      }
     | { type: "setSelectedBranch"; branch: string | null }
     | {
           type: "setCommitDetail";

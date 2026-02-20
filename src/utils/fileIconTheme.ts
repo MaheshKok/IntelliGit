@@ -39,6 +39,8 @@ interface ParsedIconTheme {
     folderExpanded?: string;
     rootFolder?: string;
     rootFolderExpanded?: string;
+    rootFolderNames: Record<string, string>;
+    rootFolderNamesExpanded: Record<string, string>;
     fileExtensions: Record<string, string>;
     fileNames: Record<string, string>;
     languageIds: Record<string, string>;
@@ -63,6 +65,8 @@ const EMPTY_THEME: ParsedIconTheme = {
     fileExtensions: {},
     fileNames: {},
     languageIds: {},
+    rootFolderNames: {},
+    rootFolderNamesExpanded: {},
     folderNames: {},
     folderNamesExpanded: {},
     fonts: {},
@@ -155,6 +159,8 @@ function parseThemeSection(section: unknown, baseDir: string): ParsedIconTheme {
         rootFolder: typeof raw.rootFolder === "string" ? raw.rootFolder : undefined,
         rootFolderExpanded:
             typeof raw.rootFolderExpanded === "string" ? raw.rootFolderExpanded : undefined,
+        rootFolderNames: normalizeMap(raw.rootFolderNames),
+        rootFolderNamesExpanded: normalizeMap(raw.rootFolderNamesExpanded),
         fileExtensions: normalizeMap(raw.fileExtensions),
         fileNames: normalizeMap(raw.fileNames),
         languageIds: normalizeMap(raw.languageIds),
@@ -173,6 +179,11 @@ function mergeTheme(base: ParsedIconTheme, overlay: ParsedIconTheme): ParsedIcon
         folderExpanded: overlay.folderExpanded ?? base.folderExpanded,
         rootFolder: overlay.rootFolder ?? base.rootFolder,
         rootFolderExpanded: overlay.rootFolderExpanded ?? base.rootFolderExpanded,
+        rootFolderNames: { ...base.rootFolderNames, ...overlay.rootFolderNames },
+        rootFolderNamesExpanded: {
+            ...base.rootFolderNamesExpanded,
+            ...overlay.rootFolderNamesExpanded,
+        },
         fileExtensions: { ...base.fileExtensions, ...overlay.fileExtensions },
         fileNames: { ...base.fileNames, ...overlay.fileNames },
         languageIds: { ...base.languageIds, ...overlay.languageIds },
@@ -268,6 +279,20 @@ function decodeFontCharacter(raw: string): string | undefined {
 
 function sanitizeFontToken(value: string): string {
     return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function getFolderNameLookupKeys(name: string): string[] {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return [];
+
+    const keys = new Set<string>([normalized]);
+    const slashNormalized = normalized.replace(/\\/g, "/").replace(/\s*\/\s*/g, "/");
+    keys.add(slashNormalized);
+    const slashParts = slashNormalized.split("/").filter((part) => part.length > 0);
+    if (slashParts.length > 0) {
+        keys.add(slashParts[slashParts.length - 1]);
+    }
+    return Array.from(keys);
 }
 
 export class FileIconThemeResolver {
@@ -386,8 +411,9 @@ export class FileIconThemeResolver {
 
         const byExtension = new Map<string, string>();
         const byFilename = new Map<string, string>();
-        const allExtensions = (vscode.extensions as unknown as { all?: vscode.Extension<unknown>[] })
-            .all;
+        const allExtensions = (
+            vscode.extensions as unknown as { all?: vscode.Extension<unknown>[] }
+        ).all;
         if (Array.isArray(allExtensions)) {
             for (const ext of allExtensions) {
                 const contributedLanguages = (
@@ -541,22 +567,31 @@ export class FileIconThemeResolver {
         themeId: string,
         theme: ParsedIconTheme,
     ): ThemeTreeIcon | undefined {
-        const key = name.trim().toLowerCase();
-        if (!key) {
+        const keys = getFolderNameLookupKeys(name);
+        if (keys.length === 0) {
             const rootIconId = isExpanded
-                ? theme.rootFolderExpanded ?? theme.folderExpanded
-                : theme.rootFolder ?? theme.folder;
+                ? (theme.rootFolderExpanded ?? theme.folderExpanded)
+                : (theme.rootFolder ?? theme.folder);
             return this.resolveIcon(rootIconId, themeId, theme);
         }
 
-        const namedIconId = isExpanded
-            ? theme.folderNamesExpanded[key] ??
-              theme.folderNames[key] ??
-              theme.folderExpanded ??
-              theme.folder
-            : theme.folderNames[key] ?? theme.folder;
+        for (const key of keys) {
+            const rootNamedIconId = isExpanded
+                ? (theme.rootFolderNamesExpanded[key] ?? theme.rootFolderNames[key])
+                : theme.rootFolderNames[key];
+            const rootNamedIcon = this.resolveIcon(rootNamedIconId, themeId, theme);
+            if (rootNamedIcon) return rootNamedIcon;
 
-        return this.resolveIcon(namedIconId, themeId, theme);
+            const namedIconId = isExpanded
+                ? (theme.folderNamesExpanded[key] ?? theme.folderNames[key])
+                : theme.folderNames[key];
+            const namedIcon = this.resolveIcon(namedIconId, themeId, theme);
+            if (namedIcon) return namedIcon;
+        }
+
+        const fallbackIconId = isExpanded ? (theme.folderExpanded ?? theme.folder) : theme.folder;
+
+        return this.resolveIcon(fallbackIconId, themeId, theme);
     }
 
     async decoratePathItems<T extends { path: string; icon?: ThemeTreeIcon }>(
@@ -598,9 +633,7 @@ export class FileIconThemeResolver {
 
         const byName: ThemeFolderIconMap = {};
         const deduped = new Set<string>(
-            folderNames
-                .map((name) => name.trim().toLowerCase())
-                .filter((name) => name.length > 0),
+            folderNames.map((name) => name.trim().toLowerCase()).filter((name) => name.length > 0),
         );
 
         for (const name of deduped) {

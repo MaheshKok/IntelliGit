@@ -1,5 +1,5 @@
 import React from "react";
-import type { Branch, ThemeTreeIcon } from "../../../../types";
+import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
 import { ChevronIcon, GitBranchIcon, StarIcon, TagIcon } from "../icons";
 import { TreeFolderIcon } from "../../commit-panel/components/TreeIcons";
@@ -25,6 +25,7 @@ interface Props {
     prefix: string;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
 }
 
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
@@ -108,6 +109,7 @@ export function BranchTreeNodeRow({
     prefix,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
 }: Props): React.ReactElement {
     const handleActivateKey = (
         event: React.KeyboardEvent<HTMLDivElement>,
@@ -123,6 +125,11 @@ export function BranchTreeNodeRow({
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
     const rowStyle = { ...ROW_STYLE, paddingLeft: depth * TREE_INDENT_STEP };
+    const nameKey = node.label.trim().toLowerCase();
+    const namedIcons = folderIconsByName?.[nameKey];
+    const resolvedFolderIcon = isExpanded
+        ? (namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon)
+        : (namedIcons?.collapsed ?? folderIcon);
 
     if (isFolder) {
         return (
@@ -141,10 +148,7 @@ export function BranchTreeNodeRow({
                         data-branch-icon="folder"
                         style={{ display: "inline-flex", marginRight: 4, flexShrink: 0 }}
                     >
-                        <TreeFolderIcon
-                            isExpanded={isExpanded}
-                            icon={isExpanded ? folderExpandedIcon : folderIcon}
-                        />
+                        <TreeFolderIcon isExpanded={isExpanded} icon={resolvedFolderIcon} />
                     </span>
                     <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
                 </div>
@@ -163,6 +167,7 @@ export function BranchTreeNodeRow({
                             prefix={folderKey}
                             folderIcon={folderIcon}
                             folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                         />
                     ))}
             </>

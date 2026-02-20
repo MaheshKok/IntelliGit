@@ -122,9 +122,12 @@ function App(): React.ReactElement {
     const [folderExpandedIcon, setFolderExpandedIcon] = useState<ThemeTreeIcon | undefined>(
         undefined,
     );
-    const [folderIconsByName, setFolderIconsByName] = useState<ThemeFolderIconMap | undefined>(
-        undefined,
-    );
+    const [commitFolderIconsByName, setCommitFolderIconsByName] = useState<
+        ThemeFolderIconMap | undefined
+    >(undefined);
+    const [branchFolderIconsByName, setBranchFolderIconsByName] = useState<
+        ThemeFolderIconMap | undefined
+    >(undefined);
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
@@ -184,6 +187,10 @@ function App(): React.ReactElement {
                     break;
                 case "setBranches":
                     setBranches(data.branches);
+                    setFolderIcon(data.folderIcon);
+                    setFolderExpandedIcon(data.folderExpandedIcon);
+                    setBranchFolderIconsByName(data.folderIconsByName);
+                    if (data.iconFonts) setIconFonts(data.iconFonts);
                     break;
                 case "setSelectedBranch":
                     setSelectedBranch(data.branch ?? null);
@@ -192,12 +199,12 @@ function App(): React.ReactElement {
                     setSelectedDetail(data.detail);
                     setFolderIcon(data.folderIcon);
                     setFolderExpandedIcon(data.folderExpandedIcon);
-                    setFolderIconsByName(data.folderIconsByName);
+                    setCommitFolderIconsByName(data.folderIconsByName);
                     setIconFonts(data.iconFonts ?? []);
                     break;
                 case "clearCommitDetail":
                     setSelectedDetail(null);
-                    setFolderIconsByName(undefined);
+                    setCommitFolderIconsByName(undefined);
                     break;
             }
         };
@@ -260,6 +267,7 @@ function App(): React.ReactElement {
                     onBranchAction={handleBranchAction}
                     folderIcon={folderIcon}
                     folderExpandedIcon={folderExpandedIcon}
+                    folderIconsByName={branchFolderIconsByName}
                 />
             </div>
 
@@ -312,7 +320,7 @@ function App(): React.ReactElement {
                         detail={selectedDetail}
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
-                        folderIconsByName={folderIconsByName}
+                        folderIconsByName={commitFolderIconsByName}
                     />
                 </div>
             </div>

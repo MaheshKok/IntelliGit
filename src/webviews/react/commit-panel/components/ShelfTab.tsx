@@ -6,12 +6,7 @@ import { Flex, Box, Button } from "@chakra-ui/react";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import type {
-    StashEntry,
-    ThemeFolderIconMap,
-    ThemeTreeIcon,
-    WorkingFile,
-} from "../../../../types";
+import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
 
@@ -332,14 +327,15 @@ function ShelfFileTree({
 
                 const isExpanded = expandedDirs.has(entry.path);
                 const fileCount = entry.descendantFiles.length;
-                const nameKey = entry.name.trim().toLowerCase();
+                const leafName = entry.path.split("/").pop() ?? entry.name;
+                const nameKey = leafName.trim().toLowerCase();
                 const namedIcons = folderIconsByName?.[nameKey];
                 const resolvedIcon = isExpanded
-                    ? namedIcons?.expanded ??
+                    ? (namedIcons?.expanded ??
                       folderExpandedIcon ??
                       namedIcons?.collapsed ??
-                      folderIcon
-                    : namedIcons?.collapsed ?? folderIcon;
+                      folderIcon)
+                    : (namedIcons?.collapsed ?? folderIcon);
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex
@@ -363,10 +359,7 @@ function ShelfFileTree({
                             >
                                 &#9654;
                             </Box>
-                            <TreeFolderIcon
-                                isExpanded={isExpanded}
-                                icon={resolvedIcon}
-                            />
+                            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
                             <Box
                                 as="span"
                                 flex={1}

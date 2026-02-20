@@ -3,7 +3,7 @@
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
 import React, { useMemo, useState, useCallback, useEffect } from "react";
-import type { Branch, ThemeTreeIcon } from "../../types";
+import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../types";
 import { isBranchAction, type BranchAction } from "./commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { getBranchMenuItems } from "./branch-column/menu";
@@ -31,6 +31,7 @@ interface Props {
     onBranchAction: (action: BranchAction, branchName: string) => void;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
 }
 
 interface BranchColumnPersistState {
@@ -102,6 +103,7 @@ export function BranchColumn({
     onBranchAction,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
 }: Props): React.ReactElement {
     const [persistedState] = useState(readPersistedBranchColumnState);
     const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
@@ -251,6 +253,7 @@ export function BranchColumn({
                             prefix="local"
                             folderIcon={folderIcon}
                             folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                         />
                     ))}
                 </div>
@@ -291,6 +294,7 @@ export function BranchColumn({
                                             prefix={`remote/${remote}`}
                                             folderIcon={folderIcon}
                                             folderExpandedIcon={folderExpandedIcon}
+                                            folderIconsByName={folderIconsByName}
                                         />
                                     ))}
                             </div>

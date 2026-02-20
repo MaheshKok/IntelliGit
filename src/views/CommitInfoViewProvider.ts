@@ -105,9 +105,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         return { ...detail, files };
     }
 
-    private async getFolderIconsByName(
-        files: CommitDetail["files"],
-    ): Promise<ThemeFolderIconMap> {
+    private async getFolderIconsByName(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
         if (!this.iconResolver) return {};
         const names: string[] = [];
         for (const file of files) {

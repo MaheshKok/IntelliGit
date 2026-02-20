@@ -29,6 +29,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private iconResolver?: FileIconThemeResolver;
     private folderIcons: ThemeFolderIcons = {};
     private folderIconsByName: ThemeFolderIconMap = {};
+    private branchFolderIconsByName: ThemeFolderIconMap = {};
     private iconFonts: ThemeIconFont[] = [];
     private commitDetailSeq = 0;
 
@@ -74,7 +75,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             switch (msg.type) {
                 case "ready":
                     await this.initIconThemeData();
-                    this.sendBranches();
+                    await this.sendBranches();
                     await this.loadInitial();
                     this.postCommitDetailState();
                     break;
@@ -112,7 +113,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     setBranches(branches: Branch[]): void {
         this.branches = branches;
-        this.sendBranches();
+        void this.sendBranches();
     }
 
     async filterByBranch(branch: string | null): Promise<void> {
@@ -124,7 +125,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     async refresh(): Promise<void> {
         await this.initIconThemeData();
-        this.sendBranches();
+        await this.sendBranches();
         await this.loadInitial();
     }
 
@@ -143,8 +144,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.postCommitDetailState();
     }
 
-    private sendBranches(): void {
-        this.postToWebview({ type: "setBranches", branches: this.branches });
+    private async sendBranches(): Promise<void> {
+        this.branchFolderIconsByName = await this.getBranchFolderIconsByName(this.branches);
+        this.postToWebview({
+            type: "setBranches",
+            branches: this.branches,
+            folderIcon: this.folderIcons.folderIcon,
+            folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+            folderIconsByName: this.branchFolderIconsByName,
+            iconFonts: this.iconFonts,
+        });
     }
 
     private async loadInitial(): Promise<void> {
@@ -245,9 +254,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         return { ...detail, files };
     }
 
-    private async getFolderIconsByName(
-        files: CommitDetail["files"],
-    ): Promise<ThemeFolderIconMap> {
+    private async getFolderIconsByName(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
         if (!this.iconResolver) return {};
         const names: string[] = [];
         for (const file of files) {
@@ -257,6 +264,34 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 if (trimmed.length > 0) names.push(trimmed);
             }
         }
+        return this.iconResolver.getFolderIconsByName(names);
+    }
+
+    private async getBranchFolderIconsByName(branches: Branch[]): Promise<ThemeFolderIconMap> {
+        if (!this.iconResolver) return {};
+        const names: string[] = [];
+
+        for (const branch of branches) {
+            const fullName = branch.name;
+            let displayName = fullName;
+            if (branch.isRemote) {
+                const remotePrefix = branch.remote ? `${branch.remote}/` : undefined;
+                if (remotePrefix && fullName.startsWith(remotePrefix)) {
+                    displayName = fullName.slice(remotePrefix.length);
+                } else {
+                    const firstSlash = fullName.indexOf("/");
+                    displayName = firstSlash >= 0 ? fullName.slice(firstSlash + 1) : fullName;
+                }
+            }
+
+            const parts = displayName.split("/");
+            if (parts.length <= 1) continue;
+            for (const folderName of parts.slice(0, -1)) {
+                const trimmed = folderName.trim();
+                if (trimmed.length > 0) names.push(trimmed);
+            }
+        }
+
         return this.iconResolver.getFolderIconsByName(names);
     }
 

@@ -1,12 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
-import type {
-    CommitDetail,
-    ThemeFolderIconMap,
-    ThemeIconFont,
-    ThemeTreeIcon,
-} from "../../types";
+import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
 import type { CommitInfoOutbound, CommitInfoInbound } from "./commitInfoTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
