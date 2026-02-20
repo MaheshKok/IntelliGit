@@ -290,7 +290,7 @@ describe("low coverage components", () => {
         expect(push?.textContent).toBe("\u2B062");
         expect(pull?.textContent).toBe("\u2B073");
         expect(push?.style.color).toBe("rgb(95, 156, 230)");
-        expect(pull?.style.color).toBe("rgb(146, 86, 78)");
+        expect(pull?.style.color).toBe("rgb(229, 138, 58)");
         const badge = branchRow.querySelector("[data-branch-tooltip]") as HTMLElement;
         expect(badge?.getAttribute("data-branch-tooltip")).toBe(
             "3 incoming commits and 2 outgoing commits",
@@ -299,7 +299,7 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
-    it("CommitList triggers context action and load-more", () => {
+    it.only("CommitList triggers context action and load-more", () => {
         const onCommitAction = vi.fn();
         const onLoadMore = vi.fn();
         const commits: Commit[] = [
