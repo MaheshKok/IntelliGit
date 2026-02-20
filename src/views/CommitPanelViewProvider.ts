@@ -59,7 +59,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
         this.updateViewCount(this.lastFileCount);
-        this.refreshData();
+        this.refreshData().catch((err) => {
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(message);
+            this.postToWebview({ type: "error", message });
+        });
     }
 
     async refresh(): Promise<void> {
@@ -97,7 +101,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
             this.updateViewCount(count);
-            this.postToWebview({ type: "refreshing", active: false });
             this.postToWebview({
                 type: "update",
                 files,
@@ -105,6 +108,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 shelfFiles,
                 selectedShelfIndex,
             });
+            this.postToWebview({ type: "refreshing", active: false });
             vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
         } catch (err) {
             this.postToWebview({ type: "refreshing", active: false });

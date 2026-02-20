@@ -199,6 +199,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
         }
 
+        // Fallback: match remote branches whose name ends with the local branch name.
+        // Only used when there is exactly one match to avoid ambiguity (e.g. both
+        // "origin/feat" and "upstream/feat" would produce two matches and be skipped).
         const suffixMatches = currentBranches.filter(
             (b) => b.isRemote && b.name.endsWith(`/${branch.name}`),
         );
@@ -843,9 +846,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             id: "intelligit.deleteBranch",
             handler: async (item) => {
                 const branch = item.branch;
-                const name = branch?.name;
+                if (!branch) return;
+                const name = branch.name;
                 if (!name) return;
-                const isRemote = !!branch?.isRemote;
+                const isRemote = !!branch.isRemote;
                 const checkedOutBranch = isRemote ? null : await getCheckedOutBranchName();
 
                 if (!isRemote && checkedOutBranch && checkedOutBranch === name) {
@@ -939,9 +943,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     for (const cmd of branchActionCommands) {
         context.subscriptions.push(
-            vscode.commands.registerCommand(cmd.id, (item: { branch?: Branch }) =>
-                cmd.handler(item),
-            ),
+            vscode.commands.registerCommand(cmd.id, (item: unknown) => {
+                const validated =
+                    item && typeof item === "object" && "branch" in item
+                        ? (item as { branch?: Branch })
+                        : { branch: undefined };
+                return cmd.handler(validated);
+            }),
         );
     }
 
@@ -1050,7 +1058,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Eagerly fetch file count so the activity bar badge shows immediately.
     // commitPanel.refresh() runs getStatus() and fires onDidChangeFileCount,
     // which updateBadge() picks up to set the tree view badge.
-    commitPanel.refresh().catch(() => {/* ignore initial refresh errors */});
+    commitPanel.refresh().catch((err) => {
+        console.error("Initial commit panel refresh failed:", err);
+    });
 
     // --- Auto-refresh on file changes ---
 
