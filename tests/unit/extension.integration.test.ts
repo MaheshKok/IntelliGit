@@ -23,6 +23,7 @@ const openTextDocument = vi.fn(async (arg: unknown) => arg);
 const writeFile = vi.fn(async () => undefined);
 const clipboardWriteText = vi.fn(async () => undefined);
 const createOutputChannel = vi.fn(() => ({ appendLine: vi.fn() }));
+const setStatusBarMessage = vi.fn(() => ({ dispose: vi.fn() }));
 const createTreeView = vi.fn(() => ({ badge: undefined, dispose: vi.fn() }));
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
@@ -160,6 +161,8 @@ class MockCommitGraphViewProvider {
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
     filterByBranch = vi.fn(async () => undefined);
+    setCommitDetail = vi.fn();
+    clearCommitDetail = vi.fn();
     dispose = vi.fn();
 
     emitCommitSelected(hash: string): void {
@@ -255,6 +258,7 @@ vi.mock("vscode", () => ({
         showTextDocument,
         createTerminal,
         createOutputChannel,
+        setStatusBarMessage,
     },
     workspace: {
         get workspaceFolders() {
@@ -481,6 +485,32 @@ describe("extension integration", () => {
         expect(showInformationMessage).toHaveBeenCalled();
         expect(showWarningMessage).toHaveBeenCalled();
         expect(deleteFileWithFallback).toHaveBeenCalled();
+    });
+
+    it("updates non-current local branch via fetch refspec without checkout", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith([
+            "fetch",
+            "origin",
+            "main:main",
+            "--recurse-submodules=no",
+            "--progress",
+            "--prune",
+        ]);
+        expect(executorRun).not.toHaveBeenCalledWith(["checkout", "main"]);
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Updating main"),
+        );
     });
 
     it("handles commit context actions forwarded from commit graph", async () => {
@@ -791,7 +821,7 @@ describe("extension integration", () => {
             ?.({ branch: { name: "fail-merge", isRemote: false } });
         await registeredCommands
             .get("intelligit.updateBranch")
-            ?.({ branch: { name: "main", isRemote: false, isCurrent: true } });
+            ?.({ branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" } });
 
         await registeredCommands
             .get("intelligit.pushBranch")
@@ -830,7 +860,9 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith("No current branch found.");
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Merge failed: merge boom"));
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Update failed: fetch boom"));
-        expect(showErrorMessage).toHaveBeenCalledWith("No remote configured for branch topic.");
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Push failed: No remote configured for branch topic.",
+        );
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Push failed: push boom"));
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Rename failed: rename boom"));
         expect(showErrorMessage).toHaveBeenCalledWith(

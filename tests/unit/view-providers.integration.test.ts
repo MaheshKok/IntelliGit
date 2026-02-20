@@ -43,6 +43,7 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
+const setStatusBarMessage = vi.fn(() => ({ dispose: vi.fn() }));
 
 const workspaceState: {
     workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined;
@@ -79,6 +80,7 @@ const vscodeMock = {
         showWarningMessage,
         showInformationMessage,
         showTextDocument,
+        setStatusBarMessage,
     },
     commands: {
         executeCommand,
@@ -390,6 +392,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "commitAndPush", message: "feat: push", amend: false });
         expect(gitOps.commit).toHaveBeenCalled();
         expect(gitOps.commitAndPush).toHaveBeenCalled();
+        expect(setStatusBarMessage).toHaveBeenCalled();
 
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({

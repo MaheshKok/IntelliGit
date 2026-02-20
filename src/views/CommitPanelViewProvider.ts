@@ -60,6 +60,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         await this.refreshData();
     }
 
+    private async runWithStatusBar<T>(message: string, task: () => Promise<T>): Promise<T> {
+        const disposable = vscode.window.setStatusBarMessage(
+            `$(sync~spin) IntelliGit: ${message}`,
+        );
+        try {
+            return await task();
+        } finally {
+            disposable.dispose();
+        }
+    }
+
     private async refreshData(): Promise<void> {
         this.files = await this.gitOps.getStatus();
         this.stashes = await this.gitOps.listShelved();
@@ -120,13 +131,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (paths.length > 0) {
                     await this.gitOps.stageFiles(paths);
                 }
-                if (push) {
-                    await this.gitOps.commitAndPush(message, amend);
-                    vscode.window.showInformationMessage("Committed and pushed successfully.");
-                } else {
-                    await this.gitOps.commit(message, amend);
-                    vscode.window.showInformationMessage("Committed successfully.");
-                }
+                await this.runWithStatusBar(
+                    push ? "Committing and pushing..." : "Committing...",
+                    async () => {
+                        if (push) {
+                            await this.gitOps.commitAndPush(message, amend);
+                        } else {
+                            await this.gitOps.commit(message, amend);
+                        }
+                    },
+                );
+                vscode.window.showInformationMessage(
+                    push ? "Committed and pushed successfully." : "Committed successfully.",
+                );
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 break;
@@ -139,7 +156,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Commit message cannot be empty.");
                     return;
                 }
-                await this.gitOps.commit(message, amend);
+                await this.runWithStatusBar("Committing...", async () => {
+                    await this.gitOps.commit(message, amend);
+                });
                 vscode.window.showInformationMessage("Committed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
@@ -153,7 +172,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Commit message cannot be empty.");
                     return;
                 }
-                await this.gitOps.commitAndPush(message, amend);
+                await this.runWithStatusBar("Committing and pushing...", async () => {
+                    await this.gitOps.commitAndPush(message, amend);
+                });
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();

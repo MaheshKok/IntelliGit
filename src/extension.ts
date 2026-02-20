@@ -252,6 +252,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.commands.executeCommand("intelligit.refresh");
     };
 
+    const runWithStatusBar = async <T>(
+        message: string,
+        task: () => Promise<T>,
+    ): Promise<T> => {
+        const disposable = vscode.window.setStatusBarMessage(
+            `$(sync~spin) IntelliGit: ${message}`,
+        );
+        try {
+            return await task();
+        } finally {
+            disposable.dispose();
+        }
+    };
+
     const handleCommitContextAction = async (params: {
         action: CommitAction;
         hash: string;
@@ -680,13 +694,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.updateBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                const name = branch?.name;
+                if (!name || branch?.isRemote) return;
                 try {
-                    await executor.run(["fetch", "--all"]);
-                    if (item.branch?.isCurrent) {
-                        await executor.run(["pull", "--ff-only"]);
-                    }
+                    await runWithStatusBar(`Updating ${name}...`, async () => {
+                        const remote = await resolveRemoteName(branch);
+                        if (branch.isCurrent) {
+                            if (remote) {
+                                await executor.run(["pull", "--ff-only", remote, name]);
+                            } else {
+                                await executor.run(["pull", "--ff-only"]);
+                            }
+                            return;
+                        }
+
+                        if (!remote) {
+                            throw new Error(`No remote configured for branch ${name}.`);
+                        }
+
+                        await executor.run([
+                            "fetch",
+                            remote,
+                            `${name}:${name}`,
+                            "--recurse-submodules=no",
+                            "--progress",
+                            "--prune",
+                        ]);
+                    });
                     vscode.window.showInformationMessage(`Updated ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
@@ -701,22 +736,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 try {
-                    const remote = await resolveRemoteName(branch);
-                    if (branch.isCurrent) {
-                        if (branch.remote) {
-                            await executor.run(["push", branch.remote, branch.name]);
+                    await runWithStatusBar(`Pushing ${branch.name}...`, async () => {
+                        const remote = await resolveRemoteName(branch);
+                        if (branch.isCurrent) {
+                            if (branch.remote) {
+                                await executor.run(["push", branch.remote, branch.name]);
+                            } else {
+                                await executor.run(["push"]);
+                            }
                         } else {
-                            await executor.run(["push"]);
+                            if (!remote) {
+                                throw new Error(
+                                    `No remote configured for branch ${branch.name}.`,
+                                );
+                            }
+                            await executor.run(["push", "-u", remote, branch.name]);
                         }
-                    } else {
-                        if (!remote) {
-                            vscode.window.showErrorMessage(
-                                `No remote configured for branch ${branch.name}.`,
-                            );
-                            return;
-                        }
-                        await executor.run(["push", "-u", remote, branch.name]);
-                    }
+                    });
                     vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
