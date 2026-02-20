@@ -99,12 +99,12 @@ export function BranchColumn({
     onSelectBranch,
     onBranchAction,
 }: Props): React.ReactElement {
-    const persistedState = useMemo(readPersistedBranchColumnState, []);
+    const [persistedState] = useState(readPersistedBranchColumnState);
     const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
     const [expandedSections, setExpandedSections] = useState<Set<string>>(
         () =>
             new Set(
-                persistedState?.expandedSections.length
+                Array.isArray(persistedState?.expandedSections)
                     ? persistedState.expandedSections
                     : DEFAULT_EXPANDED_SECTIONS,
             ),

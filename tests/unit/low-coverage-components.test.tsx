@@ -8,6 +8,7 @@ import { CommitList } from "../../src/webviews/react/CommitList";
 import { CommitRow } from "../../src/webviews/react/commit-list/CommitRow";
 import { useDragResize } from "../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
+import { resetVsCodeApiCache } from "../../src/webviews/react/shared/vscodeApi";
 import { flush, initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
 
 initReactDomTestEnvironment();
@@ -323,6 +324,7 @@ describe("low coverage components", () => {
 
             unmount(root, container);
         } finally {
+            resetVsCodeApiCache();
             if (typeof originalAcquire === "undefined") {
                 delete (globalThis as Record<string, unknown>).acquireVsCodeApi;
             } else {

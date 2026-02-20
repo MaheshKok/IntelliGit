@@ -17,3 +17,7 @@ export function getVsCodeApi<Outbound = unknown, State = unknown>(): VsCodeApi<O
     }
     return api as VsCodeApi<Outbound, State>;
 }
+
+export function resetVsCodeApiCache(): void {
+    api = null;
+}

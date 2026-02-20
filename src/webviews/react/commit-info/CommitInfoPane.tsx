@@ -113,7 +113,16 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                 color="var(--vscode-descriptionForeground)"
                 borderBottom="1px solid var(--vscode-panel-border)"
                 cursor="pointer"
+                tabIndex={0}
+                role="button"
+                aria-expanded={!filesCollapsed}
                 onClick={() => setFilesCollapsed((v) => !v)}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setFilesCollapsed((v) => !v);
+                    }
+                }}
             >
                 {filesCollapsed ? "\u25B6" : "\u25BC"} Changed Files
             </Box>
@@ -172,7 +181,16 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                     fontSize="12px"
                     color="var(--vscode-descriptionForeground)"
                     cursor="pointer"
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={!detailCollapsed}
                     onClick={() => setDetailCollapsed((v) => !v)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setDetailCollapsed((v) => !v);
+                        }
+                    }}
                 >
                     {detailCollapsed ? "\u25B6" : "\u25BC"} Commit Details
                 </Box>

@@ -26,6 +26,44 @@ const MIN_INFO_WIDTH = 250;
 const MAX_INFO_WIDTH = 760;
 const DEFAULT_INFO_WIDTH = 330;
 
+function useColumnDrag(
+    width: number,
+    setWidth: React.Dispatch<React.SetStateAction<number>>,
+    min: number,
+    max: number,
+    invert: boolean,
+): (e: React.MouseEvent) => void {
+    const draggingRef = useRef(false);
+    return useCallback(
+        (e: React.MouseEvent) => {
+            e.preventDefault();
+            draggingRef.current = true;
+            const startX = e.clientX;
+            const startWidth = width;
+
+            const onMouseMove = (ev: MouseEvent) => {
+                if (!draggingRef.current) return;
+                const delta = invert ? startX - ev.clientX : ev.clientX - startX;
+                setWidth(Math.max(min, Math.min(max, startWidth + delta)));
+            };
+
+            const onMouseUp = () => {
+                draggingRef.current = false;
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            };
+
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", onMouseUp);
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+        },
+        [width, setWidth, min, max, invert],
+    );
+}
+
 function App(): React.ReactElement {
     const [commits, setCommits] = useState<Commit[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
@@ -37,9 +75,9 @@ function App(): React.ReactElement {
     const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
     const [infoWidth, setInfoWidth] = useState(DEFAULT_INFO_WIDTH);
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
-    const dragging = useRef(false);
-    const infoDragging = useRef(false);
     const loadingMore = useRef(false);
+    const onDividerMouseDown = useColumnDrag(branchWidth, setBranchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH, false);
+    const onInfoDividerMouseDown = useColumnDrag(infoWidth, setInfoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH, true);
 
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
@@ -115,73 +153,6 @@ function App(): React.ReactElement {
     const handleCommitAction = useCallback((action: CommitAction, hash: string) => {
         vscode.postMessage({ type: "commitAction", action, hash });
     }, []);
-
-    // Resizable divider via mouse events on document
-    const onDividerMouseDown = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            dragging.current = true;
-            const startX = e.clientX;
-            const startWidth = branchWidth;
-
-            const onMouseMove = (ev: MouseEvent) => {
-                if (!dragging.current) return;
-                const delta = ev.clientX - startX;
-                const newWidth = Math.max(
-                    MIN_BRANCH_WIDTH,
-                    Math.min(MAX_BRANCH_WIDTH, startWidth + delta),
-                );
-                setBranchWidth(newWidth);
-            };
-
-            const onMouseUp = () => {
-                dragging.current = false;
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
-            };
-
-            document.addEventListener("mousemove", onMouseMove);
-            document.addEventListener("mouseup", onMouseUp);
-            document.body.style.cursor = "col-resize";
-            document.body.style.userSelect = "none";
-        },
-        [branchWidth],
-    );
-
-    const onInfoDividerMouseDown = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            infoDragging.current = true;
-            const startX = e.clientX;
-            const startWidth = infoWidth;
-
-            const onMouseMove = (ev: MouseEvent) => {
-                if (!infoDragging.current) return;
-                const delta = startX - ev.clientX;
-                const newWidth = Math.max(
-                    MIN_INFO_WIDTH,
-                    Math.min(MAX_INFO_WIDTH, startWidth + delta),
-                );
-                setInfoWidth(newWidth);
-            };
-
-            const onMouseUp = () => {
-                infoDragging.current = false;
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
-            };
-
-            document.addEventListener("mousemove", onMouseMove);
-            document.addEventListener("mouseup", onMouseUp);
-            document.body.style.cursor = "col-resize";
-            document.body.style.userSelect = "none";
-        },
-        [infoWidth],
-    );
 
     return (
         <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>

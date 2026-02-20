@@ -213,10 +213,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const showDeletedBranchActions = async (branch: Branch): Promise<void> => {
         const restoreLabel = "Restore";
         const deleteTrackedLabel = "Delete Tracked Branch";
+        const tracked = resolveTrackedRemoteBranch(branch);
+        const buttons = tracked
+            ? [restoreLabel, deleteTrackedLabel]
+            : [restoreLabel];
         const action = await vscode.window.showInformationMessage(
             `Deleted: ${branch.name}`,
-            restoreLabel,
-            deleteTrackedLabel,
+            ...buttons,
         );
 
         if (action === restoreLabel) {
@@ -237,15 +240,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return;
         }
 
-        if (action === deleteTrackedLabel) {
-            const tracked = resolveTrackedRemoteBranch(branch);
-            if (!tracked) {
-                vscode.window.showWarningMessage(
-                    `No tracked remote branch found for '${branch.name}'.`,
-                );
-                return;
-            }
-
+        if (action === deleteTrackedLabel && tracked) {
             const confirm = await vscode.window.showWarningMessage(
                 `Delete tracked branch '${tracked.remote}/${tracked.remoteBranch}'?`,
                 { modal: true },
