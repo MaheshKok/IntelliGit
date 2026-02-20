@@ -45,6 +45,7 @@ interface CommitGraphViewState {
 }
 
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote"];
+const CURRENT_BRANCH_ICON_TEAL = "#7fd4cf";
 
 function readPersistedBranchColumnState(): BranchColumnPersistState | null {
     try {
@@ -226,7 +227,7 @@ export function BranchColumn({
                         }}
                         style={HEAD_ROW_STYLE}
                     >
-                        <TagIcon />
+                        <TagIcon color={CURRENT_BRANCH_ICON_TEAL} stretchX={1.22} />
                         <span style={HEAD_LABEL_STYLE}>HEAD ({current.name})</span>
                     </div>
                 </div>

@@ -13,6 +13,10 @@ import {
 } from "../styles";
 import type { TreeNode } from "../types";
 
+const BRANCH_TREE_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
+const CURRENT_BRANCH_ICON_TEAL = "#7fd4cf";
+const DEFAULT_BRANCH_ICON_YELLOW = "#f2c94c";
+
 interface Props {
     node: TreeNode;
     depth: number;
@@ -196,7 +200,13 @@ export function BranchTreeNodeRow({
             style={rowStyle}
         >
             <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
-            {isCurrent ? <TagIcon /> : isMainLike ? <StarIcon /> : <GitBranchIcon />}
+            {isCurrent ? (
+                <TagIcon color={CURRENT_BRANCH_ICON_TEAL} stretchX={1.22} />
+            ) : isMainLike ? (
+                <StarIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
+            ) : (
+                <GitBranchIcon color={BRANCH_TREE_ICON_BLUE} />
+            )}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <TrackingBadge branch={node.branch} />}
         </div>

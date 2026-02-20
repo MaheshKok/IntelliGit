@@ -25,9 +25,15 @@ export function GitBranchIcon({
 
 export function TagIcon({
     color = "var(--vscode-icon-foreground, currentColor)",
+    stretchX = 1,
 }: {
     color?: string;
+    stretchX?: number;
 }): React.ReactElement {
+    const iconStyle =
+        stretchX === 1
+            ? BASE_ICON_STYLE
+            : { ...BASE_ICON_STYLE, transform: `scaleX(${stretchX})`, transformOrigin: "center" };
     return (
         <svg
             width={NODE_ICON_SIZE}
@@ -35,7 +41,7 @@ export function TagIcon({
             viewBox="0 0 16 16"
             aria-hidden="true"
             focusable="false"
-            style={BASE_ICON_STYLE}
+            style={iconStyle}
         >
             <path
                 fill={color}
