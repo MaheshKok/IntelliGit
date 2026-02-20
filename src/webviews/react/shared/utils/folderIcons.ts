@@ -1,4 +1,5 @@
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
+import { getLeafName } from "./path";
 
 export function resolveFolderIcon(
     nameOrPath: string,
@@ -7,7 +8,7 @@ export function resolveFolderIcon(
     folderIcon?: ThemeTreeIcon,
     folderExpandedIcon?: ThemeTreeIcon,
 ): ThemeTreeIcon | undefined {
-    const leafName = nameOrPath.split("/").pop() ?? nameOrPath;
+    const leafName = getLeafName(nameOrPath);
     const nameKey = leafName.trim().toLowerCase();
     const namedIcons = nameKey ? folderIconsByName?.[nameKey] : undefined;
 

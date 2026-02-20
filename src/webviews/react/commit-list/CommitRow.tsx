@@ -1,9 +1,10 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { LuGitBranch, LuTag } from "react-icons/lu";
 import type { Commit } from "../../../types";
+import { RefTypeIcon } from "../shared/components";
 import { formatDateTime } from "../shared/date";
 import { REF_BADGE_COLORS } from "../shared/tokens";
+import { splitCommitRefs, stripTagPrefix, withTagPrefix } from "../shared/utils";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 
@@ -17,8 +18,6 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
 }
 
-const BRANCH_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
-
 function getRefColors(name: string): { bg: string; fg: string } {
     if (name.includes("HEAD")) return REF_BADGE_COLORS.head;
     if (name.startsWith("tag:")) return REF_BADGE_COLORS.tag;
@@ -28,7 +27,7 @@ function getRefColors(name: string): { bg: string; fg: string } {
 
 function RefBadge({ name }: { name: string }): React.ReactElement {
     const colors = getRefColors(name);
-    const label = name.startsWith("tag:") ? name.slice(4).trim() : name;
+    const label = stripTagPrefix(name);
     return (
         <span
             style={{
@@ -52,22 +51,6 @@ function RefBadge({ name }: { name: string }): React.ReactElement {
     );
 }
 
-function splitRefs(refs: string[]): {
-    branches: string[];
-    tags: string[];
-} {
-    const branches: string[] = [];
-    const tags: string[] = [];
-    for (const ref of refs) {
-        if (ref.startsWith("tag:")) {
-            tags.push(ref.slice(4).trim());
-        } else {
-            branches.push(ref);
-        }
-    }
-    return { branches, tags };
-}
-
 function TooltipRefRow({
     kind,
     name,
@@ -75,8 +58,6 @@ function TooltipRefRow({
     kind: "branch" | "tag";
     name: string;
 }): React.ReactElement {
-    const Icon = kind === "branch" ? LuGitBranch : LuTag;
-    const iconColor = kind === "branch" ? BRANCH_ICON_BLUE : REF_BADGE_COLORS.tag.bg;
     return (
         <span
             style={{
@@ -89,8 +70,8 @@ function TooltipRefRow({
             }}
             title={name}
         >
-            <span style={{ display: "inline-flex", color: iconColor, flexShrink: 0 }}>
-                <Icon size={12} />
+            <span style={{ display: "inline-flex", flexShrink: 0 }}>
+                <RefTypeIcon kind={kind} size={12} />
             </span>
             <span
                 style={{
@@ -119,9 +100,9 @@ function CommitMessageCell({
         y: number;
         placement: "above" | "below";
     } | null>(null);
-    const { branches: branchRefs, tags: tagRefs } = splitRefs(refs);
+    const { branches: branchRefs, tags: tagRefs } = splitCommitRefs(refs);
     const branchRefsCount = branchRefs.length;
-    const visibleTagRefs = tagRefs.slice(0, 2).map((tag) => `tag:${tag}`);
+    const visibleTagRefs = tagRefs.slice(0, 2).map((tag) => withTagPrefix(tag));
     const hiddenTagCount = Math.max(0, tagRefs.length - visibleTagRefs.length);
     const tooltipText =
         refs.length > 0
@@ -178,7 +159,7 @@ function CommitMessageCell({
                     }}
                     title={`${branchRefsCount} branch label${branchRefsCount === 1 ? "" : "s"}`}
                 >
-                    <LuGitBranch size={12} />
+                    <RefTypeIcon kind="branch" size={12} />
                     {branchRefsCount}
                 </span>
             )}
@@ -200,7 +181,7 @@ function CommitMessageCell({
                     }}
                     title={`${hiddenTagCount} more tag${hiddenTagCount === 1 ? "" : "s"}`}
                 >
-                    <LuTag size={11} />+{hiddenTagCount}
+                    <RefTypeIcon kind="tag" size={11} />+{hiddenTagCount}
                 </span>
             )}
 

@@ -10,7 +10,7 @@ import type {
     CommitAction,
     CommitGraphInbound,
 } from "../webviews/react/commitGraphTypes";
-import { IconThemeService } from "./shared/IconThemeService";
+import { IconThemeService } from "./shared";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {

@@ -11,7 +11,7 @@ import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";
 import { runWithStatusBar } from "../utils/statusBar";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
-import { IconThemeService } from "./shared/IconThemeService";
+import { IconThemeService } from "./shared";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";

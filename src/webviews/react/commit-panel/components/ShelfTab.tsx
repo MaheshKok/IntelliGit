@@ -9,7 +9,7 @@ import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
-import { resolveFolderIcon } from "../../shared/utils";
+import { getLeafName, resolveFolderIcon } from "../../shared/utils";
 
 interface Props {
     stashes: StashEntry[];
@@ -290,7 +290,7 @@ function ShelfFileTree({
         <>
             {entries.map((entry) => {
                 if (entry.type === "file") {
-                    const fileName = entry.file.path.split("/").pop() ?? entry.file.path;
+                    const fileName = getLeafName(entry.file.path);
                     return (
                         <Flex
                             key={entry.file.path}

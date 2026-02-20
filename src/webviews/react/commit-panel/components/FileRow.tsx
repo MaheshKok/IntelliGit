@@ -8,6 +8,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { StatusBadge } from "./StatusBadge";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
+import { getLeafName, getParentPath } from "../../shared/utils";
 
 interface Props {
     file: WorkingFile;
@@ -27,8 +28,8 @@ function FileRowInner({
     onClick,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
-    const fileName = file.path.split("/").pop() ?? file.path;
-    const dir = file.path.split("/").slice(0, -1).join("/");
+    const fileName = getLeafName(file.path);
+    const dir = getParentPath(file.path);
 
     return (
         <Flex

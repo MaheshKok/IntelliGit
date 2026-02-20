@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import { LuGitBranch, LuTag } from "react-icons/lu";
 import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
-import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
-import { resolveFolderIcon } from "../shared/utils";
+import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
+import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
 import {
     buildFileTree,
     collectDirPaths,
@@ -23,24 +22,6 @@ const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
 const INFO_SECTION_GUIDE = 7;
-const BRANCH_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
-const TAG_ICON_ORANGE = "#ff9800";
-
-function splitRefs(refs: string[]): {
-    branches: string[];
-    tags: string[];
-} {
-    const branches: string[] = [];
-    const tags: string[] = [];
-    for (const ref of refs) {
-        if (ref.startsWith("tag:")) {
-            tags.push(ref.slice(4).trim());
-        } else {
-            branches.push(ref);
-        }
-    }
-    return { branches, tags };
-}
 
 function CommitRefRow({
     kind,
@@ -49,8 +30,6 @@ function CommitRefRow({
     kind: "branch" | "tag";
     name: string;
 }): React.ReactElement {
-    const Icon = kind === "branch" ? LuGitBranch : LuTag;
-    const iconColor = kind === "branch" ? BRANCH_ICON_BLUE : TAG_ICON_ORANGE;
     return (
         <Flex
             align="center"
@@ -60,8 +39,8 @@ function CommitRefRow({
             color="var(--vscode-foreground)"
             title={name}
         >
-            <Box as="span" display="inline-flex" color={iconColor} flexShrink={0}>
-                <Icon size={12} />
+            <Box as="span" display="inline-flex" flexShrink={0}>
+                <RefTypeIcon kind={kind} size={12} />
             </Box>
             <Box
                 as="span"
@@ -103,7 +82,7 @@ export function CommitInfoPane({
 
     const tree = useMemo(() => buildFileTree(detail?.files ?? []), [detail?.files]);
     const { branches: branchRefs, tags: tagRefs } = useMemo(
-        () => splitRefs(detail?.refs ?? []),
+        () => splitCommitRefs(detail?.refs ?? []),
         [detail?.refs],
     );
 
@@ -442,7 +421,7 @@ function CommitFolderRow({
 
 function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
-    const fileName = file.path.split("/").pop() ?? file.path;
+    const fileName = getLeafName(file.path);
 
     return (
         <Flex

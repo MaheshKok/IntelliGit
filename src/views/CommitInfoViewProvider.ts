@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { CommitDetail, ThemeFolderIconMap } from "../types";
 import type { CommitInfoInbound } from "../webviews/react/commitInfoTypes";
-import { IconThemeService } from "./shared/IconThemeService";
+import { IconThemeService } from "./shared";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
