@@ -10,6 +10,9 @@ const initialState: CommitPanelState = {
     stashes: [],
     shelfFiles: [],
     selectedShelfIndex: null,
+    folderIcon: undefined,
+    folderExpandedIcon: undefined,
+    iconFonts: [],
     commitMessage: "",
     isAmend: false,
     isRefreshing: false,
@@ -25,6 +28,9 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 stashes: action.stashes,
                 shelfFiles: action.shelfFiles,
                 selectedShelfIndex: action.selectedShelfIndex,
+                folderIcon: action.folderIcon,
+                folderExpandedIcon: action.folderExpandedIcon,
+                iconFonts: action.iconFonts ?? state.iconFonts,
                 error: null,
             };
         case "SET_REFRESHING":
@@ -58,6 +64,9 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         stashes: msg.stashes,
                         shelfFiles: msg.shelfFiles,
                         selectedShelfIndex: msg.selectedShelfIndex,
+                        folderIcon: msg.folderIcon,
+                        folderExpandedIcon: msg.folderExpandedIcon,
+                        iconFonts: msg.iconFonts,
                     });
                     break;
                 case "lastCommitMessage":

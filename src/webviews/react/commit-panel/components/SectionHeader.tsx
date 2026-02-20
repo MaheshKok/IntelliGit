@@ -37,6 +37,7 @@ export function SectionHeader({
             userSelect="none"
             fontWeight={700}
             fontSize="12px"
+            fontFamily="var(--vscode-font-family)"
             lineHeight="20px"
             position="relative"
             color="var(--vscode-foreground)"

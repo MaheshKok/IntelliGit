@@ -5,10 +5,11 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { WorkingFile, StashEntry } from "../types";
+import type { ThemeIconFont, WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";
+import { FileIconThemeResolver, type ThemeFolderIcons } from "../utils/fileIconTheme";
 import { runWithStatusBar } from "../utils/statusBar";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
 
@@ -20,6 +21,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private stashes: StashEntry[] = [];
     private selectedShelfIndex: number | null = null;
     private shelfFiles: WorkingFile[] = [];
+    private folderIcons: ThemeFolderIcons = {};
+    private iconFonts: ThemeIconFont[] = [];
+    private iconResolver?: FileIconThemeResolver;
     private lastFileCount = 0;
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
@@ -40,6 +44,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
+        this.iconResolver = new FileIconThemeResolver(webviewView.webview);
         const thisView = webviewView;
         webviewView.onDidDispose(() => {
             if (this.view === thisView) {
@@ -74,8 +79,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "refreshing", active: true });
         vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true);
         try {
-            const files = await this.gitOps.getStatus();
+            await this.ensureThemeResourceRoot();
+            const files = await this.decorateFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
+            this.folderIcons = await this.getFolderIcons();
+            this.iconFonts = await this.getThemeFonts();
 
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -89,7 +97,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             const shelfFiles =
                 selectedShelfIndex !== null
-                    ? await this.gitOps.getShelvedFiles(selectedShelfIndex)
+                    ? await this.decorateFiles(
+                          await this.gitOps.getShelvedFiles(selectedShelfIndex),
+                      )
                     : [];
 
             this.files = files;
@@ -107,12 +117,23 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 stashes,
                 shelfFiles,
                 selectedShelfIndex,
+                folderIcon: this.folderIcons.folderIcon,
+                folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+                iconFonts: this.iconFonts,
             });
             this.postToWebview({ type: "refreshing", active: false });
-            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
+            vscode.commands.executeCommand(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
         } catch (err) {
             this.postToWebview({ type: "refreshing", active: false });
-            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
+            vscode.commands.executeCommand(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
             throw err;
         }
     }
@@ -284,7 +305,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const index = msg.index as number;
                 this.selectedShelfIndex = Number.isFinite(index) ? index : null;
                 if (this.selectedShelfIndex !== null) {
-                    this.shelfFiles = await this.gitOps.getShelvedFiles(this.selectedShelfIndex);
+                    this.shelfFiles = await this.decorateFiles(
+                        await this.gitOps.getShelvedFiles(this.selectedShelfIndex),
+                    );
                 } else {
                     this.shelfFiles = [];
                 }
@@ -294,6 +317,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     stashes: this.stashes,
                     shelfFiles: this.shelfFiles,
                     selectedShelfIndex: this.selectedShelfIndex,
+                    folderIcon: this.folderIcons.folderIcon,
+                    folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+                    iconFonts: this.iconFonts,
                 });
                 break;
             }
@@ -355,6 +381,32 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     private postToWebview(msg: InboundMessage): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    private async decorateFiles(files: WorkingFile[]): Promise<WorkingFile[]> {
+        if (!this.iconResolver) return files;
+        return this.iconResolver.decorateWorkingFiles(files);
+    }
+
+    private async getFolderIcons(): Promise<ThemeFolderIcons> {
+        if (!this.iconResolver) return {};
+        return this.iconResolver.getFolderIcons();
+    }
+
+    private async getThemeFonts(): Promise<ThemeIconFont[]> {
+        if (!this.iconResolver) return [];
+        return this.iconResolver.getThemeFonts();
+    }
+
+    private async ensureThemeResourceRoot(): Promise<void> {
+        if (!this.iconResolver || !this.view) return;
+        const themeRoot = await this.iconResolver.getThemeResourceRootUri();
+        if (!themeRoot) return;
+        const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
+        this.view.webview.options = {
+            ...this.view.webview.options,
+            localResourceRoots: [distRoot, themeRoot],
+        };
     }
 
     private getWorkspaceRoot(): vscode.Uri {

@@ -1,7 +1,8 @@
 import React from "react";
-import type { Branch } from "../../../../types";
+import type { Branch, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
-import { ChevronIcon, FolderIcon, GitBranchIcon, StarIcon, TagIcon } from "../icons";
+import { ChevronIcon, GitBranchIcon, StarIcon, TagIcon } from "../icons";
+import { TreeFolderIcon } from "../../commit-panel/components/TreeIcons";
 import {
     NODE_LABEL_STYLE,
     ROW_STYLE,
@@ -22,6 +23,8 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, branch: Branch) => void;
     filterNeedle: string;
     prefix: string;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
 }
 
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
@@ -103,6 +106,8 @@ export function BranchTreeNodeRow({
     onContextMenu,
     filterNeedle,
     prefix,
+    folderIcon,
+    folderExpandedIcon,
 }: Props): React.ReactElement {
     const handleActivateKey = (
         event: React.KeyboardEvent<HTMLDivElement>,
@@ -132,7 +137,15 @@ export function BranchTreeNodeRow({
                     style={rowStyle}
                 >
                     <ChevronIcon expanded={isExpanded} />
-                    <FolderIcon />
+                    <span
+                        data-branch-icon="folder"
+                        style={{ display: "inline-flex", marginRight: 4, flexShrink: 0 }}
+                    >
+                        <TreeFolderIcon
+                            isExpanded={isExpanded}
+                            icon={isExpanded ? folderExpandedIcon : folderIcon}
+                        />
+                    </span>
                     <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
                 </div>
                 {isExpanded &&
@@ -148,6 +161,8 @@ export function BranchTreeNodeRow({
                             onContextMenu={onContextMenu}
                             filterNeedle={filterNeedle}
                             prefix={folderKey}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
                         />
                     ))}
             </>

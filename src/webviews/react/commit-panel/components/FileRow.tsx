@@ -44,6 +44,7 @@ function FileRowInner({
             minH="20px"
             lineHeight="20px"
             fontSize="12px"
+            fontFamily="var(--vscode-font-family)"
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -61,7 +62,7 @@ function FileRowInner({
             <IndentGuides treeDepth={depth} />
             <Box as="span" w="12px" flexShrink={0} />
             <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
-            <FileTypeIcon filename={fileName} status={file.status} />
+            <FileTypeIcon filename={fileName} status={file.status} icon={file.icon} />
             <Box
                 as="span"
                 flex={1}

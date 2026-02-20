@@ -121,12 +121,7 @@ function ToolbarButton({
                 onClick={disabled ? undefined : onClick}
                 isDisabled={disabled}
                 icon={
-                    <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        style={svgStyle}
-                    >
+                    <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>
                         {children}
                     </svg>
                 }

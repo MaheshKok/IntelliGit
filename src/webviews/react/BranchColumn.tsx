@@ -3,7 +3,7 @@
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
 import React, { useMemo, useState, useCallback, useEffect } from "react";
-import type { Branch } from "../../types";
+import type { Branch, ThemeTreeIcon } from "../../types";
 import { isBranchAction, type BranchAction } from "./commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { getBranchMenuItems } from "./branch-column/menu";
@@ -29,6 +29,8 @@ interface Props {
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
     onBranchAction: (action: BranchAction, branchName: string) => void;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
 }
 
 interface BranchColumnPersistState {
@@ -79,7 +81,7 @@ function toggleSetKey(
 
 function getIconAnchorX(row: HTMLElement): number {
     const rowRect = row.getBoundingClientRect();
-    const firstIcon = row.querySelector("svg");
+    const firstIcon = row.querySelector("[data-branch-icon], svg, img");
     return firstIcon ? firstIcon.getBoundingClientRect().right + 2 : rowRect.left + 20;
 }
 
@@ -98,6 +100,8 @@ export function BranchColumn({
     selectedBranch,
     onSelectBranch,
     onBranchAction,
+    folderIcon,
+    folderExpandedIcon,
 }: Props): React.ReactElement {
     const [persistedState] = useState(readPersistedBranchColumnState);
     const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
@@ -245,6 +249,8 @@ export function BranchColumn({
                             onContextMenu={handleBranchContextMenu}
                             filterNeedle={filterNeedle}
                             prefix="local"
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
                         />
                     ))}
                 </div>
@@ -283,6 +289,8 @@ export function BranchColumn({
                                             onContextMenu={handleBranchContextMenu}
                                             filterNeedle={filterNeedle}
                                             prefix={`remote/${remote}`}
+                                            folderIcon={folderIcon}
+                                            folderExpandedIcon={folderExpandedIcon}
                                         />
                                     ))}
                             </div>

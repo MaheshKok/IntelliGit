@@ -8,10 +8,12 @@ import { FileTree } from "./FileTree";
 import { CommitArea } from "./CommitArea";
 import { useDragResize } from "../hooks/useDragResize";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import type { WorkingFile } from "../../../../types";
+import type { ThemeTreeIcon, WorkingFile } from "../../../../types";
 
 interface Props {
     files: WorkingFile[];
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
     commitMessage: string;
     isAmend: boolean;
     isRefreshing: boolean;
@@ -29,6 +31,8 @@ interface Props {
 
 export function CommitTab({
     files,
+    folderIcon,
+    folderExpandedIcon,
     commitMessage,
     isAmend,
     isRefreshing,
@@ -101,6 +105,8 @@ export function CommitTab({
                 <FileTree
                     files={files}
                     groupByDir={groupByDir}
+                    folderIcon={folderIcon}
+                    folderExpandedIcon={folderExpandedIcon}
                     checkedPaths={checkedPaths}
                     onToggleFile={onToggleFile}
                     onToggleFolder={onToggleFolder}

@@ -17,10 +17,10 @@ export const BRANCH_ROW_CLASS_CSS = `
         color: var(--vscode-list-activeSelectionForeground) !important;
     }
     .branch-track-push {
-        color: #5f9ce6 !important;
+        color: var(--vscode-gitDecoration-addedResourceForeground, #73c991) !important;
     }
     .branch-track-pull {
-        color: #e58a3a !important;
+        color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39) !important;
     }
     .branch-search-input:focus-visible {
         outline-color: var(--vscode-focusBorder, #007acc);
@@ -30,7 +30,8 @@ export const BRANCH_ROW_CLASS_CSS = `
 export const PANEL_STYLE: CSSProperties = {
     height: "100%",
     overflow: "auto",
-    fontSize: "12px",
+    fontSize: "var(--vscode-font-size)",
+    fontFamily: "var(--vscode-font-family)",
     borderRight: "1px solid var(--vscode-panel-border)",
     userSelect: "none",
 };
@@ -41,7 +42,7 @@ export const SEARCH_CONTAINER_STYLE: CSSProperties = {
     alignItems: "center",
     gap: 6,
     padding: "1px 8px",
-    color: "var(--vscode-charts-cyan, #77d4cf)",
+    color: "var(--vscode-icon-foreground)",
     borderBottom: "1px solid rgba(255,255,255,0.08)",
 };
 
@@ -55,6 +56,7 @@ export const SEARCH_INPUT_STYLE: CSSProperties = {
     color: "var(--vscode-input-foreground, #d8dbe2)",
     padding: "0 6px",
     fontSize: 12,
+    fontFamily: "var(--vscode-font-family)",
     outline: "2px solid transparent",
 };
 
@@ -134,13 +136,13 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
 };
 
 export const TRACKING_PUSH_STYLE: CSSProperties = {
-    color: "#5f9ce6",
+    color: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
     opacity: 0.95,
     fontWeight: 700,
 };
 
 export const TRACKING_PULL_STYLE: CSSProperties = {
-    color: "#e58a3a",
+    color: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
     opacity: 0.95,
     fontWeight: 700,
 };
@@ -155,7 +157,7 @@ export const BRANCH_HIGHLIGHT_STYLE: CSSProperties = {
 export const BASE_ICON_STYLE: CSSProperties = {
     flexShrink: 0,
     marginRight: 4,
-    opacity: 0.88,
+    opacity: 0.92,
 };
 
 export function getChevronIconStyle(expanded: boolean): CSSProperties {

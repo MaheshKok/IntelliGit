@@ -3,14 +3,18 @@
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
+import type { ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
+import { TreeFolderIcon } from "./TreeIcons";
 
 interface Props {
     name: string;
     dirPath: string;
     depth: number;
     isExpanded: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
     fileCount: number;
     isAllChecked: boolean;
     isSomeChecked: boolean;
@@ -23,6 +27,8 @@ function FolderRowInner({
     dirPath,
     depth,
     isExpanded,
+    folderIcon,
+    folderExpandedIcon,
     fileCount,
     isAllChecked,
     isSomeChecked,
@@ -40,6 +46,7 @@ function FolderRowInner({
             minH="20px"
             lineHeight="20px"
             fontSize="12px"
+            fontFamily="var(--vscode-font-family)"
             cursor="pointer"
             position="relative"
             whiteSpace="nowrap"
@@ -69,12 +76,10 @@ function FolderRowInner({
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}
             />
-            <Box as="svg" w="14px" h="14px" flexShrink={0} viewBox="0 0 16 16">
-                <path
-                    fill="#b89d68"
-                    d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"
-                />
-            </Box>
+            <TreeFolderIcon
+                isExpanded={isExpanded}
+                icon={isExpanded ? folderExpandedIcon : folderIcon}
+            />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.92}>
                 {name}
             </Box>

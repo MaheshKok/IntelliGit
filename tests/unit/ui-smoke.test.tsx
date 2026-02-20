@@ -140,7 +140,7 @@ describe("webview ui smoke", () => {
                 <VscCheckbox isChecked={false} isIndeterminate={true} onChange={vi.fn()} />
             </>,
         );
-        expect(html).toContain("JN");
+        expect(html).toContain('data-tree-icon="file"');
         expect(html).toContain("svg");
     });
 

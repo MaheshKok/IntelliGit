@@ -4,8 +4,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Flex, Box, Button } from "@chakra-ui/react";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import type { StashEntry, WorkingFile } from "../../../../types";
+import type { StashEntry, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
 
@@ -13,11 +14,19 @@ interface Props {
     stashes: StashEntry[];
     shelfFiles: WorkingFile[];
     selectedIndex: number | null;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
 }
 
 type ShelfActionKind = "apply" | "pop" | "delete";
 
-export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.ReactElement {
+export function ShelfTab({
+    stashes,
+    shelfFiles,
+    selectedIndex,
+    folderIcon,
+    folderExpandedIcon,
+}: Props): React.ReactElement {
     const vscode = getVsCodeApi();
     const tree = useFileTree(shelfFiles, true);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -99,6 +108,7 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                                 py="2px"
                                 minH="24px"
                                 fontSize="12px"
+                                fontFamily="var(--vscode-font-family)"
                                 cursor="pointer"
                                 bg={
                                     isSelected
@@ -166,6 +176,8 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                         <ShelfFileTree
                             entries={tree}
                             expandedDirs={expandedDirs}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
                             onToggleDir={toggleDir}
                             onFileClick={(path) =>
                                 vscode.postMessage({
@@ -254,12 +266,16 @@ function parseShelfMessage(message: string): { title: string; branch: string | n
 function ShelfFileTree({
     entries,
     expandedDirs,
+    folderIcon,
+    folderExpandedIcon,
     onToggleDir,
     onFileClick,
     depth = 0,
 }: {
     entries: TreeEntry[];
     expandedDirs: Set<string>;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
     onToggleDir: (path: string) => void;
     onFileClick: (path: string) => void;
     depth?: number;
@@ -278,13 +294,18 @@ function ShelfFileTree({
                             minH="20px"
                             gap="4px"
                             fontSize="12px"
+                            fontFamily="var(--vscode-font-family)"
                             cursor="pointer"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onFileClick(entry.file.path)}
                             title={entry.file.path}
                         >
                             <Box as="span" w="11px" />
-                            <FileTypeIcon filename={fileName} status={entry.file.status} />
+                            <FileTypeIcon
+                                filename={fileName}
+                                status={entry.file.status}
+                                icon={entry.file.icon}
+                            />
                             <Box
                                 as="span"
                                 flex={1}
@@ -310,6 +331,7 @@ function ShelfFileTree({
                             minH="20px"
                             gap="4px"
                             fontSize="12px"
+                            fontFamily="var(--vscode-font-family)"
                             cursor="pointer"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onToggleDir(entry.path)}
@@ -323,12 +345,10 @@ function ShelfFileTree({
                             >
                                 &#9654;
                             </Box>
-                            <Box as="svg" w="14px" h="14px" flexShrink={0} viewBox="0 0 16 16">
-                                <path
-                                    fill="#b89d68"
-                                    d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"
-                                />
-                            </Box>
+                            <TreeFolderIcon
+                                isExpanded={isExpanded}
+                                icon={isExpanded ? folderExpandedIcon : folderIcon}
+                            />
                             <Box
                                 as="span"
                                 flex={1}
@@ -352,6 +372,8 @@ function ShelfFileTree({
                             <ShelfFileTree
                                 entries={entry.children}
                                 expandedDirs={expandedDirs}
+                                folderIcon={folderIcon}
+                                folderExpandedIcon={folderExpandedIcon}
                                 onToggleDir={onToggleDir}
                                 onFileClick={onFileClick}
                                 depth={depth + 1}

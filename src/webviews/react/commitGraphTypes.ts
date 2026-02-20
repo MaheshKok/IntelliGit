@@ -1,7 +1,7 @@
 // Typed message protocol for communication between the commit graph webview
 // and the extension host. Defines all inbound and outbound message shapes.
 
-import type { Branch, Commit, CommitDetail } from "../../types";
+import type { Branch, Commit, CommitDetail, ThemeIconFont, ThemeTreeIcon } from "../../types";
 
 export const BRANCH_ACTION_VALUES = [
     "checkout",
@@ -62,5 +62,11 @@ export type CommitGraphInbound =
       }
     | { type: "setBranches"; branches: Branch[] }
     | { type: "setSelectedBranch"; branch: string | null }
-    | { type: "setCommitDetail"; detail: CommitDetail }
+    | {
+          type: "setCommitDetail";
+          detail: CommitDetail;
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          iconFonts?: ThemeIconFont[];
+      }
     | { type: "clearCommitDetail" };

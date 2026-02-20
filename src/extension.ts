@@ -44,7 +44,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Register views ---
 
     const emptyTreeProvider: vscode.TreeDataProvider<never> = {
-        getTreeItem: () => { throw new Error("unreachable"); },
+        getTreeItem: () => {
+            throw new Error("unreachable");
+        },
         getChildren: () => [],
     };
     const badgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
@@ -52,9 +54,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     });
 
     const updateBadge = (count: number) => {
-        badgeView.badge = count > 0
-            ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
-            : undefined;
+        badgeView.badge =
+            count > 0
+                ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
+                : undefined;
     };
 
     context.subscriptions.push(
@@ -234,9 +237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const restoreLabel = "Restore";
         const deleteTrackedLabel = "Delete Tracked Branch";
         const tracked = resolveTrackedRemoteBranch(branch);
-        const buttons = tracked
-            ? [restoreLabel, deleteTrackedLabel]
-            : [restoreLabel];
+        const buttons = tracked ? [restoreLabel, deleteTrackedLabel] : [restoreLabel];
         const action = await vscode.window.showInformationMessage(
             `Deleted: ${branch.name}`,
             ...buttons,

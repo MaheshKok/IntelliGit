@@ -2,7 +2,7 @@ import React from "react";
 import { BASE_ICON_STYLE, getChevronIconStyle, NODE_ICON_SIZE } from "./styles";
 
 export function GitBranchIcon({
-    color = "var(--vscode-charts-blue, #59c3ff)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -24,7 +24,7 @@ export function GitBranchIcon({
 }
 
 export function TagIcon({
-    color = "var(--vscode-gitDecoration-addedResourceForeground, #86d8cf)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -46,7 +46,7 @@ export function TagIcon({
 }
 
 export function StarIcon({
-    color = "var(--vscode-editorLightBulb-foreground, #ebd25d)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -83,7 +83,7 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
 }
 
 export function FolderIcon({
-    color = "var(--vscode-icon-foreground, #bdc3cf)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {
@@ -105,7 +105,7 @@ export function FolderIcon({
 }
 
 export function RepoIcon({
-    color = "var(--vscode-icon-foreground, #bdc3cf)",
+    color = "var(--vscode-icon-foreground, currentColor)",
 }: {
     color?: string;
 }): React.ReactElement {

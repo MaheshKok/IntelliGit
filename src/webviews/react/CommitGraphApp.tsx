@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
-import type { Branch, Commit, CommitDetail } from "../../types";
+import type { Branch, Commit, CommitDetail, ThemeIconFont, ThemeTreeIcon } from "../../types";
 import type {
     BranchAction,
     CommitAction,
@@ -25,6 +25,24 @@ const DEFAULT_BRANCH_WIDTH = 260;
 const MIN_INFO_WIDTH = 250;
 const MAX_INFO_WIDTH = 760;
 const DEFAULT_INFO_WIDTH = 330;
+
+function ThemeIconFontFaces({ fonts }: { fonts?: ThemeIconFont[] }): React.ReactElement | null {
+    const safeFonts = Array.isArray(fonts) ? fonts : [];
+    if (!safeFonts.length) return null;
+
+    const css = safeFonts
+        .map((font) => {
+            const family = font.fontFamily.replace(/'/g, "\\'");
+            const src = font.src.replace(/'/g, "\\'");
+            const format = font.format ? ` format('${font.format.replace(/'/g, "\\'")}')` : "";
+            const weight = font.weight ?? "normal";
+            const style = font.style ?? "normal";
+            return `@font-face{font-family:'${family}';src:url('${src}')${format};font-weight:${weight};font-style:${style};font-display:block;}`;
+        })
+        .join("");
+
+    return <style>{css}</style>;
+}
 
 function useColumnDrag(
     width: number,
@@ -93,22 +111,43 @@ function App(): React.ReactElement {
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
+    const [folderIcon, setFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
+    const [folderExpandedIcon, setFolderExpandedIcon] = useState<ThemeTreeIcon | undefined>(
+        undefined,
+    );
+    const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
             return typeof w === "number" ? w : DEFAULT_BRANCH_WIDTH;
-        } catch { return DEFAULT_BRANCH_WIDTH; }
+        } catch {
+            return DEFAULT_BRANCH_WIDTH;
+        }
     });
     const [infoWidth, setInfoWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
             return typeof w === "number" ? w : DEFAULT_INFO_WIDTH;
-        } catch { return DEFAULT_INFO_WIDTH; }
+        } catch {
+            return DEFAULT_INFO_WIDTH;
+        }
     });
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
-    const onDividerMouseDown = useColumnDrag(branchWidth, setBranchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH, false);
-    const onInfoDividerMouseDown = useColumnDrag(infoWidth, setInfoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH, true);
+    const onDividerMouseDown = useColumnDrag(
+        branchWidth,
+        setBranchWidth,
+        MIN_BRANCH_WIDTH,
+        MAX_BRANCH_WIDTH,
+        false,
+    );
+    const onInfoDividerMouseDown = useColumnDrag(
+        infoWidth,
+        setInfoWidth,
+        MIN_INFO_WIDTH,
+        MAX_INFO_WIDTH,
+        true,
+    );
 
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
@@ -141,6 +180,9 @@ function App(): React.ReactElement {
                     break;
                 case "setCommitDetail":
                     setSelectedDetail(data.detail);
+                    setFolderIcon(data.folderIcon);
+                    setFolderExpandedIcon(data.folderExpandedIcon);
+                    setIconFonts(data.iconFonts ?? []);
                     break;
                 case "clearCommitDetail":
                     setSelectedDetail(null);
@@ -156,7 +198,9 @@ function App(): React.ReactElement {
         try {
             const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
             vscode.setState({ ...prev, branchWidth, infoWidth });
-        } catch { /* ignore persistence errors */ }
+        } catch {
+            /* ignore persistence errors */
+        }
     }, [branchWidth, infoWidth]);
 
     const handleSelectCommit = useCallback((hash: string) => {
@@ -194,6 +238,7 @@ function App(): React.ReactElement {
 
     return (
         <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+            <ThemeIconFontFaces fonts={iconFonts} />
             {/* Branch column */}
             <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
                 <BranchColumn
@@ -201,6 +246,8 @@ function App(): React.ReactElement {
                     selectedBranch={selectedBranch}
                     onSelectBranch={handleSelectBranch}
                     onBranchAction={handleBranchAction}
+                    folderIcon={folderIcon}
+                    folderExpandedIcon={folderExpandedIcon}
                 />
             </div>
 
@@ -249,7 +296,11 @@ function App(): React.ReactElement {
                         overflow: "hidden",
                     }}
                 >
-                    <CommitInfoPane detail={selectedDetail} />
+                    <CommitInfoPane
+                        detail={selectedDetail}
+                        folderIcon={folderIcon}
+                        folderExpandedIcon={folderExpandedIcon}
+                    />
                 </div>
             </div>
         </div>

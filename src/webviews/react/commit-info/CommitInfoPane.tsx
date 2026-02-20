@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import type { CommitDetail, CommitFile } from "../../../types";
+import type { CommitDetail, CommitFile, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
+import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { REF_BADGE_COLORS } from "../shared/tokens";
@@ -63,7 +64,15 @@ function CommitRefBadge({ name }: { name: string }): React.ReactElement {
     );
 }
 
-export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): React.ReactElement {
+export function CommitInfoPane({
+    detail,
+    folderIcon,
+    folderExpandedIcon,
+}: {
+    detail: CommitDetail | null;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+}): React.ReactElement {
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
     const [filesCollapsed, setFilesCollapsed] = useState(false);
     const [detailCollapsed, setDetailCollapsed] = useState(false);
@@ -132,6 +141,8 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                         entries={tree}
                         depth={0}
                         expandedDirs={expandedDirs}
+                        folderIcon={folderIcon}
+                        folderExpandedIcon={folderExpandedIcon}
                         onToggleDir={(dir) =>
                             setExpandedDirs((prev) => {
                                 const next = new Set(prev);
@@ -267,11 +278,15 @@ function TreeRows({
     entries,
     depth,
     expandedDirs,
+    folderIcon,
+    folderExpandedIcon,
     onToggleDir,
 }: {
     entries: TreeEntry[];
     depth: number;
     expandedDirs: Set<string>;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
     onToggleDir: (path: string) => void;
 }): React.ReactElement {
     return (
@@ -288,6 +303,8 @@ function TreeRows({
                             folder={entry}
                             depth={depth}
                             isExpanded={isExpanded}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
                             fileCount={fileCount}
                             onToggle={() => onToggleDir(entry.path)}
                         />
@@ -296,6 +313,8 @@ function TreeRows({
                                 entries={entry.children}
                                 depth={depth + 1}
                                 expandedDirs={expandedDirs}
+                                folderIcon={folderIcon}
+                                folderExpandedIcon={folderExpandedIcon}
                                 onToggleDir={onToggleDir}
                             />
                         )}
@@ -310,12 +329,16 @@ function CommitFolderRow({
     folder,
     depth,
     isExpanded,
+    folderIcon,
+    folderExpandedIcon,
     fileCount,
     onToggle,
 }: {
     folder: TreeFolder;
     depth: number;
     isExpanded: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
     fileCount: number;
     onToggle: () => void;
 }): React.ReactElement {
@@ -328,6 +351,7 @@ function CommitFolderRow({
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
+            fontFamily="var(--vscode-font-family)"
             cursor="pointer"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -348,14 +372,10 @@ function CommitFolderRow({
             >
                 &#9654;
             </Box>
-            <Box as="span" w="16px" h="16px" flexShrink={0}>
-                <svg viewBox="0 0 16 16" width="16" height="16">
-                    <path
-                        fill="var(--vscode-icon-foreground, currentColor)"
-                        d="M1.5 2A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V5.5A1.5 1.5 0 0 0 14.5 4H7.71L6.85 2.85A.5.5 0 0 0 6.5 2.5H1.5z"
-                    />
-                </svg>
-            </Box>
+            <TreeFolderIcon
+                isExpanded={isExpanded}
+                icon={isExpanded ? folderExpandedIcon : folderIcon}
+            />
             <Box as="span" flex={1} opacity={0.85}>
                 {folder.name}
             </Box>
@@ -378,6 +398,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
+            fontFamily="var(--vscode-font-family)"
             cursor="default"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
@@ -385,7 +406,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
         >
             <InfoIndentGuides treeDepth={depth} />
             <Box as="span" w="14px" flexShrink={0} />
-            <FileTypeIcon filename={fileName} status={file.status} />
+            <FileTypeIcon filename={fileName} status={file.status} icon={file.icon} />
             <Box as="span" flex={1} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                 {fileName}
             </Box>
