@@ -195,6 +195,7 @@ export function BranchTreeNodeRow({
             tabIndex={0}
             style={rowStyle}
         >
+            <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
             {isCurrent ? <TagIcon /> : isMainLike ? <StarIcon /> : <GitBranchIcon />}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <TrackingBadge branch={node.branch} />}

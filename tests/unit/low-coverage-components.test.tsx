@@ -101,7 +101,7 @@ describe("low coverage components", () => {
         expect(messageCell).toBeTruthy();
         const compactRefCell = container.querySelector("[data-commit-tooltip]") as HTMLElement;
         expect(compactRefCell?.getAttribute("data-commit-tooltip")).toContain(
-            "Labels: HEAD -> main",
+            "Branches: HEAD -> main",
         );
 
         const row = container.querySelector("div") as HTMLDivElement;

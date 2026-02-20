@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
+import { LuGitBranch, LuTag } from "react-icons/lu";
 import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
-import { REF_BADGE_COLORS } from "../shared/tokens";
 import {
     buildFileTree,
     collectDirPaths,
@@ -22,45 +22,52 @@ const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
 const INFO_SECTION_GUIDE = 7;
+const BRANCH_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
+const TAG_ICON_ORANGE = "#ff9800";
 
-function CommitRefBadge({ name }: { name: string }): React.ReactElement {
-    const isHead = name.includes("HEAD");
-    const isTag = name.startsWith("tag:");
-    let bg: string;
-    let fg: string;
-
-    if (isHead) {
-        bg = REF_BADGE_COLORS.head.bg;
-        fg = REF_BADGE_COLORS.head.fg;
-    } else if (isTag) {
-        bg = REF_BADGE_COLORS.tag.bg;
-        fg = REF_BADGE_COLORS.tag.fg;
-    } else if (name.startsWith("origin/")) {
-        bg = REF_BADGE_COLORS.remote.bg;
-        fg = REF_BADGE_COLORS.remote.fg;
-    } else {
-        bg = REF_BADGE_COLORS.local.bg;
-        fg = REF_BADGE_COLORS.local.fg;
+function splitRefs(
+    refs: string[],
+): {
+    branches: string[];
+    tags: string[];
+} {
+    const branches: string[] = [];
+    const tags: string[] = [];
+    for (const ref of refs) {
+        if (ref.startsWith("tag:")) {
+            tags.push(ref.slice(4).trim());
+        } else {
+            branches.push(ref);
+        }
     }
+    return { branches, tags };
+}
 
+function CommitRefRow({
+    kind,
+    name,
+}: {
+    kind: "branch" | "tag";
+    name: string;
+}): React.ReactElement {
+    const Icon = kind === "branch" ? LuGitBranch : LuTag;
+    const iconColor = kind === "branch" ? BRANCH_ICON_BLUE : TAG_ICON_ORANGE;
     return (
-        <Box
-            as="span"
-            px="6px"
-            py="1px"
-            borderRadius="3px"
-            fontSize="10px"
+        <Flex
+            align="center"
+            gap="6px"
+            fontSize="11px"
             lineHeight="16px"
-            color={fg}
-            bg={bg}
+            color="var(--vscode-foreground)"
             title={name}
-            maxW="220px"
-            overflow="hidden"
-            textOverflow="ellipsis"
-            whiteSpace="nowrap"
         >
-            {name}
-        </Box>
+            <Box as="span" display="inline-flex" color={iconColor} flexShrink={0}>
+                <Icon size={12} />
+            </Box>
+            <Box as="span" maxW="300px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
+                {name}
+            </Box>
+        </Flex>
     );
 }
 
@@ -90,6 +97,10 @@ export function CommitInfoPane({
     );
 
     const tree = useMemo(() => buildFileTree(detail?.files ?? []), [detail?.files]);
+    const { branches: branchRefs, tags: tagRefs } = useMemo(
+        () => splitRefs(detail?.refs ?? []),
+        [detail?.refs],
+    );
 
     useEffect(() => {
         if (!detail) {
@@ -245,21 +256,42 @@ export function CommitInfoPane({
                         >
                             {detail.email} on {formatDateTime(detail.date)}
                         </Box>
-                        {detail.refs.length > 0 && (
-                            <Box mt="6px">
-                                <Box
-                                    color="var(--vscode-descriptionForeground)"
-                                    fontSize="11px"
-                                    mb="4px"
-                                    opacity={0.85}
-                                >
-                                    Labels
-                                </Box>
-                                <Flex wrap="wrap" gap="4px">
-                                    {detail.refs.map((ref) => (
-                                        <CommitRefBadge key={ref} name={ref} />
-                                    ))}
-                                </Flex>
+                        {(branchRefs.length > 0 || tagRefs.length > 0) && (
+                            <Box mt="14px">
+                                {branchRefs.length > 0 && (
+                                    <Box mb={tagRefs.length > 0 ? "10px" : "0"}>
+                                        <Box
+                                            color="var(--vscode-descriptionForeground)"
+                                            fontSize="11px"
+                                            mb="4px"
+                                            opacity={0.85}
+                                        >
+                                            Branches
+                                        </Box>
+                                        <Flex direction="column" gap="3px">
+                                            {branchRefs.map((ref) => (
+                                                <CommitRefRow key={ref} kind="branch" name={ref} />
+                                            ))}
+                                        </Flex>
+                                    </Box>
+                                )}
+                                {tagRefs.length > 0 && (
+                                    <Box>
+                                        <Box
+                                            color="var(--vscode-descriptionForeground)"
+                                            fontSize="11px"
+                                            mb="4px"
+                                            opacity={0.85}
+                                        >
+                                            Tags
+                                        </Box>
+                                        <Flex direction="column" gap="3px">
+                                            {tagRefs.map((tag) => (
+                                                <CommitRefRow key={`tag:${tag}`} kind="tag" name={tag} />
+                                            ))}
+                                        </Flex>
+                                    </Box>
+                                )}
                             </Box>
                         )}
                         <Box

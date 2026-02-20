@@ -17,6 +17,8 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
 }
 
+const BRANCH_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
+
 function getRefColors(name: string): { bg: string; fg: string } {
     if (name.includes("HEAD")) return REF_BADGE_COLORS.head;
     if (name.startsWith("tag:")) return REF_BADGE_COLORS.tag;
@@ -50,6 +52,63 @@ function RefBadge({ name }: { name: string }): React.ReactElement {
     );
 }
 
+function splitRefs(
+    refs: string[],
+): {
+    branches: string[];
+    tags: string[];
+} {
+    const branches: string[] = [];
+    const tags: string[] = [];
+    for (const ref of refs) {
+        if (ref.startsWith("tag:")) {
+            tags.push(ref.slice(4).trim());
+        } else {
+            branches.push(ref);
+        }
+    }
+    return { branches, tags };
+}
+
+function TooltipRefRow({
+    kind,
+    name,
+}: {
+    kind: "branch" | "tag";
+    name: string;
+}): React.ReactElement {
+    const Icon = kind === "branch" ? LuGitBranch : LuTag;
+    const iconColor = kind === "branch" ? BRANCH_ICON_BLUE : REF_BADGE_COLORS.tag.bg;
+    return (
+        <span
+            style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                minWidth: 0,
+                fontSize: 11,
+                lineHeight: "16px",
+            }}
+            title={name}
+        >
+            <span style={{ display: "inline-flex", color: iconColor, flexShrink: 0 }}>
+                <Icon size={12} />
+            </span>
+            <span
+                style={{
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    color: "var(--vscode-foreground)",
+                }}
+            >
+                {name}
+            </span>
+        </span>
+    );
+}
+
 function CommitMessageCell({
     message,
     refs,
@@ -62,11 +121,16 @@ function CommitMessageCell({
         y: number;
         placement: "above" | "below";
     } | null>(null);
-    const branchRefsCount = refs.filter((ref) => !ref.startsWith("tag:")).length;
-    const tagRefs = refs.filter((ref) => ref.startsWith("tag:"));
-    const visibleTagRefs = tagRefs.slice(0, 2);
+    const { branches: branchRefs, tags: tagRefs } = splitRefs(refs);
+    const branchRefsCount = branchRefs.length;
+    const visibleTagRefs = tagRefs.slice(0, 2).map((tag) => `tag:${tag}`);
     const hiddenTagCount = Math.max(0, tagRefs.length - visibleTagRefs.length);
-    const tooltipText = refs.length > 0 ? `${message}\n\nLabels: ${refs.join(" • ")}` : message;
+    const tooltipText =
+        refs.length > 0
+            ? `${message}\n\nBranches: ${branchRefs.join(" • ")}${
+                  tagRefs.length > 0 ? `\nTags: ${tagRefs.join(" • ")}` : ""
+              }`
+            : message;
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const rect = event.currentTarget.getBoundingClientRect();
@@ -174,35 +238,59 @@ function CommitMessageCell({
                                 color: "var(--vscode-foreground)",
                                 fontSize: "12px",
                                 lineHeight: "16px",
-                                marginBottom: refs.length > 0 ? 6 : 0,
+                                marginBottom: refs.length > 0 ? 14 : 0,
                                 wordBreak: "break-word",
                             }}
                         >
                             {message}
                         </span>
-                        {refs.length > 0 && (
+                        {(branchRefs.length > 0 || tagRefs.length > 0) && (
                             <>
                                 <span
                                     style={{
                                         display: "block",
                                         fontSize: 11,
                                         opacity: 0.82,
-                                        marginBottom: 4,
+                                        marginBottom: 5,
                                     }}
                                 >
-                                    Labels
+                                    Branches
                                 </span>
-                                <span
-                                    style={{
-                                        display: "flex",
-                                        flexWrap: "wrap",
-                                        gap: 4,
-                                    }}
-                                >
-                                    {refs.map((name) => (
-                                        <RefBadge key={name} name={name} />
+                                <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                    {branchRefs.map((name) => (
+                                        <TooltipRefRow key={name} kind="branch" name={name} />
                                     ))}
                                 </span>
+                                {tagRefs.length > 0 && (
+                                    <>
+                                        <span
+                                            style={{
+                                                display: "block",
+                                                fontSize: 11,
+                                                opacity: 0.82,
+                                                marginTop: 12,
+                                                marginBottom: 5,
+                                            }}
+                                        >
+                                            Tags
+                                        </span>
+                                        <span
+                                            style={{
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: 3,
+                                            }}
+                                        >
+                                            {tagRefs.map((name) => (
+                                                <TooltipRefRow
+                                                    key={`tag:${name}`}
+                                                    kind="tag"
+                                                    name={name}
+                                                />
+                                            ))}
+                                        </span>
+                                    </>
+                                )}
                             </>
                         )}
                     </span>,
