@@ -21,6 +21,7 @@ function escapeCssString(value: string): string {
         .replace(/\\/g, "\\\\")
         .replace(/\r/g, "\\r ")
         .replace(/\n/g, "\\a ")
+        .replace(/\)/g, "\\)")
         .replace(/'/g, "\\'");
 }
 

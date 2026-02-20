@@ -247,11 +247,15 @@ async function loadThemeRecursive(
 
     let merged = { ...EMPTY_THEME };
     if (typeof rawTheme.extends === "string") {
+        const parentPath = resolveExtendsPath(normalizedPath, rawTheme.extends);
         try {
-            const parentPath = resolveExtendsPath(normalizedPath, rawTheme.extends);
             const parentTheme = await loadThemeRecursive(parentPath, colorThemeKind, visited);
             merged = mergeTheme(merged, parentTheme);
-        } catch {
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(
+                `Failed to load extended icon theme '${parentPath}' from '${normalizedPath}': ${message}`,
+            );
             // Gracefully degrade to the current file when parent theme resolution fails.
         }
     }
@@ -399,20 +403,21 @@ export class FileIconThemeResolver {
         const contribution = await this.resolveThemeContribution();
         if (!contribution) return null;
 
+        const themeFilePath = path.resolve(
+            contribution.extensionPath,
+            contribution.contribution.path,
+        );
+        const themeFileFingerprint = await this.getThemeFileFingerprint(themeFilePath);
         const key = [
             contribution.themeId,
             vscode.window.activeColorTheme.kind,
             contribution.extensionPath,
             contribution.contribution.path,
+            themeFileFingerprint,
         ].join("|");
         if (this.themeCache?.key === key) {
             return { themeId: this.themeCache.themeId, parsed: this.themeCache.parsed };
         }
-
-        const themeFilePath = path.resolve(
-            contribution.extensionPath,
-            contribution.contribution.path,
-        );
 
         try {
             const parsed = await loadThemeRecursive(
@@ -424,6 +429,15 @@ export class FileIconThemeResolver {
             return { themeId: contribution.themeId, parsed };
         } catch {
             return null;
+        }
+    }
+
+    private async getThemeFileFingerprint(themeFilePath: string): Promise<string> {
+        try {
+            const stat = await fs.stat(themeFilePath);
+            return `${stat.mtimeMs}:${stat.size}`;
+        } catch {
+            return "unknown";
         }
     }
 

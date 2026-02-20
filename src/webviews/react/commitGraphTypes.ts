@@ -84,4 +84,5 @@ export type CommitGraphInbound =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
-    | { type: "clearCommitDetail" };
+    | { type: "clearCommitDetail" }
+    | { type: "error"; message: string };

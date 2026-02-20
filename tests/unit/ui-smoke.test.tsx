@@ -135,12 +135,14 @@ describe("webview ui smoke", () => {
                 <StatusBadge status="?" />
                 <FileTypeIcon />
                 <FileTypeIcon status="D" />
+                <FileTypeIcon icon={{ glyph: "\uea60", fontFamily: "codicon" }} />
                 <IndentGuides treeDepth={2} />
                 <VscCheckbox isChecked={true} onChange={vi.fn()} />
                 <VscCheckbox isChecked={false} isIndeterminate={true} onChange={vi.fn()} />
             </>,
         );
         expect(html).toContain('data-tree-icon="file"');
+        expect(html).toContain("\uea60");
         expect(html).toContain("svg");
     });
 

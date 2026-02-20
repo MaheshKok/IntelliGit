@@ -675,7 +675,7 @@ function isNoUpstreamPushError(err: unknown): boolean {
 
 function parseSetUpstreamPushSuggestion(err: unknown): { remote: string; branch: string } | null {
     const message = getErrorMessage(err);
-    const match = message.match(/git push --set-upstream\s+(\S+)\s+(\S+)/);
+    const match = message.match(/git push\s+(?:--set-upstream(?:\s*=\s*|\s+)|-u\s+)(\S+)\s+(\S+)/);
     if (!match) return null;
     const remote = match[1]?.trim();
     const branch = match[2]?.trim();

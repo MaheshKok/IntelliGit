@@ -195,6 +195,8 @@ function App(): React.ReactElement {
                     setCommitFolderExpandedIcon(undefined);
                     setCommitFolderIconsByName(undefined);
                     break;
+                case "error":
+                    break;
             }
         };
 
@@ -245,52 +247,26 @@ function App(): React.ReactElement {
     }, []);
 
     return (
-        <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+        <>
             <ThemeIconFontFaces fonts={iconFonts} />
-            {/* Branch column */}
-            <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
-                <BranchColumn
-                    branches={branches}
-                    selectedBranch={selectedBranch}
-                    onSelectBranch={handleSelectBranch}
-                    onBranchAction={handleBranchAction}
-                    folderIcon={branchFolderIcon}
-                    folderExpandedIcon={branchFolderExpandedIcon}
-                    folderIconsByName={branchFolderIconsByName}
-                />
-            </div>
-
-            {/* Resizable divider */}
-            <div
-                data-testid="commit-graph-divider"
-                onMouseDown={onDividerMouseDown}
-                style={{
-                    width: 4,
-                    flexShrink: 0,
-                    cursor: "col-resize",
-                    background: "var(--vscode-panel-border)",
-                }}
-            />
-
-            {/* Commit graph + files/details in one unified panel */}
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
-                <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
-                    <CommitList
-                        commits={commits}
-                        selectedHash={selectedHash}
-                        filterText={filterText}
-                        hasMore={hasMore}
-                        unpushedHashes={unpushedHashes}
+            <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+                {/* Branch column */}
+                <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
+                    <BranchColumn
+                        branches={branches}
                         selectedBranch={selectedBranch}
-                        onSelectCommit={handleSelectCommit}
-                        onFilterText={handleFilterText}
-                        onLoadMore={handleLoadMore}
-                        onCommitAction={handleCommitAction}
+                        onSelectBranch={handleSelectBranch}
+                        onBranchAction={handleBranchAction}
+                        folderIcon={branchFolderIcon}
+                        folderExpandedIcon={branchFolderExpandedIcon}
+                        folderIconsByName={branchFolderIconsByName}
                     />
                 </div>
+
+                {/* Resizable divider */}
                 <div
-                    data-testid="commit-info-divider"
-                    onMouseDown={onInfoDividerMouseDown}
+                    data-testid="commit-graph-divider"
+                    onMouseDown={onDividerMouseDown}
                     style={{
                         width: 4,
                         flexShrink: 0,
@@ -298,22 +274,50 @@ function App(): React.ReactElement {
                         background: "var(--vscode-panel-border)",
                     }}
                 />
-                <div
-                    style={{
-                        width: infoWidth,
-                        flexShrink: 0,
-                        overflow: "hidden",
-                    }}
-                >
-                    <CommitInfoPane
-                        detail={selectedDetail}
-                        folderIcon={commitFolderIcon}
-                        folderExpandedIcon={commitFolderExpandedIcon}
-                        folderIconsByName={commitFolderIconsByName}
+
+                {/* Commit graph + files/details in one unified panel */}
+                <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
+                    <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                        <CommitList
+                            commits={commits}
+                            selectedHash={selectedHash}
+                            filterText={filterText}
+                            hasMore={hasMore}
+                            unpushedHashes={unpushedHashes}
+                            selectedBranch={selectedBranch}
+                            onSelectCommit={handleSelectCommit}
+                            onFilterText={handleFilterText}
+                            onLoadMore={handleLoadMore}
+                            onCommitAction={handleCommitAction}
+                        />
+                    </div>
+                    <div
+                        data-testid="commit-info-divider"
+                        onMouseDown={onInfoDividerMouseDown}
+                        style={{
+                            width: 4,
+                            flexShrink: 0,
+                            cursor: "col-resize",
+                            background: "var(--vscode-panel-border)",
+                        }}
                     />
+                    <div
+                        style={{
+                            width: infoWidth,
+                            flexShrink: 0,
+                            overflow: "hidden",
+                        }}
+                    >
+                        <CommitInfoPane
+                            detail={selectedDetail}
+                            folderIcon={commitFolderIcon}
+                            folderExpandedIcon={commitFolderExpandedIcon}
+                            folderIconsByName={commitFolderIconsByName}
+                        />
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 }
 

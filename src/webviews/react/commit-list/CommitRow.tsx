@@ -4,7 +4,7 @@ import type { Commit } from "../../../types";
 import { RefTypeIcon } from "../shared/components";
 import { formatDateTime } from "../shared/date";
 import { REF_BADGE_COLORS } from "../shared/tokens";
-import { splitCommitRefs, stripTagPrefix, withTagPrefix } from "../shared/utils";
+import { splitCommitRefs } from "../shared/utils";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 
@@ -18,16 +18,15 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
 }
 
-function getRefColors(name: string): { bg: string; fg: string } {
+function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: string } {
+    if (kind === "tag") return REF_BADGE_COLORS.tag;
     if (name.includes("HEAD")) return REF_BADGE_COLORS.head;
-    if (name.startsWith("tag:")) return REF_BADGE_COLORS.tag;
     if (name.startsWith("origin/")) return REF_BADGE_COLORS.remote;
     return REF_BADGE_COLORS.local;
 }
 
-function RefBadge({ name }: { name: string }): React.ReactElement {
-    const colors = getRefColors(name);
-    const label = stripTagPrefix(name);
+function RefBadge({ kind, name }: { kind: "branch" | "tag"; name: string }): React.ReactElement {
+    const colors = getRefColors(kind, name);
     return (
         <span
             style={{
@@ -46,7 +45,7 @@ function RefBadge({ name }: { name: string }): React.ReactElement {
             }}
             title={name}
         >
-            {label}
+            {name}
         </span>
     );
 }
@@ -102,14 +101,13 @@ function CommitMessageCell({
     } | null>(null);
     const { branches: branchRefs, tags: tagRefs } = splitCommitRefs(refs);
     const branchRefsCount = branchRefs.length;
-    const visibleTagRefs = tagRefs.slice(0, 2).map((tag) => withTagPrefix(tag));
+    const visibleTagRefs = tagRefs.slice(0, 2);
     const hiddenTagCount = Math.max(0, tagRefs.length - visibleTagRefs.length);
+    const refSummaryLines: string[] = [];
+    if (branchRefs.length > 0) refSummaryLines.push(`Branches: ${branchRefs.join(" • ")}`);
+    if (tagRefs.length > 0) refSummaryLines.push(`Tags: ${tagRefs.join(" • ")}`);
     const tooltipText =
-        refs.length > 0
-            ? `${message}\n\nBranches: ${branchRefs.join(" • ")}${
-                  tagRefs.length > 0 ? `\nTags: ${tagRefs.join(" • ")}` : ""
-              }`
-            : message;
+        refSummaryLines.length > 0 ? `${message}\n\n${refSummaryLines.join("\n")}` : message;
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const rect = event.currentTarget.getBoundingClientRect();
@@ -164,8 +162,8 @@ function CommitMessageCell({
                 </span>
             )}
             {visibleTagRefs.map((tagRef) => (
-                <span key={tagRef} style={{ marginLeft: 5, flexShrink: 0 }}>
-                    <RefBadge name={tagRef} />
+                <span key={`tag:${tagRef}`} style={{ marginLeft: 5, flexShrink: 0 }}>
+                    <RefBadge kind="tag" name={tagRef} />
                 </span>
             ))}
             {hiddenTagCount > 0 && (
@@ -225,21 +223,35 @@ function CommitMessageCell({
                         </span>
                         {(branchRefs.length > 0 || tagRefs.length > 0) && (
                             <>
-                                <span
-                                    style={{
-                                        display: "block",
-                                        fontSize: 11,
-                                        opacity: 0.82,
-                                        marginBottom: 5,
-                                    }}
-                                >
-                                    Branches
-                                </span>
-                                <span style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                                    {branchRefs.map((name) => (
-                                        <TooltipRefRow key={name} kind="branch" name={name} />
-                                    ))}
-                                </span>
+                                {branchRefs.length > 0 && (
+                                    <>
+                                        <span
+                                            style={{
+                                                display: "block",
+                                                fontSize: 11,
+                                                opacity: 0.82,
+                                                marginBottom: 5,
+                                            }}
+                                        >
+                                            Branches
+                                        </span>
+                                        <span
+                                            style={{
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: 3,
+                                            }}
+                                        >
+                                            {branchRefs.map((name) => (
+                                                <TooltipRefRow
+                                                    key={name}
+                                                    kind="branch"
+                                                    name={name}
+                                                />
+                                            ))}
+                                        </span>
+                                    </>
+                                )}
                                 {tagRefs.length > 0 && (
                                     <>
                                         <span

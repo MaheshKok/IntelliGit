@@ -59,6 +59,8 @@ export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactEl
                 h="14px"
                 flexShrink={0}
                 objectFit="contain"
+                opacity={status === "D" ? 0.6 : undefined}
+                filter={status === "D" ? "grayscale(100%)" : undefined}
                 data-tree-icon="file"
                 alt=""
             />

@@ -81,6 +81,7 @@ const vscodeMock = {
         showInformationMessage,
         showTextDocument,
         setStatusBarMessage,
+        onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
     },
     commands: {
         executeCommand,
@@ -95,6 +96,7 @@ const vscodeMock = {
             workspaceState.workspaceFolders = value;
         },
         openTextDocument,
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     },
 };
 

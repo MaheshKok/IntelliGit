@@ -15,8 +15,8 @@ import {
 import type { TreeNode } from "../types";
 
 const BRANCH_TREE_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
-const CURRENT_BRANCH_ICON_TEAL = "#7fd4cf";
-const DEFAULT_BRANCH_ICON_YELLOW = "#f2c94c";
+const CURRENT_BRANCH_ICON_TEAL = "var(--vscode-charts-green, #7fd4cf)";
+const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
 interface Props {
     node: TreeNode;
@@ -130,15 +130,15 @@ export function BranchTreeNodeRow({
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
     const rowStyle = { ...ROW_STYLE, paddingLeft: depth * TREE_INDENT_STEP };
-    const resolvedFolderIcon = resolveFolderIcon(
-        node.label,
-        isExpanded,
-        folderIconsByName,
-        folderIcon,
-        folderExpandedIcon,
-    );
 
     if (isFolder) {
+        const resolvedFolderIcon = resolveFolderIcon(
+            node.label,
+            isExpanded,
+            folderIconsByName,
+            folderIcon,
+            folderExpandedIcon,
+        );
         return (
             <>
                 <div

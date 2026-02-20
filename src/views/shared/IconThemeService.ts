@@ -54,9 +54,24 @@ export class IconThemeService implements vscode.Disposable {
         const themeRoot = await this.iconResolver.getThemeResourceRootUri();
         const nextThemeRootUri = themeRoot?.toString();
         if (this.lastThemeRootUri !== nextThemeRootUri) {
+            const existingRoots = this.webview.options.localResourceRoots ?? [];
+            const mergedRoots: vscode.Uri[] = [];
+            const seen = new Set<string>();
+            const addRoot = (root: vscode.Uri | undefined | null): void => {
+                if (!root) return;
+                const key = this.getUriIdentity(root);
+                if (seen.has(key)) return;
+                seen.add(key);
+                mergedRoots.push(root);
+            };
+            for (const existing of existingRoots) {
+                addRoot(existing);
+            }
+            addRoot(distRoot);
+            addRoot(themeRoot);
             this.webview.options = {
                 ...this.webview.options,
-                localResourceRoots: themeRoot ? [distRoot, themeRoot] : [distRoot],
+                localResourceRoots: mergedRoots,
             };
             this.lastThemeRootUri = nextThemeRootUri;
         }
@@ -141,6 +156,11 @@ export class IconThemeService implements vscode.Disposable {
     private markIconThemeDirty(): void {
         this.iconThemeDirty = true;
         this.iconThemeInitialized = false;
+    }
+
+    private getUriIdentity(uri: vscode.Uri): string {
+        const typed = uri as unknown as { fsPath?: string; path?: string; toString?: () => string };
+        return typed.fsPath ?? typed.path ?? typed.toString?.() ?? "";
     }
 
     private async getFolderIconsByPaths(paths: string[]): Promise<ThemeFolderIconMap> {

@@ -29,6 +29,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
+    private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
 
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
@@ -61,6 +62,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
 
@@ -69,52 +71,60 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
         this.iconTheme.attachWebview(webviewView.webview);
+        this.registerThemeChangeListeners();
 
         webviewView.onDidDispose(() => {
             if (this.view === webviewView) {
                 this.view = undefined;
                 this.iconTheme.dispose();
+                this.disposeThemeChangeDisposables();
             }
         });
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
-            switch (msg.type) {
-                case "ready":
-                    await this.iconTheme.initIconThemeData();
-                    await this.sendBranches();
-                    await this.loadInitial();
-                    this.postCommitDetailState();
-                    break;
-                case "selectCommit":
-                    this._onCommitSelected.fire(msg.hash);
-                    break;
-                case "loadMore":
-                    await this.loadMore();
-                    break;
-                case "filterText":
-                    await this.filterByText(msg.text);
-                    break;
-                case "filterBranch":
-                    this.currentBranch = msg.branch;
-                    this.filterText = "";
-                    this._onBranchFilterChanged.fire(msg.branch);
-                    this.postToWebview({ type: "setSelectedBranch", branch: msg.branch });
-                    await this.loadInitial();
-                    break;
-                case "branchAction":
-                    this._onBranchAction.fire({
-                        action: msg.action,
-                        branchName: msg.branchName,
-                    });
-                    break;
-                case "commitAction":
-                    this._onCommitAction.fire({
-                        action: msg.action,
-                        hash: msg.hash,
-                    });
-                    break;
+            try {
+                switch (msg.type) {
+                    case "ready":
+                        await this.iconTheme.initIconThemeData();
+                        await this.sendBranches();
+                        await this.loadInitial();
+                        this.postCommitDetailState();
+                        break;
+                    case "selectCommit":
+                        this._onCommitSelected.fire(msg.hash);
+                        break;
+                    case "loadMore":
+                        await this.loadMore();
+                        break;
+                    case "filterText":
+                        await this.filterByText(msg.text);
+                        break;
+                    case "filterBranch":
+                        this.currentBranch = msg.branch;
+                        this.filterText = "";
+                        this._onBranchFilterChanged.fire(msg.branch);
+                        this.postToWebview({ type: "setSelectedBranch", branch: msg.branch });
+                        await this.loadInitial();
+                        break;
+                    case "branchAction":
+                        this._onBranchAction.fire({
+                            action: msg.action,
+                            branchName: msg.branchName,
+                        });
+                        break;
+                    case "commitAction":
+                        this._onCommitAction.fire({
+                            action: msg.action,
+                            hash: msg.hash,
+                        });
+                        break;
+                }
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`Commit graph error: ${message}`);
+                this.postToWebview({ type: "error", message });
             }
         });
     }
@@ -275,9 +285,55 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     dispose(): void {
         this.iconTheme.dispose();
+        this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
         this._onCommitAction.dispose();
+    }
+
+    private refreshThemeDataWithErrorHandling(): void {
+        this.refreshThemeData().catch((err) => {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Commit graph error: ${message}`);
+            this.postToWebview({ type: "error", message });
+        });
+    }
+
+    private async refreshThemeData(): Promise<void> {
+        await this.iconTheme.initIconThemeData();
+        await this.sendBranches();
+        if (!this.selectedCommitDetail) {
+            this.postCommitDetailState();
+            return;
+        }
+        const requestId = ++this.commitDetailSeq;
+        await this.decorateAndStoreCommitDetail(this.selectedCommitDetail, requestId);
+    }
+
+    private registerThemeChangeListeners(): void {
+        this.themeChangeDisposables.push(
+            vscode.window.onDidChangeActiveColorTheme(() => {
+                this.refreshThemeDataWithErrorHandling();
+            }),
+        );
+
+        this.themeChangeDisposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (
+                    event.affectsConfiguration("workbench.iconTheme") ||
+                    event.affectsConfiguration("workbench.colorTheme")
+                ) {
+                    this.refreshThemeDataWithErrorHandling();
+                }
+            }),
+        );
+    }
+
+    private disposeThemeChangeDisposables(): void {
+        for (const disposable of this.themeChangeDisposables) {
+            disposable.dispose();
+        }
+        this.themeChangeDisposables = [];
     }
 }

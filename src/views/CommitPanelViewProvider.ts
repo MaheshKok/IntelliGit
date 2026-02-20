@@ -429,34 +429,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private registerThemeChangeListeners(): void {
-        const windowWithThemeEvents = vscode.window as unknown as {
-            onDidChangeActiveColorTheme?: (listener: () => void) => vscode.Disposable;
-        };
-        if (typeof windowWithThemeEvents.onDidChangeActiveColorTheme === "function") {
-            this.themeChangeDisposables.push(
-                windowWithThemeEvents.onDidChangeActiveColorTheme(() => {
-                    this.refreshDataWithErrorHandling();
-                }),
-            );
-        }
+        this.themeChangeDisposables.push(
+            vscode.window.onDidChangeActiveColorTheme(() => {
+                this.refreshDataWithErrorHandling();
+            }),
+        );
 
-        const workspaceWithThemeEvents = vscode.workspace as unknown as {
-            onDidChangeConfiguration?: (
-                listener: (event: { affectsConfiguration: (section: string) => boolean }) => void,
-            ) => vscode.Disposable;
-        };
-        if (typeof workspaceWithThemeEvents.onDidChangeConfiguration === "function") {
-            this.themeChangeDisposables.push(
-                workspaceWithThemeEvents.onDidChangeConfiguration((event) => {
-                    if (
-                        event.affectsConfiguration("workbench.iconTheme") ||
-                        event.affectsConfiguration("workbench.colorTheme")
-                    ) {
-                        this.refreshDataWithErrorHandling();
-                    }
-                }),
-            );
-        }
+        this.themeChangeDisposables.push(
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (
+                    event.affectsConfiguration("workbench.iconTheme") ||
+                    event.affectsConfiguration("workbench.colorTheme")
+                ) {
+                    this.refreshDataWithErrorHandling();
+                }
+            }),
+        );
     }
 
     private disposeThemeChangeDisposables(): void {
