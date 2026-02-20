@@ -165,7 +165,15 @@
             {
                 "command": "intelligit.fileRefresh",
                 "title": "Refresh",
-                "category": "IntelliGit"
+                "category": "IntelliGit",
+                "icon": "$(refresh)"
+            },
+            {
+                "command": "intelligit.fileRefreshing",
+                "title": "Refreshing...",
+                "category": "IntelliGit",
+                "icon": "$(sync~spin)",
+                "enablement": "false"
             }
         ],
         "menus": {
@@ -173,6 +181,16 @@
                 {
                     "command": "intelligit.refresh",
                     "when": "view == intelligit.commitGraph",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.fileRefresh",
+                    "when": "view == intelligit.commitPanel && !intelligit.commitPanel.refreshing",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.fileRefreshing",
+                    "when": "view == intelligit.commitPanel && intelligit.commitPanel.refreshing",
                     "group": "navigation"
                 }
             ],

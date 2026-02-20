@@ -14,6 +14,7 @@ import type { Branch } from "./types";
 import type { CommitAction } from "./webviews/react/commitGraphTypes";
 import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
 import { deleteFileWithFallback } from "./utils/fileOps";
+import { runWithStatusBar } from "./utils/statusBar";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -332,15 +333,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const refreshAll = async (): Promise<void> => {
         await vscode.commands.executeCommand("intelligit.refresh");
-    };
-
-    const runWithStatusBar = async <T>(message: string, task: () => Promise<T>): Promise<T> => {
-        const disposable = vscode.window.setStatusBarMessage(`$(sync~spin) IntelliGit: ${message}`);
-        try {
-            return await task();
-        } finally {
-            disposable.dispose();
-        }
     };
 
     const handleCommitContextAction = async (params: {
@@ -1028,6 +1020,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
         vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
             await commitPanel.refresh();
+        }),
+        vscode.commands.registerCommand("intelligit.fileRefreshing", () => {
+            // No-op: visual-only command shown while refreshing (disabled via enablement).
         }),
     );
 

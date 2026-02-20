@@ -1,5 +1,5 @@
 // React app for the bottom-panel commit graph webview.
-// Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar].
+// Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar] | [drag-handle] | [CommitInfoPane].
 // Branch filtering from the inline branch tree posts back to the extension host.
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
@@ -34,6 +34,21 @@ function useColumnDrag(
     invert: boolean,
 ): (e: React.MouseEvent) => void {
     const draggingRef = useRef(false);
+    const moveRef = useRef<((ev: MouseEvent) => void) | null>(null);
+    const upRef = useRef<(() => void) | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (draggingRef.current) {
+                if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);
+                if (upRef.current) document.removeEventListener("mouseup", upRef.current);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+                draggingRef.current = false;
+            }
+        };
+    }, []);
+
     return useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
@@ -49,12 +64,16 @@ function useColumnDrag(
 
             const onMouseUp = () => {
                 draggingRef.current = false;
+                moveRef.current = null;
+                upRef.current = null;
                 document.removeEventListener("mousemove", onMouseMove);
                 document.removeEventListener("mouseup", onMouseUp);
                 document.body.style.cursor = "";
                 document.body.style.userSelect = "";
             };
 
+            moveRef.current = onMouseMove;
+            upRef.current = onMouseUp;
             document.addEventListener("mousemove", onMouseMove);
             document.addEventListener("mouseup", onMouseUp);
             document.body.style.cursor = "col-resize";

@@ -12,6 +12,7 @@ const initialState: CommitPanelState = {
     selectedShelfIndex: null,
     commitMessage: "",
     isAmend: false,
+    isRefreshing: false,
     error: null,
 };
 
@@ -24,8 +25,11 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 stashes: action.stashes,
                 shelfFiles: action.shelfFiles,
                 selectedShelfIndex: action.selectedShelfIndex,
+                isRefreshing: false,
                 error: null,
             };
+        case "SET_REFRESHING":
+            return { ...state, isRefreshing: action.active };
         case "SET_LAST_COMMIT_MESSAGE":
             return { ...state, commitMessage: action.message };
         case "COMMITTED":
@@ -62,6 +66,9 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                     break;
                 case "committed":
                     dispatch({ type: "COMMITTED" });
+                    break;
+                case "refreshing":
+                    dispatch({ type: "SET_REFRESHING", active: msg.active });
                     break;
                 case "error":
                     dispatch({ type: "SET_ERROR", message: msg.message });

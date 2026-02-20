@@ -46,7 +46,9 @@ export function buildWebviewShellHtml({
 
 function createNonce(): string {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
     let r = "";
-    for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < 32; i++) r += chars.charAt(bytes[i] % chars.length);
     return r;
 }
