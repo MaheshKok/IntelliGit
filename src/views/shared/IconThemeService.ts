@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
-import type { Branch, CommitDetail, ThemeFolderIconMap, ThemeIconFont } from "../../types";
+import type {
+    Branch,
+    CommitDetail,
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    WorkingFile,
+} from "../../types";
 import { FileIconThemeResolver, type ThemeFolderIcons } from "../../utils/fileIconTheme";
 
 export class IconThemeService implements vscode.Disposable {
@@ -66,6 +72,11 @@ export class IconThemeService implements vscode.Disposable {
         return { ...detail, files };
     }
 
+    async decorateWorkingFiles(files: WorkingFile[]): Promise<WorkingFile[]> {
+        if (!this.iconResolver) return files;
+        return this.iconResolver.decorateWorkingFiles(files);
+    }
+
     async decorateCommitDetailWithFolderIcons(detail: CommitDetail): Promise<{
         detail: CommitDetail;
         folderIconsByName: ThemeFolderIconMap;
@@ -80,15 +91,11 @@ export class IconThemeService implements vscode.Disposable {
     }
 
     async getFolderIconsByCommitFiles(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
-        const names: string[] = [];
-        for (const file of files) {
-            const parts = file.path.split("/").slice(0, -1);
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (trimmed.length > 0) names.push(trimmed);
-            }
-        }
-        return this.getFolderIconsByNames(names);
+        return this.getFolderIconsByPaths(files.map((file) => file.path));
+    }
+
+    async getFolderIconsByWorkingFiles(files: WorkingFile[]): Promise<ThemeFolderIconMap> {
+        return this.getFolderIconsByPaths(files.map((file) => file.path));
     }
 
     async getFolderIconsByBranches(branches: Branch[]): Promise<ThemeFolderIconMap> {
@@ -134,6 +141,18 @@ export class IconThemeService implements vscode.Disposable {
     private markIconThemeDirty(): void {
         this.iconThemeDirty = true;
         this.iconThemeInitialized = false;
+    }
+
+    private async getFolderIconsByPaths(paths: string[]): Promise<ThemeFolderIconMap> {
+        const names: string[] = [];
+        for (const path of paths) {
+            const parts = path.split("/").slice(0, -1);
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.length > 0) names.push(trimmed);
+            }
+        }
+        return this.getFolderIconsByNames(names);
     }
 
     private registerIconThemeListeners(): void {
