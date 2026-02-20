@@ -29,6 +29,7 @@ import {
 } from "./commit-list/styles";
 
 const MIN_PREFIX_LENGTH = 7;
+const MAX_GRAPH_WIDTH = 200;
 
 interface Props {
     commits: Commit[];
@@ -71,7 +72,7 @@ export function CommitList({
         () => graphRows.reduce((max, row) => Math.max(max, row.numColumns), 1),
         [graphRows],
     );
-    const graphWidth = maxCols * LANE_WIDTH + 12;
+    const graphWidth = Math.min(maxCols * LANE_WIDTH + 12, MAX_GRAPH_WIDTH);
 
     useCommitGraphCanvas({
         canvasRef,

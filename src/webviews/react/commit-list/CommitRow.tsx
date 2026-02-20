@@ -232,7 +232,7 @@ function CommitRowInner({
                 height: ROW_HEIGHT,
                 display: "flex",
                 alignItems: "center",
-                paddingLeft: graphWidth,
+                marginLeft: graphWidth,
                 paddingRight: ROW_SIDE_PADDING,
                 cursor: "pointer",
                 fontSize: "12px",

@@ -104,6 +104,16 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
 
     return (
         <Flex ref={containerRef} direction="column" h="100%" overflow="hidden">
+            <Box
+                px="8px"
+                py="4px"
+                fontWeight={600}
+                fontSize="12px"
+                color="var(--vscode-descriptionForeground)"
+                borderBottom="1px solid var(--vscode-panel-border)"
+            >
+                Changed Files
+            </Box>
             <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
                 <TreeRows
                     entries={tree}
