@@ -1,8 +1,8 @@
 import type { CSSProperties } from "react";
 import { ROW_HEIGHT } from "../graph";
 
-export const AUTHOR_COL_WIDTH = 120;
-export const DATE_COL_WIDTH = 140;
+export const AUTHOR_COL_WIDTH = 110;
+export const DATE_COL_WIDTH = 132;
 export const ROW_SIDE_PADDING = 8;
 
 export const ROOT_STYLE: CSSProperties = {
@@ -12,29 +12,42 @@ export const ROOT_STYLE: CSSProperties = {
 };
 
 export const FILTER_BAR_STYLE: CSSProperties = {
-    padding: "6px 8px",
+    minHeight: 22,
+    padding: "1px 8px",
     borderBottom: "1px solid var(--vscode-panel-border)",
     display: "flex",
     alignItems: "center",
-    gap: "8px",
+    gap: "6px",
     flexShrink: 0,
 };
 
 export const FILTER_ICON_STYLE: CSSProperties = {
-    opacity: 0.5,
+    opacity: 0.95,
     flexShrink: 0,
 };
 
 export const FILTER_INPUT_STYLE: CSSProperties = {
     flex: 1,
-    maxWidth: 300,
-    padding: "3px 8px",
+    maxWidth: 340,
+    height: 18,
+    padding: "0 8px",
     background: "var(--vscode-input-background)",
     color: "var(--vscode-input-foreground)",
     border: "1px solid var(--vscode-input-border)",
     borderRadius: "3px",
     fontSize: "12px",
     outline: "none",
+};
+
+export const BRANCH_SCOPE_STYLE: CSSProperties = {
+    maxWidth: 260,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    opacity: 0.82,
+    fontSize: "11px",
+    marginLeft: 6,
+    flexShrink: 0,
 };
 
 export function headerRowStyle(graphWidth: number): CSSProperties {

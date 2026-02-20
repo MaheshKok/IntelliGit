@@ -162,6 +162,7 @@ describe("CommitList integration", () => {
                 hasMore={true}
                 unpushedHashes={new Set(["aaa1111"])}
                 defaultCheckoutBranch="main"
+                selectedBranch="main"
                 onSelectCommit={onSelectCommit}
                 onFilterText={onFilterText}
                 onLoadMore={onLoadMore}

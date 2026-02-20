@@ -178,6 +178,7 @@ function App(): React.ReactElement {
                     hasMore={hasMore}
                     unpushedHashes={unpushedHashes}
                     defaultCheckoutBranch={defaultCheckoutBranch}
+                    selectedBranch={selectedBranch}
                     onSelectCommit={handleSelectCommit}
                     onFilterText={handleFilterText}
                     onLoadMore={handleLoadMore}

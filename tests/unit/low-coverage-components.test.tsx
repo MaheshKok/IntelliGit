@@ -56,7 +56,7 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
-    it("CommitRow renders ref badges and handles row events", () => {
+    it("CommitRow renders compact ref count and handles row events", () => {
         const onSelect = vi.fn();
         const onContextMenu = vi.fn();
         const commit: Commit = {
@@ -82,17 +82,15 @@ describe("low coverage components", () => {
             />,
         );
 
-        expect(container.textContent).toContain("HEAD -> main");
-        expect(container.textContent).toContain("tag:v1.0.0");
-        expect(container.textContent).toContain("origin/main");
-        const messageCell = Array.from(container.querySelectorAll("span")).find((el) =>
-            el.textContent?.includes("feat: row coverage"),
+        expect(container.textContent).toContain("4 tags");
+        const messageCell = container.querySelector(
+            'span[title="feat: row coverage"]',
         ) as HTMLElement;
-        expect(messageCell?.getAttribute("title")).toBe("feat: row coverage");
-        const headRefBadge = Array.from(container.querySelectorAll("span")).find((el) =>
-            el.textContent?.includes("HEAD -> main"),
-        ) as HTMLElement;
-        expect(headRefBadge?.getAttribute("title")).toBe("HEAD -> main");
+        expect(messageCell).toBeTruthy();
+        const compactRefCell = container.querySelector("[data-commit-tooltip]") as HTMLElement;
+        expect(compactRefCell?.getAttribute("data-commit-tooltip")).toContain(
+            "Labels: HEAD -> main",
+        );
 
         const row = container.querySelector("div") as HTMLDivElement;
         act(() => {
@@ -307,7 +305,7 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
-    it.only("CommitList triggers context action and load-more", () => {
+    it("CommitList triggers context action and load-more", () => {
         const onCommitAction = vi.fn();
         const onLoadMore = vi.fn();
         const commits: Commit[] = [
@@ -330,6 +328,7 @@ describe("low coverage components", () => {
                 hasMore={true}
                 unpushedHashes={new Set(["aa11bb22"])}
                 defaultCheckoutBranch="main"
+                selectedBranch="main"
                 onSelectCommit={vi.fn()}
                 onFilterText={vi.fn()}
                 onLoadMore={onLoadMore}

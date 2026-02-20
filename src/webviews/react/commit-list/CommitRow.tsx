@@ -1,14 +1,7 @@
 import React from "react";
 import type { Commit } from "../../../types";
 import { formatDateTime } from "../shared/date";
-import { REF_BADGE_COLORS } from "../shared/tokens";
-import {
-    AUTHOR_COL_WIDTH,
-    DATE_COL_WIDTH,
-    REF_CONTAINER_STYLE,
-    REF_LABEL_STYLE,
-    ROW_SIDE_PADDING,
-} from "./styles";
+import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 
 interface Props {
@@ -21,29 +14,84 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
 }
 
-function RefLabel({ name }: { name: string }): React.ReactElement {
-    const isHead = name.includes("HEAD");
-    const isTag = name.startsWith("tag:");
-    let bg: string;
-    let fg: string;
+function CommitMessageCell({
+    message,
+    refs,
+}: {
+    message: string;
+    refs: string[];
+}): React.ReactElement {
+    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
+    const refsCount = refs.length;
+    const refsCountLabel = refsCount > 0 ? `${refsCount} tag${refsCount === 1 ? "" : "s"}` : "";
+    const tooltipText = refsCountLabel
+        ? `${message}\n\nLabels: ${refs.join(" • ")}`
+        : message;
 
-    if (isHead) {
-        bg = REF_BADGE_COLORS.head.bg;
-        fg = REF_BADGE_COLORS.head.fg;
-    } else if (isTag) {
-        bg = REF_BADGE_COLORS.tag.bg;
-        fg = REF_BADGE_COLORS.tag.fg;
-    } else if (name.startsWith("origin/")) {
-        bg = REF_BADGE_COLORS.remote.bg;
-        fg = REF_BADGE_COLORS.remote.fg;
-    } else {
-        bg = REF_BADGE_COLORS.local.bg;
-        fg = REF_BADGE_COLORS.local.fg;
-    }
+    const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setTooltipPos({
+            x: event.clientX > 0 ? event.clientX : rect.left + rect.width / 2,
+            y: rect.top - 6,
+        });
+    };
+
+    const hideTooltip = (): void => setTooltipPos(null);
 
     return (
-        <span style={{ ...REF_LABEL_STYLE, background: bg, color: fg }} title={name}>
-            {name}
+        <span
+            style={{
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                overflow: "hidden",
+            }}
+            data-commit-tooltip={tooltipText}
+            onPointerEnter={showTooltip}
+            onPointerMove={showTooltip}
+            onPointerLeave={hideTooltip}
+        >
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }} title={message}>
+                {message}
+            </span>
+            {refsCount > 0 && (
+                <span
+                    style={{
+                        marginLeft: 6,
+                        flexShrink: 0,
+                        fontSize: "11px",
+                        opacity: 0.72,
+                    }}
+                >
+                    {refsCountLabel}
+                </span>
+            )}
+
+            {tooltipPos && (
+                <span
+                    style={{
+                        position: "fixed",
+                        left: tooltipPos.x,
+                        top: tooltipPos.y,
+                        transform: "translate(-50%, -100%)",
+                        background: "var(--vscode-editorHoverWidget-background, #2f3646)",
+                        color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
+                        border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        lineHeight: "14px",
+                        padding: "4px 7px",
+                        whiteSpace: "pre-wrap",
+                        maxWidth: "560px",
+                        zIndex: 9999,
+                        pointerEvents: "none",
+                        boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+                    }}
+                >
+                    {tooltipText}
+                </span>
+            )}
         </span>
     );
 }
@@ -85,20 +133,7 @@ function CommitRowInner({
                       : "inherit",
             }}
         >
-            <span
-                style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}
-                title={commit.message}
-            >
-                {commit.message}
-            </span>
-
-            {commit.refs.length > 0 && (
-                <span style={REF_CONTAINER_STYLE}>
-                    {commit.refs.map((ref) => (
-                        <RefLabel key={ref} name={ref} />
-                    ))}
-                </span>
-            )}
+            <CommitMessageCell message={commit.message} refs={commit.refs} />
 
             <span
                 style={{
@@ -108,7 +143,7 @@ function CommitRowInner({
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     flexShrink: 0,
-                    marginLeft: 8,
+                    marginLeft: 6,
                 }}
             >
                 {commit.author}
@@ -120,7 +155,7 @@ function CommitRowInner({
                     textAlign: "right",
                     opacity: isMergeCommit ? 0.8 : 0.5,
                     flexShrink: 0,
-                    marginLeft: 8,
+                    marginLeft: 6,
                     fontSize: "11px",
                 }}
             >

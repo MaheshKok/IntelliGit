@@ -3,6 +3,7 @@
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LuSearch } from "react-icons/lu";
 import type { Commit } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -12,6 +13,7 @@ import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "./commitGraphTypes";
 import {
     AUTHOR_COL_WIDTH,
+    BRANCH_SCOPE_STYLE,
     CANVAS_STYLE,
     contentContainerStyle,
     DATE_COL_WIDTH,
@@ -33,6 +35,7 @@ interface Props {
     hasMore: boolean;
     unpushedHashes: Set<string>;
     defaultCheckoutBranch: string | null;
+    selectedBranch: string | null;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
     onLoadMore: () => void | Promise<void>;
@@ -46,6 +49,7 @@ export function CommitList({
     hasMore,
     unpushedHashes,
     defaultCheckoutBranch,
+    selectedBranch,
     onSelectCommit,
     onFilterText,
     onLoadMore,
@@ -173,12 +177,7 @@ export function CommitList({
     return (
         <div style={ROOT_STYLE}>
             <div style={FILTER_BAR_STYLE}>
-                <svg width="14" height="14" viewBox="0 0 16 16" style={FILTER_ICON_STYLE}>
-                    <path
-                        fill="currentColor"
-                        d="M11.7 10.3a6 6 0 1 0-1.4 1.4l3.5 3.5 1.4-1.4-3.5-3.5zM6 10a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"
-                    />
-                </svg>
+                <LuSearch size={16} style={FILTER_ICON_STYLE} />
                 <input
                     type="text"
                     placeholder="Text or hash"
@@ -186,12 +185,18 @@ export function CommitList({
                     onChange={(event) => onFilterText(event.target.value)}
                     style={FILTER_INPUT_STYLE}
                 />
+                <span
+                    style={BRANCH_SCOPE_STYLE}
+                    title={selectedBranch ? `Branch: ${selectedBranch}` : "Branch: All branches"}
+                >
+                    Branch: {selectedBranch ?? "All branches"}
+                </span>
             </div>
 
             <div style={headerRowStyle(graphWidth)}>
                 <span style={{ flex: 1 }}>Commit</span>
                 <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>Author</span>
-                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 8 }}>
+                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 6 }}>
                     Date
                 </span>
             </div>

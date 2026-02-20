@@ -315,6 +315,7 @@ describe("CommitGraphApp integration", () => {
             );
         });
         await flush();
+        expect(document.body.textContent).toContain("Branch: features/right-click-context");
 
         const branchRow = Array.from(document.querySelectorAll(".branch-row")).find((row) =>
             row.textContent?.includes("HEAD (main)"),
@@ -395,7 +396,7 @@ describe("CommitInfoApp integration", () => {
                             email: "m@example.com",
                             date: "2026-02-19T00:00:00Z",
                             parentHashes: ["p1"],
-                            refs: [],
+                            refs: ["HEAD -> main", "tag:v0.3.1"],
                             files: [
                                 { path: "src/a.ts", status: "M", additions: 3, deletions: 1 },
                                 { path: "src/b.ts", status: "A", additions: 4, deletions: 0 },
@@ -408,6 +409,8 @@ describe("CommitInfoApp integration", () => {
         await flush();
         expect(document.body.textContent).toContain("feat: commit info");
         expect(document.body.textContent).toContain("2 files changed");
+        expect(document.body.textContent).toContain("Labels");
+        expect(document.body.textContent).toContain("HEAD -> main");
 
         fireClick(Array.from(document.querySelectorAll("*")).find((el) => el.textContent?.includes("Commit Details")));
         fireClick(Array.from(document.querySelectorAll("*")).find((el) => el.textContent?.includes("Commit Details")));

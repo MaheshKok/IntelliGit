@@ -8,6 +8,7 @@ import { formatDateTime } from "./shared/date";
 import { FileTypeIcon } from "./commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "./commit-panel/components/StatusBadge";
 import { useDragResize } from "./commit-panel/hooks/useDragResize";
+import { REF_BADGE_COLORS } from "./shared/tokens";
 import theme from "./commit-panel/theme";
 import {
     buildFileTree,
@@ -25,6 +26,47 @@ const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
 const INFO_SECTION_GUIDE = 7;
+
+function CommitRefBadge({ name }: { name: string }): React.ReactElement {
+    const isHead = name.includes("HEAD");
+    const isTag = name.startsWith("tag:");
+    let bg: string;
+    let fg: string;
+
+    if (isHead) {
+        bg = REF_BADGE_COLORS.head.bg;
+        fg = REF_BADGE_COLORS.head.fg;
+    } else if (isTag) {
+        bg = REF_BADGE_COLORS.tag.bg;
+        fg = REF_BADGE_COLORS.tag.fg;
+    } else if (name.startsWith("origin/")) {
+        bg = REF_BADGE_COLORS.remote.bg;
+        fg = REF_BADGE_COLORS.remote.fg;
+    } else {
+        bg = REF_BADGE_COLORS.local.bg;
+        fg = REF_BADGE_COLORS.local.fg;
+    }
+
+    return (
+        <Box
+            as="span"
+            px="6px"
+            py="1px"
+            borderRadius="3px"
+            fontSize="10px"
+            lineHeight="16px"
+            color={fg}
+            bg={bg}
+            title={name}
+            maxW="220px"
+            overflow="hidden"
+            textOverflow="ellipsis"
+            whiteSpace="nowrap"
+        >
+            {name}
+        </Box>
+    );
+}
 
 function App(): React.ReactElement {
     const [detail, setDetail] = useState<CommitDetail | null>(null);
@@ -178,6 +220,23 @@ function App(): React.ReactElement {
                         >
                             {detail.email} on {formatDateTime(detail.date)}
                         </Box>
+                        {detail.refs.length > 0 && (
+                            <Box mt="6px">
+                                <Box
+                                    color="var(--vscode-descriptionForeground)"
+                                    fontSize="11px"
+                                    mb="4px"
+                                    opacity={0.85}
+                                >
+                                    Labels
+                                </Box>
+                                <Flex wrap="wrap" gap="4px">
+                                    {detail.refs.map((ref) => (
+                                        <CommitRefBadge key={ref} name={ref} />
+                                    ))}
+                                </Flex>
+                            </Box>
+                        )}
                         <Box
                             color="var(--vscode-descriptionForeground)"
                             fontSize="12px"
