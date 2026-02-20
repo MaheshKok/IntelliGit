@@ -11,25 +11,7 @@ import { ShelfTab } from "./components/ShelfTab";
 import { useExtensionMessages } from "./hooks/useExtensionMessages";
 import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
-import type { ThemeIconFont } from "../../../types";
-
-function ThemeIconFontFaces({ fonts }: { fonts?: ThemeIconFont[] }): React.ReactElement | null {
-    const safeFonts = Array.isArray(fonts) ? fonts : [];
-    if (!safeFonts.length) return null;
-
-    const css = safeFonts
-        .map((font) => {
-            const family = font.fontFamily.replace(/'/g, "\\'");
-            const src = font.src.replace(/'/g, "\\'");
-            const format = font.format ? ` format('${font.format.replace(/'/g, "\\'")}')` : "";
-            const weight = font.weight ?? "normal";
-            const style = font.style ?? "normal";
-            return `@font-face{font-family:'${family}';src:url('${src}')${format};font-weight:${weight};font-style:${style};font-display:block;}`;
-        })
-        .join("");
-
-    return <style>{css}</style>;
-}
+import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 
 function App(): React.ReactElement {
     const [state, dispatch] = useExtensionMessages();

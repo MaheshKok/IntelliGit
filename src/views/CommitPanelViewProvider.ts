@@ -26,6 +26,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private iconFonts: ThemeIconFont[] = [];
     private iconResolver?: FileIconThemeResolver;
     private lastFileCount = 0;
+    private lastThemeRootUri: string | undefined;
+    private themeChangeDisposables: vscode.Disposable[] = [];
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
@@ -40,17 +42,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.disposeThemeChangeDisposables();
+        this.iconResolver?.dispose();
         this.view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
+        this.lastThemeRootUri = undefined;
         this.iconResolver = new FileIconThemeResolver(webviewView.webview);
+        this.registerThemeChangeListeners();
         const thisView = webviewView;
         webviewView.onDidDispose(() => {
             if (this.view === thisView) {
                 this.view = undefined;
             }
+            this.iconResolver?.dispose();
+            this.iconResolver = undefined;
+            this.lastThemeRootUri = undefined;
+            this.disposeThemeChangeDisposables();
         });
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
@@ -65,11 +75,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
         this.updateViewCount(this.lastFileCount);
-        this.refreshData().catch((err) => {
-            const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(message);
-            this.postToWebview({ type: "error", message });
-        });
+        this.refreshDataWithErrorHandling();
     }
 
     async refresh(): Promise<void> {
@@ -429,12 +435,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private async ensureThemeResourceRoot(): Promise<void> {
         if (!this.iconResolver || !this.view) return;
         const themeRoot = await this.iconResolver.getThemeResourceRootUri();
-        if (!themeRoot) return;
+        const nextThemeRootUri = themeRoot?.toString();
+        if (this.lastThemeRootUri === nextThemeRootUri) return;
         const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
         this.view.webview.options = {
             ...this.view.webview.options,
-            localResourceRoots: [distRoot, themeRoot],
+            localResourceRoots: themeRoot ? [distRoot, themeRoot] : [distRoot],
         };
+        this.lastThemeRootUri = nextThemeRootUri;
     }
 
     private getWorkspaceRoot(): vscode.Uri {
@@ -456,6 +464,55 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     dispose(): void {
+        this.iconResolver?.dispose();
+        this.iconResolver = undefined;
+        this.disposeThemeChangeDisposables();
         this._onDidChangeFileCount.dispose();
+    }
+
+    private refreshDataWithErrorHandling(): void {
+        this.refreshData().catch((err) => {
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(message);
+            this.postToWebview({ type: "error", message });
+        });
+    }
+
+    private registerThemeChangeListeners(): void {
+        const windowWithThemeEvents = vscode.window as unknown as {
+            onDidChangeActiveColorTheme?: (listener: () => void) => vscode.Disposable;
+        };
+        if (typeof windowWithThemeEvents.onDidChangeActiveColorTheme === "function") {
+            this.themeChangeDisposables.push(
+                windowWithThemeEvents.onDidChangeActiveColorTheme(() => {
+                    this.refreshDataWithErrorHandling();
+                }),
+            );
+        }
+
+        const workspaceWithThemeEvents = vscode.workspace as unknown as {
+            onDidChangeConfiguration?: (
+                listener: (event: { affectsConfiguration: (section: string) => boolean }) => void,
+            ) => vscode.Disposable;
+        };
+        if (typeof workspaceWithThemeEvents.onDidChangeConfiguration === "function") {
+            this.themeChangeDisposables.push(
+                workspaceWithThemeEvents.onDidChangeConfiguration((event) => {
+                    if (
+                        event.affectsConfiguration("workbench.iconTheme") ||
+                        event.affectsConfiguration("workbench.colorTheme")
+                    ) {
+                        this.refreshDataWithErrorHandling();
+                    }
+                }),
+            );
+        }
+    }
+
+    private disposeThemeChangeDisposables(): void {
+        for (const disposable of this.themeChangeDisposables) {
+            disposable.dispose();
+        }
+        this.themeChangeDisposables = [];
     }
 }

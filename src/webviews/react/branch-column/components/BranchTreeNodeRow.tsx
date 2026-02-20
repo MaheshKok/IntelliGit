@@ -2,7 +2,8 @@ import React from "react";
 import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
 import { ChevronIcon, GitBranchIcon, StarIcon, TagRightIcon } from "../icons";
-import { TreeFolderIcon } from "../../commit-panel/components/TreeIcons";
+import { TreeFolderIcon } from "../../shared/components/TreeIcons";
+import { resolveFolderIcon } from "../../shared/folderIcons";
 import {
     NODE_LABEL_STYLE,
     ROW_STYLE,
@@ -129,11 +130,13 @@ export function BranchTreeNodeRow({
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
     const rowStyle = { ...ROW_STYLE, paddingLeft: depth * TREE_INDENT_STEP };
-    const nameKey = node.label.trim().toLowerCase();
-    const namedIcons = folderIconsByName?.[nameKey];
-    const resolvedFolderIcon = isExpanded
-        ? (namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon)
-        : (namedIcons?.collapsed ?? folderIcon);
+    const resolvedFolderIcon = resolveFolderIcon(
+        node.label,
+        isExpanded,
+        folderIconsByName,
+        folderIcon,
+        folderExpandedIcon,
+    );
 
     if (isFolder) {
         return (

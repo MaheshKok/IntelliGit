@@ -52,9 +52,7 @@ function RefBadge({ name }: { name: string }): React.ReactElement {
     );
 }
 
-function splitRefs(
-    refs: string[],
-): {
+function splitRefs(refs: string[]): {
     branches: string[];
     tags: string[];
 } {

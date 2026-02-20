@@ -7,6 +7,7 @@ import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
+import { resolveFolderIcon } from "../shared/folderIcons";
 import {
     buildFileTree,
     collectDirPaths,
@@ -25,9 +26,7 @@ const INFO_SECTION_GUIDE = 7;
 const BRANCH_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
 const TAG_ICON_ORANGE = "#ff9800";
 
-function splitRefs(
-    refs: string[],
-): {
+function splitRefs(refs: string[]): {
     branches: string[];
     tags: string[];
 } {
@@ -64,7 +63,13 @@ function CommitRefRow({
             <Box as="span" display="inline-flex" color={iconColor} flexShrink={0}>
                 <Icon size={12} />
             </Box>
-            <Box as="span" maxW="300px" overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
+            <Box
+                as="span"
+                maxW="300px"
+                overflow="hidden"
+                textOverflow="ellipsis"
+                whiteSpace="nowrap"
+            >
                 {name}
             </Box>
         </Flex>
@@ -287,7 +292,11 @@ export function CommitInfoPane({
                                         </Box>
                                         <Flex direction="column" gap="3px">
                                             {tagRefs.map((tag) => (
-                                                <CommitRefRow key={`tag:${tag}`} kind="tag" name={tag} />
+                                                <CommitRefRow
+                                                    key={`tag:${tag}`}
+                                                    kind="tag"
+                                                    name={tag}
+                                                />
                                             ))}
                                         </Flex>
                                     </Box>
@@ -384,12 +393,13 @@ function CommitFolderRow({
     onToggle: () => void;
 }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
-    const leafName = folder.path.split("/").pop() ?? folder.name;
-    const nameKey = leafName.trim().toLowerCase();
-    const namedIcons = folderIconsByName?.[nameKey];
-    const resolvedIcon = isExpanded
-        ? (namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon)
-        : (namedIcons?.collapsed ?? folderIcon);
+    const resolvedIcon = resolveFolderIcon(
+        folder.path || folder.name,
+        isExpanded,
+        folderIconsByName,
+        folderIcon,
+        folderExpandedIcon,
+    );
     return (
         <Flex
             align="center"
@@ -450,7 +460,7 @@ function CommitFileRow({ file, depth }: { file: CommitFile; depth: number }): Re
         >
             <InfoIndentGuides treeDepth={depth} />
             <Box as="span" w="14px" flexShrink={0} />
-            <FileTypeIcon filename={fileName} status={file.status} icon={file.icon} />
+            <FileTypeIcon status={file.status} icon={file.icon} />
             <Box as="span" flex={1} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
                 {fileName}
             </Box>

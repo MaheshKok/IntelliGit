@@ -5,12 +5,11 @@ import type { ThemeTreeIcon } from "../../../../types";
 import { TreeFileIcon } from "./TreeIcons";
 
 interface Props {
-    filename: string;
     status?: string;
     icon?: ThemeTreeIcon;
 }
 
-function FileTypeIconInner({ filename: _filename, status, icon }: Props): React.ReactElement {
+function FileTypeIconInner({ status, icon }: Props): React.ReactElement {
     return <TreeFileIcon status={status} icon={icon} />;
 }
 

@@ -6,26 +6,9 @@ import type { CommitInfoOutbound, CommitInfoInbound } from "./commitInfoTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
+import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 
 const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
-
-function ThemeIconFontFaces({ fonts }: { fonts?: ThemeIconFont[] }): React.ReactElement | null {
-    const safeFonts = Array.isArray(fonts) ? fonts : [];
-    if (!safeFonts.length) return null;
-
-    const css = safeFonts
-        .map((font) => {
-            const family = font.fontFamily.replace(/'/g, "\\'");
-            const src = font.src.replace(/'/g, "\\'");
-            const format = font.format ? ` format('${font.format.replace(/'/g, "\\'")}')` : "";
-            const weight = font.weight ?? "normal";
-            const style = font.style ?? "normal";
-            return `@font-face{font-family:'${family}';src:url('${src}')${format};font-weight:${weight};font-style:${style};font-display:block;}`;
-        })
-        .join("");
-
-    return <style>{css}</style>;
-}
 
 function App(): React.ReactElement {
     const [detail, setDetail] = useState<CommitDetail | null>(null);
@@ -44,7 +27,10 @@ function App(): React.ReactElement {
             switch (msg.type) {
                 case "clear":
                     setDetail(null);
+                    setFolderIcon(undefined);
+                    setFolderExpandedIcon(undefined);
                     setFolderIconsByName(undefined);
+                    setIconFonts([]);
                     return;
                 case "setCommitDetail":
                     setDetail(msg.detail);

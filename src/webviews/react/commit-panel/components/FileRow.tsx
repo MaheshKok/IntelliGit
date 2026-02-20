@@ -57,7 +57,7 @@ function FileRowInner({
             <IndentGuides treeDepth={depth} />
             <Box as="span" w="14px" flexShrink={0} />
             <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
-            <FileTypeIcon filename={fileName} status={file.status} icon={file.icon} />
+            <FileTypeIcon status={file.status} icon={file.icon} />
             <Box
                 as="span"
                 flex={1}
@@ -70,12 +70,7 @@ function FileRowInner({
                 {fileName}
             </Box>
             {!groupByDir && dir && (
-                <Box
-                    as="span"
-                    color="var(--vscode-descriptionForeground)"
-                    fontSize="11px"
-                    ml="3px"
-                >
+                <Box as="span" color="var(--vscode-descriptionForeground)" fontSize="11px" ml="3px">
                     {dir}
                 </Box>
             )}

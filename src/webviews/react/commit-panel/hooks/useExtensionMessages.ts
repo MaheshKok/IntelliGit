@@ -29,9 +29,9 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 stashes: action.stashes,
                 shelfFiles: action.shelfFiles,
                 selectedShelfIndex: action.selectedShelfIndex,
-                folderIcon: action.folderIcon,
-                folderExpandedIcon: action.folderExpandedIcon,
-                folderIconsByName: action.folderIconsByName,
+                folderIcon: action.folderIcon ?? state.folderIcon,
+                folderExpandedIcon: action.folderExpandedIcon ?? state.folderExpandedIcon,
+                folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 error: null,
             };

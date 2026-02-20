@@ -9,6 +9,7 @@ import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
+import { resolveFolderIcon } from "../../shared/folderIcons";
 
 interface Props {
     stashes: StashEntry[];
@@ -306,11 +307,7 @@ function ShelfFileTree({
                             title={entry.file.path}
                         >
                             <Box as="span" w="11px" />
-                            <FileTypeIcon
-                                filename={fileName}
-                                status={entry.file.status}
-                                icon={entry.file.icon}
-                            />
+                            <FileTypeIcon status={entry.file.status} icon={entry.file.icon} />
                             <Box
                                 as="span"
                                 flex={1}
@@ -327,15 +324,13 @@ function ShelfFileTree({
 
                 const isExpanded = expandedDirs.has(entry.path);
                 const fileCount = entry.descendantFiles.length;
-                const leafName = entry.path.split("/").pop() ?? entry.name;
-                const nameKey = leafName.trim().toLowerCase();
-                const namedIcons = folderIconsByName?.[nameKey];
-                const resolvedIcon = isExpanded
-                    ? (namedIcons?.expanded ??
-                      folderExpandedIcon ??
-                      namedIcons?.collapsed ??
-                      folderIcon)
-                    : (namedIcons?.collapsed ?? folderIcon);
+                const resolvedIcon = resolveFolderIcon(
+                    entry.path || entry.name,
+                    isExpanded,
+                    folderIconsByName,
+                    folderIcon,
+                    folderExpandedIcon,
+                );
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex

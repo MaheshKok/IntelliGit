@@ -209,7 +209,7 @@ function resolveExtendsPath(themePath: string, extendsValue: string): string {
 function createFileUri(filePath: string): vscode.Uri | null {
     const uriFactory = vscode.Uri as unknown as { file?: (v: string) => vscode.Uri };
     if (typeof uriFactory.file === "function") return uriFactory.file(filePath);
-    return { fsPath: filePath, path: filePath } as unknown as vscode.Uri;
+    return null;
 }
 
 function pickVariantSection(
@@ -247,9 +247,13 @@ async function loadThemeRecursive(
 
     let merged = { ...EMPTY_THEME };
     if (typeof rawTheme.extends === "string") {
-        const parentPath = resolveExtendsPath(normalizedPath, rawTheme.extends);
-        const parentTheme = await loadThemeRecursive(parentPath, colorThemeKind, visited);
-        merged = mergeTheme(merged, parentTheme);
+        try {
+            const parentPath = resolveExtendsPath(normalizedPath, rawTheme.extends);
+            const parentTheme = await loadThemeRecursive(parentPath, colorThemeKind, visited);
+            merged = mergeTheme(merged, parentTheme);
+        } catch {
+            // Gracefully degrade to the current file when parent theme resolution fails.
+        }
     }
 
     merged = mergeTheme(merged, parseThemeSection(rawTheme, path.dirname(normalizedPath)));
@@ -311,7 +315,27 @@ export class FileIconThemeResolver {
           }
         | undefined;
 
-    constructor(private readonly webview: vscode.Webview) {}
+    private readonly extensionsChangeDisposable: vscode.Disposable | undefined;
+
+    constructor(private readonly webview: vscode.Webview) {
+        try {
+            const extensionsApi = (
+                vscode as unknown as {
+                    extensions?: {
+                        onDidChange?: (listener: () => void) => vscode.Disposable;
+                    };
+                }
+            ).extensions;
+            if (typeof extensionsApi?.onDidChange === "function") {
+                this.extensionsChangeDisposable = extensionsApi.onDidChange(() => {
+                    this.languageCache = undefined;
+                    this.themeCache = undefined;
+                });
+            }
+        } catch {
+            // Ignore environments that do not expose vscode.extensions.
+        }
+    }
 
     private resolveConfiguredThemeId(): string | undefined {
         const config = vscode.workspace.getConfiguration("workbench");
@@ -680,5 +704,9 @@ export class FileIconThemeResolver {
         const contribution = await this.resolveThemeContribution();
         if (!contribution) return null;
         return createFileUri(contribution.extensionPath);
+    }
+
+    dispose(): void {
+        this.extensionsChangeDisposable?.dispose();
     }
 }

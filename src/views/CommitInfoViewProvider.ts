@@ -43,6 +43,8 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         webviewView.onDidDispose(() => {
             this.view = undefined;
             this.ready = false;
+            this.iconResolver?.dispose();
+            this.iconResolver = undefined;
         });
 
         webviewView.webview.html = buildWebviewShellHtml({
@@ -59,7 +61,13 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.detail = detail;
         this.folderIconsByName = {};
         this.postCurrentState();
-        void this.decorateAndStoreDetail(detail, requestId);
+        this.decorateAndStoreDetail(detail, requestId).catch((err) => {
+            if (requestId !== this.requestSeq) return;
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(
+                `Commit detail error (request ${requestId}): ${message}`,
+            );
+        });
     }
 
     clear(): void {
@@ -131,6 +139,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     }
 
     dispose(): void {
-        // no-op
+        this.iconResolver?.dispose();
+        this.iconResolver = undefined;
     }
 }

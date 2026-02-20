@@ -7,6 +7,7 @@ import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "./TreeIcons";
+import { resolveFolderIcon } from "../../shared/folderIcons";
 
 interface Props {
     name: string;
@@ -38,12 +39,13 @@ function FolderRowInner({
     onToggleCheck,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
-    const leafName = dirPath.split("/").pop() ?? name;
-    const nameKey = leafName.trim().toLowerCase();
-    const namedIcons = folderIconsByName?.[nameKey];
-    const resolvedIcon = isExpanded
-        ? (namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon)
-        : (namedIcons?.collapsed ?? folderIcon);
+    const resolvedIcon = resolveFolderIcon(
+        dirPath || name,
+        isExpanded,
+        folderIconsByName,
+        folderIcon,
+        folderExpandedIcon,
+    );
 
     return (
         <Flex

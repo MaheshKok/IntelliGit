@@ -32,6 +32,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private iconFonts: ThemeIconFont[] = [];
     private commitDetailSeq = 0;
+    private iconThemeDirty = true;
+    private iconThemeInitialized = false;
+    private lastThemeRootUri: string | undefined;
+    private iconThemeDisposables: vscode.Disposable[] = [];
 
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
@@ -61,6 +65,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.disposeIconThemeDisposables();
+        this.iconResolver?.dispose();
         this.view = webviewView;
 
         webviewView.webview.options = {
@@ -68,6 +74,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
         this.iconResolver = new FileIconThemeResolver(webviewView.webview);
+        this.markIconThemeDirty();
+        this.registerIconThemeListeners();
+
+        webviewView.onDidDispose(() => {
+            if (this.view === webviewView) {
+                this.view = undefined;
+                this.iconResolver?.dispose();
+                this.iconResolver = undefined;
+                this.disposeIconThemeDisposables();
+                this.lastThemeRootUri = undefined;
+                this.markIconThemeDirty();
+            }
+        });
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
 
@@ -113,7 +132,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     setBranches(branches: Branch[]): void {
         this.branches = branches;
-        void this.sendBranches();
+        this.sendBranches().catch((err) => {
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Branch update error: ${message}`);
+        });
     }
 
     async filterByBranch(branch: string | null): Promise<void> {
@@ -134,7 +156,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.selectedCommitDetail = detail;
         this.folderIconsByName = {};
         this.postCommitDetailState();
-        void this.decorateAndStoreCommitDetail(detail, requestId);
+        this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
+            if (requestId !== this.commitDetailSeq) return;
+            const message = err instanceof Error ? err.message : String(err);
+            vscode.window.showErrorMessage(`Commit detail error: ${message}`);
+        });
     }
 
     clearCommitDetail(): void {
@@ -297,14 +323,22 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private async initIconThemeData(): Promise<void> {
         if (!this.iconResolver || !this.view) return;
+        if (!this.iconThemeDirty && this.iconThemeInitialized) return;
+
         const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
         const themeRoot = await this.iconResolver.getThemeResourceRootUri();
-        this.view.webview.options = {
-            ...this.view.webview.options,
-            localResourceRoots: themeRoot ? [distRoot, themeRoot] : [distRoot],
-        };
+        const nextThemeRootUri = themeRoot?.toString();
+        if (this.lastThemeRootUri !== nextThemeRootUri) {
+            this.view.webview.options = {
+                ...this.view.webview.options,
+                localResourceRoots: themeRoot ? [distRoot, themeRoot] : [distRoot],
+            };
+            this.lastThemeRootUri = nextThemeRootUri;
+        }
         this.folderIcons = await this.iconResolver.getFolderIcons();
         this.iconFonts = await this.iconResolver.getThemeFonts();
+        this.iconThemeDirty = false;
+        this.iconThemeInitialized = true;
     }
 
     private getHtml(webview: vscode.Webview): string {
@@ -318,9 +352,53 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     dispose(): void {
+        this.iconResolver?.dispose();
+        this.iconResolver = undefined;
+        this.disposeIconThemeDisposables();
         this._onCommitSelected.dispose();
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
         this._onCommitAction.dispose();
+    }
+
+    private markIconThemeDirty(): void {
+        this.iconThemeDirty = true;
+        this.iconThemeInitialized = false;
+    }
+
+    private registerIconThemeListeners(): void {
+        const windowWithThemeEvents = vscode.window as unknown as {
+            onDidChangeActiveColorTheme?: (listener: () => void) => vscode.Disposable;
+        };
+        if (typeof windowWithThemeEvents.onDidChangeActiveColorTheme === "function") {
+            this.iconThemeDisposables.push(
+                windowWithThemeEvents.onDidChangeActiveColorTheme(() => this.markIconThemeDirty()),
+            );
+        }
+
+        const workspaceWithThemeEvents = vscode.workspace as unknown as {
+            onDidChangeConfiguration?: (
+                listener: (event: { affectsConfiguration: (section: string) => boolean }) => void,
+            ) => vscode.Disposable;
+        };
+        if (typeof workspaceWithThemeEvents.onDidChangeConfiguration === "function") {
+            this.iconThemeDisposables.push(
+                workspaceWithThemeEvents.onDidChangeConfiguration((event) => {
+                    if (
+                        event.affectsConfiguration("workbench.iconTheme") ||
+                        event.affectsConfiguration("workbench.colorTheme")
+                    ) {
+                        this.markIconThemeDirty();
+                    }
+                }),
+            );
+        }
+    }
+
+    private disposeIconThemeDisposables(): void {
+        for (const disposable of this.iconThemeDisposables) {
+            disposable.dispose();
+        }
+        this.iconThemeDisposables = [];
     }
 }

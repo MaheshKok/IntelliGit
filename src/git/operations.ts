@@ -420,13 +420,9 @@ export class GitOps {
 
             const suggested = parseSetUpstreamPushSuggestion(err);
             const branch =
-                suggested?.branch ??
-                (await this.resolveCurrentBranchNameForPush()) ??
-                undefined;
+                suggested?.branch ?? (await this.resolveCurrentBranchNameForPush()) ?? undefined;
             const remote =
-                suggested?.remote ??
-                (await this.resolveDefaultRemoteNameForPush()) ??
-                undefined;
+                suggested?.remote ?? (await this.resolveDefaultRemoteNameForPush()) ?? undefined;
             if (!branch || !remote) throw err;
 
             const allowSetUpstream = await this.requestSetUpstreamPush(remote, branch);
@@ -677,9 +673,7 @@ function isNoUpstreamPushError(err: unknown): boolean {
     return message.includes("has no upstream branch");
 }
 
-function parseSetUpstreamPushSuggestion(
-    err: unknown,
-): { remote: string; branch: string } | null {
+function parseSetUpstreamPushSuggestion(err: unknown): { remote: string; branch: string } | null {
     const message = getErrorMessage(err);
     const match = message.match(/git push --set-upstream\s+(\S+)\s+(\S+)/);
     if (!match) return null;

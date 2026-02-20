@@ -133,8 +133,8 @@ describe("webview ui smoke", () => {
             <>
                 <StatusBadge status="M" />
                 <StatusBadge status="?" />
-                <FileTypeIcon filename=".eslintrc.json" />
-                <FileTypeIcon filename="unknown.xyz" status="D" />
+                <FileTypeIcon />
+                <FileTypeIcon status="D" />
                 <IndentGuides treeDepth={2} />
                 <VscCheckbox isChecked={true} onChange={vi.fn()} />
                 <VscCheckbox isChecked={false} isIndeterminate={true} onChange={vi.fn()} />

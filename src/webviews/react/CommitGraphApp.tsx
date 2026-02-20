@@ -24,6 +24,7 @@ import type {
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
+import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 
 const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
@@ -32,24 +33,6 @@ const DEFAULT_BRANCH_WIDTH = 260;
 const MIN_INFO_WIDTH = 250;
 const MAX_INFO_WIDTH = 760;
 const DEFAULT_INFO_WIDTH = 330;
-
-function ThemeIconFontFaces({ fonts }: { fonts?: ThemeIconFont[] }): React.ReactElement | null {
-    const safeFonts = Array.isArray(fonts) ? fonts : [];
-    if (!safeFonts.length) return null;
-
-    const css = safeFonts
-        .map((font) => {
-            const family = font.fontFamily.replace(/'/g, "\\'");
-            const src = font.src.replace(/'/g, "\\'");
-            const format = font.format ? ` format('${font.format.replace(/'/g, "\\'")}')` : "";
-            const weight = font.weight ?? "normal";
-            const style = font.style ?? "normal";
-            return `@font-face{font-family:'${family}';src:url('${src}')${format};font-weight:${weight};font-style:${style};font-display:block;}`;
-        })
-        .join("");
-
-    return <style>{css}</style>;
-}
 
 function useColumnDrag(
     width: number,
@@ -118,10 +101,14 @@ function App(): React.ReactElement {
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
-    const [folderIcon, setFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
-    const [folderExpandedIcon, setFolderExpandedIcon] = useState<ThemeTreeIcon | undefined>(
-        undefined,
-    );
+    const [branchFolderIcon, setBranchFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
+    const [branchFolderExpandedIcon, setBranchFolderExpandedIcon] = useState<
+        ThemeTreeIcon | undefined
+    >(undefined);
+    const [commitFolderIcon, setCommitFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
+    const [commitFolderExpandedIcon, setCommitFolderExpandedIcon] = useState<
+        ThemeTreeIcon | undefined
+    >(undefined);
     const [commitFolderIconsByName, setCommitFolderIconsByName] = useState<
         ThemeFolderIconMap | undefined
     >(undefined);
@@ -187,8 +174,8 @@ function App(): React.ReactElement {
                     break;
                 case "setBranches":
                     setBranches(data.branches);
-                    setFolderIcon(data.folderIcon);
-                    setFolderExpandedIcon(data.folderExpandedIcon);
+                    setBranchFolderIcon(data.folderIcon);
+                    setBranchFolderExpandedIcon(data.folderExpandedIcon);
                     setBranchFolderIconsByName(data.folderIconsByName);
                     if (data.iconFonts) setIconFonts(data.iconFonts);
                     break;
@@ -197,13 +184,15 @@ function App(): React.ReactElement {
                     break;
                 case "setCommitDetail":
                     setSelectedDetail(data.detail);
-                    setFolderIcon(data.folderIcon);
-                    setFolderExpandedIcon(data.folderExpandedIcon);
+                    setCommitFolderIcon(data.folderIcon);
+                    setCommitFolderExpandedIcon(data.folderExpandedIcon);
                     setCommitFolderIconsByName(data.folderIconsByName);
-                    setIconFonts(data.iconFonts ?? []);
+                    if (data.iconFonts) setIconFonts(data.iconFonts);
                     break;
                 case "clearCommitDetail":
                     setSelectedDetail(null);
+                    setCommitFolderIcon(undefined);
+                    setCommitFolderExpandedIcon(undefined);
                     setCommitFolderIconsByName(undefined);
                     break;
             }
@@ -265,8 +254,8 @@ function App(): React.ReactElement {
                     selectedBranch={selectedBranch}
                     onSelectBranch={handleSelectBranch}
                     onBranchAction={handleBranchAction}
-                    folderIcon={folderIcon}
-                    folderExpandedIcon={folderExpandedIcon}
+                    folderIcon={branchFolderIcon}
+                    folderExpandedIcon={branchFolderExpandedIcon}
                     folderIconsByName={branchFolderIconsByName}
                 />
             </div>
@@ -318,8 +307,8 @@ function App(): React.ReactElement {
                 >
                     <CommitInfoPane
                         detail={selectedDetail}
-                        folderIcon={folderIcon}
-                        folderExpandedIcon={folderExpandedIcon}
+                        folderIcon={commitFolderIcon}
+                        folderExpandedIcon={commitFolderExpandedIcon}
                         folderIconsByName={commitFolderIconsByName}
                     />
                 </div>
