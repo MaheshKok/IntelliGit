@@ -2,23 +2,23 @@
 // Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar].
 // Branch filtering from the inline branch tree posts back to the extension host.
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createRoot } from "react-dom/client";
+import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
-import type { Branch, Commit } from "../../types";
+import type { Branch, Commit, CommitDetail } from "../../types";
+import type {
+    BranchAction,
+    CommitAction,
+    CommitGraphOutbound,
+    CommitGraphInbound,
+} from "./commitGraphTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
+import theme from "./commit-panel/theme";
+import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 
-type OutboundMessage =
-    | { type: "ready" }
-    | { type: "selectCommit"; hash: string }
-    | { type: "filterText"; text: string }
-    | { type: "loadMore" }
-    | { type: "filterBranch"; branch: string | null }
-    | { type: "branchAction"; action: string; branchName: string }
-    | { type: "commitAction"; action: string; hash: string; targetBranch?: string };
-
-const vscode = getVsCodeApi<OutboundMessage, unknown>();
+const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 260;
@@ -30,6 +30,7 @@ function App(): React.ReactElement {
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
+    const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
     const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const dragging = useRef(false);
@@ -38,7 +39,7 @@ function App(): React.ReactElement {
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
 
-        const handler = (event: MessageEvent) => {
+        const handler = (event: MessageEvent<CommitGraphInbound>) => {
             const data = event.data;
             switch (data.type) {
                 case "loadCommits":
@@ -63,6 +64,12 @@ function App(): React.ReactElement {
                     break;
                 case "setSelectedBranch":
                     setSelectedBranch(data.branch ?? null);
+                    break;
+                case "setCommitDetail":
+                    setSelectedDetail(data.detail);
+                    break;
+                case "clearCommitDetail":
+                    setSelectedDetail(null);
                     break;
             }
         };
@@ -96,23 +103,23 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "filterBranch", branch: name });
     }, []);
 
-    const handleBranchAction = useCallback((action: string, branchName: string) => {
+    const handleBranchAction = useCallback((action: BranchAction, branchName: string) => {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
     const handleCommitAction = useCallback(
-        (action: string, hash: string, targetBranch?: string) => {
+        (action: CommitAction, hash: string, targetBranch?: string) => {
             vscode.postMessage({ type: "commitAction", action, hash, targetBranch });
         },
         [],
     );
 
-    const defaultCheckoutBranch = (() => {
+    const defaultCheckoutBranch = useMemo(() => {
         const localBranches = branches.filter((b) => !b.isRemote).map((b) => b.name);
         if (localBranches.includes("main")) return "main";
         if (localBranches.includes("master")) return "master";
         return localBranches[0] ?? null;
-    })();
+    }, [branches]);
 
     // Resizable divider via mouse events on document
     const onDividerMouseDown = useCallback(
@@ -162,6 +169,7 @@ function App(): React.ReactElement {
 
             {/* Resizable divider */}
             <div
+                data-testid="commit-graph-divider"
                 onMouseDown={onDividerMouseDown}
                 style={{
                     width: 4,
@@ -171,24 +179,41 @@ function App(): React.ReactElement {
                 }}
             />
 
-            {/* Commit graph + list */}
-            <div style={{ flex: 1, overflow: "hidden" }}>
-                <CommitList
-                    commits={commits}
-                    selectedHash={selectedHash}
-                    filterText={filterText}
-                    hasMore={hasMore}
-                    unpushedHashes={unpushedHashes}
-                    defaultCheckoutBranch={defaultCheckoutBranch}
-                    onSelectCommit={handleSelectCommit}
-                    onFilterText={handleFilterText}
-                    onLoadMore={handleLoadMore}
-                    onCommitAction={handleCommitAction}
-                />
+            {/* Commit graph + files/details in one unified panel */}
+            <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
+                <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                    <CommitList
+                        commits={commits}
+                        selectedHash={selectedHash}
+                        filterText={filterText}
+                        hasMore={hasMore}
+                        unpushedHashes={unpushedHashes}
+                        defaultCheckoutBranch={defaultCheckoutBranch}
+                        selectedBranch={selectedBranch}
+                        onSelectCommit={handleSelectCommit}
+                        onFilterText={handleFilterText}
+                        onLoadMore={handleLoadMore}
+                        onCommitAction={handleCommitAction}
+                    />
+                </div>
+                <div
+                    style={{
+                        width: 330,
+                        flexShrink: 0,
+                        borderLeft: "1px solid var(--vscode-panel-border)",
+                        overflow: "hidden",
+                    }}
+                >
+                    <CommitInfoPane detail={selectedDetail} />
+                </div>
             </div>
         </div>
     );
 }
 
 const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
+root.render(
+    <ChakraProvider theme={theme}>
+        <App />
+    </ChakraProvider>,
+);

@@ -1,8 +1,63 @@
 import { GitExecutor } from "./executor";
 import type { Branch, Commit, CommitDetail, CommitFile, WorkingFile, StashEntry } from "../types";
 
+declare const require: (id: string) => unknown;
+
 const FIELD_SEP = "<<|>>";
 const RECORD_SEP = "<<||>>";
+const OUTPUT_CHANNEL_NAME = "IntelliGit";
+
+type VsCodeApi = typeof import("vscode");
+type OutputChannelLike = { appendLine: (value: string) => void };
+
+let cachedVsCodeApi: VsCodeApi | null | undefined;
+let outputChannel: OutputChannelLike | undefined;
+
+function getVsCodeApi(): VsCodeApi | null {
+    if (cachedVsCodeApi !== undefined) return cachedVsCodeApi;
+    try {
+        cachedVsCodeApi = require("vscode") as VsCodeApi;
+    } catch {
+        cachedVsCodeApi = null;
+    }
+    return cachedVsCodeApi;
+}
+
+function getOutputChannel(): OutputChannelLike {
+    if (outputChannel) return outputChannel;
+    const vscode = getVsCodeApi();
+    outputChannel = vscode
+        ? vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME)
+        : { appendLine: (value: string) => console.warn(value) };
+    return outputChannel;
+}
+
+function getErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+function logGitOpsWarning(context: string, err: unknown, options?: { notifyUser?: boolean }): void {
+    const channel = getOutputChannel();
+    const message = getErrorMessage(err);
+    channel.appendLine(`[GitOps] ${context}: ${message}`);
+    if (err instanceof Error && err.stack) {
+        channel.appendLine(err.stack);
+    }
+    if (options?.notifyUser) {
+        const vscode = getVsCodeApi();
+        if (vscode) {
+            void vscode.window.showWarningMessage(
+                `${context}. Some change stats may be unavailable.`,
+            );
+        }
+    }
+}
+
+function assertStashIndex(index: number): void {
+    if (!Number.isInteger(index) || index < 0) {
+        throw new Error(`Invalid stash index: ${index}`);
+    }
+}
 
 export class GitOps {
     constructor(private readonly executor: GitExecutor) {}
@@ -198,8 +253,8 @@ export class GitOps {
                 file.additions = Math.max(file.additions, Number.isNaN(parsedAdd) ? 0 : parsedAdd);
                 file.deletions = Math.max(file.deletions, Number.isNaN(parsedDel) ? 0 : parsedDel);
             }
-        } catch {
-            /* numstat may fail for binary files */
+        } catch (err) {
+            logGitOpsWarning("Failed to get commit numstat", err, { notifyUser: true });
         }
 
         return {
@@ -307,8 +362,8 @@ export class GitOps {
                     }
                 }
             }
-        } catch {
-            /* ignore */
+        } catch (err) {
+            logGitOpsWarning("Failed to get unstaged numstat", err, { notifyUser: true });
         }
 
         // Get numstat for staged changes
@@ -330,8 +385,8 @@ export class GitOps {
                     }
                 }
             }
-        } catch {
-            /* ignore */
+        } catch (err) {
+            logGitOpsWarning("Failed to get staged numstat", err, { notifyUser: true });
         }
 
         return files;
@@ -393,10 +448,12 @@ export class GitOps {
     }
 
     async shelvePop(index: number = 0): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "pop", `stash@{${index}}`]);
     }
 
     async shelveApply(index: number = 0): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "apply", `stash@{${index}}`]);
     }
 
@@ -422,10 +479,12 @@ export class GitOps {
     }
 
     async shelveDelete(index: number): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
 
     async getShelvedFiles(index: number): Promise<WorkingFile[]> {
+        assertStashIndex(index);
         const ref = `stash@{${index}}`;
         const files = new Map<string, WorkingFile>();
 
@@ -444,12 +503,7 @@ export class GitOps {
         };
 
         try {
-            const nameStatus = await this.executor.run([
-                "stash",
-                "show",
-                "--name-status",
-                ref,
-            ]);
+            const nameStatus = await this.executor.run(["stash", "show", "--name-status", ref]);
             for (const line of nameStatus.trim().split("\n")) {
                 if (!line.trim()) continue;
                 const parts = line.split("\t");
@@ -463,17 +517,12 @@ export class GitOps {
                 if (!path) continue;
                 upsert(path, status);
             }
-        } catch {
-            // Keep empty; we'll still try numstat.
+        } catch (err) {
+            logGitOpsWarning(`Failed stash show --name-status for ${ref}`, err);
         }
 
         try {
-            const numstat = await this.executor.run([
-                "stash",
-                "show",
-                "--numstat",
-                ref,
-            ]);
+            const numstat = await this.executor.run(["stash", "show", "--numstat", ref]);
             for (const line of numstat.trim().split("\n")) {
                 if (!line.trim()) continue;
                 const parts = line.split("\t");
@@ -486,14 +535,15 @@ export class GitOps {
                 entry.additions = adds;
                 entry.deletions = dels;
             }
-        } catch {
-            // If numstat fails, keep status-only entries.
+        } catch (err) {
+            logGitOpsWarning(`Failed stash show --numstat for ${ref}`, err);
         }
 
         return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path));
     }
 
     async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
+        assertStashIndex(index);
         return this.executor.run(["stash", "show", "-p", `stash@{${index}}`, "--", filePath]);
     }
 

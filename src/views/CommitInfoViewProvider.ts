@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import type { CommitDetail } from "../types";
+import type { CommitInfoInbound } from "../webviews/react/commitInfoTypes";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
@@ -64,7 +65,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "setCommitDetail", detail: this.detail });
     }
 
-    private postToWebview(msg: unknown): void {
+    private postToWebview(msg: CommitInfoInbound): void {
         this.view?.webview.postMessage(msg);
     }
 

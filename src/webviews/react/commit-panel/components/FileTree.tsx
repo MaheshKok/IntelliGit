@@ -6,7 +6,7 @@ import { Box } from "@chakra-ui/react";
 import { SectionHeader } from "./SectionHeader";
 import { FolderRow } from "./FolderRow";
 import { FileRow } from "./FileRow";
-import { useFileTree, collectTreeFiles, collectAllDirPaths } from "../hooks/useFileTree";
+import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { WorkingFile } from "../../../../types";
 import type { TreeEntry } from "../types";
 
@@ -15,7 +15,7 @@ interface Props {
     groupByDir: boolean;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
-    onToggleFolder: (dirPrefix: string, files: WorkingFile[]) => void;
+    onToggleFolder: (files: WorkingFile[]) => void;
     onToggleSection: (files: WorkingFile[]) => void;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
@@ -139,7 +139,6 @@ export function FileTree({
                             groupByDir={groupByDir}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
-                            allFiles={tracked}
                             onToggleFile={onToggleFile}
                             onToggleFolder={onToggleFolder}
                             isAllChecked={isAllChecked}
@@ -168,7 +167,6 @@ export function FileTree({
                             groupByDir={groupByDir}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
-                            allFiles={unversioned}
                             onToggleFile={onToggleFile}
                             onToggleFolder={onToggleFolder}
                             isAllChecked={isAllChecked}
@@ -189,9 +187,8 @@ interface TreeEntriesProps {
     groupByDir: boolean;
     expandedDirs: Set<string>;
     checkedPaths: Set<string>;
-    allFiles: WorkingFile[];
     onToggleFile: (path: string) => void;
-    onToggleFolder: (dirPrefix: string, files: WorkingFile[]) => void;
+    onToggleFolder: (files: WorkingFile[]) => void;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onToggleDir: (dirPath: string) => void;
@@ -204,7 +201,6 @@ function TreeEntries({
     groupByDir,
     expandedDirs,
     checkedPaths,
-    allFiles,
     onToggleFile,
     onToggleFolder,
     isAllChecked,
@@ -229,8 +225,8 @@ function TreeEntries({
                     );
                 }
 
-                const dirFiles = collectTreeFiles(entry.children);
                 const isExpanded = expandedDirs.has(entry.path);
+                const dirFiles = entry.descendantFiles;
 
                 return (
                     <React.Fragment key={entry.path}>
@@ -243,7 +239,7 @@ function TreeEntries({
                             isAllChecked={isAllChecked(dirFiles)}
                             isSomeChecked={isSomeChecked(dirFiles)}
                             onToggleExpand={onToggleDir}
-                            onToggleCheck={() => onToggleFolder(entry.path, allFiles)}
+                            onToggleCheck={() => onToggleFolder(dirFiles)}
                         />
                         {isExpanded && (
                             <TreeEntries
@@ -252,7 +248,6 @@ function TreeEntries({
                                 groupByDir={groupByDir}
                                 expandedDirs={expandedDirs}
                                 checkedPaths={checkedPaths}
-                                allFiles={allFiles}
                                 onToggleFile={onToggleFile}
                                 onToggleFolder={onToggleFolder}
                                 isAllChecked={isAllChecked}

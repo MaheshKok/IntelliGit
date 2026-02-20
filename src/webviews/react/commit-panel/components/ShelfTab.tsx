@@ -15,6 +15,8 @@ interface Props {
     selectedIndex: number | null;
 }
 
+type ShelfActionKind = "apply" | "pop" | "delete";
+
 export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
     const tree = useFileTree(shelfFiles, true);
@@ -27,26 +29,24 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
         [vscode],
     );
 
-    const handleApply = useCallback(
-        (index: number | null) => {
+    const handleShelfAction = useCallback(
+        (index: number | null, kind: ShelfActionKind) => {
             if (index === null) return;
-            vscode.postMessage({ type: "shelfApply", index });
-        },
-        [vscode],
-    );
-
-    const handlePop = useCallback(
-        (index: number | null) => {
-            if (index === null) return;
-            vscode.postMessage({ type: "shelfPop", index });
-        },
-        [vscode],
-    );
-
-    const handleDrop = useCallback(
-        (index: number | null) => {
-            if (index === null) return;
-            vscode.postMessage({ type: "shelfDelete", index });
+            switch (kind) {
+                case "apply":
+                    vscode.postMessage({ type: "shelfApply", index });
+                    return;
+                case "pop":
+                    vscode.postMessage({ type: "shelfPop", index });
+                    return;
+                case "delete":
+                    vscode.postMessage({ type: "shelfDelete", index });
+                    return;
+                default: {
+                    const exhaustive: never = kind;
+                    throw new Error(`Unhandled shelf action: ${String(exhaustive)}`);
+                }
+            }
         },
         [vscode],
     );
@@ -96,15 +96,23 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                                 key={stash.index}
                                 align="center"
                                 px="9px"
-                                py="3px"
-                                minH="28px"
+                                py="2px"
+                                minH="24px"
                                 fontSize="12px"
                                 cursor="pointer"
-                                bg={isSelected ? "rgba(120, 138, 179, 0.3)" : "transparent"}
-                                color={isSelected ? "#dde5f4" : "var(--vscode-foreground)"}
+                                bg={
+                                    isSelected
+                                        ? "var(--vscode-list-activeSelectionBackground)"
+                                        : "transparent"
+                                }
+                                color={
+                                    isSelected
+                                        ? "var(--vscode-list-activeSelectionForeground)"
+                                        : "var(--vscode-foreground)"
+                                }
                                 _hover={{
                                     bg: isSelected
-                                        ? "rgba(120, 138, 179, 0.3)"
+                                        ? "var(--vscode-list-activeSelectionBackground)"
                                         : "var(--vscode-list-hoverBackground)",
                                 }}
                                 onClick={() => handleSelect(stash.index)}
@@ -181,20 +189,20 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
 
             <Flex
                 align="center"
-                gap="10px"
+                gap="8px"
                 px="8px"
-                py="10px"
+                py="8px"
                 borderTop="1px solid var(--vscode-panel-border)"
             >
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handleApply(selectedIndex)}
+                    onClick={() => handleShelfAction(selectedIndex, "apply")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="30px"
-                    minW="92px"
-                    px="14px"
+                    h="28px"
+                    minW="86px"
+                    px="12px"
                     bg="rgba(255,255,255,0.07)"
                     borderColor="rgba(184, 194, 214, 0.5)"
                 >
@@ -203,12 +211,12 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handlePop(selectedIndex)}
+                    onClick={() => handleShelfAction(selectedIndex, "pop")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="30px"
-                    minW="74px"
-                    px="14px"
+                    h="28px"
+                    minW="68px"
+                    px="12px"
                     bg="rgba(255,255,255,0.07)"
                     borderColor="rgba(184, 194, 214, 0.5)"
                 >
@@ -217,12 +225,12 @@ export function ShelfTab({ stashes, shelfFiles, selectedIndex }: Props): React.R
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={() => handleDrop(selectedIndex)}
+                    onClick={() => handleShelfAction(selectedIndex, "delete")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="30px"
-                    minW="84px"
-                    px="14px"
+                    h="28px"
+                    minW="78px"
+                    px="12px"
                     bg="rgba(255,255,255,0.07)"
                     borderColor="rgba(184, 194, 214, 0.5)"
                 >
@@ -292,7 +300,7 @@ function ShelfFileTree({
                 }
 
                 const isExpanded = expandedDirs.has(entry.path);
-                const fileCount = countFiles(entry.children);
+                const fileCount = entry.descendantFiles.length;
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex
@@ -354,13 +362,4 @@ function ShelfFileTree({
             })}
         </>
     );
-}
-
-function countFiles(entries: TreeEntry[]): number {
-    let count = 0;
-    for (const entry of entries) {
-        if (entry.type === "file") count += 1;
-        else count += countFiles(entry.children);
-    }
-    return count;
 }

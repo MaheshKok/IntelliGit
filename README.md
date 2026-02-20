@@ -1,6 +1,6 @@
-# IntelliGit
+# IntelliGit - PyCharm Git for VS Code
 
-IntelliJ-style Git experience for VS Code. A full-featured Git GUI with commit graph visualization, branch management, intelligent file staging, and a shelf (stash) system — all designed to match the workflow developers know from IntelliJ IDEA and PyCharm.
+IntelliGit is an IntelliJ/PyCharm-style Git extension for VS Code. It provides an intelligent Git workflow with commit graph visualization, branch management, file staging, and a Shelf workflow designed to feel familiar to PyCharm Git users.
 
 ## Features
 
@@ -152,10 +152,35 @@ src/
     CommitInfoViewProvider.ts    # Bottom panel changed files webview
     BranchTreeProvider.ts        # Sidebar branch tree (native tree view)
   webviews/react/
-    CommitGraphApp.tsx      # React app for commit graph
-    CommitList.tsx           # Scrollable commit list with canvas graph
-    BranchColumn.tsx         # Resizable branch tree column
-    graph.ts                 # Lane-based graph layout algorithm
+    CommitGraphApp.tsx            # React app for commit graph container
+    CommitList.tsx                # Virtualized commit list + context menu
+    BranchColumn.tsx              # Branch tree column wrapper
+    CommitInfoApp.tsx             # Changed files + commit details webview app
+    commitGraphTypes.ts           # Typed commit graph message protocol
+    graph.ts                      # Lane-based graph layout algorithm
+    branch-column/                # Branch column modules
+      components/
+        BranchSearchBar.tsx
+        BranchSectionHeader.tsx
+        BranchTreeNodeRow.tsx
+      treeModel.ts
+      menu.ts
+      highlight.tsx
+      styles.ts
+      icons.tsx
+      types.ts
+    commit-list/                  # Commit list modules
+      CommitRow.tsx
+      commitMenu.tsx
+      useCommitGraphCanvas.ts
+      styles.ts
+    commit-panel/                 # Commit/Shelf panel modules
+      components/
+      hooks/
+      types.ts
+    shared/
+      components/ContextMenu.tsx
+      fileTree.ts
 media/
   intelligit.svg            # Extension icon
 ```

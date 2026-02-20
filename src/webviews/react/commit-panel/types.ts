@@ -2,6 +2,10 @@
 // and the extension host. Defines all inbound and outbound message shapes.
 
 import type { WorkingFile, StashEntry } from "../../../types";
+import type {
+    TreeFolder as GenericTreeFolder,
+    TreeLeaf as GenericTreeLeaf,
+} from "../shared/fileTree";
 
 /** Messages sent FROM the webview TO the extension host. */
 export type OutboundMessage =
@@ -65,17 +69,12 @@ export type CommitPanelAction =
     | { type: "SET_AMEND"; isAmend: boolean };
 
 /** A node in the directory tree used for grouped file display. */
-export interface TreeNode {
-    type: "folder";
-    name: string;
-    path: string;
+export interface TreeNode extends Omit<GenericTreeFolder<WorkingFile>, "children"> {
     children: TreeEntry[];
+    descendantFiles: WorkingFile[];
 }
 
 /** A leaf file node in the directory tree. */
-export interface TreeFile {
-    type: "file";
-    file: WorkingFile;
-}
+export type TreeFile = GenericTreeLeaf<WorkingFile>;
 
 export type TreeEntry = TreeNode | TreeFile;

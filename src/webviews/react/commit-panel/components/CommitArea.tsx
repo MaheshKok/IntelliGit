@@ -22,10 +22,26 @@ export function CommitArea({
     onCommit,
     onCommitAndPush,
 }: Props): React.ReactElement {
+    const amendCheckboxId = "commit-area-amend-checkbox";
     return (
         <Flex direction="column" overflow="hidden" flex={1}>
-            <Flex align="center" gap="5px" px="7px" py="3px" fontSize="12px" minH="24px">
-                <VscCheckbox isChecked={isAmend} onChange={() => onAmendChange(!isAmend)} />
+            <Flex
+                as="label"
+                htmlFor={amendCheckboxId}
+                align="center"
+                gap="5px"
+                px="7px"
+                py="3px"
+                fontSize="12px"
+                minH="24px"
+                cursor="pointer"
+            >
+                <VscCheckbox
+                    isChecked={isAmend}
+                    onChange={() => onAmendChange(!isAmend)}
+                    inputId={amendCheckboxId}
+                    inputTestId="amend-checkbox"
+                />
                 <Box as="span" color="var(--vscode-foreground)" opacity={0.9}>
                     Amend
                 </Box>

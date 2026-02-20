@@ -4,7 +4,12 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch } from "../types";
+import type { Branch, CommitDetail } from "../types";
+import type {
+    BranchAction,
+    CommitAction,
+    CommitGraphInbound,
+} from "../webviews/react/commitGraphTypes";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
@@ -19,6 +24,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private readonly PAGE_SIZE = 500;
 
     private branches: Branch[] = [];
+    private selectedCommitDetail: CommitDetail | null = null;
 
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
@@ -27,13 +33,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     readonly onBranchFilterChanged = this._onBranchFilterChanged.event;
 
     private readonly _onBranchAction = new vscode.EventEmitter<{
-        action: string;
+        action: BranchAction;
         branchName: string;
     }>();
     readonly onBranchAction = this._onBranchAction.event;
 
     private readonly _onCommitAction = new vscode.EventEmitter<{
-        action: string;
+        action: CommitAction;
         hash: string;
         targetBranch?: string;
     }>();
@@ -63,6 +69,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 case "ready":
                     this.sendBranches();
                     await this.loadInitial();
+                    this.postCommitDetailState();
                     break;
                 case "selectCommit":
                     this._onCommitSelected.fire(msg.hash);
@@ -112,6 +119,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     async refresh(): Promise<void> {
         this.sendBranches();
         await this.loadInitial();
+    }
+
+    setCommitDetail(detail: CommitDetail): void {
+        this.selectedCommitDetail = detail;
+        this.postCommitDetailState();
+    }
+
+    clearCommitDetail(): void {
+        this.selectedCommitDetail = null;
+        this.postCommitDetailState();
     }
 
     private sendBranches(): void {
@@ -178,8 +195,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         await this.loadInitial();
     }
 
-    private postToWebview(msg: unknown): void {
+    private postToWebview(msg: CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    private postCommitDetailState(): void {
+        if (this.selectedCommitDetail) {
+            this.postToWebview({ type: "setCommitDetail", detail: this.selectedCommitDetail });
+            return;
+        }
+        this.postToWebview({ type: "clearCommitDetail" });
     }
 
     private getHtml(webview: vscode.Webview): string {

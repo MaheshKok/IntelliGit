@@ -1,5 +1,30 @@
-import React, { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
+import React, {
+    useRef,
+    useEffect,
+    useLayoutEffect,
+    useState,
+    useCallback,
+    useInsertionEffect,
+} from "react";
 import { createPortal } from "react-dom";
+
+const ITEM_HEIGHT = 28;
+const ITEM_FONT_SIZE = 13;
+const CONTEXT_MENU_STYLE_ID = "intelligit-ctx-styles";
+const CONTEXT_MENU_STYLE_RULES = `
+    .intelligit-context-item[data-disabled="false"]:hover,
+    .intelligit-context-item[data-disabled="false"]:focus-visible {
+        background: var(--vscode-menu-selectionBackground, #094771);
+        color: var(--vscode-menu-selectionForeground, #fff);
+    }
+    .intelligit-context-item[data-disabled="false"]:focus-visible {
+        outline: 1px solid var(--vscode-focusBorder, #007acc);
+        box-shadow:
+            0 0 0 1px var(--vscode-focusBorder, #007acc),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        outline-offset: -1px;
+    }
+`;
 
 export interface MenuItem {
     label: string;
@@ -33,6 +58,15 @@ export function ContextMenu({
     const menuBodyPaddingX = 4;
     const hasAnyIcon = items.some((item) => !item.separator && !!item.icon);
     const hasAnyTrailing = items.some((item) => !item.separator && (!!item.hint || !!item.submenu));
+
+    useInsertionEffect(() => {
+        if (typeof document === "undefined") return;
+        if (document.getElementById(CONTEXT_MENU_STYLE_ID)) return;
+        const style = document.createElement("style");
+        style.id = CONTEXT_MENU_STYLE_ID;
+        style.textContent = CONTEXT_MENU_STYLE_RULES;
+        document.head.appendChild(style);
+    }, []);
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -80,6 +114,7 @@ export function ContextMenu({
     return createPortal(
         <div
             ref={ref}
+            role="menu"
             style={{
                 position: "fixed",
                 left: pos.left,
@@ -88,8 +123,9 @@ export function ContextMenu({
                 background: "var(--vscode-menu-background, #3a4254)",
                 border: "1px solid var(--vscode-menu-border, rgba(255,255,255,0.14))",
                 borderRadius: 9,
-                padding: "5px 0",
+                padding: "4px 0",
                 minWidth,
+                fontFamily: "var(--vscode-font-family)",
                 boxShadow:
                     "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}
@@ -111,37 +147,32 @@ export function ContextMenu({
                 return (
                     <div
                         key={item.action}
+                        className="intelligit-context-item"
+                        role="menuitem"
+                        data-disabled={item.disabled ? "true" : "false"}
                         aria-disabled={item.disabled}
                         tabIndex={item.disabled ? -1 : 0}
                         onClick={item.disabled ? undefined : () => handleItemClick(item.action)}
-                        onMouseEnter={
+                        onKeyDown={
                             item.disabled
                                 ? undefined
                                 : (e) => {
-                                      (e.currentTarget as HTMLDivElement).style.background =
-                                          "var(--vscode-menu-selectionBackground, #094771)";
-                                      (e.currentTarget as HTMLDivElement).style.color =
-                                          "var(--vscode-menu-selectionForeground, #fff)";
-                                  }
-                        }
-                        onMouseLeave={
-                            item.disabled
-                                ? undefined
-                                : (e) => {
-                                      (e.currentTarget as HTMLDivElement).style.background = "";
-                                      (e.currentTarget as HTMLDivElement).style.color = "";
+                                      if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          handleItemClick(item.action);
+                                      }
                                   }
                         }
                         style={{
                             display: "flex",
                             alignItems: "center",
                             gap: hasAnyIcon ? 8 : 0,
-                            minHeight: 29,
-                            padding: `4px ${hasAnyTrailing ? 10 : 4}px 4px ${hasAnyIcon ? 8 : 4}px`,
+                            minHeight: ITEM_HEIGHT,
+                            padding: `4px ${hasAnyTrailing ? 9 : 4}px 4px ${hasAnyIcon ? 8 : 4}px`,
                             margin: `0 ${menuBodyPaddingX}px`,
                             borderRadius: 4,
                             cursor: item.disabled ? "default" : "pointer",
-                            fontSize: 13,
+                            fontSize: ITEM_FONT_SIZE,
                             lineHeight: "18px",
                             color: item.disabled
                                 ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"

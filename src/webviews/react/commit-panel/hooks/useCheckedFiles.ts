@@ -8,7 +8,7 @@ import type { WorkingFile } from "../../../../types";
 interface CheckedFilesAPI {
     checkedPaths: Set<string>;
     toggleFile: (path: string) => void;
-    toggleFolder: (dirPrefix: string, files: WorkingFile[]) => void;
+    toggleFolder: (files: WorkingFile[]) => void;
     toggleSection: (files: WorkingFile[]) => void;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
@@ -50,30 +50,30 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         });
     }, []);
 
-    const toggleFolder = useCallback((dirPrefix: string, files: WorkingFile[]) => {
-        const dirFiles = files.filter((f) => f.path.startsWith(dirPrefix + "/"));
+    const toggleMany = useCallback((paths: string[]) => {
+        if (paths.length === 0) return;
         setCheckedPaths((prev) => {
             const next = new Set(prev);
-            const allChecked = dirFiles.every((f) => next.has(f.path));
-            for (const f of dirFiles) {
-                if (allChecked) next.delete(f.path);
-                else next.add(f.path);
+            const allChecked = paths.every((path) => next.has(path));
+            for (const path of paths) {
+                if (allChecked) next.delete(path);
+                else next.add(path);
             }
             return next;
         });
     }, []);
 
-    const toggleSection = useCallback((files: WorkingFile[]) => {
-        setCheckedPaths((prev) => {
-            const next = new Set(prev);
-            const allChecked = files.every((f) => next.has(f.path));
-            for (const f of files) {
-                if (allChecked) next.delete(f.path);
-                else next.add(f.path);
-            }
-            return next;
-        });
-    }, []);
+    const toggleGroup = useCallback(
+        (files: WorkingFile[]) => {
+            toggleMany(files.map((file) => file.path));
+        },
+        [toggleMany],
+    );
+
+    // Intentional aliases for call-site clarity. If folder/section behavior diverges,
+    // split these into separate callbacks to keep memo/dependency behavior explicit.
+    const toggleFolder = toggleGroup;
+    const toggleSection = toggleGroup;
 
     const isAllChecked = useCallback(
         (files: WorkingFile[]) => files.length > 0 && files.every((f) => checkedPaths.has(f.path)),

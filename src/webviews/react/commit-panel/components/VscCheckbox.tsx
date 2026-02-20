@@ -7,6 +7,8 @@ interface Props {
     isChecked: boolean;
     isIndeterminate?: boolean;
     onChange: () => void;
+    inputTestId?: string;
+    inputId?: string;
 }
 
 const SIZE = 14;
@@ -17,7 +19,13 @@ const CHECKED_BG = "rgba(98, 135, 199, 0.14)";
 const CHECKED_BORDER = "#7b9fd5";
 const CHECK_COLOR = "#c8ddff";
 
-function VscCheckboxInner({ isChecked, isIndeterminate, onChange }: Props): React.ReactElement {
+function VscCheckboxInner({
+    isChecked,
+    isIndeterminate,
+    onChange,
+    inputTestId,
+    inputId,
+}: Props): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -43,6 +51,8 @@ function VscCheckboxInner({ isChecked, isIndeterminate, onChange }: Props): Reac
             <input
                 ref={inputRef}
                 type="checkbox"
+                id={inputId}
+                data-testid={inputTestId}
                 checked={isChecked}
                 onChange={(e) => {
                     e.stopPropagation();

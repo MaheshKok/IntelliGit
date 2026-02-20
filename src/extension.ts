@@ -12,6 +12,9 @@ import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
 import type { Branch } from "./types";
+import type { CommitAction } from "./webviews/react/commitGraphTypes";
+import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
+import { deleteFileWithFallback } from "./utils/fileOps";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -71,16 +74,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             try {
                 const detail = await gitOps.getCommitDetail(hash);
                 if (requestId !== commitDetailRequestSeq) return;
+                (
+                    commitGraph as {
+                        setCommitDetail?: (commitDetail: import("./types").CommitDetail) => void;
+                    }
+                ).setCommitDetail?.(detail);
                 commitInfo.setCommitDetail(detail);
             } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                vscode.window.showErrorMessage(`Failed to load commit: ${message}`);
+                const msg = getErrorMessage(err);
+                vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
             }
         }),
     );
 
     context.subscriptions.push(
         commitGraph.onBranchFilterChanged(() => {
+            (commitGraph as { clearCommitDetail?: () => void }).clearCommitDetail?.();
             commitInfo.clear();
         }),
     );
@@ -110,28 +119,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Helper ---
 
     const clearSelection = () => {
+        (commitGraph as { clearCommitDetail?: () => void }).clearCommitDetail?.();
         commitInfo.clear();
     };
-
-    const getErrorMessage = (error: unknown): string =>
-        error instanceof Error ? error.message : String(error);
-
-    const isUntrackedPathspecError = (error: unknown): boolean => {
-        const message = getErrorMessage(error).toLowerCase();
-        const code =
-            typeof error === "object" && error !== null && "code" in error
-                ? String((error as { code?: unknown }).code ?? "").toLowerCase()
-                : "";
-
-        return (
-            message.includes("did not match any files") ||
-            (message.includes("pathspec") && message.includes("did not match")) ||
-            code === "enoent"
-        );
-    };
-
-    const isBranchNotFullyMergedError = (error: unknown): boolean =>
-        getErrorMessage(error).toLowerCase().includes("is not fully merged");
 
     const getCheckedOutBranchName = async (): Promise<string | null> => {
         try {
@@ -196,6 +186,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const isValidGitHash = (value: string): boolean => /^[0-9a-fA-F]{7,40}$/.test(value);
     const isValidBranchName = (value: string): boolean =>
         value.length > 0 && !value.startsWith("-") && /^[A-Za-z0-9._/-]+$/.test(value);
+    const assertNever = (value: never): never => {
+        throw new Error(`Unhandled commit action: ${String(value)}`);
+    };
 
     const isCommitUnpushed = async (hash: string): Promise<boolean> => {
         const unpushed = await gitOps.getUnpushedCommitHashes();
@@ -259,8 +252,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.commands.executeCommand("intelligit.refresh");
     };
 
+    const runWithStatusBar = async <T>(
+        message: string,
+        task: () => Promise<T>,
+    ): Promise<T> => {
+        const disposable = vscode.window.setStatusBarMessage(
+            `$(sync~spin) IntelliGit: ${message}`,
+        );
+        try {
+            return await task();
+        } finally {
+            disposable.dispose();
+        }
+    };
+
     const handleCommitContextAction = async (params: {
-        action: string;
+        action: CommitAction;
         hash: string;
         targetBranch?: string;
     }): Promise<void> => {
@@ -311,12 +318,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const args =
                     mainlineParent.kind === "notMerge"
                         ? ["cherry-pick", validatedHash]
-                        : [
-                              "cherry-pick",
-                              "-m",
-                              String(mainlineParent.parentNumber),
-                              validatedHash,
-                          ];
+                        : ["cherry-pick", "-m", String(mainlineParent.parentNumber), validatedHash];
                 await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
                 await refreshAll();
@@ -513,7 +515,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Drop",
                 );
                 if (confirm !== "Drop") return;
-                await executor.run(["rebase", "--onto", `${validatedHash}^`, validatedHash, "HEAD"]);
+                await executor.run([
+                    "rebase",
+                    "--onto",
+                    `${validatedHash}^`,
+                    validatedHash,
+                    "HEAD",
+                ]);
                 vscode.window.showInformationMessage(`Dropped ${short} from history.`);
                 await refreshAll();
                 return;
@@ -541,7 +549,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 return;
             }
             default:
-                return;
+                return assertNever(action);
         }
     };
 
@@ -587,7 +595,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Checked out ${checkedOut}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Checkout failed: ${msg}`);
                 }
             },
@@ -607,7 +615,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Created and checked out ${newName}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Failed to create branch: ${msg}`);
                 }
             },
@@ -636,7 +644,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Checkout and rebase failed: ${msg}`);
                 }
             },
@@ -657,7 +665,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Rebased onto ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Rebase failed: ${msg}`);
                 }
             },
@@ -678,7 +686,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Merged ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Merge failed: ${msg}`);
                 }
             },
@@ -686,17 +694,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.updateBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
-                if (!name) return;
+                const branch = item.branch;
+                const name = branch?.name;
+                if (!name || branch?.isRemote) return;
                 try {
-                    await executor.run(["fetch", "--all"]);
-                    if (item.branch?.isCurrent) {
-                        await executor.run(["pull", "--ff-only"]);
-                    }
+                    await runWithStatusBar(`Updating ${name}...`, async () => {
+                        const remote = await resolveRemoteName(branch);
+                        if (branch.isCurrent) {
+                            if (remote) {
+                                await executor.run(["pull", "--ff-only", remote, name]);
+                            } else {
+                                await executor.run(["pull", "--ff-only"]);
+                            }
+                            return;
+                        }
+
+                        if (!remote) {
+                            throw new Error(`No remote configured for branch ${name}.`);
+                        }
+
+                        await executor.run([
+                            "fetch",
+                            remote,
+                            `${name}:${name}`,
+                            "--recurse-submodules=no",
+                            "--progress",
+                            "--prune",
+                        ]);
+                    });
                     vscode.window.showInformationMessage(`Updated ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Update failed: ${msg}`);
                 }
             },
@@ -707,26 +736,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 try {
-                    const remote = await resolveRemoteName(branch);
-                    if (branch.isCurrent) {
-                        if (branch.remote) {
-                            await executor.run(["push", branch.remote, branch.name]);
+                    await runWithStatusBar(`Pushing ${branch.name}...`, async () => {
+                        const remote = await resolveRemoteName(branch);
+                        if (branch.isCurrent) {
+                            if (branch.remote) {
+                                await executor.run(["push", branch.remote, branch.name]);
+                            } else {
+                                await executor.run(["push"]);
+                            }
                         } else {
-                            await executor.run(["push"]);
+                            if (!remote) {
+                                throw new Error(
+                                    `No remote configured for branch ${branch.name}.`,
+                                );
+                            }
+                            await executor.run(["push", "-u", remote, branch.name]);
                         }
-                    } else {
-                        if (!remote) {
-                            vscode.window.showErrorMessage(
-                                `No remote configured for branch ${branch.name}.`,
-                            );
-                            return;
-                        }
-                        await executor.run(["push", "-u", remote, branch.name]);
-                    }
+                    });
                     vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Push failed: ${msg}`);
                 }
             },
@@ -746,7 +776,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Renamed ${name} to ${newName}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = err instanceof Error ? err.message : String(err);
+                    const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Rename failed: ${msg}`);
                 }
             },
@@ -878,26 +908,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 if (confirm !== "Delete") return;
 
-                try {
-                    await gitOps.deleteFile(ctx.filePath, true);
-                } catch (error) {
-                    if (!isUntrackedPathspecError(error)) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to delete file with git rm:", error);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-
-                    try {
-                        const uri = vscode.Uri.joinPath(workspaceFolder.uri, ctx.filePath);
-                        await vscode.workspace.fs.delete(uri);
-                    } catch (fsError) {
-                        const message = getErrorMessage(fsError);
-                        console.error("Failed to delete file from filesystem:", fsError);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-                }
+                const deleted = await deleteFileWithFallback(
+                    gitOps,
+                    workspaceFolder.uri,
+                    ctx.filePath,
+                );
+                if (!deleted) return;
 
                 vscode.window.showInformationMessage(`Deleted ${ctx.filePath}`);
                 await commitPanel.refresh();

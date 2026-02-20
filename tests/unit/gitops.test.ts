@@ -468,4 +468,146 @@ describe("GitOps", () => {
             expect(call).toEqual(["stash", "drop", "stash@{0}"]);
         });
     });
+
+    describe("getUnpushedCommitHashes", () => {
+        it("returns hash list when rev-list succeeds", async () => {
+            const executor = createMockExecutor({
+                "rev-list --branches --not --remotes": "a1b2c3d4\nfeed1234\n",
+            });
+            const ops = new GitOps(executor);
+            await expect(ops.getUnpushedCommitHashes()).resolves.toEqual([
+                "a1b2c3d4",
+                "feed1234",
+            ]);
+        });
+
+        it("returns empty array when rev-list fails", async () => {
+            const executor = {
+                run: vi.fn(async () => {
+                    throw new Error("rev-list failed");
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            await expect(ops.getUnpushedCommitHashes()).resolves.toEqual([]);
+        });
+    });
+
+    describe("shelved files helpers", () => {
+        it("parses shelved file status and numstat", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.join(" ") === "stash show --name-status stash@{1}") {
+                        return "M\tsrc/a.ts\nR100\tsrc/old.ts\tsrc/new.ts\n";
+                    }
+                    if (args.join(" ") === "stash show --numstat stash@{1}") {
+                        return "3\t1\tsrc/a.ts\n2\t0\tsrc/new.ts\n";
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            const files = await ops.getShelvedFiles(1);
+
+            expect(files).toEqual([
+                {
+                    path: "src/a.ts",
+                    status: "M",
+                    staged: false,
+                    additions: 3,
+                    deletions: 1,
+                },
+                {
+                    path: "src/new.ts",
+                    status: "R",
+                    staged: false,
+                    additions: 2,
+                    deletions: 0,
+                },
+            ]);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                ["stash", "show", "--name-status", "stash@{1}"],
+            ]);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                ["stash", "show", "--numstat", "stash@{1}"],
+            ]);
+        });
+
+        it("returns partial/empty results when stash show commands fail", async () => {
+            const executor = {
+                run: vi.fn(async () => {
+                    throw new Error("stash show failed");
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            await expect(ops.getShelvedFiles(0)).resolves.toEqual([]);
+        });
+
+        it("returns shelved patch with expected git args", async () => {
+            const executor = createMockExecutor({
+                "stash show -p stash@{0} -- src/a.ts": "diff --git a/src/a.ts b/src/a.ts",
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getShelvedFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                ["stash", "show", "-p", "stash@{0}", "--", "src/a.ts"],
+            ]);
+        });
+
+        it("returns file history with expected git args", async () => {
+            const executor = createMockExecutor({
+                "log --max-count=25": "a1b2c3  author  date  msg",
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getFileHistory("src/a.ts", 25)).resolves.toContain("a1b2c3");
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                [
+                    "log",
+                    "--max-count=25",
+                    "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
+                    "--follow",
+                    "--",
+                    "src/a.ts",
+                ],
+            ]);
+        });
+
+        it("runs shelve pop/apply/delete commands for valid indexes", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await expect(ops.shelvePop(0)).resolves.toBe("");
+            await expect(ops.shelveApply(0)).resolves.toBe("");
+            await expect(ops.shelveDelete(0)).resolves.toBe("");
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toContainEqual(["stash", "pop", "stash@{0}"]);
+            expect(calls).toContainEqual(["stash", "apply", "stash@{0}"]);
+            expect(calls).toContainEqual(["stash", "drop", "stash@{0}"]);
+        });
+
+        it("honors force flag when deleting files", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.deleteFile("src/a.ts");
+            await ops.deleteFile("src/b.ts", true);
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toContainEqual(["rm", "--", "src/a.ts"]);
+            expect(calls).toContainEqual(["rm", "-f", "--", "src/b.ts"]);
+        });
+
+        it("rejects invalid stash indexes", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await expect(ops.shelvePop(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.shelveApply(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.shelveDelete(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.getShelvedFiles(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.getShelvedFilePatch(-1, "x")).rejects.toThrow("Invalid stash index");
+        });
+    });
 });

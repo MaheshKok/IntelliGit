@@ -1,33 +1,54 @@
 // Handles vertical drag-to-resize logic for the bottom commit area.
 // Returns the current height and a mousedown handler for the drag handle.
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 
 interface DragResizeAPI {
     height: number;
     onMouseDown: (e: React.MouseEvent) => void;
 }
 
+export interface DragResizeOptions {
+    maxReservedHeight?: number;
+    onResize?: (height: number) => void;
+}
+
 export function useDragResize(
     initialHeight: number,
     minHeight: number,
     containerRef: React.RefObject<HTMLDivElement | null>,
+    options: DragResizeOptions = {},
 ): DragResizeAPI {
     const [height, setHeight] = useState(initialHeight);
     const dragging = useRef(false);
+    const heightRef = useRef(height);
+    const { maxReservedHeight = 60, onResize } = options;
+    const onResizeRef = useRef(onResize);
+
+    useEffect(() => {
+        onResizeRef.current = onResize;
+    }, [onResize]);
+
+    useEffect(() => {
+        heightRef.current = height;
+    }, [height]);
 
     const onMouseDown = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
             dragging.current = true;
             const startY = e.clientY;
-            const startH = height;
+            const startH = heightRef.current;
 
             const onMouseMove = (ev: MouseEvent) => {
                 if (!dragging.current) return;
                 const delta = startY - ev.clientY;
-                const maxH = containerRef.current ? containerRef.current.clientHeight - 60 : 500;
-                setHeight(Math.max(minHeight, Math.min(maxH, startH + delta)));
+                const maxH = containerRef.current
+                    ? containerRef.current.clientHeight - maxReservedHeight
+                    : 500;
+                const nextHeight = Math.max(minHeight, Math.min(maxH, startH + delta));
+                setHeight(nextHeight);
+                onResizeRef.current?.(nextHeight);
             };
 
             const onMouseUp = () => {
@@ -43,7 +64,7 @@ export function useDragResize(
             document.body.style.cursor = "row-resize";
             document.body.style.userSelect = "none";
         },
-        [height, minHeight, containerRef],
+        [containerRef, maxReservedHeight, minHeight],
     );
 
     return { height, onMouseDown };

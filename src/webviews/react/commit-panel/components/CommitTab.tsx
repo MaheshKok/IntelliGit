@@ -16,7 +16,7 @@ interface Props {
     isAmend: boolean;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
-    onToggleFolder: (dirPrefix: string, files: WorkingFile[]) => void;
+    onToggleFolder: (files: WorkingFile[]) => void;
     onToggleSection: (files: WorkingFile[]) => void;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;

@@ -7,24 +7,9 @@ import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
-
-function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
-
-function isUntrackedPathspecError(error: unknown): boolean {
-    const message = getErrorMessage(error).toLowerCase();
-    const code =
-        typeof error === "object" && error !== null && "code" in error
-            ? String((error as { code?: unknown }).code ?? "").toLowerCase()
-            : "";
-
-    return (
-        message.includes("did not match any files") ||
-        (message.includes("pathspec") && message.includes("did not match")) ||
-        code === "enoent"
-    );
-}
+import { getErrorMessage } from "../utils/errors";
+import { deleteFileWithFallback } from "../utils/fileOps";
+import type { InboundMessage } from "../webviews/react/commit-panel/types";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
@@ -73,6 +58,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     async refresh(): Promise<void> {
         await this.refreshData();
+    }
+
+    private async runWithStatusBar<T>(message: string, task: () => Promise<T>): Promise<T> {
+        const disposable = vscode.window.setStatusBarMessage(
+            `$(sync~spin) IntelliGit: ${message}`,
+        );
+        try {
+            return await task();
+        } finally {
+            disposable.dispose();
+        }
     }
 
     private async refreshData(): Promise<void> {
@@ -135,13 +131,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (paths.length > 0) {
                     await this.gitOps.stageFiles(paths);
                 }
-                if (push) {
-                    await this.gitOps.commitAndPush(message, amend);
-                    vscode.window.showInformationMessage("Committed and pushed successfully.");
-                } else {
-                    await this.gitOps.commit(message, amend);
-                    vscode.window.showInformationMessage("Committed successfully.");
-                }
+                await this.runWithStatusBar(
+                    push ? "Committing and pushing..." : "Committing...",
+                    async () => {
+                        if (push) {
+                            await this.gitOps.commitAndPush(message, amend);
+                        } else {
+                            await this.gitOps.commit(message, amend);
+                        }
+                    },
+                );
+                vscode.window.showInformationMessage(
+                    push ? "Committed and pushed successfully." : "Committed successfully.",
+                );
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 break;
@@ -154,7 +156,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Commit message cannot be empty.");
                     return;
                 }
-                await this.gitOps.commit(message, amend);
+                await this.runWithStatusBar("Committing...", async () => {
+                    await this.gitOps.commit(message, amend);
+                });
                 vscode.window.showInformationMessage("Committed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
@@ -168,7 +172,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Commit message cannot be empty.");
                     return;
                 }
-                await this.gitOps.commitAndPush(message, amend);
+                await this.runWithStatusBar("Committing and pushing...", async () => {
+                    await this.gitOps.commitAndPush(message, amend);
+                });
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
@@ -302,27 +308,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     "Delete",
                 );
                 if (confirm !== "Delete") return;
-                try {
-                    await this.gitOps.deleteFile(filePath, true);
-                } catch (error) {
-                    if (!isUntrackedPathspecError(error)) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to delete file with git rm:", error);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-
-                    try {
-                        const workspaceRoot = this.getWorkspaceRoot();
-                        const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
-                        await vscode.workspace.fs.delete(uri);
-                    } catch (fsError) {
-                        const message = getErrorMessage(fsError);
-                        console.error("Failed to delete file from filesystem:", fsError);
-                        vscode.window.showErrorMessage(`Delete failed: ${message}`);
-                        return;
-                    }
-                }
+                const workspaceRoot = this.getWorkspaceRoot();
+                const deleted = await deleteFileWithFallback(this.gitOps, workspaceRoot, filePath);
+                if (!deleted) return;
                 vscode.window.showInformationMessage(`Deleted ${filePath}`);
                 await this.refreshData();
                 break;
@@ -341,7 +329,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private postToWebview(msg: unknown): void {
+    private postToWebview(msg: InboundMessage): void {
         this.view?.webview.postMessage(msg);
     }
 
