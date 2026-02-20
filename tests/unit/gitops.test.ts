@@ -325,6 +325,59 @@ describe("GitOps", () => {
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["push"]);
         });
+
+        it("retries with --set-upstream when push fails due to missing upstream and user confirms", async () => {
+            const noUpstreamError = new Error(
+                [
+                    "fatal: The current branch feature/no-upstream has no upstream branch.",
+                    "To push the current branch and set the remote as upstream, use",
+                    "",
+                    "    git push --set-upstream origin feature/no-upstream",
+                ].join("\n"),
+            );
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key === "push") throw noUpstreamError;
+                    if (key === "push --set-upstream origin feature/no-upstream") return "ok";
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const confirmSetUpstream = vi.fn(async () => true);
+            const ops = new GitOps(executor, confirmSetUpstream);
+
+            await expect(ops.push()).resolves.toBe("ok");
+
+            expect(confirmSetUpstream).toHaveBeenCalledWith("origin", "feature/no-upstream");
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toEqual([
+                ["push"],
+                ["push", "--set-upstream", "origin", "feature/no-upstream"],
+            ]);
+        });
+
+        it("throws original push error when upstream setup is declined", async () => {
+            const noUpstreamError = new Error(
+                [
+                    "fatal: The current branch feature/no-upstream has no upstream branch.",
+                    "To push the current branch and set the remote as upstream, use",
+                    "",
+                    "    git push --set-upstream origin feature/no-upstream",
+                ].join("\n"),
+            );
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.join(" ") === "push") throw noUpstreamError;
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const confirmSetUpstream = vi.fn(async () => false);
+            const ops = new GitOps(executor, confirmSetUpstream);
+
+            await expect(ops.push()).rejects.toThrow(noUpstreamError.message);
+            expect(confirmSetUpstream).toHaveBeenCalledTimes(1);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+        });
     });
 
     describe("commitAndPush", () => {

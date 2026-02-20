@@ -806,7 +806,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             if (branch.remote) {
                                 await executor.run(["push", branch.remote, branch.name]);
                             } else {
-                                await executor.run(["push"]);
+                                await gitOps.push();
                             }
                         } else {
                             if (!remote) {

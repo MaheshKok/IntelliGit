@@ -9,6 +9,7 @@ const OUTPUT_CHANNEL_NAME = "IntelliGit";
 
 type VsCodeApi = typeof import("vscode");
 type OutputChannelLike = { appendLine: (value: string) => void };
+type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
 
 let cachedVsCodeApi: VsCodeApi | null | undefined;
 let outputChannel: OutputChannelLike | undefined;
@@ -60,7 +61,10 @@ function assertStashIndex(index: number): void {
 }
 
 export class GitOps {
-    constructor(private readonly executor: GitExecutor) {}
+    constructor(
+        private readonly executor: GitExecutor,
+        private readonly confirmSetUpstreamPush?: ConfirmSetUpstreamPush,
+    ) {}
 
     async isRepository(): Promise<boolean> {
         try {
@@ -409,12 +413,73 @@ export class GitOps {
     }
 
     async push(): Promise<string> {
-        return this.executor.run(["push"]);
+        try {
+            return await this.executor.run(["push"]);
+        } catch (err) {
+            if (!isNoUpstreamPushError(err)) throw err;
+
+            const suggested = parseSetUpstreamPushSuggestion(err);
+            const branch =
+                suggested?.branch ??
+                (await this.resolveCurrentBranchNameForPush()) ??
+                undefined;
+            const remote =
+                suggested?.remote ??
+                (await this.resolveDefaultRemoteNameForPush()) ??
+                undefined;
+            if (!branch || !remote) throw err;
+
+            const allowSetUpstream = await this.requestSetUpstreamPush(remote, branch);
+            if (!allowSetUpstream) throw err;
+
+            return this.executor.run(["push", "--set-upstream", remote, branch]);
+        }
     }
 
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
         await this.commit(message, amend);
         return this.push();
+    }
+
+    private async resolveCurrentBranchNameForPush(): Promise<string | null> {
+        try {
+            const raw = await this.executor.run(["rev-parse", "--abbrev-ref", "HEAD"]);
+            const branch = raw.trim();
+            if (!branch || branch === "HEAD") return null;
+            return branch;
+        } catch {
+            return null;
+        }
+    }
+
+    private async resolveDefaultRemoteNameForPush(): Promise<string | null> {
+        try {
+            const remotes = await this.executor.run(["remote"]);
+            const firstRemote = remotes
+                .split("\n")
+                .map((r) => r.trim())
+                .find((r) => r.length > 0);
+            return firstRemote ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    private async requestSetUpstreamPush(remote: string, branch: string): Promise<boolean> {
+        if (this.confirmSetUpstreamPush) {
+            return this.confirmSetUpstreamPush(remote, branch);
+        }
+
+        const vscode = getVsCodeApi();
+        if (!vscode) return false;
+
+        const confirmLabel = "Set Upstream and Push";
+        const selection = await vscode.window.showWarningMessage(
+            `Branch '${branch}' has no upstream. Set upstream to '${remote}/${branch}' and push?`,
+            { modal: true },
+            confirmLabel,
+        );
+        return selection === confirmLabel;
     }
 
     async getLastCommitMessage(): Promise<string> {
@@ -605,4 +670,21 @@ function mapStatusCode(code: string): WorkingFile["status"] | null {
         default:
             return "M";
     }
+}
+
+function isNoUpstreamPushError(err: unknown): boolean {
+    const message = getErrorMessage(err).toLowerCase();
+    return message.includes("has no upstream branch");
+}
+
+function parseSetUpstreamPushSuggestion(
+    err: unknown,
+): { remote: string; branch: string } | null {
+    const message = getErrorMessage(err);
+    const match = message.match(/git push --set-upstream\s+(\S+)\s+(\S+)/);
+    if (!match) return null;
+    const remote = match[1]?.trim();
+    const branch = match[2]?.trim();
+    if (!remote || !branch) return null;
+    return { remote, branch };
 }
