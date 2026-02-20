@@ -43,7 +43,7 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
-const setStatusBarMessage = vi.fn(() => ({ dispose: vi.fn() }));
+const withProgress = vi.fn(async (_options: unknown, task: () => Promise<unknown>) => task());
 
 const workspaceState: {
     workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined;
@@ -56,6 +56,7 @@ const vscodeMock = {
     TreeItem: FakeTreeItem,
     ThemeIcon: FakeThemeIcon,
     ThemeColor: FakeThemeColor,
+    ProgressLocation: { Notification: 15 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
         joinPath: (
@@ -80,7 +81,7 @@ const vscodeMock = {
         showWarningMessage,
         showInformationMessage,
         showTextDocument,
-        setStatusBarMessage,
+        withProgress,
         onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
     },
     commands: {
@@ -338,7 +339,17 @@ describe("view providers integration", () => {
     it("CommitPanelViewProvider handles commit flows", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "commit", message: "", amend: false });
-        expect(showWarningMessage).toHaveBeenCalledWith("Commit message cannot be empty.");
+        expect(showWarningMessage).toHaveBeenCalledWith("Enter a commit message.");
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: selected",
+            amend: false,
+            push: false,
+            paths: [],
+        });
+        expect(showWarningMessage).toHaveBeenCalledWith("Select files to commit.");
+        expect(gitOps.stageFiles).not.toHaveBeenCalledWith([]);
 
         await webview.send({ type: "commit", message: "feat: ok", amend: false });
         await webview.send({
@@ -351,7 +362,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "commitAndPush", message: "feat: push", amend: false });
         expect(gitOps.commit).toHaveBeenCalled();
         expect(gitOps.commitAndPush).toHaveBeenCalled();
-        expect(setStatusBarMessage).toHaveBeenCalled();
+        expect(withProgress).toHaveBeenCalled();
 
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({

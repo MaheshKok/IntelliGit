@@ -40,7 +40,6 @@ function App(): React.ReactElement {
     const stageCheckedAndCommit = useCallback(
         (push: boolean) => {
             const msg = state.commitMessage.trim();
-            if (!msg && !state.isAmend) return;
             vscode.postMessage({
                 type: "commitSelected",
                 paths: Array.from(checkedPaths),

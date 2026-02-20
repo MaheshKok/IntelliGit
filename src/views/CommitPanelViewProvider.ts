@@ -9,7 +9,7 @@ import type { ThemeFolderIconMap, WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";
-import { runWithStatusBar } from "../utils/statusBar";
+import { runWithNotificationProgress } from "../utils/notifications";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
 import { IconThemeService } from "./shared";
 
@@ -159,18 +159,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
 
             case "commitSelected": {
-                const message = msg.message as string;
+                const message = (msg.message as string).trim();
                 const amend = msg.amend as boolean;
                 const push = msg.push as boolean;
                 const paths = msg.paths as string[];
                 if (!message.trim() && !amend) {
-                    vscode.window.showWarningMessage("Commit message cannot be empty.");
+                    vscode.window.showWarningMessage("Enter a commit message.");
+                    return;
+                }
+                if (paths.length === 0 && !amend) {
+                    vscode.window.showWarningMessage("Select files to commit.");
                     return;
                 }
                 if (paths.length > 0) {
                     await this.gitOps.stageFiles(paths);
                 }
-                await runWithStatusBar(
+                await runWithNotificationProgress(
                     push ? "Committing and pushing..." : "Committing...",
                     async () => {
                         if (push) {
@@ -189,13 +193,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
 
             case "commit": {
-                const message = msg.message as string;
+                const message = (msg.message as string).trim();
                 const amend = msg.amend as boolean;
                 if (!message.trim() && !amend) {
-                    vscode.window.showWarningMessage("Commit message cannot be empty.");
+                    vscode.window.showWarningMessage("Enter a commit message.");
                     return;
                 }
-                await runWithStatusBar("Committing...", async () => {
+                await runWithNotificationProgress("Committing...", async () => {
                     await this.gitOps.commit(message, amend);
                 });
                 vscode.window.showInformationMessage("Committed successfully.");
@@ -205,13 +209,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
 
             case "commitAndPush": {
-                const message = msg.message as string;
+                const message = (msg.message as string).trim();
                 const amend = msg.amend as boolean;
                 if (!message.trim() && !amend) {
-                    vscode.window.showWarningMessage("Commit message cannot be empty.");
+                    vscode.window.showWarningMessage("Enter a commit message.");
                     return;
                 }
-                await runWithStatusBar("Committing and pushing...", async () => {
+                await runWithNotificationProgress("Committing and pushing...", async () => {
                     await this.gitOps.commitAndPush(message, amend);
                 });
                 vscode.window.showInformationMessage("Committed and pushed successfully.");

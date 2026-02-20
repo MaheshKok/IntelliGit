@@ -23,7 +23,7 @@ const openTextDocument = vi.fn(async (arg: unknown) => arg);
 const writeFile = vi.fn(async () => undefined);
 const clipboardWriteText = vi.fn(async () => undefined);
 const createOutputChannel = vi.fn(() => ({ appendLine: vi.fn() }));
-const setStatusBarMessage = vi.fn(() => ({ dispose: vi.fn() }));
+const withProgress = vi.fn(async (_options: unknown, task: () => Promise<unknown>) => task());
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
@@ -212,6 +212,7 @@ vi.mock("vscode", () => ({
         constructor(_label: string, _state?: unknown) {}
     },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    ProgressLocation: { Notification: 15 },
     Uri: {
         file: (value: string) => ({ fsPath: value, path: value }),
         joinPath: (base: { fsPath?: string; path?: string }, ...parts: string[]) => {
@@ -246,7 +247,7 @@ vi.mock("vscode", () => ({
         showTextDocument,
         createTerminal,
         createOutputChannel,
-        setStatusBarMessage,
+        withProgress,
     },
     workspace: {
         get workspaceFolders() {
@@ -471,8 +472,11 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalled();
         expect(showInformationMessage).toHaveBeenCalled();
         expect(showWarningMessage).toHaveBeenCalled();
-        expect(setStatusBarMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Deleting remote branch origin/feature-remote"),
+        expect(withProgress).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: expect.stringContaining("Deleting remote branch origin/feature-remote"),
+            }),
+            expect.any(Function),
         );
         expect(deleteFileWithFallback).toHaveBeenCalled();
     });
@@ -498,8 +502,9 @@ describe("extension integration", () => {
             "--prune",
         ]);
         expect(executorRun).not.toHaveBeenCalledWith(["checkout", "main"]);
-        expect(setStatusBarMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Updating main"),
+        expect(withProgress).toHaveBeenCalledWith(
+            expect.objectContaining({ title: expect.stringContaining("Updating main") }),
+            expect.any(Function),
         );
     });
 
@@ -554,8 +559,11 @@ describe("extension integration", () => {
 
         expect(executorRun).toHaveBeenCalledWith(["branch", "-d", "feature-local"]);
         expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-local"]);
-        expect(setStatusBarMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Deleting tracked branch origin/feature-local"),
+        expect(withProgress).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: expect.stringContaining("Deleting tracked branch origin/feature-local"),
+            }),
+            expect.any(Function),
         );
         expect(showInformationMessage).toHaveBeenCalledWith(
             "Deleted: feature-local",
@@ -585,8 +593,11 @@ describe("extension integration", () => {
             "--delete",
             "feature-fallback",
         ]);
-        expect(setStatusBarMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Deleting remote branch origin/feature-fallback"),
+        expect(withProgress).toHaveBeenCalledWith(
+            expect.objectContaining({
+                title: expect.stringContaining("Deleting remote branch origin/feature-fallback"),
+            }),
+            expect.any(Function),
         );
     });
 
