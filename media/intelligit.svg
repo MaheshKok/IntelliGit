@@ -6,9 +6,9 @@
   <!-- Branch curving right and upward -->
   <path d="M50 75 C60 75 80 65 85 45" stroke="#3b82f6" stroke-width="6" fill="none" stroke-linecap="round"/>
   <!-- Dot - bottom (root) -->
-  <circle cx="50" cy="105" r="10" fill="#3b82f6"/>
+  <circle cx="50" cy="105" r="13" fill="#3b82f6"/>
   <!-- Dot - top (head) -->
-  <circle cx="50" cy="25" r="10" fill="#3b82f6"/>
+  <circle cx="50" cy="25" r="13" fill="#3b82f6"/>
   <!-- Dot - branch tip (bigger) -->
-  <circle cx="85" cy="45" r="10" fill="#3b82f6"/>
+  <circle cx="85" cy="45" r="13" fill="#3b82f6"/>
 </svg>
