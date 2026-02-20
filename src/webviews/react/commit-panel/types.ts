@@ -1,7 +1,13 @@
 // Typed message protocol for communication between the commit panel webview
 // and the extension host. Defines all inbound and outbound message shapes.
 
-import type { ThemeIconFont, ThemeTreeIcon, WorkingFile, StashEntry } from "../../../types";
+import type {
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    ThemeTreeIcon,
+    WorkingFile,
+    StashEntry,
+} from "../../../types";
 import type {
     TreeFolder as GenericTreeFolder,
     TreeLeaf as GenericTreeLeaf,
@@ -39,6 +45,7 @@ export type InboundMessage =
           selectedShelfIndex: number | null;
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
     | { type: "lastCommitMessage"; message: string }
@@ -54,6 +61,7 @@ export interface CommitPanelState {
     selectedShelfIndex: number | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     iconFonts: ThemeIconFont[];
     commitMessage: string;
     isAmend: boolean;
@@ -71,6 +79,7 @@ export type CommitPanelAction =
           selectedShelfIndex: number | null;
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }

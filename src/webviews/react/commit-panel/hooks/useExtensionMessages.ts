@@ -12,6 +12,7 @@ const initialState: CommitPanelState = {
     selectedShelfIndex: null,
     folderIcon: undefined,
     folderExpandedIcon: undefined,
+    folderIconsByName: undefined,
     iconFonts: [],
     commitMessage: "",
     isAmend: false,
@@ -30,6 +31,7 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 selectedShelfIndex: action.selectedShelfIndex,
                 folderIcon: action.folderIcon,
                 folderExpandedIcon: action.folderExpandedIcon,
+                folderIconsByName: action.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 error: null,
             };
@@ -66,6 +68,7 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         selectedShelfIndex: msg.selectedShelfIndex,
                         folderIcon: msg.folderIcon,
                         folderExpandedIcon: msg.folderExpandedIcon,
+                        folderIconsByName: msg.folderIconsByName,
                         iconFonts: msg.iconFonts,
                     });
                     break;

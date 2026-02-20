@@ -5,7 +5,12 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { ThemeIconFont, WorkingFile, StashEntry } from "../types";
+import type {
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    WorkingFile,
+    StashEntry,
+} from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";
@@ -22,6 +27,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private selectedShelfIndex: number | null = null;
     private shelfFiles: WorkingFile[] = [];
     private folderIcons: ThemeFolderIcons = {};
+    private folderIconsByName: ThemeFolderIconMap = {};
     private iconFonts: ThemeIconFont[] = [];
     private iconResolver?: FileIconThemeResolver;
     private lastFileCount = 0;
@@ -101,6 +107,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                           await this.gitOps.getShelvedFiles(selectedShelfIndex),
                       )
                     : [];
+            this.folderIconsByName = await this.getFolderIconsByName([
+                ...this.getFolderNames(files),
+                ...this.getFolderNames(shelfFiles),
+            ]);
 
             this.files = files;
             this.stashes = stashes;
@@ -119,6 +129,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 selectedShelfIndex,
                 folderIcon: this.folderIcons.folderIcon,
                 folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+                folderIconsByName: this.folderIconsByName,
                 iconFonts: this.iconFonts,
             });
             this.postToWebview({ type: "refreshing", active: false });
@@ -311,6 +322,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 } else {
                     this.shelfFiles = [];
                 }
+                this.folderIconsByName = await this.getFolderIconsByName([
+                    ...this.getFolderNames(this.files),
+                    ...this.getFolderNames(this.shelfFiles),
+                ]);
                 this.postToWebview({
                     type: "update",
                     files: this.files,
@@ -319,6 +334,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     selectedShelfIndex: this.selectedShelfIndex,
                     folderIcon: this.folderIcons.folderIcon,
                     folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+                    folderIconsByName: this.folderIconsByName,
                     iconFonts: this.iconFonts,
                 });
                 break;
@@ -396,6 +412,23 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private async getThemeFonts(): Promise<ThemeIconFont[]> {
         if (!this.iconResolver) return [];
         return this.iconResolver.getThemeFonts();
+    }
+
+    private async getFolderIconsByName(folderNames: string[]): Promise<ThemeFolderIconMap> {
+        if (!this.iconResolver) return {};
+        return this.iconResolver.getFolderIconsByName(folderNames);
+    }
+
+    private getFolderNames(files: WorkingFile[]): string[] {
+        const names: string[] = [];
+        for (const file of files) {
+            const parts = file.path.split("/").slice(0, -1);
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.length > 0) names.push(trimmed);
+            }
+        }
+        return names;
     }
 
     private async ensureThemeResourceRoot(): Promise<void> {

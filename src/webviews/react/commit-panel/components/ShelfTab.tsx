@@ -6,7 +6,12 @@ import { Flex, Box, Button } from "@chakra-ui/react";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import type { StashEntry, ThemeTreeIcon, WorkingFile } from "../../../../types";
+import type {
+    StashEntry,
+    ThemeFolderIconMap,
+    ThemeTreeIcon,
+    WorkingFile,
+} from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
 
@@ -16,6 +21,7 @@ interface Props {
     selectedIndex: number | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
 }
 
 type ShelfActionKind = "apply" | "pop" | "delete";
@@ -26,6 +32,7 @@ export function ShelfTab({
     selectedIndex,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
     const tree = useFileTree(shelfFiles, true);
@@ -178,6 +185,7 @@ export function ShelfTab({
                             expandedDirs={expandedDirs}
                             folderIcon={folderIcon}
                             folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                             onToggleDir={toggleDir}
                             onFileClick={(path) =>
                                 vscode.postMessage({
@@ -268,6 +276,7 @@ function ShelfFileTree({
     expandedDirs,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
     onToggleDir,
     onFileClick,
     depth = 0,
@@ -276,6 +285,7 @@ function ShelfFileTree({
     expandedDirs: Set<string>;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     onToggleDir: (path: string) => void;
     onFileClick: (path: string) => void;
     depth?: number;
@@ -322,6 +332,14 @@ function ShelfFileTree({
 
                 const isExpanded = expandedDirs.has(entry.path);
                 const fileCount = entry.descendantFiles.length;
+                const nameKey = entry.name.trim().toLowerCase();
+                const namedIcons = folderIconsByName?.[nameKey];
+                const resolvedIcon = isExpanded
+                    ? namedIcons?.expanded ??
+                      folderExpandedIcon ??
+                      namedIcons?.collapsed ??
+                      folderIcon
+                    : namedIcons?.collapsed ?? folderIcon;
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex
@@ -347,7 +365,7 @@ function ShelfFileTree({
                             </Box>
                             <TreeFolderIcon
                                 isExpanded={isExpanded}
-                                icon={isExpanded ? folderExpandedIcon : folderIcon}
+                                icon={resolvedIcon}
                             />
                             <Box
                                 as="span"
@@ -374,6 +392,7 @@ function ShelfFileTree({
                                 expandedDirs={expandedDirs}
                                 folderIcon={folderIcon}
                                 folderExpandedIcon={folderExpandedIcon}
+                                folderIconsByName={folderIconsByName}
                                 onToggleDir={onToggleDir}
                                 onFileClick={onFileClick}
                                 depth={depth + 1}

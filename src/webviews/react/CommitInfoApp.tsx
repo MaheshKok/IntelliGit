@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
-import type { CommitDetail, ThemeIconFont, ThemeTreeIcon } from "../../types";
+import type {
+    CommitDetail,
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    ThemeTreeIcon,
+} from "../../types";
 import type { CommitInfoOutbound, CommitInfoInbound } from "./commitInfoTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
@@ -33,6 +38,9 @@ function App(): React.ReactElement {
     const [folderExpandedIcon, setFolderExpandedIcon] = useState<ThemeTreeIcon | undefined>(
         undefined,
     );
+    const [folderIconsByName, setFolderIconsByName] = useState<ThemeFolderIconMap | undefined>(
+        undefined,
+    );
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
 
     useEffect(() => {
@@ -41,11 +49,13 @@ function App(): React.ReactElement {
             switch (msg.type) {
                 case "clear":
                     setDetail(null);
+                    setFolderIconsByName(undefined);
                     return;
                 case "setCommitDetail":
                     setDetail(msg.detail);
                     setFolderIcon(msg.folderIcon);
                     setFolderExpandedIcon(msg.folderExpandedIcon);
+                    setFolderIconsByName(msg.folderIconsByName);
                     setIconFonts(msg.iconFonts ?? []);
                     return;
                 default: {
@@ -68,6 +78,7 @@ function App(): React.ReactElement {
                 detail={detail}
                 folderIcon={folderIcon}
                 folderExpandedIcon={folderExpandedIcon}
+                folderIconsByName={folderIconsByName}
             />
         </>
     );

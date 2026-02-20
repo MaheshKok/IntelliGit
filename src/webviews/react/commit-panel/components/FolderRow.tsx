@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
-import type { ThemeTreeIcon } from "../../../../types";
+import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "./TreeIcons";
@@ -15,6 +15,7 @@ interface Props {
     isExpanded: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     fileCount: number;
     isAllChecked: boolean;
     isSomeChecked: boolean;
@@ -29,6 +30,7 @@ function FolderRowInner({
     isExpanded,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
     fileCount,
     isAllChecked,
     isSomeChecked,
@@ -36,6 +38,11 @@ function FolderRowInner({
     onToggleCheck,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
+    const nameKey = name.trim().toLowerCase();
+    const namedIcons = folderIconsByName?.[nameKey];
+    const resolvedIcon = isExpanded
+        ? namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon
+        : namedIcons?.collapsed ?? folderIcon;
 
     return (
         <Flex
@@ -78,7 +85,7 @@ function FolderRowInner({
             />
             <TreeFolderIcon
                 isExpanded={isExpanded}
-                icon={isExpanded ? folderExpandedIcon : folderIcon}
+                icon={resolvedIcon}
             />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.92}>
                 {name}

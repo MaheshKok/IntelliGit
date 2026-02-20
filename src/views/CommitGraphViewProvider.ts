@@ -4,7 +4,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch, CommitDetail, ThemeIconFont } from "../types";
+import type { Branch, CommitDetail, ThemeFolderIconMap, ThemeIconFont } from "../types";
 import { FileIconThemeResolver, type ThemeFolderIcons } from "../utils/fileIconTheme";
 import type {
     BranchAction,
@@ -28,6 +28,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private selectedCommitDetail: CommitDetail | null = null;
     private iconResolver?: FileIconThemeResolver;
     private folderIcons: ThemeFolderIcons = {};
+    private folderIconsByName: ThemeFolderIconMap = {};
     private iconFonts: ThemeIconFont[] = [];
     private commitDetailSeq = 0;
 
@@ -130,6 +131,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
+        this.folderIconsByName = {};
         this.postCommitDetailState();
         void this.decorateAndStoreCommitDetail(detail, requestId);
     }
@@ -137,6 +139,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     clearCommitDetail(): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
+        this.folderIconsByName = {};
         this.postCommitDetailState();
     }
 
@@ -215,6 +218,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 detail: this.selectedCommitDetail,
                 folderIcon: this.folderIcons.folderIcon,
                 folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+                folderIconsByName: this.folderIconsByName,
                 iconFonts: this.iconFonts,
             });
             return;
@@ -231,6 +235,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         const decorated = await this.decorateCommitDetail(detail);
         if (requestId !== this.commitDetailSeq) return;
         this.selectedCommitDetail = decorated;
+        this.folderIconsByName = await this.getFolderIconsByName(this.selectedCommitDetail.files);
         this.postCommitDetailState();
     }
 
@@ -238,6 +243,21 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         if (!this.iconResolver) return detail;
         const files = await this.iconResolver.decorateCommitFiles(detail.files);
         return { ...detail, files };
+    }
+
+    private async getFolderIconsByName(
+        files: CommitDetail["files"],
+    ): Promise<ThemeFolderIconMap> {
+        if (!this.iconResolver) return {};
+        const names: string[] = [];
+        for (const file of files) {
+            const parts = file.path.split("/").slice(0, -1);
+            for (const part of parts) {
+                const trimmed = part.trim();
+                if (trimmed.length > 0) names.push(trimmed);
+            }
+        }
+        return this.iconResolver.getFolderIconsByName(names);
     }
 
     private async initIconThemeData(): Promise<void> {

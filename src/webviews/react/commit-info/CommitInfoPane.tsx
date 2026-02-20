@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import type { CommitDetail, CommitFile, ThemeTreeIcon } from "../../../types";
+import type {
+    CommitDetail,
+    CommitFile,
+    ThemeFolderIconMap,
+    ThemeTreeIcon,
+} from "../../../types";
 import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
@@ -68,10 +73,12 @@ export function CommitInfoPane({
     detail,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
 }: {
     detail: CommitDetail | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
 }): React.ReactElement {
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
     const [filesCollapsed, setFilesCollapsed] = useState(false);
@@ -143,6 +150,7 @@ export function CommitInfoPane({
                         expandedDirs={expandedDirs}
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
+                        folderIconsByName={folderIconsByName}
                         onToggleDir={(dir) =>
                             setExpandedDirs((prev) => {
                                 const next = new Set(prev);
@@ -280,6 +288,7 @@ function TreeRows({
     expandedDirs,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
     onToggleDir,
 }: {
     entries: TreeEntry[];
@@ -287,6 +296,7 @@ function TreeRows({
     expandedDirs: Set<string>;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     onToggleDir: (path: string) => void;
 }): React.ReactElement {
     return (
@@ -305,6 +315,7 @@ function TreeRows({
                             isExpanded={isExpanded}
                             folderIcon={folderIcon}
                             folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
                             fileCount={fileCount}
                             onToggle={() => onToggleDir(entry.path)}
                         />
@@ -315,6 +326,7 @@ function TreeRows({
                                 expandedDirs={expandedDirs}
                                 folderIcon={folderIcon}
                                 folderExpandedIcon={folderExpandedIcon}
+                                folderIconsByName={folderIconsByName}
                                 onToggleDir={onToggleDir}
                             />
                         )}
@@ -331,6 +343,7 @@ function CommitFolderRow({
     isExpanded,
     folderIcon,
     folderExpandedIcon,
+    folderIconsByName,
     fileCount,
     onToggle,
 }: {
@@ -339,10 +352,16 @@ function CommitFolderRow({
     isExpanded: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     fileCount: number;
     onToggle: () => void;
 }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
+    const nameKey = folder.name.trim().toLowerCase();
+    const namedIcons = folderIconsByName?.[nameKey];
+    const resolvedIcon = isExpanded
+        ? namedIcons?.expanded ?? folderExpandedIcon ?? namedIcons?.collapsed ?? folderIcon
+        : namedIcons?.collapsed ?? folderIcon;
     return (
         <Flex
             align="center"
@@ -374,7 +393,7 @@ function CommitFolderRow({
             </Box>
             <TreeFolderIcon
                 isExpanded={isExpanded}
-                icon={isExpanded ? folderExpandedIcon : folderIcon}
+                icon={resolvedIcon}
             />
             <Box as="span" flex={1} opacity={0.85}>
                 {folder.name}

@@ -19,6 +19,13 @@ export interface ThemeTreeIcon {
     fontStyle?: string;
 }
 
+export interface ThemeNamedFolderIcon {
+    collapsed?: ThemeTreeIcon;
+    expanded?: ThemeTreeIcon;
+}
+
+export type ThemeFolderIconMap = Record<string, ThemeNamedFolderIcon>;
+
 export interface ThemeIconFont {
     fontFamily: string;
     src: string;

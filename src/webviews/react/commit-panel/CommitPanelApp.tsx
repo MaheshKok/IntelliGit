@@ -101,6 +101,7 @@ function App(): React.ReactElement {
                         onCommitAndPush={handleCommitAndPush}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
+                        folderIconsByName={state.folderIconsByName}
                     />
                 }
                 shelfContent={
@@ -110,6 +111,7 @@ function App(): React.ReactElement {
                         selectedIndex={state.selectedShelfIndex}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
+                        folderIconsByName={state.folderIconsByName}
                     />
                 }
             />

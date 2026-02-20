@@ -7,7 +7,14 @@ import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
-import type { Branch, Commit, CommitDetail, ThemeIconFont, ThemeTreeIcon } from "../../types";
+import type {
+    Branch,
+    Commit,
+    CommitDetail,
+    ThemeFolderIconMap,
+    ThemeIconFont,
+    ThemeTreeIcon,
+} from "../../types";
 import type {
     BranchAction,
     CommitAction,
@@ -115,6 +122,9 @@ function App(): React.ReactElement {
     const [folderExpandedIcon, setFolderExpandedIcon] = useState<ThemeTreeIcon | undefined>(
         undefined,
     );
+    const [folderIconsByName, setFolderIconsByName] = useState<ThemeFolderIconMap | undefined>(
+        undefined,
+    );
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
@@ -182,10 +192,12 @@ function App(): React.ReactElement {
                     setSelectedDetail(data.detail);
                     setFolderIcon(data.folderIcon);
                     setFolderExpandedIcon(data.folderExpandedIcon);
+                    setFolderIconsByName(data.folderIconsByName);
                     setIconFonts(data.iconFonts ?? []);
                     break;
                 case "clearCommitDetail":
                     setSelectedDetail(null);
+                    setFolderIconsByName(undefined);
                     break;
             }
         };
@@ -300,6 +312,7 @@ function App(): React.ReactElement {
                         detail={selectedDetail}
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
+                        folderIconsByName={folderIconsByName}
                     />
                 </div>
             </div>
