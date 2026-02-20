@@ -10,5 +10,5 @@
   <!-- Dot - top (head) -->
   <circle cx="50" cy="25" r="10" fill="#3b82f6"/>
   <!-- Dot - branch tip (bigger) -->
-  <circle cx="85" cy="45" r="16" fill="#3b82f6"/>
+  <circle cx="85" cy="45" r="10" fill="#3b82f6"/>
 </svg>
