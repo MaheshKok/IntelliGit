@@ -231,7 +231,7 @@ export function CommitList({
                             left: 0,
                             right: 0,
                             top: visibleRange.start * ROW_HEIGHT,
-                            zIndex: 1,
+                            zIndex: 2,
                         }}
                     >
                         {visibleCommits.map((commit, offset) => {

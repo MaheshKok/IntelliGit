@@ -4,9 +4,10 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createRoot } from "react-dom/client";
+import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
-import type { Branch, Commit } from "../../types";
+import type { Branch, Commit, CommitDetail } from "../../types";
 import type {
     BranchAction,
     CommitAction,
@@ -14,6 +15,8 @@ import type {
     CommitGraphInbound,
 } from "./commitGraphTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
+import theme from "./commit-panel/theme";
+import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 
 const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
@@ -27,6 +30,7 @@ function App(): React.ReactElement {
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
+    const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
     const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const dragging = useRef(false);
@@ -60,6 +64,12 @@ function App(): React.ReactElement {
                     break;
                 case "setSelectedBranch":
                     setSelectedBranch(data.branch ?? null);
+                    break;
+                case "setCommitDetail":
+                    setSelectedDetail(data.detail);
+                    break;
+                case "clearCommitDetail":
+                    setSelectedDetail(null);
                     break;
             }
         };
@@ -169,25 +179,41 @@ function App(): React.ReactElement {
                 }}
             />
 
-            {/* Commit graph + list */}
-            <div style={{ flex: 1, overflow: "hidden" }}>
-                <CommitList
-                    commits={commits}
-                    selectedHash={selectedHash}
-                    filterText={filterText}
-                    hasMore={hasMore}
-                    unpushedHashes={unpushedHashes}
-                    defaultCheckoutBranch={defaultCheckoutBranch}
-                    selectedBranch={selectedBranch}
-                    onSelectCommit={handleSelectCommit}
-                    onFilterText={handleFilterText}
-                    onLoadMore={handleLoadMore}
-                    onCommitAction={handleCommitAction}
-                />
+            {/* Commit graph + files/details in one unified panel */}
+            <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
+                <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                    <CommitList
+                        commits={commits}
+                        selectedHash={selectedHash}
+                        filterText={filterText}
+                        hasMore={hasMore}
+                        unpushedHashes={unpushedHashes}
+                        defaultCheckoutBranch={defaultCheckoutBranch}
+                        selectedBranch={selectedBranch}
+                        onSelectCommit={handleSelectCommit}
+                        onFilterText={handleFilterText}
+                        onLoadMore={handleLoadMore}
+                        onCommitAction={handleCommitAction}
+                    />
+                </div>
+                <div
+                    style={{
+                        width: 330,
+                        flexShrink: 0,
+                        borderLeft: "1px solid var(--vscode-panel-border)",
+                        overflow: "hidden",
+                    }}
+                >
+                    <CommitInfoPane detail={selectedDetail} />
+                </div>
             </div>
         </div>
     );
 }
 
 const root = createRoot(document.getElementById("root")!);
-root.render(<App />);
+root.render(
+    <ChakraProvider theme={theme}>
+        <App />
+    </ChakraProvider>,
+);

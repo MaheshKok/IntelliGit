@@ -74,6 +74,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             try {
                 const detail = await gitOps.getCommitDetail(hash);
                 if (requestId !== commitDetailRequestSeq) return;
+                (
+                    commitGraph as {
+                        setCommitDetail?: (commitDetail: import("./types").CommitDetail) => void;
+                    }
+                ).setCommitDetail?.(detail);
                 commitInfo.setCommitDetail(detail);
             } catch (err) {
                 const msg = getErrorMessage(err);
@@ -84,6 +89,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         commitGraph.onBranchFilterChanged(() => {
+            (commitGraph as { clearCommitDetail?: () => void }).clearCommitDetail?.();
             commitInfo.clear();
         }),
     );
@@ -113,6 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Helper ---
 
     const clearSelection = () => {
+        (commitGraph as { clearCommitDetail?: () => void }).clearCommitDetail?.();
         commitInfo.clear();
     };
 

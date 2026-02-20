@@ -39,8 +39,7 @@
     "activationEvents": [
         "workspaceContains:.git",
         "onView:intelligit.branches",
-        "onView:intelligit.commitGraph",
-        "onView:intelligit.commitFiles"
+        "onView:intelligit.commitGraph"
     ],
     "main": "./dist/extension.js",
     "contributes": {
@@ -75,12 +74,7 @@
             "intelligitPanel": [
                 {
                     "id": "intelligit.commitGraph",
-                    "name": " ",
-                    "type": "webview"
-                },
-                {
-                    "id": "intelligit.commitFiles",
-                    "name": "Changed Files",
+                    "name": "",
                     "type": "webview"
                 }
             ]

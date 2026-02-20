@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { LuGitBranch, LuTag } from "react-icons/lu";
 import type { Commit } from "../../../types";
 import { formatDateTime } from "../shared/date";
@@ -142,70 +143,72 @@ function CommitMessageCell({
                 </span>
             )}
 
-            {tooltipPos && (
-                <span
-                    style={{
-                        position: "fixed",
-                        left: tooltipPos.x,
-                        top: tooltipPos.y,
-                        transform:
-                            tooltipPos.placement === "above"
-                                ? "translate(-50%, -100%)"
-                                : "translate(-50%, 0)",
-                        background: "var(--vscode-editorHoverWidget-background, #2f3646)",
-                        color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
-                        border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
-                        borderRadius: 6,
-                        fontSize: 11,
-                        lineHeight: "15px",
-                        padding: "8px 9px",
-                        whiteSpace: "normal",
-                        maxWidth: "560px",
-                        minWidth: "240px",
-                        zIndex: 9999,
-                        pointerEvents: "none",
-                        boxShadow: "0 10px 28px rgba(0,0,0,0.45)",
-                    }}
-                >
+            {tooltipPos &&
+                createPortal(
                     <span
                         style={{
-                            display: "block",
-                            color: "var(--vscode-foreground)",
-                            fontSize: "12px",
-                            lineHeight: "16px",
-                            marginBottom: refs.length > 0 ? 6 : 0,
-                            wordBreak: "break-word",
+                            position: "fixed",
+                            left: tooltipPos.x,
+                            top: tooltipPos.y,
+                            transform:
+                                tooltipPos.placement === "above"
+                                    ? "translate(-50%, -100%)"
+                                    : "translate(-50%, 0)",
+                            background: "var(--vscode-editorHoverWidget-background, #2f3646)",
+                            color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
+                            border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
+                            borderRadius: 6,
+                            fontSize: 11,
+                            lineHeight: "15px",
+                            padding: "8px 9px",
+                            whiteSpace: "normal",
+                            maxWidth: "560px",
+                            minWidth: "240px",
+                            zIndex: 9999,
+                            pointerEvents: "none",
+                            boxShadow: "0 10px 28px rgba(0,0,0,0.45)",
                         }}
                     >
-                        {message}
-                    </span>
-                    {refs.length > 0 && (
-                        <>
-                            <span
-                                style={{
-                                    display: "block",
-                                    fontSize: 11,
-                                    opacity: 0.82,
-                                    marginBottom: 4,
-                                }}
-                            >
-                                Labels
-                            </span>
-                            <span
-                                style={{
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: 4,
-                                }}
-                            >
-                                {refs.map((name) => (
-                                    <RefBadge key={name} name={name} />
-                                ))}
-                            </span>
-                        </>
-                    )}
-                </span>
-            )}
+                        <span
+                            style={{
+                                display: "block",
+                                color: "var(--vscode-foreground)",
+                                fontSize: "12px",
+                                lineHeight: "16px",
+                                marginBottom: refs.length > 0 ? 6 : 0,
+                                wordBreak: "break-word",
+                            }}
+                        >
+                            {message}
+                        </span>
+                        {refs.length > 0 && (
+                            <>
+                                <span
+                                    style={{
+                                        display: "block",
+                                        fontSize: 11,
+                                        opacity: 0.82,
+                                        marginBottom: 4,
+                                    }}
+                                >
+                                    Labels
+                                </span>
+                                <span
+                                    style={{
+                                        display: "flex",
+                                        flexWrap: "wrap",
+                                        gap: 4,
+                                    }}
+                                >
+                                    {refs.map((name) => (
+                                        <RefBadge key={name} name={name} />
+                                    ))}
+                                </span>
+                            </>
+                        )}
+                    </span>,
+                    document.body,
+                )}
         </span>
     );
 }

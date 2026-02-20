@@ -105,7 +105,7 @@ export const CANVAS_STYLE: CSSProperties = {
     left: 0,
     top: 0,
     pointerEvents: "none",
-    zIndex: 2,
+    zIndex: 1,
 };
 
 export const LOADING_MORE_STYLE: CSSProperties = {
