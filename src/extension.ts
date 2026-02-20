@@ -43,7 +43,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Register views ---
 
+    const emptyTreeProvider: vscode.TreeDataProvider<never> = {
+        getTreeItem: () => { throw new Error("unreachable"); },
+        getChildren: () => [],
+    };
+    const badgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
+        treeDataProvider: emptyTreeProvider,
+    });
+
+    const updateBadge = (count: number) => {
+        badgeView.badge = count > 0
+            ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
+            : undefined;
+    };
+
     context.subscriptions.push(
+        badgeView,
+        commitPanel.onDidChangeFileCount(updateBadge),
         vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
         vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
         vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanel),
@@ -1030,6 +1046,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     currentBranches = await gitOps.getBranches();
     commitGraph.setBranches(currentBranches);
+
+    // Eagerly fetch file count so the activity bar badge shows immediately.
+    // commitPanel.refresh() runs getStatus() and fires onDidChangeFileCount,
+    // which updateBadge() picks up to set the tree view badge.
+    commitPanel.refresh().catch(() => {/* ignore initial refresh errors */});
 
     // --- Auto-refresh on file changes ---
 

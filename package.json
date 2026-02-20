@@ -64,6 +64,11 @@
                     "id": "intelligit.commitPanel",
                     "name": "Commit",
                     "type": "webview"
+                },
+                {
+                    "id": "intelligit.fileCountBadge",
+                    "name": "Changes",
+                    "visibility": "hidden"
                 }
             ],
             "intelligitPanel": [

@@ -20,6 +20,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private stashes: StashEntry[] = [];
     private selectedShelfIndex: number | null = null;
     private shelfFiles: WorkingFile[] = [];
+    private lastFileCount = 0;
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
@@ -39,8 +40,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
+        const thisView = webviewView;
         webviewView.onDidDispose(() => {
-            this.view = undefined;
+            if (this.view === thisView) {
+                this.view = undefined;
+            }
         });
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
@@ -54,6 +58,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
+        this.updateViewCount(this.lastFileCount);
         this.refreshData();
     }
 
@@ -91,9 +96,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             const uniquePaths = new Set(files.map((f) => f.path));
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
-            if (this.view) {
-                this.view.badge = count > 0 ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count } : undefined;
-            }
+            this.updateViewCount(count);
             this.postToWebview({ type: "refreshing", active: false });
             this.postToWebview({
                 type: "update",
@@ -338,6 +341,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
         }
+    }
+
+    private updateViewCount(count: number): void {
+        this.lastFileCount = count;
+        if (!this.view) return;
+        this.view.description = count > 0 ? `${count}` : "";
     }
 
     private postToWebview(msg: InboundMessage): void {

@@ -233,6 +233,10 @@ vi.mock("vscode", () => ({
     },
     window: {
         registerWebviewViewProvider,
+        createTreeView: vi.fn(() => ({
+            badge: undefined,
+            dispose: vi.fn(),
+        })),
         showInformationMessage,
         showErrorMessage,
         showWarningMessage,

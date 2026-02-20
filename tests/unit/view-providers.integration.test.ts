@@ -127,8 +127,10 @@ function createWebviewView() {
         }),
     };
 
-    const view = {
+    const view: Record<string, unknown> = {
         webview,
+        badge: undefined as { tooltip: string; value: number } | undefined,
+        description: undefined as string | undefined,
         onDidDispose: vi.fn((cb: () => void) => {
             disposeHandler = cb;
             return { dispose: vi.fn() };
@@ -354,6 +356,41 @@ describe("view providers integration", () => {
             type: "lastCommitMessage",
             message: "last message",
         });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider updates description and fires file count after commit", async () => {
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+
+        // Register event listener BEFORE resolving the view (which triggers refreshData)
+        const counts: number[] = [];
+        provider.onDidChangeFileCount((n: number) => counts.push(n));
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+
+        const view = (provider as unknown as { view: Record<string, unknown> }).view;
+
+        // Initial state: getStatus returns 1 file → description set, event fired
+        expect(view.description).toBe("1");
+        expect(counts).toContain(1);
+
+        // After commit, getStatus returns 0 files → description cleared, event fired with 0
+        gitOps.getStatus.mockResolvedValueOnce([]);
+        await webview.send({ type: "commit", message: "feat: clear", amend: false });
+        expect(view.description).toBe("");
+        expect(counts).toContain(0);
+
         provider.dispose();
     });
 
