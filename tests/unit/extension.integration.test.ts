@@ -24,7 +24,6 @@ const writeFile = vi.fn(async () => undefined);
 const clipboardWriteText = vi.fn(async () => undefined);
 const createOutputChannel = vi.fn(() => ({ appendLine: vi.fn() }));
 const setStatusBarMessage = vi.fn(() => ({ dispose: vi.fn() }));
-const createTreeView = vi.fn(() => ({ badge: undefined, dispose: vi.fn() }));
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
@@ -56,14 +55,6 @@ class MockEventEmitter<T> {
         for (const listener of this.listeners) listener(value);
     }
     dispose = vi.fn();
-}
-
-class MockBranchItem {
-    constructor(
-        public readonly label: string,
-        public readonly _itemType: string,
-        public readonly branch?: { name?: string; path?: string; isRemote?: boolean },
-    ) {}
 }
 
 const defaultExecutorRunImpl = async (args: string[]) => {
@@ -200,11 +191,6 @@ class MockCommitPanelViewProvider {
     }
 }
 
-class MockBranchTreeProvider {
-    refresh = vi.fn();
-    dispose = vi.fn();
-}
-
 vi.mock("fs", () => ({
     watch: vi.fn((...args: unknown[]) => {
         const callback = args[args.length - 1];
@@ -246,7 +232,6 @@ vi.mock("vscode", () => ({
         }),
     },
     window: {
-        createTreeView,
         registerWebviewViewProvider,
         showInformationMessage,
         showErrorMessage,
@@ -310,11 +295,6 @@ vi.mock("../../src/git/operations", () => ({
         listShelved = gitOpsState.listShelved;
         getShelvedFiles = gitOpsState.getShelvedFiles;
     },
-}));
-
-vi.mock("../../src/views/BranchTreeProvider", () => ({
-    BranchTreeProvider: MockBranchTreeProvider,
-    BranchItem: MockBranchItem,
 }));
 
 vi.mock("../../src/views/CommitGraphViewProvider", () => ({
@@ -483,6 +463,9 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalled();
         expect(showInformationMessage).toHaveBeenCalled();
         expect(showWarningMessage).toHaveBeenCalled();
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Deleting remote branch origin/feature-remote"),
+        );
         expect(deleteFileWithFallback).toHaveBeenCalled();
     });
 
@@ -509,6 +492,93 @@ describe("extension integration", () => {
         expect(executorRun).not.toHaveBeenCalledWith(["checkout", "main"]);
         expect(setStatusBarMessage).toHaveBeenCalledWith(
             expect.stringContaining("Updating main"),
+        );
+    });
+
+    it("offers restore action after deleting local branch", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        showInformationMessage.mockResolvedValueOnce("Restore");
+        await registeredCommands.get("intelligit.deleteBranch")?.({
+            branch: {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-local",
+                remote: "origin",
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith(["branch", "-d", "feature-local"]);
+        expect(executorRun).toHaveBeenCalledWith(["branch", "feature-local", "a1b2c3d4"]);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Deleted: feature-local",
+            "Restore",
+            "Delete Tracked Branch",
+        );
+    });
+
+    it("supports delete tracked branch action after deleting local branch", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        showInformationMessage.mockResolvedValueOnce("Delete Tracked Branch");
+        await registeredCommands.get("intelligit.deleteBranch")?.({
+            branch: {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-local",
+                remote: "origin",
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith(["branch", "-d", "feature-local"]);
+        expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-local"]);
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Deleting tracked branch origin/feature-local"),
+        );
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Deleted: feature-local",
+            "Restore",
+            "Delete Tracked Branch",
+        );
+    });
+
+    it("deletes remote branch even when remote field is missing", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.deleteBranch")?.({
+            branch: {
+                name: "origin/feature-fallback",
+                isRemote: true,
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith([
+            "push",
+            "origin",
+            "--delete",
+            "feature-fallback",
+        ]);
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Deleting remote branch origin/feature-fallback"),
         );
     });
 
@@ -563,7 +633,7 @@ describe("extension integration", () => {
         );
     });
 
-    it("covers activation guards, badge updates, and debounced refresh sources", async () => {
+    it("covers activation guards and debounced refresh sources", async () => {
         const { activate, deactivate } = await import("../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -582,12 +652,6 @@ describe("extension integration", () => {
         vi.useFakeTimers();
         try {
             await activate(context);
-
-            latestCommitPanelProvider!.emitFileCount(2);
-            const treeView = createTreeView.mock.results.at(-1)?.value as { badge?: unknown };
-            expect(treeView.badge).toEqual({ value: 2, tooltip: "2 files changed" });
-            latestCommitPanelProvider!.emitFileCount(0);
-            expect(treeView.badge).toBeUndefined();
 
             gitOpsState.getCommitDetail.mockRejectedValueOnce(new Error("detail failed"));
             latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");

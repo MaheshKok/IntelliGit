@@ -210,50 +210,6 @@ describe("view providers integration", () => {
         showWarningMessage.mockResolvedValue(undefined);
     });
 
-    it("BranchTreeProvider builds sections, local and remote children", async () => {
-        const { BranchTreeProvider } = await import("../../src/views/BranchTreeProvider");
-        const provider = new BranchTreeProvider();
-
-        provider.refresh([
-            {
-                name: "main",
-                hash: "abc1234",
-                isRemote: false,
-                isCurrent: true,
-                ahead: 1,
-                behind: 2,
-            },
-            {
-                name: "origin/main",
-                hash: "abc1234",
-                isRemote: true,
-                isCurrent: false,
-                ahead: 0,
-                behind: 0,
-                remote: "origin",
-            },
-        ]);
-
-        const root = provider.getChildren();
-        expect(root.length).toBeGreaterThanOrEqual(3);
-        expect((root[0] as { label: string }).label).toContain("HEAD");
-
-        const localSection = root.find((item) => item.label === "Local")!;
-        const remoteSection = root.find((item) => item.label === "Remote")!;
-        const locals = provider.getChildren(localSection);
-        const remoteGroups = provider.getChildren(remoteSection);
-        const remoteBranches = provider.getChildren(remoteGroups[0]);
-
-        expect(locals.map((b) => b.label)).toContain("main");
-        const mainLocal = locals.find((b) => b.label === "main");
-        expect(mainLocal?.description).toContain("🔵⬆1");
-        expect(mainLocal?.description).toContain("🟠⬇2");
-        expect(String(mainLocal?.tooltip)).toContain("2 incoming commits and 1 outgoing commit");
-        expect(remoteGroups.map((g) => g.label)).toContain("origin");
-        expect(remoteBranches.map((b) => b.label)).toContain("main");
-        provider.dispose();
-    });
-
     it("CommitInfoViewProvider handles ready/set/clear lifecycle", async () => {
         const { CommitInfoViewProvider } = await import("../../src/views/CommitInfoViewProvider");
         const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {

@@ -38,7 +38,6 @@
     ],
     "activationEvents": [
         "workspaceContains:.git",
-        "onView:intelligit.branches",
         "onView:intelligit.commitGraph"
     ],
     "main": "./dist/extension.js",
@@ -65,10 +64,6 @@
                     "id": "intelligit.commitPanel",
                     "name": "Commit",
                     "type": "webview"
-                },
-                {
-                    "id": "intelligit.branches",
-                    "name": "Branches"
                 }
             ],
             "intelligitPanel": [
@@ -177,60 +172,8 @@
             "view/title": [
                 {
                     "command": "intelligit.refresh",
-                    "when": "view == intelligit.branches",
-                    "group": "navigation"
-                },
-                {
-                    "command": "intelligit.refresh",
                     "when": "view == intelligit.commitGraph",
                     "group": "navigation"
-                }
-            ],
-            "view/item/context": [
-                {
-                    "command": "intelligit.checkout",
-                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
-                    "group": "1_checkout@1"
-                },
-                {
-                    "command": "intelligit.newBranchFrom",
-                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
-                    "group": "1_checkout@2"
-                },
-                {
-                    "command": "intelligit.checkoutAndRebase",
-                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
-                    "group": "1_checkout@3"
-                },
-                {
-                    "command": "intelligit.rebaseCurrentOnto",
-                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
-                    "group": "3_merge@1"
-                },
-                {
-                    "command": "intelligit.mergeIntoCurrent",
-                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
-                    "group": "3_merge@2"
-                },
-                {
-                    "command": "intelligit.updateBranch",
-                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch|remoteBranch)$/",
-                    "group": "4_remote@1"
-                },
-                {
-                    "command": "intelligit.pushBranch",
-                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
-                    "group": "4_remote@2"
-                },
-                {
-                    "command": "intelligit.renameBranch",
-                    "when": "view == intelligit.branches && viewItem =~ /^(currentBranch|localBranch)$/",
-                    "group": "5_modify@1"
-                },
-                {
-                    "command": "intelligit.deleteBranch",
-                    "when": "view == intelligit.branches && viewItem =~ /^(localBranch|remoteBranch)$/",
-                    "group": "5_modify@2"
                 }
             ],
             "webview/context": [

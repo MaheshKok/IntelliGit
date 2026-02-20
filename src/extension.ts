@@ -1,5 +1,5 @@
-// Extension entry point. Registers three coordinated views: sidebar branch tree,
-// bottom-panel commit graph (webview), and bottom-panel changed files + commit details (webview).
+// Extension entry point. Registers coordinated IntelliGit webviews:
+// commit graph (with integrated branch column/details) and commit panel.
 // The extension host is the sole data coordinator -- views never talk directly.
 
 import * as vscode from "vscode";
@@ -7,7 +7,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { GitExecutor } from "./git/executor";
 import { GitOps } from "./git/operations";
-import { BranchTreeProvider, BranchItem } from "./views/BranchTreeProvider";
 import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
@@ -37,33 +36,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Providers ---
 
-    const branchTree = new BranchTreeProvider();
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
 
     // --- Register views ---
 
-    const branchTreeView = vscode.window.createTreeView("intelligit.branches", {
-        treeDataProvider: branchTree,
-    });
-
     context.subscriptions.push(
-        branchTreeView,
         vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
         vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
         vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanel),
-    );
-
-    // --- Activity bar badge (file count) ---
-
-    context.subscriptions.push(
-        commitPanel.onDidChangeFileCount((count) => {
-            branchTreeView.badge =
-                count > 0
-                    ? { value: count, tooltip: `${count} file${count !== 1 ? "s" : ""} changed` }
-                    : undefined;
-        }),
     );
 
     // --- Wire data flow ---
@@ -99,7 +81,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitGraph.onBranchAction(({ action, branchName }) => {
             const branch = currentBranches.find((b) => b.name === branchName);
             if (!branch) return;
-            const item = new BranchItem(branch.name, "branch", branch);
+            const item: { branch: Branch } = { branch };
             vscode.commands.executeCommand(`intelligit.${action}`, item);
         }),
     );
@@ -179,6 +161,118 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             return remotes[0] ?? null;
         } catch {
             return null;
+        }
+    };
+
+    const resolveTrackedRemoteBranch = (
+        branch: Branch,
+    ): { remote: string; remoteBranch: string } | null => {
+        if (branch.upstream && branch.upstream.includes("/")) {
+            const [remote, ...rest] = branch.upstream.split("/");
+            const remoteBranch = rest.join("/");
+            if (remote && remoteBranch) {
+                return { remote, remoteBranch };
+            }
+        }
+
+        if (branch.remote) {
+            const expected = `${branch.remote}/${branch.name}`;
+            if (currentBranches.some((b) => b.isRemote && b.name === expected)) {
+                return { remote: branch.remote, remoteBranch: branch.name };
+            }
+        }
+
+        const suffixMatches = currentBranches.filter(
+            (b) => b.isRemote && b.name.endsWith(`/${branch.name}`),
+        );
+        if (suffixMatches.length === 1) {
+            const [remote, ...rest] = suffixMatches[0].name.split("/");
+            const remoteBranch = rest.join("/");
+            if (remote && remoteBranch) {
+                return { remote, remoteBranch };
+            }
+        }
+
+        return null;
+    };
+
+    const resolveRemoteDeleteTarget = (
+        branch: Branch,
+    ): { remote: string; remoteBranch: string } | null => {
+        if (!branch.isRemote) return null;
+        const parts = branch.name.split("/");
+        if (parts.length < 2) return null;
+
+        const remote = branch.remote ?? parts[0];
+        const remoteBranch = parts.slice(1).join("/");
+        if (!remote || !remoteBranch) return null;
+
+        return { remote, remoteBranch };
+    };
+
+    const showDeletedBranchActions = async (branch: Branch): Promise<void> => {
+        const restoreLabel = "Restore";
+        const deleteTrackedLabel = "Delete Tracked Branch";
+        const action = await vscode.window.showInformationMessage(
+            `Deleted: ${branch.name}`,
+            restoreLabel,
+            deleteTrackedLabel,
+        );
+
+        if (action === restoreLabel) {
+            if (!isValidGitHash(branch.hash)) {
+                vscode.window.showErrorMessage(
+                    `Cannot restore '${branch.name}': missing or invalid commit hash.`,
+                );
+                return;
+            }
+            try {
+                await executor.run(["branch", branch.name, branch.hash]);
+                vscode.window.showInformationMessage(`Restored ${branch.name}`);
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (error) {
+                const msg = getErrorMessage(error);
+                vscode.window.showErrorMessage(`Restore failed: ${msg}`);
+            }
+            return;
+        }
+
+        if (action === deleteTrackedLabel) {
+            const tracked = resolveTrackedRemoteBranch(branch);
+            if (!tracked) {
+                vscode.window.showWarningMessage(
+                    `No tracked remote branch found for '${branch.name}'.`,
+                );
+                return;
+            }
+
+            const confirm = await vscode.window.showWarningMessage(
+                `Delete tracked branch '${tracked.remote}/${tracked.remoteBranch}'?`,
+                { modal: true },
+                deleteTrackedLabel,
+            );
+            if (confirm !== deleteTrackedLabel) return;
+
+            try {
+                await runWithStatusBar(
+                    `Deleting tracked branch ${tracked.remote}/${tracked.remoteBranch}...`,
+                    async () => {
+                        await executor.run([
+                            "push",
+                            tracked.remote,
+                            "--delete",
+                            tracked.remoteBranch,
+                        ]);
+                    },
+                );
+                vscode.window.showInformationMessage(
+                    `Deleted tracked branch ${tracked.remote}/${tracked.remoteBranch}`,
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (error) {
+                const msg = getErrorMessage(error);
+                vscode.window.showErrorMessage(`Delete tracked branch failed: ${msg}`);
+            }
         }
     };
 
@@ -523,7 +617,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
             currentBranches = await gitOps.getBranches();
-            branchTree.refresh(currentBranches);
             commitGraph.setBranches(currentBranches);
             await commitGraph.refresh();
             await commitPanel.refresh();
@@ -539,7 +632,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
 
         vscode.commands.registerCommand("intelligit.showGitLog", async () => {
-            await vscode.commands.executeCommand("intelligit.branches.focus");
             await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
     );
@@ -548,7 +640,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const branchActionCommands: Array<{
         id: string;
-        handler: (item: BranchItem) => Promise<void>;
+        handler: (item: { branch?: Branch }) => Promise<void>;
     }> = [
         {
             id: "intelligit.checkout",
@@ -747,9 +839,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.deleteBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
+                const branch = item.branch;
+                const name = branch?.name;
                 if (!name) return;
-                const isRemote = !!item.branch?.isRemote;
+                const isRemote = !!branch?.isRemote;
                 const checkedOutBranch = isRemote ? null : await getCheckedOutBranchName();
 
                 if (!isRemote && checkedOutBranch && checkedOutBranch === name) {
@@ -787,15 +880,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 if (confirm !== confirmLabel) return;
                 try {
-                    if (isRemote && item.branch?.remote) {
-                        const remoteBranch = name.split("/").slice(1).join("/");
-                        await executor.run(["push", item.branch.remote, "--delete", remoteBranch]);
+                    if (isRemote) {
+                        const target = resolveRemoteDeleteTarget(branch);
+                        if (!target) {
+                            vscode.window.showErrorMessage(
+                                `Delete failed: unable to determine remote target for '${name}'.`,
+                            );
+                            return;
+                        }
+                        await runWithStatusBar(
+                            `Deleting remote branch ${target.remote}/${target.remoteBranch}...`,
+                            async () => {
+                                await executor.run([
+                                    "push",
+                                    target.remote,
+                                    "--delete",
+                                    target.remoteBranch,
+                                ]);
+                            },
+                        );
+                        vscode.window.showInformationMessage(
+                            `Deleted ${target.remote}/${target.remoteBranch}`,
+                        );
+                        await vscode.commands.executeCommand("intelligit.refresh");
                     } else {
                         const forceDelete = confirmLabel === "Delete Anyway";
                         await executor.run(["branch", forceDelete ? "-D" : "-d", name]);
+                        await vscode.commands.executeCommand("intelligit.refresh");
+                        await showDeletedBranchActions(branch);
                     }
-                    vscode.window.showInformationMessage(`Deleted ${name}`);
-                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     if (!isRemote && isBranchNotFullyMergedError(err)) {
                         const forceConfirm = await vscode.window.showWarningMessage(
@@ -806,8 +919,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         if (forceConfirm !== "Delete Anyway") return;
                         try {
                             await executor.run(["branch", "-D", name]);
-                            vscode.window.showInformationMessage(`Deleted ${name}`);
                             await vscode.commands.executeCommand("intelligit.refresh");
+                            await showDeletedBranchActions(branch);
                         } catch (forceErr) {
                             const msg = getErrorMessage(forceErr);
                             vscode.window.showErrorMessage(`Delete failed: ${msg}`);
@@ -823,7 +936,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     for (const cmd of branchActionCommands) {
         context.subscriptions.push(
-            vscode.commands.registerCommand(cmd.id, (item: BranchItem) => cmd.handler(item)),
+            vscode.commands.registerCommand(cmd.id, (item: { branch?: Branch }) =>
+                cmd.handler(item),
+            ),
         );
     }
 
@@ -924,7 +1039,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Initial load ---
 
     currentBranches = await gitOps.getBranches();
-    branchTree.refresh(currentBranches);
     commitGraph.setBranches(currentBranches);
 
     // --- Auto-refresh on file changes ---
@@ -952,7 +1066,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (fullTimer) clearTimeout(fullTimer);
         fullTimer = setTimeout(async () => {
             currentBranches = await gitOps.getBranches();
-            branchTree.refresh(currentBranches);
             commitGraph.setBranches(currentBranches);
             await commitGraph.refresh();
             await commitPanel.refresh();
@@ -995,7 +1108,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Disposables ---
 
-    context.subscriptions.push(branchTree, commitGraph, commitInfo, commitPanel);
+    context.subscriptions.push(commitGraph, commitInfo, commitPanel);
 }
 
 export function deactivate(): void {}

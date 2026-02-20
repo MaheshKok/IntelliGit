@@ -260,6 +260,80 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
+    it("BranchColumn persists and restores expansion/filter state", async () => {
+        const originalAcquire = (globalThis as Record<string, unknown>).acquireVsCodeApi;
+        const setState = vi.fn();
+        const getState = vi.fn(() => ({
+            branchColumn: {
+                branchFilter: "main",
+                expandedSections: ["local"],
+                expandedFolders: [],
+            },
+        }));
+        Object.defineProperty(globalThis, "acquireVsCodeApi", {
+            configurable: true,
+            value: vi.fn(() => ({
+                postMessage: vi.fn(),
+                getState,
+                setState,
+            })),
+        });
+
+        try {
+            const branches: Branch[] = [
+                {
+                    name: "main",
+                    hash: "feed1234",
+                    isRemote: false,
+                    isCurrent: true,
+                    ahead: 0,
+                    behind: 0,
+                },
+                {
+                    name: "origin/main",
+                    hash: "feed1234",
+                    isRemote: true,
+                    isCurrent: false,
+                    remote: "origin",
+                    ahead: 0,
+                    behind: 0,
+                },
+            ];
+            const { root, container } = mount(
+                <BranchColumn
+                    branches={branches}
+                    selectedBranch={null}
+                    onSelectBranch={vi.fn()}
+                    onBranchAction={vi.fn()}
+                />,
+            );
+            await flush();
+
+            const searchInput = container.querySelector(
+                'input[placeholder="Search branches"]',
+            ) as HTMLInputElement;
+            expect(searchInput.value).toBe("main");
+            expect(setState).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    branchColumn: expect.objectContaining({
+                        branchFilter: "main",
+                    }),
+                }),
+            );
+
+            unmount(root, container);
+        } finally {
+            if (typeof originalAcquire === "undefined") {
+                delete (globalThis as Record<string, unknown>).acquireVsCodeApi;
+            } else {
+                Object.defineProperty(globalThis, "acquireVsCodeApi", {
+                    configurable: true,
+                    value: originalAcquire,
+                });
+            }
+        }
+    });
+
     it("BranchColumn shows ahead/behind counts with push/pull colors", () => {
         const branches: Branch[] = [
             {

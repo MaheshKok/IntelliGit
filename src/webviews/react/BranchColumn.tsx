@@ -2,7 +2,7 @@
 // Shows HEAD, local branches grouped by prefix, and remote branches grouped by remote.
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import type { Branch } from "../../types";
 import { isBranchAction, type BranchAction } from "./commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -28,6 +28,78 @@ interface Props {
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
     onBranchAction: (action: BranchAction, branchName: string) => void;
+}
+
+interface BranchColumnPersistState {
+    branchFilter: string;
+    expandedSections: string[];
+    expandedFolders: string[];
+}
+
+interface CommitGraphViewState {
+    branchColumn?: BranchColumnPersistState;
+}
+
+interface BranchColumnPersistApi {
+    getState: () => CommitGraphViewState | undefined;
+    setState: (state: CommitGraphViewState) => void;
+}
+
+const DEFAULT_EXPANDED_SECTIONS = ["local", "remote"];
+let cachedPersistApi: BranchColumnPersistApi | null | undefined;
+let cachedAcquireFn: (() => BranchColumnPersistApi) | null | undefined;
+
+function getBranchColumnPersistApi() {
+    const acquire = (
+        globalThis as unknown as {
+            acquireVsCodeApi?: () => BranchColumnPersistApi;
+        }
+    ).acquireVsCodeApi;
+    const acquireFn = typeof acquire === "function" ? acquire : null;
+
+    if (cachedPersistApi !== undefined && cachedAcquireFn === acquireFn) {
+        return cachedPersistApi;
+    }
+
+    cachedAcquireFn = acquireFn;
+    if (typeof acquire !== "function") {
+        cachedPersistApi = null;
+        return cachedPersistApi;
+    }
+    try {
+        const api = acquire();
+        if (typeof api?.getState !== "function" || typeof api?.setState !== "function") {
+            cachedPersistApi = null;
+            return cachedPersistApi;
+        }
+        cachedPersistApi = api;
+        return cachedPersistApi;
+    } catch {
+        cachedPersistApi = null;
+        return cachedPersistApi;
+    }
+}
+
+function readPersistedBranchColumnState(): BranchColumnPersistState | null {
+    try {
+        return getBranchColumnPersistApi()?.getState()?.branchColumn ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function persistBranchColumnState(state: BranchColumnPersistState): void {
+    try {
+        const api = getBranchColumnPersistApi();
+        if (!api) return;
+        const prev = api.getState() ?? {};
+        api.setState({
+            ...prev,
+            branchColumn: state,
+        });
+    } catch {
+        // Ignore persistence errors and keep runtime interaction unaffected.
+    }
 }
 
 function toggleSetKey(
@@ -64,11 +136,19 @@ export function BranchColumn({
     onSelectBranch,
     onBranchAction,
 }: Props): React.ReactElement {
-    const [branchFilter, setBranchFilter] = useState("");
+    const persistedState = useMemo(readPersistedBranchColumnState, []);
+    const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
     const [expandedSections, setExpandedSections] = useState<Set<string>>(
-        () => new Set(["local", "remote"]),
+        () =>
+            new Set(
+                persistedState?.expandedSections.length
+                    ? persistedState.expandedSections
+                    : DEFAULT_EXPANDED_SECTIONS,
+            ),
     );
-    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set<string>());
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+        () => new Set(persistedState?.expandedFolders ?? []),
+    );
     const [contextMenu, setContextMenu] = useState<{
         x: number;
         y: number;
@@ -131,6 +211,14 @@ export function BranchColumn({
     );
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+    useEffect(() => {
+        persistBranchColumnState({
+            branchFilter,
+            expandedSections: Array.from(expandedSections),
+            expandedFolders: Array.from(expandedFolders),
+        });
+    }, [branchFilter, expandedSections, expandedFolders]);
 
     return (
         <div style={PANEL_STYLE}>
