@@ -12,6 +12,7 @@ import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow"
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
 import { RepoIcon, TagIcon } from "./branch-column/icons";
+import { getVsCodeApi } from "./shared/vscodeApi";
 import {
     BRANCH_ROW_CLASS_CSS,
     HEAD_LABEL_STYLE,
@@ -40,49 +41,12 @@ interface CommitGraphViewState {
     branchColumn?: BranchColumnPersistState;
 }
 
-interface BranchColumnPersistApi {
-    getState: () => CommitGraphViewState | undefined;
-    setState: (state: CommitGraphViewState) => void;
-}
-
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote"];
-let cachedPersistApi: BranchColumnPersistApi | null | undefined;
-let cachedAcquireFn: (() => BranchColumnPersistApi) | null | undefined;
-
-function getBranchColumnPersistApi() {
-    const acquire = (
-        globalThis as unknown as {
-            acquireVsCodeApi?: () => BranchColumnPersistApi;
-        }
-    ).acquireVsCodeApi;
-    const acquireFn = typeof acquire === "function" ? acquire : null;
-
-    if (cachedPersistApi !== undefined && cachedAcquireFn === acquireFn) {
-        return cachedPersistApi;
-    }
-
-    cachedAcquireFn = acquireFn;
-    if (typeof acquire !== "function") {
-        cachedPersistApi = null;
-        return cachedPersistApi;
-    }
-    try {
-        const api = acquire();
-        if (typeof api?.getState !== "function" || typeof api?.setState !== "function") {
-            cachedPersistApi = null;
-            return cachedPersistApi;
-        }
-        cachedPersistApi = api;
-        return cachedPersistApi;
-    } catch {
-        cachedPersistApi = null;
-        return cachedPersistApi;
-    }
-}
 
 function readPersistedBranchColumnState(): BranchColumnPersistState | null {
     try {
-        return getBranchColumnPersistApi()?.getState()?.branchColumn ?? null;
+        const api = getVsCodeApi<unknown, CommitGraphViewState>();
+        return api.getState()?.branchColumn ?? null;
     } catch {
         return null;
     }
@@ -90,8 +54,7 @@ function readPersistedBranchColumnState(): BranchColumnPersistState | null {
 
 function persistBranchColumnState(state: BranchColumnPersistState): void {
     try {
-        const api = getBranchColumnPersistApi();
-        if (!api) return;
+        const api = getVsCodeApi<unknown, CommitGraphViewState>();
         const prev = api.getState() ?? {};
         api.setState({
             ...prev,
