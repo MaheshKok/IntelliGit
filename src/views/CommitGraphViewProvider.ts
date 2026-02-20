@@ -41,7 +41,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private readonly _onCommitAction = new vscode.EventEmitter<{
         action: CommitAction;
         hash: string;
-        targetBranch?: string;
     }>();
     readonly onCommitAction = this._onCommitAction.event;
 
@@ -97,7 +96,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     this._onCommitAction.fire({
                         action: msg.action,
                         hash: msg.hash,
-                        targetBranch: msg.targetBranch,
                     });
                     break;
             }

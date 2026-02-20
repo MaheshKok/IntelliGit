@@ -6,11 +6,7 @@ import type { MenuItem } from "../shared/components/ContextMenu";
 type SeparatorAction = `sep-${string}`;
 type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
 
-export function getCommitMenuItems(
-    commit: Commit,
-    isUnpushed: boolean,
-    defaultCheckoutBranch: string | null,
-): CommitMenuItem[] {
+export function getCommitMenuItems(commit: Commit, isUnpushed: boolean): CommitMenuItem[] {
     const isPushed = !isUnpushed;
     const isMergeCommit = commit.parentHashes.length > 1;
 
@@ -21,11 +17,6 @@ export function getCommitMenuItems(
         { separator: true, label: "", action: "sep-checkout" },
     ];
 
-    items.push({
-        label: defaultCheckoutBranch ? `Checkout '${defaultCheckoutBranch}'` : "Checkout",
-        action: "checkoutMain",
-        disabled: !defaultCheckoutBranch,
-    });
     items.push({ label: "Checkout Revision", action: "checkoutRevision" });
 
     items.push({ separator: true, label: "", action: "sep-reset" });

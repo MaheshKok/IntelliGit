@@ -10,6 +10,16 @@ import { useDragResize } from "../../src/webviews/react/commit-panel/hooks/useDr
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
 import { flush, initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
 
+const mockVscodeApi = vi.hoisted(() => ({
+    postMessage: vi.fn(),
+    getState: vi.fn((): unknown => undefined),
+    setState: vi.fn(),
+}));
+
+vi.mock("../../src/webviews/react/shared/vscodeApi", () => ({
+    getVsCodeApi: () => mockVscodeApi,
+}));
+
 initReactDomTestEnvironment();
 
 describe("low coverage components", () => {
@@ -260,6 +270,64 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
+    it("BranchColumn persists and restores expansion/filter state", async () => {
+        mockVscodeApi.getState.mockReturnValue({
+            branchColumn: {
+                branchFilter: "main",
+                expandedSections: ["local"],
+                expandedFolders: [],
+            },
+        });
+
+        try {
+            const branches: Branch[] = [
+                {
+                    name: "main",
+                    hash: "feed1234",
+                    isRemote: false,
+                    isCurrent: true,
+                    ahead: 0,
+                    behind: 0,
+                },
+                {
+                    name: "origin/main",
+                    hash: "feed1234",
+                    isRemote: true,
+                    isCurrent: false,
+                    remote: "origin",
+                    ahead: 0,
+                    behind: 0,
+                },
+            ];
+            const { root, container } = mount(
+                <BranchColumn
+                    branches={branches}
+                    selectedBranch={null}
+                    onSelectBranch={vi.fn()}
+                    onBranchAction={vi.fn()}
+                />,
+            );
+            await flush();
+
+            const searchInput = container.querySelector(
+                'input[placeholder="Search branches"]',
+            ) as HTMLInputElement;
+            expect(searchInput.value).toBe("main");
+            expect(mockVscodeApi.setState).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    branchColumn: expect.objectContaining({
+                        branchFilter: "main",
+                    }),
+                }),
+            );
+
+            unmount(root, container);
+        } finally {
+            mockVscodeApi.getState.mockReturnValue(undefined);
+            mockVscodeApi.setState.mockClear();
+        }
+    });
+
     it("BranchColumn shows ahead/behind counts with push/pull colors", () => {
         const branches: Branch[] = [
             {
@@ -329,7 +397,6 @@ describe("low coverage components", () => {
                 filterText=""
                 hasMore={true}
                 unpushedHashes={new Set(["aa11bb22"])}
-                defaultCheckoutBranch="main"
                 selectedBranch="main"
                 onSelectCommit={vi.fn()}
                 onFilterText={vi.fn()}
@@ -359,7 +426,7 @@ describe("low coverage components", () => {
         act(() => {
             action.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aa11bb22", undefined);
+        expect(onCommitAction).toHaveBeenCalledWith("copyRevision", "aa11bb22");
 
         const viewport = container.querySelector(
             '[data-testid="commit-list-viewport"]',

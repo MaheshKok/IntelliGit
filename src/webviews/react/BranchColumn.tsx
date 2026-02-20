@@ -2,7 +2,7 @@
 // Shows HEAD, local branches grouped by prefix, and remote branches grouped by remote.
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useEffect } from "react";
 import type { Branch } from "../../types";
 import { isBranchAction, type BranchAction } from "./commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -12,6 +12,7 @@ import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow"
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
 import { RepoIcon, TagIcon } from "./branch-column/icons";
+import { getVsCodeApi } from "./shared/vscodeApi";
 import {
     BRANCH_ROW_CLASS_CSS,
     HEAD_LABEL_STYLE,
@@ -28,6 +29,40 @@ interface Props {
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
     onBranchAction: (action: BranchAction, branchName: string) => void;
+}
+
+interface BranchColumnPersistState {
+    branchFilter: string;
+    expandedSections: string[];
+    expandedFolders: string[];
+}
+
+interface CommitGraphViewState {
+    branchColumn?: BranchColumnPersistState;
+}
+
+const DEFAULT_EXPANDED_SECTIONS = ["local", "remote"];
+
+function readPersistedBranchColumnState(): BranchColumnPersistState | null {
+    try {
+        const api = getVsCodeApi<unknown, CommitGraphViewState>();
+        return api.getState()?.branchColumn ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function persistBranchColumnState(state: BranchColumnPersistState): void {
+    try {
+        const api = getVsCodeApi<unknown, CommitGraphViewState>();
+        const prev = api.getState() ?? {};
+        api.setState({
+            ...prev,
+            branchColumn: state,
+        });
+    } catch {
+        // Ignore persistence errors and keep runtime interaction unaffected.
+    }
 }
 
 function toggleSetKey(
@@ -64,11 +99,19 @@ export function BranchColumn({
     onSelectBranch,
     onBranchAction,
 }: Props): React.ReactElement {
-    const [branchFilter, setBranchFilter] = useState("");
+    const [persistedState] = useState(readPersistedBranchColumnState);
+    const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
     const [expandedSections, setExpandedSections] = useState<Set<string>>(
-        () => new Set(["local", "remote"]),
+        () =>
+            new Set(
+                Array.isArray(persistedState?.expandedSections)
+                    ? persistedState.expandedSections
+                    : DEFAULT_EXPANDED_SECTIONS,
+            ),
     );
-    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set<string>());
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+        () => new Set(persistedState?.expandedFolders ?? []),
+    );
     const [contextMenu, setContextMenu] = useState<{
         x: number;
         y: number;
@@ -131,6 +174,14 @@ export function BranchColumn({
     );
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
+
+    useEffect(() => {
+        persistBranchColumnState({
+            branchFilter,
+            expandedSections: Array.from(expandedSections),
+            expandedFolders: Array.from(expandedFolders),
+        });
+    }, [branchFilter, expandedSections, expandedFolders]);
 
     return (
         <div style={PANEL_STYLE}>

@@ -65,6 +65,7 @@ function CommitRefBadge({ name }: { name: string }): React.ReactElement {
 
 export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): React.ReactElement {
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+    const [filesCollapsed, setFilesCollapsed] = useState(false);
     const [detailCollapsed, setDetailCollapsed] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onResizeStart } = useDragResize(
@@ -111,49 +112,66 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                 fontSize="12px"
                 color="var(--vscode-descriptionForeground)"
                 borderBottom="1px solid var(--vscode-panel-border)"
-            >
-                Changed Files
-            </Box>
-            <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
-                <TreeRows
-                    entries={tree}
-                    depth={0}
-                    expandedDirs={expandedDirs}
-                    onToggleDir={(dir) =>
-                        setExpandedDirs((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(dir)) next.delete(dir);
-                            else next.add(dir);
-                            return next;
-                        })
+                cursor="pointer"
+                tabIndex={0}
+                role="button"
+                aria-expanded={!filesCollapsed}
+                onClick={() => setFilesCollapsed((v) => !v)}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setFilesCollapsed((v) => !v);
                     }
-                />
-            </Box>
-
-            <Box
-                flex="0 0 5px"
-                cursor="row-resize"
-                bg="var(--vscode-panel-border, #444)"
-                position="relative"
-                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
-                onMouseDown={onResizeStart}
-                _after={{
-                    content: '""',
-                    position: "absolute",
-                    left: "50%",
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                    w: "30px",
-                    h: "2px",
-                    bg: "var(--vscode-descriptionForeground)",
-                    opacity: 0.4,
-                    borderRadius: "1px",
                 }}
-            />
+            >
+                {filesCollapsed ? "\u25B6" : "\u25BC"} Changed Files
+            </Box>
+            {!filesCollapsed && (
+                <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
+                    <TreeRows
+                        entries={tree}
+                        depth={0}
+                        expandedDirs={expandedDirs}
+                        onToggleDir={(dir) =>
+                            setExpandedDirs((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(dir)) next.delete(dir);
+                                else next.add(dir);
+                                return next;
+                            })
+                        }
+                    />
+                </Box>
+            )}
+
+            {!filesCollapsed && !detailCollapsed && (
+                <Box
+                    flex="0 0 5px"
+                    cursor="row-resize"
+                    bg="var(--vscode-panel-border, #444)"
+                    position="relative"
+                    _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                    onMouseDown={onResizeStart}
+                    _after={{
+                        content: '""',
+                        position: "absolute",
+                        left: "50%",
+                        top: "50%",
+                        transform: "translate(-50%, -50%)",
+                        w: "30px",
+                        h: "2px",
+                        bg: "var(--vscode-descriptionForeground)",
+                        opacity: 0.4,
+                        borderRadius: "1px",
+                    }}
+                />
+            )}
 
             <Box
-                flexShrink={0}
-                h={detailCollapsed ? "30px" : `${bottomHeight}px`}
+                flexShrink={filesCollapsed ? 1 : 0}
+                flexGrow={filesCollapsed ? 1 : 0}
+                minH={filesCollapsed ? 0 : undefined}
+                h={filesCollapsed ? undefined : detailCollapsed ? "30px" : `${bottomHeight}px`}
                 overflow="hidden"
             >
                 <Box
@@ -163,7 +181,16 @@ export function CommitInfoPane({ detail }: { detail: CommitDetail | null }): Rea
                     fontSize="12px"
                     color="var(--vscode-descriptionForeground)"
                     cursor="pointer"
+                    tabIndex={0}
+                    role="button"
+                    aria-expanded={!detailCollapsed}
                     onClick={() => setDetailCollapsed((v) => !v)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setDetailCollapsed((v) => !v);
+                        }
+                    }}
                 >
                     {detailCollapsed ? "\u25B6" : "\u25BC"} Commit Details
                 </Box>

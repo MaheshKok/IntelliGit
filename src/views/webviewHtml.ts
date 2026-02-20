@@ -24,7 +24,7 @@ export function buildWebviewShellHtml({
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
+        content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data:;">
     <title>${title}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,7 +46,9 @@ export function buildWebviewShellHtml({
 
 function createNonce(): string {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
     let r = "";
-    for (let i = 0; i < 32; i++) r += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let i = 0; i < 32; i++) r += chars.charAt(bytes[i] % chars.length);
     return r;
 }

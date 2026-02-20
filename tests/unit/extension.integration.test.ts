@@ -24,7 +24,6 @@ const writeFile = vi.fn(async () => undefined);
 const clipboardWriteText = vi.fn(async () => undefined);
 const createOutputChannel = vi.fn(() => ({ appendLine: vi.fn() }));
 const setStatusBarMessage = vi.fn(() => ({ dispose: vi.fn() }));
-const createTreeView = vi.fn(() => ({ badge: undefined, dispose: vi.fn() }));
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
@@ -56,14 +55,6 @@ class MockEventEmitter<T> {
         for (const listener of this.listeners) listener(value);
     }
     dispose = vi.fn();
-}
-
-class MockBranchItem {
-    constructor(
-        public readonly label: string,
-        public readonly _itemType: string,
-        public readonly branch?: { name?: string; path?: string; isRemote?: boolean },
-    ) {}
 }
 
 const defaultExecutorRunImpl = async (args: string[]) => {
@@ -147,7 +138,6 @@ class MockCommitGraphViewProvider {
     private commitActionEmitter = new MockEventEmitter<{
         action: string;
         hash: string;
-        targetBranch?: string;
     }>();
 
     constructor(_uri: unknown, _gitOps: unknown) {
@@ -174,7 +164,7 @@ class MockCommitGraphViewProvider {
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
     }
-    emitCommitAction(payload: { action: string; hash: string; targetBranch?: string }): void {
+    emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
 }
@@ -199,11 +189,6 @@ class MockCommitPanelViewProvider {
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
     }
-}
-
-class MockBranchTreeProvider {
-    refresh = vi.fn();
-    dispose = vi.fn();
 }
 
 vi.mock("fs", () => ({
@@ -247,8 +232,11 @@ vi.mock("vscode", () => ({
         }),
     },
     window: {
-        createTreeView,
         registerWebviewViewProvider,
+        createTreeView: vi.fn(() => ({
+            badge: undefined,
+            dispose: vi.fn(),
+        })),
         showInformationMessage,
         showErrorMessage,
         showWarningMessage,
@@ -311,11 +299,6 @@ vi.mock("../../src/git/operations", () => ({
         listShelved = gitOpsState.listShelved;
         getShelvedFiles = gitOpsState.getShelvedFiles;
     },
-}));
-
-vi.mock("../../src/views/BranchTreeProvider", () => ({
-    BranchTreeProvider: MockBranchTreeProvider,
-    BranchItem: MockBranchItem,
 }));
 
 vi.mock("../../src/views/CommitGraphViewProvider", () => ({
@@ -484,6 +467,9 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalled();
         expect(showInformationMessage).toHaveBeenCalled();
         expect(showWarningMessage).toHaveBeenCalled();
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Deleting remote branch origin/feature-remote"),
+        );
         expect(deleteFileWithFallback).toHaveBeenCalled();
     });
 
@@ -513,6 +499,93 @@ describe("extension integration", () => {
         );
     });
 
+    it("offers restore action after deleting local branch", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        showInformationMessage.mockResolvedValueOnce("Restore");
+        await registeredCommands.get("intelligit.deleteBranch")?.({
+            branch: {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-local",
+                remote: "origin",
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith(["branch", "-d", "feature-local"]);
+        expect(executorRun).toHaveBeenCalledWith(["branch", "feature-local", "a1b2c3d4"]);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Deleted: feature-local",
+            "Restore",
+            "Delete Tracked Branch",
+        );
+    });
+
+    it("supports delete tracked branch action after deleting local branch", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        showInformationMessage.mockResolvedValueOnce("Delete Tracked Branch");
+        await registeredCommands.get("intelligit.deleteBranch")?.({
+            branch: {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-local",
+                remote: "origin",
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith(["branch", "-d", "feature-local"]);
+        expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-local"]);
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Deleting tracked branch origin/feature-local"),
+        );
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Deleted: feature-local",
+            "Restore",
+            "Delete Tracked Branch",
+        );
+    });
+
+    it("deletes remote branch even when remote field is missing", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.deleteBranch")?.({
+            branch: {
+                name: "origin/feature-fallback",
+                isRemote: true,
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith([
+            "push",
+            "origin",
+            "--delete",
+            "feature-fallback",
+        ]);
+        expect(setStatusBarMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Deleting remote branch origin/feature-fallback"),
+        );
+    });
+
     it("handles commit context actions forwarded from commit graph", async () => {
         const { activate } = await import("../../src/extension");
         const context = {
@@ -525,7 +598,6 @@ describe("extension integration", () => {
         const emitCommitAction = async (payload: {
             action: string;
             hash: string;
-            targetBranch?: string;
         }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
@@ -533,11 +605,6 @@ describe("extension integration", () => {
         await emitCommitAction({ action: "copyRevision", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "createPatch", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "cherryPick", hash: "deadbee" });
-        await emitCommitAction({
-            action: "checkoutMain",
-            hash: "a1b2c3d4",
-            targetBranch: "main",
-        });
         await emitCommitAction({ action: "checkoutRevision", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "resetCurrentToHere", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "revertCommit", hash: "deadbee" });
@@ -570,7 +637,7 @@ describe("extension integration", () => {
         );
     });
 
-    it("covers activation guards, badge updates, and debounced refresh sources", async () => {
+    it("covers activation guards and debounced refresh sources", async () => {
         const { activate, deactivate } = await import("../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -589,12 +656,6 @@ describe("extension integration", () => {
         vi.useFakeTimers();
         try {
             await activate(context);
-
-            latestCommitPanelProvider!.emitFileCount(2);
-            const treeView = createTreeView.mock.results.at(-1)?.value as { badge?: unknown };
-            expect(treeView.badge).toEqual({ value: 2, tooltip: "2 files changed" });
-            latestCommitPanelProvider!.emitFileCount(0);
-            expect(treeView.badge).toBeUndefined();
 
             gitOpsState.getCommitDetail.mockRejectedValueOnce(new Error("detail failed"));
             latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");
@@ -657,23 +718,12 @@ describe("extension integration", () => {
         const emitCommitAction = async (payload: {
             action: string;
             hash: string;
-            targetBranch?: string;
         }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
         };
 
         await emitCommitAction({ action: "copyRevision", hash: "not-a-hash" });
-        await emitCommitAction({
-            action: "checkoutMain",
-            hash: "a1b2c3d4",
-            targetBranch: "-bad",
-        });
-        await emitCommitAction({
-            action: "checkoutMain",
-            hash: "a1b2c3d4",
-            targetBranch: "unknown-branch",
-        });
 
         gitOpsState.getBranches.mockResolvedValueOnce([
             {
@@ -687,7 +737,6 @@ describe("extension integration", () => {
             },
         ]);
         await registeredCommands.get("intelligit.refresh")?.();
-        await emitCommitAction({ action: "checkoutMain", hash: "a1b2c3d4" });
 
         showWarningMessage.mockResolvedValueOnce("Cherry-pick");
         showQuickPick.mockResolvedValueOnce(undefined);
@@ -723,11 +772,6 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
-        expect(showErrorMessage).toHaveBeenCalledWith("Invalid branch name for checkout.");
-        expect(showErrorMessage).toHaveBeenCalledWith(
-            "Cannot checkout unknown branch 'unknown-branch'.",
-        );
-        expect(showErrorMessage).toHaveBeenCalledWith("No local branch available to checkout.");
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Invalid branch name '-bad-branch-name'"),
         );

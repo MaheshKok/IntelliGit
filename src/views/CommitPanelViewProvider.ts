@@ -9,6 +9,7 @@ import type { WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { deleteFileWithFallback } from "../utils/fileOps";
+import { runWithStatusBar } from "../utils/statusBar";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
@@ -19,6 +20,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private stashes: StashEntry[] = [];
     private selectedShelfIndex: number | null = null;
     private shelfFiles: WorkingFile[] = [];
+    private lastFileCount = 0;
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
@@ -38,8 +40,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
+        const thisView = webviewView;
         webviewView.onDidDispose(() => {
-            this.view = undefined;
+            if (this.view === thisView) {
+                this.view = undefined;
+            }
         });
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
@@ -53,50 +58,63 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
-        this.refreshData();
+        this.updateViewCount(this.lastFileCount);
+        this.refreshData().catch((err) => {
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(message);
+            this.postToWebview({ type: "error", message });
+        });
     }
 
     async refresh(): Promise<void> {
         await this.refreshData();
     }
 
-    private async runWithStatusBar<T>(message: string, task: () => Promise<T>): Promise<T> {
-        const disposable = vscode.window.setStatusBarMessage(
-            `$(sync~spin) IntelliGit: ${message}`,
-        );
-        try {
-            return await task();
-        } finally {
-            disposable.dispose();
-        }
-    }
-
     private async refreshData(): Promise<void> {
-        this.files = await this.gitOps.getStatus();
-        this.stashes = await this.gitOps.listShelved();
+        this.postToWebview({ type: "refreshing", active: true });
+        vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true);
+        try {
+            const files = await this.gitOps.getStatus();
+            const stashes = await this.gitOps.listShelved();
 
-        const hasSelected =
-            this.selectedShelfIndex !== null &&
-            this.stashes.some((entry) => entry.index === this.selectedShelfIndex);
-        if (!hasSelected) {
-            this.selectedShelfIndex = this.stashes.length > 0 ? this.stashes[0].index : null;
+            const hasSelected =
+                this.selectedShelfIndex !== null &&
+                stashes.some((entry) => entry.index === this.selectedShelfIndex);
+            let selectedShelfIndex: number | null;
+            if (hasSelected) {
+                selectedShelfIndex = this.selectedShelfIndex;
+            } else {
+                selectedShelfIndex = stashes.length > 0 ? stashes[0].index : null;
+            }
+
+            const shelfFiles =
+                selectedShelfIndex !== null
+                    ? await this.gitOps.getShelvedFiles(selectedShelfIndex)
+                    : [];
+
+            this.files = files;
+            this.stashes = stashes;
+            this.selectedShelfIndex = selectedShelfIndex;
+            this.shelfFiles = shelfFiles;
+
+            const uniquePaths = new Set(files.map((f) => f.path));
+            const count = uniquePaths.size;
+            this._onDidChangeFileCount.fire(count);
+            this.updateViewCount(count);
+            this.postToWebview({
+                type: "update",
+                files,
+                stashes,
+                shelfFiles,
+                selectedShelfIndex,
+            });
+            this.postToWebview({ type: "refreshing", active: false });
+            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
+        } catch (err) {
+            this.postToWebview({ type: "refreshing", active: false });
+            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", false);
+            throw err;
         }
-
-        if (this.selectedShelfIndex !== null) {
-            this.shelfFiles = await this.gitOps.getShelvedFiles(this.selectedShelfIndex);
-        } else {
-            this.shelfFiles = [];
-        }
-
-        const uniquePaths = new Set(this.files.map((f) => f.path));
-        this._onDidChangeFileCount.fire(uniquePaths.size);
-        this.postToWebview({
-            type: "update",
-            files: this.files,
-            stashes: this.stashes,
-            shelfFiles: this.shelfFiles,
-            selectedShelfIndex: this.selectedShelfIndex,
-        });
     }
 
     private async handleMessage(msg: { type: string; [key: string]: unknown }): Promise<void> {
@@ -131,7 +149,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (paths.length > 0) {
                     await this.gitOps.stageFiles(paths);
                 }
-                await this.runWithStatusBar(
+                await runWithStatusBar(
                     push ? "Committing and pushing..." : "Committing...",
                     async () => {
                         if (push) {
@@ -156,7 +174,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Commit message cannot be empty.");
                     return;
                 }
-                await this.runWithStatusBar("Committing...", async () => {
+                await runWithStatusBar("Committing...", async () => {
                     await this.gitOps.commit(message, amend);
                 });
                 vscode.window.showInformationMessage("Committed successfully.");
@@ -172,7 +190,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Commit message cannot be empty.");
                     return;
                 }
-                await this.runWithStatusBar("Committing and pushing...", async () => {
+                await runWithStatusBar("Committing and pushing...", async () => {
                     await this.gitOps.commitAndPush(message, amend);
                 });
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
@@ -327,6 +345,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
         }
+    }
+
+    private updateViewCount(count: number): void {
+        this.lastFileCount = count;
+        if (!this.view) return;
+        this.view.description = count > 0 ? `${count}` : "";
     }
 
     private postToWebview(msg: InboundMessage): void {

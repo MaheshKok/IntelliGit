@@ -1,8 +1,8 @@
 // React app for the bottom-panel commit graph webview.
-// Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar].
+// Layout: [BranchColumn (resizable)] | [drag-handle] | [CommitList + search bar] | [drag-handle] | [CommitInfoPane].
 // Branch filtering from the inline branch tree posts back to the extension host.
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
@@ -22,6 +22,68 @@ const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 260;
+const MIN_INFO_WIDTH = 250;
+const MAX_INFO_WIDTH = 760;
+const DEFAULT_INFO_WIDTH = 330;
+
+function useColumnDrag(
+    width: number,
+    setWidth: React.Dispatch<React.SetStateAction<number>>,
+    min: number,
+    max: number,
+    invert: boolean,
+): (e: React.MouseEvent) => void {
+    const draggingRef = useRef(false);
+    const moveRef = useRef<((ev: MouseEvent) => void) | null>(null);
+    const upRef = useRef<(() => void) | null>(null);
+    const widthRef = useRef(width);
+    widthRef.current = width;
+
+    useEffect(() => {
+        return () => {
+            if (draggingRef.current) {
+                if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);
+                if (upRef.current) document.removeEventListener("mouseup", upRef.current);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+                draggingRef.current = false;
+            }
+        };
+    }, []);
+
+    return useCallback(
+        (e: React.MouseEvent) => {
+            e.preventDefault();
+            draggingRef.current = true;
+            const startX = e.clientX;
+            const startWidth = widthRef.current;
+
+            const onMouseMove = (ev: MouseEvent) => {
+                if (!draggingRef.current) return;
+                const delta = invert ? startX - ev.clientX : ev.clientX - startX;
+                setWidth(Math.max(min, Math.min(max, startWidth + delta)));
+            };
+
+            const onMouseUp = () => {
+                draggingRef.current = false;
+                moveRef.current = null;
+                upRef.current = null;
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+            };
+
+            moveRef.current = onMouseMove;
+            upRef.current = onMouseUp;
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", onMouseUp);
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+        },
+        [setWidth, min, max, invert],
+    );
+}
 
 function App(): React.ReactElement {
     const [commits, setCommits] = useState<Commit[]>([]);
@@ -31,10 +93,22 @@ function App(): React.ReactElement {
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
-    const [branchWidth, setBranchWidth] = useState(DEFAULT_BRANCH_WIDTH);
+    const [branchWidth, setBranchWidth] = useState(() => {
+        try {
+            const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
+            return typeof w === "number" ? w : DEFAULT_BRANCH_WIDTH;
+        } catch { return DEFAULT_BRANCH_WIDTH; }
+    });
+    const [infoWidth, setInfoWidth] = useState(() => {
+        try {
+            const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
+            return typeof w === "number" ? w : DEFAULT_INFO_WIDTH;
+        } catch { return DEFAULT_INFO_WIDTH; }
+    });
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
-    const dragging = useRef(false);
     const loadingMore = useRef(false);
+    const onDividerMouseDown = useColumnDrag(branchWidth, setBranchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH, false);
+    const onInfoDividerMouseDown = useColumnDrag(infoWidth, setInfoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH, true);
 
     useEffect(() => {
         vscode.postMessage({ type: "ready" });
@@ -78,6 +152,13 @@ function App(): React.ReactElement {
         return () => window.removeEventListener("message", handler);
     }, []);
 
+    useEffect(() => {
+        try {
+            const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
+            vscode.setState({ ...prev, branchWidth, infoWidth });
+        } catch { /* ignore persistence errors */ }
+    }, [branchWidth, infoWidth]);
+
     const handleSelectCommit = useCallback((hash: string) => {
         setSelectedHash(hash);
         vscode.postMessage({ type: "selectCommit", hash });
@@ -107,53 +188,9 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
-    const handleCommitAction = useCallback(
-        (action: CommitAction, hash: string, targetBranch?: string) => {
-            vscode.postMessage({ type: "commitAction", action, hash, targetBranch });
-        },
-        [],
-    );
-
-    const defaultCheckoutBranch = useMemo(() => {
-        const localBranches = branches.filter((b) => !b.isRemote).map((b) => b.name);
-        if (localBranches.includes("main")) return "main";
-        if (localBranches.includes("master")) return "master";
-        return localBranches[0] ?? null;
-    }, [branches]);
-
-    // Resizable divider via mouse events on document
-    const onDividerMouseDown = useCallback(
-        (e: React.MouseEvent) => {
-            e.preventDefault();
-            dragging.current = true;
-            const startX = e.clientX;
-            const startWidth = branchWidth;
-
-            const onMouseMove = (ev: MouseEvent) => {
-                if (!dragging.current) return;
-                const delta = ev.clientX - startX;
-                const newWidth = Math.max(
-                    MIN_BRANCH_WIDTH,
-                    Math.min(MAX_BRANCH_WIDTH, startWidth + delta),
-                );
-                setBranchWidth(newWidth);
-            };
-
-            const onMouseUp = () => {
-                dragging.current = false;
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
-            };
-
-            document.addEventListener("mousemove", onMouseMove);
-            document.addEventListener("mouseup", onMouseUp);
-            document.body.style.cursor = "col-resize";
-            document.body.style.userSelect = "none";
-        },
-        [branchWidth],
-    );
+    const handleCommitAction = useCallback((action: CommitAction, hash: string) => {
+        vscode.postMessage({ type: "commitAction", action, hash });
+    }, []);
 
     return (
         <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -188,7 +225,6 @@ function App(): React.ReactElement {
                         filterText={filterText}
                         hasMore={hasMore}
                         unpushedHashes={unpushedHashes}
-                        defaultCheckoutBranch={defaultCheckoutBranch}
                         selectedBranch={selectedBranch}
                         onSelectCommit={handleSelectCommit}
                         onFilterText={handleFilterText}
@@ -197,10 +233,19 @@ function App(): React.ReactElement {
                     />
                 </div>
                 <div
+                    data-testid="commit-info-divider"
+                    onMouseDown={onInfoDividerMouseDown}
                     style={{
-                        width: 330,
+                        width: 4,
                         flexShrink: 0,
-                        borderLeft: "1px solid var(--vscode-panel-border)",
+                        cursor: "col-resize",
+                        background: "var(--vscode-panel-border)",
+                    }}
+                />
+                <div
+                    style={{
+                        width: infoWidth,
+                        flexShrink: 0,
                         overflow: "hidden",
                     }}
                 >

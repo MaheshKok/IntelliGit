@@ -37,12 +37,11 @@ interface Props {
     filterText: string;
     hasMore: boolean;
     unpushedHashes: Set<string>;
-    defaultCheckoutBranch: string | null;
     selectedBranch: string | null;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
     onLoadMore: () => void | Promise<void>;
-    onCommitAction: (action: CommitAction, hash: string, targetBranch?: string) => void;
+    onCommitAction: (action: CommitAction, hash: string) => void;
 }
 
 export function CommitList({
@@ -51,7 +50,6 @@ export function CommitList({
     filterText,
     hasMore,
     unpushedHashes,
-    defaultCheckoutBranch,
     selectedBranch,
     onSelectCommit,
     onFilterText,
@@ -132,11 +130,9 @@ export function CommitList({
         (action: string) => {
             if (!contextMenu) return;
             if (!isCommitAction(action)) return;
-            const target =
-                action === "checkoutMain" ? (defaultCheckoutBranch ?? undefined) : undefined;
-            onCommitAction(action, contextMenu.commit.hash, target);
+            onCommitAction(action, contextMenu.commit.hash);
         },
-        [contextMenu, defaultCheckoutBranch, onCommitAction],
+        [contextMenu, onCommitAction],
     );
 
     const handleScroll = useCallback(
@@ -212,7 +208,7 @@ export function CommitList({
             <div style={headerRowStyle(graphWidth)}>
                 <span style={{ flex: 1 }}>Commit</span>
                 <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>Author</span>
-                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 6 }}>
+                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 4 }}>
                     Date
                 </span>
             </div>
@@ -275,7 +271,6 @@ export function CommitList({
                     items={getCommitMenuItems(
                         contextMenu.commit,
                         isUnpushedCommit(contextMenu.commit.hash),
-                        defaultCheckoutBranch,
                     )}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}

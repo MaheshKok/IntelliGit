@@ -1,5 +1,5 @@
-// Extension entry point. Registers three coordinated views: sidebar branch tree,
-// bottom-panel commit graph (webview), and bottom-panel changed files + commit details (webview).
+// Extension entry point. Registers coordinated IntelliGit webviews:
+// commit graph (with integrated branch column/details) and commit panel.
 // The extension host is the sole data coordinator -- views never talk directly.
 
 import * as vscode from "vscode";
@@ -7,7 +7,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { GitExecutor } from "./git/executor";
 import { GitOps } from "./git/operations";
-import { BranchTreeProvider, BranchItem } from "./views/BranchTreeProvider";
 import { CommitGraphViewProvider } from "./views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
@@ -15,6 +14,7 @@ import type { Branch } from "./types";
 import type { CommitAction } from "./webviews/react/commitGraphTypes";
 import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
 import { deleteFileWithFallback } from "./utils/fileOps";
+import { runWithStatusBar } from "./utils/statusBar";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -37,33 +37,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Providers ---
 
-    const branchTree = new BranchTreeProvider();
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
 
     // --- Register views ---
 
-    const branchTreeView = vscode.window.createTreeView("intelligit.branches", {
-        treeDataProvider: branchTree,
+    const emptyTreeProvider: vscode.TreeDataProvider<never> = {
+        getTreeItem: () => { throw new Error("unreachable"); },
+        getChildren: () => [],
+    };
+    const badgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
+        treeDataProvider: emptyTreeProvider,
     });
 
+    const updateBadge = (count: number) => {
+        badgeView.badge = count > 0
+            ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
+            : undefined;
+    };
+
     context.subscriptions.push(
-        branchTreeView,
+        badgeView,
+        commitPanel.onDidChangeFileCount(updateBadge),
         vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
         vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
         vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanel),
-    );
-
-    // --- Activity bar badge (file count) ---
-
-    context.subscriptions.push(
-        commitPanel.onDidChangeFileCount((count) => {
-            branchTreeView.badge =
-                count > 0
-                    ? { value: count, tooltip: `${count} file${count !== 1 ? "s" : ""} changed` }
-                    : undefined;
-        }),
     );
 
     // --- Wire data flow ---
@@ -99,15 +98,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitGraph.onBranchAction(({ action, branchName }) => {
             const branch = currentBranches.find((b) => b.name === branchName);
             if (!branch) return;
-            const item = new BranchItem(branch.name, "branch", branch);
+            const item: { branch: Branch } = { branch };
             vscode.commands.executeCommand(`intelligit.${action}`, item);
         }),
     );
 
     context.subscriptions.push(
-        commitGraph.onCommitAction(async ({ action, hash, targetBranch }) => {
+        commitGraph.onCommitAction(async ({ action, hash }) => {
             try {
-                await handleCommitContextAction({ action, hash, targetBranch });
+                await handleCommitContextAction({ action, hash });
             } catch (error) {
                 const message = getErrorMessage(error);
                 console.error(`Commit action '${action}' failed:`, error);
@@ -182,6 +181,116 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     };
 
+    const resolveTrackedRemoteBranch = (
+        branch: Branch,
+    ): { remote: string; remoteBranch: string } | null => {
+        if (branch.upstream && branch.upstream.includes("/")) {
+            const [remote, ...rest] = branch.upstream.split("/");
+            const remoteBranch = rest.join("/");
+            if (remote && remoteBranch) {
+                return { remote, remoteBranch };
+            }
+        }
+
+        if (branch.remote) {
+            const expected = `${branch.remote}/${branch.name}`;
+            if (currentBranches.some((b) => b.isRemote && b.name === expected)) {
+                return { remote: branch.remote, remoteBranch: branch.name };
+            }
+        }
+
+        // Fallback: match remote branches whose name ends with the local branch name.
+        // Only used when there is exactly one match to avoid ambiguity (e.g. both
+        // "origin/feat" and "upstream/feat" would produce two matches and be skipped).
+        const suffixMatches = currentBranches.filter(
+            (b) => b.isRemote && b.name.endsWith(`/${branch.name}`),
+        );
+        if (suffixMatches.length === 1) {
+            const [remote, ...rest] = suffixMatches[0].name.split("/");
+            const remoteBranch = rest.join("/");
+            if (remote && remoteBranch) {
+                return { remote, remoteBranch };
+            }
+        }
+
+        return null;
+    };
+
+    const resolveRemoteDeleteTarget = (
+        branch: Branch,
+    ): { remote: string; remoteBranch: string } | null => {
+        if (!branch.isRemote) return null;
+        const parts = branch.name.split("/");
+        if (parts.length < 2) return null;
+
+        const remote = branch.remote ?? parts[0];
+        const remoteBranch = parts.slice(1).join("/");
+        if (!remote || !remoteBranch) return null;
+
+        return { remote, remoteBranch };
+    };
+
+    const showDeletedBranchActions = async (branch: Branch): Promise<void> => {
+        const restoreLabel = "Restore";
+        const deleteTrackedLabel = "Delete Tracked Branch";
+        const tracked = resolveTrackedRemoteBranch(branch);
+        const buttons = tracked
+            ? [restoreLabel, deleteTrackedLabel]
+            : [restoreLabel];
+        const action = await vscode.window.showInformationMessage(
+            `Deleted: ${branch.name}`,
+            ...buttons,
+        );
+
+        if (action === restoreLabel) {
+            if (!isValidGitHash(branch.hash)) {
+                vscode.window.showErrorMessage(
+                    `Cannot restore '${branch.name}': missing or invalid commit hash.`,
+                );
+                return;
+            }
+            try {
+                await executor.run(["branch", branch.name, branch.hash]);
+                vscode.window.showInformationMessage(`Restored ${branch.name}`);
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (error) {
+                const msg = getErrorMessage(error);
+                vscode.window.showErrorMessage(`Restore failed: ${msg}`);
+            }
+            return;
+        }
+
+        if (action === deleteTrackedLabel && tracked) {
+            const confirm = await vscode.window.showWarningMessage(
+                `Delete tracked branch '${tracked.remote}/${tracked.remoteBranch}'?`,
+                { modal: true },
+                deleteTrackedLabel,
+            );
+            if (confirm !== deleteTrackedLabel) return;
+
+            try {
+                await runWithStatusBar(
+                    `Deleting tracked branch ${tracked.remote}/${tracked.remoteBranch}...`,
+                    async () => {
+                        await executor.run([
+                            "push",
+                            tracked.remote,
+                            "--delete",
+                            tracked.remoteBranch,
+                        ]);
+                    },
+                );
+                vscode.window.showInformationMessage(
+                    `Deleted tracked branch ${tracked.remote}/${tracked.remoteBranch}`,
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (error) {
+                const msg = getErrorMessage(error);
+                vscode.window.showErrorMessage(`Delete tracked branch failed: ${msg}`);
+            }
+        }
+    };
+
     const isHashMatch = (a: string, b: string): boolean => a.startsWith(b) || b.startsWith(a);
     const isValidGitHash = (value: string): boolean => /^[0-9a-fA-F]{7,40}$/.test(value);
     const isValidBranchName = (value: string): boolean =>
@@ -241,37 +350,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
     };
 
-    const getDefaultLocalBranch = (): string | null => {
-        const localNames = currentBranches.filter((b) => !b.isRemote).map((b) => b.name);
-        if (localNames.includes("main")) return "main";
-        if (localNames.includes("master")) return "master";
-        return localNames[0] ?? null;
-    };
-
     const refreshAll = async (): Promise<void> => {
         await vscode.commands.executeCommand("intelligit.refresh");
-    };
-
-    const runWithStatusBar = async <T>(
-        message: string,
-        task: () => Promise<T>,
-    ): Promise<T> => {
-        const disposable = vscode.window.setStatusBarMessage(
-            `$(sync~spin) IntelliGit: ${message}`,
-        );
-        try {
-            return await task();
-        } finally {
-            disposable.dispose();
-        }
     };
 
     const handleCommitContextAction = async (params: {
         action: CommitAction;
         hash: string;
-        targetBranch?: string;
     }): Promise<void> => {
-        const { action, hash, targetBranch } = params;
+        const { action, hash } = params;
         const validatedHash = hash.trim();
         if (!isValidGitHash(validatedHash)) {
             console.error("Blocked commit action due to invalid hash:", { action, hash });
@@ -321,28 +408,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         : ["cherry-pick", "-m", String(mainlineParent.parentNumber), validatedHash];
                 await executor.run(args);
                 vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
-                await refreshAll();
-                return;
-            }
-            case "checkoutMain": {
-                const branchName = (targetBranch ?? getDefaultLocalBranch())?.trim();
-                if (!branchName) {
-                    vscode.window.showErrorMessage("No local branch available to checkout.");
-                    return;
-                }
-                if (!isValidBranchName(branchName)) {
-                    vscode.window.showErrorMessage("Invalid branch name for checkout.");
-                    return;
-                }
-                const knownBranchNames = new Set(currentBranches.map((b) => b.name));
-                if (!knownBranchNames.has(branchName)) {
-                    vscode.window.showErrorMessage(
-                        `Cannot checkout unknown branch '${branchName}'.`,
-                    );
-                    return;
-                }
-                await executor.run(["checkout", branchName]);
-                vscode.window.showInformationMessage(`Checked out ${branchName}.`);
                 await refreshAll();
                 return;
             }
@@ -558,7 +623,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
             currentBranches = await gitOps.getBranches();
-            branchTree.refresh(currentBranches);
             commitGraph.setBranches(currentBranches);
             await commitGraph.refresh();
             await commitPanel.refresh();
@@ -574,7 +638,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
 
         vscode.commands.registerCommand("intelligit.showGitLog", async () => {
-            await vscode.commands.executeCommand("intelligit.branches.focus");
             await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
     );
@@ -583,7 +646,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const branchActionCommands: Array<{
         id: string;
-        handler: (item: BranchItem) => Promise<void>;
+        handler: (item: { branch?: Branch }) => Promise<void>;
     }> = [
         {
             id: "intelligit.checkout",
@@ -746,9 +809,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             }
                         } else {
                             if (!remote) {
-                                throw new Error(
-                                    `No remote configured for branch ${branch.name}.`,
-                                );
+                                throw new Error(`No remote configured for branch ${branch.name}.`);
                             }
                             await executor.run(["push", "-u", remote, branch.name]);
                         }
@@ -784,9 +845,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         {
             id: "intelligit.deleteBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
+                const branch = item.branch;
+                if (!branch) return;
+                const name = branch.name;
                 if (!name) return;
-                const isRemote = !!item.branch?.isRemote;
+                const isRemote = !!branch.isRemote;
                 const checkedOutBranch = isRemote ? null : await getCheckedOutBranchName();
 
                 if (!isRemote && checkedOutBranch && checkedOutBranch === name) {
@@ -824,15 +887,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 if (confirm !== confirmLabel) return;
                 try {
-                    if (isRemote && item.branch?.remote) {
-                        const remoteBranch = name.split("/").slice(1).join("/");
-                        await executor.run(["push", item.branch.remote, "--delete", remoteBranch]);
+                    if (isRemote) {
+                        const target = resolveRemoteDeleteTarget(branch);
+                        if (!target) {
+                            vscode.window.showErrorMessage(
+                                `Delete failed: unable to determine remote target for '${name}'.`,
+                            );
+                            return;
+                        }
+                        await runWithStatusBar(
+                            `Deleting remote branch ${target.remote}/${target.remoteBranch}...`,
+                            async () => {
+                                await executor.run([
+                                    "push",
+                                    target.remote,
+                                    "--delete",
+                                    target.remoteBranch,
+                                ]);
+                            },
+                        );
+                        vscode.window.showInformationMessage(
+                            `Deleted ${target.remote}/${target.remoteBranch}`,
+                        );
+                        await vscode.commands.executeCommand("intelligit.refresh");
                     } else {
                         const forceDelete = confirmLabel === "Delete Anyway";
                         await executor.run(["branch", forceDelete ? "-D" : "-d", name]);
+                        await vscode.commands.executeCommand("intelligit.refresh");
+                        await showDeletedBranchActions(branch);
                     }
-                    vscode.window.showInformationMessage(`Deleted ${name}`);
-                    await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     if (!isRemote && isBranchNotFullyMergedError(err)) {
                         const forceConfirm = await vscode.window.showWarningMessage(
@@ -843,8 +926,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         if (forceConfirm !== "Delete Anyway") return;
                         try {
                             await executor.run(["branch", "-D", name]);
-                            vscode.window.showInformationMessage(`Deleted ${name}`);
                             await vscode.commands.executeCommand("intelligit.refresh");
+                            await showDeletedBranchActions(branch);
                         } catch (forceErr) {
                             const msg = getErrorMessage(forceErr);
                             vscode.window.showErrorMessage(`Delete failed: ${msg}`);
@@ -860,7 +943,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     for (const cmd of branchActionCommands) {
         context.subscriptions.push(
-            vscode.commands.registerCommand(cmd.id, (item: BranchItem) => cmd.handler(item)),
+            vscode.commands.registerCommand(cmd.id, (item: unknown) => {
+                const validated =
+                    item && typeof item === "object" && "branch" in item
+                        ? (item as { branch?: Branch })
+                        : { branch: undefined };
+                return cmd.handler(validated);
+            }),
         );
     }
 
@@ -956,13 +1045,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
             await commitPanel.refresh();
         }),
+        vscode.commands.registerCommand("intelligit.fileRefreshing", () => {
+            // No-op: visual-only command shown while refreshing (disabled via enablement).
+        }),
     );
 
     // --- Initial load ---
 
     currentBranches = await gitOps.getBranches();
-    branchTree.refresh(currentBranches);
     commitGraph.setBranches(currentBranches);
+
+    // Eagerly fetch file count so the activity bar badge shows immediately.
+    // commitPanel.refresh() runs getStatus() and fires onDidChangeFileCount,
+    // which updateBadge() picks up to set the tree view badge.
+    commitPanel.refresh().catch((err) => {
+        console.error("Initial commit panel refresh failed:", err);
+    });
 
     // --- Auto-refresh on file changes ---
 
@@ -989,7 +1087,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (fullTimer) clearTimeout(fullTimer);
         fullTimer = setTimeout(async () => {
             currentBranches = await gitOps.getBranches();
-            branchTree.refresh(currentBranches);
             commitGraph.setBranches(currentBranches);
             await commitGraph.refresh();
             await commitPanel.refresh();
@@ -1032,7 +1129,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Disposables ---
 
-    context.subscriptions.push(branchTree, commitGraph, commitInfo, commitPanel);
+    context.subscriptions.push(commitGraph, commitInfo, commitPanel);
 }
 
 export function deactivate(): void {}

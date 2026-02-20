@@ -68,6 +68,7 @@ function App(): React.ReactElement {
                         files={state.files}
                         commitMessage={state.commitMessage}
                         isAmend={state.isAmend}
+                        isRefreshing={state.isRefreshing}
                         checkedPaths={checkedPaths}
                         onToggleFile={toggleFile}
                         onToggleFolder={toggleFolder}

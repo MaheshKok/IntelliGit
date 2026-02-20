@@ -6,6 +6,7 @@ import { Flex, Box, IconButton, Tooltip } from "@chakra-ui/react";
 
 interface Props {
     onRefresh: () => void;
+    isRefreshing: boolean;
     onRollback: () => void;
     onToggleGroupBy: () => void;
     onShelve: () => void;
@@ -14,8 +15,11 @@ interface Props {
     onCollapseAll: () => void;
 }
 
+const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+
 export function Toolbar({
     onRefresh,
+    isRefreshing,
     onRollback,
     onToggleGroupBy,
     onShelve,
@@ -33,7 +37,14 @@ export function Toolbar({
             borderBottom="1px solid var(--vscode-panel-border, #444)"
             flexShrink={0}
         >
-            <ToolbarButton label="Refresh" onClick={onRefresh} color="#4ec7d6">
+            {isRefreshing && <style>{SPIN_KEYFRAMES}</style>}
+            <ToolbarButton
+                label={isRefreshing ? "Refreshing..." : "Refresh"}
+                onClick={onRefresh}
+                color="#4ec7d6"
+                spin={isRefreshing}
+                disabled={isRefreshing}
+            >
                 <path
                     fill="currentColor"
                     d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949a4.093 4.093 0 0 1-4.09 4.09 4.093 4.093 0 0 1-4.09-4.09 4.088 4.088 0 0 1 3.354-4.027v1.938l4.308-2.906L7.43.002v1.906a5.593 5.593 0 0 0-4.856 5.617A5.594 5.594 0 0 0 8.166 13.1a5.594 5.594 0 0 0 5.592-5.575c0-1.755-.461-2.381-1.307-3.416l1-.5z"
@@ -86,26 +97,35 @@ function ToolbarButton({
     label,
     onClick,
     color,
+    spin,
+    disabled,
     children,
 }: {
     label: string;
     onClick: () => void;
     color?: string;
+    spin?: boolean;
+    disabled?: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
+    const svgStyle: React.CSSProperties = {
+        ...(color ? { color } : {}),
+        ...(spin ? { animation: "intelligit-spin 1s linear infinite" } : {}),
+    };
     return (
         <Tooltip label={label} fontSize="11px" placement="bottom" openDelay={300}>
             <IconButton
                 aria-label={label}
                 variant="toolbarGhost"
                 size="sm"
-                onClick={onClick}
+                onClick={disabled ? undefined : onClick}
+                isDisabled={disabled}
                 icon={
                     <svg
                         width="16"
                         height="16"
                         viewBox="0 0 16 16"
-                        style={color ? { color } : undefined}
+                        style={svgStyle}
                     >
                         {children}
                     </svg>

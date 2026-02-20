@@ -15,6 +15,7 @@ const extensionConfig = {
     sourcemap: true,
     minify: process.argv.includes("--production"),
     treeShaking: true,
+    mainFields: ["module", "main"],
 };
 
 const webviewConfigs = [

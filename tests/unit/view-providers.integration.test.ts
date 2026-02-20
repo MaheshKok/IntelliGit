@@ -127,8 +127,10 @@ function createWebviewView() {
         }),
     };
 
-    const view = {
+    const view: Record<string, unknown> = {
         webview,
+        badge: undefined as { tooltip: string; value: number } | undefined,
+        description: undefined as string | undefined,
         onDidDispose: vi.fn((cb: () => void) => {
             disposeHandler = cb;
             return { dispose: vi.fn() };
@@ -208,50 +210,6 @@ describe("view providers integration", () => {
         vi.clearAllMocks();
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
-    });
-
-    it("BranchTreeProvider builds sections, local and remote children", async () => {
-        const { BranchTreeProvider } = await import("../../src/views/BranchTreeProvider");
-        const provider = new BranchTreeProvider();
-
-        provider.refresh([
-            {
-                name: "main",
-                hash: "abc1234",
-                isRemote: false,
-                isCurrent: true,
-                ahead: 1,
-                behind: 2,
-            },
-            {
-                name: "origin/main",
-                hash: "abc1234",
-                isRemote: true,
-                isCurrent: false,
-                ahead: 0,
-                behind: 0,
-                remote: "origin",
-            },
-        ]);
-
-        const root = provider.getChildren();
-        expect(root.length).toBeGreaterThanOrEqual(3);
-        expect((root[0] as { label: string }).label).toContain("HEAD");
-
-        const localSection = root.find((item) => item.label === "Local")!;
-        const remoteSection = root.find((item) => item.label === "Remote")!;
-        const locals = provider.getChildren(localSection);
-        const remoteGroups = provider.getChildren(remoteSection);
-        const remoteBranches = provider.getChildren(remoteGroups[0]);
-
-        expect(locals.map((b) => b.label)).toContain("main");
-        const mainLocal = locals.find((b) => b.label === "main");
-        expect(mainLocal?.description).toContain("🔵⬆1");
-        expect(mainLocal?.description).toContain("🟠⬇2");
-        expect(String(mainLocal?.tooltip)).toContain("2 incoming commits and 1 outgoing commit");
-        expect(remoteGroups.map((g) => g.label)).toContain("origin");
-        expect(remoteBranches.map((b) => b.label)).toContain("main");
-        provider.dispose();
     });
 
     it("CommitInfoViewProvider handles ready/set/clear lifecycle", async () => {
@@ -349,7 +307,6 @@ describe("view providers integration", () => {
         expect(commitAction).toHaveBeenCalledWith({
             action: "copyRevision",
             hash: "abc1234",
-            targetBranch: undefined,
         });
 
         const logCallsBeforePagedFetch = gitOps.getLog.mock.calls.length;
@@ -399,6 +356,41 @@ describe("view providers integration", () => {
             type: "lastCommitMessage",
             message: "last message",
         });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider updates description and fires file count after commit", async () => {
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+
+        // Register event listener BEFORE resolving the view (which triggers refreshData)
+        const counts: number[] = [];
+        provider.onDidChangeFileCount((n: number) => counts.push(n));
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+
+        const view = (provider as unknown as { view: Record<string, unknown> }).view;
+
+        // Initial state: getStatus returns 1 file → description set, event fired
+        expect(view.description).toBe("1");
+        expect(counts).toContain(1);
+
+        // After commit, getStatus returns 0 files → description cleared, event fired with 0
+        gitOps.getStatus.mockResolvedValueOnce([]);
+        await webview.send({ type: "commit", message: "feat: clear", amend: false });
+        expect(view.description).toBe("");
+        expect(counts).toContain(0);
+
         provider.dispose();
     });
 

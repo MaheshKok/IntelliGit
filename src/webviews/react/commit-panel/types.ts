@@ -40,6 +40,7 @@ export type InboundMessage =
       }
     | { type: "lastCommitMessage"; message: string }
     | { type: "committed" }
+    | { type: "refreshing"; active: boolean }
     | { type: "error"; message: string };
 
 /** Reducer state for the commit panel app. */
@@ -50,6 +51,7 @@ export interface CommitPanelState {
     selectedShelfIndex: number | null;
     commitMessage: string;
     isAmend: boolean;
+    isRefreshing: boolean;
     error: string | null;
 }
 
@@ -64,6 +66,7 @@ export type CommitPanelAction =
       }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
     | { type: "COMMITTED" }
+    | { type: "SET_REFRESHING"; active: boolean }
     | { type: "SET_ERROR"; message: string }
     | { type: "SET_COMMIT_MESSAGE"; message: string }
     | { type: "SET_AMEND"; isAmend: boolean };

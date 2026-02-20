@@ -14,6 +14,7 @@ interface Props {
     files: WorkingFile[];
     commitMessage: string;
     isAmend: boolean;
+    isRefreshing: boolean;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
     onToggleFolder: (files: WorkingFile[]) => void;
@@ -30,6 +31,7 @@ export function CommitTab({
     files,
     commitMessage,
     isAmend,
+    isRefreshing,
     checkedPaths,
     onToggleFile,
     onToggleFolder,
@@ -86,6 +88,7 @@ export function CommitTab({
         <Flex ref={containerRef} direction="column" flex={1} overflow="hidden">
             <Toolbar
                 onRefresh={handleRefresh}
+                isRefreshing={isRefreshing}
                 onRollback={handleRollback}
                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                 onShelve={handleShelve}
