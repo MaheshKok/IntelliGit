@@ -85,6 +85,14 @@ describe("low coverage components", () => {
         expect(container.textContent).toContain("HEAD -> main");
         expect(container.textContent).toContain("tag:v1.0.0");
         expect(container.textContent).toContain("origin/main");
+        const messageCell = Array.from(container.querySelectorAll("span")).find((el) =>
+            el.textContent?.includes("feat: row coverage"),
+        ) as HTMLElement;
+        expect(messageCell?.getAttribute("title")).toBe("feat: row coverage");
+        const headRefBadge = Array.from(container.querySelectorAll("span")).find((el) =>
+            el.textContent?.includes("HEAD -> main"),
+        ) as HTMLElement;
+        expect(headRefBadge?.getAttribute("title")).toBe("HEAD -> main");
 
         const row = container.querySelector("div") as HTMLDivElement;
         act(() => {

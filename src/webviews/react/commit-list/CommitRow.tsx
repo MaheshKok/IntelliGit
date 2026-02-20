@@ -41,7 +41,11 @@ function RefLabel({ name }: { name: string }): React.ReactElement {
         fg = REF_BADGE_COLORS.local.fg;
     }
 
-    return <span style={{ ...REF_LABEL_STYLE, background: bg, color: fg }}>{name}</span>;
+    return (
+        <span style={{ ...REF_LABEL_STYLE, background: bg, color: fg }} title={name}>
+            {name}
+        </span>
+    );
 }
 
 function CommitRowInner({
@@ -81,7 +85,10 @@ function CommitRowInner({
                       : "inherit",
             }}
         >
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span
+                style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}
+                title={commit.message}
+            >
                 {commit.message}
             </span>
 
