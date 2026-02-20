@@ -1,6 +1,8 @@
 import React from "react";
+import { LuGitBranch, LuTag } from "react-icons/lu";
 import type { Commit } from "../../../types";
 import { formatDateTime } from "../shared/date";
+import { REF_BADGE_COLORS } from "../shared/tokens";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 
@@ -14,6 +16,39 @@ interface Props {
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
 }
 
+function getRefColors(name: string): { bg: string; fg: string } {
+    if (name.includes("HEAD")) return REF_BADGE_COLORS.head;
+    if (name.startsWith("tag:")) return REF_BADGE_COLORS.tag;
+    if (name.startsWith("origin/")) return REF_BADGE_COLORS.remote;
+    return REF_BADGE_COLORS.local;
+}
+
+function RefBadge({ name }: { name: string }): React.ReactElement {
+    const colors = getRefColors(name);
+    const label = name.startsWith("tag:") ? name.slice(4).trim() : name;
+    return (
+        <span
+            style={{
+                display: "inline-flex",
+                alignItems: "center",
+                maxWidth: 200,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                borderRadius: 3,
+                padding: "1px 6px",
+                fontSize: 10,
+                lineHeight: "15px",
+                color: colors.fg,
+                background: colors.bg,
+            }}
+            title={name}
+        >
+            {label}
+        </span>
+    );
+}
+
 function CommitMessageCell({
     message,
     refs,
@@ -21,18 +56,26 @@ function CommitMessageCell({
     message: string;
     refs: string[];
 }): React.ReactElement {
-    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
-    const refsCount = refs.length;
-    const refsCountLabel = refsCount > 0 ? `${refsCount} tag${refsCount === 1 ? "" : "s"}` : "";
-    const tooltipText = refsCountLabel
-        ? `${message}\n\nLabels: ${refs.join(" • ")}`
-        : message;
+    const [tooltipPos, setTooltipPos] = React.useState<{
+        x: number;
+        y: number;
+        placement: "above" | "below";
+    } | null>(null);
+    const branchRefsCount = refs.filter((ref) => !ref.startsWith("tag:")).length;
+    const tagRefs = refs.filter((ref) => ref.startsWith("tag:"));
+    const visibleTagRefs = tagRefs.slice(0, 2);
+    const hiddenTagCount = Math.max(0, tagRefs.length - visibleTagRefs.length);
+    const tooltipText = refs.length > 0 ? `${message}\n\nLabels: ${refs.join(" • ")}` : message;
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const rect = event.currentTarget.getBoundingClientRect();
+        const baseX = event.clientX > 0 ? event.clientX : rect.left + rect.width / 2;
+        const x = Math.max(220, Math.min(window.innerWidth - 220, baseX));
+        const shouldShowBelow = rect.top < 96;
         setTooltipPos({
-            x: event.clientX > 0 ? event.clientX : rect.left + rect.width / 2,
-            y: rect.top - 6,
+            x,
+            y: shouldShowBelow ? rect.bottom + 6 : rect.top - 8,
+            placement: shouldShowBelow ? "below" : "above",
         });
     };
 
@@ -52,19 +95,50 @@ function CommitMessageCell({
             onPointerMove={showTooltip}
             onPointerLeave={hideTooltip}
         >
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis" }} title={message}>
+            <span
+                style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: 1 }}
+                title={message}
+            >
                 {message}
             </span>
-            {refsCount > 0 && (
+            {branchRefsCount > 0 && (
                 <span
                     style={{
                         marginLeft: 6,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
                         flexShrink: 0,
                         fontSize: "11px",
-                        opacity: 0.72,
+                        opacity: 0.85,
+                        color: "var(--vscode-charts-blue, #6eb3ff)",
                     }}
+                    title={`${branchRefsCount} branch label${branchRefsCount === 1 ? "" : "s"}`}
                 >
-                    {refsCountLabel}
+                    <LuGitBranch size={12} />
+                    {branchRefsCount}
+                </span>
+            )}
+            {visibleTagRefs.map((tagRef) => (
+                <span key={tagRef} style={{ marginLeft: 5, flexShrink: 0 }}>
+                    <RefBadge name={tagRef} />
+                </span>
+            ))}
+            {hiddenTagCount > 0 && (
+                <span
+                    style={{
+                        marginLeft: 5,
+                        flexShrink: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        fontSize: "10px",
+                        opacity: 0.75,
+                    }}
+                    title={`${hiddenTagCount} more tag${hiddenTagCount === 1 ? "" : "s"}`}
+                >
+                    <LuTag size={11} />
+                    +{hiddenTagCount}
                 </span>
             )}
 
@@ -74,22 +148,62 @@ function CommitMessageCell({
                         position: "fixed",
                         left: tooltipPos.x,
                         top: tooltipPos.y,
-                        transform: "translate(-50%, -100%)",
+                        transform:
+                            tooltipPos.placement === "above"
+                                ? "translate(-50%, -100%)"
+                                : "translate(-50%, 0)",
                         background: "var(--vscode-editorHoverWidget-background, #2f3646)",
                         color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
                         border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
-                        borderRadius: 4,
+                        borderRadius: 6,
                         fontSize: 11,
-                        lineHeight: "14px",
-                        padding: "4px 7px",
-                        whiteSpace: "pre-wrap",
+                        lineHeight: "15px",
+                        padding: "8px 9px",
+                        whiteSpace: "normal",
                         maxWidth: "560px",
+                        minWidth: "240px",
                         zIndex: 9999,
                         pointerEvents: "none",
-                        boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+                        boxShadow: "0 10px 28px rgba(0,0,0,0.45)",
                     }}
                 >
-                    {tooltipText}
+                    <span
+                        style={{
+                            display: "block",
+                            color: "var(--vscode-foreground)",
+                            fontSize: "12px",
+                            lineHeight: "16px",
+                            marginBottom: refs.length > 0 ? 6 : 0,
+                            wordBreak: "break-word",
+                        }}
+                    >
+                        {message}
+                    </span>
+                    {refs.length > 0 && (
+                        <>
+                            <span
+                                style={{
+                                    display: "block",
+                                    fontSize: 11,
+                                    opacity: 0.82,
+                                    marginBottom: 4,
+                                }}
+                            >
+                                Labels
+                            </span>
+                            <span
+                                style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 4,
+                                }}
+                            >
+                                {refs.map((name) => (
+                                    <RefBadge key={name} name={name} />
+                                ))}
+                            </span>
+                        </>
+                    )}
                 </span>
             )}
         </span>

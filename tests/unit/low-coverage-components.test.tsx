@@ -82,7 +82,9 @@ describe("low coverage components", () => {
             />,
         );
 
-        expect(container.textContent).toContain("4 tags");
+        const branchCount = container.querySelector('span[title="3 branch labels"]');
+        expect(branchCount).toBeTruthy();
+        expect(container.textContent).toContain("v1.0.0");
         const messageCell = container.querySelector(
             'span[title="feat: row coverage"]',
         ) as HTMLElement;

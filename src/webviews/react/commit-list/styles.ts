@@ -26,11 +26,17 @@ export const FILTER_ICON_STYLE: CSSProperties = {
     flexShrink: 0,
 };
 
+export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
+    position: "relative",
+    flex: "0 1 420px",
+    minWidth: 170,
+    maxWidth: 460,
+};
+
 export const FILTER_INPUT_STYLE: CSSProperties = {
-    flex: 1,
-    maxWidth: 340,
+    width: "100%",
     height: 18,
-    padding: "0 8px",
+    padding: "0 22px 0 8px",
     background: "var(--vscode-input-background)",
     color: "var(--vscode-input-foreground)",
     border: "1px solid var(--vscode-input-border)",
@@ -39,8 +45,26 @@ export const FILTER_INPUT_STYLE: CSSProperties = {
     outline: "none",
 };
 
+export const FILTER_CLEAR_BUTTON_STYLE: CSSProperties = {
+    position: "absolute",
+    right: 4,
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 14,
+    height: 14,
+    border: "none",
+    background: "transparent",
+    color: "var(--vscode-descriptionForeground)",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    cursor: "pointer",
+    lineHeight: "14px",
+};
+
 export const BRANCH_SCOPE_STYLE: CSSProperties = {
-    maxWidth: 260,
+    maxWidth: 300,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -81,6 +105,7 @@ export const CANVAS_STYLE: CSSProperties = {
     left: 0,
     top: 0,
     pointerEvents: "none",
+    zIndex: 2,
 };
 
 export const LOADING_MORE_STYLE: CSSProperties = {

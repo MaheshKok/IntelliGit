@@ -75,7 +75,7 @@
             "intelligitPanel": [
                 {
                     "id": "intelligit.commitGraph",
-                    "name": "Commit Graph",
+                    "name": " ",
                     "type": "webview"
                 },
                 {

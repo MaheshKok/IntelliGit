@@ -3,7 +3,7 @@
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuSearch } from "react-icons/lu";
+import { LuSearch, LuX } from "react-icons/lu";
 import type { Commit } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -18,8 +18,10 @@ import {
     contentContainerStyle,
     DATE_COL_WIDTH,
     FILTER_BAR_STYLE,
+    FILTER_CLEAR_BUTTON_STYLE,
     FILTER_ICON_STYLE,
     FILTER_INPUT_STYLE,
+    FILTER_INPUT_WRAP_STYLE,
     headerRowStyle,
     LOADING_MORE_STYLE,
     ROOT_STYLE,
@@ -178,13 +180,26 @@ export function CommitList({
         <div style={ROOT_STYLE}>
             <div style={FILTER_BAR_STYLE}>
                 <LuSearch size={16} style={FILTER_ICON_STYLE} />
-                <input
-                    type="text"
-                    placeholder="Text or hash"
-                    value={filterText}
-                    onChange={(event) => onFilterText(event.target.value)}
-                    style={FILTER_INPUT_STYLE}
-                />
+                <div style={FILTER_INPUT_WRAP_STYLE}>
+                    <input
+                        type="text"
+                        placeholder="Text or hash"
+                        value={filterText}
+                        onChange={(event) => onFilterText(event.target.value)}
+                        style={FILTER_INPUT_STYLE}
+                    />
+                    {filterText.length > 0 && (
+                        <button
+                            type="button"
+                            aria-label="Clear commit search"
+                            title="Clear"
+                            onClick={() => onFilterText("")}
+                            style={FILTER_CLEAR_BUTTON_STYLE}
+                        >
+                            <LuX size={12} />
+                        </button>
+                    )}
+                </div>
                 <span
                     style={BRANCH_SCOPE_STYLE}
                     title={selectedBranch ? `Branch: ${selectedBranch}` : "Branch: All branches"}
@@ -216,6 +231,7 @@ export function CommitList({
                             left: 0,
                             right: 0,
                             top: visibleRange.start * ROW_HEIGHT,
+                            zIndex: 1,
                         }}
                     >
                         {visibleCommits.map((commit, offset) => {
