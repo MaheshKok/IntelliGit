@@ -2,8 +2,8 @@ import React from "react";
 import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
 import { ChevronIcon, GitBranchIcon, StarIcon, TagRightIcon } from "../icons";
-import { TreeFolderIcon } from "../../shared/components/TreeIcons";
-import { resolveFolderIcon } from "../../shared/folderIcons";
+import { TreeFolderIcon } from "../../shared/components";
+import { resolveFolderIcon } from "../../shared/utils";
 import {
     NODE_LABEL_STYLE,
     ROW_STYLE,

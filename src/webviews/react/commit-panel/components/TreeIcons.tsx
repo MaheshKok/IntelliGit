@@ -1,1 +1,1 @@
-export { TreeFileIcon, TreeFolderIcon } from "../../shared/components/TreeIcons";
+export { TreeFileIcon, TreeFolderIcon } from "../../shared/components";

@@ -24,7 +24,7 @@ import type {
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
+import { ThemeIconFontFaces } from "./shared/components";
 
 const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;

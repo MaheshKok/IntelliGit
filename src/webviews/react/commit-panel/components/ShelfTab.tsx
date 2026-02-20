@@ -9,7 +9,7 @@ import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
-import { resolveFolderIcon } from "../../shared/folderIcons";
+import { resolveFolderIcon } from "../../shared/utils";
 
 interface Props {
     stashes: StashEntry[];

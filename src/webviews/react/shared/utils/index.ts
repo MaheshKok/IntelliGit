@@ -1,0 +1,1 @@
+export { resolveFolderIcon } from "./folderIcons";

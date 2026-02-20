@@ -1,4 +1,4 @@
-import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
+import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 
 export function resolveFolderIcon(
     nameOrPath: string,

@@ -7,7 +7,7 @@ import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "./TreeIcons";
-import { resolveFolderIcon } from "../../shared/folderIcons";
+import { resolveFolderIcon } from "../../shared/utils";
 
 interface Props {
     name: string;

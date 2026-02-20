@@ -4,13 +4,13 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch, CommitDetail, ThemeFolderIconMap, ThemeIconFont } from "../types";
-import { FileIconThemeResolver, type ThemeFolderIcons } from "../utils/fileIconTheme";
+import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
     CommitAction,
     CommitGraphInbound,
 } from "../webviews/react/commitGraphTypes";
+import { IconThemeService } from "./shared/IconThemeService";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
@@ -26,16 +26,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private branches: Branch[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
-    private iconResolver?: FileIconThemeResolver;
-    private folderIcons: ThemeFolderIcons = {};
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
-    private iconFonts: ThemeIconFont[] = [];
     private commitDetailSeq = 0;
-    private iconThemeDirty = true;
-    private iconThemeInitialized = false;
-    private lastThemeRootUri: string | undefined;
-    private iconThemeDisposables: vscode.Disposable[] = [];
+    private readonly iconTheme: IconThemeService;
 
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
@@ -58,33 +52,28 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
-    ) {}
+    ) {
+        this.iconTheme = new IconThemeService(this.extensionUri);
+    }
 
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
-        this.disposeIconThemeDisposables();
-        this.iconResolver?.dispose();
+        this.iconTheme.dispose();
         this.view = webviewView;
 
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
-        this.iconResolver = new FileIconThemeResolver(webviewView.webview);
-        this.markIconThemeDirty();
-        this.registerIconThemeListeners();
+        this.iconTheme.attachWebview(webviewView.webview);
 
         webviewView.onDidDispose(() => {
             if (this.view === webviewView) {
                 this.view = undefined;
-                this.iconResolver?.dispose();
-                this.iconResolver = undefined;
-                this.disposeIconThemeDisposables();
-                this.lastThemeRootUri = undefined;
-                this.markIconThemeDirty();
+                this.iconTheme.dispose();
             }
         });
 
@@ -93,7 +82,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case "ready":
-                    await this.initIconThemeData();
+                    await this.iconTheme.initIconThemeData();
                     await this.sendBranches();
                     await this.loadInitial();
                     this.postCommitDetailState();
@@ -146,7 +135,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     async refresh(): Promise<void> {
-        await this.initIconThemeData();
+        await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();
     }
@@ -171,14 +160,15 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async sendBranches(): Promise<void> {
-        this.branchFolderIconsByName = await this.getBranchFolderIconsByName(this.branches);
+        this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
             branches: this.branches,
-            folderIcon: this.folderIcons.folderIcon,
-            folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+            folderIcon: folderIcons.folderIcon,
+            folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
-            iconFonts: this.iconFonts,
+            iconFonts,
         });
     }
 
@@ -247,14 +237,15 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private postCommitDetailState(): void {
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
             this.postToWebview({
                 type: "setCommitDetail",
                 detail: this.selectedCommitDetail,
-                folderIcon: this.folderIcons.folderIcon,
-                folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+                folderIcon: folderIcons.folderIcon,
+                folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.folderIconsByName,
-                iconFonts: this.iconFonts,
+                iconFonts,
             });
             return;
         }
@@ -265,80 +256,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         detail: CommitDetail,
         requestId: number,
     ): Promise<void> {
-        await this.initIconThemeData();
+        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
         if (requestId !== this.commitDetailSeq) return;
-        const decorated = await this.decorateCommitDetail(detail);
-        if (requestId !== this.commitDetailSeq) return;
-        this.selectedCommitDetail = decorated;
-        this.folderIconsByName = await this.getFolderIconsByName(this.selectedCommitDetail.files);
+        this.selectedCommitDetail = decorated.detail;
+        this.folderIconsByName = decorated.folderIconsByName;
         this.postCommitDetailState();
-    }
-
-    private async decorateCommitDetail(detail: CommitDetail): Promise<CommitDetail> {
-        if (!this.iconResolver) return detail;
-        const files = await this.iconResolver.decorateCommitFiles(detail.files);
-        return { ...detail, files };
-    }
-
-    private async getFolderIconsByName(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
-        if (!this.iconResolver) return {};
-        const names: string[] = [];
-        for (const file of files) {
-            const parts = file.path.split("/").slice(0, -1);
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (trimmed.length > 0) names.push(trimmed);
-            }
-        }
-        return this.iconResolver.getFolderIconsByName(names);
-    }
-
-    private async getBranchFolderIconsByName(branches: Branch[]): Promise<ThemeFolderIconMap> {
-        if (!this.iconResolver) return {};
-        const names: string[] = [];
-
-        for (const branch of branches) {
-            const fullName = branch.name;
-            let displayName = fullName;
-            if (branch.isRemote) {
-                const remotePrefix = branch.remote ? `${branch.remote}/` : undefined;
-                if (remotePrefix && fullName.startsWith(remotePrefix)) {
-                    displayName = fullName.slice(remotePrefix.length);
-                } else {
-                    const firstSlash = fullName.indexOf("/");
-                    displayName = firstSlash >= 0 ? fullName.slice(firstSlash + 1) : fullName;
-                }
-            }
-
-            const parts = displayName.split("/");
-            if (parts.length <= 1) continue;
-            for (const folderName of parts.slice(0, -1)) {
-                const trimmed = folderName.trim();
-                if (trimmed.length > 0) names.push(trimmed);
-            }
-        }
-
-        return this.iconResolver.getFolderIconsByName(names);
-    }
-
-    private async initIconThemeData(): Promise<void> {
-        if (!this.iconResolver || !this.view) return;
-        if (!this.iconThemeDirty && this.iconThemeInitialized) return;
-
-        const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
-        const themeRoot = await this.iconResolver.getThemeResourceRootUri();
-        const nextThemeRootUri = themeRoot?.toString();
-        if (this.lastThemeRootUri !== nextThemeRootUri) {
-            this.view.webview.options = {
-                ...this.view.webview.options,
-                localResourceRoots: themeRoot ? [distRoot, themeRoot] : [distRoot],
-            };
-            this.lastThemeRootUri = nextThemeRootUri;
-        }
-        this.folderIcons = await this.iconResolver.getFolderIcons();
-        this.iconFonts = await this.iconResolver.getThemeFonts();
-        this.iconThemeDirty = false;
-        this.iconThemeInitialized = true;
     }
 
     private getHtml(webview: vscode.Webview): string {
@@ -352,53 +274,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     dispose(): void {
-        this.iconResolver?.dispose();
-        this.iconResolver = undefined;
-        this.disposeIconThemeDisposables();
+        this.iconTheme.dispose();
         this._onCommitSelected.dispose();
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
         this._onCommitAction.dispose();
-    }
-
-    private markIconThemeDirty(): void {
-        this.iconThemeDirty = true;
-        this.iconThemeInitialized = false;
-    }
-
-    private registerIconThemeListeners(): void {
-        const windowWithThemeEvents = vscode.window as unknown as {
-            onDidChangeActiveColorTheme?: (listener: () => void) => vscode.Disposable;
-        };
-        if (typeof windowWithThemeEvents.onDidChangeActiveColorTheme === "function") {
-            this.iconThemeDisposables.push(
-                windowWithThemeEvents.onDidChangeActiveColorTheme(() => this.markIconThemeDirty()),
-            );
-        }
-
-        const workspaceWithThemeEvents = vscode.workspace as unknown as {
-            onDidChangeConfiguration?: (
-                listener: (event: { affectsConfiguration: (section: string) => boolean }) => void,
-            ) => vscode.Disposable;
-        };
-        if (typeof workspaceWithThemeEvents.onDidChangeConfiguration === "function") {
-            this.iconThemeDisposables.push(
-                workspaceWithThemeEvents.onDidChangeConfiguration((event) => {
-                    if (
-                        event.affectsConfiguration("workbench.iconTheme") ||
-                        event.affectsConfiguration("workbench.colorTheme")
-                    ) {
-                        this.markIconThemeDirty();
-                    }
-                }),
-            );
-        }
-    }
-
-    private disposeIconThemeDisposables(): void {
-        for (const disposable of this.iconThemeDisposables) {
-            disposable.dispose();
-        }
-        this.iconThemeDisposables = [];
     }
 }

@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
-import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont } from "../types";
-import { FileIconThemeResolver, type ThemeFolderIcons } from "../utils/fileIconTheme";
+import type { CommitDetail, ThemeFolderIconMap } from "../types";
 import type { CommitInfoInbound } from "../webviews/react/commitInfoTypes";
+import { IconThemeService } from "./shared/IconThemeService";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
@@ -10,19 +10,20 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private detail?: CommitDetail;
     private ready = false;
-    private iconResolver?: FileIconThemeResolver;
-    private folderIcons: ThemeFolderIcons = {};
     private folderIconsByName: ThemeFolderIconMap = {};
-    private iconFonts: ThemeIconFont[] = [];
     private requestSeq = 0;
+    private readonly iconTheme: IconThemeService;
 
-    constructor(private readonly extensionUri: vscode.Uri) {}
+    constructor(private readonly extensionUri: vscode.Uri) {
+        this.iconTheme = new IconThemeService(this.extensionUri);
+    }
 
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.iconTheme.dispose();
         this.view = webviewView;
         this.ready = false;
 
@@ -30,12 +31,12 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             enableScripts: true,
             localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "dist")],
         };
-        this.iconResolver = new FileIconThemeResolver(webviewView.webview);
+        this.iconTheme.attachWebview(webviewView.webview);
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             if (msg?.type === "ready") {
                 this.ready = true;
-                await this.initIconThemeData();
+                await this.iconTheme.initIconThemeData();
                 this.postCurrentState();
             }
         });
@@ -43,8 +44,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         webviewView.onDidDispose(() => {
             this.view = undefined;
             this.ready = false;
-            this.iconResolver?.dispose();
-            this.iconResolver = undefined;
+            this.iconTheme.dispose();
         });
 
         webviewView.webview.html = buildWebviewShellHtml({
@@ -79,6 +79,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
 
     private postCurrentState(): void {
         if (!this.ready) return;
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (!this.detail) {
             this.postToWebview({ type: "clear" });
             return;
@@ -86,10 +87,10 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({
             type: "setCommitDetail",
             detail: this.detail,
-            folderIcon: this.folderIcons.folderIcon,
-            folderExpandedIcon: this.folderIcons.folderExpandedIcon,
+            folderIcon: folderIcons.folderIcon,
+            folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.folderIconsByName,
-            iconFonts: this.iconFonts,
+            iconFonts,
         });
     }
 
@@ -98,48 +99,14 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async decorateAndStoreDetail(detail: CommitDetail, requestId: number): Promise<void> {
-        await this.initIconThemeData();
+        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
         if (requestId !== this.requestSeq) return;
-        const decorated = await this.decorateCommitDetail(detail);
-        if (requestId !== this.requestSeq) return;
-        this.detail = decorated;
-        this.folderIconsByName = await this.getFolderIconsByName(this.detail.files);
+        this.detail = decorated.detail;
+        this.folderIconsByName = decorated.folderIconsByName;
         this.postCurrentState();
     }
 
-    private async decorateCommitDetail(detail: CommitDetail): Promise<CommitDetail> {
-        if (!this.iconResolver) return detail;
-        const files = await this.iconResolver.decorateCommitFiles(detail.files);
-        return { ...detail, files };
-    }
-
-    private async getFolderIconsByName(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
-        if (!this.iconResolver) return {};
-        const names: string[] = [];
-        for (const file of files) {
-            const parts = file.path.split("/").slice(0, -1);
-            for (const part of parts) {
-                const trimmed = part.trim();
-                if (trimmed.length > 0) names.push(trimmed);
-            }
-        }
-        return this.iconResolver.getFolderIconsByName(names);
-    }
-
-    private async initIconThemeData(): Promise<void> {
-        if (!this.iconResolver || !this.view) return;
-        const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
-        const themeRoot = await this.iconResolver.getThemeResourceRootUri();
-        this.view.webview.options = {
-            ...this.view.webview.options,
-            localResourceRoots: themeRoot ? [distRoot, themeRoot] : [distRoot],
-        };
-        this.folderIcons = await this.iconResolver.getFolderIcons();
-        this.iconFonts = await this.iconResolver.getThemeFonts();
-    }
-
     dispose(): void {
-        this.iconResolver?.dispose();
-        this.iconResolver = undefined;
+        this.iconTheme.dispose();
     }
 }

@@ -7,7 +7,7 @@ import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { TreeFolderIcon } from "../commit-panel/components/TreeIcons";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
-import { resolveFolderIcon } from "../shared/folderIcons";
+import { resolveFolderIcon } from "../shared/utils";
 import {
     buildFileTree,
     collectDirPaths,
