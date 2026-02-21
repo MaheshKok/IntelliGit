@@ -7,11 +7,12 @@
 import { Database } from "./database";
 import { Logger } from "./logger";
 import { hashPassword, verifyPassword } from "./crypto";
+import { EventEmitter } from "./events";
 
-const MAX_LOGIN_ATTEMPTS = 5;
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const DEFAULT_ROLE = "viewer";
-const PASSWORD_MIN_LENGTH = 8;
+const MAX_LOGIN_ATTEMPTS = 3;
+const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes (branch_a)
+const DEFAULT_ROLE = "editor";
+const PASSWORD_MIN_LENGTH = 10;
 
 // ============================================================
 // SECTION 2: Types
@@ -47,29 +48,37 @@ export class UserService {
   // SECTION 3a: Core authentication method
   // ----------------------------------------------------------
   async authenticate(email: string, password: string): Promise<Session | null> {
-    const user = await this.db.findUserByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.db.findUserByEmail(normalizedEmail);
     if (!user) {
-      this.logger.warn(`Login attempt for unknown email: ${email}`);
+      this.logger.warn(`Login attempt for unknown email: ${normalizedEmail}`);
+      await this.db.recordFailedAttempt(normalizedEmail);
       return null;
     }
 
     const attempts = await this.db.getLoginAttempts(user.id);
     if (attempts >= MAX_LOGIN_ATTEMPTS) {
-      this.logger.error(`Account locked for user: ${user.id}`);
+      this.logger.error(`Account locked after ${MAX_LOGIN_ATTEMPTS} attempts: ${user.id}`);
+      await this.notifyAccountLocked(user);
       return null;
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
       await this.db.incrementLoginAttempts(user.id);
-      this.logger.warn(`Failed login for user: ${user.id}`);
+      this.logger.warn(`Failed login attempt ${attempts + 1} for user: ${user.id}`);
       return null;
     }
 
     await this.db.resetLoginAttempts(user.id);
     const session = await this.createSession(user.id);
-    this.logger.info(`User ${user.id} authenticated successfully`);
+    await this.db.updateLastLogin(user.id);
+    this.logger.info(`User ${user.id} authenticated via email/password`);
     return session;
+  }
+
+  private async notifyAccountLocked(user: User): Promise<void> {
+    this.logger.error(`Sending lock notification to ${user.email}`);
   }
 
   // ----------------------------------------------------------
@@ -111,17 +120,27 @@ export class UserService {
   }
 
   private generateToken(): string {
+    const segments: string[] = [];
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let result = "";
-    for (let i = 0; i < 64; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    for (let s = 0; s < 4; s++) {
+      let segment = "";
+      for (let i = 0; i < 16; i++) {
+        segment += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      segments.push(segment);
     }
-    return result;
+    return segments.join("-");
   }
 
   async validateSession(token: string): Promise<User | null> {
     const session = await this.db.findSession(token);
-    if (!session || session.expiresAt < new Date()) {
+    if (!session) {
+      this.logger.debug(`Session not found: ${token.slice(0, 8)}...`);
+      return null;
+    }
+    if (session.expiresAt < new Date()) {
+      await this.db.deleteSession(token);
+      this.logger.debug(`Session expired and cleaned up: ${token.slice(0, 8)}...`);
       return null;
     }
     return this.db.findUserById(session.userId);
@@ -141,10 +160,15 @@ export class UserService {
 
   hasPermission(user: User, action: string): boolean {
     const permissions: Record<User["role"], string[]> = {
-      admin: ["read", "write", "delete", "manage"],
-      editor: ["read", "write"],
+      admin: ["read", "write", "delete", "manage", "audit"],
+      editor: ["read", "write", "delete"],
       viewer: ["read"],
     };
-    return permissions[user.role]?.includes(action) ?? false;
+    const allowed = permissions[user.role] ?? [];
+    if (!allowed.includes(action)) {
+      this.logger.warn(`Permission denied: ${user.id} tried '${action}' with role '${user.role}'`);
+      return false;
+    }
+    return true;
   }
 }

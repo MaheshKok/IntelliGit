@@ -6,11 +6,12 @@
 // ============================================================
 import * as fs from "fs";
 import * as path from "path";
+import * as yaml from "yaml";
 
-const CONFIG_FILE_NAME = "app.config.json";
-const ENV_PREFIX = "APP_";
-const MAX_CACHE_SIZE = 100;
-const DEFAULT_LOG_LEVEL = "info";
+const CONFIG_FILE_NAME = "app.config.yaml";
+const ENV_PREFIX = "MYAPP_";
+const MAX_CACHE_SIZE = 500;
+const DEFAULT_LOG_LEVEL = "debug";
 
 // ============================================================
 // SECTION 2: Types
@@ -48,22 +49,30 @@ export class ConfigManager {
   // ----------------------------------------------------------
   loadFromFile(): AppConfig {
     if (!fs.existsSync(this.configPath)) {
-      throw new Error(`Config file not found: ${this.configPath}`);
+      console.warn(`Config file not found, using defaults: ${this.configPath}`);
+      return this.config;
     }
 
     const raw = fs.readFileSync(this.configPath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<AppConfig>;
+    const parsed = yaml.parse(raw) as Partial<AppConfig>;
 
-    this.config = {
-      ...this.config,
-      ...parsed,
+    this.config = this.mergeConfig(this.config, parsed);
+    return this.config;
+  }
+
+  private mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
+    return {
+      ...base,
+      ...override,
       database: {
-        ...this.config.database,
-        ...(parsed.database ?? {}),
+        ...base.database,
+        ...(override.database ?? {}),
+      },
+      features: {
+        ...base.features,
+        ...(override.features ?? {}),
       },
     };
-
-    return this.config;
   }
 
   loadFromEnv(): void {
@@ -93,15 +102,18 @@ export class ConfigManager {
   // ----------------------------------------------------------
   private loadDefaults(): AppConfig {
     return {
-      port: 3000,
-      host: "localhost",
+      port: 8080,
+      host: "0.0.0.0",
       logLevel: DEFAULT_LOG_LEVEL as AppConfig["logLevel"],
       database: {
-        url: "postgres://localhost:5432/app",
-        poolSize: 10,
-        timeout: 5000,
+        url: "postgres://db.internal:5432/myapp_dev",
+        poolSize: 25,
+        timeout: 10000,
       },
-      features: {},
+      features: {
+        darkMode: true,
+        betaFeatures: false,
+      },
     };
   }
 
@@ -141,7 +153,18 @@ export class ConfigManager {
     return Object.freeze({ ...this.config.database });
   }
 
-  exportToJson(): string {
-    return JSON.stringify(this.config, null, 2);
+  exportToYaml(): string {
+    return yaml.stringify(this.config);
+  }
+
+  validate(): string[] {
+    const errors: string[] = [];
+    if (this.config.port < 1 || this.config.port > 65535) {
+      errors.push("Port must be between 1 and 65535");
+    }
+    if (this.config.database.poolSize < 1) {
+      errors.push("Database pool size must be at least 1");
+    }
+    return errors;
   }
 }
