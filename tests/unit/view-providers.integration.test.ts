@@ -372,6 +372,21 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider validates malformed commit payloads defensively", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        await webview.send({ type: "commitSelected", message: 123, amend: false, push: true });
+        await webview.send({ type: "commit", amend: false });
+        await webview.send({ type: "commitAndPush", message: null, amend: false });
+
+        expect(showWarningMessage).toHaveBeenCalledWith("Enter a commit message.");
+        expect(gitOps.stageFiles).not.toHaveBeenCalled();
+        expect(gitOps.commit).not.toHaveBeenCalled();
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider updates description and fires file count after commit", async () => {
         const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
