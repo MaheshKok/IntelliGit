@@ -497,6 +497,23 @@ describe("GitOps", () => {
             await expect(ops.getConflictedFiles()).resolves.toEqual(["src/a.ts", "src/b.ts"]);
         });
 
+        it("returns detailed conflict file metadata from porcelain status", async () => {
+            const statusOutput = "UU src/a.ts\0DU src/b.ts\0UA src/c.ts\0 M src/ok.ts\0";
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.includes("--porcelain=v1")) return statusOutput;
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.getConflictFilesDetailed()).resolves.toEqual([
+                { path: "src/a.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+                { path: "src/b.ts", code: "DU", ours: "Deleted", theirs: "Modified" },
+                { path: "src/c.ts", code: "UA", ours: "Modified", theirs: "Added" },
+            ]);
+        });
+
         it("acceptConflictSide checks out chosen side and stages file", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);

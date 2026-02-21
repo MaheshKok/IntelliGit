@@ -135,6 +135,7 @@ const gitOpsState = {
     listShelved: vi.fn(async () => []),
     getShelvedFiles: vi.fn(async () => []),
     getConflictedFiles: vi.fn(async () => []),
+    getConflictFilesDetailed: vi.fn(async () => []),
     acceptConflictSide: vi.fn(async () => undefined),
     getConflictFileVersions: vi.fn(async () => ({ base: "", ours: "", theirs: "" })),
     stageFile: vi.fn(async () => undefined),
@@ -231,7 +232,7 @@ vi.mock("vscode", () => ({
         constructor(_label: string, _state?: unknown) {}
     },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
-    ViewColumn: { One: 1, Two: 2, Three: 3 },
+    ViewColumn: { Active: -1, One: 1, Two: 2, Three: 3 },
     ProgressLocation: { Notification: 15 },
     Uri: {
         file: (value: string) => ({ fsPath: value, path: value }),
@@ -348,6 +349,7 @@ vi.mock("../../src/git/operations", async (importOriginal) => {
             listShelved = gitOpsState.listShelved;
             getShelvedFiles = gitOpsState.getShelvedFiles;
             getConflictedFiles = gitOpsState.getConflictedFiles;
+            getConflictFilesDetailed = gitOpsState.getConflictFilesDetailed;
             acceptConflictSide = gitOpsState.acceptConflictSide;
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
             stageFile = gitOpsState.stageFile;
@@ -443,6 +445,7 @@ describe("extension integration", () => {
         gitOpsState.shelveSave.mockResolvedValue("saved");
         gitOpsState.getFileHistory.mockResolvedValue("history");
         gitOpsState.getConflictedFiles.mockResolvedValue([]);
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
         gitOpsState.acceptConflictSide.mockResolvedValue(undefined);
         deleteFileWithFallback.mockResolvedValue(true);
 
@@ -477,6 +480,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
         expect(registeredCommands.has("intelligit.conflictAcceptYours")).toBe(true);
         expect(registeredCommands.has("intelligit.conflictAcceptTheirs")).toBe(true);
+        expect(registeredCommands.has("intelligit.openConflictSession")).toBe(true);
 
         await registeredCommands.get("intelligit.refresh")?.();
         await registeredCommands.get("intelligit.filterByBranch")?.("main");
@@ -532,6 +536,7 @@ describe("extension integration", () => {
             .get("intelligit.conflictAcceptTheirs")
             ?.({ filePath: "src/conflicted.ts" });
         await registeredCommands.get("intelligit.mergeConflictsRefresh")?.();
+        await registeredCommands.get("intelligit.openConflictSession")?.();
 
         expect(executorRun).toHaveBeenCalled();
         expect(showInformationMessage).toHaveBeenCalled();
@@ -578,6 +583,48 @@ describe("extension integration", () => {
         );
     });
 
+    it("opens conflict session when merge fails with unresolved conflicts", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "merge" && args[1] === "feature-local") {
+                throw new Error("merge conflict");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        gitOpsState.getConflictedFiles.mockResolvedValue(["src/conflicted.ts"]);
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        await registeredCommands
+            .get("intelligit.mergeIntoCurrent")
+            ?.({ branch: { name: "feature-local", isRemote: false } });
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        expect(createWebviewPanelMock).toHaveBeenCalledWith(
+            "intelligit.mergeConflictSession",
+            "Conflicts",
+            expect.any(Number),
+            expect.objectContaining({ enableScripts: true }),
+        );
+        expect(showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("unresolved conflict file"),
+        );
+        expect(showErrorMessage).not.toHaveBeenCalledWith(expect.stringContaining("Merge failed:"));
+    });
+
     it("offers restore action after deleting local branch", async () => {
         const { activate } = await import("../../src/extension");
         const context = {
@@ -586,7 +633,12 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
-        showInformationMessage.mockResolvedValueOnce("Restore");
+        showInformationMessage.mockImplementation(async (message?: string) => {
+            if (typeof message === "string" && message.startsWith("Deleted: feature-local")) {
+                return "Restore";
+            }
+            return undefined;
+        });
         await registeredCommands.get("intelligit.deleteBranch")?.({
             branch: {
                 name: "feature-local",
@@ -615,7 +667,12 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
-        showInformationMessage.mockResolvedValueOnce("Delete Tracked Branch");
+        showInformationMessage.mockImplementation(async (message?: string) => {
+            if (typeof message === "string" && message.startsWith("Deleted: feature-local")) {
+                return "Delete Tracked Branch";
+            }
+            return undefined;
+        });
         await registeredCommands.get("intelligit.deleteBranch")?.({
             branch: {
                 name: "feature-local",

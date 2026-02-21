@@ -208,6 +208,12 @@
                 "title": "Refresh",
                 "category": "IntelliGit",
                 "icon": "$(refresh)"
+            },
+            {
+                "command": "intelligit.openConflictSession",
+                "title": "Open Conflict Session",
+                "category": "IntelliGit",
+                "icon": "$(diff-multiple)"
             }
         ],
         "menus": {
@@ -231,6 +237,11 @@
                     "command": "intelligit.mergeConflictsRefresh",
                     "when": "view == intelligit.mergeConflicts",
                     "group": "navigation"
+                },
+                {
+                    "command": "intelligit.openConflictSession",
+                    "when": "view == intelligit.mergeConflicts",
+                    "group": "navigation@2"
                 }
             ],
             "view/item/context": [

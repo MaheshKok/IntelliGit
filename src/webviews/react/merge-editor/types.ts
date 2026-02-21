@@ -9,7 +9,8 @@ export type OutboundMessage =
     | { type: "ready" }
     | { type: "applyResolution"; content: string }
     | { type: "acceptYours" }
-    | { type: "acceptTheirs" };
+    | { type: "acceptTheirs" }
+    | { type: "close" };
 
 export type InboundMessage =
     | { type: "setConflictData"; data: MergeEditorData }

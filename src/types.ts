@@ -82,6 +82,15 @@ export interface StashEntry {
     hash: string;
 }
 
+export type MergeConflictSideState = "Modified" | "Added" | "Deleted";
+
+export interface MergeConflictFile {
+    path: string;
+    code: string;
+    ours: MergeConflictSideState;
+    theirs: MergeConflictSideState;
+}
+
 export type GitLogRequest =
     | { type: "getInitialData" }
     | { type: "loadMore" }

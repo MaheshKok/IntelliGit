@@ -12,6 +12,7 @@ import { CommitInfoViewProvider } from "./views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "./views/CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./views/MergeConflictsTreeProvider";
 import { MergeEditorPanel } from "./views/MergeEditorPanel";
+import { MergeConflictSessionPanel } from "./views/MergeConflictSessionPanel";
 import type { Branch } from "./types";
 import type { CommitAction } from "./webviews/react/commitGraphTypes";
 import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
@@ -36,6 +37,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Cached branch list for webview context menu lookups
     let currentBranches: Branch[] = [];
     let commitDetailRequestSeq = 0;
+    let lastMergeContext: { sourceBranch?: string; targetBranch?: string } = {};
 
     // --- Providers ---
 
@@ -71,6 +73,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     };
     const refreshMergeConflicts = async () => {
         updateConflictCount(await mergeConflicts.refresh());
+    };
+    const refreshConflictStateViews = async () => {
+        await commitPanel.refresh();
+        await refreshMergeConflicts();
+    };
+    const refreshConflictUi = async () => {
+        await refreshConflictStateViews();
+        await MergeConflictSessionPanel.refreshIfOpen();
+    };
+
+    const openMergeEditorForFile = async (filePath: string) => {
+        MergeEditorPanel.open(
+            context.extensionUri,
+            gitOps,
+            workspaceFolder.uri,
+            filePath,
+            async () => {
+                await refreshConflictUi();
+            },
+        );
+    };
+
+    const openConflictSession = async (labels?: {
+        sourceBranch?: string;
+        targetBranch?: string;
+    }): Promise<void> => {
+        if (labels?.sourceBranch || labels?.targetBranch) {
+            lastMergeContext = { ...lastMergeContext, ...labels };
+        }
+        await MergeConflictSessionPanel.open(
+            context.extensionUri,
+            gitOps,
+            {
+                sourceBranch: labels?.sourceBranch ?? lastMergeContext.sourceBranch,
+                targetBranch: labels?.targetBranch ?? lastMergeContext.targetBranch,
+            },
+            {
+                onOpenMergeConflict: async (filePath) => {
+                    await openMergeEditorForFile(filePath);
+                },
+                onConflictStateChanged: async () => {
+                    await refreshConflictStateViews();
+                },
+            },
+        );
     };
 
     context.subscriptions.push(
@@ -642,6 +689,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await commitGraph.refresh();
             await commitPanel.refresh();
             await refreshMergeConflicts();
+            await MergeConflictSessionPanel.refreshIfOpen();
             await clearSelection();
         }),
 
@@ -659,6 +707,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         vscode.commands.registerCommand("intelligit.mergeConflictsRefresh", async () => {
             await refreshMergeConflicts();
+            await MergeConflictSessionPanel.refreshIfOpen();
+        }),
+        vscode.commands.registerCommand("intelligit.openConflictSession", async (ctx?: unknown) => {
+            const sourceBranch =
+                ctx &&
+                typeof ctx === "object" &&
+                "sourceBranch" in ctx &&
+                typeof (ctx as { sourceBranch?: unknown }).sourceBranch === "string"
+                    ? (ctx as { sourceBranch: string }).sourceBranch
+                    : undefined;
+            const targetBranch =
+                ctx &&
+                typeof ctx === "object" &&
+                "targetBranch" in ctx &&
+                typeof (ctx as { targetBranch?: unknown }).targetBranch === "string"
+                    ? (ctx as { targetBranch: string }).targetBranch
+                    : undefined;
+            await openConflictSession({ sourceBranch, targetBranch });
         }),
     );
 
@@ -674,16 +740,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand("intelligit.openMergeConflict", async (ctx: unknown) => {
             const filePath = resolveConflictPath(ctx);
             if (!filePath) return;
-            MergeEditorPanel.open(
-                context.extensionUri,
-                gitOps,
-                workspaceFolder.uri,
-                filePath,
-                async () => {
-                    await commitPanel.refresh();
-                    await refreshMergeConflicts();
-                },
-            );
+            await openMergeEditorForFile(filePath);
         }),
         vscode.commands.registerCommand("intelligit.conflictAcceptYours", async (ctx: unknown) => {
             const filePath = resolveConflictPath(ctx);
@@ -696,8 +753,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     },
                 );
                 vscode.window.showInformationMessage(`Accepted yours for ${filePath}`);
-                await commitPanel.refresh();
-                await refreshMergeConflicts();
+                await refreshConflictUi();
             } catch (error) {
                 const message = getErrorMessage(error);
                 vscode.window.showErrorMessage(`Accept yours failed: ${message}`);
@@ -714,8 +770,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     },
                 );
                 vscode.window.showInformationMessage(`Accepted theirs for ${filePath}`);
-                await commitPanel.refresh();
-                await refreshMergeConflicts();
+                await refreshConflictUi();
             } catch (error) {
                 const message = getErrorMessage(error);
                 vscode.window.showErrorMessage(`Accept theirs failed: ${message}`);
@@ -819,6 +874,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
+                const targetBranch = await getCheckedOutBranchName();
                 const confirm = await vscode.window.showWarningMessage(
                     `Merge ${name} into current branch?`,
                     { modal: true },
@@ -830,6 +886,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showInformationMessage(`Merged ${name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
+                    const conflictFiles = await gitOps.getConflictFilesDetailed().catch(() => []);
+                    if (conflictFiles.length > 0) {
+                        await refreshConflictUi();
+                        await openConflictSession({
+                            sourceBranch: name,
+                            targetBranch: targetBranch ?? getCurrentBranchName() ?? undefined,
+                        });
+                        vscode.window.showWarningMessage(
+                            `Merge has ${conflictFiles.length} unresolved conflict file(s). Resolve them in the Conflicts panel.`,
+                        );
+                        return;
+                    }
                     const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Merge failed: ${msg}`);
                 }
@@ -1176,6 +1244,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await commitGraph.refresh();
             await commitPanel.refresh();
             await refreshMergeConflicts();
+            await MergeConflictSessionPanel.refreshIfOpen();
         }, 500);
     };
 

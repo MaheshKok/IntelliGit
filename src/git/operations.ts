@@ -1,5 +1,13 @@
 import { GitExecutor } from "./executor";
-import type { Branch, Commit, CommitDetail, CommitFile, WorkingFile, StashEntry } from "../types";
+import type {
+    Branch,
+    Commit,
+    CommitDetail,
+    CommitFile,
+    WorkingFile,
+    StashEntry,
+    MergeConflictFile,
+} from "../types";
 
 declare const require: (id: string) => unknown;
 
@@ -654,6 +662,38 @@ export class GitOps {
             .filter(Boolean);
     }
 
+    async getConflictFilesDetailed(): Promise<MergeConflictFile[]> {
+        const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
+        const files: MergeConflictFile[] = [];
+        const entries = result.split("\0");
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (!entry || entry.length < 4) continue;
+
+            const oursCode = entry.charAt(0);
+            const theirsCode = entry.charAt(1);
+            const code = `${oursCode}${theirsCode}`;
+            const path = entry.slice(3);
+            if (!path) continue;
+
+            const isRenameOrCopy =
+                oursCode === "R" || oursCode === "C" || theirsCode === "R" || theirsCode === "C";
+            if (isRenameOrCopy && i + 1 < entries.length) {
+                i += 1;
+            }
+
+            if (!isUnmergedConflictCode(code)) continue;
+            files.push({
+                path,
+                code,
+                ours: mapConflictSideState(oursCode),
+                theirs: mapConflictSideState(theirsCode),
+            });
+        }
+
+        return files.sort((a, b) => a.path.localeCompare(b.path));
+    }
+
     async getConflictFileVersions(
         filePath: string,
     ): Promise<{ base: string; ours: string; theirs: string }> {
@@ -661,7 +701,10 @@ export class GitOps {
             return Promise.race([
                 promise,
                 new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error(`Timed out reading ${label} for ${filePath}`)), 10_000),
+                    setTimeout(
+                        () => reject(new Error(`Timed out reading ${label} for ${filePath}`)),
+                        10_000,
+                    ),
                 ),
             ]);
         };
@@ -711,6 +754,18 @@ function mapStatusCode(code: string): WorkingFile["status"] | null {
         default:
             return "M";
     }
+}
+
+const UNMERGED_CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+
+function isUnmergedConflictCode(code: string): boolean {
+    return UNMERGED_CONFLICT_CODES.has(code);
+}
+
+function mapConflictSideState(code: string): MergeConflictFile["ours"] {
+    if (code === "A") return "Added";
+    if (code === "D") return "Deleted";
+    return "Modified";
 }
 
 function isNoUpstreamPushError(err: unknown): boolean {

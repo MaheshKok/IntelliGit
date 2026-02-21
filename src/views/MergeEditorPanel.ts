@@ -109,6 +109,10 @@ export class MergeEditorPanel {
                 this.panel.dispose();
                 break;
             }
+
+            case "close":
+                this.panel.dispose();
+                break;
         }
     }
 

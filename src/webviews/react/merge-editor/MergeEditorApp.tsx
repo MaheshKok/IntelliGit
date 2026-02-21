@@ -295,11 +295,17 @@ function App() {
         getVsCodeApi().postMessage({ type: "ready" });
     }, []);
 
+    const handleClose = useCallback(() => {
+        getVsCodeApi().postMessage({ type: "close" });
+    }, []);
+
     if (state.error) {
         return (
             <div className="loading">
                 <div className="error-message">Failed to load conflict data: {state.error}</div>
-                <button className="retry-btn" onClick={handleRetry}>Retry</button>
+                <button className="retry-btn" onClick={handleRetry}>
+                    Retry
+                </button>
             </div>
         );
     }
@@ -368,13 +374,16 @@ function App() {
             <div className="merge-footer">
                 <div className="footer-left">
                     <button className="footer-btn secondary" onClick={handleBulkAcceptYours}>
-                        Accept Yours (Full File)
+                        Accept Yours
                     </button>
                     <button className="footer-btn secondary" onClick={handleBulkAcceptTheirs}>
-                        Accept Theirs (Full File)
+                        Accept Theirs
                     </button>
                 </div>
                 <div className="footer-right">
+                    <button className="footer-btn secondary" onClick={handleClose}>
+                        Cancel
+                    </button>
                     <button
                         className={`footer-btn primary ${canApply ? "" : "disabled"}`}
                         onClick={handleApply}

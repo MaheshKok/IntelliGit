@@ -23,6 +23,10 @@ const webviewConfigs = [
     { entry: "react/commit-panel/CommitPanelApp", out: "webview-commitpanel" },
     { entry: "react/CommitInfoApp", out: "webview-commitinfo" },
     { entry: "react/merge-editor/MergeEditorApp", out: "webview-mergeeditor" },
+    {
+        entry: "react/merge-conflicts-session/MergeConflictSessionApp",
+        out: "webview-mergeconflictsession",
+    },
 ].map(({ entry, out }) => ({
     entryPoints: [path.resolve(__dirname, `../src/webviews/${entry}.tsx`)],
     bundle: true,
