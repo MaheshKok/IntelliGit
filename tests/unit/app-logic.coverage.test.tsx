@@ -211,4 +211,71 @@ describe("app logic coverage", () => {
         );
     });
 
+    it("CommitPanelApp forwards empty commit attempts for extension-side validation", async () => {
+        const postMessage = vi.fn();
+
+        vi.doMock("../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
+            useExtensionMessages: () => [
+                {
+                    files: [{ path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 }],
+                    stashes: [],
+                    shelfFiles: [],
+                    selectedShelfIndex: null,
+                    commitMessage: "   ",
+                    isAmend: false,
+                    error: null,
+                },
+                vi.fn(),
+            ],
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/hooks/useCheckedFiles", () => ({
+            useCheckedFiles: () => ({
+                checkedPaths: new Set<string>(),
+                toggleFile: vi.fn(),
+                toggleFolder: vi.fn(),
+                toggleSection: vi.fn(),
+                isAllChecked: () => false,
+                isSomeChecked: () => false,
+            }),
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage }),
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/components/CommitTab", () => ({
+            CommitTab: (props: { onCommit: () => void }) => (
+                <div>
+                    <button id="commit" onClick={() => props.onCommit()} />
+                </div>
+            ),
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
+            ShelfTab: () => <div>Shelf</div>,
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/components/TabBar", () => ({
+            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+                <div>
+                    <div>{props.commitContent}</div>
+                    <div>{props.shelfContent}</div>
+                </div>
+            ),
+        }));
+
+        await import("../../src/webviews/react/commit-panel/CommitPanelApp");
+        await flush();
+
+        act(() => {
+            document.getElementById("commit")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "commitSelected",
+                message: "",
+                amend: false,
+                push: false,
+                paths: [],
+            }),
+        );
+    });
+
 });

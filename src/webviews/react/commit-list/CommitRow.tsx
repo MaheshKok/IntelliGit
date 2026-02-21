@@ -70,7 +70,11 @@ function TooltipRefRow({
             title={name}
         >
             <span style={{ display: "inline-flex", flexShrink: 0 }}>
-                <RefTypeIcon kind={kind} size={12} />
+                <RefTypeIcon
+                    kind={kind}
+                    size={12}
+                    tagColor={kind === "tag" ? REF_BADGE_COLORS.tag.bg : undefined}
+                />
             </span>
             <span
                 style={{
@@ -179,7 +183,8 @@ function CommitMessageCell({
                     }}
                     title={`${hiddenTagCount} more tag${hiddenTagCount === 1 ? "" : "s"}`}
                 >
-                    <RefTypeIcon kind="tag" size={11} />+{hiddenTagCount}
+                    <RefTypeIcon kind="tag" size={11} tagColor={REF_BADGE_COLORS.tag.bg} />
+                    {`+${hiddenTagCount}`}
                 </span>
             )}
 

@@ -14,7 +14,7 @@ import type { Branch } from "./types";
 import type { CommitAction } from "./webviews/react/commitGraphTypes";
 import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
 import { deleteFileWithFallback } from "./utils/fileOps";
-import { runWithStatusBar } from "./utils/statusBar";
+import { runWithNotificationProgress } from "./utils/notifications";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -270,7 +270,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (confirm !== deleteTrackedLabel) return;
 
             try {
-                await runWithStatusBar(
+                await runWithNotificationProgress(
                     `Deleting tracked branch ${tracked.remote}/${tracked.remoteBranch}...`,
                     async () => {
                         await executor.run([
@@ -762,7 +762,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const name = branch?.name;
                 if (!name || branch?.isRemote) return;
                 try {
-                    await runWithStatusBar(`Updating ${name}...`, async () => {
+                    await runWithNotificationProgress(`Updating ${name}...`, async () => {
                         const remote = await resolveRemoteName(branch);
                         if (branch.isCurrent) {
                             if (remote) {
@@ -800,7 +800,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 try {
-                    await runWithStatusBar(`Pushing ${branch.name}...`, async () => {
+                    await runWithNotificationProgress(`Pushing ${branch.name}...`, async () => {
                         const remote = await resolveRemoteName(branch);
                         if (branch.isCurrent) {
                             if (branch.remote) {
@@ -897,7 +897,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             );
                             return;
                         }
-                        await runWithStatusBar(
+                        await runWithNotificationProgress(
                             `Deleting remote branch ${target.remote}/${target.remoteBranch}...`,
                             async () => {
                                 await executor.run([
