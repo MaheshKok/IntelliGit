@@ -163,7 +163,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const amend = msg.amend as boolean;
                 const push = msg.push as boolean;
                 const paths = msg.paths as string[];
-                if (!message.trim() && !amend) {
+                if (!message && !amend) {
                     vscode.window.showWarningMessage("Enter a commit message.");
                     return;
                 }
@@ -195,7 +195,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "commit": {
                 const message = (msg.message as string).trim();
                 const amend = msg.amend as boolean;
-                if (!message.trim() && !amend) {
+                if (!message && !amend) {
                     vscode.window.showWarningMessage("Enter a commit message.");
                     return;
                 }
@@ -211,7 +211,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "commitAndPush": {
                 const message = (msg.message as string).trim();
                 const amend = msg.amend as boolean;
-                if (!message.trim() && !amend) {
+                if (!message && !amend) {
                     vscode.window.showWarningMessage("Enter a commit message.");
                     return;
                 }

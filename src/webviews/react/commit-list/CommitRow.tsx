@@ -183,8 +183,8 @@ function CommitMessageCell({
                     }}
                     title={`${hiddenTagCount} more tag${hiddenTagCount === 1 ? "" : "s"}`}
                 >
-                    <RefTypeIcon kind="tag" size={11} tagColor={REF_BADGE_COLORS.tag.bg} />+
-                    {hiddenTagCount}
+                    <RefTypeIcon kind="tag" size={11} tagColor={REF_BADGE_COLORS.tag.bg} />
+                    {`+${hiddenTagCount}`}
                 </span>
             )}
 

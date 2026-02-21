@@ -8,7 +8,10 @@ function withPrefix(message: string): string {
 
 export async function runWithNotificationProgress<T>(
     message: string,
-    task: () => Promise<T>,
+    task: (
+        progress: vscode.Progress<{ message?: string; increment?: number }>,
+        token: vscode.CancellationToken,
+    ) => Thenable<T>,
 ): Promise<T> {
     return vscode.window.withProgress(
         {
@@ -16,6 +19,6 @@ export async function runWithNotificationProgress<T>(
             title: withPrefix(message),
             cancellable: false,
         },
-        async () => task(),
+        task,
     );
 }

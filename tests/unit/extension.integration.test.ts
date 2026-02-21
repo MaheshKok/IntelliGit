@@ -23,7 +23,22 @@ const openTextDocument = vi.fn(async (arg: unknown) => arg);
 const writeFile = vi.fn(async () => undefined);
 const clipboardWriteText = vi.fn(async () => undefined);
 const createOutputChannel = vi.fn(() => ({ appendLine: vi.fn() }));
-const withProgress = vi.fn(async (_options: unknown, task: () => Promise<unknown>) => task());
+const withProgress = vi.fn(
+    async (
+        _options: unknown,
+        task: (
+            progress: { report: ReturnType<typeof vi.fn> },
+            token: {
+                isCancellationRequested: boolean;
+                onCancellationRequested: ReturnType<typeof vi.fn>;
+            },
+        ) => Promise<unknown>,
+    ) =>
+        task(
+            { report: vi.fn() },
+            { isCancellationRequested: false, onCancellationRequested: vi.fn() },
+        ),
+);
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
@@ -474,6 +489,7 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
+                location: 15,
                 title: expect.stringContaining("Deleting remote branch origin/feature-remote"),
             }),
             expect.any(Function),
@@ -503,7 +519,10 @@ describe("extension integration", () => {
         ]);
         expect(executorRun).not.toHaveBeenCalledWith(["checkout", "main"]);
         expect(withProgress).toHaveBeenCalledWith(
-            expect.objectContaining({ title: expect.stringContaining("Updating main") }),
+            expect.objectContaining({
+                location: 15,
+                title: expect.stringContaining("Updating main"),
+            }),
             expect.any(Function),
         );
     });
@@ -561,6 +580,7 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-local"]);
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
+                location: 15,
                 title: expect.stringContaining("Deleting tracked branch origin/feature-local"),
             }),
             expect.any(Function),
@@ -595,6 +615,7 @@ describe("extension integration", () => {
         ]);
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
+                location: 15,
                 title: expect.stringContaining("Deleting remote branch origin/feature-fallback"),
             }),
             expect.any(Function),
