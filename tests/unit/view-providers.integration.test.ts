@@ -43,7 +43,13 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
-const withProgress = vi.fn(async (_options: unknown, task: () => Promise<unknown>) => task());
+const withProgress = vi.fn(
+    async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+        task(
+            { report: vi.fn() },
+            { isCancellationRequested: false, onCancellationRequested: vi.fn() },
+        ),
+);
 
 const workspaceState: {
     workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined;
@@ -349,7 +355,7 @@ describe("view providers integration", () => {
             paths: [],
         });
         expect(showWarningMessage).toHaveBeenCalledWith("Select files to commit.");
-        expect(gitOps.stageFiles).not.toHaveBeenCalledWith([]);
+        expect(gitOps.stageFiles).not.toHaveBeenCalled();
 
         await webview.send({ type: "commit", message: "feat: ok", amend: false });
         await webview.send({
@@ -375,11 +381,30 @@ describe("view providers integration", () => {
     it("CommitPanelViewProvider validates malformed commit payloads defensively", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
 
-        await webview.send({ type: "commitSelected", message: 123, amend: false, push: true });
-        await webview.send({ type: "commit", amend: false });
+        // Each payload exercises a single validation guard independently:
+        // 1. Non-string message with valid paths → message guard
+        await webview.send({
+            type: "commitSelected",
+            message: undefined,
+            amend: false,
+            push: false,
+            paths: ["src/a.ts"],
+        });
+        // 2. Valid message with empty paths → paths guard
+        await webview.send({
+            type: "commitSelected",
+            message: "valid msg",
+            amend: false,
+            push: false,
+            paths: [],
+        });
+        // 3. Null message on commitAndPush → message guard
         await webview.send({ type: "commitAndPush", message: null, amend: false });
 
-        expect(showWarningMessage).toHaveBeenCalledWith("Enter a commit message.");
+        expect(showWarningMessage).toHaveBeenCalledTimes(3);
+        expect(showWarningMessage).toHaveBeenNthCalledWith(1, "Enter a commit message.");
+        expect(showWarningMessage).toHaveBeenNthCalledWith(2, "Select files to commit.");
+        expect(showWarningMessage).toHaveBeenNthCalledWith(3, "Enter a commit message.");
         expect(gitOps.stageFiles).not.toHaveBeenCalled();
         expect(gitOps.commit).not.toHaveBeenCalled();
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
