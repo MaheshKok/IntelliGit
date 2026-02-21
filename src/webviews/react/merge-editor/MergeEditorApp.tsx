@@ -273,6 +273,25 @@ function ConflictSection({
 
 function App() {
     const [state, dispatch] = useReducer(reducer, { data: null, error: null, resolutions: {} });
+    const segments = state.data?.segments ?? [];
+
+    const renderedSegments = useMemo(() => {
+        let lineCursor = 1;
+        return segments.map((segment, index) => {
+            const lineCount =
+                segment.type === "common"
+                    ? Math.max(segment.lines.length, 1)
+                    : Math.max(
+                          segment.oursLines.length,
+                          getResultLines(segment, state.resolutions[segment.id]).length,
+                          segment.theirsLines.length,
+                          1,
+                      );
+            const startLine = lineCursor;
+            lineCursor += lineCount;
+            return { segment, index, startLine, lineCount };
+        });
+    }, [segments, state.resolutions]);
 
     useEffect(() => {
         const vscode = getVsCodeApi();
@@ -348,30 +367,11 @@ function App() {
         return <div className="loading">Loading conflict data...</div>;
     }
 
-    const { segments } = state.data;
     const total = conflictCount(segments);
     const resolved = resolvedCount(segments, state.resolutions);
     const unresolved = total - resolved;
     const canApply = allResolved(segments, state.resolutions);
     const changeCount = segments.length;
-
-    const renderedSegments = useMemo(() => {
-        let lineCursor = 1;
-        return segments.map((segment, index) => {
-            const lineCount =
-                segment.type === "common"
-                    ? Math.max(segment.lines.length, 1)
-                    : Math.max(
-                          segment.oursLines.length,
-                          getResultLines(segment, state.resolutions[segment.id]).length,
-                          segment.theirsLines.length,
-                          1,
-                      );
-            const startLine = lineCursor;
-            lineCursor += lineCount;
-            return { segment, index, startLine, lineCount };
-        });
-    }, [segments, state.resolutions]);
 
     return (
         <div className="merge-editor">
