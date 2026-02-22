@@ -13,5 +13,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/webviews/react/**/*.ts", "src/webviews/react/**/*.tsx", "src/types.ts"]
+  "include": [
+    "src/webviews/react/**/*.ts",
+    "src/webviews/react/**/*.tsx",
+    "src/webviews/react/**/*.d.ts",
+    "src/types.ts"
+  ]
 }

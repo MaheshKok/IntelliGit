@@ -46,12 +46,15 @@ export class ConfigManager {
   // SECTION 3a: Loading and parsing configuration
   // ----------------------------------------------------------
   loadFromFile(): AppConfig {
-    if (!fs.existsSync(this.configPath)) {
-      throw new Error(`Config file not found: ${this.configPath}`);
+    let raw: string;
+    let parsed: Partial<AppConfig>;
+    try {
+      raw = fs.readFileSync(this.configPath, "utf-8");
+      parsed = JSON.parse(raw) as Partial<AppConfig>;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to load config from ${this.configPath}: ${message}`);
     }
-
-    const raw = fs.readFileSync(this.configPath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<AppConfig>;
 
     this.config = {
       ...this.config,
@@ -68,8 +71,9 @@ export class ConfigManager {
   loadFromEnv(): void {
     const envPort = process.env[`${ENV_PREFIX}PORT`];
     if (envPort) {
-      const parsed = parseInt(envPort, 10);
-      if (Number.isFinite(parsed)) {
+      const trimmedPort = envPort.trim();
+      const parsed = parseInt(trimmedPort, 10);
+      if (/^\d+$/.test(trimmedPort) && Number.isFinite(parsed)) {
         this.config.port = parsed;
       } else {
         console.warn(`Ignoring invalid ${ENV_PREFIX}PORT value`);
@@ -103,7 +107,7 @@ export class ConfigManager {
     return {
       port: 3000,
       host: "localhost",
-      logLevel: DEFAULT_LOG_LEVEL as AppConfig["logLevel"],
+      logLevel: DEFAULT_LOG_LEVEL,
       database: {
         url: "postgres://localhost:5432/app",
         poolSize: 10,
@@ -142,7 +146,7 @@ export class ConfigManager {
   // SECTION 3d: Getters and export
   // ----------------------------------------------------------
   getConfig(): Readonly<AppConfig> {
-    return Object.freeze({ ...this.config });
+    return deepFreeze(cloneAppConfig(this.config));
   }
 
   getDatabaseConfig(): Readonly<AppConfig["database"]> {
@@ -156,4 +160,24 @@ export class ConfigManager {
 
 function isLogLevel(value: string): value is AppConfig["logLevel"] {
   return (LOG_LEVELS as readonly string[]).includes(value);
+}
+
+function cloneAppConfig(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    database: { ...config.database },
+    features: { ...config.features },
+  };
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const nestedValue of Object.values(value as Record<string, unknown>)) {
+      if (nestedValue && typeof nestedValue === "object") {
+        deepFreeze(nestedValue);
+      }
+    }
+  }
+  return value;
 }

@@ -189,6 +189,7 @@ export class MergeConflictSessionPanel {
             extensionUri: this.extensionUri,
             webview,
             scriptFile: "webview-mergeconflictsession.js",
+            styleFiles: ["webview-mergeconflictsession.css"],
             title: "Conflicts",
         });
     }

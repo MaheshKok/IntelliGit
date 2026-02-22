@@ -5,6 +5,7 @@ interface WebviewShellOptions {
     extensionUri: vscode.Uri;
     webview: vscode.Webview;
     scriptFile: string;
+    styleFiles?: string[];
     title: string;
     backgroundVar?: string;
 }
@@ -13,11 +14,18 @@ export function buildWebviewShellHtml({
     extensionUri,
     webview,
     scriptFile,
+    styleFiles = [],
     title,
     backgroundVar = "var(--vscode-editor-background)",
 }: WebviewShellOptions): string {
     const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", scriptFile));
+    const styleUris = styleFiles.map((styleFile) =>
+        webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", styleFile)),
+    );
     const nonce = createNonce();
+    const styleLinks = styleUris
+        .map((styleUri) => `    <link rel="stylesheet" href="${styleUri}">`)
+        .join("\n");
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -37,6 +45,7 @@ export function buildWebviewShellHtml({
             background: ${backgroundVar};
         }
     </style>
+${styleLinks ? `${styleLinks}\n` : ""}
 </head>
 <body>
     <div id="root"></div>

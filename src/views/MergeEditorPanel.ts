@@ -165,6 +165,7 @@ export class MergeEditorPanel {
             extensionUri: this.extensionUri,
             webview,
             scriptFile: "webview-mergeeditor.js",
+            styleFiles: ["webview-mergeeditor.css"],
             title: "Merge Editor",
         });
     }

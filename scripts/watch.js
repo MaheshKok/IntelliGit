@@ -1,3 +1,5 @@
+/* eslint-env node */
+
 // esbuild watch mode for development. Rebuilds on file changes for both
 // the extension host and webview bundles.
 

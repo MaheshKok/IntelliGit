@@ -1,0 +1,182 @@
+
+.session-root {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 10px;
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+    gap: 8px;
+}
+
+.session-header {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.session-subtitle {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.session-main {
+    display: grid;
+    grid-template-columns: 1fr 132px;
+    gap: 8px;
+    min-height: 0;
+    flex: 1;
+}
+
+.table-wrap {
+    border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.table-meta {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+
+.error {
+    padding: 6px 8px;
+    color: var(--vscode-errorForeground, #f48771);
+    border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+
+.conflict-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 12px;
+}
+
+.conflict-table thead th {
+    position: sticky;
+    top: 0;
+    text-align: left;
+    background: var(--vscode-editorGroupHeader-tabsBackground);
+    color: var(--vscode-descriptionForeground);
+    font-weight: 600;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+
+.conflict-table thead th:first-child {
+    width: 56%;
+}
+
+.conflict-table thead th:nth-child(2),
+.conflict-table thead th:nth-child(3) {
+    width: 22%;
+}
+
+.conflict-table tbody {
+    display: block;
+    overflow: auto;
+    height: calc(100vh - 180px);
+}
+
+.conflict-table thead,
+.conflict-table tbody tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+.row td {
+    padding: 6px 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--vscode-panel-border, #333) 70%, transparent);
+}
+
+.row:hover {
+    background: color-mix(in srgb, var(--vscode-list-hoverBackground, #2a2d2e) 70%, transparent);
+    cursor: pointer;
+}
+
+.row.selected {
+    background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground, #3a3d41) 80%, transparent);
+}
+
+.group-row td {
+    padding: 6px 8px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    background: color-mix(in srgb, var(--vscode-editorGroupHeader-tabsBackground, #2a2d2e) 70%, transparent);
+    border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+
+.name-cell {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.file-name {
+    color: var(--vscode-foreground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-path {
+    color: var(--vscode-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.action-column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.action-btn,
+.close-btn {
+    height: 30px;
+    border: 1px solid var(--vscode-button-border, transparent);
+    border-radius: 3px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    cursor: pointer;
+}
+
+.action-btn:hover,
+.close-btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.action-btn.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.action-btn.primary:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.session-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.group-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+}
+

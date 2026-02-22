@@ -1,10 +1,10 @@
-# IntelliGit - PyCharm Git for VS Code
+# IntelliGit - Jetbrains Git for VS Code
 
 IntelliGit brings a JetBrains-style Git workflow into VS Code, so you can stage, commit, inspect history, and manage branches without bouncing between multiple tools.
 
 ![alt text](image.png)
 
-## How Users Benefit
+## How Users Benefit 
 
 - Move faster on daily Git work with one focused UI for commit, history, and branch actions.
 - Reduce context switching by keeping staging, diffs, commit graph, and commit details in IntelliGit panels.
