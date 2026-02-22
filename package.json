@@ -192,6 +192,18 @@
                 "icon": "$(go-to-file)"
             },
             {
+                "command": "intelligit.detectJetBrainsMergeTool",
+                "title": "Detect JetBrains Merge Tool",
+                "category": "IntelliGit",
+                "icon": "$(search)"
+            },
+            {
+                "command": "intelligit.openMergeConflictInJetBrains",
+                "title": "Open in JetBrains Merge Tool",
+                "category": "IntelliGit",
+                "icon": "$(link-external)"
+            },
+            {
                 "command": "intelligit.conflictAcceptYours",
                 "title": "Accept Yours",
                 "category": "IntelliGit",
@@ -250,6 +262,11 @@
                     "group": "navigation@1"
                 },
                 {
+                    "command": "intelligit.openMergeConflictInJetBrains",
+                    "when": "view == intelligit.mergeConflicts && viewItem == intelligit.conflictFile",
+                    "group": "navigation@2"
+                },
+                {
                     "command": "intelligit.conflictAcceptYours",
                     "when": "view == intelligit.mergeConflicts && viewItem == intelligit.conflictFile",
                     "group": "1_actions@1"
@@ -299,7 +316,22 @@
                 "key": "alt+9",
                 "mac": "alt+9"
             }
-        ]
+        ],
+        "configuration": {
+            "title": "IntelliGit",
+            "properties": {
+                "intelligit.jetbrainsMergeTool.path": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "JetBrains IDE binary path/command (`pycharm`, `idea`, `webstorm`) or a macOS `.app` bundle path. IntelliGit auto-resolves `.app` bundles to the executable inside `Contents/MacOS`."
+                },
+                "intelligit.jetbrainsMergeTool.preferExternal": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Prefer the external JetBrains merge tool when opening merge conflicts. Falls back to VS Code's internal merge editor if no JetBrains path is configured or launch fails."
+                }
+            }
+        }
     },
     "scripts": {
         "vscode:prepublish": "bun scripts/build.js --production",
