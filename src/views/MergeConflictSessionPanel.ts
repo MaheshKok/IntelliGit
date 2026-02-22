@@ -39,11 +39,11 @@ export class MergeConflictSessionPanel {
             try {
                 await this.handleMessage(msg);
             } catch (error) {
-                if (!this.isPanelActive()) return;
+                if (!this.isAlive()) return;
                 const message = getErrorMessage(error);
                 vscode.window.showErrorMessage(message);
                 try {
-                    if (!this.isPanelActive()) return;
+                    if (!this.isAlive()) return;
                     await this.panel.webview.postMessage({ type: "loadError", message });
                 } catch {
                     // Panel may have been disposed between the active check and postMessage.
@@ -177,16 +177,15 @@ export class MergeConflictSessionPanel {
         return filePath ? filePath : null;
     }
 
-    private isPanelActive(): boolean {
+    private isAlive(): boolean {
         return !this.disposed;
     }
 
     private async postSessionData(options: { closeWhenResolved: boolean }): Promise<void> {
-        if (!this.isPanelActive()) return;
+        if (!this.isAlive()) return;
         const files = await this.gitOps.getConflictFilesDetailed();
-        if (!this.isPanelActive()) return;
+        if (!this.isAlive()) return;
         if (files.length === 0 && options.closeWhenResolved) {
-            if (!this.isPanelActive()) return;
             vscode.window.showInformationMessage("All merge conflicts are resolved.");
             this.panel.dispose();
             return;
@@ -198,7 +197,7 @@ export class MergeConflictSessionPanel {
             files,
         };
 
-        if (!this.isPanelActive()) return;
+        if (!this.isAlive()) return;
         await this.panel.webview.postMessage({ type: "setSessionData", data });
     }
 

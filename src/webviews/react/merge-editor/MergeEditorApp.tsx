@@ -572,11 +572,12 @@ function CodeBlock({
     wordHighlight?: boolean;
     compareLines?: string[];
 }) {
-    const padded = padLines(lines, lineCount);
-    const alignedCompare = compareLines
-        ? alignCompareLinesForWordDiff(lines, compareLines)
-        : undefined;
-    const paddedCompare = alignedCompare ? padLines(alignedCompare, lineCount) : undefined;
+    const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
+    const paddedCompare = useMemo(() => {
+        if (!compareLines) return undefined;
+        const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
+        return padLines(alignedCompare, lineCount);
+    }, [compareLines, lineCount, lines]);
 
     return (
         <div className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}>

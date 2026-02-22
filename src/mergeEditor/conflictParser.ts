@@ -192,8 +192,8 @@ function buildSegments(
 ): MergeSegment[] {
     // Build a per-base-line edit map for each side
     const baseLen = baseLines.length;
-    const oursMap = buildBaseEditMap(baseLen, oursEdits);
-    const theirsMap = buildBaseEditMap(baseLen, theirsEdits);
+    const oursMap = buildBaseEditMap(oursEdits);
+    const theirsMap = buildBaseEditMap(theirsEdits);
 
     const segments: MergeSegment[] = [];
     let conflictId = 0;
@@ -293,7 +293,7 @@ function buildSegments(
     return mergeAdjacentCommon(segments);
 }
 
-function buildBaseEditMap(baseLen: number, edits: EditRange[]): Map<number, EditRange> {
+function buildBaseEditMap(edits: EditRange[]): Map<number, EditRange> {
     const map = new Map<number, EditRange>();
     for (const edit of edits) {
         // Map the edit to the base line where it starts.

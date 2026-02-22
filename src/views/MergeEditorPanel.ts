@@ -14,6 +14,7 @@ export class MergeEditorPanel {
     private readonly panel: vscode.WebviewPanel;
     private disposed = false;
     private diffOptions: MergeDiffOptions = { ignoreWhitespace: false };
+    private currentLoadId = 0;
 
     private constructor(
         panel: vscode.WebviewPanel,
@@ -144,11 +145,14 @@ export class MergeEditorPanel {
     }
 
     private async loadConflictData(): Promise<void> {
+        const loadId = ++this.currentLoadId;
         try {
             const versions = await this.gitOps.getConflictFileVersions(this.filePath);
+            if (this.disposed || loadId !== this.currentLoadId) return;
             const textFormat = await this.detectTextFormatForOutput().catch(() =>
                 detectTextFormatFromText(versions.ours),
             );
+            if (this.disposed || loadId !== this.currentLoadId) return;
             const segments = parseConflictVersions(
                 versions.base,
                 versions.ours,
@@ -166,9 +170,12 @@ export class MergeEditorPanel {
                 diffOptions: this.diffOptions,
             };
 
+            if (this.disposed || loadId !== this.currentLoadId) return;
             await this.panel.webview.postMessage({ type: "setConflictData", data });
         } catch (err) {
+            if (this.disposed || loadId !== this.currentLoadId) return;
             const message = getErrorMessage(err);
+            if (this.disposed || loadId !== this.currentLoadId) return;
             await this.panel.webview.postMessage({ type: "loadError", message });
         }
     }

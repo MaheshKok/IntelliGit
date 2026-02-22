@@ -45,7 +45,7 @@ export class ConfigManager {
   // ----------------------------------------------------------
   // SECTION 3a: Loading and parsing configuration
   // ----------------------------------------------------------
-  loadFromFile(): AppConfig {
+  loadFromFile(): Readonly<AppConfig> {
     let raw: string;
     let parsed: Partial<AppConfig>;
     try {
@@ -79,7 +79,7 @@ export class ConfigManager {
     if (envPort) {
       const trimmedPort = envPort.trim();
       const parsed = parseInt(trimmedPort, 10);
-      if (/^\d+$/.test(trimmedPort) && Number.isFinite(parsed)) {
+      if (/^\d+$/.test(trimmedPort) && Number.isFinite(parsed) && parsed >= 1 && parsed <= 65535) {
         this.config.port = parsed;
       } else {
         console.warn(`Ignoring invalid ${ENV_PREFIX}PORT value`);
@@ -88,7 +88,10 @@ export class ConfigManager {
 
     const envHost = process.env[`${ENV_PREFIX}HOST`];
     if (envHost) {
-      this.config.host = envHost;
+      const trimmedHost = envHost.trim();
+      if (trimmedHost) {
+        this.config.host = trimmedHost;
+      }
     }
 
     const envLogLevel = process.env[`${ENV_PREFIX}LOG_LEVEL`];
