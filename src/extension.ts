@@ -605,7 +605,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
         }),
         commitInfo.onOpenCommitFileDiff(async ({ commitHash, filePath }) => {
-            console.log("[IntelliGit] openCommitFileDiff event:", commitHash, filePath);
             try {
                 await openCommitFileDiff(commitHash, filePath);
             } catch (error) {
@@ -884,7 +883,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const openCommitFileDiff = async (commitHash: string, filePath: string): Promise<void> => {
         const parents = await getCommitParentHashes(commitHash);
-        const parentRef = parents.length === 0 ? EMPTY_TREE_HASH : parents[0];
+
+        let parentRef: string;
+        let parentDisplayHash: string;
+        if (parents.length > 1) {
+            const result = await pickMainlineParent(commitHash, "Open Commit File Diff", parents);
+            if (result.kind === "cancelled") return;
+            if (result.kind === "notMerge") return;
+            parentRef = `${commitHash}^${result.parentNumber}`;
+            parentDisplayHash = parents[result.parentNumber - 1] ?? parentRef;
+        } else {
+            parentRef = parents.length === 0 ? EMPTY_TREE_HASH : parents[0];
+            parentDisplayHash = parentRef;
+        }
 
         let leftContent: string;
         try {
@@ -915,7 +926,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             content: rightContent,
             language,
         });
-        const shortParent = parentRef.slice(0, 8);
+        const shortParent = parentDisplayHash.slice(0, 8);
         const shortCommit = commitHash.slice(0, 8);
         const title = `${filePath} (${shortParent} ↔ ${shortCommit})`;
         await vscode.commands.executeCommand("vscode.diff", leftDoc.uri, rightDoc.uri, title);

@@ -8,6 +8,7 @@ import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
     CommitAction,
+    CommitGraphOutbound,
     CommitGraphInbound,
 } from "../webviews/react/commitGraphTypes";
 import { IconThemeService } from "./shared";
@@ -89,7 +90,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
 
-        webviewView.webview.onDidReceiveMessage(async (msg) => {
+        webviewView.webview.onDidReceiveMessage(async (msg: CommitGraphOutbound) => {
             try {
                 switch (msg.type) {
                     case "ready":

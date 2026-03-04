@@ -51,11 +51,6 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     this.postCurrentState();
                     break;
                 case "openCommitFileDiff":
-                    console.log(
-                        "[IntelliGit] Received openCommitFileDiff:",
-                        msg.commitHash,
-                        msg.filePath,
-                    );
                     this._onOpenCommitFileDiff.fire({
                         commitHash: msg.commitHash,
                         filePath: msg.filePath,

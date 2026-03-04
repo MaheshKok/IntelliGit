@@ -851,6 +851,60 @@ describe("extension integration", () => {
         );
     });
 
+    it("prompts merge parent selection before opening commit file diff", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        showQuickPick.mockResolvedValueOnce({ parentNumber: 2 });
+        openTextDocument.mockImplementation(async (arg: unknown) => {
+            if (arg && typeof arg === "object" && "content" in (arg as Record<string, unknown>)) {
+                const contentDoc = arg as { content: string };
+                return {
+                    uri: {
+                        toString: () => `untitled:${contentDoc.content}`,
+                    },
+                    languageId: "typescript",
+                };
+            }
+            return {
+                uri: {
+                    toString: () => JSON.stringify(arg),
+                },
+                languageId: "typescript",
+            };
+        });
+
+        await activate(context);
+
+        executeCommandFallback.mockClear();
+        latestCommitGraphProvider!.emitOpenCommitFileDiff({
+            commitHash: "deadbee",
+            filePath: "src/feature.ts",
+        });
+        await waitForAsync();
+
+        expect(showQuickPick).toHaveBeenCalled();
+        expect(gitOpsState.getFileContentAtRef).toHaveBeenNthCalledWith(
+            1,
+            "src/feature.ts",
+            "deadbee^2",
+        );
+        expect(gitOpsState.getFileContentAtRef).toHaveBeenNthCalledWith(
+            2,
+            "src/feature.ts",
+            "deadbee",
+        );
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.anything(),
+            expect.anything(),
+            "src/feature.ts (parent2 ↔ deadbee)",
+        );
+    });
+
     it("covers activation guards and debounced refresh sources", async () => {
         const { activate, deactivate } = await import("../../src/extension");
         const context = {

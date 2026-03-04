@@ -53,7 +53,6 @@ function App(): React.ReactElement {
     }, []);
 
     const handleOpenDiff = useCallback((commitHash: string, filePath: string) => {
-        console.log("[CommitInfo] postMessage openCommitFileDiff", commitHash, filePath);
         vscode.postMessage({ type: "openCommitFileDiff", commitHash, filePath });
     }, []);
 
