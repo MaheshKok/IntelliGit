@@ -35,10 +35,11 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         });
     }, [allFiles]);
 
-    // Persist to vscode state on every change
+    // Persist to vscode state on every change (merge to preserve other keys)
     useEffect(() => {
         const vscode = getVsCodeApi();
-        vscode.setState({ checked: Array.from(checkedPaths) });
+        const prev = vscode.getState() ?? {};
+        vscode.setState({ ...prev, checked: Array.from(checkedPaths) });
     }, [checkedPaths]);
 
     const toggleFile = useCallback((path: string) => {

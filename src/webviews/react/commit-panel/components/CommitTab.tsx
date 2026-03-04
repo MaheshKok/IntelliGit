@@ -1,7 +1,7 @@
 // The main Commit tab: toolbar + file tree + drag handle + commit area.
 // Composes all commit-related sub-components into the commit workflow.
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { Toolbar } from "./Toolbar";
 import { FileTree } from "./FileTree";
@@ -55,10 +55,18 @@ export function CommitTab({
         80,
         containerRef,
     );
-    const [groupByDir, setGroupByDir] = useState(true);
+    const vscode = getVsCodeApi();
+    const [groupByDir, setGroupByDir] = useState<boolean>(() => {
+        const saved = vscode.getState();
+        return (saved as { groupByDir?: boolean } | undefined)?.groupByDir ?? true;
+    });
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
-    const vscode = getVsCodeApi();
+
+    useEffect(() => {
+        const prev = vscode.getState() ?? {};
+        vscode.setState({ ...prev, groupByDir });
+    }, [groupByDir]);
 
     const handleRefresh = useCallback(() => {
         vscode.postMessage({ type: "refresh" });
