@@ -323,7 +323,7 @@ function collectOverlappingEdits(
             edits.push(edit);
         }
     }
-    edits.sort((a, b) => (a.baseStart - b.baseStart) || (a.modStart - b.modStart));
+    edits.sort((a, b) => a.baseStart - b.baseStart || a.modStart - b.modStart);
     return edits;
 }
 

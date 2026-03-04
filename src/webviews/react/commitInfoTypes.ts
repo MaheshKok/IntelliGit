@@ -4,7 +4,9 @@
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
 
 /** Messages sent FROM the webview TO the extension host. */
-export type CommitInfoOutbound = { type: "ready" };
+export type CommitInfoOutbound =
+    | { type: "ready" }
+    | { type: "openCommitFileDiff"; commitHash: string; filePath: string };
 
 /** Messages sent FROM the extension host TO the webview. */
 export type CommitInfoInbound =

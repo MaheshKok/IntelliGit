@@ -76,7 +76,10 @@ function getResultLines(
     }
 }
 
-function buildResultContent(data: MergeEditorData, resolutions: Record<number, HunkResolution>): string {
+function buildResultContent(
+    data: MergeEditorData,
+    resolutions: Record<number, HunkResolution>,
+): string {
     const { segments } = data;
     const lines: string[] = [];
     for (const seg of segments) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
 import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
@@ -61,11 +61,13 @@ export function CommitInfoPane({
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
+    onOpenDiff,
 }: {
     detail: CommitDetail | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
+    onOpenDiff?: (commitHash: string, filePath: string) => void;
 }): React.ReactElement {
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
     const [filesCollapsed, setFilesCollapsed] = useState(false);
@@ -152,6 +154,7 @@ export function CommitInfoPane({
                                 return next;
                             })
                         }
+                        onOpenDiff={onOpenDiff}
                     />
                 </Box>
             )}
@@ -310,6 +313,7 @@ function TreeRows({
     folderExpandedIcon,
     folderIconsByName,
     onToggleDir,
+    onOpenDiff,
 }: {
     entries: TreeEntry[];
     depth: number;
@@ -320,6 +324,7 @@ function TreeRows({
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
     onToggleDir: (path: string) => void;
+    onOpenDiff?: (commitHash: string, filePath: string) => void;
 }): React.ReactElement {
     return (
         <>
@@ -332,6 +337,7 @@ function TreeRows({
                             depth={depth}
                             commitHash={commitHash}
                             commitShortHash={commitShortHash}
+                            onOpenDiff={onOpenDiff}
                         />
                     );
                 }
@@ -360,6 +366,7 @@ function TreeRows({
                                 folderExpandedIcon={folderExpandedIcon}
                                 folderIconsByName={folderIconsByName}
                                 onToggleDir={onToggleDir}
+                                onOpenDiff={onOpenDiff}
                             />
                         )}
                     </React.Fragment>
@@ -441,14 +448,39 @@ const CommitFileRow = React.memo(function CommitFileRow({
     depth,
     commitHash,
     commitShortHash,
+    onOpenDiff,
 }: {
     file: CommitFile;
     depth: number;
     commitHash: string;
     commitShortHash: string;
+    onOpenDiff?: (commitHash: string, filePath: string) => void;
 }): React.ReactElement {
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
     const fileName = getLeafName(file.path);
+    const rowRef = useRef<HTMLDivElement>(null);
+
+    const openDiff = useCallback(() => {
+        onOpenDiff?.(commitHash, file.path);
+    }, [onOpenDiff, commitHash, file.path]);
+
+    useEffect(() => {
+        const el = rowRef.current;
+        if (!el) return;
+        const handleDblClick = () => openDiff();
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                openDiff();
+            }
+        };
+        el.addEventListener("dblclick", handleDblClick);
+        el.addEventListener("keydown", handleKeyDown);
+        return () => {
+            el.removeEventListener("dblclick", handleDblClick);
+            el.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [openDiff]);
 
     const vscodeContext = useMemo(
         () =>
@@ -464,6 +496,7 @@ const CommitFileRow = React.memo(function CommitFileRow({
 
     return (
         <Flex
+            ref={rowRef}
             align="center"
             gap="4px"
             pl={`${padLeft}px`}
@@ -471,8 +504,9 @@ const CommitFileRow = React.memo(function CommitFileRow({
             lineHeight="22px"
             fontSize="13px"
             fontFamily={SYSTEM_FONT_STACK}
-            cursor="default"
+            cursor="pointer"
             position="relative"
+            tabIndex={0}
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
             data-vscode-context={vscodeContext}
             title={file.path}

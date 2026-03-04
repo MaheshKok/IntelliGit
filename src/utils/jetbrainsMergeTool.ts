@@ -357,7 +357,11 @@ async function detectWindowsJetBrainsExecutableCandidates(): Promise<DetectedJet
     if (localAppData) addRoot(path.join(localAppData, "JetBrains", "Toolbox", "apps"), 6, 5000);
     if (appData) addRoot(path.join(appData, "JetBrains", "Toolbox", "apps"), 6, 5000);
     if (userProfile) {
-        addRoot(path.join(userProfile, "AppData", "Local", "JetBrains", "Toolbox", "apps"), 6, 5000);
+        addRoot(
+            path.join(userProfile, "AppData", "Local", "JetBrains", "Toolbox", "apps"),
+            6,
+            5000,
+        );
     }
 
     const all = (

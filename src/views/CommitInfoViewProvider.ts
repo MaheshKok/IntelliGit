@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { CommitDetail, ThemeFolderIconMap } from "../types";
-import type { CommitInfoInbound } from "../webviews/react/commitInfoTypes";
+import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/react/commitInfoTypes";
 import { IconThemeService } from "./shared";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
@@ -14,6 +14,11 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     private folderIconsByName: ThemeFolderIconMap = {};
     private requestSeq = 0;
     private readonly iconTheme: IconThemeService;
+    private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
+        commitHash: string;
+        filePath: string;
+    }>();
+    readonly onOpenCommitFileDiff = this._onOpenCommitFileDiff.event;
 
     constructor(private readonly extensionUri: vscode.Uri) {
         this.iconTheme = new IconThemeService(this.extensionUri);
@@ -34,15 +39,28 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         };
         this.iconTheme.attachWebview(webviewView.webview);
 
-        webviewView.webview.onDidReceiveMessage(async (msg) => {
-            if (msg?.type === "ready") {
-                try {
-                    await this.iconTheme.initIconThemeData();
-                } catch (err) {
-                    console.error("[IntelliGit] Failed to initialize icon theme data:", err);
-                }
-                this.ready = true;
-                this.postCurrentState();
+        webviewView.webview.onDidReceiveMessage(async (msg: CommitInfoOutbound) => {
+            switch (msg.type) {
+                case "ready":
+                    try {
+                        await this.iconTheme.initIconThemeData();
+                    } catch (err) {
+                        console.error("[IntelliGit] Failed to initialize icon theme data:", err);
+                    }
+                    this.ready = true;
+                    this.postCurrentState();
+                    break;
+                case "openCommitFileDiff":
+                    console.log(
+                        "[IntelliGit] Received openCommitFileDiff:",
+                        msg.commitHash,
+                        msg.filePath,
+                    );
+                    this._onOpenCommitFileDiff.fire({
+                        commitHash: msg.commitHash,
+                        filePath: msg.filePath,
+                    });
+                    break;
             }
         });
 
@@ -111,5 +129,6 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
 
     dispose(): void {
         this.iconTheme.dispose();
+        this._onOpenCommitFileDiff.dispose();
     }
 }

@@ -190,7 +190,10 @@ export class MergeEditorPanel {
         });
     }
 
-    private async detectTextFormatForOutput(): Promise<{ eol: "\n" | "\r\n"; hasTrailingNewline: boolean }> {
+    private async detectTextFormatForOutput(): Promise<{
+        eol: "\n" | "\r\n";
+        hasTrailingNewline: boolean;
+    }> {
         const fileUri = vscode.Uri.joinPath(this.workspaceRoot, this.filePath);
         const bytes = await vscode.workspace.fs.readFile(fileUri);
         const text = Buffer.from(bytes).toString("utf8");
@@ -198,7 +201,10 @@ export class MergeEditorPanel {
     }
 }
 
-function detectTextFormatFromText(text: string): { eol: "\n" | "\r\n"; hasTrailingNewline: boolean } {
+function detectTextFormatFromText(text: string): {
+    eol: "\n" | "\r\n";
+    hasTrailingNewline: boolean;
+} {
     const newlineIdx = text.indexOf("\n");
     const eol: "\n" | "\r\n" =
         newlineIdx > 0 && text.charAt(newlineIdx - 1) === "\r" ? "\r\n" : "\n";

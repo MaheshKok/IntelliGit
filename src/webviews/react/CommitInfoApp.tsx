@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
@@ -52,6 +52,11 @@ function App(): React.ReactElement {
         return () => window.removeEventListener("message", handler);
     }, []);
 
+    const handleOpenDiff = useCallback((commitHash: string, filePath: string) => {
+        console.log("[CommitInfo] postMessage openCommitFileDiff", commitHash, filePath);
+        vscode.postMessage({ type: "openCommitFileDiff", commitHash, filePath });
+    }, []);
+
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
@@ -60,6 +65,7 @@ function App(): React.ReactElement {
                 folderIcon={folderIcon}
                 folderExpandedIcon={folderExpandedIcon}
                 folderIconsByName={folderIconsByName}
+                onOpenDiff={handleOpenDiff}
             />
         </>
     );
