@@ -17,6 +17,7 @@ import type { Branch } from "./types";
 import type { CommitAction } from "./webviews/react/commitGraphTypes";
 import { getErrorMessage, isBranchNotFullyMergedError } from "./utils/errors";
 import { deleteFileWithFallback } from "./utils/fileOps";
+import { EMPTY_TREE_HASH } from "./utils/constants";
 import {
     containsConflictMarkers,
     detectInstalledJetBrainsMergeToolCandidates,
@@ -790,8 +791,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const pickMainlineParent = async (
         hash: string,
         actionLabel: string,
+        knownParents?: string[],
     ): Promise<MainlineParentPickResult> => {
-        const parents = await getCommitParentHashes(hash);
+        const parents = knownParents ?? await getCommitParentHashes(hash);
         if (parents.length <= 1) return { kind: "notMerge" };
 
         const pick = await vscode.window.showQuickPick(
@@ -823,31 +825,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.commands.executeCommand("intelligit.refresh");
     };
 
-    const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
     const buildCommitFilePatch = async (
         commitHash: string,
         filePath: string,
         actionLabel: string,
     ): Promise<string | null> => {
         const parents = await getCommitParentHashes(commitHash);
+
+        let baseRef: string;
         if (parents.length > 1) {
-            const mainlineParent = await pickMainlineParent(commitHash, actionLabel);
-            if (mainlineParent.kind === "cancelled") return null;
-            if (mainlineParent.kind === "notMerge") return null;
-            return executor.run([
-                "diff",
-                "--binary",
-                "--full-index",
-                "--no-color",
-                `${commitHash}^${mainlineParent.parentNumber}`,
-                commitHash,
-                "--",
-                filePath,
-            ]);
+            const result = await pickMainlineParent(commitHash, actionLabel, parents);
+            if (result.kind === "cancelled") return null;
+            if (result.kind === "notMerge") return null;
+            baseRef = `${commitHash}^${result.parentNumber}`;
+        } else {
+            baseRef = parents.length === 0 ? EMPTY_TREE_HASH : parents[0];
         }
 
-        const baseRef = parents.length === 0 ? EMPTY_TREE_HASH : parents[0];
         return executor.run([
             "diff",
             "--binary",
@@ -875,7 +869,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             ];
             await executor.run(args);
         } finally {
-            await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+            await fs.promises.rm(tempDir, { recursive: true, force: true }).catch((err) => {
+                console.warn(`[intelligit] Failed to clean up temp patch dir ${tempDir}:`, err);
+            });
         }
     };
 
@@ -891,6 +887,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
     };
 
+    const commitFileChangeModeLabels = {
+        "cherry-pick": {
+            actionTitle: "Cherry-pick Selected Change",
+            confirmLabel: "Apply Change",
+            confirmPrompt: (short: string, filePath: string) =>
+                `Apply the change from ${short} for ${filePath} to your working tree and stage it?`,
+            progressVerb: "Applying",
+            successVerb: "Applied",
+            errorLabel: "Cherry-pick selected change",
+        },
+        revert: {
+            actionTitle: "Revert Selected Change",
+            confirmLabel: "Revert Change",
+            confirmPrompt: (short: string, filePath: string) =>
+                `Apply the inverse of the change from ${short} for ${filePath} to your working tree and stage it?`,
+            progressVerb: "Reverting",
+            successVerb: "Reverted",
+            errorLabel: "Revert selected change",
+        },
+    } as const;
+
     const applySelectedCommitFileChange = async (
         ctx: unknown,
         mode: "cherry-pick" | "revert",
@@ -899,22 +916,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (!fileCtx) return;
 
         const short = fileCtx.commitShortHash || fileCtx.commitHash.slice(0, 8);
-        const actionTitle =
-            mode === "cherry-pick" ? "Cherry-pick Selected Change" : "Revert Selected Change";
-        const confirmLabel = mode === "cherry-pick" ? "Apply Change" : "Revert Change";
-        const confirmMessage =
-            mode === "cherry-pick"
-                ? `Apply the change from ${short} for ${fileCtx.filePath} to your working tree and stage it?`
-                : `Apply the inverse of the change from ${short} for ${fileCtx.filePath} to your working tree and stage it?`;
+        const labels = commitFileChangeModeLabels[mode];
+
         const confirmed = await vscode.window.showWarningMessage(
-            confirmMessage,
+            labels.confirmPrompt(short, fileCtx.filePath),
             { modal: true },
-            confirmLabel,
+            labels.confirmLabel,
         );
-        if (confirmed !== confirmLabel) return;
+        if (confirmed !== labels.confirmLabel) return;
 
         try {
-            const patchText = await buildCommitFilePatch(fileCtx.commitHash, fileCtx.filePath, actionTitle);
+            const patchText = await buildCommitFilePatch(
+                fileCtx.commitHash,
+                fileCtx.filePath,
+                labels.actionTitle,
+            );
             if (patchText === null) return; // merge parent selection cancelled
             if (!patchText.trim()) {
                 vscode.window.showInformationMessage(
@@ -924,23 +940,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
 
             await runWithNotificationProgress(
-                `${mode === "cherry-pick" ? "Applying" : "Reverting"} selected change for ${fileCtx.filePath}...`,
+                `${labels.progressVerb} selected change for ${fileCtx.filePath}...`,
                 async () => {
                     await applyPatchTextToRepo(patchText, mode === "revert");
                 },
             );
 
             vscode.window.showInformationMessage(
-                `${
-                    mode === "cherry-pick" ? "Applied" : "Reverted"
-                } selected change from ${short} for ${fileCtx.filePath}.`,
+                `${labels.successVerb} selected change from ${short} for ${fileCtx.filePath}.`,
             );
-            await refreshConflictUi();
         } catch (error) {
             const message = getErrorMessage(error);
-            vscode.window.showErrorMessage(
-                `${mode === "cherry-pick" ? "Cherry-pick selected change" : "Revert selected change"} failed: ${message}`,
-            );
+            vscode.window.showErrorMessage(`${labels.errorLabel} failed: ${message}`);
+        } finally {
             await refreshConflictUi().catch(() => {});
         }
     };

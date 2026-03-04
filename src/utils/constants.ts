@@ -7,3 +7,9 @@
  */
 export const SYSTEM_FONT_STACK =
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+/**
+ * SHA1 of git's empty tree object. Used to diff initial commits (no parent)
+ * against an empty baseline: `git diff <EMPTY_TREE_HASH> <commit>`.
+ */
+export const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";

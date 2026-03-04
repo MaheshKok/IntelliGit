@@ -685,13 +685,13 @@ describe("GitOps", () => {
 
         it("returns shelved patch with expected git args", async () => {
             const executor = createMockExecutor({
-                "stash show -p stash@{0} -- src/a.ts": "diff --git a/src/a.ts b/src/a.ts",
+                "diff stash@{0}^ stash@{0} -- src/a.ts": "diff --git a/src/a.ts b/src/a.ts",
             });
             const ops = new GitOps(executor);
 
             await expect(ops.getShelvedFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["stash", "show", "-p", "stash@{0}", "--", "src/a.ts"],
+                ["diff", "stash@{0}^", "stash@{0}", "--", "src/a.ts"],
             ]);
         });
 

@@ -436,7 +436,7 @@ function CommitFolderRow({
     );
 }
 
-function CommitFileRow({
+const CommitFileRow = React.memo(function CommitFileRow({
     file,
     depth,
     commitHash,
@@ -450,6 +450,18 @@ function CommitFileRow({
     const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
     const fileName = getLeafName(file.path);
 
+    const vscodeContext = useMemo(
+        () =>
+            JSON.stringify({
+                webviewSection: "commitInfoFile",
+                filePath: file.path,
+                commitHash,
+                commitShortHash,
+                preventDefaultContextMenuItems: true,
+            }),
+        [file.path, commitHash, commitShortHash],
+    );
+
     return (
         <Flex
             align="center"
@@ -462,13 +474,7 @@ function CommitFileRow({
             cursor="default"
             position="relative"
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
-            data-vscode-context={JSON.stringify({
-                webviewSection: "commitInfoFile",
-                filePath: file.path,
-                commitHash,
-                commitShortHash,
-                preventDefaultContextMenuItems: true,
-            })}
+            data-vscode-context={vscodeContext}
             title={file.path}
         >
             <InfoIndentGuides treeDepth={depth} />
@@ -501,7 +507,7 @@ function CommitFileRow({
             <StatusBadge status={file.status} />
         </Flex>
     );
-}
+});
 
 function InfoIndentGuides({ treeDepth }: { treeDepth: number }): React.ReactElement {
     return (

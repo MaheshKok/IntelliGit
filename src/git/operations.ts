@@ -8,6 +8,7 @@ import type {
     StashEntry,
     MergeConflictFile,
 } from "../types";
+import { getErrorMessage } from "../utils/errors";
 
 declare const require: (id: string) => unknown;
 
@@ -39,10 +40,6 @@ function getOutputChannel(): OutputChannelLike {
         ? vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME)
         : { appendLine: (value: string) => console.warn(value) };
     return outputChannel;
-}
-
-function getErrorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
 }
 
 function logGitOpsWarning(context: string, err: unknown, options?: { notifyUser?: boolean }): void {
@@ -620,7 +617,8 @@ export class GitOps {
 
     async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
         assertStashIndex(index);
-        return this.executor.run(["stash", "show", "-p", `stash@{${index}}`, "--", filePath]);
+        const ref = `stash@{${index}}`;
+        return this.executor.run(["diff", `${ref}^`, ref, "--", filePath]);
     }
 
     async stashSave(message: string, paths?: string[]): Promise<string> {
