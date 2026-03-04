@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.5.2",
+    "version": "0.5.3",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -374,8 +374,7 @@
                     "command": "intelligit.fileRefresh",
                     "when": "webviewId == 'intelligit.commitPanel' && !intelligit.commitPanel.refreshing",
                     "group": "3_info@2"
-                }
-                ,
+                },
                 {
                     "command": "intelligit.commitFileCompareWithLocal",
                     "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",

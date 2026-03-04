@@ -58,5 +58,8 @@ CLAUDE.md
 *.db-shm
 *.db-wal
 
+# vexp index data
+.vexp/**
+
 # Build scripts
 scripts/**
