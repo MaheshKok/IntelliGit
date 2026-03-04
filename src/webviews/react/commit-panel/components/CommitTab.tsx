@@ -58,7 +58,7 @@ export function CommitTab({
     const vscode = getVsCodeApi();
     const [groupByDir, setGroupByDir] = useState<boolean>(() => {
         const saved = vscode.getState();
-        return (saved as { groupByDir?: boolean } | undefined)?.groupByDir ?? true;
+        return typeof saved?.groupByDir === "boolean" ? saved.groupByDir : true;
     });
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
