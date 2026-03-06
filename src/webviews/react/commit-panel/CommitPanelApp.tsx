@@ -1,7 +1,7 @@
 // Entry point for the commit panel React webview. Wraps the app in
 // ChakraProvider with the VS Code theme and composes all panels.
 
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import theme from "./theme";
@@ -19,6 +19,15 @@ function App(): React.ReactElement {
         useCheckedFiles(state.files);
 
     const vscode = getVsCodeApi();
+    const [groupByDir, setGroupByDir] = useState<boolean>(() => {
+        const saved = vscode.getState();
+        return typeof saved?.groupByDir === "boolean" ? saved.groupByDir : true;
+    });
+
+    useEffect(() => {
+        const prev = vscode.getState() ?? {};
+        vscode.setState({ ...prev, groupByDir });
+    }, [groupByDir]);
 
     const handleMessageChange = useCallback(
         (message: string) => {
@@ -83,6 +92,8 @@ function App(): React.ReactElement {
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}
+                        groupByDir={groupByDir}
+                        onToggleGroupBy={() => setGroupByDir((g) => !g)}
                     />
                 }
                 shelfContent={
@@ -93,6 +104,7 @@ function App(): React.ReactElement {
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}
+                        groupByDir={groupByDir}
                     />
                 }
             />

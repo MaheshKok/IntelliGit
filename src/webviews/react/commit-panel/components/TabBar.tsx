@@ -31,7 +31,7 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
         { key: "commit", label: "Commit", content: commitContent },
         {
             key: "shelf",
-            label: `Shelf${stashCount > 0 ? ` (${stashCount})` : ""}`,
+            label: `Stash${stashCount > 0 ? ` (${stashCount})` : ""}`,
             content: shelfContent,
         },
     ];

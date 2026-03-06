@@ -1,7 +1,7 @@
 // The main Commit tab: toolbar + file tree + drag handle + commit area.
 // Composes all commit-related sub-components into the commit workflow.
 
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { Toolbar } from "./Toolbar";
 import { FileTree } from "./FileTree";
@@ -28,6 +28,8 @@ interface Props {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     onCommitAndPush: () => void;
+    groupByDir: boolean;
+    onToggleGroupBy: () => void;
 }
 
 export function CommitTab({
@@ -48,6 +50,8 @@ export function CommitTab({
     onAmendChange,
     onCommit,
     onCommitAndPush,
+    groupByDir,
+    onToggleGroupBy,
 }: Props): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
@@ -56,17 +60,8 @@ export function CommitTab({
         containerRef,
     );
     const vscode = getVsCodeApi();
-    const [groupByDir, setGroupByDir] = useState<boolean>(() => {
-        const saved = vscode.getState();
-        return typeof saved?.groupByDir === "boolean" ? saved.groupByDir : true;
-    });
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
-
-    useEffect(() => {
-        const prev = vscode.getState() ?? {};
-        vscode.setState({ ...prev, groupByDir });
-    }, [groupByDir]);
 
     const handleRefresh = useCallback(() => {
         vscode.postMessage({ type: "refresh" });
@@ -104,7 +99,7 @@ export function CommitTab({
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing}
                 onRollback={handleRollback}
-                onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                onToggleGroupBy={onToggleGroupBy}
                 onShelve={handleShelve}
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}

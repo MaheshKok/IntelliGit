@@ -19,6 +19,7 @@ interface Props {
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
+    groupByDir: boolean;
 }
 
 type ShelfActionKind = "apply" | "pop" | "delete";
@@ -30,9 +31,10 @@ export function ShelfTab({
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
+    groupByDir,
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
-    const tree = useFileTree(shelfFiles, true);
+    const tree = useFileTree(shelfFiles, groupByDir);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
 
     const handleSelect = useCallback(
