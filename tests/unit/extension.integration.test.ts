@@ -97,6 +97,7 @@ const executorRun = vi.fn(defaultExecutorRunImpl);
 
 const gitOpsState = {
     isRepository: vi.fn(async () => true),
+    getRepositoryRoot: vi.fn(async () => "/repo"),
     getBranches: vi.fn(async () => [
         { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
         {
@@ -374,6 +375,7 @@ vi.mock("../../src/git/operations", async (importOriginal) => {
         UpstreamPushDeclinedError: actual.UpstreamPushDeclinedError,
         GitOps: class {
             isRepository = gitOpsState.isRepository;
+            getRepositoryRoot = gitOpsState.getRepositoryRoot;
             getBranches = gitOpsState.getBranches;
             getCommitDetail = gitOpsState.getCommitDetail;
             getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;

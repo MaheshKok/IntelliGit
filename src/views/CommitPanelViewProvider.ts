@@ -33,6 +33,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
+        private readonly repoRootUri?: vscode.Uri,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
@@ -428,6 +429,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getWorkspaceRoot(): vscode.Uri {
+        if (this.repoRootUri) return this.repoRootUri;
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
         if (!workspaceRoot) {
             throw new Error("No workspace folder is open.");

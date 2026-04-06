@@ -5,6 +5,14 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-04-06
+
+### Fixed
+
+- Fix commits failing when VS Code opens a subfolder of a git repository (e.g. opening `/root/client/project2` when the git root is `/root/client`). The extension now discovers the actual git repository root via `git rev-parse --show-toplevel` instead of assuming the workspace folder is the repo root.
+- Fix file paths being doubled (e.g. `project2/project2/file.ts`) when opening files, showing diffs, jumping to source, or deleting files from the commit panel in nested workspace scenarios.
+- Fix `.git` directory file watchers silently failing to register when the workspace folder differs from the git root, causing auto-refresh to stop working.
+
 ## [0.6.2] - 2026-03-16
 
 ### Security
