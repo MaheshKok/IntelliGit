@@ -1,7 +1,7 @@
 // Tests for the nested subfolder commit fix: verifying correct git repository
 // root discovery when VS Code workspace folder differs from the git repo root.
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 // Mock vscode before any imports that depend on it
 vi.mock("vscode", () => ({
@@ -35,10 +35,7 @@ vi.mock("vscode", () => ({
 
 import { GitOps } from "../../src/git/operations";
 import type { GitExecutor } from "../../src/git/executor";
-import {
-    getRepoRelativeFilePathFromUri,
-    normalizeGitPath,
-} from "../../src/services/diffService";
+import { getRepoRelativeFilePathFromUri, normalizeGitPath } from "../../src/services/diffService";
 import { assertRepoRelativePath } from "../../src/utils/fileOps";
 import * as path from "path";
 
