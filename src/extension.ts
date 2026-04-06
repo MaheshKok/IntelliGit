@@ -36,16 +36,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
     if (!workspaceFolder) return;
 
-    const repoRoot = workspaceFolder.uri.fsPath;
-    const executor = new GitExecutor(repoRoot);
-    const gitOps = new GitOps(executor);
+    // Use the workspace folder to bootstrap a temporary GitOps for repo discovery.
+    // The actual git repo root may differ from the workspace folder when a subfolder
+    // of a repository is opened directly (e.g. opening /root/client/project2 when
+    // the git root is /root/client).
+    const workspacePath = workspaceFolder.uri.fsPath;
+    const bootstrapExecutor = new GitExecutor(workspacePath);
+    const bootstrapGitOps = new GitOps(bootstrapExecutor);
 
+    let repoRoot: string;
     try {
-        const isRepo = await gitOps.isRepository();
+        const isRepo = await bootstrapGitOps.isRepository();
         if (!isRepo) return;
+        repoRoot = await bootstrapGitOps.getRepositoryRoot();
     } catch {
         return;
     }
+
+    // Create the real executor rooted at the actual git repository root.
+    const executor = new GitExecutor(repoRoot);
+    const gitOps = new GitOps(executor);
 
     // Cached branch list for webview context menu lookups
     let currentBranches: Branch[] = [];
@@ -53,10 +63,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Providers ---
 
+    const repoRootUri = vscode.Uri.file(repoRoot);
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
-    const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
-    const mergeConflicts = new MergeConflictsTreeProvider(gitOps, workspaceFolder.uri);
+    const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps, repoRootUri);
+    const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
 
     // --- Register views ---
 
@@ -424,9 +435,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             "intelligit.fileJumpToSource",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
-                const uri = vscode.Uri.joinPath(
-                    workspaceFolder.uri,
-                    assertRepoRelativePath(ctx.filePath),
+                const uri = vscode.Uri.file(
+                    path.join(repoRoot, assertRepoRelativePath(ctx.filePath)),
                 );
                 await vscode.window.showTextDocument(uri);
             },
@@ -443,7 +453,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
                 if (confirm !== "Delete") return;
 
-                const deleted = await deleteFileWithFallback(gitOps, workspaceFolder.uri, safePath);
+                const deleted = await deleteFileWithFallback(
+                    gitOps,
+                    vscode.Uri.file(repoRoot),
+                    safePath,
+                );
                 if (!deleted) return;
 
                 vscode.window.showInformationMessage(`Deleted ${safePath}`);
