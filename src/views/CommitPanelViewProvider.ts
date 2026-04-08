@@ -34,8 +34,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
-        private readonly repoRoot: string,
-        private readonly workspaceState: vscode.Memento,
+        private readonly repoRootUri?: vscode.Uri,
+        private readonly workspaceState?: vscode.Memento,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
@@ -191,7 +191,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "saveCommitDraft": {
                 const message = this.assertString(msg.message, "message");
-                await this.workspaceState.update(
+                await this.workspaceState?.update(
                     this.getCommitDraftStorageKey(),
                     message || undefined,
                 );
@@ -447,6 +447,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getWorkspaceRoot(): vscode.Uri {
+        if (this.repoRootUri) return this.repoRootUri;
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
         if (!workspaceRoot) {
             throw new Error("No workspace folder is open.");
@@ -465,15 +466,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private getCommitDraftStorageKey(): string {
-        return `${CommitPanelViewProvider.COMMIT_DRAFT_KEY_PREFIX}${this.repoRoot}`;
+        const storageRoot =
+            this.repoRootUri?.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!storageRoot) {
+            throw new Error("No workspace folder is open.");
+        }
+        return `${CommitPanelViewProvider.COMMIT_DRAFT_KEY_PREFIX}${storageRoot}`;
     }
 
     private getStoredCommitDraft(): string {
-        return this.workspaceState.get<string>(this.getCommitDraftStorageKey()) ?? "";
+        return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
     }
 
     private async clearStoredCommitDraft(): Promise<void> {
-        await this.workspaceState.update(this.getCommitDraftStorageKey(), undefined);
+        await this.workspaceState?.update(this.getCommitDraftStorageKey(), undefined);
     }
 
     dispose(): void {

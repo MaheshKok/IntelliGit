@@ -222,7 +222,7 @@ async function setupCommitPanelProvider() {
     const provider = new CommitPanelViewProvider(
         { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
         gitOps as unknown as object,
-        "/repo",
+        { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
         draftStore as unknown as object,
     );
     const webview = createWebviewView();
@@ -419,7 +419,7 @@ describe("view providers integration", () => {
         const provider = new CommitPanelViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
-            "/repo",
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
             draftStore as unknown as object,
         );
         const webview = createWebviewView();
@@ -483,7 +483,7 @@ describe("view providers integration", () => {
         const provider = new CommitPanelViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
-            "/repo",
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
             draftStore as unknown as object,
         );
         const webview = createWebviewView();
@@ -607,7 +607,20 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider guards workspace-dependent actions", async () => {
-        const { provider, webview } = await setupCommitPanelProvider();
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+
         workspaceState.workspaceFolders = undefined;
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(showErrorMessage).toHaveBeenCalledWith("No workspace folder is open.");

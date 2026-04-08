@@ -87,6 +87,11 @@ export class GitOps {
         }
     }
 
+    async getRepositoryRoot(): Promise<string> {
+        const root = await this.executor.run(["rev-parse", "--show-toplevel"]);
+        return root.trim();
+    }
+
     async getBranches(): Promise<Branch[]> {
         const format =
             "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)";
