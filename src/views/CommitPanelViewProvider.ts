@@ -243,7 +243,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 vscode.window.showInformationMessage(
                     push ? "Committed and pushed successfully." : "Committed successfully.",
                 );
-                await this.clearStoredCommitDraft();
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 break;
@@ -260,7 +259,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     await this.gitOps.commit(message, amend);
                 });
                 vscode.window.showInformationMessage("Committed successfully.");
-                await this.clearStoredCommitDraft();
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 break;
@@ -277,7 +275,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     await this.gitOps.commitAndPush(message, amend);
                 });
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
-                await this.clearStoredCommitDraft();
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 break;
@@ -477,11 +474,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private getStoredCommitDraft(): string {
         return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
     }
-
-    private async clearStoredCommitDraft(): Promise<void> {
-        await this.workspaceState?.update(this.getCommitDraftStorageKey(), undefined);
-    }
-
     dispose(): void {
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();

@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-04-08
+
+### Fixed
+
+- Preserve the last typed commit message text after successful commit flows so reopening the same project restores the draft instead of showing an empty commit message box.
+
+### Tests
+
+- Update commit panel provider coverage to verify successful commit paths keep the persisted commit draft text.
+
 ## [0.6.4] - 2026-04-08
 
 ### Added
