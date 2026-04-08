@@ -375,8 +375,9 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider handles commit flows", async () => {
+    it("CommitPanelViewProvider preserves stored commit text after successful commit flows", async () => {
         const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
+        await webview.send({ type: "saveCommitDraft", message: "feat: keep draft" });
         await webview.send({ type: "commit", message: "", amend: false });
         expect(showWarningMessage).toHaveBeenCalledWith("Enter a commit message.");
 
@@ -402,7 +403,13 @@ describe("view providers integration", () => {
         expect(gitOps.commit).toHaveBeenCalled();
         expect(gitOps.commitAndPush).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
-        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", undefined);
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: keep draft");
+        expect(
+            draftStore.update.mock.calls.some(
+                ([key, value]: [string, string | undefined]) =>
+                    key === "commitDraft:/repo" && value === undefined,
+            ),
+        ).toBe(false);
 
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({
