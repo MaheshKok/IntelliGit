@@ -57,6 +57,20 @@ const workspaceState: {
     workspaceFolders: [{ uri: { fsPath: "/repo", path: "/repo" } }],
 };
 
+function createMemento(initial: Record<string, string> = {}) {
+    const store = new Map<string, string>(Object.entries(initial));
+    return {
+        get: vi.fn((key: string) => store.get(key)),
+        update: vi.fn(async (key: string, value: string | undefined) => {
+            if (value === undefined) {
+                store.delete(key);
+            } else {
+                store.set(key, value);
+            }
+        }),
+    };
+}
+
 const vscodeMock = {
     EventEmitter: FakeEventEmitter,
     TreeItem: FakeTreeItem,
@@ -204,9 +218,12 @@ function makeGitOpsMock() {
 async function setupCommitPanelProvider() {
     const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
     const gitOps = makeGitOpsMock();
+    const draftStore = createMemento();
     const provider = new CommitPanelViewProvider(
         { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
         gitOps as unknown as object,
+        "/repo",
+        draftStore as unknown as object,
     );
     const webview = createWebviewView();
     provider.resolveWebviewView(
@@ -215,7 +232,7 @@ async function setupCommitPanelProvider() {
         {} as unknown as object,
     );
     await webview.send({ type: "ready" });
-    return { provider, gitOps, webview };
+    return { provider, gitOps, webview, draftStore };
 }
 
 describe("view providers integration", () => {
@@ -359,7 +376,7 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider handles commit flows", async () => {
-        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
         await webview.send({ type: "commit", message: "", amend: false });
         expect(showWarningMessage).toHaveBeenCalledWith("Enter a commit message.");
 
@@ -385,12 +402,43 @@ describe("view providers integration", () => {
         expect(gitOps.commit).toHaveBeenCalled();
         expect(gitOps.commitAndPush).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", undefined);
 
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",
             message: "last message",
         });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider restores and saves commit draft text per repo", async () => {
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const draftStore = createMemento({ "commitDraft:/repo": "draft from storage" });
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            "/repo",
+            draftStore as unknown as object,
+        );
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            message: "draft from storage",
+        });
+
+        await webview.send({ type: "saveCommitDraft", message: "draft changed" });
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "draft changed");
+
         provider.dispose();
     });
 
@@ -431,9 +479,12 @@ describe("view providers integration", () => {
     it("CommitPanelViewProvider updates description and fires file count after commit", async () => {
         const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
+        const draftStore = createMemento();
         const provider = new CommitPanelViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            "/repo",
+            draftStore as unknown as object,
         );
         const webview = createWebviewView();
 

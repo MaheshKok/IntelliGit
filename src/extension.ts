@@ -55,7 +55,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
-    const commitPanel = new CommitPanelViewProvider(context.extensionUri, gitOps);
+    const commitPanel = new CommitPanelViewProvider(
+        context.extensionUri,
+        gitOps,
+        repoRoot,
+        context.workspaceState,
+    );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, workspaceFolder.uri);
 
     // --- Register views ---
