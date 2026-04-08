@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-04-08
+
+### Added
+
+- Persist unsaved commit message drafts per repository so the Commit panel restores the last typed text after closing and reopening the project or restarting VS Code.
+
+### Tests
+
+- Add integration coverage for restoring, saving, and clearing persisted commit drafts in the commit panel provider.
+
 ## [0.6.3] - 2026-04-06
 
 ### Fixed

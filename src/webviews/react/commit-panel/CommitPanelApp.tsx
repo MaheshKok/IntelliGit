@@ -33,8 +33,9 @@ function App(): React.ReactElement {
     const handleMessageChange = useCallback(
         (message: string) => {
             dispatch({ type: "SET_COMMIT_MESSAGE", message });
+            vscode.postMessage({ type: "saveCommitDraft", message });
         },
-        [dispatch],
+        [dispatch, vscode],
     );
 
     const handleAmendChange = useCallback(

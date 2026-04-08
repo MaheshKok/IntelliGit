@@ -17,6 +17,7 @@ import type {
 export type OutboundMessage =
     | { type: "ready" }
     | { type: "refresh" }
+    | { type: "saveCommitDraft"; message: string }
     | { type: "stageFiles"; paths: string[] }
     | { type: "unstageFiles"; paths: string[] }
     | { type: "commitSelected"; paths: string[]; message: string; amend: boolean; push: boolean }
@@ -48,6 +49,7 @@ export type InboundMessage =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
+    | { type: "restoreCommitDraft"; message: string }
     | { type: "lastCommitMessage"; message: string }
     | { type: "committed" }
     | { type: "refreshing"; active: boolean }
@@ -82,6 +84,7 @@ export type CommitPanelAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
+    | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
     | { type: "COMMITTED" }
     | { type: "SET_REFRESHING"; active: boolean }

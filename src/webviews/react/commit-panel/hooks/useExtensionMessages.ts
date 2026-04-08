@@ -37,6 +37,8 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
             };
         case "SET_REFRESHING":
             return { ...state, isRefreshing: action.active };
+        case "RESTORE_COMMIT_DRAFT":
+            return { ...state, commitMessage: action.message };
         case "SET_LAST_COMMIT_MESSAGE":
             return { ...state, commitMessage: action.message };
         case "COMMITTED":
@@ -71,6 +73,9 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         folderIconsByName: msg.folderIconsByName,
                         iconFonts: msg.iconFonts,
                     });
+                    break;
+                case "restoreCommitDraft":
+                    dispatch({ type: "RESTORE_COMMIT_DRAFT", message: msg.message });
                     break;
                 case "lastCommitMessage":
                     dispatch({ type: "SET_LAST_COMMIT_MESSAGE", message: msg.message });
