@@ -1,24 +1,31 @@
 // Tests for pure utility functions in src/services/gitHelpers.ts.
 
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("vscode", () => ({
+    ProgressLocation: { Notification: 15 },
     window: {
         showQuickPick: vi.fn(),
         showWarningMessage: vi.fn(),
         showInformationMessage: vi.fn(),
+        showErrorMessage: vi.fn(),
+        withProgress: vi.fn(async (_options, task) => task({}, {})),
     },
 }));
 
+import * as vscode from "vscode";
 import {
     isValidGitHash,
     isValidBranchName,
     isHashMatch,
     getLocalNameFromRemote,
+    isRebaseablePushRejection,
+    promptRebaseAfterPushRejection,
     resolveTrackedRemoteBranch,
     resolveRemoteDeleteTarget,
 } from "../../src/services/gitHelpers";
 import type { Branch } from "../../src/types";
+import type { GitOps } from "../../src/git/operations";
 
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
     return {
@@ -31,6 +38,10 @@ function makeBranch(overrides: Partial<Branch> = {}): Branch {
         ...overrides,
     };
 }
+
+beforeEach(() => {
+    vi.clearAllMocks();
+});
 
 describe("isValidGitHash", () => {
     it("accepts 7-char hex hash", () => {
@@ -107,6 +118,60 @@ describe("getLocalNameFromRemote", () => {
 
     it("preserves slashes in branch name", () => {
         expect(getLocalNameFromRemote("origin/feature/my-branch")).toBe("feature/my-branch");
+    });
+});
+
+describe("push rejection rebase prompt", () => {
+    const rejection = new Error(
+        [
+            "! [rejected] main -> main (fetch first)",
+            "error: failed to push some refs to 'https://example.com/repo.git'",
+            "hint: Updates were rejected because the remote contains work that you do not have locally.",
+        ].join("\n"),
+    );
+
+    it("detects non-fast-forward push rejections", () => {
+        expect(isRebaseablePushRejection(rejection)).toBe(true);
+    });
+
+    it("does not detect hook or permission push failures", () => {
+        expect(
+            isRebaseablePushRejection(
+                new Error("remote: pre-receive hook declined\nerror: failed to push some refs"),
+            ),
+        ).toBe(false);
+    });
+
+    it("runs pull --rebase when the user selects Rebase", async () => {
+        vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce("Rebase" as never);
+        const gitOps = {
+            pullRebase: vi.fn(async () => "ok"),
+        } as unknown as GitOps;
+
+        await expect(promptRebaseAfterPushRejection(rejection, gitOps)).resolves.toBe(true);
+
+        expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Push rejected"),
+            { modal: true },
+            "Rebase",
+        );
+        expect(gitOps.pullRebase).toHaveBeenCalledTimes(1);
+        expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Rebased current branch"),
+        );
+    });
+
+    it("returns false without prompting for unrelated errors", async () => {
+        const gitOps = {
+            pullRebase: vi.fn(async () => "ok"),
+        } as unknown as GitOps;
+
+        await expect(
+            promptRebaseAfterPushRejection(new Error("permission denied"), gitOps),
+        ).resolves.toBe(false);
+
+        expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+        expect(gitOps.pullRebase).not.toHaveBeenCalled();
     });
 });
 

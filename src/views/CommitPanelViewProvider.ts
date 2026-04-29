@@ -10,6 +10,7 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
+import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -230,16 +231,24 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (paths.length > 0) {
                     await this.gitOps.stageFiles(paths);
                 }
-                await runWithNotificationProgress(
-                    push ? "Committing and pushing..." : "Committing...",
-                    async () => {
-                        if (push) {
-                            await this.gitOps.commitAndPush(message, amend);
-                        } else {
-                            await this.gitOps.commit(message, amend);
-                        }
-                    },
-                );
+                try {
+                    await runWithNotificationProgress(
+                        push ? "Committing and pushing..." : "Committing...",
+                        async () => {
+                            if (push) {
+                                await this.gitOps.commitAndPush(message, amend);
+                            } else {
+                                await this.gitOps.commit(message, amend);
+                            }
+                        },
+                    );
+                } catch (err) {
+                    if (push && (await promptRebaseAfterPushRejection(err, this.gitOps))) {
+                        await this.refreshData();
+                        return;
+                    }
+                    throw err;
+                }
                 vscode.window.showInformationMessage(
                     push ? "Committed and pushed successfully." : "Committed successfully.",
                 );
@@ -271,9 +280,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage("Enter a commit message.");
                     return;
                 }
-                await runWithNotificationProgress("Committing and pushing...", async () => {
-                    await this.gitOps.commitAndPush(message, amend);
-                });
+                try {
+                    await runWithNotificationProgress("Committing and pushing...", async () => {
+                        await this.gitOps.commitAndPush(message, amend);
+                    });
+                } catch (err) {
+                    if (await promptRebaseAfterPushRejection(err, this.gitOps)) {
+                        await this.refreshData();
+                        return;
+                    }
+                    throw err;
+                }
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();

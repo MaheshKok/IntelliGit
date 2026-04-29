@@ -469,6 +469,10 @@ export class GitOps {
         }
     }
 
+    async pullRebase(): Promise<string> {
+        return this.executor.run(["pull", "--rebase"]);
+    }
+
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
         await this.commit(message, amend);
         return this.push();

@@ -450,6 +450,17 @@ describe("GitOps", () => {
         });
     });
 
+    describe("pullRebase", () => {
+        it("calls git pull --rebase", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+            await ops.pullRebase();
+
+            const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
+            expect(call).toEqual(["pull", "--rebase"]);
+        });
+    });
+
     describe("commitAndPush", () => {
         it("calls commit then push", async () => {
             const executor = createMockExecutor({});

@@ -172,6 +172,55 @@ export async function isCommitUnpushed(hash: string, gitOps: GitOps): Promise<bo
     return unpushed.some((h) => isHashMatch(h, hash));
 }
 
+const REBASE_PUSH_REJECTION_PATTERNS = [
+    "fetch first",
+    "non-fast-forward",
+    "remote contains work",
+    "tip of your current branch is behind",
+    "updates were rejected because",
+];
+
+export function isRebaseablePushRejection(error: unknown): boolean {
+    const message = getErrorMessage(error).toLowerCase();
+    const isRejectedPush =
+        message.includes("failed to push some refs") || message.includes("updates were rejected");
+
+    return (
+        isRejectedPush &&
+        message.includes("rejected") &&
+        REBASE_PUSH_REJECTION_PATTERNS.some((pattern) => message.includes(pattern))
+    );
+}
+
+export async function promptRebaseAfterPushRejection(
+    error: unknown,
+    gitOps: GitOps,
+): Promise<boolean> {
+    if (!isRebaseablePushRejection(error)) return false;
+
+    const rebaseLabel = "Rebase";
+    const selection = await vscode.window.showWarningMessage(
+        "Push rejected because the remote branch contains commits that are not in your local branch. Rebase now?",
+        { modal: true },
+        rebaseLabel,
+    );
+    if (selection !== rebaseLabel) return true;
+
+    try {
+        await runWithNotificationProgress("Rebasing current branch...", async () => {
+            await gitOps.pullRebase();
+        });
+        vscode.window.showInformationMessage(
+            "Rebased current branch. Push again to publish your changes.",
+        );
+    } catch (rebaseError) {
+        const message = getErrorMessage(rebaseError);
+        vscode.window.showErrorMessage(`Rebase failed: ${message}`);
+    }
+
+    return true;
+}
+
 export async function getUndoCommitCount(hash: string, executor: GitExecutor): Promise<number> {
     const raw = (await executor.run(["rev-list", "--count", `${hash}^..HEAD`])).trim();
     const parsed = Number(raw);
