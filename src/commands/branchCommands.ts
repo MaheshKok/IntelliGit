@@ -13,6 +13,7 @@ import {
     getCheckedOutBranchName,
     getLocalBranchMergeStatusForDelete,
     isValidBranchName,
+    promptRebaseAfterPushRejection,
     resolveRemoteDeleteTarget,
     resolveRemoteName,
     resolveTrackedRemoteBranch,
@@ -259,6 +260,10 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     if (err instanceof UpstreamPushDeclinedError) return;
+                    if (branch.isCurrent && (await promptRebaseAfterPushRejection(err, gitOps))) {
+                        await vscode.commands.executeCommand("intelligit.refresh");
+                        return;
+                    }
                     const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(`Push failed: ${msg}`);
                 }
