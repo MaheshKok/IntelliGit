@@ -75,6 +75,13 @@ export interface WorkingFile {
     icon?: ThemeTreeIcon;
 }
 
+/** One line of history shown when amending a commit (JetBrains-style context). */
+export interface AmendBranchCommitSummary {
+    shortHash: string;
+    subject: string;
+    date: string;
+}
+
 export interface StashEntry {
     index: number;
     message: string;

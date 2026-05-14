@@ -204,6 +204,9 @@ function makeGitOpsMock() {
         commit: vi.fn(async () => "ok"),
         commitAndPush: vi.fn(async () => "ok"),
         getLastCommitMessage: vi.fn(async () => "last message"),
+        getAmendBranchCommits: vi.fn(async () => [
+            { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+        ]),
         rollbackAll: vi.fn(async () => undefined),
         rollbackFiles: vi.fn(async () => undefined),
         shelveSave: vi.fn(async () => "saved"),
@@ -415,6 +418,13 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",
             message: "last message",
+        });
+
+        await webview.send({ type: "getAmendBranchCommits" });
+        expect(gitOps.getAmendBranchCommits).toHaveBeenCalled();
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "amendBranchCommits",
+            commits: [{ shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" }],
         });
         provider.dispose();
     });
