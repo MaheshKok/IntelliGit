@@ -7,6 +7,7 @@ import type {
     ThemeTreeIcon,
     WorkingFile,
     StashEntry,
+    AmendBranchCommitSummary,
 } from "../../../types";
 import type {
     TreeFolder as GenericTreeFolder,
@@ -24,6 +25,7 @@ export type OutboundMessage =
     | { type: "commit"; message: string; amend: boolean }
     | { type: "commitAndPush"; message: string; amend: boolean }
     | { type: "getLastCommitMessage" }
+    | { type: "getAmendBranchCommits" }
     | { type: "rollback"; paths: string[] }
     | { type: "showDiff"; path: string }
     | { type: "shelveSave"; name?: string; paths?: string[] }
@@ -51,6 +53,7 @@ export type InboundMessage =
       }
     | { type: "restoreCommitDraft"; message: string }
     | { type: "lastCommitMessage"; message: string }
+    | { type: "amendBranchCommits"; commits: AmendBranchCommitSummary[] }
     | { type: "committed" }
     | { type: "refreshing"; active: boolean }
     | { type: "error"; message: string };
@@ -67,6 +70,9 @@ export interface CommitPanelState {
     iconFonts: ThemeIconFont[];
     commitMessage: string;
     isAmend: boolean;
+    amendBranchCommits: AmendBranchCommitSummary[];
+    /** False until the host responds to `getAmendBranchCommits` for the current amend session. */
+    amendBranchHistoryLoaded: boolean;
     isRefreshing: boolean;
     error: string | null;
 }
@@ -90,7 +96,8 @@ export type CommitPanelAction =
     | { type: "SET_REFRESHING"; active: boolean }
     | { type: "SET_ERROR"; message: string }
     | { type: "SET_COMMIT_MESSAGE"; message: string }
-    | { type: "SET_AMEND"; isAmend: boolean };
+    | { type: "SET_AMEND"; isAmend: boolean }
+    | { type: "SET_AMEND_BRANCH_COMMITS"; commits: AmendBranchCommitSummary[] };
 
 /** A node in the directory tree used for grouped file display. */
 export interface TreeNode extends Omit<GenericTreeFolder<WorkingFile>, "children"> {

@@ -8,7 +8,13 @@ import { FileTree } from "./FileTree";
 import { CommitArea } from "./CommitArea";
 import { useDragResize } from "../hooks/useDragResize";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
+import type {
+    ThemeFolderIconMap,
+    ThemeTreeIcon,
+    WorkingFile,
+    AmendBranchCommitSummary,
+} from "../../../../types";
+import { AmendContextSection } from "./AmendContextSection";
 
 interface Props {
     files: WorkingFile[];
@@ -17,6 +23,8 @@ interface Props {
     folderIconsByName?: ThemeFolderIconMap;
     commitMessage: string;
     isAmend: boolean;
+    amendBranchCommits: AmendBranchCommitSummary[];
+    amendBranchHistoryLoaded: boolean;
     isRefreshing: boolean;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
@@ -39,6 +47,8 @@ export function CommitTab({
     folderIconsByName,
     commitMessage,
     isAmend,
+    amendBranchCommits,
+    amendBranchHistoryLoaded,
     isRefreshing,
     checkedPaths,
     onToggleFile,
@@ -105,6 +115,13 @@ export function CommitTab({
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
                 onCollapseAll={() => setCollapseAllSignal((s) => s + 1)}
             />
+
+            {isAmend ? (
+                <AmendContextSection
+                    commits={amendBranchCommits}
+                    historyLoaded={amendBranchHistoryLoaded}
+                />
+            ) : null}
 
             <Box flex="1 1 auto" overflowY="auto" minH="40px">
                 <FileTree

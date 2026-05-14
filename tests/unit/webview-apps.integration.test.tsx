@@ -181,6 +181,31 @@ describe("CommitPanelApp integration", () => {
         );
 
         fireClick(document.querySelector('[data-testid="amend-checkbox"]'));
+        await flush();
+
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "amendBranchCommits",
+                        commits: [
+                            {
+                                shortHash: "deadbeb",
+                                subject: "feat: on branch",
+                                date: "2026-02-19T12:00:00Z",
+                            },
+                        ],
+                    },
+                }),
+            );
+        });
+        await flush();
+        expect(document.body.textContent).toContain("Commits on this branch");
+        expect(document.body.textContent).toContain("deadbeb");
+        expect(document.body.textContent).toContain("Amend commit");
 
         act(() => {
             window.dispatchEvent(
@@ -225,6 +250,7 @@ describe("CommitPanelApp integration", () => {
             expect.objectContaining({ type: "refresh" }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "shelfApply", index: 0 }),
         );
