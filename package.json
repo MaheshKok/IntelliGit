@@ -38,6 +38,8 @@
     ],
     "activationEvents": [
         "workspaceContains:.git",
+        "workspaceContains:**/.git",
+        "onCommand:intelligit.selectRepository",
         "onView:intelligit.commitGraph"
     ],
     "main": "./dist/extension.js",
@@ -101,6 +103,12 @@
                 "command": "intelligit.filterByBranch",
                 "title": "Filter by Branch",
                 "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.selectRepository",
+                "title": "Select Repository",
+                "category": "IntelliGit",
+                "icon": "$(repo)"
             },
             {
                 "command": "intelligit.checkout",

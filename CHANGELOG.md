@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add a commit context menu action to squash an unpushed selected commit range into one commit.
 - Add amend commit branch-history context and IntelliJ-style amend actions in the commit panel.
+- Discover Git repositories inside non-Git workspace folders and add an IntelliGit repository selector for multi-project workspaces.
 
 ### Fixed
 

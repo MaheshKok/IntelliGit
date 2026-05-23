@@ -28,6 +28,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private lastFileCount = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
+    private repositoryLabel = "";
 
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
@@ -35,10 +36,24 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
-        private readonly repoRootUri?: vscode.Uri,
+        private repoRootUri?: vscode.Uri,
         private readonly workspaceState?: vscode.Memento,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+    }
+
+    setRepositoryRootUri(repoRootUri: vscode.Uri): void {
+        this.repoRootUri = repoRootUri;
+        this.selectedShelfIndex = null;
+        this.files = [];
+        this.stashes = [];
+        this.shelfFiles = [];
+        this.updateViewCount(0);
+    }
+
+    setRepositoryLabel(label: string): void {
+        this.repositoryLabel = label;
+        this.updateViewCount(this.lastFileCount);
     }
 
     resolveWebviewView(
@@ -470,7 +485,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
         if (!this.view) return;
-        this.view.description = count > 0 ? `${count}` : "";
+        const countText = count > 0 ? ` (${count})` : "";
+        this.view.description = this.repositoryLabel
+            ? `${this.repositoryLabel}${countText}`
+            : count > 0
+              ? String(count)
+              : "";
     }
 
     private postToWebview(msg: InboundMessage): void {

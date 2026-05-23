@@ -34,6 +34,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private commitDetailSeq = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
+    private repositoryLabel = "";
 
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
@@ -66,6 +67,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
 
+    setRepositoryLabel(label: string): void {
+        this.repositoryLabel = label;
+        if (this.view) this.view.description = label;
+    }
+
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -74,6 +80,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
+        webviewView.description = this.repositoryLabel;
 
         webviewView.webview.options = {
             enableScripts: true,
