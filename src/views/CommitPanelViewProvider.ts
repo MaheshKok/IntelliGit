@@ -49,6 +49,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.stashes = [];
         this.shelfFiles = [];
         this.updateViewCount(0);
+        this.postToWebview({
+            type: "restoreCommitDraft",
+            message: this.getStoredCommitDraft(),
+        });
     }
 
     setRepositoryLabel(label: string): void {

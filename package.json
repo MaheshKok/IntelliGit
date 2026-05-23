@@ -38,7 +38,7 @@
     ],
     "activationEvents": [
         "workspaceContains:.git",
-        "workspaceContains:**/.git",
+        "workspaceContains:**/.git/config",
         "onCommand:intelligit.selectRepository",
         "onView:intelligit.commitGraph"
     ],
@@ -296,6 +296,11 @@
             "view/title": [
                 {
                     "command": "intelligit.refresh",
+                    "when": "view == intelligit.commitGraph",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.selectRepository",
                     "when": "view == intelligit.commitGraph",
                     "group": "navigation"
                 },

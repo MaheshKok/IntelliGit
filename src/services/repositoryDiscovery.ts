@@ -103,9 +103,7 @@ export async function discoverGitRepositories(
     const resolveGitRoot = options.resolveGitRoot ?? defaultResolveGitRoot;
 
     for (const workspaceRoot of roots) {
-        const beforeDirect = seen.size;
         await addResolvedRoot(workspaceRoot, roots, seen, resolveGitRoot);
-        if (seen.size > beforeDirect) continue;
         await scanForGitMarkers(workspaceRoot, roots, seen, resolveGitRoot);
     }
 
