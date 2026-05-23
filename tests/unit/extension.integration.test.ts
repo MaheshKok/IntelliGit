@@ -78,7 +78,12 @@ const defaultExecutorRunImpl = async (args: string[]) => {
     if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return "main";
     if (args[0] === "rev-parse" && args[1] === "HEAD") return "feed1234";
     if (args[0] === "format-patch") return "patch-content";
+    if (args[0] === "status" && args[1] === "--porcelain") return "";
+    if (args[0] === "rev-list" && args[1] === "--reverse" && args[2] === "--parents") {
+        return ["a1b2c3d4 parent0", "feed1234 a1b2c3d4"].join("\n");
+    }
     if (args[0] === "log" && args.includes("--format=%B")) return "current commit body";
+    if (args[0] === "log" && args.includes("--format=%s")) return "first commit\nsecond commit";
     if (args[0] === "rev-list" && args[1] === "--count") return "2";
     if (args[0] === "rev-list" && args[1] === "--parents") {
         const hash = args[args.length - 1];
@@ -834,6 +839,7 @@ describe("extension integration", () => {
         await emitCommitAction({ action: "newTag", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "undoCommit", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "editCommitMessage", hash: "feed1234" });
+        await emitCommitAction({ action: "squashCommits", hash: "a1b2c3d4" });
         await emitCommitAction({ action: "dropCommit", hash: "a1b2c3d4" });
         await emitCommitAction({
             action: "interactiveRebaseFromHere",
@@ -854,6 +860,8 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalledWith(
             expect.arrayContaining(["format-patch", "-1", "--stdout", "a1b2c3d4"]),
         );
+        expect(executorRun).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
+        expect(executorRun).toHaveBeenCalledWith(["commit", "-m", "input"]);
         expect(showErrorMessage).not.toHaveBeenCalledWith(
             "Invalid commit hash received for commit action.",
         );
@@ -1146,6 +1154,11 @@ describe("extension integration", () => {
         await emitCommitAction({ action: "dropCommit", hash: "deadbee" });
 
         gitOpsState.getUnpushedCommitHashes.mockResolvedValueOnce([]);
+        await emitCommitAction({ action: "squashCommits", hash: "a1b2c3d4" });
+        gitOpsState.getUnpushedCommitHashes.mockResolvedValueOnce(["deadbee"]);
+        await emitCommitAction({ action: "squashCommits", hash: "deadbee" });
+
+        gitOpsState.getUnpushedCommitHashes.mockResolvedValueOnce([]);
         await emitCommitAction({ action: "interactiveRebaseFromHere", hash: "a1b2c3d4" });
         gitOpsState.getUnpushedCommitHashes.mockResolvedValueOnce(["deadbee"]);
         await emitCommitAction({ action: "interactiveRebaseFromHere", hash: "deadbee" });
@@ -1179,6 +1192,12 @@ describe("extension integration", () => {
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             "Drop Commit is not available for merge commits.",
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Squash Commits is available only for unpushed commits.",
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Squash Commits is not available for merge commits.",
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             "Interactive Rebase from Here is available only for unpushed commits.",

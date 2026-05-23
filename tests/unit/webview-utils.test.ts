@@ -131,11 +131,13 @@ describe("commit menu", () => {
         const pushUpToHere = items.find((item) => item.action === "pushAllUpToHere");
         const undo = items.find((item) => item.action === "undoCommit");
         const edit = items.find((item) => item.action === "editCommitMessage");
+        const squash = items.find((item) => item.action === "squashCommits");
         const drop = items.find((item) => item.action === "dropCommit");
         const rebase = items.find((item) => item.action === "interactiveRebaseFromHere");
         expect(pushUpToHere?.disabled).toBe(true);
         expect(undo?.disabled).toBe(true);
         expect(edit?.disabled).toBe(true);
+        expect(squash?.disabled).toBe(true);
         expect(drop?.disabled).toBe(true);
         expect(rebase?.disabled).toBe(true);
     });
@@ -152,8 +154,10 @@ describe("commit menu", () => {
         const items = getCommitMenuItems(makeCommit(), true);
         const checkoutRevision = items.find((item) => item.action === "checkoutRevision");
         const pushUpToHere = items.find((item) => item.action === "pushAllUpToHere");
+        const squash = items.find((item) => item.action === "squashCommits");
         expect(checkoutRevision).toBeDefined();
         expect(pushUpToHere).toBeDefined();
+        expect(squash).toBeDefined();
         expect(items.some((item) => item.action === "checkoutMain")).toBe(false);
     });
 });

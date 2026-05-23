@@ -386,6 +386,112 @@ export async function handleCommitContextAction(params: {
             );
             return;
         }
+        case "squashCommits": {
+            if (!(await isCommitUnpushed(validatedHash, gitOps))) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits is available only for unpushed commits.",
+                );
+                return;
+            }
+            if (await isMergeCommitHash(validatedHash, executor)) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits is not available for merge commits.",
+                );
+                return;
+            }
+            try {
+                await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
+            } catch {
+                vscode.window.showErrorMessage(
+                    `Commit ${short} is not in the current branch history.`,
+                );
+                return;
+            }
+
+            const squashParents = await getCommitParentHashes(validatedHash, executor);
+            if (squashParents.length === 0) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits is not available for the initial commit.",
+                );
+                return;
+            }
+
+            const status = (await executor.run(["status", "--porcelain"])).trim();
+            if (status) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits requires a clean working tree. Commit, shelve, or rollback local changes first.",
+                );
+                return;
+            }
+
+            const range = `${validatedHash}^..HEAD`;
+            const rangeLines = (await executor.run(["rev-list", "--reverse", "--parents", range]))
+                .trim()
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean);
+            const rangeHashes = rangeLines.map((line) => line.split(/\s+/)[0]);
+            if (rangeHashes.length < 2) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits requires at least two commits in the selected range.",
+                );
+                return;
+            }
+            if (rangeLines.some((line) => line.split(/\s+/).length > 2)) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits is not available for ranges containing merge commits.",
+                );
+                return;
+            }
+
+            const unpushed = await gitOps.getUnpushedCommitHashes();
+            const allRangeCommitsUnpushed = rangeHashes.every((rangeHash) =>
+                unpushed.some((unpushedHash) => isHashMatch(unpushedHash, rangeHash)),
+            );
+            if (!allRangeCommitsUnpushed) {
+                vscode.window.showErrorMessage(
+                    "Squash Commits is available only when every commit in the selected range is unpushed.",
+                );
+                return;
+            }
+
+            const defaultMessage = (await executor.run(["log", "--reverse", "--format=%s", range]))
+                .trim()
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .join("; ");
+            const squashMessage = await vscode.window.showInputBox({
+                prompt: `Squashed commit message for ${rangeHashes.length} commits`,
+                value: defaultMessage || `Squash ${rangeHashes.length} commits`,
+            });
+            if (!squashMessage) return;
+
+            const confirm = await vscode.window.showWarningMessage(
+                `Squash ${rangeHashes.length} commits from ${short} through HEAD into one commit?`,
+                { modal: true },
+                "Squash",
+            );
+            if (confirm !== "Squash") return;
+
+            try {
+                await runWithNotificationProgress(
+                    `Squashing ${rangeHashes.length} commits...`,
+                    async () => {
+                        await executor.run(["reset", "--soft", `${validatedHash}^`]);
+                        await executor.run(["commit", "-m", squashMessage]);
+                    },
+                );
+                vscode.window.showInformationMessage(
+                    `Squashed ${rangeHashes.length} commits into one commit.`,
+                );
+            } catch (err) {
+                const message = getErrorMessage(err);
+                vscode.window.showErrorMessage(`Squash Commits failed: ${message}`);
+            }
+            await refreshAll();
+            return;
+        }
         case "dropCommit": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
