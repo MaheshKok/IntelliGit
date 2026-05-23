@@ -27,6 +27,18 @@ export function buildWebviewShellHtml({
         .map((styleUri) => `    <link rel="stylesheet" href="${styleUri}">`)
         .join("\n");
 
+    let hoverDelay = 300;
+    let tooltipsEnabled = true;
+    try {
+        const config = vscode.workspace?.getConfiguration?.();
+        if (config) {
+            hoverDelay = config.get?.<number>("editor.hover.delay") ?? 300;
+            tooltipsEnabled = config.get?.<boolean>("intelligit.tooltips.enabled") !== false;
+        }
+    } catch {
+        // Safe fallback when workspace is not mocked or available
+    }
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -49,6 +61,12 @@ ${styleLinks ? `${styleLinks}\n` : ""}
 </head>
 <body>
     <div id="root"></div>
+    <script nonce="${nonce}">
+        window.intelligitSettings = {
+            hoverDelay: ${hoverDelay},
+            tooltipsEnabled: ${tooltipsEnabled}
+        };
+    </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

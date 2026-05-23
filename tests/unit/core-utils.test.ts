@@ -169,6 +169,11 @@ describe("core utilities", () => {
         );
         vi.doMock("vscode", () => ({
             Uri: { joinPath },
+            workspace: {
+                getConfiguration: () => ({
+                    get: () => undefined,
+                }),
+            },
         }));
         const { buildWebviewShellHtml } = await import("../../src/views/webviewHtml");
         const extensionUri = { path: "/ext" } as unknown as Parameters<

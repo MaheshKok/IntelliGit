@@ -3,6 +3,7 @@
 
 import React from "react";
 import { Flex, Box, IconButton, Tooltip } from "@chakra-ui/react";
+import { getSettings } from "../../shared/settings";
 
 interface Props {
     onRefresh: () => void;
@@ -112,8 +113,9 @@ function ToolbarButton({
         ...(color ? { color } : {}),
         ...(spin ? { animation: "intelligit-spin 1s linear infinite" } : {}),
     };
+    const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
-        <Tooltip label={label} fontSize="11px" placement="bottom" openDelay={300}>
+        <Tooltip label={label} fontSize="11px" placement="bottom" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
             <IconButton
                 aria-label={label}
                 variant="toolbarGhost"
