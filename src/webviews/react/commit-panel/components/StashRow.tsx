@@ -3,6 +3,7 @@
 
 import React from "react";
 import { Flex, Box, Button, Tooltip } from "@chakra-ui/react";
+import { getSettings } from "../../shared/settings";
 import type { StashEntry } from "../../../../types";
 import { formatDateTime } from "../../shared/date";
 
@@ -14,6 +15,7 @@ interface Props {
 }
 
 function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactElement {
+    const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
         <Flex
             align="center"
@@ -36,7 +38,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
             <Box color="var(--vscode-descriptionForeground)" fontSize="10.5px" flexShrink={0}>
                 {formatDateTime(stash.date)}
             </Box>
-            <Tooltip label="Apply" fontSize="11px">
+            <Tooltip label="Apply" fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
                 <Button
                     aria-label="Apply"
                     variant="toolbarGhost"
@@ -57,7 +59,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     Apply
                 </Button>
             </Tooltip>
-            <Tooltip label="Pop (apply and remove)" fontSize="11px">
+            <Tooltip label="Pop (apply and remove)" fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
                 <Button
                     aria-label="Pop"
                     variant="toolbarGhost"
@@ -79,7 +81,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     Pop
                 </Button>
             </Tooltip>
-            <Tooltip label="Delete" fontSize="11px">
+            <Tooltip label="Delete" fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
                 <Button
                     aria-label="Delete"
                     variant="toolbarGhost"

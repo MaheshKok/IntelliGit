@@ -7,6 +7,7 @@ import { REF_BADGE_COLORS } from "../shared/tokens";
 import { splitCommitRefs } from "../shared/utils";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
+import { getSettings } from "../shared/settings";
 
 interface Props {
     commit: Commit;
@@ -91,6 +92,8 @@ function TooltipRefRow({
     );
 }
 
+
+
 function CommitMessageCell({
     message,
     refs,
@@ -103,6 +106,7 @@ function CommitMessageCell({
         y: number;
         placement: "above" | "below";
     } | null>(null);
+    const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const { branches: branchRefs, tags: tagRefs } = splitCommitRefs(refs);
     const branchRefsCount = branchRefs.length;
     const visibleTagRefs = tagRefs.slice(0, 2);
@@ -114,18 +118,47 @@ function CommitMessageCell({
         refSummaryLines.length > 0 ? `${message}\n\n${refSummaryLines.join("\n")}` : message;
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
+        const { hoverDelay, tooltipsEnabled } = getSettings();
+        if (!tooltipsEnabled) return;
+
         const rect = event.currentTarget.getBoundingClientRect();
         const baseX = event.clientX > 0 ? event.clientX : rect.left + rect.width / 2;
         const x = Math.max(220, Math.min(window.innerWidth - 220, baseX));
         const shouldShowBelow = rect.top < 96;
-        setTooltipPos({
+
+        const newPos = {
             x,
             y: shouldShowBelow ? rect.bottom + 6 : rect.top - 8,
-            placement: shouldShowBelow ? "below" : "above",
-        });
+            placement: (shouldShowBelow ? "below" : "above") as "above" | "below",
+        };
+
+        if (tooltipPos) {
+            setTooltipPos(newPos);
+        } else {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+            timerRef.current = setTimeout(() => {
+                setTooltipPos(newPos);
+            }, hoverDelay);
+        }
     };
 
-    const hideTooltip = (): void => setTooltipPos(null);
+    const hideTooltip = (): void => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        setTooltipPos(null);
+    };
+
+    React.useEffect(() => {
+        return () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+        };
+    }, []);
 
     return (
         <span

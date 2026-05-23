@@ -4,6 +4,7 @@ import { renderHighlightedLabel } from "../highlight";
 import { ChevronIcon, GitBranchIcon, StarIcon, TagRightIcon } from "../icons";
 import { TreeFolderIcon } from "../../shared/components";
 import { resolveFolderIcon } from "../../shared/utils";
+import { getSettings } from "../../shared/settings";
 import {
     NODE_LABEL_STYLE,
     ROW_STYLE,
@@ -33,6 +34,8 @@ interface Props {
     folderIconsByName?: ThemeFolderIconMap;
 }
 
+
+
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
     if (branch.ahead <= 0 && branch.behind <= 0) return null;
     const tooltipParts: string[] = [];
@@ -44,16 +47,45 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     }
     const tooltipText = tooltipParts.join(" and ");
     const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
+    const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
+        const { hoverDelay, tooltipsEnabled } = getSettings();
+        if (!tooltipsEnabled) return;
+
         const rect = event.currentTarget.getBoundingClientRect();
-        setTooltipPos({
+        const newPos = {
             x: event.clientX > 0 ? event.clientX : rect.left + rect.width / 2,
             y: rect.top - 6,
-        });
+        };
+
+        if (tooltipPos) {
+            setTooltipPos(newPos);
+        } else {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+            timerRef.current = setTimeout(() => {
+                setTooltipPos(newPos);
+            }, hoverDelay);
+        }
     };
 
-    const hideTooltip = (): void => setTooltipPos(null);
+    const hideTooltip = (): void => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        setTooltipPos(null);
+    };
+
+    React.useEffect(() => {
+        return () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+        };
+    }, []);
 
     return (
         <span
