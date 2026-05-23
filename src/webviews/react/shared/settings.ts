@@ -5,14 +5,15 @@ export interface IntelligitSettings {
 
 export const getSettings = (): IntelligitSettings => {
     const defaultSettings: IntelligitSettings = { hoverDelay: 300, tooltipsEnabled: true };
-    try {
-        const settings = (window as any).intelligitSettings;
+    if (typeof window !== "undefined") {
+        const settings = (window as Window & { intelligitSettings?: unknown }).intelligitSettings;
         if (settings && typeof settings === "object") {
+            const settingsObj = settings as Record<string, unknown>;
             return {
-                hoverDelay: typeof settings.hoverDelay === "number" ? settings.hoverDelay : 300,
-                tooltipsEnabled: settings.tooltipsEnabled !== false,
+                hoverDelay: typeof settingsObj.hoverDelay === "number" ? settingsObj.hoverDelay : 300,
+                tooltipsEnabled: settingsObj.tooltipsEnabled !== false,
             };
         }
-    } catch {}
+    }
     return defaultSettings;
 };
