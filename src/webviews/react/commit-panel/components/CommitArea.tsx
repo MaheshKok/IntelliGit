@@ -44,7 +44,7 @@ export function CommitArea({
                     inputTestId="amend-checkbox"
                 />
                 <Box as="span" color="var(--vscode-foreground)" opacity={0.9}>
-                    Amend
+                    Amend commit
                 </Box>
             </Flex>
             <Box px="7px" flex={1} overflow="hidden">
@@ -79,7 +79,7 @@ export function CommitArea({
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
-                    Commit
+                    {isAmend ? "Amend commit" : "Commit"}
                 </Button>
                 <Button
                     variant="secondary"
@@ -88,7 +88,7 @@ export function CommitArea({
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
-                    Commit and Push...
+                    {isAmend ? "Amend commit and Push..." : "Commit and Push..."}
                 </Button>
             </Flex>
         </Flex>

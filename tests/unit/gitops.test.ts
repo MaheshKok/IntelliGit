@@ -338,6 +338,108 @@ describe("GitOps", () => {
         });
     });
 
+    describe("getAmendBranchCommits", () => {
+        const FS = "\x1f";
+        const RS = "\x1e";
+        const rec = (h: string, s: string, d: string): string => `${h}${FS}${s}${FS}${d}${RS}`;
+
+        it("returns commits from merge-base..HEAD when upstream resolves", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const k = args.join(" ");
+                    if (k === "rev-parse --abbrev-ref @{upstream}") return "origin/main";
+                    if (k === "merge-base HEAD @{upstream}") return "deadbeef0\n";
+                    if (k.startsWith("log ") && k.includes("deadbeef0..HEAD")) {
+                        return (
+                            rec("a111111", "msg one", "2024-01-01T00:00:00Z") +
+                            rec("b222222", "msg two", "2024-01-02T00:00:00Z")
+                        );
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            const rows = await ops.getAmendBranchCommits(10);
+            expect(rows).toHaveLength(2);
+            expect(rows[0]).toMatchObject({ shortHash: "a111111", subject: "msg one" });
+            expect(rows[1]).toMatchObject({ shortHash: "b222222", subject: "msg two" });
+        });
+
+        it("falls back to git log HEAD when upstream rev-parse fails", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const k = args.join(" ");
+                    if (k === "rev-parse --abbrev-ref @{upstream}") throw new Error("no upstream");
+                    if (k.startsWith("log HEAD"))
+                        return rec("z999999", "root", "2024-03-01T00:00:00Z");
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            const rows = await ops.getAmendBranchCommits(5);
+            expect(rows).toEqual([
+                { shortHash: "z999999", subject: "root", date: "2024-03-01T00:00:00Z" },
+            ]);
+        });
+
+        it("falls back to HEAD history when upstream range is empty", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const k = args.join(" ");
+                    if (k === "rev-parse --abbrev-ref @{upstream}") return "origin/main";
+                    if (k === "merge-base HEAD @{upstream}") return "same\n";
+                    if (k.startsWith("log ") && k.includes("same..HEAD")) return "";
+                    if (k.startsWith("log HEAD"))
+                        return rec("only", "local", "2024-01-01T00:00:00Z");
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            const rows = await ops.getAmendBranchCommits(5);
+            expect(rows).toHaveLength(1);
+            expect(rows[0].shortHash).toBe("only");
+        });
+
+        it("parses subjects that contain tab characters without trimming subject whitespace", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const k = args.join(" ");
+                    if (k === "rev-parse --abbrev-ref @{upstream}") throw new Error("no upstream");
+                    if (k.startsWith("log HEAD")) {
+                        return rec("cafecafe", "\tfeat:\tindented\tmsg ", "2024-05-01T00:00:00Z");
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            const rows = await ops.getAmendBranchCommits(5);
+            expect(rows).toHaveLength(1);
+            expect(rows[0]).toMatchObject({
+                shortHash: "cafecafe",
+                subject: "\tfeat:\tindented\tmsg ",
+                date: "2024-05-01T00:00:00Z",
+            });
+        });
+
+        it("includes commits with an empty subject", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const k = args.join(" ");
+                    if (k === "rev-parse --abbrev-ref @{upstream}") throw new Error("no upstream");
+                    if (k.startsWith("log HEAD")) {
+                        return rec("abc1234", "", "2024-06-01T12:00:00Z");
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+            const rows = await ops.getAmendBranchCommits(5);
+            expect(rows).toEqual([
+                { shortHash: "abc1234", subject: "", date: "2024-06-01T12:00:00Z" },
+            ]);
+        });
+    });
+
     describe("push", () => {
         it("calls git push", async () => {
             const executor = createMockExecutor({});

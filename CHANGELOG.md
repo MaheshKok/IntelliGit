@@ -5,19 +5,22 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.7] - 2026-05-23
+## [0.6.8] - 2026-05-23
 
 ### Added
 
 - Add a commit context menu action to squash an unpushed selected commit range into one commit.
+- Add amend commit branch-history context and IntelliJ-style amend actions in the commit panel.
 
 ### Fixed
 
 - Use VS Code input theme colors for the commit message box so light themes no longer render a dark textarea.
+- Preserve amend commit subjects exactly when parsing branch history, including tabs and surrounding whitespace.
 
 ### Tests
 
 - Add coverage for the squash commit menu item and squash command flow.
+- Add coverage for amend branch history loading, UI state, and commit subject parsing with separator-safe git log output.
 
 ## [0.6.6] - 2026-04-30
 

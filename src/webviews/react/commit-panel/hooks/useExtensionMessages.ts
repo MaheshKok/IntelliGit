@@ -16,6 +16,8 @@ const initialState: CommitPanelState = {
     iconFonts: [],
     commitMessage: "",
     isAmend: false,
+    amendBranchCommits: [],
+    amendBranchHistoryLoaded: false,
     isRefreshing: false,
     error: null,
 };
@@ -36,19 +38,55 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 error: null,
             };
         case "SET_REFRESHING":
+            if (action.active && state.isAmend) {
+                return {
+                    ...state,
+                    isRefreshing: true,
+                    amendBranchCommits: [],
+                    amendBranchHistoryLoaded: false,
+                };
+            }
             return { ...state, isRefreshing: action.active };
         case "RESTORE_COMMIT_DRAFT":
             return { ...state, commitMessage: action.message };
         case "SET_LAST_COMMIT_MESSAGE":
             return { ...state, commitMessage: action.message };
         case "COMMITTED":
-            return { ...state, commitMessage: "", isAmend: false };
+            return {
+                ...state,
+                commitMessage: "",
+                isAmend: false,
+                amendBranchCommits: [],
+                amendBranchHistoryLoaded: false,
+            };
         case "SET_ERROR":
             return { ...state, error: action.message };
         case "SET_COMMIT_MESSAGE":
             return { ...state, commitMessage: action.message };
         case "SET_AMEND":
-            return { ...state, isAmend: action.isAmend };
+            if (action.isAmend) {
+                return {
+                    ...state,
+                    isAmend: true,
+                    amendBranchCommits: [],
+                    amendBranchHistoryLoaded: false,
+                };
+            }
+            return {
+                ...state,
+                isAmend: false,
+                amendBranchCommits: [],
+                amendBranchHistoryLoaded: false,
+            };
+        case "SET_AMEND_BRANCH_COMMITS":
+            if (!state.isAmend) {
+                return state;
+            }
+            return {
+                ...state,
+                amendBranchCommits: action.commits,
+                amendBranchHistoryLoaded: true,
+            };
     }
 }
 
@@ -79,6 +117,9 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                     break;
                 case "lastCommitMessage":
                     dispatch({ type: "SET_LAST_COMMIT_MESSAGE", message: msg.message });
+                    break;
+                case "amendBranchCommits":
+                    dispatch({ type: "SET_AMEND_BRANCH_COMMITS", commits: msg.commits });
                     break;
                 case "committed":
                     dispatch({ type: "COMMITTED" });
