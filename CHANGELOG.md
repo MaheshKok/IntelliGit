@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add the ability for tooltips in the IntelliGit window to respect the "editor.hover.delay" setting from VS Code's settings.json.
 - Add "intelligit.tooltips.enabled" setting to optionally completely disable all tooltips inside the IntelliGit window.
 
+### Changed
+
+- Update the TypeScript toolchain to 6.0 and switch the extension compiler configuration to Node16 module resolution.
+
 ## [0.7.0] - 2026-05-23
 
 ### Added

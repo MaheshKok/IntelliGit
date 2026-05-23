@@ -115,7 +115,13 @@ function ToolbarButton({
     };
     const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
-        <Tooltip label={label} fontSize="11px" placement="bottom" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
+        <Tooltip
+            label={label}
+            fontSize="11px"
+            placement="bottom"
+            openDelay={hoverDelay}
+            isDisabled={!tooltipsEnabled}
+        >
             <IconButton
                 aria-label={label}
                 variant="toolbarGhost"

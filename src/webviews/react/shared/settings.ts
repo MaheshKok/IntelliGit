@@ -10,7 +10,8 @@ export const getSettings = (): IntelligitSettings => {
         if (settings && typeof settings === "object") {
             const settingsObj = settings as Record<string, unknown>;
             return {
-                hoverDelay: typeof settingsObj.hoverDelay === "number" ? settingsObj.hoverDelay : 300,
+                hoverDelay:
+                    typeof settingsObj.hoverDelay === "number" ? settingsObj.hoverDelay : 300,
                 tooltipsEnabled: settingsObj.tooltipsEnabled !== false,
             };
         }

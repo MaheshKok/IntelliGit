@@ -38,7 +38,12 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
             <Box color="var(--vscode-descriptionForeground)" fontSize="10.5px" flexShrink={0}>
                 {formatDateTime(stash.date)}
             </Box>
-            <Tooltip label="Apply" fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
+            <Tooltip
+                label="Apply"
+                fontSize="11px"
+                openDelay={hoverDelay}
+                isDisabled={!tooltipsEnabled}
+            >
                 <Button
                     aria-label="Apply"
                     variant="toolbarGhost"
@@ -59,7 +64,12 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     Apply
                 </Button>
             </Tooltip>
-            <Tooltip label="Pop (apply and remove)" fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
+            <Tooltip
+                label="Pop (apply and remove)"
+                fontSize="11px"
+                openDelay={hoverDelay}
+                isDisabled={!tooltipsEnabled}
+            >
                 <Button
                     aria-label="Pop"
                     variant="toolbarGhost"
@@ -81,7 +91,12 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     Pop
                 </Button>
             </Tooltip>
-            <Tooltip label="Delete" fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
+            <Tooltip
+                label="Delete"
+                fontSize="11px"
+                openDelay={hoverDelay}
+                isDisabled={!tooltipsEnabled}
+            >
                 <Button
                     aria-label="Delete"
                     variant="toolbarGhost"
