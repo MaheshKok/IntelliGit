@@ -45,6 +45,11 @@ export function getCommitMenuItems(commit: Commit, isUnpushed: boolean): CommitM
         disabled: isPushed || isMergeCommit,
     });
     items.push({
+        label: "Squash Commits...",
+        action: "squashCommits",
+        disabled: isPushed || isMergeCommit,
+    });
+    items.push({
         label: "Drop Commit",
         action: "dropCommit",
         disabled: isPushed || isMergeCommit,

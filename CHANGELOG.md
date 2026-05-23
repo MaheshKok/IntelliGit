@@ -5,29 +5,34 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.7] - 2026-05-23
+## [0.6.8] - 2026-05-23
 
 ### Added
 
+- Add a commit context menu action to squash an unpushed selected commit range into one commit.
 - Add amend commit branch-history context and IntelliJ-style amend actions in the commit panel.
 
 ### Fixed
 
+- Use VS Code input theme colors for the commit message box so light themes no longer render a dark textarea.
 - Preserve amend commit subjects exactly when parsing branch history, including tabs and surrounding whitespace.
+- Restore the original HEAD if squash commit creation fails after the soft reset.
 
 ### Tests
 
+- Add coverage for the squash commit menu item and squash command flow.
 - Add coverage for amend branch history loading, UI state, and commit subject parsing with separator-safe git log output.
+- Add coverage for dismissed rebase prompts and failed push retries after rebase.
 
 ## [0.6.6] - 2026-04-30
 
 ### Added
 
-- Show an immediate rebase prompt when a push is rejected because the remote branch contains commits missing locally, matching the IntelliJ IDEA-style recovery flow.
+- Show an immediate rebase-and-push prompt when a push is rejected because the remote branch contains commits missing locally, matching the IntelliJ IDEA-style recovery flow without requiring a second manual push.
 
 ### Tests
 
-- Add coverage for non-fast-forward push rejection detection, the rebase prompt action, and the `git pull --rebase` GitOps wrapper.
+- Add coverage for non-fast-forward push rejection detection, the rebase-and-push prompt action, and the `git pull --rebase` GitOps wrapper.
 
 ## [0.6.5] - 2026-04-08
 

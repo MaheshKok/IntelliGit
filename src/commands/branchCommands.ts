@@ -225,42 +225,46 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
+                const pushBranch = async (): Promise<void> => {
+                    const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
+                    if (branch.isCurrent) {
+                        if (tracked) {
+                            await executor.run([
+                                "push",
+                                tracked.remote,
+                                `${branch.name}:${tracked.remoteBranch}`,
+                            ]);
+                        } else {
+                            await gitOps.push();
+                        }
+                    } else {
+                        if (tracked) {
+                            await executor.run([
+                                "push",
+                                tracked.remote,
+                                `${branch.name}:${tracked.remoteBranch}`,
+                            ]);
+                        } else {
+                            const remote = await resolveRemoteName(branch, executor);
+                            if (!remote) {
+                                throw new Error(`No remote configured for branch ${branch.name}.`);
+                            }
+                            await executor.run(["push", "-u", remote, branch.name]);
+                        }
+                    }
+                };
                 try {
                     await runWithNotificationProgress(`Pushing ${branch.name}...`, async () => {
-                        const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
-                        if (branch.isCurrent) {
-                            if (tracked) {
-                                await executor.run([
-                                    "push",
-                                    tracked.remote,
-                                    `${branch.name}:${tracked.remoteBranch}`,
-                                ]);
-                            } else {
-                                await gitOps.push();
-                            }
-                        } else {
-                            if (tracked) {
-                                await executor.run([
-                                    "push",
-                                    tracked.remote,
-                                    `${branch.name}:${tracked.remoteBranch}`,
-                                ]);
-                            } else {
-                                const remote = await resolveRemoteName(branch, executor);
-                                if (!remote) {
-                                    throw new Error(
-                                        `No remote configured for branch ${branch.name}.`,
-                                    );
-                                }
-                                await executor.run(["push", "-u", remote, branch.name]);
-                            }
-                        }
+                        await pushBranch();
                     });
                     vscode.window.showInformationMessage(`Pushed ${branch.name}`);
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     if (err instanceof UpstreamPushDeclinedError) return;
-                    if (branch.isCurrent && (await promptRebaseAfterPushRejection(err, gitOps))) {
+                    if (
+                        branch.isCurrent &&
+                        (await promptRebaseAfterPushRejection(err, gitOps, pushBranch))
+                    ) {
                         await vscode.commands.executeCommand("intelligit.refresh");
                         return;
                     }

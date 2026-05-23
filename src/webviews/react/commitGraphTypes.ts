@@ -32,6 +32,7 @@ export const COMMIT_ACTION_VALUES = [
     "pushAllUpToHere",
     "undoCommit",
     "editCommitMessage",
+    "squashCommits",
     "dropCommit",
     "interactiveRebaseFromHere",
     "newBranch",

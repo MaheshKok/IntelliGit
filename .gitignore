@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.vsix
+.DS_Store
 .vscode-test/
 .claude-flow/
 package-lock.json

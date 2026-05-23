@@ -55,16 +55,20 @@ export function CommitArea({
                     resize="none"
                     w="100%"
                     h="100%"
-                    bg="rgba(16, 21, 31, 0.72)"
+                    bg="var(--vscode-input-background, var(--vscode-editor-background))"
                     color="var(--vscode-input-foreground)"
                     border="1px solid"
-                    borderColor="rgba(176, 186, 205, 0.35)"
+                    borderColor="var(--vscode-input-border, rgba(127, 127, 127, 0.35))"
                     borderRadius="3px"
                     p="7px 9px"
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
                     _placeholder={{ color: "var(--vscode-input-placeholderForeground)" }}
-                    _focus={{ borderColor: "#5a8fe9" }}
+                    _focus={{
+                        borderColor:
+                            "var(--vscode-focusBorder, var(--vscode-inputOption-activeBorder))",
+                        boxShadow: "0 0 0 1px var(--vscode-focusBorder, transparent)",
+                    }}
                 />
             </Box>
             <Flex align="center" gap="8px" p="6px 7px 8px">

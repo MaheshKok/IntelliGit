@@ -243,7 +243,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         },
                     );
                 } catch (err) {
-                    if (push && (await promptRebaseAfterPushRejection(err, this.gitOps))) {
+                    if (
+                        push &&
+                        (await promptRebaseAfterPushRejection(err, this.gitOps, async () => {
+                            await this.gitOps.push();
+                        }))
+                    ) {
+                        this.postToWebview({ type: "committed" });
                         await this.refreshData();
                         return;
                     }
@@ -285,7 +291,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         await this.gitOps.commitAndPush(message, amend);
                     });
                 } catch (err) {
-                    if (await promptRebaseAfterPushRejection(err, this.gitOps)) {
+                    if (
+                        await promptRebaseAfterPushRejection(err, this.gitOps, async () => {
+                            await this.gitOps.push();
+                        })
+                    ) {
+                        this.postToWebview({ type: "committed" });
                         await this.refreshData();
                         return;
                     }

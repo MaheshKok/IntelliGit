@@ -195,27 +195,28 @@ export function isRebaseablePushRejection(error: unknown): boolean {
 export async function promptRebaseAfterPushRejection(
     error: unknown,
     gitOps: GitOps,
+    retryPush: () => Promise<void>,
 ): Promise<boolean> {
     if (!isRebaseablePushRejection(error)) return false;
 
-    const rebaseLabel = "Rebase";
+    const rebaseLabel = "Rebase and Push";
     const selection = await vscode.window.showWarningMessage(
-        "Push rejected because the remote branch contains commits that are not in your local branch. Rebase now?",
+        "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?",
         { modal: true },
         rebaseLabel,
     );
-    if (selection !== rebaseLabel) return true;
+    if (selection !== rebaseLabel) return false;
 
     try {
-        await runWithNotificationProgress("Rebasing current branch...", async () => {
+        await runWithNotificationProgress("Rebasing and pushing current branch...", async () => {
             await gitOps.pullRebase();
+            await retryPush();
         });
-        vscode.window.showInformationMessage(
-            "Rebased current branch. Push again to publish your changes.",
-        );
+        vscode.window.showInformationMessage("Rebased and pushed current branch.");
     } catch (rebaseError) {
         const message = getErrorMessage(rebaseError);
-        vscode.window.showErrorMessage(`Rebase failed: ${message}`);
+        vscode.window.showErrorMessage(`Rebase and push failed: ${message}`);
+        return false;
     }
 
     return true;
