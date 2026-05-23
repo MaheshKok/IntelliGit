@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Show an immediate rebase prompt when a push is rejected because the remote branch contains commits missing locally, matching the IntelliJ IDEA-style recovery flow.
+- Show an immediate rebase-and-push prompt when a push is rejected because the remote branch contains commits missing locally, matching the IntelliJ IDEA-style recovery flow without requiring a second manual push.
 
 ### Tests
 
-- Add coverage for non-fast-forward push rejection detection, the rebase prompt action, and the `git pull --rebase` GitOps wrapper.
+- Add coverage for non-fast-forward push rejection detection, the rebase-and-push prompt action, and the `git pull --rebase` GitOps wrapper.
 
 ## [0.6.5] - 2026-04-08
 
