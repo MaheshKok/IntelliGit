@@ -546,7 +546,7 @@ export class GitOps {
                 if (parts.length < 3) continue;
                 const shortHash = parts[0]?.trim() ?? "";
                 const date = parts[parts.length - 1]?.trim() ?? "";
-                const subject = parts.slice(1, -1).join(FIELD_SEP).trim();
+                const subject = parts.slice(1, -1).join(FIELD_SEP);
                 if (shortHash) {
                     rows.push({ shortHash, subject, date });
                 }

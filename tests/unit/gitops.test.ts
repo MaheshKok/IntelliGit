@@ -400,13 +400,13 @@ describe("GitOps", () => {
             expect(rows[0].shortHash).toBe("only");
         });
 
-        it("parses subjects that contain tab characters", async () => {
+        it("parses subjects that contain tab characters without trimming subject whitespace", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     const k = args.join(" ");
                     if (k === "rev-parse --abbrev-ref @{upstream}") throw new Error("no upstream");
                     if (k.startsWith("log HEAD")) {
-                        return rec("cafecafe", "feat:\tindented\tmsg", "2024-05-01T00:00:00Z");
+                        return rec("cafecafe", "\tfeat:\tindented\tmsg ", "2024-05-01T00:00:00Z");
                     }
                     return "";
                 }),
@@ -416,7 +416,7 @@ describe("GitOps", () => {
             expect(rows).toHaveLength(1);
             expect(rows[0]).toMatchObject({
                 shortHash: "cafecafe",
-                subject: "feat:\tindented\tmsg",
+                subject: "\tfeat:\tindented\tmsg ",
                 date: "2024-05-01T00:00:00Z",
             });
         });
