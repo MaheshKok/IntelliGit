@@ -205,7 +205,7 @@ export async function promptRebaseAfterPushRejection(
         { modal: true },
         rebaseLabel,
     );
-    if (selection !== rebaseLabel) return true;
+    if (selection !== rebaseLabel) return false;
 
     try {
         await runWithNotificationProgress("Rebasing and pushing current branch...", async () => {
@@ -216,6 +216,7 @@ export async function promptRebaseAfterPushRejection(
     } catch (rebaseError) {
         const message = getErrorMessage(rebaseError);
         vscode.window.showErrorMessage(`Rebase and push failed: ${message}`);
+        return false;
     }
 
     return true;

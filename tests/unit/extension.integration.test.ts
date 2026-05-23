@@ -920,6 +920,39 @@ describe("extension integration", () => {
         expect(showInformationMessage).toHaveBeenCalledWith("Pushed commits up to a1b2c3d4.");
     });
 
+    it("rolls back to the original HEAD when squash commit creation fails", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "rev-parse" && args[1] === "HEAD") return "0123456789abcdef";
+            if (args[0] === "commit" && args[1] === "-m") throw new Error("commit boom");
+            if (args[0] === "reset" && args[1] === "--hard" && args[2] === "0123456789abcdef") {
+                throw new Error("rollback boom");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+
+        latestCommitGraphProvider!.emitCommitAction({
+            action: "squashCommits",
+            hash: "a1b2c3d4",
+        });
+        await waitForAsync();
+        await waitForAsync();
+        await waitForAsync();
+
+        expect(executorRun).toHaveBeenCalledWith(["reset", "--soft", "a1b2c3d4^"]);
+        expect(executorRun).toHaveBeenCalledWith(["commit", "-m", "input"]);
+        expect(executorRun).toHaveBeenCalledWith(["reset", "--hard", "0123456789abcdef"]);
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("commit boom; rollback to 01234567 failed: rollback boom"),
+        );
+    });
+
     it("opens commit diff when commit graph requests file diff", async () => {
         const { activate } = await import("../../src/extension");
         const context = {

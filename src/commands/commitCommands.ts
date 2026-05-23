@@ -474,11 +474,15 @@ export async function handleCommitContextAction(params: {
             );
             if (confirm !== "Squash") return;
 
+            let originalHead = "";
+            let softResetApplied = false;
             try {
+                originalHead = (await executor.run(["rev-parse", "HEAD"])).trim();
                 await runWithNotificationProgress(
                     `Squashing ${rangeHashes.length} commits...`,
                     async () => {
                         await executor.run(["reset", "--soft", `${validatedHash}^`]);
+                        softResetApplied = true;
                         await executor.run(["commit", "-m", squashMessage]);
                     },
                 );
@@ -486,7 +490,14 @@ export async function handleCommitContextAction(params: {
                     `Squashed ${rangeHashes.length} commits into one commit.`,
                 );
             } catch (err) {
-                const message = getErrorMessage(err);
+                let message = getErrorMessage(err);
+                if (softResetApplied && originalHead) {
+                    try {
+                        await executor.run(["reset", "--hard", originalHead]);
+                    } catch (rollbackErr) {
+                        message = `${message}; rollback to ${originalHead.slice(0, 8)} failed: ${getErrorMessage(rollbackErr)}`;
+                    }
+                }
                 vscode.window.showErrorMessage(`Squash Commits failed: ${message}`);
             }
             await refreshAll();

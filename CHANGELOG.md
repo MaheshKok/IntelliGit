@@ -16,11 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Use VS Code input theme colors for the commit message box so light themes no longer render a dark textarea.
 - Preserve amend commit subjects exactly when parsing branch history, including tabs and surrounding whitespace.
+- Restore the original HEAD if squash commit creation fails after the soft reset.
 
 ### Tests
 
 - Add coverage for the squash commit menu item and squash command flow.
 - Add coverage for amend branch history loading, UI state, and commit subject parsing with separator-safe git log output.
+- Add coverage for dismissed rebase prompts and failed push retries after rebase.
 
 ## [0.6.6] - 2026-04-30
 

@@ -167,6 +167,44 @@ describe("push rejection rebase prompt", () => {
         );
     });
 
+    it("returns false without rebasing when the user dismisses the prompt", async () => {
+        vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined as never);
+        const gitOps = {
+            pullRebase: vi.fn(async () => "ok"),
+        } as unknown as GitOps;
+        const retryPush = vi.fn(async () => undefined);
+
+        await expect(promptRebaseAfterPushRejection(rejection, gitOps, retryPush)).resolves.toBe(
+            false,
+        );
+
+        expect(gitOps.pullRebase).not.toHaveBeenCalled();
+        expect(retryPush).not.toHaveBeenCalled();
+    });
+
+    it("returns false and reports an error when push retry fails after rebase", async () => {
+        vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+            "Rebase and Push" as never,
+        );
+        const gitOps = {
+            pullRebase: vi.fn(async () => "ok"),
+        } as unknown as GitOps;
+        const retryPush = vi.fn(async () => {
+            throw new Error("push failed");
+        });
+
+        await expect(promptRebaseAfterPushRejection(rejection, gitOps, retryPush)).resolves.toBe(
+            false,
+        );
+
+        expect(gitOps.pullRebase).toHaveBeenCalledTimes(1);
+        expect(retryPush).toHaveBeenCalledTimes(1);
+        expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+        expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("push failed"),
+        );
+    });
+
     it("returns false without prompting for unrelated errors", async () => {
         const gitOps = {
             pullRebase: vi.fn(async () => "ok"),
