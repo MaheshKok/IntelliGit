@@ -26,6 +26,12 @@ function App(): React.ReactElement {
     });
 
     useEffect(() => {
+        if (!state.isAmend) return;
+        if (state.isRefreshing) return;
+        vscode.postMessage({ type: "getAmendBranchCommits" });
+    }, [state.isAmend, state.isRefreshing, vscode]);
+
+    useEffect(() => {
         const prev = vscode.getState?.() ?? {};
         vscode.setState({ ...prev, groupByDir });
     }, [groupByDir, vscode]);
@@ -96,6 +102,8 @@ function App(): React.ReactElement {
                             files={state.files}
                             commitMessage={state.commitMessage}
                             isAmend={state.isAmend}
+                            amendBranchCommits={state.amendBranchCommits}
+                            amendBranchHistoryLoaded={state.amendBranchHistoryLoaded}
                             isRefreshing={state.isRefreshing}
                             checkedPaths={checkedPaths}
                             onToggleFile={toggleFile}

@@ -303,6 +303,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
 
+            case "getAmendBranchCommits": {
+                const commits = await this.gitOps.getAmendBranchCommits();
+                this.postToWebview({ type: "amendBranchCommits", commits });
+                break;
+            }
+
             case "rollback": {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 if (paths.length === 0) {

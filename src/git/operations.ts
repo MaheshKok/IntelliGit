@@ -7,6 +7,7 @@ import type {
     WorkingFile,
     StashEntry,
     MergeConflictFile,
+    AmendBranchCommitSummary,
 } from "../types";
 import { getErrorMessage, sanitizeErrorMessage } from "../utils/errors";
 
@@ -524,6 +525,71 @@ export class GitOps {
             return (await this.executor.run(["log", "-1", "--format=%B"])).trim();
         } catch {
             return "";
+        }
+    }
+
+    /**
+     * Commits on the current branch relevant when amending: ahead of @{upstream}
+     * if set, otherwise the recent history on HEAD (same idea as IntelliJ amend context).
+     * Uses US/RS field separators in `git log --format` because `%s` may contain tabs.
+     */
+    async getAmendBranchCommits(limit = 80): Promise<AmendBranchCommitSummary[]> {
+        const FIELD_SEP = "\x1f";
+        const RECORD_SEP = "\x1e";
+        const fmt = `%h%x1f%s%x1f%cI%x1e`;
+        const parse = (output: string): AmendBranchCommitSummary[] => {
+            const rows: AmendBranchCommitSummary[] = [];
+            for (const record of output.split(RECORD_SEP)) {
+                const trimmed = record.trim();
+                if (!trimmed) continue;
+                const parts = trimmed.split(FIELD_SEP);
+                if (parts.length < 3) continue;
+                const shortHash = parts[0]?.trim() ?? "";
+                const date = parts[parts.length - 1]?.trim() ?? "";
+                const subject = parts.slice(1, -1).join(FIELD_SEP);
+                if (shortHash) {
+                    rows.push({ shortHash, subject, date });
+                }
+            }
+            return rows;
+        };
+
+        try {
+            const upstream = (
+                await this.executor.run(["rev-parse", "--abbrev-ref", "@{upstream}"])
+            ).trim();
+            if (upstream && upstream !== "HEAD") {
+                const base = (
+                    await this.executor.run(["merge-base", "HEAD", "@{upstream}"])
+                ).trim();
+                if (base) {
+                    const range = `${base}..HEAD`;
+                    const out = await this.executor.run([
+                        "log",
+                        range,
+                        `--max-count=${limit}`,
+                        `--format=${fmt}`,
+                    ]);
+                    const parsed = parse(out);
+                    if (parsed.length > 0) {
+                        return parsed;
+                    }
+                }
+            }
+        } catch {
+            // No upstream or ambiguous ref — fall through to local history.
+        }
+
+        try {
+            const out = await this.executor.run([
+                "log",
+                "HEAD",
+                `--max-count=${limit}`,
+                `--format=${fmt}`,
+            ]);
+            return parse(out);
+        } catch {
+            return [];
         }
     }
 
