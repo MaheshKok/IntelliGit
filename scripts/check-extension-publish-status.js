@@ -26,8 +26,8 @@ function isOvsxVersionPublished(metadata, version) {
     const allVersions = metadata.allVersions;
     return Boolean(
         allVersions &&
-            typeof allVersions === "object" &&
-            Object.prototype.hasOwnProperty.call(allVersions, version),
+        typeof allVersions === "object" &&
+        Object.prototype.hasOwnProperty.call(allVersions, version),
     );
 }
 
@@ -66,11 +66,7 @@ function lookupPublishStatus({ packageJson, runCommand = defaultRunCommand, cwd 
 
     let vscePublished = false;
     try {
-        const vsceOutput = runCommand(
-            "bunx",
-            ["vsce", "show", extensionId, "--json"],
-            { cwd },
-        );
+        const vsceOutput = runCommand("bunx", ["vsce", "show", extensionId, "--json"], { cwd });
         vscePublished = isVsceVersionPublished(parseJsonOutput(vsceOutput, "vsce"), version);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -117,8 +113,16 @@ function main() {
     console.log(`Open VSX published: ${status.ovsxPublished}`);
 
     if (process.env.GITHUB_OUTPUT) {
-        writeGitHubOutput("vsce_published", String(status.vscePublished), process.env.GITHUB_OUTPUT);
-        writeGitHubOutput("ovsx_published", String(status.ovsxPublished), process.env.GITHUB_OUTPUT);
+        writeGitHubOutput(
+            "vsce_published",
+            String(status.vscePublished),
+            process.env.GITHUB_OUTPUT,
+        );
+        writeGitHubOutput(
+            "ovsx_published",
+            String(status.ovsxPublished),
+            process.env.GITHUB_OUTPUT,
+        );
     }
 }
 
