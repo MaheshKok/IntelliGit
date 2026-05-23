@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-05-23
+
+### Added
+
+- Add the ability for tooltips in the IntelliGit window to respect the "editor.hover.delay" setting from VS Code's settings.json.
+- Add "intelligit.tooltips.enabled" setting to optionally completely disable all tooltips inside the IntelliGit window.
+
 ## [0.7.0] - 2026-05-23
 
 ### Added
