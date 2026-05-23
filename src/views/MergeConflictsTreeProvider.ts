@@ -33,8 +33,14 @@ export class MergeConflictsTreeProvider implements vscode.TreeDataProvider<Merge
 
     constructor(
         private readonly gitOps: GitOps,
-        private readonly workspaceRoot: vscode.Uri,
+        private workspaceRoot: vscode.Uri,
     ) {}
+
+    setWorkspaceRoot(workspaceRoot: vscode.Uri): void {
+        this.workspaceRoot = workspaceRoot;
+        this.conflicts = [];
+        this._onDidChangeTreeData.fire();
+    }
 
     async refresh(): Promise<number> {
         try {

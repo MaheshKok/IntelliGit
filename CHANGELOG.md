@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-05-23
+
+### Added
+
+- Discover Git repositories inside non-Git workspace folders and add an IntelliGit repository selector for multi-project workspaces.
+
 ## [0.6.8] - 2026-05-23
 
 ### Added

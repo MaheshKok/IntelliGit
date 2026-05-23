@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.6.8",
+    "version": "0.7.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -38,6 +38,8 @@
     ],
     "activationEvents": [
         "workspaceContains:.git",
+        "workspaceContains:**/.git/config",
+        "onCommand:intelligit.selectRepository",
         "onView:intelligit.commitGraph"
     ],
     "main": "./dist/extension.js",
@@ -101,6 +103,12 @@
                 "command": "intelligit.filterByBranch",
                 "title": "Filter by Branch",
                 "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.selectRepository",
+                "title": "Select Repository",
+                "category": "IntelliGit",
+                "icon": "$(repo)"
             },
             {
                 "command": "intelligit.checkout",
@@ -288,6 +296,11 @@
             "view/title": [
                 {
                     "command": "intelligit.refresh",
+                    "when": "view == intelligit.commitGraph",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.selectRepository",
                     "when": "view == intelligit.commitGraph",
                     "group": "navigation"
                 },

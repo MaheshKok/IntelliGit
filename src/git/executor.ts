@@ -1,9 +1,13 @@
 import simpleGit, { SimpleGit } from "simple-git";
 
 export class GitExecutor {
-    private readonly git: SimpleGit;
+    private git: SimpleGit;
 
     constructor(repoRoot: string) {
+        this.git = simpleGit(repoRoot, { maxConcurrentProcesses: 6 });
+    }
+
+    setRoot(repoRoot: string): void {
         this.git = simpleGit(repoRoot, { maxConcurrentProcesses: 6 });
     }
 

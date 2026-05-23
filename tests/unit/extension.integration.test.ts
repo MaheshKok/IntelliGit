@@ -1,3 +1,6 @@
+import * as fs from "fs/promises";
+import * as os from "os";
+import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type CommandHandler = (...args: unknown[]) => unknown;
@@ -19,7 +22,7 @@ const showInputBox = vi.fn(async (opts?: { prompt?: string; value?: string }) =>
     return "input";
 });
 const showSaveDialog = vi.fn(async () => ({ fsPath: "/tmp/patch.diff", path: "/tmp/patch.diff" }));
-const showQuickPick = vi.fn(async (items: Array<{ parentNumber: number }>) => items[0]);
+const showQuickPick = vi.fn(async (items: unknown[]) => items[0]);
 const showTextDocument = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg: unknown) => arg);
 const writeFile = vi.fn(async () => undefined);
@@ -206,6 +209,7 @@ class MockCommitGraphViewProvider {
     filterByBranch = vi.fn(async () => undefined);
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
+    setRepositoryLabel = vi.fn();
     dispose = vi.fn();
 
     emitCommitSelected(hash: string): void {
@@ -246,6 +250,8 @@ class MockCommitPanelViewProvider {
     }
     onDidChangeFileCount = this.fileCountEmitter.event;
     refresh = vi.fn(async () => undefined);
+    setRepositoryRootUri = vi.fn();
+    setRepositoryLabel = vi.fn();
     dispose = vi.fn();
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
@@ -370,7 +376,14 @@ vi.mock("vscode", () => ({
 
 vi.mock("../../src/git/executor", () => ({
     GitExecutor: class {
+        repoRoot: string;
+        constructor(repoRoot: string) {
+            this.repoRoot = repoRoot;
+        }
         run = executorRun;
+        setRoot = vi.fn((repoRoot: string) => {
+            this.repoRoot = repoRoot;
+        });
     },
 }));
 
@@ -379,8 +392,9 @@ vi.mock("../../src/git/operations", async (importOriginal) => {
     return {
         UpstreamPushDeclinedError: actual.UpstreamPushDeclinedError,
         GitOps: class {
-            isRepository = gitOpsState.isRepository;
-            getRepositoryRoot = gitOpsState.getRepositoryRoot;
+            constructor(private readonly executor: { repoRoot: string }) {}
+            isRepository = () => gitOpsState.isRepository(this.executor.repoRoot);
+            getRepositoryRoot = () => gitOpsState.getRepositoryRoot(this.executor.repoRoot);
             getBranches = gitOpsState.getBranches;
             getCommitDetail = gitOpsState.getCommitDetail;
             getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;
@@ -1073,7 +1087,8 @@ describe("extension integration", () => {
         workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         gitOpsState.isRepository.mockResolvedValueOnce(false);
         await activate(context);
-        expect(registeredCommands.size).toBe(0);
+        expect(registeredCommands.has("intelligit.selectRepository")).toBe(true);
+        registeredCommands.clear();
 
         vi.useFakeTimers();
         try {
@@ -1126,6 +1141,67 @@ describe("extension integration", () => {
             deactivate();
         } finally {
             vi.useRealTimers();
+        }
+    });
+
+    it("activates when the workspace contains a nested git repository", async () => {
+        const { activate } = await import("../../src/extension");
+        const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-"));
+        const nestedRepo = path.join(workspace, "app");
+        try {
+            await fs.mkdir(path.join(nestedRepo, ".git"), { recursive: true });
+            workspaceFolders = [{ uri: { fsPath: workspace, path: workspace } }];
+            gitOpsState.isRepository.mockImplementation(
+                async (root: string) => root === nestedRepo,
+            );
+            gitOpsState.getRepositoryRoot.mockImplementation(async (root: string) => root);
+
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+            } as unknown as MockExtensionContext;
+            await activate(context);
+
+            expect(latestCommitGraphProvider).toBeDefined();
+            expect(latestCommitPanelProvider).toBeDefined();
+            expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("app");
+            expect(latestCommitPanelProvider!.setRepositoryLabel).toHaveBeenCalledWith("app");
+            expect(gitOpsState.getBranches).toHaveBeenCalled();
+        } finally {
+            await fs.rm(workspace, { recursive: true, force: true });
+        }
+    });
+
+    it("switches the active repository from the selector", async () => {
+        const { activate } = await import("../../src/extension");
+        const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-"));
+        const firstRepo = path.join(workspace, "app-a");
+        const secondRepo = path.join(workspace, "app-b");
+        try {
+            await fs.mkdir(path.join(firstRepo, ".git"), { recursive: true });
+            await fs.mkdir(path.join(secondRepo, ".git"), { recursive: true });
+            workspaceFolders = [{ uri: { fsPath: workspace, path: workspace } }];
+            gitOpsState.isRepository.mockImplementation(async (root: string) =>
+                [firstRepo, secondRepo].includes(root),
+            );
+            gitOpsState.getRepositoryRoot.mockImplementation(async (root: string) => root);
+            showQuickPick.mockImplementationOnce(async (items: unknown[]) => items[1]);
+
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+            } as unknown as MockExtensionContext;
+            await activate(context);
+            await registeredCommands.get("intelligit.selectRepository")?.();
+
+            expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("app-b");
+            expect(latestCommitPanelProvider!.setRepositoryRootUri).toHaveBeenCalledWith(
+                expect.objectContaining({ fsPath: secondRepo }),
+            );
+            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalled();
+            expect(latestCommitGraphProvider!.refresh).toHaveBeenCalled();
+        } finally {
+            await fs.rm(workspace, { recursive: true, force: true });
         }
     });
 

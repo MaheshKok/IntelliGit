@@ -31,29 +31,100 @@ import {
     openCommitFileDiff,
 } from "./services/diffService";
 import { runWithNotificationProgress } from "./utils/notifications";
+import { discoverGitRepositories, type DiscoveredRepository } from "./services/repositoryDiscovery";
+
+const SELECTED_REPOSITORY_KEY = "intelligit.selectedRepositoryRoot";
+const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspace.";
+
+class EmptyIntelliGitWebviewProvider implements vscode.WebviewViewProvider {
+    constructor(
+        private readonly title: string,
+        private readonly message: string,
+    ) {}
+
+    resolveWebviewView(webviewView: vscode.WebviewView): void {
+        webviewView.webview.html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${this.title}</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 12px;
+            color: var(--vscode-descriptionForeground);
+            background: var(--vscode-editor-background);
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+        }
+    </style>
+</head>
+<body>${this.message}</body>
+</html>`;
+    }
+}
+
+function workspaceRoots(): string[] {
+    return vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+}
+
+function selectInitialRepository(
+    repositories: DiscoveredRepository[],
+    storedRoot: string | undefined,
+): DiscoveredRepository {
+    return repositories.find((repo) => repo.root === storedRoot) ?? repositories[0];
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    if (!workspaceFolder) return;
+    if (!vscode.workspace.workspaceFolders?.length) return;
 
-    // Use the workspace folder to bootstrap a temporary GitOps for repo discovery.
-    // The actual git repo root may differ from the workspace folder when a subfolder
-    // of a repository is opened directly (e.g. opening /root/client/project2 when
-    // the git root is /root/client).
-    const workspacePath = workspaceFolder.uri.fsPath;
-    const bootstrapExecutor = new GitExecutor(workspacePath);
-    const bootstrapGitOps = new GitOps(bootstrapExecutor);
-
-    let repoRoot: string;
-    try {
-        const isRepo = await bootstrapGitOps.isRepository();
-        if (!isRepo) return;
-        repoRoot = await bootstrapGitOps.getRepositoryRoot();
-    } catch {
+    let repositories = await discoverGitRepositories(workspaceRoots());
+    if (repositories.length === 0) {
+        const emptyTreeProvider: vscode.TreeDataProvider<never> = {
+            getTreeItem: () => {
+                throw new Error("unreachable");
+            },
+            getChildren: () => [],
+        };
+        context.subscriptions.push(
+            vscode.window.createTreeView("intelligit.fileCountBadge", {
+                treeDataProvider: emptyTreeProvider,
+            }),
+            vscode.window.createTreeView("intelligit.mergeConflicts", {
+                treeDataProvider: emptyTreeProvider,
+            }),
+            vscode.window.registerWebviewViewProvider(
+                CommitGraphViewProvider.viewType,
+                new EmptyIntelliGitWebviewProvider("IntelliGit", NO_REPOSITORY_MESSAGE),
+            ),
+            vscode.window.registerWebviewViewProvider(
+                CommitPanelViewProvider.viewType,
+                new EmptyIntelliGitWebviewProvider("Commit", NO_REPOSITORY_MESSAGE),
+            ),
+            vscode.commands.registerCommand("intelligit.selectRepository", async () => {
+                repositories = await discoverGitRepositories(workspaceRoots());
+                if (repositories.length === 0) {
+                    vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+                    return;
+                }
+                vscode.window.showInformationMessage(
+                    "Git repositories found. Reload the window to activate IntelliGit for them.",
+                );
+            }),
+            vscode.commands.registerCommand("intelligit.showGitLog", async () => {
+                await vscode.commands.executeCommand("intelligit.commitGraph.focus");
+            }),
+        );
+        void vscode.commands.executeCommand("setContext", "intelligit.hasMergeConflicts", false);
         return;
     }
 
-    // Create the real executor rooted at the actual git repository root.
+    let activeRepository = selectInitialRepository(
+        repositories,
+        context.workspaceState?.get<string>(SELECTED_REPOSITORY_KEY),
+    );
+    let repoRoot = activeRepository.root;
     const executor = new GitExecutor(repoRoot);
     const gitOps = new GitOps(executor);
 
@@ -63,7 +134,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Providers ---
 
-    const repoRootUri = vscode.Uri.file(repoRoot);
+    let repoRootUri = vscode.Uri.file(repoRoot);
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     const commitPanel = new CommitPanelViewProvider(
@@ -73,6 +144,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.workspaceState,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
+    commitGraph.setRepositoryLabel(activeRepository.label);
+    commitPanel.setRepositoryLabel(activeRepository.label);
 
     // --- Register views ---
 
@@ -98,19 +171,53 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Refresh service ---
 
-    const refreshService = new RefreshService(
-        {
-            gitOps,
-            commitGraph,
-            commitPanel,
-            mergeConflicts,
-            mergeConflictsView,
-            onBranchesUpdated: (branches) => {
-                currentBranches = branches;
+    const createRefreshService = (root: string): RefreshService =>
+        new RefreshService(
+            {
+                gitOps,
+                commitGraph,
+                commitPanel,
+                mergeConflicts,
+                mergeConflictsView,
+                onBranchesUpdated: (branches) => {
+                    currentBranches = branches;
+                },
             },
-        },
-        repoRoot,
-    );
+            root,
+        );
+
+    let refreshService = createRefreshService(repoRoot);
+
+    const clearSelection = () => {
+        commitGraph.clearCommitDetail();
+        commitInfo.clear();
+    };
+
+    const refreshActiveRepository = async (): Promise<void> => {
+        currentBranches = await gitOps.getBranches();
+        commitGraph.setBranches(currentBranches);
+        await commitGraph.refresh();
+        await commitPanel.refresh();
+        await refreshService.refreshMergeConflicts();
+        await clearSelection();
+    };
+
+    const setActiveRepository = async (repository: DiscoveredRepository): Promise<void> => {
+        activeRepository = repository;
+        repoRoot = repository.root;
+        repoRootUri = vscode.Uri.file(repoRoot);
+
+        executor.setRoot(repoRoot);
+        commitGraph.setRepositoryLabel(repository.label);
+        commitPanel.setRepositoryRootUri(repoRootUri);
+        commitPanel.setRepositoryLabel(repository.label);
+        mergeConflicts.setWorkspaceRoot(repoRootUri);
+        refreshService.dispose();
+        refreshService = createRefreshService(repoRoot);
+        refreshService.registerFileWatchers();
+        await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+        await refreshActiveRepository();
+    };
 
     // --- Merge conflict helpers ---
 
@@ -245,23 +352,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitInfo.onOpenCommitFileDiff(handleOpenCommitFileDiff),
     );
 
-    // --- Helper ---
-
-    const clearSelection = () => {
-        commitGraph.clearCommitDetail();
-        commitInfo.clear();
-    };
-
     // --- Commands ---
 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
-            currentBranches = await gitOps.getBranches();
-            commitGraph.setBranches(currentBranches);
-            await commitGraph.refresh();
-            await commitPanel.refresh();
-            await refreshService.refreshMergeConflicts();
-            await clearSelection();
+            await refreshActiveRepository();
+        }),
+
+        vscode.commands.registerCommand("intelligit.selectRepository", async () => {
+            repositories = await discoverGitRepositories(workspaceRoots());
+            if (repositories.length === 0) {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+                return;
+            }
+            const picked = await vscode.window.showQuickPick(
+                repositories.map((repo) => ({
+                    label: repo.label,
+                    description: repo.root === repoRoot ? "Active" : repo.root,
+                    repository: repo,
+                })),
+                { placeHolder: "Select IntelliGit repository" },
+            );
+            if (!picked) return;
+            await setActiveRepository(picked.repository);
         }),
 
         vscode.commands.registerCommand(
@@ -531,7 +644,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Disposables ---
 
     context.subscriptions.push(
-        refreshService,
+        { dispose: () => refreshService.dispose() },
         commitGraph,
         commitInfo,
         commitPanel,
