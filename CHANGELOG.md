@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Update the TypeScript toolchain to 6.0 and switch the extension compiler configuration to Node16 module resolution.
+- Update the TypeScript toolchain to 6.0, switch the extension compiler configuration to Node16 module resolution, and remove a stale React default import surfaced by stricter compiler checks.
 
 ## [0.7.0] - 2026-05-23
 
