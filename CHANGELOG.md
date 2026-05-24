@@ -5,19 +5,32 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-05-25
+
+### Fixed
+
+- Fix commits failing when the selected file list includes paths that were already staged as deleted, avoiding Git pathspec errors during mixed commit flows.
+- Restore selected files more completely during rollback by clearing staged index changes, restoring tracked working-tree changes, and removing selected untracked or newly staged files.
+- Restore all changes more reliably by using a hard reset followed by cleanup, so staged edits, unstaged edits, staged additions, and untracked files are all returned to a clean repository state.
+- Validate commit-panel selected paths before staging or committing so malformed webview payloads cannot bypass repo-relative path checks.
+- Validate file context-menu paths before rollback, shelve, and file-history operations to reject traversal payloads before any Git command is run.
+
+### Tests
+
+- Add regression coverage for committing selected deleted files, including unstaged deletions and already staged deletions.
+- Add real temporary Git repository coverage for file staging and rollback state transitions across modified, deleted, untracked, and newly added files.
+- Add webview payload validation coverage for commit-panel selected paths.
+- Add extension command validation coverage for file rollback, shelve, and file-history context actions.
+
 ## [0.7.2] - 2026-05-25
 
 ### Fixed
 
 - Fix commits failing when the selected files include a path that is already staged as deleted.
-- Restore both staged and unstaged changes when rolling back selected files or all changes.
-- Validate selected commit paths before staging so malformed webview payloads cannot bypass repo-relative path checks.
-- Validate file context-menu paths before rollback, shelve, and history operations.
 
 ### Tests
 
 - Add coverage for staging unstaged deletions while skipping already staged deleted paths.
-- Add real temporary Git repository coverage for file staging and rollback state transitions.
 
 ## [0.7.1] - 2026-05-23
 
