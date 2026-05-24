@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "Node16",
     "target": "ES2022",
     "lib": ["ES2022"],
     "outDir": "dist",
@@ -13,7 +13,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "node"
+    "moduleResolution": "node16",
+    "types": ["node"]
   },
   "include": ["src/**/*.ts"],
   "exclude": ["src/webviews/**/react/**", "node_modules", "dist", "tests"]

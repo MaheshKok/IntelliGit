@@ -5,12 +5,26 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-05-25
+
+### Fixed
+
+- Fix commits failing when the selected files include a path that is already staged as deleted.
+
+### Tests
+
+- Add coverage for staging unstaged deletions while skipping already staged deleted paths.
+
 ## [0.7.1] - 2026-05-23
 
 ### Added
 
 - Add the ability for tooltips in the IntelliGit window to respect the "editor.hover.delay" setting from VS Code's settings.json.
 - Add "intelligit.tooltips.enabled" setting to optionally completely disable all tooltips inside the IntelliGit window.
+
+### Changed
+
+- Update the TypeScript toolchain to 6.0, switch the extension compiler configuration to Node16 module resolution, and remove a stale React default import surfaced by stricter compiler checks.
 
 ## [0.7.0] - 2026-05-23
 

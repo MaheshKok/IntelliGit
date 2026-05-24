@@ -436,7 +436,38 @@ export class GitOps {
 
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        await this.executor.run(["add", "--", ...paths]);
+        const pathsToStage = await this.excludeAlreadyStagedDeletedPaths(paths);
+        if (pathsToStage.length === 0) return;
+        await this.executor.run(["add", "--", ...pathsToStage]);
+    }
+
+    private async excludeAlreadyStagedDeletedPaths(paths: string[]): Promise<string[]> {
+        const status = await this.executor.run(["status", "--porcelain=v1", "-z", "--", ...paths]);
+        if (!status.trim()) return paths;
+
+        const alreadyStagedDeleted = new Set<string>();
+        const entries = status.split("\0");
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (!entry || entry.length < 4) continue;
+
+            const index = entry.charAt(0);
+            const worktree = entry.charAt(1);
+            const path = entry.slice(3);
+            if (!path) continue;
+
+            const isRenameOrCopy =
+                index === "R" || index === "C" || worktree === "R" || worktree === "C";
+            if (isRenameOrCopy && i + 1 < entries.length) {
+                i += 1;
+            }
+
+            if (index === "D" && worktree === " ") {
+                alreadyStagedDeleted.add(path);
+            }
+        }
+
+        return paths.filter((path) => !alreadyStagedDeleted.has(path));
     }
 
     async unstageFiles(paths: string[]): Promise<void> {
