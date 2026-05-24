@@ -92,8 +92,6 @@ function TooltipRefRow({
     );
 }
 
-
-
 function CommitMessageCell({
     message,
     refs,

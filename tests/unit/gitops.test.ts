@@ -288,8 +288,55 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             await ops.stageFiles(["src/a.ts", "src/b.ts"]);
 
-            const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
-            expect(call).toEqual(["add", "--", "src/a.ts", "src/b.ts"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--",
+                "src/a.ts",
+                "src/b.ts",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith(["add", "--", "src/a.ts", "src/b.ts"]);
+        });
+
+        it("does not rerun git add for an already staged deleted file", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -- ads.py": "D  ads.py\0",
+            });
+            const ops = new GitOps(executor);
+
+            await ops.stageFiles(["ads.py"]);
+
+            expect(executor.run).toHaveBeenCalledTimes(1);
+            expect(executor.run).toHaveBeenCalledWith([
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--",
+                "ads.py",
+            ]);
+        });
+
+        it("still stages an unstaged deleted file", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -- ads.py": " D ads.py\0",
+            });
+            const ops = new GitOps(executor);
+
+            await ops.stageFiles(["ads.py"]);
+
+            expect(executor.run).toHaveBeenCalledWith(["add", "--", "ads.py"]);
+        });
+
+        it("stages other selected paths when one selected path is already a staged deletion", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -- ads.py src/a.ts": "D  ads.py\0 M src/a.ts\0",
+            });
+            const ops = new GitOps(executor);
+
+            await ops.stageFiles(["ads.py", "src/a.ts"]);
+
+            expect(executor.run).toHaveBeenCalledWith(["add", "--", "src/a.ts"]);
         });
 
         it("skips empty paths array", async () => {
