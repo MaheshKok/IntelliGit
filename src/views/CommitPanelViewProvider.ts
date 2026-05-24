@@ -236,9 +236,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
                 const amend = msg.amend === true;
                 const push = msg.push === true;
-                const paths = Array.isArray(msg.paths)
-                    ? msg.paths.filter((path): path is string => typeof path === "string")
-                    : [];
+                const paths = this.assertRepoPathArray(msg.paths, "paths");
                 if (!message && !amend) {
                     vscode.window.showWarningMessage("Enter a commit message.");
                     return;

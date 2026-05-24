@@ -10,10 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Fix commits failing when the selected files include a path that is already staged as deleted.
+- Restore both staged and unstaged changes when rolling back selected files or all changes.
+- Validate selected commit paths before staging so malformed webview payloads cannot bypass repo-relative path checks.
+- Validate file context-menu paths before rollback, shelve, and history operations.
 
 ### Tests
 
 - Add coverage for staging unstaged deletions while skipping already staged deleted paths.
+- Add real temporary Git repository coverage for file staging and rollback state transitions.
 
 ## [0.7.1] - 2026-05-23
 

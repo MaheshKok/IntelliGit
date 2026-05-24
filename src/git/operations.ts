@@ -626,12 +626,45 @@ export class GitOps {
 
     async rollbackFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        // Restore working tree changes
-        await this.executor.run(["checkout", "--", ...paths]);
+        const status = await this.executor.run(["status", "--porcelain=v1", "-z", "--", ...paths]);
+        const cleanupPaths = new Set<string>();
+        const trackedPaths = new Set<string>(paths);
+        const entries = status.split("\0");
+        for (let i = 0; i < entries.length; i++) {
+            const entry = entries[i];
+            if (!entry || entry.length < 4) continue;
+
+            const index = entry.charAt(0);
+            const worktree = entry.charAt(1);
+            const path = entry.slice(3);
+            if (!path) continue;
+
+            const isRenameOrCopy =
+                index === "R" || index === "C" || worktree === "R" || worktree === "C";
+            if (isRenameOrCopy && i + 1 < entries.length) {
+                i += 1;
+            }
+
+            if ((index === "?" && worktree === "?") || index === "A") {
+                cleanupPaths.add(path);
+                trackedPaths.delete(path);
+            }
+        }
+
+        if (cleanupPaths.size > 0) {
+            await this.executor.run(["reset", "HEAD", "--", ...cleanupPaths]);
+        }
+        if (trackedPaths.size > 0) {
+            await this.executor.run(["reset", "HEAD", "--", ...trackedPaths]);
+            await this.executor.run(["checkout", "--", ...trackedPaths]);
+        }
+        if (cleanupPaths.size > 0) {
+            await this.executor.run(["clean", "-fd", "--", ...cleanupPaths]);
+        }
     }
 
     async rollbackAll(): Promise<void> {
-        await this.executor.run(["checkout", "."]);
+        await this.executor.run(["reset", "--hard", "HEAD"]);
         // Also clean untracked files
         await this.executor.run(["clean", "-fd"]);
     }

@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
 import { GitOps, UpstreamPushDeclinedError } from "../../src/git/operations";
 import type { GitExecutor } from "../../src/git/executor";
+
+const execFileAsync = promisify(execFile);
 
 function createMockExecutor(responses: Record<string, string> = {}): GitExecutor {
     const run = vi.fn(async (args: string[]) => {
@@ -11,6 +18,37 @@ function createMockExecutor(responses: Record<string, string> = {}): GitExecutor
         return "";
     });
     return { run } as unknown as GitExecutor;
+}
+
+class RealGitExecutor {
+    constructor(private readonly cwd: string) {}
+
+    async run(args: string[]): Promise<string> {
+        const { stdout } = await execFileAsync("git", args, { cwd: this.cwd });
+        return stdout;
+    }
+}
+
+async function createTempGitRepo(): Promise<string> {
+    const repo = await mkdtemp(path.join(tmpdir(), "intelligit-gitops-"));
+    await execFileAsync("git", ["init"], { cwd: repo });
+    await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: repo });
+    await execFileAsync("git", ["config", "user.name", "Test User"], { cwd: repo });
+    await writeFile(path.join(repo, "tracked.txt"), "base\n", "utf8");
+    await mkdir(path.join(repo, "nested"));
+    await writeFile(path.join(repo, "nested", "tracked.txt"), "base\n", "utf8");
+    await execFileAsync("git", ["add", "."], { cwd: repo });
+    await execFileAsync("git", ["commit", "-m", "initial"], { cwd: repo });
+    return repo;
+}
+
+async function git(repo: string, args: string[]): Promise<string> {
+    const { stdout } = await execFileAsync("git", args, { cwd: repo });
+    return stdout;
+}
+
+async function status(repo: string): Promise<string> {
+    return git(repo, ["status", "--porcelain=v1"]);
 }
 
 describe("GitOps", () => {
@@ -347,6 +385,78 @@ describe("GitOps", () => {
         });
     });
 
+    describe("real git file-operation matrix", () => {
+        it("stages modified, unstaged deleted, and already staged deleted files without pathspec errors", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await writeFile(path.join(repo, "tracked.txt"), "changed\n", "utf8");
+                await ops.stageFiles(["tracked.txt"]);
+                expect(await status(repo)).toBe("M  tracked.txt\n");
+
+                await git(repo, ["reset", "--hard", "HEAD"]);
+                await rm(path.join(repo, "tracked.txt"));
+                await ops.stageFiles(["tracked.txt"]);
+                expect(await status(repo)).toBe("D  tracked.txt\n");
+
+                await ops.stageFiles(["tracked.txt"]);
+                expect(await status(repo)).toBe("D  tracked.txt\n");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("rolls back staged, unstaged, and untracked selected files", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await writeFile(path.join(repo, "tracked.txt"), "staged\n", "utf8");
+                await git(repo, ["add", "tracked.txt"]);
+                await writeFile(path.join(repo, "nested", "tracked.txt"), "unstaged\n", "utf8");
+                await writeFile(path.join(repo, "new.txt"), "new\n", "utf8");
+                await writeFile(path.join(repo, "added.txt"), "added\n", "utf8");
+                await git(repo, ["add", "added.txt"]);
+
+                expect(await status(repo)).toBe(
+                    "A  added.txt\n M nested/tracked.txt\nM  tracked.txt\n?? new.txt\n",
+                );
+
+                await ops.rollbackFiles([
+                    "tracked.txt",
+                    "nested/tracked.txt",
+                    "new.txt",
+                    "added.txt",
+                ]);
+
+                expect(await status(repo)).toBe("");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("rolls back all staged, unstaged, and untracked changes", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await writeFile(path.join(repo, "tracked.txt"), "staged\n", "utf8");
+                await git(repo, ["add", "tracked.txt"]);
+                await writeFile(path.join(repo, "nested", "tracked.txt"), "unstaged\n", "utf8");
+                await writeFile(path.join(repo, "new.txt"), "new\n", "utf8");
+                await writeFile(path.join(repo, "added.txt"), "added\n", "utf8");
+                await git(repo, ["add", "added.txt"]);
+
+                await ops.rollbackAll();
+
+                expect(await status(repo)).toBe("");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+    });
+
     describe("unstageFiles", () => {
         it("calls git reset HEAD with paths", async () => {
             const executor = createMockExecutor({});
@@ -643,13 +753,44 @@ describe("GitOps", () => {
     });
 
     describe("rollbackFiles", () => {
-        it("calls git checkout -- with paths", async () => {
+        it("unstages and checks out tracked paths", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["src/a.ts"]);
 
-            const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
-            expect(call).toEqual(["checkout", "--", "src/a.ts"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--",
+                "src/a.ts",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "src/a.ts"]);
+            expect(executor.run).toHaveBeenCalledWith(["checkout", "--", "src/a.ts"]);
+        });
+
+        it("cleans untracked paths without sending them to reset or checkout", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -- new.txt": "?? new.txt\0",
+            });
+            const ops = new GitOps(executor);
+            await ops.rollbackFiles(["new.txt"]);
+
+            expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "new.txt"]);
+            expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "new.txt"]);
+            expect(executor.run).not.toHaveBeenCalledWith(["checkout", "--", "new.txt"]);
+        });
+
+        it("resets and cleans staged added paths without checking them out", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -- added.txt": "A  added.txt\0",
+            });
+            const ops = new GitOps(executor);
+            await ops.rollbackFiles(["added.txt"]);
+
+            expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "added.txt"]);
+            expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "added.txt"]);
+            expect(executor.run).not.toHaveBeenCalledWith(["checkout", "--", "added.txt"]);
         });
 
         it("skips empty paths array", async () => {
@@ -661,13 +802,13 @@ describe("GitOps", () => {
     });
 
     describe("rollbackAll", () => {
-        it("calls checkout . and clean -fd", async () => {
+        it("calls reset --hard HEAD and clean -fd", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
             await ops.rollbackAll();
 
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls;
-            expect(calls[0][0]).toEqual(["checkout", "."]);
+            expect(calls[0][0]).toEqual(["reset", "--hard", "HEAD"]);
             expect(calls[1][0]).toEqual(["clean", "-fd"]);
         });
     });

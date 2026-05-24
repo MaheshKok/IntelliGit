@@ -614,6 +614,25 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider validates commitSelected paths before staging", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: guarded",
+            amend: false,
+            push: false,
+            paths: ["../etc/passwd"],
+        });
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("escaping repo root"),
+        );
+        expect(gitOps.stageFiles).not.toHaveBeenCalled();
+        expect(gitOps.commit).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider surfaces operation errors", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         gitOps.stageFiles.mockRejectedValueOnce(new Error("stage failed"));
