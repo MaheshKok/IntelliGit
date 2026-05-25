@@ -346,6 +346,10 @@ vi.mock("vscode", () => ({
         get workspaceFolders() {
             return workspaceFolders;
         },
+        getConfiguration: vi.fn((_section?: string) => ({
+            get: <T>(_key: string, defaultValue: T) => defaultValue,
+        })),
+        onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
         fs: { writeFile },
         openTextDocument,
         onDidChangeTextDocument: vi.fn((listener: () => void) => {
