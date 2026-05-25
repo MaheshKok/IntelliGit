@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-05-25
+
+### Changed
+
+- Restyle the stash panel to more closely match the PyCharm Git tool window, including toolbar actions, selected stash rows, branch labels, and bottom apply/pop controls.
+
+### Added
+
+- Add a PyCharm-style stash context menu with apply, pop, drop, and diff actions.
+
+### Tests
+
+- Update commit panel integration coverage for stash apply, pop, and context-menu drop interactions.
+
 ## [0.8.1] - 2026-05-25
 
 ### Fixed
