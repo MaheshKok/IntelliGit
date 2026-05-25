@@ -636,6 +636,7 @@ function App(): React.ReactElement {
                                     folderExpandedIcon={cpState.folderExpandedIcon}
                                     folderIconsByName={cpState.folderIconsByName}
                                     groupByDir={groupByDir}
+                                    onToggleGroupBy={() => setGroupByDir((g) => !g)}
                                 />
                             }
                         />

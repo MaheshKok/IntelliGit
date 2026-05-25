@@ -240,11 +240,23 @@ describe("CommitPanelApp integration", () => {
                 (b) => b.textContent?.trim() === "Pop",
             ),
         );
-        fireClick(
-            Array.from(document.querySelectorAll("button")).find(
-                (b) => b.textContent?.trim() === "Delete",
-            ),
+        const stashRow = document.querySelector('[title="On main: shelf-work"]');
+        act(() => {
+            stashRow?.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 160,
+                    clientY: 120,
+                }),
+            );
+        });
+        await flush();
+        const dropMenuItem = Array.from(document.querySelectorAll(".intelligit-context-item")).find(
+            (el) => el.textContent?.includes("Drop"),
         );
+        expect(dropMenuItem).toBeTruthy();
+        fireClick(dropMenuItem);
 
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "refresh" }),
@@ -253,6 +265,12 @@ describe("CommitPanelApp integration", () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "shelfApply", index: 0 }),
+        );
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "shelfPop", index: 0 }),
+        );
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "shelfDelete", index: 0 }),
         );
         expect(vscode.setState).toHaveBeenCalled();
     });

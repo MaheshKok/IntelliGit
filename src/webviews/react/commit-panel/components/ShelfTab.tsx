@@ -2,11 +2,13 @@
 // bottom Apply/Pop/Delete actions.
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Flex, Box, Button } from "@chakra-ui/react";
+import { Flex, Box, Button, IconButton, Tooltip } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
+import { getSettings } from "../../shared/settings";
+import { ContextMenu } from "../../shared/components/ContextMenu";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
@@ -20,9 +22,10 @@ interface Props {
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
     groupByDir: boolean;
+    onToggleGroupBy: () => void;
 }
 
-type ShelfActionKind = "apply" | "pop" | "delete";
+type ShelfActionKind = "apply" | "pop" | "delete" | "showDiff";
 
 export function ShelfTab({
     stashes,
@@ -32,10 +35,15 @@ export function ShelfTab({
     folderExpandedIcon,
     folderIconsByName,
     groupByDir,
+    onToggleGroupBy,
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
+    const { hoverDelay, tooltipsEnabled } = getSettings();
     const tree = useFileTree(shelfFiles, groupByDir);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(
+        null,
+    );
     // expandedIndex tracks which stash entry the user has toggled open locally.
     // It is set optimistically on click (before files arrive from the extension host).
     // selectedIndex (prop) updates once the host responds with loaded files.
@@ -77,13 +85,20 @@ export function ShelfTab({
                 case "delete":
                     vscode.postMessage({ type: "shelfDelete", index });
                     return;
+                case "showDiff": {
+                    const firstFile = selectedIndex === index ? shelfFiles[0]?.path : undefined;
+                    if (firstFile) {
+                        vscode.postMessage({ type: "showShelfDiff", index, path: firstFile });
+                    }
+                    return;
+                }
                 default: {
                     const exhaustive: never = kind;
                     throw new Error(`Unhandled shelf action: ${String(exhaustive)}`);
                 }
             }
         },
-        [vscode],
+        [selectedIndex, shelfFiles, vscode],
     );
 
     const toggleDir = useCallback((path: string) => {
@@ -98,6 +113,32 @@ export function ShelfTab({
     useEffect(() => {
         setExpandedDirs(new Set(collectAllDirPaths(tree)));
     }, [tree]);
+
+    const expandAll = useCallback(() => {
+        setExpandedDirs(new Set(collectAllDirPaths(tree)));
+    }, [tree]);
+
+    const collapseAll = useCallback(() => {
+        setExpandedDirs(new Set());
+    }, []);
+
+    const handleShowSelectedDiff = useCallback(() => {
+        handleShelfAction(selectedIndex, "showDiff");
+    }, [handleShelfAction, selectedIndex]);
+
+    const handleStashContextMenu = useCallback(
+        (event: React.MouseEvent, index: number) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (expandedIndex !== index) {
+                setExpandedIndex(index);
+                setIsLoading(true);
+                vscode.postMessage({ type: "shelfSelect", index });
+            }
+            setContextMenu({ x: event.clientX, y: event.clientY, index });
+        },
+        [expandedIndex, vscode],
+    );
 
     const [fileTreeHeight, setFileTreeHeight] = useState(150);
     const fileTreeHeightRef = useRef(fileTreeHeight);
@@ -142,7 +183,66 @@ export function ShelfTab({
 
     return (
         <Flex direction="column" flex={1} overflow="hidden">
-            <Box flex="1 1 auto" overflowY="auto" pt="1px">
+            <Flex
+                align="center"
+                minH="34px"
+                px="8px"
+                borderBottom="1px solid var(--vscode-panel-border, #444)"
+                flexShrink={0}
+            >
+                <StashToolbarButton
+                    label="Show Diff"
+                    color="#ff736d"
+                    onClick={handleShowSelectedDiff}
+                    isDisabled={selectedIndex === null || shelfFiles.length === 0}
+                    hoverDelay={hoverDelay}
+                    tooltipsEnabled={tooltipsEnabled}
+                >
+                    <path
+                        fill="currentColor"
+                        d="M2.5 1.5h4v13h-4v-13zm7 0h4v13h-4v-13zM5.25 4.75 7.5 7 5.25 9.25l-.7-.7L5.6 7 4.55 5.45l.7-.7zm5.5 0 .7.7L10.4 7l1.05 1.55-.7.7L8.5 7l2.25-2.25z"
+                    />
+                </StashToolbarButton>
+                <StashToolbarButton
+                    label={groupByDir ? "Ungroup Files" : "Group by Directory"}
+                    color="#b77dff"
+                    onClick={onToggleGroupBy}
+                    hoverDelay={hoverDelay}
+                    tooltipsEnabled={tooltipsEnabled}
+                >
+                    <path
+                        fill="currentColor"
+                        d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h4v4h-4v-4z"
+                    />
+                </StashToolbarButton>
+                <Box flex={1} />
+                <StashToolbarButton
+                    label="Expand All"
+                    color="#f3b1cf"
+                    onClick={expandAll}
+                    hoverDelay={hoverDelay}
+                    tooltipsEnabled={tooltipsEnabled}
+                >
+                    <path
+                        fill="currentColor"
+                        d="M3 2h4v1H4.7l3.15 3.15-.7.7L4 3.7V6H3V2zm6 0h4v4h-1V3.7L8.85 6.85l-.7-.7L11.3 3H9V2zM3 10h1v2.3l3.15-3.15.7.7L4.7 13H7v1H3v-4zm8.3 3-3.15-3.15.7-.7L12 12.3V10h1v4H9v-1h2.3z"
+                    />
+                </StashToolbarButton>
+                <StashToolbarButton
+                    label="Collapse All"
+                    color="#f3b1cf"
+                    onClick={collapseAll}
+                    hoverDelay={hoverDelay}
+                    tooltipsEnabled={tooltipsEnabled}
+                >
+                    <path
+                        fill="currentColor"
+                        d="M6.3 2 3.15 5.15l.7.7L7 2.7V5h1V1H4v1h2.3zm3.4 0H12v1h-2.3l3.15 3.15-.7.7L9 3.7V6H8V2h1.7zM3.85 10.15l-.7.7L6.3 14H4v1h4v-4H7v2.3l-3.15-3.15zm8.3 0L9 13.3V11H8v4h4v-1H9.7l3.15-3.15-.7-.7z"
+                    />
+                </StashToolbarButton>
+            </Flex>
+
+            <Box flex="1 1 auto" overflowY="auto" pt="1px" bg="#343D4D">
                 {stashes.length === 0 ? (
                     <Box
                         color="var(--vscode-descriptionForeground)"
@@ -163,13 +263,13 @@ export function ShelfTab({
                                     align="center"
                                     px="9px"
                                     py="2px"
-                                    minH="24px"
-                                    fontSize="12px"
+                                    minH="32px"
+                                    fontSize="13px"
                                     fontFamily={SYSTEM_FONT_STACK}
                                     cursor="pointer"
                                     bg={
                                         isExpanded
-                                            ? "var(--vscode-list-activeSelectionBackground)"
+                                            ? "var(--vscode-list-activeSelectionBackground, #53627a)"
                                             : "transparent"
                                     }
                                     color={
@@ -183,7 +283,13 @@ export function ShelfTab({
                                             : "var(--vscode-list-hoverBackground)",
                                     }}
                                     onClick={() => handleStashClick(stash.index)}
+                                    onContextMenu={(event) =>
+                                        handleStashContextMenu(event, stash.index)
+                                    }
                                     title={stash.message}
+                                    borderRadius={isExpanded ? "6px" : 0}
+                                    mx="8px"
+                                    my="1px"
                                 >
                                     <Box
                                         as="span"
@@ -213,9 +319,13 @@ export function ShelfTab({
                                             ml="10px"
                                             display="inline-flex"
                                             alignItems="center"
-                                            fontSize="10.5px"
+                                            fontSize="13px"
                                             gap="4px"
-                                            color="var(--vscode-gitDecoration-modifiedResourceForeground, #d8ca64)"
+                                            color="#C8CDD7"
+                                            px="7px"
+                                            py="1px"
+                                            borderRadius="5px"
+                                            bg="rgba(130, 150, 184, 0.28)"
                                             flexShrink={0}
                                         >
                                             <Box
@@ -224,6 +334,7 @@ export function ShelfTab({
                                                 h="12px"
                                                 viewBox="0 0 16 16"
                                                 opacity={0.95}
+                                                color="#35D46A"
                                             >
                                                 <path
                                                     fill="currentColor"
@@ -295,10 +406,11 @@ export function ShelfTab({
 
             <Flex
                 align="center"
-                gap="8px"
-                px="8px"
-                py="8px"
-                borderTop="1px solid var(--vscode-panel-border)"
+                gap="10px"
+                px="30px"
+                py="12px"
+                borderTop="1px solid rgba(72, 82, 101, 0.9)"
+                bg="#343D4D"
             >
                 <Button
                     variant="secondary"
@@ -306,11 +418,13 @@ export function ShelfTab({
                     onClick={() => handleShelfAction(selectedIndex, "apply")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="28px"
-                    minW="86px"
+                    h="32px"
+                    minW="144px"
                     px="12px"
-                    bg="rgba(255,255,255,0.07)"
-                    borderColor="rgba(184, 194, 214, 0.5)"
+                    bg="#4B566B"
+                    borderColor="#566176"
+                    borderRadius="2px"
+                    _hover={{ bg: "#566176" }}
                 >
                     Apply
                 </Button>
@@ -320,30 +434,102 @@ export function ShelfTab({
                     onClick={() => handleShelfAction(selectedIndex, "pop")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="28px"
-                    minW="68px"
+                    h="32px"
+                    minW="144px"
                     px="12px"
-                    bg="rgba(255,255,255,0.07)"
-                    borderColor="rgba(184, 194, 214, 0.5)"
+                    bg="#4B566B"
+                    borderColor="#566176"
+                    borderRadius="2px"
+                    _hover={{ bg: "#566176" }}
                 >
                     Pop
                 </Button>
-                <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => handleShelfAction(selectedIndex, "delete")}
-                    isDisabled={selectedIndex === null}
-                    fontSize="12px"
-                    h="28px"
-                    minW="78px"
-                    px="12px"
-                    bg="rgba(255,255,255,0.07)"
-                    borderColor="rgba(184, 194, 214, 0.5)"
-                >
-                    Delete
-                </Button>
             </Flex>
+            {contextMenu && (
+                <ContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    minWidth={300}
+                    onClose={() => setContextMenu(null)}
+                    onSelect={(action) => {
+                        if (action === "apply") handleShelfAction(contextMenu.index, "apply");
+                        if (action === "pop") handleShelfAction(contextMenu.index, "pop");
+                        if (action === "drop") handleShelfAction(contextMenu.index, "delete");
+                        if (action === "showDiff") handleShelfAction(contextMenu.index, "showDiff");
+                    }}
+                    items={[
+                        { label: "Pop", action: "pop" },
+                        { label: "Apply", action: "apply" },
+                        { label: "Unstash...", action: "unstash", disabled: true },
+                        { label: "Drop", action: "drop" },
+                        { label: "Clear", action: "clear", disabled: true },
+                        { label: "", action: "sep-1", separator: true },
+                        {
+                            label: "Show Diff",
+                            action: "showDiff",
+                            disabled:
+                                selectedIndex !== contextMenu.index || shelfFiles.length === 0,
+                            hint: "⌘D",
+                            icon: <DiffIcon />,
+                        },
+                        {
+                            label: "Show Diff in a New Tab",
+                            action: "showDiffNewTab",
+                            disabled: true,
+                            icon: <DiffIcon />,
+                        },
+                    ]}
+                />
+            )}
         </Flex>
+    );
+}
+
+function StashToolbarButton({
+    label,
+    color,
+    onClick,
+    isDisabled,
+    hoverDelay,
+    tooltipsEnabled,
+    children,
+}: {
+    label: string;
+    color: string;
+    onClick: () => void;
+    isDisabled?: boolean;
+    hoverDelay: number;
+    tooltipsEnabled: boolean;
+    children: React.ReactNode;
+}): React.ReactElement {
+    return (
+        <Tooltip label={label} fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
+            <IconButton
+                aria-label={label}
+                icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" style={{ color }}>
+                        {children}
+                    </svg>
+                }
+                variant="toolbarGhost"
+                size="sm"
+                minW="26px"
+                h="26px"
+                onClick={onClick}
+                isDisabled={isDisabled}
+            />
+        </Tooltip>
+    );
+}
+
+function DiffIcon(): React.ReactElement {
+    return (
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+            <path
+                fill="currentColor"
+                d="M2.5 1.5h4v13h-4v-13zm7 0h4v13h-4v-13zM5.25 4.75 7.5 7 5.25 9.25l-.7-.7L5.6 7 4.55 5.45l.7-.7zm5.5 0 .7.7L10.4 7l1.05 1.55-.7.7L8.5 7l2.25-2.25z"
+            />
+        </svg>
     );
 }
 

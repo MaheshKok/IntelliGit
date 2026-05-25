@@ -131,6 +131,7 @@ function App(): React.ReactElement {
                             folderExpandedIcon={state.folderExpandedIcon}
                             folderIconsByName={state.folderIconsByName}
                             groupByDir={groupByDir}
+                            onToggleGroupBy={() => setGroupByDir((g) => !g)}
                         />
                     }
                 />
