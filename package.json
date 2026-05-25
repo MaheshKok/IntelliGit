@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.7.3",
+    "version": "0.8.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -264,6 +264,12 @@
                 "title": "Open Conflict Session",
                 "category": "IntelliGit",
                 "icon": "$(diff-multiple)"
+            },
+            {
+                "command": "intelligit.toggleUndocked",
+                "title": "Toggle Undocked Window",
+                "category": "IntelliGit",
+                "icon": "$(split-horizontal)"
             }
         ],
         "submenus": [
@@ -429,6 +435,11 @@
                     "type": "boolean",
                     "default": true,
                     "markdownDescription": "Enable or disable tooltips inside the IntelliGit window (Commit Graph, Branch Column, etc.)."
+                },
+                "intelligit.undockableWindow": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "Render IntelliGit as a unified editor tab instead of sidebar + bottom panel. Enables native VS Code undocking to a second monitor. Changing this setting requires reloading the window."
                 }
             }
         }

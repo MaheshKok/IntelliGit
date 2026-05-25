@@ -5,6 +5,15 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-05-25
+
+### Added
+
+- Undockable window mode via `intelligit.undockableWindow` setting: renders the commit graph and commit panel as a single unified editor tab instead of sidebar + bottom panel, enabling native VS Code undocking to a second monitor.
+- Horizontal-split layout in undocked mode: branch column, commit list, and commit details on the left; file changes, commit message, and shelf on the right, with resizable dividers between all columns.
+- `IntelliGit: Toggle Undocked Window` command to switch between docked and undocked layouts without editing settings.json.
+- Auto-fallback to sidebar/panel mode when the undocked editor tab is closed.
+
 ## [0.7.3] - 2026-05-25
 
 ### Fixed
@@ -232,7 +241,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed `groupByDir` setting not persisting across webview reloads. The toggle state is now saved to and restored from `vscode.getState()`. (PR #13 by sivertillia)
 - Fixed `useCheckedFiles` overwriting all webview state keys on every update. State writes now merge with existing keys instead of replacing them.
-- Excluded `.vexp/` from VSIX packaging to prevent build failures caused by non-file entries (Unix sockets).
+
 
 ## [0.5.1] - 2026-03-04
 

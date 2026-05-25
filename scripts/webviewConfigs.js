@@ -7,6 +7,7 @@ const WEBVIEW_CONFIGS = [
         entry: "react/merge-conflicts-session/MergeConflictSessionApp",
         out: "webview-mergeconflictsession",
     },
+    { entry: "react/UndockedApp", out: "webview-undocked" },
 ];
 
 module.exports = { WEBVIEW_CONFIGS };

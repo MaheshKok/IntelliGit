@@ -338,7 +338,9 @@ export async function handleCommitContextAction(params: {
             if (confirm !== "Undo") return;
             try {
                 await executor.run(["reset", "--soft", `${validatedHash}^`]);
-                vscode.window.showInformationMessage(`Undid ${undoCount} commit(s) up to ${short}.`);
+                vscode.window.showInformationMessage(
+                    `Undid ${undoCount} commit(s) up to ${short}.`,
+                );
             } finally {
                 await refreshAll();
             }
