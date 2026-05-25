@@ -116,6 +116,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.showGitLog", async () => {
                 await vscode.commands.executeCommand("intelligit.commitGraph.focus");
             }),
+            vscode.commands.registerCommand("intelligit.openUndocked", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
+            vscode.commands.registerCommand("intelligit.dockWindow", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
         );
         void vscode.commands.executeCommand("setContext", "intelligit.hasMergeConflicts", false);
         return;
@@ -132,6 +138,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Cached branch list for webview context menu lookups
     let currentBranches: Branch[] = [];
     let commitDetailRequestSeq = 0;
+    let undockedCommitDetailRequestSeq = 0;
 
     // --- Providers ---
 
@@ -295,10 +302,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await dockIntelliGit();
             }),
             undocked.onCommitSelected(async (hash) => {
-                const requestId = ++commitDetailRequestSeq;
+                const requestId = ++undockedCommitDetailRequestSeq;
                 try {
                     const detail = await gitOps.getCommitDetail(hash);
-                    if (requestId !== commitDetailRequestSeq) return;
+                    if (requestId !== undockedCommitDetailRequestSeq) return;
                     undocked?.setCommitDetail(detail);
                 } catch (err) {
                     const msg = getErrorMessage(err);
@@ -350,6 +357,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
         currentBranches = await gitOps.getBranches();
+        if (!undocked) return;
         undocked.setBranches(currentBranches);
         await undocked.refresh();
     };
