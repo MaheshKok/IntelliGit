@@ -787,10 +787,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             undocked.onDidChangeFileCount(updateBadge),
         );
 
-        await undocked.open();
+        const panel = undocked;
+        await panel.open();
         currentBranches = await gitOps.getBranches();
-        undocked.setBranches(currentBranches);
-        await undocked.refresh();
+        if (undocked !== panel) return;
+        panel.setBranches(currentBranches);
+        await panel.refresh();
     };
 
     // --- Register view providers ---

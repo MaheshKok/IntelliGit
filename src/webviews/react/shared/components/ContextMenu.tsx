@@ -12,11 +12,17 @@ import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 const ITEM_HEIGHT = 28;
 const ITEM_FONT_SIZE = 13;
 const CONTEXT_MENU_STYLE_ID = "intelligit-ctx-styles";
+/** PyCharm New UI context menu colours, used as fallbacks when VS Code theme vars are unavailable. */
+const PYCHARM_MENU_BG = "#2B2D30";
+const PYCHARM_MENU_BORDER = "#43454A";
+const PYCHARM_MENU_FG = "#BBBFC4";
+const PYCHARM_MENU_SEPARATOR = "#3E4042";
+const PYCHARM_MENU_HINT = "#6E7074";
 const CONTEXT_MENU_STYLE_RULES = `
     .intelligit-context-item[data-disabled="false"]:hover,
     .intelligit-context-item[data-disabled="false"]:focus-visible {
-        background: var(--vscode-menu-selectionBackground, #094771);
-        color: var(--vscode-menu-selectionForeground, #fff);
+        background: var(--vscode-menu-selectionBackground, #2E436E);
+        color: var(--vscode-menu-selectionForeground, #DFE1E5);
     }
     .intelligit-context-item[data-disabled="false"]:focus-visible {
         outline: 1px solid var(--vscode-focusBorder, #007acc);
@@ -56,7 +62,6 @@ export function ContextMenu({
 }: Props): React.ReactElement {
     const ref = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ left: x, top: y });
-    const menuBodyPaddingX = 4;
     const hasAnyIcon = items.some((item) => !item.separator && !!item.icon);
     const hasAnyTrailing = items.some((item) => !item.separator && (!!item.hint || !!item.submenu));
 
@@ -121,14 +126,13 @@ export function ContextMenu({
                 left: pos.left,
                 top: pos.top,
                 zIndex: 9999,
-                background: "var(--vscode-menu-background, #3a4254)",
-                border: "1px solid var(--vscode-menu-border, rgba(255,255,255,0.14))",
-                borderRadius: 9,
+                background: `var(--vscode-menu-background, ${PYCHARM_MENU_BG})`,
+                border: `1px solid var(--vscode-menu-border, ${PYCHARM_MENU_BORDER})`,
+                borderRadius: 8,
                 padding: "4px 0",
                 minWidth,
                 fontFamily: SYSTEM_FONT_STACK,
-                boxShadow:
-                    "0 18px 36px rgba(0,0,0,0.46), 0 3px 9px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35)",
             }}
         >
             {items.map((item, i) => {
@@ -138,9 +142,8 @@ export function ContextMenu({
                             key={`sep-${i}`}
                             style={{
                                 height: 1,
-                                margin: `5px ${menuBodyPaddingX + 2}px`,
-                                background:
-                                    "var(--vscode-menu-separatorBackground, rgba(255,255,255,0.12))",
+                                margin: "4px 8px",
+                                background: `var(--vscode-menu-separatorBackground, ${PYCHARM_MENU_SEPARATOR})`,
                             }}
                         />
                     );
@@ -169,17 +172,16 @@ export function ContextMenu({
                             alignItems: "center",
                             gap: hasAnyIcon ? 8 : 0,
                             minHeight: ITEM_HEIGHT,
-                            padding: `4px ${hasAnyTrailing ? 9 : 4}px 4px ${hasAnyIcon ? 8 : 4}px`,
-                            margin: `0 ${menuBodyPaddingX}px`,
-                            borderRadius: 4,
+                            padding: `0 ${hasAnyTrailing ? 12 : 8}px 0 ${hasAnyIcon ? 12 : 8}px`,
+                            margin: 0,
+                            borderRadius: 0,
                             cursor: item.disabled ? "default" : "pointer",
                             fontSize: ITEM_FONT_SIZE,
-                            lineHeight: "18px",
+                            lineHeight: `${ITEM_HEIGHT}px`,
                             color: item.disabled
-                                ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"
-                                : "var(--vscode-menu-foreground, #d8dbe2)",
+                                ? "var(--vscode-disabledForeground, rgba(187,191,196,1))"
+                                : `var(--vscode-menu-foreground, ${PYCHARM_MENU_FG})`,
                             whiteSpace: "nowrap",
-                            opacity: item.disabled ? 0.72 : 1,
                         }}
                     >
                         {hasAnyIcon && (
@@ -207,11 +209,11 @@ export function ContextMenu({
                                     justifyContent: "flex-end",
                                     flexShrink: 0,
                                     overflow: "visible",
-                                    fontSize: 11,
-                                    opacity: 0.7,
+                                    fontSize: 12,
                                     color: item.disabled
-                                        ? "var(--vscode-disabledForeground, rgba(255,255,255,0.4))"
-                                        : "var(--vscode-descriptionForeground, #9ea4b3)",
+                                        ? `var(--vscode-disabledForeground, ${PYCHARM_MENU_HINT})`
+                                        : `var(--vscode-descriptionForeground, ${PYCHARM_MENU_HINT})`,
+                                    paddingLeft: 16,
                                 }}
                             >
                                 {item.submenu ? (
