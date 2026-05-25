@@ -277,8 +277,12 @@ function App(): React.ReactElement {
         useCheckedFiles(cpState.files);
 
     const [groupByDir, setGroupByDir] = useState<boolean>(() => {
-        const saved = vscode.getState?.();
-        return typeof saved?.groupByDir === "boolean" ? saved.groupByDir : true;
+        try {
+            const saved = vscode.getState?.();
+            return typeof saved?.groupByDir === "boolean" ? saved.groupByDir : true;
+        } catch {
+            return true;
+        }
     });
 
     // --- Drag handlers ---

@@ -10,7 +10,7 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
-import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
+import { promptRebaseAfterPushRejection, isValidGitHash } from "../services/gitHelpers";
 import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
 import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile } from "../types";
 import type { BranchAction, CommitAction } from "../webviews/react/commitGraphTypes";
@@ -764,7 +764,7 @@ export class UndockedViewProvider {
 
     private assertGitHash(value: unknown, field: string): string {
         const hash = this.assertString(value, field).trim();
-        if (hash.length < 7 || !/^[0-9a-f]+$/i.test(hash)) {
+        if (!isValidGitHash(hash)) {
             throw new Error(`Invalid git hash for '${field}'.`);
         }
         return hash;

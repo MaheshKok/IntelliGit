@@ -348,6 +348,13 @@ vi.mock("vscode", () => ({
         },
         getConfiguration: vi.fn((_section?: string) => ({
             get: <T>(_key: string, defaultValue: T) => defaultValue,
+            update: vi.fn(
+                async (
+                    _key: string,
+                    _value: unknown,
+                    _isGlobal?: boolean,
+                ) => undefined,
+            ),
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
         fs: { writeFile },
