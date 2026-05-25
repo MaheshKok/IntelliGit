@@ -503,7 +503,9 @@ describe("view providers integration", () => {
         expect(gitOps.getAmendBranchCommits).toHaveBeenCalled();
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "amendBranchCommits",
-            commits: [{ shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" }],
+            commits: [
+                { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+            ],
         });
         provider.dispose();
     });

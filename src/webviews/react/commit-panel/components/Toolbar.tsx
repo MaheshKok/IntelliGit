@@ -103,7 +103,7 @@ function ToolbarButton({
     children,
 }: {
     label: string;
-    onClick: () => void;
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
     color?: string;
     spin?: boolean;
     disabled?: boolean;

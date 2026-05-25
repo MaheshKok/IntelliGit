@@ -116,6 +116,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.showGitLog", async () => {
                 await vscode.commands.executeCommand("intelligit.commitGraph.focus");
             }),
+            vscode.commands.registerCommand("intelligit.openUndocked", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
+            vscode.commands.registerCommand("intelligit.dockWindow", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
         );
         void vscode.commands.executeCommand("setContext", "intelligit.hasMergeConflicts", false);
         return;
@@ -132,17 +138,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Cached branch list for webview context menu lookups
     let currentBranches: Branch[] = [];
     let commitDetailRequestSeq = 0;
-
-    // --- Undocked mode: unified editor tab ---
-    const undockableWindow = vscode.workspace
-        .getConfiguration("intelligit")
-        .get<boolean>("undockableWindow", false);
-
-    const restoreUndockedEditorOnActivation =
-        context.workspaceState?.get<boolean>(
-            "intelligit.restoreUndockedEditorOnActivation",
-            false,
-        ) ?? false;
+    let undockedCommitDetailRequestSeq = 0;
 
     // --- Providers ---
 
@@ -284,11 +280,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     let undocked: UndockedViewProvider | undefined;
 
-    const showUndockedGitLog = async (): Promise<void> => {
-        if (undocked) {
-            undocked.reveal();
-            return;
-        }
+    type UndockTarget = "editorTab" | "newWindow";
+
+    const ensureUndockedPanel = (): UndockedViewProvider => {
+        if (undocked) return undocked;
 
         undocked = new UndockedViewProvider(
             context.extensionUri,
@@ -302,16 +297,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             undocked.onDidDispose(async () => {
                 undocked = undefined;
-                await context.workspaceState?.update(
-                    "intelligit.restoreUndockedEditorOnActivation",
-                    false,
-                );
+            }),
+            undocked.onDockRequested(async () => {
+                await dockIntelliGit();
             }),
             undocked.onCommitSelected(async (hash) => {
-                const requestId = ++commitDetailRequestSeq;
+                const requestId = ++undockedCommitDetailRequestSeq;
                 try {
                     const detail = await gitOps.getCommitDetail(hash);
-                    if (requestId !== commitDetailRequestSeq) return;
+                    if (requestId !== undockedCommitDetailRequestSeq) return;
                     undocked?.setCommitDetail(detail);
                 } catch (err) {
                     const msg = getErrorMessage(err);
@@ -357,15 +351,90 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             undocked.onDidChangeFileCount(updateBadge),
         );
 
-        const panel = undocked;
+        return undocked;
+    };
+
+    const loadUndockedData = async (): Promise<void> => {
+        if (!undocked) return;
+        currentBranches = await gitOps.getBranches();
+        if (!undocked) return;
+        undocked.setBranches(currentBranches);
+        await undocked.refresh();
+    };
+
+    const showUndockedGitLog = async (options?: { deferDataLoad?: boolean }): Promise<void> => {
+        if (undocked) {
+            undocked.reveal();
+            return;
+        }
+
+        const panel = ensureUndockedPanel();
         await panel.open();
         if (undocked !== panel) return;
-        await context.workspaceState?.update("intelligit.restoreUndockedEditorOnActivation", true);
-        currentBranches = await gitOps.getBranches();
-        if (undocked !== panel) return;
-        panel.setBranches(currentBranches);
-        await panel.refresh();
+
+        if (!options?.deferDataLoad) {
+            await loadUndockedData();
+        }
     };
+
+    const moveUndockedEditorToNewWindow = async (): Promise<void> => {
+        try {
+            await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
+        } catch (error) {
+            const message = getErrorMessage(error);
+            vscode.window.showWarningMessage(
+                `Unable to move IntelliGit to a new window automatically: ${message}`,
+            );
+        }
+    };
+
+    const openUndockedIntelliGit = async (target: UndockTarget): Promise<void> => {
+        await vscode.workspace
+            .getConfiguration("intelligit")
+            .update("undockableWindow", true, true);
+
+        const deferDataLoad = target === "newWindow";
+        await showUndockedGitLog({ deferDataLoad });
+
+        if (target === "newWindow") {
+            // Move to new window immediately — before data loading — so the user
+            // never sees a tab flicker.
+            await moveUndockedEditorToNewWindow();
+            // Load data into the already-opened window.
+            await loadUndockedData();
+        }
+    };
+
+    const pickUndockTargetAndOpen = async (): Promise<void> => {
+        const picked = await vscode.window.showQuickPick(
+            [
+                {
+                    label: "Undock in Editor Tab",
+                    description: "Open the unified IntelliGit view as an editor tab",
+                    target: "editorTab" as const,
+                },
+                {
+                    label: "Undock in New Window",
+                    description:
+                        "Open the unified IntelliGit view and move it to a floating window",
+                    target: "newWindow" as const,
+                },
+            ],
+            { placeHolder: "Choose how to undock IntelliGit" },
+        );
+        if (!picked) return;
+        await openUndockedIntelliGit(picked.target);
+    };
+
+    async function dockIntelliGit(): Promise<void> {
+        await vscode.workspace
+            .getConfiguration("intelligit")
+            .update("undockableWindow", false, true);
+        undocked?.dispose();
+        undocked = undefined;
+        await vscode.commands.executeCommand("intelligit.commitPanel.focus");
+        await vscode.commands.executeCommand("intelligit.commitGraph.focus");
+    }
 
     // --- Register view providers ---
 
@@ -499,6 +568,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
 
+        vscode.commands.registerCommand("intelligit.openUndocked", pickUndockTargetAndOpen),
+
+        vscode.commands.registerCommand("intelligit.dockWindow", dockIntelliGit),
+
         vscode.commands.registerCommand("intelligit.mergeConflictsRefresh", async () => {
             await refreshService.refreshMergeConflicts();
         }),
@@ -506,23 +579,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.commands.registerCommand("intelligit.toggleUndocked", async () => {
             const config = vscode.workspace.getConfiguration("intelligit");
             const nextValue = !config.get<boolean>("undockableWindow", false);
-            await config.update("undockableWindow", nextValue, true);
             if (nextValue) {
+                await config.update("undockableWindow", true, true);
                 await showUndockedGitLog();
             } else {
-                await context.workspaceState?.update(
-                    "intelligit.restoreUndockedEditorOnActivation",
-                    false,
-                );
-                undocked?.dispose();
-                undocked = undefined;
+                await dockIntelliGit();
             }
         }),
     );
-
-    if (restoreUndockedEditorOnActivation && undockableWindow) {
-        await showUndockedGitLog();
-    }
 
     const isFilePathContext = (value: unknown): value is { filePath: string } => {
         return (

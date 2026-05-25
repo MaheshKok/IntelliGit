@@ -508,48 +508,70 @@ function App(): React.ReactElement {
         [stageCheckedAndCommit],
     );
 
+    const handleDock = useCallback(() => {
+        vscode.postMessage({ type: "dock" });
+    }, []);
+
     // --- Render ---
     return (
         <ChakraProvider theme={theme}>
             <ThemeIconFontFaces fonts={iconFonts} />
-            <Box display="flex" height="100vh" overflow="hidden">
-                {/* ======== LEFT: Graph panel ======== */}
-                <Box flex={1} display="flex" overflow="hidden" minWidth={0}>
-                    <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
-                        <BranchColumn
-                            branches={branches}
-                            selectedBranch={selectedBranch}
-                            onSelectBranch={handleSelectBranch}
-                            onBranchAction={handleBranchAction}
-                            folderIcon={branchFolderIcon}
-                            folderExpandedIcon={branchFolderExpandedIcon}
-                            folderIconsByName={branchFolderIconsByName}
-                        />
-                    </div>
-
-                    <div
+            <Box display="flex" height="100vh" overflow="hidden" flexDirection="column">
+                <Box
+                    as="header"
+                    height="32px"
+                    flexShrink={0}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    px="10px"
+                    bg="var(--vscode-sideBar-background)"
+                    borderBottom="1px solid var(--vscode-panel-border)"
+                    color="var(--vscode-foreground)"
+                    fontSize="12px"
+                    fontFamily="var(--vscode-font-family)"
+                >
+                    <Box fontWeight={600}>IntelliGit</Box>
+                    <button
+                        type="button"
+                        onClick={handleDock}
+                        title="Dock IntelliGit"
+                        aria-label="Dock IntelliGit"
                         style={{
-                            width: 4,
-                            flexShrink: 0,
-                            cursor: "col-resize",
-                            background: "var(--vscode-panel-border)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            height: 24,
+                            border: "1px solid var(--vscode-button-border, transparent)",
+                            borderRadius: 3,
+                            padding: "0 8px",
+                            color: "var(--vscode-button-foreground)",
+                            background: "var(--vscode-button-secondaryBackground)",
+                            font: "inherit",
+                            cursor: "pointer",
                         }}
-                        onMouseDown={onBranchDividerMouseDown}
-                    />
-
-                    <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
-                        <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
-                            <CommitList
-                                commits={commits}
-                                selectedHash={selectedHash}
-                                filterText={filterText}
-                                hasMore={hasMore}
-                                unpushedHashes={unpushedHashes}
+                    >
+                        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+                            <path
+                                fill="currentColor"
+                                d="M2 3h12v10H2V3zm1 1v8h10V4H3zm1 1h3v6H4V5zm4 0h4v2H8V5z"
+                            />
+                        </svg>
+                        Dock
+                    </button>
+                </Box>
+                <Box display="flex" flex={1} overflow="hidden" minHeight={0}>
+                    {/* ======== LEFT: Graph panel ======== */}
+                    <Box flex={1} display="flex" overflow="hidden" minWidth={0}>
+                        <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
+                            <BranchColumn
+                                branches={branches}
                                 selectedBranch={selectedBranch}
-                                onSelectCommit={handleSelectCommit}
-                                onFilterText={handleFilterText}
-                                onLoadMore={handleLoadMore}
-                                onCommitAction={handleCommitAction}
+                                onSelectBranch={handleSelectBranch}
+                                onBranchAction={handleBranchAction}
+                                folderIcon={branchFolderIcon}
+                                folderExpandedIcon={branchFolderExpandedIcon}
+                                folderIconsByName={branchFolderIconsByName}
                             />
                         </div>
 
@@ -560,86 +582,113 @@ function App(): React.ReactElement {
                                 cursor: "col-resize",
                                 background: "var(--vscode-panel-border)",
                             }}
-                            onMouseDown={onInfoDividerMouseDown}
+                            onMouseDown={onBranchDividerMouseDown}
                         />
 
-                        <div
-                            style={{
-                                width: infoWidth,
-                                flexShrink: 0,
-                                overflow: "hidden",
-                            }}
-                        >
-                            <CommitInfoPane
-                                detail={selectedDetail}
-                                folderIcon={commitFolderIcon}
-                                folderExpandedIcon={commitFolderExpandedIcon}
-                                folderIconsByName={commitFolderIconsByName}
-                                onOpenDiff={handleOpenDiff}
+                        <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
+                            <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                                <CommitList
+                                    commits={commits}
+                                    selectedHash={selectedHash}
+                                    filterText={filterText}
+                                    hasMore={hasMore}
+                                    unpushedHashes={unpushedHashes}
+                                    selectedBranch={selectedBranch}
+                                    onSelectCommit={handleSelectCommit}
+                                    onFilterText={handleFilterText}
+                                    onLoadMore={handleLoadMore}
+                                    onCommitAction={handleCommitAction}
+                                />
+                            </div>
+
+                            <div
+                                style={{
+                                    width: 4,
+                                    flexShrink: 0,
+                                    cursor: "col-resize",
+                                    background: "var(--vscode-panel-border)",
+                                }}
+                                onMouseDown={onInfoDividerMouseDown}
                             />
+
+                            <div
+                                style={{
+                                    width: infoWidth,
+                                    flexShrink: 0,
+                                    overflow: "hidden",
+                                }}
+                            >
+                                <CommitInfoPane
+                                    detail={selectedDetail}
+                                    folderIcon={commitFolderIcon}
+                                    folderExpandedIcon={commitFolderExpandedIcon}
+                                    folderIconsByName={commitFolderIconsByName}
+                                    onOpenDiff={handleOpenDiff}
+                                />
+                            </div>
                         </div>
-                    </div>
-                </Box>
+                    </Box>
 
-                {/* ======== Divider between graph and commit panel ======== */}
-                <Box
-                    width="4px"
-                    flexShrink={0}
-                    cursor="col-resize"
-                    bg="var(--vscode-panel-border)"
-                    onMouseDown={onCommitPanelDividerMouseDown}
-                    _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
-                />
+                    {/* ======== Divider between graph and commit panel ======== */}
+                    <Box
+                        width="4px"
+                        flexShrink={0}
+                        cursor="col-resize"
+                        bg="var(--vscode-panel-border)"
+                        onMouseDown={onCommitPanelDividerMouseDown}
+                        _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                    />
 
-                {/* ======== RIGHT: Commit panel ======== */}
-                <Box
-                    width={`${commitPanelWidth}px`}
-                    flexShrink={0}
-                    overflow="hidden"
-                    display="flex"
-                    flexDirection="column"
-                >
-                    <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
-                        <TabBar
-                            stashCount={cpState.stashes.length}
-                            commitContent={
-                                <CommitTab
-                                    files={cpState.files}
-                                    commitMessage={cpState.commitMessage}
-                                    isAmend={cpState.isAmend}
-                                    amendBranchCommits={cpState.amendBranchCommits}
-                                    amendBranchHistoryLoaded={cpState.amendBranchHistoryLoaded}
-                                    isRefreshing={cpState.isRefreshing}
-                                    checkedPaths={checkedPaths}
-                                    onToggleFile={toggleFile}
-                                    onToggleFolder={toggleFolder}
-                                    onToggleSection={toggleSection}
-                                    isAllChecked={isAllChecked}
-                                    isSomeChecked={isSomeChecked}
-                                    onMessageChange={handleMessageChange}
-                                    onAmendChange={handleAmendChange}
-                                    onCommit={handleCommit}
-                                    onCommitAndPush={handleCommitAndPush}
-                                    folderIcon={cpState.folderIcon}
-                                    folderExpandedIcon={cpState.folderExpandedIcon}
-                                    folderIconsByName={cpState.folderIconsByName}
-                                    groupByDir={groupByDir}
-                                    onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                                />
-                            }
-                            shelfContent={
-                                <ShelfTab
-                                    stashes={cpState.stashes}
-                                    shelfFiles={cpState.shelfFiles}
-                                    selectedIndex={cpState.selectedShelfIndex}
-                                    folderIcon={cpState.folderIcon}
-                                    folderExpandedIcon={cpState.folderExpandedIcon}
-                                    folderIconsByName={cpState.folderIconsByName}
-                                    groupByDir={groupByDir}
-                                    onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                                />
-                            }
-                        />
+                    {/* ======== RIGHT: Commit panel ======== */}
+                    <Box
+                        width={`${commitPanelWidth}px`}
+                        flexShrink={0}
+                        overflow="hidden"
+                        display="flex"
+                        flexDirection="column"
+                    >
+                        <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
+                            <TabBar
+                                stashCount={cpState.stashes.length}
+                                commitContent={
+                                    <CommitTab
+                                        files={cpState.files}
+                                        commitMessage={cpState.commitMessage}
+                                        isAmend={cpState.isAmend}
+                                        amendBranchCommits={cpState.amendBranchCommits}
+                                        amendBranchHistoryLoaded={cpState.amendBranchHistoryLoaded}
+                                        isRefreshing={cpState.isRefreshing}
+                                        checkedPaths={checkedPaths}
+                                        onToggleFile={toggleFile}
+                                        onToggleFolder={toggleFolder}
+                                        onToggleSection={toggleSection}
+                                        isAllChecked={isAllChecked}
+                                        isSomeChecked={isSomeChecked}
+                                        onMessageChange={handleMessageChange}
+                                        onAmendChange={handleAmendChange}
+                                        onCommit={handleCommit}
+                                        onCommitAndPush={handleCommitAndPush}
+                                        folderIcon={cpState.folderIcon}
+                                        folderExpandedIcon={cpState.folderExpandedIcon}
+                                        folderIconsByName={cpState.folderIconsByName}
+                                        groupByDir={groupByDir}
+                                        onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                                    />
+                                }
+                                shelfContent={
+                                    <ShelfTab
+                                        stashes={cpState.stashes}
+                                        shelfFiles={cpState.shelfFiles}
+                                        selectedIndex={cpState.selectedShelfIndex}
+                                        folderIcon={cpState.folderIcon}
+                                        folderExpandedIcon={cpState.folderExpandedIcon}
+                                        folderIconsByName={cpState.folderIconsByName}
+                                        groupByDir={groupByDir}
+                                        onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                                    />
+                                }
+                            />
+                        </Box>
                     </Box>
                 </Box>
             </Box>
