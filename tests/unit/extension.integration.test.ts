@@ -847,7 +847,30 @@ describe("extension integration", () => {
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 
-    it("openUndocked sets editor-tab mode and opens the unified editor", async () => {
+    it("openUndocked shows undock options and opens the unified editor tab", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.openUndocked")?.();
+
+        expect(showQuickPick).toHaveBeenCalledWith(
+            expect.arrayContaining([
+                expect.objectContaining({ label: "Undock in Editor Tab", target: "editorTab" }),
+                expect.objectContaining({ label: "Undock in New Window", target: "newWindow" }),
+            ]),
+            expect.objectContaining({ placeHolder: "Choose how to undock IntelliGit" }),
+        );
+        expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", true, true);
+        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+    });
+
+    it("openUndocked can move the unified editor to a new VS Code window", async () => {
+        showQuickPick.mockResolvedValueOnce({ target: "newWindow" });
         const { activate } = await import("../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -859,6 +882,28 @@ describe("extension integration", () => {
 
         expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", true, true);
         expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "workbench.action.moveEditorToNewWindow",
+        );
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+    });
+
+    it("openUndockedInNewWindow skips the picker and opens directly in a new VS Code window", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.openUndockedInNewWindow")?.();
+
+        expect(showQuickPick).not.toHaveBeenCalled();
+        expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", true, true);
+        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "workbench.action.moveEditorToNewWindow",
+        );
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 

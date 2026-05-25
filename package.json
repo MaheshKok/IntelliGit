@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.2",
+    "version": "0.8.3",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -95,9 +95,21 @@
             },
             {
                 "command": "intelligit.openUndocked",
-                "title": "Open as Editor Tab",
+                "title": "Undock...",
                 "category": "IntelliGit",
                 "icon": "$(multiple-windows)"
+            },
+            {
+                "command": "intelligit.openUndockedInEditor",
+                "title": "Undock in Editor Tab",
+                "category": "IntelliGit",
+                "icon": "$(layout-panel)"
+            },
+            {
+                "command": "intelligit.openUndockedInNewWindow",
+                "title": "Undock in New Window",
+                "category": "IntelliGit",
+                "icon": "$(window)"
             },
             {
                 "command": "intelligit.dockWindow",
@@ -323,11 +335,6 @@
                     "group": "navigation"
                 },
                 {
-                    "command": "intelligit.openUndocked",
-                    "when": "view == intelligit.commitGraph",
-                    "group": "navigation@2"
-                },
-                {
                     "command": "intelligit.fileRefresh",
                     "when": "view == intelligit.commitPanel && !intelligit.commitPanel.refreshing",
                     "group": "navigation"
@@ -336,11 +343,6 @@
                     "command": "intelligit.fileRefreshing",
                     "when": "view == intelligit.commitPanel && intelligit.commitPanel.refreshing",
                     "group": "navigation"
-                },
-                {
-                    "command": "intelligit.openUndocked",
-                    "when": "view == intelligit.commitPanel",
-                    "group": "navigation@2"
                 },
                 {
                     "command": "intelligit.mergeConflictsRefresh",

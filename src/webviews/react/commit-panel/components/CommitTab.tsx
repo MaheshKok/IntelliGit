@@ -38,6 +38,7 @@ interface Props {
     onCommitAndPush: () => void;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
+    showUndockMenu?: boolean;
 }
 
 export function CommitTab({
@@ -62,6 +63,7 @@ export function CommitTab({
     onCommitAndPush,
     groupByDir,
     onToggleGroupBy,
+    showUndockMenu = false,
 }: Props): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
@@ -96,6 +98,14 @@ export function CommitTab({
         }
     }, [vscode, checkedPaths]);
 
+    const handleUndockInEditor = useCallback(() => {
+        vscode.postMessage({ type: "openUndockedInEditor" });
+    }, [vscode]);
+
+    const handleUndockInNewWindow = useCallback(() => {
+        vscode.postMessage({ type: "openUndockedInNewWindow" });
+    }, [vscode]);
+
     const handleFileClick = useCallback(
         (path: string) => {
             vscode.postMessage({ type: "showDiff", path });
@@ -114,6 +124,8 @@ export function CommitTab({
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
                 onCollapseAll={() => setCollapseAllSignal((s) => s + 1)}
+                onUndockInEditor={showUndockMenu ? handleUndockInEditor : undefined}
+                onUndockInNewWindow={showUndockMenu ? handleUndockInNewWindow : undefined}
             />
 
             {isAmend ? (

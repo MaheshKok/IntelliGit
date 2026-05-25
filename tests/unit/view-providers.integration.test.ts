@@ -503,7 +503,9 @@ describe("view providers integration", () => {
         expect(gitOps.getAmendBranchCommits).toHaveBeenCalled();
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "amendBranchCommits",
-            commits: [{ shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" }],
+            commits: [
+                { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+            ],
         });
         provider.dispose();
     });
@@ -625,6 +627,10 @@ describe("view providers integration", () => {
         const { provider, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(executeCommand).toHaveBeenCalledWith("git.openChange", expect.any(Object));
+        await webview.send({ type: "openUndockedInEditor" });
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.openUndockedInEditor");
+        await webview.send({ type: "openUndockedInNewWindow" });
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.openUndockedInNewWindow");
         await webview.send({ type: "openFile", path: "src/a.ts" });
         await webview.send({ type: "showHistory", path: "src/a.ts" });
         expect(openTextDocument).toHaveBeenCalled();

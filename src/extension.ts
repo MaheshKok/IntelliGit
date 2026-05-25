@@ -273,6 +273,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     let undocked: UndockedViewProvider | undefined;
 
+    type UndockTarget = "editorTab" | "newWindow";
+
     const showUndockedGitLog = async (): Promise<void> => {
         if (undocked) {
             undocked.reveal();
@@ -352,6 +354,48 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         if (undocked !== panel) return;
         panel.setBranches(currentBranches);
         await panel.refresh();
+    };
+
+    const moveUndockedEditorToNewWindow = async (): Promise<void> => {
+        try {
+            await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
+        } catch (error) {
+            const message = getErrorMessage(error);
+            vscode.window.showWarningMessage(
+                `Unable to move IntelliGit to a new window automatically: ${message}`,
+            );
+        }
+    };
+
+    const openUndockedIntelliGit = async (target: UndockTarget): Promise<void> => {
+        await vscode.workspace
+            .getConfiguration("intelligit")
+            .update("undockableWindow", true, true);
+        await showUndockedGitLog();
+        if (target === "newWindow") {
+            await moveUndockedEditorToNewWindow();
+        }
+    };
+
+    const pickUndockTargetAndOpen = async (): Promise<void> => {
+        const picked = await vscode.window.showQuickPick(
+            [
+                {
+                    label: "Undock in Editor Tab",
+                    description: "Open the unified IntelliGit view as an editor tab",
+                    target: "editorTab" as const,
+                },
+                {
+                    label: "Undock in New Window",
+                    description:
+                        "Open the unified IntelliGit view and move it to a floating window",
+                    target: "newWindow" as const,
+                },
+            ],
+            { placeHolder: "Choose how to undock IntelliGit" },
+        );
+        if (!picked) return;
+        await openUndockedIntelliGit(picked.target);
     };
 
     async function dockIntelliGit(): Promise<void> {
@@ -496,11 +540,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
 
-        vscode.commands.registerCommand("intelligit.openUndocked", async () => {
-            await vscode.workspace
-                .getConfiguration("intelligit")
-                .update("undockableWindow", true, true);
-            await showUndockedGitLog();
+        vscode.commands.registerCommand("intelligit.openUndocked", pickUndockTargetAndOpen),
+
+        vscode.commands.registerCommand("intelligit.openUndockedInEditor", async () => {
+            await openUndockedIntelliGit("editorTab");
+        }),
+
+        vscode.commands.registerCommand("intelligit.openUndockedInNewWindow", async () => {
+            await openUndockedIntelliGit("newWindow");
         }),
 
         vscode.commands.registerCommand("intelligit.dockWindow", dockIntelliGit),

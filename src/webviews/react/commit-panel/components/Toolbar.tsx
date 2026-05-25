@@ -1,9 +1,10 @@
 // Toolbar with 7 icon buttons: Refresh, Rollback, Group by Directory,
 // Shelve Changes, Show Diff, Expand All, Collapse All.
 
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { Flex, Box, IconButton, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
+import { ContextMenu } from "../../shared/components/ContextMenu";
 
 interface Props {
     onRefresh: () => void;
@@ -14,6 +15,8 @@ interface Props {
     onShowDiff: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
+    onUndockInEditor?: () => void;
+    onUndockInNewWindow?: () => void;
 }
 
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
@@ -27,7 +30,16 @@ export function Toolbar({
     onShowDiff,
     onExpandAll,
     onCollapseAll,
+    onUndockInEditor,
+    onUndockInNewWindow,
 }: Props): React.ReactElement {
+    const [undockMenu, setUndockMenu] = useState<{ x: number; y: number } | null>(null);
+    const showUndockMenu = !!onUndockInEditor && !!onUndockInNewWindow;
+    const handleUndockClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setUndockMenu({ x: rect.left, y: rect.bottom + 4 });
+    }, []);
+
     return (
         <Flex
             align="center"
@@ -76,6 +88,14 @@ export function Toolbar({
                 />
             </ToolbarButton>
             <Box flex={1} />
+            {showUndockMenu && (
+                <ToolbarButton label="Undock..." onClick={handleUndockClick} color="#9CDCFE">
+                    <path
+                        fill="currentColor"
+                        d="M2 2h7v1H3v6H2V2zm3 3h9v9H5V5zm1 1v7h7V6H6zm5-4h3v3h-1V3.7L9.85 6.85l-.7-.7L12.3 3H11V2z"
+                    />
+                </ToolbarButton>
+            )}
             <ToolbarButton label="Expand All" onClick={onExpandAll} color="#f3b1cf">
                 <path
                     fill="currentColor"
@@ -90,6 +110,22 @@ export function Toolbar({
                     d="M.172 15.828a.5.5 0 0 0 .707 0l4.096-4.096V14.5a.5.5 0 1 0 1 0v-3.975a.5.5 0 0 0-.5-.5H1.5a.5.5 0 0 0 0 1h2.768L.172 15.121a.5.5 0 0 0 0 .707M15.828.172a.5.5 0 0 0-.707 0l-4.096 4.096V1.5a.5.5 0 1 0-1 0v3.975a.5.5 0 0 0 .5.5H14.5a.5.5 0 0 0 0-1h-2.768L15.828.879a.5.5 0 0 0 0-.707"
                 />
             </ToolbarButton>
+            {undockMenu && showUndockMenu && (
+                <ContextMenu
+                    x={undockMenu.x}
+                    y={undockMenu.y}
+                    minWidth={230}
+                    onClose={() => setUndockMenu(null)}
+                    onSelect={(action) => {
+                        if (action === "editor") onUndockInEditor();
+                        if (action === "window") onUndockInNewWindow();
+                    }}
+                    items={[
+                        { label: "Undock in Editor Tab", action: "editor" },
+                        { label: "Undock in New Window", action: "window" },
+                    ]}
+                />
+            )}
         </Flex>
     );
 }
@@ -103,7 +139,7 @@ function ToolbarButton({
     children,
 }: {
     label: string;
-    onClick: () => void;
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
     color?: string;
     spin?: boolean;
     disabled?: boolean;
