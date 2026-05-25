@@ -531,14 +531,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             "intelligit.fileRollback",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
-                const confirm = await vscode.window.showWarningMessage(
-                    `Rollback ${ctx.filePath}?`,
-                    { modal: true },
-                    "Rollback",
-                );
-                if (confirm !== "Rollback") return;
                 try {
-                    await gitOps.rollbackFiles([ctx.filePath]);
+                    const safePath = assertRepoRelativePath(ctx.filePath);
+                    const confirm = await vscode.window.showWarningMessage(
+                        `Rollback ${safePath}?`,
+                        { modal: true },
+                        "Rollback",
+                    );
+                    if (confirm !== "Rollback") return;
+                    await gitOps.rollbackFiles([safePath]);
                     vscode.window.showInformationMessage("Changes rolled back.");
                 } catch (error) {
                     const message = getErrorMessage(error);
@@ -559,36 +560,46 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await vscode.window.showTextDocument(uri);
             },
         ),
-        vscode.commands.registerCommand(
-            "intelligit.fileDelete",
-            async (ctx: { filePath?: string }) => {
-                if (!ctx?.filePath) return;
-                const safePath = assertRepoRelativePath(ctx.filePath);
-                const confirm = await vscode.window.showWarningMessage(
-                    `Delete ${safePath}?`,
-                    { modal: true },
-                    "Delete",
-                );
-                if (confirm !== "Delete") return;
+                vscode.commands.registerCommand(
+                    "intelligit.fileDelete",
+                    async (ctx: { filePath?: string }) => {
+                        if (!ctx?.filePath) return;
+                        try {
+                            const safePath = assertRepoRelativePath(ctx.filePath);
+                            const confirm = await vscode.window.showWarningMessage(
+                                `Delete ${safePath}?`,
+                                { modal: true },
+                                "Delete",
+                            );
+                            if (confirm !== "Delete") return;
 
-                const deleted = await deleteFileWithFallback(
-                    gitOps,
-                    vscode.Uri.file(repoRoot),
-                    safePath,
-                );
-                if (!deleted) return;
-
-                vscode.window.showInformationMessage(`Deleted ${safePath}`);
-                await commitPanel.refresh();
-            },
-        ),
+                            const deleted = await deleteFileWithFallback(
+                                gitOps,
+                                vscode.Uri.file(repoRoot),
+                                safePath,
+                            );
+                            if (deleted) {
+                                vscode.window.showInformationMessage(`Deleted ${safePath}`);
+                            }
+                        } catch (error) {
+                            const message =
+                                error instanceof Error ? error.message : String(error);
+                            vscode.window.showErrorMessage(
+                                `Delete failed for '${ctx.filePath}': ${message}`,
+                            );
+                        } finally {
+                            await commitPanel.refresh();
+                        }
+                    },
+                ),
         vscode.commands.registerCommand(
             "intelligit.fileShelve",
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
                 try {
-                    await gitOps.shelveSave([ctx.filePath]);
-                    vscode.window.showInformationMessage(`Shelved ${ctx.filePath}.`);
+                    const safePath = assertRepoRelativePath(ctx.filePath);
+                    await gitOps.shelveSave([safePath]);
+                    vscode.window.showInformationMessage(`Shelved ${safePath}.`);
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error("Failed to shelve file:", error);
@@ -603,7 +614,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             async (ctx: { filePath?: string }) => {
                 if (!ctx?.filePath) return;
                 try {
-                    const history = await gitOps.getFileHistory(ctx.filePath);
+                    const safePath = assertRepoRelativePath(ctx.filePath);
+                    const history = await gitOps.getFileHistory(safePath);
                     const doc = await vscode.workspace.openTextDocument({
                         content: history || "No history found.",
                         language: "git-commit",

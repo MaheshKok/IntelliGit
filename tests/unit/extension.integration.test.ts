@@ -1314,6 +1314,40 @@ describe("extension integration", () => {
         expect(createTerminal).toHaveBeenCalled();
     });
 
+    it("rejects invalid file context command paths before Git operations", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+
+        await registeredCommands.get("intelligit.fileRollback")?.({ filePath: "../secret.txt" });
+        await registeredCommands.get("intelligit.fileShelve")?.({ filePath: "../secret.txt" });
+        await registeredCommands.get("intelligit.fileShowHistory")?.({
+            filePath: "../secret.txt",
+        });
+        await registeredCommands.get("intelligit.fileDelete")?.({ filePath: "../secret.txt" });
+
+        expect(gitOpsState.rollbackFiles).not.toHaveBeenCalled();
+        expect(gitOpsState.shelveSave).not.toHaveBeenCalled();
+        expect(gitOpsState.getFileHistory).not.toHaveBeenCalled();
+        expect(deleteFileWithFallback).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Rollback failed: Rejected path escaping repo root"),
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Shelve failed: Rejected path escaping repo root"),
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Show history failed: Rejected path escaping repo root"),
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Delete failed for '../secret.txt': Rejected path escaping repo root"),
+        );
+    });
+
     it("covers branch/file command failure and fallback branches", async () => {
         const { activate } = await import("../../src/extension");
         const context = {

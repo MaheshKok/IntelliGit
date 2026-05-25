@@ -366,6 +366,85 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider rejects invalid webview command payloads", async () => {
+        const { CommitGraphViewProvider } = await import("../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        const selected = vi.fn();
+        const branchAction = vi.fn();
+        const commitAction = vi.fn();
+        const openCommitFileDiff = vi.fn();
+
+        provider.onCommitSelected(selected);
+        provider.onBranchAction(branchAction);
+        provider.onCommitAction(commitAction);
+        provider.onOpenCommitFileDiff(openCommitFileDiff);
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "selectCommit", hash: "../not-a-hash" });
+        await webview.send({ type: "branchAction", action: "runShell", branchName: "main" });
+        await webview.send({ type: "commitAction", action: "resetCurrentToHere", hash: "--bad" });
+        await webview.send({
+            type: "openCommitFileDiff",
+            commitHash: "abc1234",
+            filePath: "../secret.txt",
+        });
+
+        expect(selected).not.toHaveBeenCalled();
+        expect(branchAction).not.toHaveBeenCalled();
+        expect(commitAction).not.toHaveBeenCalled();
+        expect(openCommitFileDiff).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Commit graph error"),
+        );
+
+        provider.dispose();
+    });
+
+    it("CommitInfoViewProvider rejects invalid open-file-diff payloads", async () => {
+        const { CommitInfoViewProvider } = await import("../../src/views/CommitInfoViewProvider");
+        const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {
+            fsPath: string;
+            path: string;
+        });
+        const webview = createWebviewView();
+        const openCommitFileDiff = vi.fn();
+
+        provider.onOpenCommitFileDiff(openCommitFileDiff);
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({
+            type: "openCommitFileDiff",
+            commitHash: "abc1234",
+            filePath: "../secret.txt",
+        });
+        await webview.send({
+            type: "openCommitFileDiff",
+            commitHash: "--bad",
+            filePath: "src/a.ts",
+        });
+
+        expect(openCommitFileDiff).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Commit file action error"),
+        );
+
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider handles staging and unstaging", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         expect(gitOps.getStatus).toHaveBeenCalled();
@@ -611,6 +690,25 @@ describe("view providers integration", () => {
         );
         await webview.send({ type: "openFile", path: "/etc/passwd" });
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("non-relative"));
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider validates commitSelected paths before staging", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: guarded",
+            amend: false,
+            push: false,
+            paths: ["../etc/passwd"],
+        });
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("escaping repo root"),
+        );
+        expect(gitOps.stageFiles).not.toHaveBeenCalled();
+        expect(gitOps.commit).not.toHaveBeenCalled();
         provider.dispose();
     });
 

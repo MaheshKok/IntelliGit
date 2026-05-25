@@ -11,10 +11,13 @@ import type {
     CommitGraphOutbound,
     CommitGraphInbound,
 } from "../webviews/react/commitGraphTypes";
+import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
 import { getErrorMessage } from "../utils/errors";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
+import { assertRepoRelativePath } from "../utils/fileOps";
+import { isValidGitHash } from "../services/gitHelpers";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitGraph";
@@ -109,37 +112,48 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         this.postCommitDetailState();
                         break;
                     case "selectCommit":
-                        this._onCommitSelected.fire(msg.hash);
+                        this._onCommitSelected.fire(this.assertGitHash(msg.hash, "hash"));
                         break;
                     case "loadMore":
                         await this.loadMore();
                         break;
                     case "filterText":
-                        await this.filterByText(msg.text);
+                        await this.filterByText(this.assertString(msg.text, "text"));
                         break;
                     case "filterBranch":
-                        this.currentBranch = msg.branch;
+                        this.currentBranch = this.assertNullableString(msg.branch, "branch");
                         this.filterText = "";
-                        this._onBranchFilterChanged.fire(msg.branch);
-                        this.postToWebview({ type: "setSelectedBranch", branch: msg.branch });
+                        this._onBranchFilterChanged.fire(this.currentBranch);
+                        this.postToWebview({
+                            type: "setSelectedBranch",
+                            branch: this.currentBranch,
+                        });
                         await this.loadInitial();
                         break;
                     case "branchAction":
+                        if (!isBranchAction(this.assertString(msg.action, "action"))) {
+                            throw new Error("Invalid branch action received from webview.");
+                        }
                         this._onBranchAction.fire({
                             action: msg.action,
-                            branchName: msg.branchName,
+                            branchName: this.assertString(msg.branchName, "branchName"),
                         });
                         break;
                     case "commitAction":
+                        if (!isCommitAction(this.assertString(msg.action, "action"))) {
+                            throw new Error("Invalid commit action received from webview.");
+                        }
                         this._onCommitAction.fire({
                             action: msg.action,
-                            hash: msg.hash,
+                            hash: this.assertGitHash(msg.hash, "hash"),
                         });
                         break;
                     case "openCommitFileDiff":
                         this._onOpenCommitFileDiff.fire({
-                            commitHash: msg.commitHash,
-                            filePath: msg.filePath,
+                            commitHash: this.assertGitHash(msg.commitHash, "commitHash"),
+                            filePath: assertRepoRelativePath(
+                                this.assertString(msg.filePath, "filePath"),
+                            ),
                         });
                         break;
                 }
@@ -283,6 +297,26 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private postToWebview(msg: CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    private assertString(value: unknown, field: string): string {
+        if (typeof value !== "string") {
+            throw new Error(`Expected string for '${field}', got ${typeof value}`);
+        }
+        return value;
+    }
+
+    private assertNullableString(value: unknown, field: string): string | null {
+        if (value === null) return null;
+        return this.assertString(value, field);
+    }
+
+    private assertGitHash(value: unknown, field: string): string {
+        const hash = this.assertString(value, field).trim();
+        if (!isValidGitHash(hash)) {
+            throw new Error(`Invalid git hash for '${field}'.`);
+        }
+        return hash;
     }
 
     private postCommitDetailState(): void {

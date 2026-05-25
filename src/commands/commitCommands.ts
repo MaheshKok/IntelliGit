@@ -97,8 +97,9 @@ export async function handleCommitContextAction(params: {
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(`Cherry-pick failed: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "checkoutRevision": {
@@ -114,8 +115,9 @@ export async function handleCommitContextAction(params: {
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(`Checkout failed: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "resetCurrentToHere": {
@@ -131,8 +133,9 @@ export async function handleCommitContextAction(params: {
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(`Reset failed: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "revertCommit": {
@@ -160,8 +163,9 @@ export async function handleCommitContextAction(params: {
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(`Revert failed: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "pushAllUpToHere": {
@@ -237,19 +241,22 @@ export async function handleCommitContextAction(params: {
             );
             if (confirm !== "Push") return;
 
-            await runWithNotificationProgress(`Pushing commits up to ${short}...`, async () => {
-                const destinationRef = `refs/heads/${target.remoteBranch}`;
-                const refspec = `${validatedHash}:${destinationRef}`;
-                await executor.run([
-                    "push",
-                    ...(setUpstream ? ["-u"] : []),
-                    target.remote,
-                    refspec,
-                ]);
-            });
+            try {
+                await runWithNotificationProgress(`Pushing commits up to ${short}...`, async () => {
+                    const destinationRef = `refs/heads/${target.remoteBranch}`;
+                    const refspec = `${validatedHash}:${destinationRef}`;
+                    await executor.run([
+                        "push",
+                        ...(setUpstream ? ["-u"] : []),
+                        target.remote,
+                        refspec,
+                    ]);
+                });
 
-            vscode.window.showInformationMessage(`Pushed commits up to ${short}.`);
-            await refreshAll();
+                vscode.window.showInformationMessage(`Pushed commits up to ${short}.`);
+            } finally {
+                await refreshAll();
+            }
             return;
         }
         case "newBranch": {
@@ -270,8 +277,9 @@ export async function handleCommitContextAction(params: {
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(`Failed to create branch: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "newTag": {
@@ -292,8 +300,9 @@ export async function handleCommitContextAction(params: {
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(`Failed to create tag: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "undoCommit": {
@@ -327,9 +336,12 @@ export async function handleCommitContextAction(params: {
                 "Undo",
             );
             if (confirm !== "Undo") return;
-            await executor.run(["reset", "--soft", `${validatedHash}^`]);
-            vscode.window.showInformationMessage(`Undid ${undoCount} commit(s) up to ${short}.`);
-            await refreshAll();
+            try {
+                await executor.run(["reset", "--soft", `${validatedHash}^`]);
+                vscode.window.showInformationMessage(`Undid ${undoCount} commit(s) up to ${short}.`);
+            } finally {
+                await refreshAll();
+            }
             return;
         }
         case "editCommitMessage": {
@@ -354,9 +366,12 @@ export async function handleCommitContextAction(params: {
                     value: currentMessage,
                 });
                 if (!nextMessage) return;
-                await executor.run(["commit", "--amend", "-m", nextMessage]);
-                vscode.window.showInformationMessage("Commit message updated.");
-                await refreshAll();
+                try {
+                    await executor.run(["commit", "--amend", "-m", nextMessage]);
+                    vscode.window.showInformationMessage("Commit message updated.");
+                } finally {
+                    await refreshAll();
+                }
                 return;
             }
 
@@ -499,8 +514,9 @@ export async function handleCommitContextAction(params: {
                     }
                 }
                 vscode.window.showErrorMessage(`Squash Commits failed: ${message}`);
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "dropCommit": {
@@ -547,8 +563,9 @@ export async function handleCommitContextAction(params: {
                 vscode.window.showErrorMessage(
                     `Failed to drop commit: ${message}. Run 'git rebase --abort' to recover.`,
                 );
+            } finally {
+                await refreshAll();
             }
-            await refreshAll();
             return;
         }
         case "interactiveRebaseFromHere": {
