@@ -138,7 +138,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         .getConfiguration("intelligit")
         .get<boolean>("undockableWindow", false);
 
-    if (undockableWindow) {
+    const restoreUndockedEditorOnActivation =
+        context.workspaceState?.get<boolean>(
+            "intelligit.restoreUndockedEditorOnActivation",
+            false,
+        ) ?? false;
+
+    if (restoreUndockedEditorOnActivation && undockableWindow) {
         const repoRootUri = vscode.Uri.file(repoRoot);
         const undocked = new UndockedViewProvider(
             context.extensionUri,
@@ -220,16 +226,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // Cleanup disposable
         context.subscriptions.push(undocked);
 
-        // Fallback when panel is closed: switch back to normal mode
-        context.subscriptions.push(
-            undocked.onDidDispose(async () => {
-                await vscode.workspace
-                    .getConfiguration("intelligit")
-                    .update("undockableWindow", false, true);
-                await vscode.commands.executeCommand("workbench.action.reloadWindow");
-            }),
-        );
-
         // --- Register commands (shared with normal mode) ---
         context.subscriptions.push(
             vscode.commands.registerCommand("intelligit.refresh", async () => {
@@ -272,7 +268,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await vscode.workspace
                     .getConfiguration("intelligit")
                     .update("undockableWindow", false, true);
-                await vscode.commands.executeCommand("workbench.action.reloadWindow");
+                undocked.dispose();
             }),
         );
 
@@ -579,29 +575,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         undocked.setBranches(currentBranches);
         await undocked.refresh();
 
-        // --- Config change listener ---
-        context.subscriptions.push(
-            vscode.workspace.onDidChangeConfiguration((e) => {
-                if (e.affectsConfiguration("intelligit.undockableWindow")) {
-                    const newVal = vscode.workspace
-                        .getConfiguration("intelligit")
-                        .get<boolean>("undockableWindow", false);
-                    if (!newVal) {
-                        vscode.window
-                            .showInformationMessage(
-                                "Reload window for IntelliGit layout change?",
-                                "Reload",
-                            )
-                            .then((choice) => {
-                                if (choice === "Reload") {
-                                    vscode.commands.executeCommand("workbench.action.reloadWindow");
-                                }
-                            });
-                    }
-                }
-            }),
-        );
-
         return;
     }
 
@@ -690,6 +663,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         refreshService.registerFileWatchers();
         await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
         await refreshActiveRepository();
+        if (undocked) {
+            undocked.setRepositoryRootUri(repoRootUri);
+            undocked.setRepositoryLabel(repository.label);
+            undocked.setBranches(currentBranches);
+            await undocked.refresh();
+        }
     };
 
     // --- Merge conflict helpers ---
@@ -735,6 +714,83 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await refreshService.refreshConflictUi();
             },
         });
+    };
+
+    let undocked: UndockedViewProvider | undefined;
+
+    const showUndockedGitLog = async (): Promise<void> => {
+        if (undocked) {
+            undocked.reveal();
+            return;
+        }
+
+        undocked = new UndockedViewProvider(
+            context.extensionUri,
+            gitOps,
+            repoRootUri,
+            context.workspaceState,
+        );
+        undocked.setRepositoryLabel(activeRepository.label);
+        context.subscriptions.push(undocked);
+
+        context.subscriptions.push(
+            undocked.onDidDispose(() => {
+                undocked = undefined;
+            }),
+            undocked.onCommitSelected(async (hash) => {
+                const requestId = ++commitDetailRequestSeq;
+                try {
+                    const detail = await gitOps.getCommitDetail(hash);
+                    if (requestId !== commitDetailRequestSeq) return;
+                    undocked?.setCommitDetail(detail);
+                } catch (err) {
+                    const msg = getErrorMessage(err);
+                    vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
+                }
+            }),
+            undocked.onBranchAction(({ action, branchName }) => {
+                const branch = currentBranches.find((b) => b.name === branchName);
+                if (!branch) return;
+                vscode.commands.executeCommand(`intelligit.${action}`, { branch });
+            }),
+            undocked.onCommitAction(async ({ action, hash }) => {
+                try {
+                    await handleCommitContextAction({
+                        action,
+                        hash,
+                        executor,
+                        gitOps,
+                        repoRoot,
+                        currentBranches,
+                        refreshAll: () => undocked?.refresh() ?? Promise.resolve(),
+                    });
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    console.error(`Commit action '${action}' failed:`, error);
+                    vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+                }
+            }),
+            undocked.onOpenCommitFileDiff(async (params) => {
+                try {
+                    await openCommitFileDiff(
+                        params.commitHash,
+                        params.filePath,
+                        repoRoot,
+                        gitOps,
+                        executor,
+                    );
+                } catch (error) {
+                    const message = getErrorMessage(error);
+                    vscode.window.showErrorMessage(`Failed to open commit diff: ${message}`);
+                }
+            }),
+            undocked.onDidChangeFileCount(updateBadge),
+        );
+
+        await undocked.open();
+        currentBranches = await gitOps.getBranches();
+        undocked.setBranches(currentBranches);
+        await undocked.refresh();
     };
 
     // --- Register view providers ---
@@ -859,6 +915,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         ),
 
         vscode.commands.registerCommand("intelligit.showGitLog", async () => {
+            const useUndockedWindow = vscode.workspace
+                .getConfiguration("intelligit")
+                .get<boolean>("undockableWindow", false);
+            if (useUndockedWindow) {
+                await showUndockedGitLog();
+                return;
+            }
             await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
 
@@ -867,32 +930,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
 
         vscode.commands.registerCommand("intelligit.toggleUndocked", async () => {
-            await vscode.workspace
-                .getConfiguration("intelligit")
-                .update("undockableWindow", true, true);
-            await vscode.commands.executeCommand("workbench.action.reloadWindow");
-        }),
-    );
-
-    // Listen for undockableWindow config changes
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration("intelligit.undockableWindow")) {
-                const newVal = vscode.workspace
-                    .getConfiguration("intelligit")
-                    .get<boolean>("undockableWindow", false);
-                if (newVal) {
-                    vscode.window
-                        .showInformationMessage(
-                            "Reload window for IntelliGit layout change?",
-                            "Reload",
-                        )
-                        .then((choice) => {
-                            if (choice === "Reload") {
-                                vscode.commands.executeCommand("workbench.action.reloadWindow");
-                            }
-                        });
-                }
+            const config = vscode.workspace.getConfiguration("intelligit");
+            const nextValue = !config.get<boolean>("undockableWindow", false);
+            await config.update("undockableWindow", nextValue, true);
+            if (nextValue) {
+                await showUndockedGitLog();
+            } else {
+                undocked?.dispose();
+                undocked = undefined;
             }
         }),
     );
