@@ -23,6 +23,7 @@ import {
     promptRebaseAfterPushRejection,
     resolveTrackedRemoteBranch,
     resolveRemoteDeleteTarget,
+    buildCommitFilePatch,
 } from "../../src/services/gitHelpers";
 import type { Branch } from "../../src/types";
 import type { GitOps } from "../../src/git/operations";
@@ -295,5 +296,47 @@ describe("resolveRemoteDeleteTarget", () => {
         const branch = makeBranch({ name: "main", isRemote: true });
         const result = resolveRemoteDeleteTarget(branch);
         expect(result).toBeNull();
+    });
+});
+
+describe("buildCommitFilePatch", () => {
+    it("uses -- before validated option-like file paths", async () => {
+        const executor = {
+            run: vi.fn(async (args: string[]) => {
+                if (args[0] === "rev-list") return "abc1234 parent123\n";
+                if (args[0] === "diff") return "diff --git a/--weird.txt b/--weird.txt";
+                return "";
+            }),
+        };
+
+        await expect(
+            buildCommitFilePatch("abc1234", "--weird.txt", "Apply selected change", executor),
+        ).resolves.toContain("--weird.txt");
+
+        expect(executor.run).toHaveBeenCalledWith([
+            "diff",
+            "--binary",
+            "--full-index",
+            "--no-color",
+            "parent123",
+            "abc1234",
+            "--",
+            "--weird.txt",
+        ]);
+    });
+
+    it("rejects invalid commit hashes and traversal file paths before diffing", async () => {
+        const executor = {
+            run: vi.fn(async () => ""),
+        };
+
+        await expect(
+            buildCommitFilePatch("not-a-hash", "src/a.ts", "Apply selected change", executor),
+        ).rejects.toThrow("Invalid commit hash");
+        await expect(
+            buildCommitFilePatch("abc1234", "../secret.txt", "Apply selected change", executor),
+        ).rejects.toThrow("escaping repo root");
+
+        expect(executor.run).not.toHaveBeenCalled();
     });
 });

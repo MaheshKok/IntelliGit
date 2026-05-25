@@ -10,7 +10,12 @@ import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
-import { getCommitParentHashes, pickMainlineParent, buildCommitFilePatch } from "./gitHelpers";
+import {
+    getCommitParentHashes,
+    pickMainlineParent,
+    buildCommitFilePatch,
+    isValidGitHash,
+} from "./gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 
@@ -96,21 +101,25 @@ export async function openCommitFileDiff(
     gitOps: GitOps,
     executor: GitExecutor,
 ): Promise<void> {
+    const validatedHash = commitHash.trim();
+    if (!isValidGitHash(validatedHash)) {
+        throw new Error("Invalid commit hash received for file diff action.");
+    }
     const safePath = assertRepoRelativePath(filePath);
-    const parents = await getCommitParentHashes(commitHash, executor);
+    const parents = await getCommitParentHashes(validatedHash, executor);
 
     let parentRef: string;
     let parentDisplayHash: string;
     if (parents.length > 1) {
         const result = await pickMainlineParent(
-            commitHash,
+            validatedHash,
             "Open Commit File Diff",
             executor,
             parents,
         );
         if (result.kind === "cancelled") return;
         if (result.kind === "notMerge") return;
-        parentRef = `${commitHash}^${result.parentNumber}`;
+        parentRef = `${validatedHash}^${result.parentNumber}`;
         parentDisplayHash = parents[result.parentNumber! - 1] ?? parentRef;
     } else {
         parentRef = parents.length === 0 ? EMPTY_TREE_HASH : parents[0];
@@ -126,7 +135,7 @@ export async function openCommitFileDiff(
 
     let rightContent: string;
     try {
-        rightContent = await gitOps.getFileContentAtRef(safePath, commitHash);
+        rightContent = await gitOps.getFileContentAtRef(safePath, validatedHash);
     } catch {
         rightContent = "";
     }
@@ -147,7 +156,7 @@ export async function openCommitFileDiff(
         language,
     });
     const shortParent = parentDisplayHash.slice(0, 8);
-    const shortCommit = commitHash.slice(0, 8);
+    const shortCommit = validatedHash.slice(0, 8);
     const title = `${safePath} (${shortParent} ↔ ${shortCommit})`;
     await vscode.commands.executeCommand("vscode.diff", leftDoc.uri, rightDoc.uri, title);
     await closeTemporaryDiffSourceTab(leftDoc.uri);

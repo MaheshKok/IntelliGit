@@ -9,6 +9,7 @@ import type { Branch } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import { runWithNotificationProgress } from "../utils/notifications";
+import { assertRepoRelativePath } from "../utils/fileOps";
 
 export interface MainlineParentPickResult {
     kind: "notMerge" | "cancelled" | "selected";
@@ -283,13 +284,18 @@ export async function buildCommitFilePatch(
     actionLabel: string,
     executor: GitExecutor,
 ): Promise<string | null> {
-    const parents = await getCommitParentHashes(commitHash, executor);
+    const validatedHash = commitHash.trim();
+    if (!isValidGitHash(validatedHash)) {
+        throw new Error("Invalid commit hash received for file change action.");
+    }
+    const safePath = assertRepoRelativePath(filePath);
+    const parents = await getCommitParentHashes(validatedHash, executor);
 
     let baseRef: string;
     if (parents.length > 1) {
-        const result = await pickMainlineParent(commitHash, actionLabel, executor, parents);
+        const result = await pickMainlineParent(validatedHash, actionLabel, executor, parents);
         if (result.kind === "cancelled") return null;
-        baseRef = `${commitHash}^${result.parentNumber}`;
+        baseRef = `${validatedHash}^${result.parentNumber}`;
     } else {
         baseRef = parents.length === 0 ? EMPTY_TREE_HASH : parents[0];
     }
@@ -300,9 +306,9 @@ export async function buildCommitFilePatch(
         "--full-index",
         "--no-color",
         baseRef,
-        commitHash,
+        validatedHash,
         "--",
-        filePath,
+        safePath,
     ]);
 }
 

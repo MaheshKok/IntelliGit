@@ -4,6 +4,8 @@ import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/react/co
 import { IconThemeService } from "./shared";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
+import { assertRepoRelativePath } from "../utils/fileOps";
+import { isValidGitHash } from "../services/gitHelpers";
 
 export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitFiles";
@@ -51,10 +53,17 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                     this.postCurrentState();
                     break;
                 case "openCommitFileDiff":
-                    this._onOpenCommitFileDiff.fire({
-                        commitHash: msg.commitHash,
-                        filePath: msg.filePath,
-                    });
+                    try {
+                        this._onOpenCommitFileDiff.fire({
+                            commitHash: this.assertGitHash(msg.commitHash, "commitHash"),
+                            filePath: assertRepoRelativePath(
+                                this.assertString(msg.filePath, "filePath"),
+                            ),
+                        });
+                    } catch (err) {
+                        const message = getErrorMessage(err);
+                        vscode.window.showErrorMessage(`Commit file action error: ${message}`);
+                    }
                     break;
             }
         });
@@ -112,6 +121,21 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
 
     private postToWebview(msg: CommitInfoInbound): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    private assertString(value: unknown, field: string): string {
+        if (typeof value !== "string") {
+            throw new Error(`Expected string for '${field}', got ${typeof value}`);
+        }
+        return value;
+    }
+
+    private assertGitHash(value: unknown, field: string): string {
+        const hash = this.assertString(value, field).trim();
+        if (!isValidGitHash(hash)) {
+            throw new Error(`Invalid git hash for '${field}'.`);
+        }
+        return hash;
     }
 
     private async decorateAndStoreDetail(detail: CommitDetail, requestId: number): Promise<void> {

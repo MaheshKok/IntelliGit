@@ -66,6 +66,30 @@ function assertStashIndex(index: number): void {
     }
 }
 
+function assertRepoRelativeGitPath(filePath: string): string {
+    const trimmed = filePath.trim();
+    if (
+        !trimmed ||
+        trimmed.startsWith("/") ||
+        trimmed.startsWith("\\") ||
+        /^[a-zA-Z]:[\\/]/.test(trimmed)
+    ) {
+        throw new Error(`Rejected non-relative path: ${filePath}`);
+    }
+    if (/[\0\r\n]/.test(trimmed)) {
+        throw new Error(`Rejected path containing control characters: ${filePath}`);
+    }
+    const normalized = trimmed.replace(/\\/g, "/");
+    const segments = normalized.split("/").filter((segment) => segment && segment !== ".");
+    if (segments.length === 0) {
+        throw new Error(`Rejected repo root path: ${filePath}`);
+    }
+    if (segments.some((segment) => segment === "..")) {
+        throw new Error(`Rejected path escaping repo root: ${filePath}`);
+    }
+    return segments.join("/");
+}
+
 export class UpstreamPushDeclinedError extends Error {
     constructor() {
         super("Upstream push declined by user");
@@ -626,9 +650,11 @@ export class GitOps {
 
     async rollbackFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        const status = await this.executor.run(["status", "--porcelain=v1", "-z", "--", ...paths]);
+        const selectedPaths = new Set(paths);
+        const status = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
         const cleanupPaths = new Set<string>();
-        const trackedPaths = new Set<string>(paths);
+        const resetPaths = new Set<string>(paths);
+        const checkoutPaths = new Set<string>(paths);
         const entries = status.split("\0");
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
@@ -641,22 +667,41 @@ export class GitOps {
 
             const isRenameOrCopy =
                 index === "R" || index === "C" || worktree === "R" || worktree === "C";
+            const sourcePath = isRenameOrCopy && i + 1 < entries.length ? entries[i + 1] : "";
             if (isRenameOrCopy && i + 1 < entries.length) {
                 i += 1;
+            }
+            if (!selectedPaths.has(path) && (!sourcePath || !selectedPaths.has(sourcePath))) {
+                continue;
+            }
+
+            if (index === "R" && sourcePath) {
+                resetPaths.add(path);
+                resetPaths.add(sourcePath);
+                cleanupPaths.add(path);
+                checkoutPaths.delete(path);
+                checkoutPaths.add(sourcePath);
+                continue;
+            }
+
+            if (index === "C" && sourcePath) {
+                resetPaths.add(path);
+                cleanupPaths.add(path);
+                checkoutPaths.delete(path);
+                continue;
             }
 
             if ((index === "?" && worktree === "?") || index === "A") {
                 cleanupPaths.add(path);
-                trackedPaths.delete(path);
+                checkoutPaths.delete(path);
             }
         }
 
-        if (cleanupPaths.size > 0) {
-            await this.executor.run(["reset", "HEAD", "--", ...cleanupPaths]);
+        if (resetPaths.size > 0) {
+            await this.executor.run(["reset", "HEAD", "--", ...resetPaths]);
         }
-        if (trackedPaths.size > 0) {
-            await this.executor.run(["reset", "HEAD", "--", ...trackedPaths]);
-            await this.executor.run(["checkout", "--", ...trackedPaths]);
+        if (checkoutPaths.size > 0) {
+            await this.executor.run(["checkout", "--", ...checkoutPaths]);
         }
         if (cleanupPaths.size > 0) {
             await this.executor.run(["clean", "-fd", "--", ...cleanupPaths]);
@@ -826,22 +871,15 @@ export class GitOps {
 
     async getFileContentAtRef(filePath: string, ref: string): Promise<string> {
         const trimmedRef = ref.trim();
-        const trimmedFilePath = filePath.trim();
+        const safeFilePath = assertRepoRelativeGitPath(filePath);
         if (!trimmedRef) throw new Error("Git ref is empty.");
-        if (!trimmedFilePath) throw new Error("File path is empty.");
         if (trimmedRef.startsWith("-")) {
             throw new Error("Git ref must not start with '-'.");
-        }
-        if (trimmedFilePath.startsWith("-")) {
-            throw new Error("File path must not start with '-'.");
         }
         if (/[\0\r\n]/.test(trimmedRef)) {
             throw new Error("Git ref contains invalid control characters.");
         }
-        if (/[\0\r\n]/.test(trimmedFilePath)) {
-            throw new Error("File path contains invalid control characters.");
-        }
-        return this.executor.run(["show", `${trimmedRef}:${trimmedFilePath}`]);
+        return this.executor.run(["show", `${trimmedRef}:${safeFilePath}`]);
     }
 
     async getConflictedFiles(): Promise<string[]> {

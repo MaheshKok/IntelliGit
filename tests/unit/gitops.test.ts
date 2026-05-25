@@ -407,6 +407,28 @@ describe("GitOps", () => {
             }
         });
 
+        it("handles spaces, nested paths, and option-like filenames through stage and unstage", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+                await writeFile(path.join(repo, "space name.txt"), "space\n", "utf8");
+                await writeFile(path.join(repo, "--weird.txt"), "dash\n", "utf8");
+                await writeFile(path.join(repo, "nested", "tracked.txt"), "nested changed\n", "utf8");
+
+                await ops.stageFiles(["space name.txt", "--weird.txt", "nested/tracked.txt"]);
+                expect(await status(repo)).toBe(
+                    "A  --weird.txt\nM  nested/tracked.txt\nA  \"space name.txt\"\n",
+                );
+
+                await ops.unstageFiles(["--weird.txt", "space name.txt", "nested/tracked.txt"]);
+                expect(await status(repo)).toBe(
+                    " M nested/tracked.txt\n?? --weird.txt\n?? \"space name.txt\"\n",
+                );
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
         it("rolls back staged, unstaged, and untracked selected files", async () => {
             const repo = await createTempGitRepo();
             try {
@@ -451,6 +473,42 @@ describe("GitOps", () => {
                 await ops.rollbackAll();
 
                 expect(await status(repo)).toBe("");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("rolls back staged renames and staged-add-then-deleted files", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await git(repo, ["mv", "tracked.txt", "renamed.txt"]);
+                await writeFile(path.join(repo, "transient.txt"), "transient\n", "utf8");
+                await git(repo, ["add", "transient.txt"]);
+                await rm(path.join(repo, "transient.txt"));
+
+                expect(await status(repo)).toBe("R  tracked.txt -> renamed.txt\nAD transient.txt\n");
+
+                await ops.rollbackFiles(["renamed.txt", "transient.txt"]);
+
+                expect(await status(repo)).toBe("");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("deletes tracked option-like filenames through git rm", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+                await writeFile(path.join(repo, "--weird.txt"), "dash\n", "utf8");
+                await git(repo, ["add", "--", "--weird.txt"]);
+                await git(repo, ["commit", "-m", "add weird path"]);
+
+                await ops.deleteFile("--weird.txt");
+
+                expect(await status(repo)).toBe("D  --weird.txt\n");
             } finally {
                 await rm(repo, { recursive: true, force: true });
             }
@@ -762,8 +820,7 @@ describe("GitOps", () => {
                 "status",
                 "--porcelain=v1",
                 "-z",
-                "--",
-                "src/a.ts",
+                "-uall",
             ]);
             expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "src/a.ts"]);
             expect(executor.run).toHaveBeenCalledWith(["checkout", "--", "src/a.ts"]);
@@ -771,7 +828,7 @@ describe("GitOps", () => {
 
         it("cleans untracked paths without sending them to reset or checkout", async () => {
             const executor = createMockExecutor({
-                "status --porcelain=v1 -z -- new.txt": "?? new.txt\0",
+                "status --porcelain=v1 -z -uall": "?? new.txt\0",
             });
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["new.txt"]);
@@ -783,7 +840,7 @@ describe("GitOps", () => {
 
         it("resets and cleans staged added paths without checking them out", async () => {
             const executor = createMockExecutor({
-                "status --porcelain=v1 -z -- added.txt": "A  added.txt\0",
+                "status --porcelain=v1 -z -uall": "A  added.txt\0",
             });
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["added.txt"]);
@@ -791,6 +848,24 @@ describe("GitOps", () => {
             expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "added.txt"]);
             expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "added.txt"]);
             expect(executor.run).not.toHaveBeenCalledWith(["checkout", "--", "added.txt"]);
+        });
+
+        it("resets both sides of a staged rename and restores the source path", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -uall": "R  renamed.txt\0tracked.txt\0",
+            });
+            const ops = new GitOps(executor);
+            await ops.rollbackFiles(["renamed.txt"]);
+
+            expect(executor.run).toHaveBeenCalledWith([
+                "reset",
+                "HEAD",
+                "--",
+                "renamed.txt",
+                "tracked.txt",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith(["checkout", "--", "tracked.txt"]);
+            expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "renamed.txt"]);
         });
 
         it("skips empty paths array", async () => {
@@ -1047,6 +1122,28 @@ describe("GitOps", () => {
                     "src/a.ts",
                 ],
             ]);
+        });
+
+        it("reads file content at a ref for option-like repo-relative paths", async () => {
+            const executor = createMockExecutor({
+                "show HEAD:--weird.txt": "content",
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getFileContentAtRef("--weird.txt", "HEAD")).resolves.toBe("content");
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                ["show", "HEAD:--weird.txt"],
+            ]);
+        });
+
+        it("rejects traversal paths before reading file content at a ref", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await expect(ops.getFileContentAtRef("../secret.txt", "HEAD")).rejects.toThrow(
+                "escaping repo root",
+            );
+            expect(executor.run).not.toHaveBeenCalled();
         });
 
         it("runs shelve pop/apply/delete commands for valid indexes", async () => {
