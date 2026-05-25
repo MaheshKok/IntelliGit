@@ -5,7 +5,7 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.0] - 2026-05-25
+## [0.8.3] - 2026-05-25
 
 ### Added
 
@@ -226,17 +226,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Refactored
 
 - Extracted `extension.ts` (2,021 lines) into focused modules, reducing it to ~520 lines (75% reduction):
-  - `commands/branchCommands.ts`: 10 branch action handlers
-  - `commands/commitCommands.ts`: 13 commit context actions
-  - `services/diffService.ts`: file comparison and patch operations
-  - `services/gitHelpers.ts`: shared git utilities (validation, resolution)
-  - `services/jetbrainsMergeService.ts`: JetBrains merge tool orchestration
-  - `services/refreshService.ts`: debounced refresh and file watchers
+    - `commands/branchCommands.ts`: 10 branch action handlers
+    - `commands/commitCommands.ts`: 13 commit context actions
+    - `services/diffService.ts`: file comparison and patch operations
+    - `services/gitHelpers.ts`: shared git utilities (validation, resolution)
+    - `services/jetbrainsMergeService.ts`: JetBrains merge tool orchestration
+    - `services/refreshService.ts`: debounced refresh and file watchers
 - Decomposed `MergeEditorApp.tsx` (1,477 lines) into focused modules:
-  - `icons.tsx`: SVG icon components
-  - `wordDiff.ts`: pure word-level diff algorithms
-  - `mergeState.ts`: reducer and resolution helpers
-  - `segments.tsx`: section components, code blocks, overview rail
+    - `icons.tsx`: SVG icon components
+    - `wordDiff.ts`: pure word-level diff algorithms
+    - `mergeState.ts`: reducer and resolution helpers
+    - `segments.tsx`: section components, code blocks, overview rail
 - Extracted shared theme change listener utility (`themeListeners.ts`) to replace duplicated listener boilerplate across view providers.
 - Removed duplicate stash/shelf method aliases (`stashSave`, `stashPop`, etc.) that were pure pass-throughs to canonical `shelve*` methods.
 
@@ -287,7 +287,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fixed `groupByDir` setting not persisting across webview reloads. The toggle state is now saved to and restored from `vscode.getState()`. (PR #13 by sivertillia)
 - Fixed `useCheckedFiles` overwriting all webview state keys on every update. State writes now merge with existing keys instead of replacing them.
-
 
 ## [0.5.1] - 2026-03-04
 
