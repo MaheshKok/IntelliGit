@@ -560,29 +560,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await vscode.window.showTextDocument(uri);
             },
         ),
-        vscode.commands.registerCommand(
-            "intelligit.fileDelete",
-            async (ctx: { filePath?: string }) => {
-                if (!ctx?.filePath) return;
-                const safePath = assertRepoRelativePath(ctx.filePath);
-                const confirm = await vscode.window.showWarningMessage(
-                    `Delete ${safePath}?`,
-                    { modal: true },
-                    "Delete",
-                );
-                if (confirm !== "Delete") return;
+                vscode.commands.registerCommand(
+                    "intelligit.fileDelete",
+                    async (ctx: { filePath?: string }) => {
+                        if (!ctx?.filePath) return;
+                        const safePath = assertRepoRelativePath(ctx.filePath);
+                        const confirm = await vscode.window.showWarningMessage(
+                            `Delete ${safePath}?`,
+                            { modal: true },
+                            "Delete",
+                        );
+                        if (confirm !== "Delete") return;
 
-                const deleted = await deleteFileWithFallback(
-                    gitOps,
-                    vscode.Uri.file(repoRoot),
-                    safePath,
-                );
-                if (!deleted) return;
-
-                vscode.window.showInformationMessage(`Deleted ${safePath}`);
-                await commitPanel.refresh();
-            },
-        ),
+                        try {
+                            const deleted = await deleteFileWithFallback(
+                                gitOps,
+                                vscode.Uri.file(repoRoot),
+                                safePath,
+                            );
+                            if (deleted) {
+                                vscode.window.showInformationMessage(`Deleted ${safePath}`);
+                            }
+                        } finally {
+                            await commitPanel.refresh();
+                        }
+                    },
+                ),
         vscode.commands.registerCommand(
             "intelligit.fileShelve",
             async (ctx: { filePath?: string }) => {

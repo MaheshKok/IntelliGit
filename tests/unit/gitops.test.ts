@@ -513,6 +513,140 @@ describe("GitOps", () => {
                 await rm(repo, { recursive: true, force: true });
             }
         });
+
+        it("stages, unstages, and rolls back renamed files through git mv", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                // Stage a rename via git mv
+                await git(repo, ["mv", "tracked.txt", "renamed.txt"]);
+                expect(await status(repo)).toBe(
+                    "R  tracked.txt -> renamed.txt\n",
+                );
+
+                // Rollback the rename (unstage + restore original file)
+                await ops.rollbackFiles(["renamed.txt"]);
+                expect(await status(repo)).toBe("");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("shelves and restores files with option-like and spaces-in-names", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+                await writeFile(path.join(repo, "--dash.txt"), "dash content\n", "utf8");
+                await writeFile(path.join(repo, "space file.txt"), "space content\n", "utf8");
+                await writeFile(path.join(repo, "nested", "tracked.txt"), "modified\n", "utf8");
+
+                await ops.shelveSave(
+                    ["--dash.txt", "space file.txt", "nested/tracked.txt"],
+                    "shelve test",
+                );
+
+                // Working tree should be clean after shelving
+                expect(await status(repo)).toBe("");
+
+                // Pop the shelve back
+                await ops.shelvePop(0);
+                const rawStatus = await status(repo);
+                expect(rawStatus).toContain("--dash.txt");
+                expect(rawStatus).toContain("space file.txt");
+                expect(rawStatus).toContain("nested/tracked.txt");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("commits staged changes and checks post-commit status is clean", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await writeFile(path.join(repo, "tracked.txt"), "new content\n", "utf8");
+                await git(repo, ["add", "tracked.txt"]);
+                expect(await status(repo)).toBe("M  tracked.txt\n");
+
+                await ops.commit("feat: update tracked");
+                expect(await status(repo)).toBe("");
+
+                const lastMsg = await ops.getLastCommitMessage();
+                expect(lastMsg).toContain("feat: update tracked");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("commits with --amend and verifies message is updated", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await writeFile(path.join(repo, "tracked.txt"), "amend me\n", "utf8");
+                await git(repo, ["add", "tracked.txt"]);
+                await ops.commit("original message");
+
+                await writeFile(path.join(repo, "tracked.txt"), "amended content\n", "utf8");
+                await git(repo, ["add", "tracked.txt"]);
+                await ops.commit("amended message", true);
+
+                const lastMsg = await ops.getLastCommitMessage();
+                expect(lastMsg).toContain("amended message");
+
+                // Amending replaces the tip, so we still have:
+                // initial commit (from createTempGitRepo) + amended commit = 2
+                const log = await git(repo, ["log", "--oneline"]);
+                const lines = log.trim().split("\n").filter(Boolean);
+                expect(lines).toHaveLength(2);
+                expect(lines[0]).toContain("amended message");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("handles staged-delete: deleteFile fails correctly and status stays unchanged", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                // Create a file, commit it, then delete from disk and stage the deletion
+                await writeFile(path.join(repo, "to-remove.txt"), "remove me\n", "utf8");
+                await git(repo, ["add", "to-remove.txt"]);
+                await git(repo, ["commit", "-m", "add to-remove"]);
+
+                await rm(path.join(repo, "to-remove.txt"));
+                await git(repo, ["add", "to-remove.txt"]);
+                expect(await status(repo)).toBe("D  to-remove.txt\n");
+
+                // git rm (even with -f) fails for already-staged deletions
+                // because the file is no longer on disk or in the index as a tracked entry.
+                // The deletion is already complete — status stays D.
+                await expect(ops.deleteFile("to-remove.txt", true)).rejects.toThrow(
+                    "did not match any files",
+                );
+                expect(await status(repo)).toBe("D  to-remove.txt\n");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("reads file content at HEAD for option-like paths via getFileContentAtRef", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                await writeFile(path.join(repo, "--ref-file.txt"), "ref content\n", "utf8");
+                await git(repo, ["add", "--", "--ref-file.txt"]);
+                await git(repo, ["commit", "-m", "add ref file"]);
+
+                const content = await ops.getFileContentAtRef("--ref-file.txt", "HEAD");
+                expect(content).toBe("ref content\n");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
     });
 
     describe("unstageFiles", () => {
