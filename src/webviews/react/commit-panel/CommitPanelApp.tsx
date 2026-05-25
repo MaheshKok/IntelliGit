@@ -120,7 +120,6 @@ function App(): React.ReactElement {
                             folderIconsByName={state.folderIconsByName}
                             groupByDir={groupByDir}
                             onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                            showUndockMenu
                         />
                     }
                     shelfContent={

@@ -275,11 +275,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     type UndockTarget = "editorTab" | "newWindow";
 
-    const showUndockedGitLog = async (): Promise<void> => {
-        if (undocked) {
-            undocked.reveal();
-            return;
-        }
+    const ensureUndockedPanel = (): UndockedViewProvider => {
+        if (undocked) return undocked;
 
         undocked = new UndockedViewProvider(
             context.extensionUri,
@@ -347,13 +344,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             undocked.onDidChangeFileCount(updateBadge),
         );
 
-        const panel = undocked;
+        return undocked;
+    };
+
+    const loadUndockedData = async (): Promise<void> => {
+        if (!undocked) return;
+        currentBranches = await gitOps.getBranches();
+        undocked.setBranches(currentBranches);
+        await undocked.refresh();
+    };
+
+    const showUndockedGitLog = async (options?: { deferDataLoad?: boolean }): Promise<void> => {
+        if (undocked) {
+            undocked.reveal();
+            return;
+        }
+
+        const panel = ensureUndockedPanel();
         await panel.open();
         if (undocked !== panel) return;
-        currentBranches = await gitOps.getBranches();
-        if (undocked !== panel) return;
-        panel.setBranches(currentBranches);
-        await panel.refresh();
+
+        if (!options?.deferDataLoad) {
+            await loadUndockedData();
+        }
     };
 
     const moveUndockedEditorToNewWindow = async (): Promise<void> => {
@@ -371,9 +384,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.workspace
             .getConfiguration("intelligit")
             .update("undockableWindow", true, true);
-        await showUndockedGitLog();
+
+        const deferDataLoad = target === "newWindow";
+        await showUndockedGitLog({ deferDataLoad });
+
         if (target === "newWindow") {
+            // Move to new window immediately — before data loading — so the user
+            // never sees a tab flicker.
             await moveUndockedEditorToNewWindow();
+            // Load data into the already-opened window.
+            await loadUndockedData();
         }
     };
 

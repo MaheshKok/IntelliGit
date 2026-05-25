@@ -257,13 +257,6 @@ describe("CommitPanelApp integration", () => {
         );
         expect(dropMenuItem).toBeTruthy();
         fireClick(dropMenuItem);
-        fireClick(document.querySelector('button[aria-label="Undock..."]'));
-        await flush();
-        const undockWindowItem = Array.from(
-            document.querySelectorAll(".intelligit-context-item"),
-        ).find((el) => el.textContent?.includes("Undock in New Window"));
-        expect(undockWindowItem).toBeTruthy();
-        fireClick(undockWindowItem);
 
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "refresh" }),
@@ -279,7 +272,6 @@ describe("CommitPanelApp integration", () => {
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "shelfDelete", index: 0 }),
         );
-        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openUndockedInNewWindow" });
         expect(vscode.setState).toHaveBeenCalled();
     });
 });
