@@ -51,6 +51,10 @@ const saveDocListeners: Array<() => void> = [];
 const createFileListeners: Array<() => void> = [];
 const deleteFileListeners: Array<() => void> = [];
 const renameFileListeners: Array<() => void> = [];
+const configurationValues = new Map<string, unknown>();
+const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
+    configurationValues.set(key, value);
+});
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
 
@@ -175,11 +179,20 @@ const gitOpsState = {
 const deleteFileWithFallback = vi.fn(async () => true);
 type MockExtensionContext = {
     extensionUri: { fsPath: string; path: string };
+    workspaceState?: {
+        get: <T>(key: string, defaultValue?: T) => T | undefined;
+        update: ReturnType<typeof vi.fn>;
+    };
     subscriptions: Array<{ dispose: () => void }>;
 };
 
 let latestCommitGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
+let latestUndockedProvider: MockUndockedViewProvider | undefined;
+
+function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void {
+    latestUndockedProvider = provider;
+}
 
 class MockCommitGraphViewProvider {
     static readonly viewType = "intelligit.commitGraph";
@@ -256,6 +269,43 @@ class MockCommitPanelViewProvider {
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
     }
+}
+
+class MockUndockedViewProvider {
+    static readonly viewType = "intelligit.undocked";
+    private commitSelectedEmitter = new MockEventEmitter<string>();
+    private branchActionEmitter = new MockEventEmitter<{ action: string; branchName: string }>();
+    private commitActionEmitter = new MockEventEmitter<{
+        action: string;
+        hash: string;
+    }>();
+    private openCommitFileDiffEmitter = new MockEventEmitter<{
+        commitHash: string;
+        filePath: string;
+    }>();
+    private fileCountEmitter = new MockEventEmitter<number>();
+    private disposeEmitter = new MockEventEmitter<void>();
+
+    constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown) {
+        updateLatestUndockedProvider(this);
+    }
+
+    onCommitSelected = this.commitSelectedEmitter.event;
+    onBranchAction = this.branchActionEmitter.event;
+    onCommitAction = this.commitActionEmitter.event;
+    onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
+    onDidChangeFileCount = this.fileCountEmitter.event;
+    onDidDispose = this.disposeEmitter.event;
+    setRepositoryLabel = vi.fn();
+    setRepositoryRootUri = vi.fn();
+    setBranches = vi.fn();
+    setCommitDetail = vi.fn();
+    open = vi.fn(async () => undefined);
+    refresh = vi.fn(async () => undefined);
+    reveal = vi.fn();
+    dispose = vi.fn(() => {
+        this.disposeEmitter.fire();
+    });
 }
 
 vi.mock("fs", () => ({
@@ -347,14 +397,9 @@ vi.mock("vscode", () => ({
             return workspaceFolders;
         },
         getConfiguration: vi.fn((_section?: string) => ({
-            get: <T>(_key: string, defaultValue: T) => defaultValue,
-            update: vi.fn(
-                async (
-                    _key: string,
-                    _value: unknown,
-                    _isGlobal?: boolean,
-                ) => undefined,
-            ),
+            get: <T>(key: string, defaultValue: T) =>
+                configurationValues.has(key) ? (configurationValues.get(key) as T) : defaultValue,
+            update: configurationUpdate,
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
         fs: { writeFile },
@@ -438,6 +483,10 @@ vi.mock("../../src/views/CommitPanelViewProvider", () => ({
     CommitPanelViewProvider: MockCommitPanelViewProvider,
 }));
 
+vi.mock("../../src/views/UndockedViewProvider", () => ({
+    UndockedViewProvider: MockUndockedViewProvider,
+}));
+
 vi.mock("../../src/utils/fileOps", async () => {
     const actual = await vi.importActual("../../src/utils/fileOps");
     return {
@@ -464,6 +513,20 @@ async function waitForAsync(): Promise<void> {
     await Promise.resolve();
 }
 
+function createWorkspaceState(
+    initial: Record<string, unknown> = {},
+): MockExtensionContext["workspaceState"] {
+    const values = new Map<string, unknown>(Object.entries(initial));
+    return {
+        get: vi.fn(<T>(key: string, defaultValue?: T) =>
+            values.has(key) ? (values.get(key) as T) : defaultValue,
+        ),
+        update: vi.fn(async (key: string, value: unknown) => {
+            values.set(key, value);
+        }),
+    };
+}
+
 describe("extension integration", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -475,9 +538,11 @@ describe("extension integration", () => {
         deleteFileListeners.length = 0;
         renameFileListeners.length = 0;
         fsWatchCallbacks.length = 0;
+        configurationValues.clear();
         workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         latestCommitGraphProvider = undefined;
         latestCommitPanelProvider = undefined;
+        latestUndockedProvider = undefined;
 
         executorRun.mockImplementation(defaultExecutorRunImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
@@ -662,6 +727,110 @@ describe("extension integration", () => {
             expect.any(Function),
         );
         expect(deleteFileWithFallback).toHaveBeenCalled();
+    });
+
+    it("does not open the undocked editor tab on activation when undockableWindow is enabled", async () => {
+        configurationValues.set("undockableWindow", true);
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+
+        expect(latestUndockedProvider).toBeUndefined();
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+    });
+
+    it("opens and reopens the undocked editor tab only from showGitLog without changing settings or reloading on close", async () => {
+        configurationValues.set("undockableWindow", true);
+        const { activate } = await import("../../src/extension");
+        const workspaceState = createWorkspaceState();
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            workspaceState,
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.showGitLog")?.();
+
+        const firstUndocked = latestUndockedProvider;
+        expect(firstUndocked?.open).toHaveBeenCalledTimes(1);
+        expect(firstUndocked?.refresh).toHaveBeenCalledTimes(1);
+        expect(workspaceState?.update).toHaveBeenCalledWith(
+            "intelligit.restoreUndockedEditorOnActivation",
+            true,
+        );
+        expect(configurationUpdate).not.toHaveBeenCalled();
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+
+        firstUndocked?.dispose();
+
+        expect(workspaceState?.update).toHaveBeenCalledWith(
+            "intelligit.restoreUndockedEditorOnActivation",
+            false,
+        );
+        expect(configurationUpdate).not.toHaveBeenCalled();
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+
+        await registeredCommands.get("intelligit.showGitLog")?.();
+
+        expect(latestUndockedProvider).not.toBe(firstUndocked);
+        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+    });
+
+    it("restores the undocked editor after activation without skipping docked provider registration", async () => {
+        configurationValues.set("undockableWindow", true);
+        const workspaceState = createWorkspaceState({
+            "intelligit.restoreUndockedEditorOnActivation": true,
+        });
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            workspaceState,
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+
+        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+        expect(registerWebviewViewProvider).toHaveBeenCalledWith(
+            "intelligit.commitGraph",
+            expect.any(MockCommitGraphViewProvider),
+        );
+        expect(registerWebviewViewProvider).toHaveBeenCalledWith(
+            "intelligit.commitPanel",
+            expect.any(MockCommitPanelViewProvider),
+        );
+        expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
+        expect(workspaceState?.update).toHaveBeenCalledWith(
+            "intelligit.restoreUndockedEditorOnActivation",
+            true,
+        );
+    });
+
+    it("clears the undocked restore flag when toggling undocked mode off", async () => {
+        configurationValues.set("undockableWindow", true);
+        const workspaceState = createWorkspaceState();
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            workspaceState,
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+        await registeredCommands.get("intelligit.showGitLog")?.();
+
+        await registeredCommands.get("intelligit.toggleUndocked")?.();
+
+        expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", false, true);
+        expect(workspaceState?.update).toHaveBeenCalledWith(
+            "intelligit.restoreUndockedEditorOnActivation",
+            false,
+        );
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 
     it("updates non-current local branch via fetch refspec without checkout", async () => {
@@ -1355,7 +1524,9 @@ describe("extension integration", () => {
             expect.stringContaining("Show history failed: Rejected path escaping repo root"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Delete failed for '../secret.txt': Rejected path escaping repo root"),
+            expect.stringContaining(
+                "Delete failed for '../secret.txt': Rejected path escaping repo root",
+            ),
         );
     });
 

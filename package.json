@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.0",
+    "version": "0.8.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -439,7 +439,7 @@
                 "intelligit.undockableWindow": {
                     "type": "boolean",
                     "default": false,
-                    "markdownDescription": "Render IntelliGit as a unified editor tab instead of sidebar + bottom panel. Enables native VS Code undocking to a second monitor. Changing this setting requires reloading the window."
+                    "markdownDescription": "Open IntelliGit as a unified editor tab when Show Git Log is invoked, enabling native VS Code undocking to a second monitor."
                 }
             }
         }
