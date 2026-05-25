@@ -627,10 +627,6 @@ describe("view providers integration", () => {
         const { provider, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(executeCommand).toHaveBeenCalledWith("git.openChange", expect.any(Object));
-        await webview.send({ type: "openUndockedInEditor" });
-        expect(executeCommand).toHaveBeenCalledWith("intelligit.openUndockedInEditor");
-        await webview.send({ type: "openUndockedInNewWindow" });
-        expect(executeCommand).toHaveBeenCalledWith("intelligit.openUndockedInNewWindow");
         await webview.send({ type: "openFile", path: "src/a.ts" });
         await webview.send({ type: "showHistory", path: "src/a.ts" });
         expect(openTextDocument).toHaveBeenCalled();

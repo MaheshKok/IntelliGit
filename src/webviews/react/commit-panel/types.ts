@@ -28,8 +28,6 @@ export type OutboundMessage =
     | { type: "getAmendBranchCommits" }
     | { type: "rollback"; paths: string[] }
     | { type: "showDiff"; path: string }
-    | { type: "openUndockedInEditor" }
-    | { type: "openUndockedInNewWindow" }
     | { type: "shelveSave"; name?: string; paths?: string[] }
     | { type: "shelfPop"; index: number }
     | { type: "shelfApply"; index: number }

@@ -100,18 +100,6 @@
                 "icon": "$(multiple-windows)"
             },
             {
-                "command": "intelligit.openUndockedInEditor",
-                "title": "Undock in Editor Tab",
-                "category": "IntelliGit",
-                "icon": "$(layout-panel)"
-            },
-            {
-                "command": "intelligit.openUndockedInNewWindow",
-                "title": "Undock in New Window",
-                "category": "IntelliGit",
-                "icon": "$(window)"
-            },
-            {
                 "command": "intelligit.dockWindow",
                 "title": "Dock IntelliGit",
                 "category": "IntelliGit",

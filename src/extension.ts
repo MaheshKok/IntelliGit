@@ -562,14 +562,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         vscode.commands.registerCommand("intelligit.openUndocked", pickUndockTargetAndOpen),
 
-        vscode.commands.registerCommand("intelligit.openUndockedInEditor", async () => {
-            await openUndockedIntelliGit("editorTab");
-        }),
-
-        vscode.commands.registerCommand("intelligit.openUndockedInNewWindow", async () => {
-            await openUndockedIntelliGit("newWindow");
-        }),
-
         vscode.commands.registerCommand("intelligit.dockWindow", dockIntelliGit),
 
         vscode.commands.registerCommand("intelligit.mergeConflictsRefresh", async () => {

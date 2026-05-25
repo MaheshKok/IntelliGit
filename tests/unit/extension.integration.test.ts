@@ -888,25 +888,6 @@ describe("extension integration", () => {
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 
-    it("openUndockedInNewWindow skips the picker and opens directly in a new VS Code window", async () => {
-        const { activate } = await import("../../src/extension");
-        const context = {
-            extensionUri: { fsPath: "/ext", path: "/ext" },
-            subscriptions: [],
-        } as unknown as MockExtensionContext;
-        await activate(context);
-
-        await registeredCommands.get("intelligit.openUndockedInNewWindow")?.();
-
-        expect(showQuickPick).not.toHaveBeenCalled();
-        expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", true, true);
-        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
-        expect(executeCommandFallback).toHaveBeenCalledWith(
-            "workbench.action.moveEditorToNewWindow",
-        );
-        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
-    });
-
     it("updates non-current local branch via fetch refspec without checkout", async () => {
         const { activate } = await import("../../src/extension");
         const context = {

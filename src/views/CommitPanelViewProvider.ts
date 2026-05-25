@@ -369,14 +369,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
 
-            case "openUndockedInEditor":
-                await vscode.commands.executeCommand("intelligit.openUndockedInEditor");
-                break;
-
-            case "openUndockedInNewWindow":
-                await vscode.commands.executeCommand("intelligit.openUndockedInNewWindow");
-                break;
-
             case "shelveSave": {
                 const name = typeof msg.name === "string" ? msg.name : "Shelved changes";
                 let paths: string[] | undefined;
