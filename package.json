@@ -94,6 +94,18 @@
                 "icon": "$(git-commit)"
             },
             {
+                "command": "intelligit.openUndocked",
+                "title": "Open as Editor Tab",
+                "category": "IntelliGit",
+                "icon": "$(multiple-windows)"
+            },
+            {
+                "command": "intelligit.dockWindow",
+                "title": "Dock IntelliGit",
+                "category": "IntelliGit",
+                "icon": "$(layout-sidebar-left)"
+            },
+            {
                 "command": "intelligit.refresh",
                 "title": "Refresh",
                 "category": "IntelliGit",
@@ -311,6 +323,11 @@
                     "group": "navigation"
                 },
                 {
+                    "command": "intelligit.openUndocked",
+                    "when": "view == intelligit.commitGraph",
+                    "group": "navigation@2"
+                },
+                {
                     "command": "intelligit.fileRefresh",
                     "when": "view == intelligit.commitPanel && !intelligit.commitPanel.refreshing",
                     "group": "navigation"
@@ -319,6 +336,11 @@
                     "command": "intelligit.fileRefreshing",
                     "when": "view == intelligit.commitPanel && intelligit.commitPanel.refreshing",
                     "group": "navigation"
+                },
+                {
+                    "command": "intelligit.openUndocked",
+                    "when": "view == intelligit.commitPanel",
+                    "group": "navigation@2"
                 },
                 {
                     "command": "intelligit.mergeConflictsRefresh",

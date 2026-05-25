@@ -68,6 +68,9 @@ export class UndockedViewProvider {
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
 
+    private readonly _onDockRequested = new vscode.EventEmitter<void>();
+    readonly onDockRequested = this._onDockRequested.event;
+
     private readonly _onDidDispose = new vscode.EventEmitter<void>();
     readonly onDidDispose = this._onDidDispose.event;
 
@@ -184,6 +187,7 @@ export class UndockedViewProvider {
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
+        this._onDockRequested.dispose();
         this._onDidDispose.dispose();
         this.panel?.dispose();
     }
@@ -252,6 +256,10 @@ export class UndockedViewProvider {
                     commitHash: this.assertGitHash(msg.commitHash, "commitHash"),
                     filePath: assertRepoRelativePath(this.assertString(msg.filePath, "filePath")),
                 });
+                break;
+
+            case "dock":
+                this._onDockRequested.fire();
                 break;
 
             // Commit-panel-side

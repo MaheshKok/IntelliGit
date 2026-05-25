@@ -25,6 +25,7 @@ export type UnifiedOutbound =
           commitHash: string;
           filePath: string;
       }
+    | { type: "dock" }
     // Commit-panel-side messages
     | { type: "refresh" }
     | { type: "saveCommitDraft"; message: string }

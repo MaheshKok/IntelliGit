@@ -284,6 +284,7 @@ class MockUndockedViewProvider {
         filePath: string;
     }>();
     private fileCountEmitter = new MockEventEmitter<number>();
+    private dockRequestedEmitter = new MockEventEmitter<void>();
     private disposeEmitter = new MockEventEmitter<void>();
 
     constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown) {
@@ -295,6 +296,7 @@ class MockUndockedViewProvider {
     onCommitAction = this.commitActionEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     onDidChangeFileCount = this.fileCountEmitter.event;
+    onDockRequested = this.dockRequestedEmitter.event;
     onDidDispose = this.disposeEmitter.event;
     setRepositoryLabel = vi.fn();
     setRepositoryRootUri = vi.fn();
@@ -304,8 +306,11 @@ class MockUndockedViewProvider {
     refresh = vi.fn(async () => undefined);
     reveal = vi.fn();
     dispose = vi.fn(() => {
-        this.disposeEmitter.fire();
+        this.disposeEmitter.fire(undefined);
     });
+    requestDock(): void {
+        this.dockRequestedEmitter.fire(undefined);
+    }
 }
 
 vi.mock("fs", () => ({
@@ -746,10 +751,8 @@ describe("extension integration", () => {
     it("opens and reopens the undocked editor tab only from showGitLog without changing settings or reloading on close", async () => {
         configurationValues.set("undockableWindow", true);
         const { activate } = await import("../../src/extension");
-        const workspaceState = createWorkspaceState();
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
-            workspaceState,
             subscriptions: [],
         } as unknown as MockExtensionContext;
         await activate(context);
@@ -759,19 +762,11 @@ describe("extension integration", () => {
         const firstUndocked = latestUndockedProvider;
         expect(firstUndocked?.open).toHaveBeenCalledTimes(1);
         expect(firstUndocked?.refresh).toHaveBeenCalledTimes(1);
-        expect(workspaceState?.update).toHaveBeenCalledWith(
-            "intelligit.restoreUndockedEditorOnActivation",
-            true,
-        );
         expect(configurationUpdate).not.toHaveBeenCalled();
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
 
         firstUndocked?.dispose();
 
-        expect(workspaceState?.update).toHaveBeenCalledWith(
-            "intelligit.restoreUndockedEditorOnActivation",
-            false,
-        );
         expect(configurationUpdate).not.toHaveBeenCalled();
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
 
@@ -781,7 +776,7 @@ describe("extension integration", () => {
         expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
     });
 
-    it("restores the undocked editor after activation without skipping docked provider registration", async () => {
+    it("ignores stale undocked restore state on activation and keeps docked providers registered", async () => {
         configurationValues.set("undockableWindow", true);
         const workspaceState = createWorkspaceState({
             "intelligit.restoreUndockedEditorOnActivation": true,
@@ -795,7 +790,7 @@ describe("extension integration", () => {
 
         await activate(context);
 
-        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+        expect(latestUndockedProvider).toBeUndefined();
         expect(registerWebviewViewProvider).toHaveBeenCalledWith(
             "intelligit.commitGraph",
             expect.any(MockCommitGraphViewProvider),
@@ -805,31 +800,65 @@ describe("extension integration", () => {
             expect.any(MockCommitPanelViewProvider),
         );
         expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
-        expect(workspaceState?.update).toHaveBeenCalledWith(
+        expect(workspaceState?.update).not.toHaveBeenCalledWith(
             "intelligit.restoreUndockedEditorOnActivation",
-            true,
+            expect.anything(),
         );
     });
 
-    it("clears the undocked restore flag when toggling undocked mode off", async () => {
+    it("docks the undocked editor from the command without reloading", async () => {
         configurationValues.set("undockableWindow", true);
-        const workspaceState = createWorkspaceState();
         const { activate } = await import("../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
-            workspaceState,
             subscriptions: [],
         } as unknown as MockExtensionContext;
         await activate(context);
         await registeredCommands.get("intelligit.showGitLog")?.();
 
-        await registeredCommands.get("intelligit.toggleUndocked")?.();
+        const opened = latestUndockedProvider;
+        await registeredCommands.get("intelligit.dockWindow")?.();
 
+        expect(opened?.dispose).toHaveBeenCalled();
         expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", false, true);
-        expect(workspaceState?.update).toHaveBeenCalledWith(
-            "intelligit.restoreUndockedEditorOnActivation",
-            false,
-        );
+        expect(executeCommandFallback).toHaveBeenCalledWith("intelligit.commitPanel.focus");
+        expect(executeCommandFallback).toHaveBeenCalledWith("intelligit.commitGraph.focus");
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+    });
+
+    it("docks the undocked editor from the webview button without reloading", async () => {
+        configurationValues.set("undockableWindow", true);
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+        await registeredCommands.get("intelligit.showGitLog")?.();
+
+        const opened = latestUndockedProvider;
+        opened?.requestDock();
+        await waitForAsync();
+
+        expect(opened?.dispose).toHaveBeenCalled();
+        expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", false, true);
+        expect(executeCommandFallback).toHaveBeenCalledWith("intelligit.commitPanel.focus");
+        expect(executeCommandFallback).toHaveBeenCalledWith("intelligit.commitGraph.focus");
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+    });
+
+    it("openUndocked sets editor-tab mode and opens the unified editor", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.openUndocked")?.();
+
+        expect(configurationUpdate).toHaveBeenCalledWith("undockableWindow", true, true);
+        expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 
