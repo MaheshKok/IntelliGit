@@ -136,6 +136,12 @@ export class UndockedViewProvider {
         await this.refreshCommitPanelData();
     }
 
+    reveal(): void {
+        if (this.panel) {
+            this.panel.reveal();
+        }
+    }
+
     async open(): Promise<void> {
         this.panel = vscode.window.createWebviewPanel(
             UndockedViewProvider.viewType,

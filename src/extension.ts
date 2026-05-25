@@ -264,10 +264,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }),
 
             vscode.commands.registerCommand("intelligit.showGitLog", async () => {
-                // In undocked mode, just reveal/focus the panel
-                if (undocked["panel"]) {
-                    // Panel is already open, focus it
-                }
+                undocked.reveal();
             }),
 
             // Toggle back to normal mode
@@ -493,24 +490,32 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.detectJetBrainsMergeTool", async () => {
                 await detectAndPickJetBrainsMergeToolPath();
             }),
+        );
+
+        const resolveConflictPathInUndocked = (ctx: unknown): string | null =>
+            ctx && typeof ctx === "object" && "filePath" in ctx && typeof ctx.filePath === "string"
+                ? ctx.filePath
+                : null;
+
+        context.subscriptions.push(
             vscode.commands.registerCommand(
                 "intelligit.openMergeConflictInJetBrains",
                 async (ctx: unknown) => {
-                    const filePath = resolveConflictPath(ctx);
+                    const filePath = resolveConflictPathInUndocked(ctx);
                     if (!filePath) return;
                     await openJetBrainsMergeToolForFile(
                         filePath,
                         repoRoot,
                         gitOps,
                         () => undocked.refresh(),
-                        openBuiltInMergeEditorForFile,
+                        openBuiltInMergeEditorForFileInUndocked,
                     );
                 },
             ),
             vscode.commands.registerCommand(
                 "intelligit.conflictAcceptYours",
                 async (ctx: unknown) => {
-                    const filePath = resolveConflictPath(ctx);
+                    const filePath = resolveConflictPathInUndocked(ctx);
                     if (!filePath) return;
                     try {
                         await runWithNotificationProgress(
@@ -530,7 +535,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand(
                 "intelligit.conflictAcceptTheirs",
                 async (ctx: unknown) => {
-                    const filePath = resolveConflictPath(ctx);
+                    const filePath = resolveConflictPathInUndocked(ctx);
                     if (!filePath) return;
                     try {
                         await runWithNotificationProgress(
@@ -550,9 +555,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand(
                 "intelligit.openMergeConflict",
                 async (ctx: unknown) => {
-                    const filePath = resolveConflictPath(ctx);
+                    const filePath = resolveConflictPathInUndocked(ctx);
                     if (!filePath) return;
-                    await openMergeConflictForFile(filePath);
+                    await openMergeConflictForFileInUndocked(filePath);
                 },
             ),
             vscode.commands.registerCommand("intelligit.mergeConflictsRefresh", async () => {
