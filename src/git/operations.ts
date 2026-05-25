@@ -691,7 +691,12 @@ export class GitOps {
                 continue;
             }
 
-            if ((index === "?" && worktree === "?") || index === "A") {
+            if (index === "?" && worktree === "?") {
+                resetPaths.delete(path);
+                cleanupPaths.add(path);
+                checkoutPaths.delete(path);
+            }
+            if (index === "A") {
                 cleanupPaths.add(path);
                 checkoutPaths.delete(path);
             }

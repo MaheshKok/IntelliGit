@@ -967,8 +967,8 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["new.txt"]);
 
-            expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "new.txt"]);
             expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "new.txt"]);
+            expect(executor.run).not.toHaveBeenCalledWith(["reset", "HEAD", "--", "new.txt"]);
             expect(executor.run).not.toHaveBeenCalledWith(["checkout", "--", "new.txt"]);
         });
 

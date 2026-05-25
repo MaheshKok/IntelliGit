@@ -1328,10 +1328,12 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.fileShowHistory")?.({
             filePath: "../secret.txt",
         });
+        await registeredCommands.get("intelligit.fileDelete")?.({ filePath: "../secret.txt" });
 
-        expect(gitOpsState.rollbackFiles).not.toHaveBeenCalledWith(["../secret.txt"]);
-        expect(gitOpsState.shelveSave).not.toHaveBeenCalledWith(["../secret.txt"]);
-        expect(gitOpsState.getFileHistory).not.toHaveBeenCalledWith("../secret.txt");
+        expect(gitOpsState.rollbackFiles).not.toHaveBeenCalled();
+        expect(gitOpsState.shelveSave).not.toHaveBeenCalled();
+        expect(gitOpsState.getFileHistory).not.toHaveBeenCalled();
+        expect(deleteFileWithFallback).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Rollback failed: Rejected path escaping repo root"),
         );
@@ -1340,6 +1342,9 @@ describe("extension integration", () => {
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Show history failed: Rejected path escaping repo root"),
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Delete failed for '../secret.txt': Rejected path escaping repo root"),
         );
     });
 

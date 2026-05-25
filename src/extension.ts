@@ -564,15 +564,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "intelligit.fileDelete",
                     async (ctx: { filePath?: string }) => {
                         if (!ctx?.filePath) return;
-                        const safePath = assertRepoRelativePath(ctx.filePath);
-                        const confirm = await vscode.window.showWarningMessage(
-                            `Delete ${safePath}?`,
-                            { modal: true },
-                            "Delete",
-                        );
-                        if (confirm !== "Delete") return;
-
                         try {
+                            const safePath = assertRepoRelativePath(ctx.filePath);
+                            const confirm = await vscode.window.showWarningMessage(
+                                `Delete ${safePath}?`,
+                                { modal: true },
+                                "Delete",
+                            );
+                            if (confirm !== "Delete") return;
+
                             const deleted = await deleteFileWithFallback(
                                 gitOps,
                                 vscode.Uri.file(repoRoot),
@@ -581,6 +581,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             if (deleted) {
                                 vscode.window.showInformationMessage(`Deleted ${safePath}`);
                             }
+                        } catch (error) {
+                            const message =
+                                error instanceof Error ? error.message : String(error);
+                            vscode.window.showErrorMessage(
+                                `Delete failed for '${ctx.filePath}': ${message}`,
+                            );
                         } finally {
                             await commitPanel.refresh();
                         }
