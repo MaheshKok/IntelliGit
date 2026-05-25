@@ -144,440 +144,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             false,
         ) ?? false;
 
-    if (restoreUndockedEditorOnActivation && undockableWindow) {
-        const repoRootUri = vscode.Uri.file(repoRoot);
-        const undocked = new UndockedViewProvider(
-            context.extensionUri,
-            gitOps,
-            repoRootUri,
-            context.workspaceState,
-        );
-        undocked.setRepositoryLabel(activeRepository.label);
-        await undocked.open();
-
-        // Wire commit selection → fetch detail
-        context.subscriptions.push(
-            undocked.onCommitSelected(async (hash) => {
-                const requestId = ++commitDetailRequestSeq;
-                try {
-                    const detail = await gitOps.getCommitDetail(hash);
-                    if (requestId !== commitDetailRequestSeq) return;
-                    undocked.setCommitDetail(detail);
-                } catch (err) {
-                    const msg = getErrorMessage(err);
-                    vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
-                }
-            }),
-        );
-
-        // Wire branch actions
-        context.subscriptions.push(
-            undocked.onBranchAction(({ action, branchName }) => {
-                const branch = currentBranches.find((b) => b.name === branchName);
-                if (!branch) return;
-                vscode.commands.executeCommand(`intelligit.${action}`, {
-                    branch,
-                });
-            }),
-        );
-
-        // Wire commit actions
-        context.subscriptions.push(
-            undocked.onCommitAction(async ({ action, hash }) => {
-                try {
-                    await handleCommitContextAction({
-                        action,
-                        hash,
-                        executor,
-                        gitOps,
-                        repoRoot,
-                        currentBranches,
-                        refreshAll: () => undocked.refresh(),
-                    });
-                } catch (error) {
-                    const message = getErrorMessage(error);
-                    console.error(`Commit action '${action}' failed:`, error);
-                    vscode.window.showErrorMessage(`Commit action failed: ${message}`);
-                }
-            }),
-        );
-
-        // Wire open commit file diff
-        context.subscriptions.push(
-            undocked.onOpenCommitFileDiff(async (params) => {
-                try {
-                    await openCommitFileDiff(
-                        params.commitHash,
-                        params.filePath,
-                        repoRoot,
-                        gitOps,
-                        executor,
-                    );
-                } catch (error) {
-                    const message = getErrorMessage(error);
-                    vscode.window.showErrorMessage(`Failed to open commit diff: ${message}`);
-                }
-            }),
-        );
-
-        // Track file count (for potential badge use)
-        context.subscriptions.push(undocked.onDidChangeFileCount(() => {}));
-
-        // Cleanup disposable
-        context.subscriptions.push(undocked);
-
-        // --- Register commands (shared with normal mode) ---
-        context.subscriptions.push(
-            vscode.commands.registerCommand("intelligit.refresh", async () => {
-                await undocked.refresh();
-            }),
-
-            vscode.commands.registerCommand("intelligit.selectRepository", async () => {
-                repositories = await discoverGitRepositories(workspaceRoots());
-                if (repositories.length === 0) {
-                    vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
-                    return;
-                }
-                const picked = await vscode.window.showQuickPick(
-                    repositories.map((repo) => ({
-                        label: repo.label,
-                        description: repo.root === repoRoot ? "Active" : repo.root,
-                        repository: repo,
-                    })),
-                    { placeHolder: "Select IntelliGit repository" },
-                );
-                if (!picked) return;
-                activeRepository = picked.repository;
-                repoRoot = activeRepository.root;
-                executor.setRoot(repoRoot);
-                const newRepoRootUri = vscode.Uri.file(repoRoot);
-                undocked.setRepositoryRootUri(newRepoRootUri);
-                undocked.setRepositoryLabel(activeRepository.label);
-                await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
-                currentBranches = await gitOps.getBranches();
-                undocked.setBranches(currentBranches);
-                await undocked.refresh();
-            }),
-
-            vscode.commands.registerCommand("intelligit.showGitLog", async () => {
-                undocked.reveal();
-            }),
-
-            // Toggle back to normal mode
-            vscode.commands.registerCommand("intelligit.toggleUndocked", async () => {
-                await vscode.workspace
-                    .getConfiguration("intelligit")
-                    .update("undockableWindow", false, true);
-                undocked.dispose();
-            }),
-        );
-
-        // --- Branch action commands ---
-        const openBuiltInMergeEditorForFileInUndocked = async (filePath: string): Promise<void> => {
-            const fileUri = vscode.Uri.file(path.join(repoRoot, assertRepoRelativePath(filePath)));
-            try {
-                await vscode.commands.executeCommand("git.openMergeEditor", fileUri);
-            } catch (error) {
-                const message = getErrorMessage(error);
-                vscode.window.showWarningMessage(
-                    `VS Code merge editor command failed (${message}). Opening the file instead.`,
-                );
-                await vscode.commands.executeCommand("vscode.open", fileUri);
-            }
-        };
-
-        const openMergeConflictForFileInUndocked = async (filePath: string): Promise<void> => {
-            const preferExternal = getPreferExternalMergeTool();
-            if (preferExternal && getJetBrainsMergeToolPath()) {
-                const opened = await openJetBrainsMergeToolForFile(
-                    filePath,
-                    repoRoot,
-                    gitOps,
-                    () => undocked.refresh(),
-                    openBuiltInMergeEditorForFileInUndocked,
-                );
-                if (opened) return;
-            }
-            await openBuiltInMergeEditorForFileInUndocked(filePath);
-        };
-
-        const openConflictSessionInUndocked = async (labels?: {
-            sourceBranch?: string;
-            targetBranch?: string;
-        }): Promise<void> => {
-            await MergeConflictSessionPanel.open(context.extensionUri, gitOps, labels ?? {}, {
-                onOpenMergeConflict: async (filePath) => {
-                    await openMergeConflictForFileInUndocked(filePath);
-                },
-                onConflictStateChanged: async () => {
-                    await undocked.refresh();
-                },
-            });
-        };
-
-        const branchCommands = createBranchCommands({
-            executor,
-            gitOps,
-            getCurrentBranchName: () => currentBranches.find((b) => b.isCurrent)?.name,
-            getCurrentBranches: () => currentBranches,
-            openConflictSession: openConflictSessionInUndocked,
-            refreshConflictUi: async () => {
-                // Merge conflicts not managed in undocked mode yet;
-                // delegate to refresh which reloads working tree state.
-                await undocked.refresh();
-            },
-        });
-
-        for (const cmd of branchCommands) {
-            context.subscriptions.push(
-                vscode.commands.registerCommand(cmd.id, (item: unknown) => {
-                    const validated =
-                        item && typeof item === "object" && "branch" in item
-                            ? (item as { branch?: Branch })
-                            : { branch: undefined };
-                    return cmd.handler(validated);
-                }),
-            );
-        }
-
-        // --- Register file context menu commands ---
-        context.subscriptions.push(
-            vscode.commands.registerCommand(
-                "intelligit.compareWithRevision",
-                async (ctx?: unknown) => {
-                    await compareEditorFileWithRevision(ctx, repoRoot, gitOps);
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.compareWithBranch",
-                async (ctx?: unknown) => {
-                    await compareEditorFileWithBranch(ctx, repoRoot, gitOps);
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.fileRollback",
-                async (ctx: { filePath?: string }) => {
-                    if (!ctx?.filePath) return;
-                    try {
-                        const safePath = assertRepoRelativePath(ctx.filePath);
-                        const confirm = await vscode.window.showWarningMessage(
-                            `Rollback ${safePath}?`,
-                            { modal: true },
-                            "Rollback",
-                        );
-                        if (confirm !== "Rollback") return;
-                        await gitOps.rollbackFiles([safePath]);
-                        vscode.window.showInformationMessage("Changes rolled back.");
-                    } catch (error) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to rollback file:", error);
-                        vscode.window.showErrorMessage(`Rollback failed: ${message}`);
-                    } finally {
-                        await undocked.refresh();
-                    }
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.fileJumpToSource",
-                async (ctx: { filePath?: string }) => {
-                    if (!ctx?.filePath) return;
-                    const uri = vscode.Uri.file(
-                        path.join(repoRoot, assertRepoRelativePath(ctx.filePath)),
-                    );
-                    await vscode.window.showTextDocument(uri);
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.fileDelete",
-                async (ctx: { filePath?: string }) => {
-                    if (!ctx?.filePath) return;
-                    try {
-                        const safePath = assertRepoRelativePath(ctx.filePath);
-                        const confirm = await vscode.window.showWarningMessage(
-                            `Delete ${safePath}?`,
-                            { modal: true },
-                            "Delete",
-                        );
-                        if (confirm !== "Delete") return;
-                        const deleted = await deleteFileWithFallback(
-                            gitOps,
-                            vscode.Uri.file(repoRoot),
-                            safePath,
-                        );
-                        if (deleted) {
-                            vscode.window.showInformationMessage(`Deleted ${safePath}`);
-                        }
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        vscode.window.showErrorMessage(
-                            `Delete failed for '${ctx.filePath}': ${message}`,
-                        );
-                    } finally {
-                        await undocked.refresh();
-                    }
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.fileShelve",
-                async (ctx: { filePath?: string }) => {
-                    if (!ctx?.filePath) return;
-                    try {
-                        const safePath = assertRepoRelativePath(ctx.filePath);
-                        await gitOps.shelveSave([safePath]);
-                        vscode.window.showInformationMessage(`Shelved ${safePath}.`);
-                    } catch (error) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to shelve file:", error);
-                        vscode.window.showErrorMessage(`Shelve failed: ${message}`);
-                    } finally {
-                        await undocked.refresh();
-                    }
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.fileShowHistory",
-                async (ctx: { filePath?: string }) => {
-                    if (!ctx?.filePath) return;
-                    try {
-                        const safePath = assertRepoRelativePath(ctx.filePath);
-                        const history = await gitOps.getFileHistory(safePath);
-                        const doc = await vscode.workspace.openTextDocument({
-                            content: history || "No history found.",
-                            language: "git-commit",
-                        });
-                        await vscode.window.showTextDocument(doc, {
-                            preview: true,
-                        });
-                    } catch (error) {
-                        const message = getErrorMessage(error);
-                        console.error("Failed to load file history:", error);
-                        vscode.window.showErrorMessage(`Show history failed: ${message}`);
-                    }
-                },
-            ),
-            vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
-                await undocked.refresh();
-            }),
-            vscode.commands.registerCommand("intelligit.fileRefreshing", () => {
-                // No-op: visual-only command
-            }),
-            vscode.commands.registerCommand(
-                "intelligit.commitFileCompareWithLocal",
-                async (ctx: unknown) => {
-                    await compareCommitInfoFileWithLocal(ctx, repoRoot, gitOps);
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.commitFileCherryPickChange",
-                async (ctx: unknown) => {
-                    await applySelectedCommitFileChange(ctx, "cherry-pick", executor, () =>
-                        undocked.refresh(),
-                    );
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.commitFileRevertChange",
-                async (ctx: unknown) => {
-                    await applySelectedCommitFileChange(ctx, "revert", executor, () =>
-                        undocked.refresh(),
-                    );
-                },
-            ),
-            vscode.commands.registerCommand("intelligit.detectJetBrainsMergeTool", async () => {
-                await detectAndPickJetBrainsMergeToolPath();
-            }),
-        );
-
-        const resolveConflictPathInUndocked = (ctx: unknown): string | null =>
-            ctx && typeof ctx === "object" && "filePath" in ctx && typeof ctx.filePath === "string"
-                ? ctx.filePath
-                : null;
-
-        context.subscriptions.push(
-            vscode.commands.registerCommand(
-                "intelligit.openMergeConflictInJetBrains",
-                async (ctx: unknown) => {
-                    const filePath = resolveConflictPathInUndocked(ctx);
-                    if (!filePath) return;
-                    await openJetBrainsMergeToolForFile(
-                        filePath,
-                        repoRoot,
-                        gitOps,
-                        () => undocked.refresh(),
-                        openBuiltInMergeEditorForFileInUndocked,
-                    );
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.conflictAcceptYours",
-                async (ctx: unknown) => {
-                    const filePath = resolveConflictPathInUndocked(ctx);
-                    if (!filePath) return;
-                    try {
-                        await runWithNotificationProgress(
-                            `Accepting yours for ${filePath}...`,
-                            async () => {
-                                await gitOps.acceptConflictSide(filePath, "ours");
-                            },
-                        );
-                        vscode.window.showInformationMessage(`Accepted yours for ${filePath}`);
-                        await undocked.refresh();
-                    } catch (error) {
-                        const message = getErrorMessage(error);
-                        vscode.window.showErrorMessage(`Accept yours failed: ${message}`);
-                    }
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.conflictAcceptTheirs",
-                async (ctx: unknown) => {
-                    const filePath = resolveConflictPathInUndocked(ctx);
-                    if (!filePath) return;
-                    try {
-                        await runWithNotificationProgress(
-                            `Accepting theirs for ${filePath}...`,
-                            async () => {
-                                await gitOps.acceptConflictSide(filePath, "theirs");
-                            },
-                        );
-                        vscode.window.showInformationMessage(`Accepted theirs for ${filePath}`);
-                        await undocked.refresh();
-                    } catch (error) {
-                        const message = getErrorMessage(error);
-                        vscode.window.showErrorMessage(`Accept theirs failed: ${message}`);
-                    }
-                },
-            ),
-            vscode.commands.registerCommand(
-                "intelligit.openMergeConflict",
-                async (ctx: unknown) => {
-                    const filePath = resolveConflictPathInUndocked(ctx);
-                    if (!filePath) return;
-                    await openMergeConflictForFileInUndocked(filePath);
-                },
-            ),
-            vscode.commands.registerCommand("intelligit.mergeConflictsRefresh", async () => {
-                // In undocked mode, conflicts are shown via the working tree
-                await undocked.refresh();
-            }),
-            vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
-                const conflicts = await gitOps.getConflictFilesDetailed();
-                if (conflicts.length === 0) {
-                    vscode.window.showInformationMessage("No unresolved merge conflicts found.");
-                    return;
-                }
-                await openConflictSessionInUndocked();
-            }),
-        );
-
-        // --- Initial load ---
-        currentBranches = await gitOps.getBranches();
-        undocked.setBranches(currentBranches);
-        await undocked.refresh();
-
-        return;
-    }
-
     // --- Providers ---
 
     let repoRootUri = vscode.Uri.file(repoRoot);
@@ -734,8 +300,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(undocked);
 
         context.subscriptions.push(
-            undocked.onDidDispose(() => {
+            undocked.onDidDispose(async () => {
                 undocked = undefined;
+                await context.workspaceState?.update(
+                    "intelligit.restoreUndockedEditorOnActivation",
+                    false,
+                );
             }),
             undocked.onCommitSelected(async (hash) => {
                 const requestId = ++commitDetailRequestSeq;
@@ -789,6 +359,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         const panel = undocked;
         await panel.open();
+        if (undocked !== panel) return;
+        await context.workspaceState?.update("intelligit.restoreUndockedEditorOnActivation", true);
         currentBranches = await gitOps.getBranches();
         if (undocked !== panel) return;
         panel.setBranches(currentBranches);
@@ -938,11 +510,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (nextValue) {
                 await showUndockedGitLog();
             } else {
+                await context.workspaceState?.update(
+                    "intelligit.restoreUndockedEditorOnActivation",
+                    false,
+                );
                 undocked?.dispose();
                 undocked = undefined;
             }
         }),
     );
+
+    if (restoreUndockedEditorOnActivation && undockableWindow) {
+        await showUndockedGitLog();
+    }
 
     const isFilePathContext = (value: unknown): value is { filePath: string } => {
         return (
