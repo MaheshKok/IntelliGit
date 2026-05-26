@@ -96,6 +96,7 @@ export const NO_MATCH_STYLE: CSSProperties = {
 };
 
 export const ROW_STYLE: CSSProperties = {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     padding: "2px 8px",
@@ -103,6 +104,15 @@ export const ROW_STYLE: CSSProperties = {
     whiteSpace: "nowrap",
     overflow: "hidden",
     lineHeight: "22px",
+};
+
+export const INDENT_GUIDE_STYLE: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 1,
+    background: "var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))",
+    pointerEvents: "none",
 };
 
 export const HEAD_ROW_STYLE: CSSProperties = {
@@ -115,7 +125,7 @@ export const HEAD_ROW_STYLE: CSSProperties = {
 export const SECTION_HEADER_STYLE: CSSProperties = {
     ...ROW_STYLE,
     fontWeight: 600,
-    fontSize: "11px",
+    fontSize: "13px",
     opacity: 0.82,
     paddingLeft: 8,
     marginTop: 1,

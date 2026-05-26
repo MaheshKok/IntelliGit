@@ -4,6 +4,8 @@ import { renderHighlightedLabel } from "../highlight";
 import {
     ChevronIcon,
     GitBranchIcon,
+    PullArrowIcon,
+    PushArrowIcon,
     StarIcon,
     TagRightIcon,
     TreeFolderIcon,
@@ -12,6 +14,7 @@ import { JETBRAINS_UI } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils";
 import { getSettings } from "../../shared/settings";
 import {
+    INDENT_GUIDE_STYLE,
     NODE_LABEL_STYLE,
     ROW_STYLE,
     TRACKING_BADGE_STYLE,
@@ -22,6 +25,7 @@ import {
 import type { TreeNode } from "../types";
 
 const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
+const BRANCH_GUIDE_BASE_LEFT = 13;
 
 interface Props {
     node: TreeNode;
@@ -99,13 +103,13 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
         >
             {branch.ahead > 0 && (
                 <span className="branch-track-push" style={TRACKING_PUSH_STYLE}>
-                    {"\u2B06"}
+                    <PushArrowIcon />
                     {branch.ahead}
                 </span>
             )}
             {branch.behind > 0 && (
                 <span className="branch-track-pull" style={TRACKING_PULL_STYLE}>
-                    {"\u2B07"}
+                    <PullArrowIcon />
                     {branch.behind}
                 </span>
             )}
@@ -133,6 +137,24 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
                 </span>
             )}
         </span>
+    );
+}
+
+function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | null {
+    if (depth <= 0) return null;
+    return (
+        <>
+            {Array.from({ length: depth }, (_, index) => (
+                <span
+                    key={index}
+                    aria-hidden="true"
+                    style={{
+                        ...INDENT_GUIDE_STYLE,
+                        left: BRANCH_GUIDE_BASE_LEFT + index * TREE_INDENT_STEP,
+                    }}
+                />
+            ))}
+        </>
     );
 }
 
@@ -184,6 +206,7 @@ export function BranchTreeNodeRow({
                     aria-expanded={isExpanded}
                     style={rowStyle}
                 >
+                    <BranchIndentGuides depth={depth} />
                     <ChevronIcon expanded={isExpanded} />
                     <span
                         data-branch-icon="folder"
@@ -236,6 +259,7 @@ export function BranchTreeNodeRow({
             tabIndex={0}
             style={rowStyle}
         >
+            <BranchIndentGuides depth={depth} />
             <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
             {isCurrent ? (
                 <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />

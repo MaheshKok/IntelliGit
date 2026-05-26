@@ -40,10 +40,13 @@ export function GitBranchIcon({
             style={BASE_ICON_STYLE}
             data-branch-icon
         >
-            <path
-                fill={color}
-                d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6.5a.5.5 0 0 1-.5.5H9.25a1.75 1.75 0 0 0-1.75 1.75v.872a2.25 2.25 0 1 1-1.5 0V4.372a2.25 2.25 0 1 1 1.5 0v3.256A3.25 3.25 0 0 1 9.25 6.5H12V5.372a2.25 2.25 0 0 1-2.5-2.122zM4.25 3.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zM4.25 14a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"
-            />
+            <g fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round">
+                <path strokeWidth="1.8" d="M5 4.8v6.4" />
+                <path strokeWidth="1.8" d="M5 8h3.35A2.65 2.65 0 0 0 11 5.35V4.8" />
+                <circle cx="5" cy="3.1" r="1.55" strokeWidth="1.9" />
+                <circle cx="5" cy="12.9" r="1.55" strokeWidth="1.9" />
+                <circle cx="11" cy="3.1" r="1.55" strokeWidth="1.9" />
+            </g>
         </svg>
     );
 }
@@ -93,9 +96,14 @@ export function TagRightIcon({
             data-branch-icon
         >
             <path
-                fill={color}
-                d="M1.5 4A2.5 2.5 0 0 1 4 1.5h5.3a1.5 1.5 0 0 1 1.06.44l3.7 3.7a1.5 1.5 0 0 1 0 2.12l-3.7 3.7a1.5 1.5 0 0 1-1.06.44H4A2.5 2.5 0 0 1 1.5 9.4V4zm2.5-1a1 1 0 0 0-1 1v5.4a1 1 0 0 0 1 1h5.3L13 6.7 9.3 3H4zm1.8 1.7a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"
+                fill="none"
+                stroke={color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+                d="M2.25 4.2A2.2 2.2 0 0 1 4.45 2h4.8c.4 0 .78.16 1.06.44l3.35 3.35c.58.58.58 1.52 0 2.1l-3.35 3.35c-.28.28-.66.44-1.06.44h-4.8a2.2 2.2 0 0 1-2.2-2.2V4.2z"
             />
+            <circle cx="5.45" cy="6.85" r="1.2" fill="none" stroke={color} strokeWidth="1.7" />
         </svg>
     );
 }
@@ -229,4 +237,62 @@ export function RefTagIcon({
     color?: string;
 }): React.ReactElement {
     return <LuTag size={size} color={color} />;
+}
+
+export function PushArrowIcon({
+    color = "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
+}: {
+    color?: string;
+}): React.ReactElement {
+    return (
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path
+                d="M6 10V2.2M2.7 5.2 6 1.9l3.3 3.3"
+                fill="none"
+                stroke={color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.1"
+            />
+        </svg>
+    );
+}
+
+export function PullArrowIcon({
+    color = "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
+}: {
+    color?: string;
+}): React.ReactElement {
+    return (
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path
+                d="M6 2v7.8M2.7 6.8 6 10.1l3.3-3.3"
+                fill="none"
+                stroke={color}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.1"
+            />
+        </svg>
+    );
+}
+
+export function ExpandAllIconGlyph(): React.ReactElement {
+    return (
+        <path
+            fill="currentColor"
+            fillRule="evenodd"
+            d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707m4.344-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707"
+        />
+    );
+}
+
+export function CollapseAllIconGlyph(): React.ReactElement {
+    return (
+        <path
+            fill="currentColor"
+            fillRule="evenodd"
+            d="M.172 15.828a.5.5 0 0 0 .707 0l4.096-4.096V14.5a.5.5 0 1 0 1 0v-3.975a.5.5 0 0 0-.5-.5H1.5a.5.5 0 0 0 0 1h2.768L.172 15.121a.5.5 0 0 0 0 .707M15.828.172a.5.5 0 0 0-.707 0l-4.096 4.096V1.5a.5.5 0 1 0-1 0v3.975a.5.5 0 0 0 .5.5H14.5a.5.5 0 0 0 0-1h-2.768L15.828.879a.5.5 0 0 0 0-.707"
+        />
+    );
 }
