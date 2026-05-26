@@ -515,7 +515,7 @@ const CommitFileRow = React.memo(function CommitFileRow({
             tabIndex={0}
             _hover={{ bg: JETBRAINS_UI.color.hover }}
             data-vscode-context={vscodeContext}
-            onClick={openDiff}
+            onDoubleClick={openDiff}
             title={file.path}
         >
             <InfoIndentGuides treeDepth={depth} />

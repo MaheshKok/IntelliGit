@@ -409,8 +409,23 @@ describe("CommitGraphApp integration", () => {
             '[title="src/feature.ts"]',
         ) as HTMLElement | null;
         expect(changedFileRow).toBeTruthy();
+        const openDiffMessagesBeforeClick = vscode.postMessage.mock.calls.filter(
+            ([message]) =>
+                (message as { type?: string }).type === "openCommitFileDiff" &&
+                (message as { filePath?: string }).filePath === "src/feature.ts",
+        ).length;
         act(() => {
             changedFileRow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(
+            vscode.postMessage.mock.calls.filter(
+                ([message]) =>
+                    (message as { type?: string }).type === "openCommitFileDiff" &&
+                    (message as { filePath?: string }).filePath === "src/feature.ts",
+            ),
+        ).toHaveLength(openDiffMessagesBeforeClick);
+        act(() => {
+            changedFileRow?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
         });
 
         const branchRow = Array.from(document.querySelectorAll(".branch-row")).find((row) =>

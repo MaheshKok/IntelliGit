@@ -30,6 +30,7 @@ import {
     compareCommitInfoFileWithLocal,
     applySelectedCommitFileChange,
     openCommitFileDiff,
+    registerReadonlyDiffContentProvider,
 } from "./services/diffService";
 import { runWithNotificationProgress } from "./utils/notifications";
 import { discoverGitRepositories, type DiscoveredRepository } from "./services/repositoryDiscovery";
@@ -103,6 +104,7 @@ function registerUnavailableCommands(context: vscode.ExtensionContext): void {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     registerStaleUndockedPanelSerializer(context);
+    registerReadonlyDiffContentProvider(context);
 
     if (!vscode.workspace.workspaceFolders?.length) {
         registerUnavailableCommands(context);

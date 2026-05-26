@@ -19,6 +19,61 @@ import {
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 
+const READONLY_DIFF_SCHEME = "intelligit-diff";
+const readonlyDiffDocuments = new Map<string, string>();
+let readonlyDiffDocumentSeq = 0;
+
+class ReadonlyDiffContentProvider implements vscode.TextDocumentContentProvider {
+    provideTextDocumentContent(uri: vscode.Uri): string {
+        return readonlyDiffDocuments.get(uri.toString()) ?? "";
+    }
+
+    dispose(): void {
+        readonlyDiffDocuments.clear();
+    }
+}
+
+export function registerReadonlyDiffContentProvider(
+    context: vscode.ExtensionContext,
+): vscode.Disposable {
+    const provider = new ReadonlyDiffContentProvider();
+    const providerRegistration = vscode.workspace.registerTextDocumentContentProvider(
+        READONLY_DIFF_SCHEME,
+        provider,
+    );
+    const closeListener = vscode.workspace.onDidCloseTextDocument((document) => {
+        if (document.uri.scheme === READONLY_DIFF_SCHEME) {
+            readonlyDiffDocuments.delete(document.uri.toString());
+        }
+    });
+    const cleanup = {
+        dispose: () => {
+            providerRegistration.dispose();
+            closeListener.dispose();
+            provider.dispose();
+        },
+    };
+    context.subscriptions.push(providerRegistration, closeListener, cleanup);
+    return cleanup;
+}
+
+function encodePathForVirtualUri(filePath: string): string {
+    return filePath.split("/").map(encodeURIComponent).join("/");
+}
+
+function createReadonlyDiffUri(filePath: string, content: string, refLabel: string): vscode.Uri {
+    readonlyDiffDocumentSeq += 1;
+    const query = new URLSearchParams({
+        id: String(readonlyDiffDocumentSeq),
+        ref: refLabel,
+    });
+    const uri = vscode.Uri.parse(
+        `${READONLY_DIFF_SCHEME}:/${encodePathForVirtualUri(filePath)}?${query.toString()}`,
+    );
+    readonlyDiffDocuments.set(uri.toString(), content);
+    return uri;
+}
+
 export function normalizeGitPath(fsPathValue: string): string {
     return fsPathValue.split(path.sep).join("/");
 }
@@ -58,21 +113,6 @@ export function getCommitInfoFileContext(value: unknown): CommitInfoFileContext 
     return { filePath, commitHash, commitShortHash };
 }
 
-async function closeTemporaryDiffSourceTab(uri: vscode.Uri): Promise<void> {
-    const matchingTab = vscode.window.tabGroups.all
-        .flatMap((group) => group.tabs)
-        .find((tab) => {
-            const input = tab.input;
-            return input instanceof vscode.TabInputText && input.uri.toString() === uri.toString();
-        });
-    if (!matchingTab) return;
-    try {
-        await vscode.window.tabGroups.close(matchingTab, true);
-    } catch {
-        // Best-effort cleanup only; diff view is already open.
-    }
-}
-
 export async function openDiffAgainstGitRef(
     fileUri: vscode.Uri,
     repoRelativeFilePath: string,
@@ -83,21 +123,16 @@ export async function openDiffAgainstGitRef(
     const trimmedRef = ref.trim();
     if (!trimmedRef) return;
 
-    const currentDoc = await vscode.workspace.openTextDocument(fileUri);
     const refContent = await gitOps.getFileContentAtRef(repoRelativeFilePath, trimmedRef);
-    const leftDoc = await vscode.workspace.openTextDocument({
-        content: refContent,
-        language: currentDoc.languageId,
-    });
+    const leftUri = createReadonlyDiffUri(repoRelativeFilePath, refContent, trimmedRef);
     const title = `${repoRelativeFilePath} (${sourceLabel}: ${trimmedRef}) <-> Working Tree`;
-    await vscode.commands.executeCommand("vscode.diff", leftDoc.uri, fileUri, title);
-    await closeTemporaryDiffSourceTab(leftDoc.uri);
+    await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
 }
 
 export async function openCommitFileDiff(
     commitHash: string,
     filePath: string,
-    repoRoot: string,
+    _repoRoot: string,
     gitOps: GitOps,
     executor: GitExecutor,
 ): Promise<void> {
@@ -140,27 +175,12 @@ export async function openCommitFileDiff(
         rightContent = "";
     }
 
-    // Detect language from the working tree file if it exists on disk.
-    let language: string | undefined;
-    const diskPath = path.join(repoRoot, safePath);
-    try {
-        const diskDoc = await vscode.workspace.openTextDocument(vscode.Uri.file(diskPath));
-        language = diskDoc.languageId;
-    } catch {
-        // File may not exist on disk (deleted or only in history).
-    }
-
-    const leftDoc = await vscode.workspace.openTextDocument({ content: leftContent, language });
-    const rightDoc = await vscode.workspace.openTextDocument({
-        content: rightContent,
-        language,
-    });
     const shortParent = parentDisplayHash.slice(0, 8);
     const shortCommit = validatedHash.slice(0, 8);
+    const leftUri = createReadonlyDiffUri(safePath, leftContent, shortParent);
+    const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
     const title = `${safePath} (${shortParent} ↔ ${shortCommit})`;
-    await vscode.commands.executeCommand("vscode.diff", leftDoc.uri, rightDoc.uri, title);
-    await closeTemporaryDiffSourceTab(leftDoc.uri);
-    await closeTemporaryDiffSourceTab(rightDoc.uri);
+    await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
 }
 
 export async function applyPatchTextToRepo(
