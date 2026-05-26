@@ -9,6 +9,7 @@ import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { getSettings } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
+import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
@@ -223,10 +224,7 @@ export function ShelfTab({
                     hoverDelay={hoverDelay}
                     tooltipsEnabled={tooltipsEnabled}
                 >
-                    <path
-                        fill="currentColor"
-                        d="M3 2h4v1H4.7l3.15 3.15-.7.7L4 3.7V6H3V2zm6 0h4v4h-1V3.7L8.85 6.85l-.7-.7L11.3 3H9V2zM3 10h1v2.3l3.15-3.15.7.7L4.7 13H7v1H3v-4zm8.3 3-3.15-3.15.7-.7L12 12.3V10h1v4H9v-1h2.3z"
-                    />
+                    <ExpandAllIconGlyph />
                 </StashToolbarButton>
                 <StashToolbarButton
                     label="Collapse All"
@@ -235,10 +233,7 @@ export function ShelfTab({
                     hoverDelay={hoverDelay}
                     tooltipsEnabled={tooltipsEnabled}
                 >
-                    <path
-                        fill="currentColor"
-                        d="M6.3 2 3.15 5.15l.7.7L7 2.7V5h1V1H4v1h2.3zm3.4 0H12v1h-2.3l3.15 3.15-.7.7L9 3.7V6H8V2h1.7zM3.85 10.15l-.7.7L6.3 14H4v1h4v-4H7v2.3l-3.15-3.15zm8.3 0L9 13.3V11H8v4h4v-1H9.7l3.15-3.15-.7-.7z"
-                    />
+                    <CollapseAllIconGlyph />
                 </StashToolbarButton>
             </Flex>
 

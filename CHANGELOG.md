@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-05-26
+
+### Fixed
+
+- Register IntelliGit undock commands in empty VS Code workspaces so clicking Undock shows a no-repository message instead of a command-not-found error.
+- Dispose stale restored undocked editor panels on activation to avoid blank hanging windows after reopening VS Code.
+- Open the Changed Files diff editor on single-click from the commit detail file tree, matching the PyCharm interaction.
+
+### Tests
+
+- Add regression coverage for empty-workspace undock commands, stale restored undocked panels, and Changed Files single-click diff opening.
+
 ## [0.8.3] - 2026-05-25
 
 ### Added

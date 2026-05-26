@@ -11,7 +11,8 @@ import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";
 import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
-import { RepoIcon, TagRightIcon } from "./branch-column/icons";
+import { RepoIcon, TagRightIcon } from "./shared/components";
+import { JETBRAINS_UI } from "./shared/tokens";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import {
     BRANCH_ROW_CLASS_CSS,
@@ -45,8 +46,6 @@ interface CommitGraphViewState {
 }
 
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote"];
-const CURRENT_BRANCH_ICON_TEAL = "#7fd4cf";
-
 function readPersistedBranchColumnState(): BranchColumnPersistState | null {
     try {
         const api = getVsCodeApi<unknown, CommitGraphViewState>();
@@ -227,7 +226,7 @@ export function BranchColumn({
                         }}
                         style={HEAD_ROW_STYLE}
                     >
-                        <TagRightIcon color={CURRENT_BRANCH_ICON_TEAL} />
+                        <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
                         <span style={HEAD_LABEL_STYLE}>HEAD ({current.name})</span>
                     </div>
                 </div>

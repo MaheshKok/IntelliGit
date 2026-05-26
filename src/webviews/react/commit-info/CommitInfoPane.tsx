@@ -8,6 +8,7 @@ import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
 import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
+import { JETBRAINS_UI } from "../shared/tokens";
 import {
     buildFileTree,
     collectDirPaths,
@@ -113,14 +114,21 @@ export function CommitInfoPane({
     }
 
     return (
-        <Flex ref={containerRef} direction="column" h="100%" overflow="hidden">
+        <Flex
+            ref={containerRef}
+            direction="column"
+            h="100%"
+            overflow="hidden"
+            bg={JETBRAINS_UI.color.panel}
+        >
             <Box
                 px="8px"
                 py="4px"
                 fontWeight={600}
                 fontSize="12px"
-                color="var(--vscode-descriptionForeground)"
-                borderBottom="1px solid var(--vscode-panel-border)"
+                color={JETBRAINS_UI.color.muted}
+                bg={JETBRAINS_UI.color.toolbar}
+                borderBottom={`1px solid ${JETBRAINS_UI.color.border}`}
                 cursor="pointer"
                 tabIndex={0}
                 role="button"
@@ -163,9 +171,9 @@ export function CommitInfoPane({
                 <Box
                     flex="0 0 5px"
                     cursor="row-resize"
-                    bg="var(--vscode-panel-border, #444)"
+                    bg={JETBRAINS_UI.color.divider}
                     position="relative"
-                    _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                    _hover={{ bg: JETBRAINS_UI.color.focus }}
                     onMouseDown={onResizeStart}
                     _after={{
                         content: '""',
@@ -194,7 +202,8 @@ export function CommitInfoPane({
                     py="4px"
                     fontWeight={600}
                     fontSize="12px"
-                    color="var(--vscode-descriptionForeground)"
+                    color={JETBRAINS_UI.color.muted}
+                    bg={JETBRAINS_UI.color.toolbar}
                     cursor="pointer"
                     tabIndex={0}
                     role="button"
@@ -414,7 +423,7 @@ function CommitFolderRow({
             fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
-            _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
+            _hover={{ bg: JETBRAINS_UI.color.hover }}
             onClick={onToggle}
             title={folder.path}
         >
@@ -467,17 +476,14 @@ const CommitFileRow = React.memo(function CommitFileRow({
     useEffect(() => {
         const el = rowRef.current;
         if (!el) return;
-        const handleDblClick = () => openDiff();
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Enter") {
                 e.preventDefault();
                 openDiff();
             }
         };
-        el.addEventListener("dblclick", handleDblClick);
         el.addEventListener("keydown", handleKeyDown);
         return () => {
-            el.removeEventListener("dblclick", handleDblClick);
             el.removeEventListener("keydown", handleKeyDown);
         };
     }, [openDiff]);
@@ -507,8 +513,9 @@ const CommitFileRow = React.memo(function CommitFileRow({
             cursor="pointer"
             position="relative"
             tabIndex={0}
-            _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
+            _hover={{ bg: JETBRAINS_UI.color.hover }}
             data-vscode-context={vscodeContext}
+            onClick={openDiff}
             title={file.path}
         >
             <InfoIndentGuides treeDepth={depth} />
@@ -522,7 +529,7 @@ const CommitFileRow = React.memo(function CommitFileRow({
                     {file.additions > 0 && (
                         <Box
                             as="span"
-                            color="var(--vscode-gitDecoration-addedResourceForeground, #2ea043)"
+                            color="var(--vscode-gitDecoration-addedResourceForeground, #8bcf7b)"
                             mr="4px"
                         >
                             +{file.additions}
@@ -531,7 +538,7 @@ const CommitFileRow = React.memo(function CommitFileRow({
                     {file.deletions > 0 && (
                         <Box
                             as="span"
-                            color="var(--vscode-gitDecoration-deletedResourceForeground, #f85149)"
+                            color="var(--vscode-gitDecoration-deletedResourceForeground, #d76f6f)"
                         >
                             -{file.deletions}
                         </Box>
@@ -552,7 +559,7 @@ function InfoIndentGuides({ treeDepth }: { treeDepth: number }): React.ReactElem
                 top={0}
                 bottom={0}
                 w="1px"
-                bg="var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.12))"
+                bg="var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))"
                 left={`${INFO_SECTION_GUIDE}px`}
             />
             {Array.from({ length: treeDepth }, (_, i) => (
@@ -563,7 +570,7 @@ function InfoIndentGuides({ treeDepth }: { treeDepth: number }): React.ReactElem
                     top={0}
                     bottom={0}
                     w="1px"
-                    bg="var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.12))"
+                    bg="var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))"
                     left={`${INFO_GUIDE_BASE + i * INFO_INDENT_STEP}px`}
                 />
             ))}

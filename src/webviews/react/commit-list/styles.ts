@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { ROW_HEIGHT } from "../graph";
+import { JETBRAINS_UI } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
@@ -9,12 +10,15 @@ export const ROOT_STYLE: CSSProperties = {
     display: "flex",
     flexDirection: "column",
     height: "100%",
+    background: JETBRAINS_UI.color.editor,
+    color: JETBRAINS_UI.color.foreground,
 };
 
 export const FILTER_BAR_STYLE: CSSProperties = {
-    minHeight: 22,
-    padding: "1px 8px",
-    borderBottom: "1px solid var(--vscode-panel-border)",
+    minHeight: JETBRAINS_UI.size.toolbarHeight,
+    padding: "4px 8px",
+    borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
+    background: JETBRAINS_UI.color.toolbar,
     display: "flex",
     alignItems: "center",
     gap: "6px",
@@ -35,12 +39,12 @@ export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
 
 export const FILTER_INPUT_STYLE: CSSProperties = {
     width: "100%",
-    height: 18,
+    height: 22,
     padding: "0 22px 0 8px",
-    background: "var(--vscode-input-background)",
+    background: JETBRAINS_UI.color.input,
     color: "var(--vscode-input-foreground)",
-    border: "1px solid var(--vscode-input-border)",
-    borderRadius: "3px",
+    border: `1px solid ${JETBRAINS_UI.color.inputBorder}`,
+    borderRadius: `${JETBRAINS_UI.size.radius}px`,
     fontSize: "12px",
     outline: "none",
 };
@@ -80,8 +84,10 @@ export function headerRowStyle(graphWidth: number): CSSProperties {
         alignItems: "center",
         height: 22,
         fontSize: "11px",
-        borderBottom: "1px solid var(--vscode-panel-border)",
-        opacity: 0.5,
+        borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
+        background: "color-mix(in srgb, var(--vscode-editor-background, #2b3342) 86%, #000 14%)",
+        color: JETBRAINS_UI.color.muted,
+        opacity: 0.88,
         paddingLeft: graphWidth,
         paddingRight: ROW_SIDE_PADDING,
         flexShrink: 0,

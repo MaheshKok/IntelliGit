@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Commit } from "../../../types";
 import { RefTypeIcon } from "../shared/components";
 import { formatDateTime } from "../shared/date";
-import { REF_BADGE_COLORS } from "../shared/tokens";
+import { JETBRAINS_UI, REF_BADGE_COLORS } from "../shared/tokens";
 import { splitCommitRefs } from "../shared/utils";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
@@ -230,10 +230,10 @@ function CommitMessageCell({
                                 tooltipPos.placement === "above"
                                     ? "translate(-50%, -100%)"
                                     : "translate(-50%, 0)",
-                            background: "var(--vscode-editorHoverWidget-background, #2f3646)",
+                            background: JETBRAINS_UI.color.tooltipBackground,
                             color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
-                            border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
-                            borderRadius: 6,
+                            border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
+                            borderRadius: JETBRAINS_UI.size.radius,
                             fontSize: 11,
                             lineHeight: "15px",
                             padding: "8px 9px",
@@ -242,7 +242,7 @@ function CommitMessageCell({
                             minWidth: "240px",
                             zIndex: 9999,
                             pointerEvents: "none",
-                            boxShadow: "0 10px 28px rgba(0,0,0,0.45)",
+                            boxShadow: "0 10px 28px rgba(0,0,0,0.42)",
                         }}
                     >
                         <span
@@ -352,16 +352,14 @@ function CommitRowInner({
                 fontSize: "12px",
                 whiteSpace: "nowrap",
                 borderLeft: isUnpushed
-                    ? `2px solid ${laneColor ?? "#4CAF50"}`
+                    ? `2px solid ${laneColor ?? JETBRAINS_UI.color.head}`
                     : "2px solid transparent",
-                background: isSelected
-                    ? "var(--vscode-list-activeSelectionBackground)"
-                    : "transparent",
+                background: isSelected ? JETBRAINS_UI.color.selected : "transparent",
                 color: isSelected
-                    ? "var(--vscode-list-activeSelectionForeground)"
+                    ? JETBRAINS_UI.color.selectedForeground
                     : isMergeCommit
                       ? "var(--vscode-disabledForeground)"
-                      : "inherit",
+                      : JETBRAINS_UI.color.foreground,
             }}
         >
             <CommitMessageCell message={commit.message} refs={commit.refs} />

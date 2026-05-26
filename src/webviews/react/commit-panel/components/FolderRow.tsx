@@ -9,6 +9,7 @@ import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "./TreeIcons";
 import { resolveFolderIcon } from "../../shared/utils";
+import { ChevronIcon } from "../../shared/components";
 
 interface Props {
     name: string;
@@ -69,19 +70,7 @@ function FolderRowInner({
             title={dirPath}
         >
             <IndentGuides treeDepth={depth} />
-            <Box
-                as="span"
-                fontSize="11px"
-                w="14px"
-                textAlign="center"
-                flexShrink={0}
-                opacity={0.7}
-                transform={isExpanded ? "rotate(90deg)" : undefined}
-                transition="transform 0.15s ease"
-                display="inline-block"
-            >
-                &#9654;
-            </Box>
+            <ChevronIcon expanded={isExpanded} />
             <VscCheckbox
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}

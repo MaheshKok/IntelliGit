@@ -1,21 +1,26 @@
 import type { CSSProperties } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
+import { BASE_ICON_STYLE, ICON_SIZE } from "../shared/components/Icons";
+import { JETBRAINS_UI } from "../shared/tokens";
 
-export const TREE_INDENT_STEP = 18;
-export const NODE_ICON_SIZE = 14;
+export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;
+export const BRANCH_TREE_INDENT_BASE = 18;
+export const BRANCH_TREE_INDENT_STEP = 14;
+export const BRANCH_TREE_GUIDE_BASE = 23;
+export const NODE_ICON_SIZE = ICON_SIZE;
 
 export const BRANCH_ROW_CLASS_CSS = `
     .branch-row:hover {
-        background: var(--vscode-list-hoverBackground) !important;
+        background: ${JETBRAINS_UI.color.hover} !important;
     }
     .branch-row.selected {
-        background: var(--vscode-list-activeSelectionBackground) !important;
-        color: var(--vscode-list-activeSelectionForeground) !important;
-        border-radius: 7px;
+        background: ${JETBRAINS_UI.color.selected} !important;
+        color: ${JETBRAINS_UI.color.selectedForeground} !important;
+        border-radius: ${JETBRAINS_UI.size.selectedRadius}px;
     }
     .branch-row.selected:hover {
-        background: var(--vscode-list-activeSelectionBackground) !important;
-        color: var(--vscode-list-activeSelectionForeground) !important;
+        background: ${JETBRAINS_UI.color.selected} !important;
+        color: ${JETBRAINS_UI.color.selectedForeground} !important;
     }
     .branch-track-push {
         color: var(--vscode-gitDecoration-addedResourceForeground, #73c991) !important;
@@ -33,7 +38,9 @@ export const PANEL_STYLE: CSSProperties = {
     overflow: "auto",
     fontSize: "13px",
     fontFamily: SYSTEM_FONT_STACK,
-    borderRight: "1px solid var(--vscode-panel-border)",
+    background: JETBRAINS_UI.color.panel,
+    color: JETBRAINS_UI.color.foreground,
+    borderRight: `1px solid ${JETBRAINS_UI.color.border}`,
     userSelect: "none",
 };
 
@@ -43,17 +50,18 @@ export const SEARCH_CONTAINER_STYLE: CSSProperties = {
     alignItems: "center",
     gap: 6,
     padding: "1px 8px",
-    color: "var(--vscode-icon-foreground)",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    color: JETBRAINS_UI.color.muted,
+    background: JETBRAINS_UI.color.toolbar,
+    borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
 };
 
 export const SEARCH_INPUT_STYLE: CSSProperties = {
     flex: 1,
     minWidth: 0,
     height: 18,
-    borderRadius: 3,
-    border: "1px solid var(--vscode-input-border, rgba(255,255,255,0.15))",
-    background: "var(--vscode-input-background, rgba(0,0,0,0.22))",
+    borderRadius: JETBRAINS_UI.size.radius,
+    border: `1px solid ${JETBRAINS_UI.color.inputBorder}`,
+    background: JETBRAINS_UI.color.input,
     color: "var(--vscode-input-foreground, #d8dbe2)",
     padding: "0 6px",
     fontSize: 12,
@@ -91,13 +99,23 @@ export const NO_MATCH_STYLE: CSSProperties = {
 };
 
 export const ROW_STYLE: CSSProperties = {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     padding: "2px 8px",
     cursor: "pointer",
     whiteSpace: "nowrap",
     overflow: "hidden",
-    lineHeight: "20px",
+    lineHeight: "22px",
+};
+
+export const INDENT_GUIDE_STYLE: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 1,
+    background: "var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))",
+    pointerEvents: "none",
 };
 
 export const HEAD_ROW_STYLE: CSSProperties = {
@@ -110,7 +128,7 @@ export const HEAD_ROW_STYLE: CSSProperties = {
 export const SECTION_HEADER_STYLE: CSSProperties = {
     ...ROW_STYLE,
     fontWeight: 600,
-    fontSize: "11px",
+    fontSize: "13px",
     opacity: 0.82,
     paddingLeft: 8,
     marginTop: 1,
@@ -137,12 +155,18 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
 };
 
 export const TRACKING_PUSH_STYLE: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
     color: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
     opacity: 0.95,
     fontWeight: 700,
 };
 
 export const TRACKING_PULL_STYLE: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
     color: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
     opacity: 0.95,
     fontWeight: 700,
@@ -153,12 +177,6 @@ export const BRANCH_HIGHLIGHT_STYLE: CSSProperties = {
     color: "var(--vscode-editor-foreground, #1b1b1b)",
     borderRadius: 3,
     padding: "0 1px",
-};
-
-export const BASE_ICON_STYLE: CSSProperties = {
-    flexShrink: 0,
-    marginRight: 4,
-    opacity: 0.92,
 };
 
 export function getChevronIconStyle(expanded: boolean): CSSProperties {

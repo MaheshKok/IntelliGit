@@ -3,14 +3,15 @@
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LuSearch, LuX } from "react-icons/lu";
 import type { Commit } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
+import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitRow } from "./commit-list/CommitRow";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "./commitGraphTypes";
+import { JETBRAINS_UI } from "./shared/tokens";
 import {
     AUTHOR_COL_WIDTH,
     BRANCH_SCOPE_STYLE,
@@ -29,7 +30,7 @@ import {
 } from "./commit-list/styles";
 
 const MIN_PREFIX_LENGTH = 7;
-const MAX_GRAPH_WIDTH = 200;
+const MAX_GRAPH_WIDTH = JETBRAINS_UI.graph.maxWidth;
 
 interface Props {
     commits: Commit[];
@@ -176,7 +177,7 @@ export function CommitList({
     return (
         <div style={ROOT_STYLE}>
             <div style={FILTER_BAR_STYLE}>
-                <LuSearch size={16} style={FILTER_ICON_STYLE} />
+                <SearchIcon size={16} style={FILTER_ICON_STYLE} />
                 <div style={FILTER_INPUT_WRAP_STYLE}>
                     <input
                         type="text"
@@ -193,7 +194,7 @@ export function CommitList({
                             onClick={() => onFilterText("")}
                             style={FILTER_CLEAR_BUTTON_STYLE}
                         >
-                            <LuX size={12} />
+                            <ClearIcon size={12} />
                         </button>
                     )}
                 </div>

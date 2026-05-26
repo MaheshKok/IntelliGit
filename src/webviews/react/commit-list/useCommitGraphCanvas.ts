@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { DOT_RADIUS, LANE_WIDTH, ROW_HEIGHT, type GraphRow } from "../graph";
+import { JETBRAINS_UI } from "../shared/tokens";
 
-const GRAPH_LEFT_PAD = 4;
+const GRAPH_LEFT_PAD = JETBRAINS_UI.graph.leftPad;
 const OVERSCAN_ROWS = 8;
 
 interface Args {
@@ -35,7 +36,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
             const bgColor =
                 getComputedStyle(document.documentElement)
                     .getPropertyValue("--vscode-editor-background")
-                    .trim() || "#1e1e1e";
+                    .trim() || JETBRAINS_UI.color.graphBackgroundFallback;
             const scrollTop = viewport.scrollTop;
             const viewportHeight = viewport.clientHeight;
             const visibleStart = Math.floor(scrollTop / ROW_HEIGHT);
@@ -64,7 +65,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
                     const lx = lane.column * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PAD;
                     ctx.beginPath();
                     ctx.strokeStyle = lane.color;
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = JETBRAINS_UI.graph.lineWidth;
                     ctx.moveTo(lx, y);
                     ctx.lineTo(lx, y + ROW_HEIGHT);
                     ctx.stroke();
@@ -78,7 +79,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
                     if (incoming) {
                         ctx.beginPath();
                         ctx.strokeStyle = row.color;
-                        ctx.lineWidth = 2;
+                        ctx.lineWidth = JETBRAINS_UI.graph.lineWidth;
                         ctx.moveTo(cx, y);
                         ctx.lineTo(cx, cy);
                         ctx.stroke();
@@ -90,7 +91,7 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
                     const tx = conn.toCol * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PAD;
                     ctx.beginPath();
                     ctx.strokeStyle = conn.color;
-                    ctx.lineWidth = 2;
+                    ctx.lineWidth = JETBRAINS_UI.graph.mergeLineWidth;
                     if (conn.fromCol === conn.toCol) {
                         ctx.moveTo(fx, cy);
                         ctx.lineTo(tx, y + ROW_HEIGHT);
@@ -110,18 +111,18 @@ export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth 
 
                 ctx.beginPath();
                 ctx.fillStyle = bgColor;
-                ctx.arc(cx, cy, DOT_RADIUS + 1, 0, Math.PI * 2);
+                ctx.arc(cx, cy, DOT_RADIUS + 1.5, 0, Math.PI * 2);
                 ctx.fill();
 
                 ctx.beginPath();
                 ctx.strokeStyle = row.color;
-                ctx.lineWidth = 2.5;
+                ctx.lineWidth = JETBRAINS_UI.graph.dotRingWidth;
                 ctx.arc(cx, cy, DOT_RADIUS, 0, Math.PI * 2);
                 ctx.stroke();
 
                 ctx.beginPath();
                 ctx.fillStyle = row.color;
-                ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+                ctx.arc(cx, cy, JETBRAINS_UI.graph.dotInnerRadius, 0, Math.PI * 2);
                 ctx.fill();
             }
         };

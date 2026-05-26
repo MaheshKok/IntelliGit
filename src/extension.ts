@@ -77,8 +77,37 @@ function selectInitialRepository(
     return repositories.find((repo) => repo.root === storedRoot) ?? repositories[0];
 }
 
+function registerStaleUndockedPanelSerializer(context: vscode.ExtensionContext): void {
+    context.subscriptions.push(
+        vscode.window.registerWebviewPanelSerializer(UndockedViewProvider.viewType, {
+            async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> {
+                panel.dispose();
+            },
+        }),
+    );
+}
+
+function registerUnavailableCommands(context: vscode.ExtensionContext): void {
+    const showUnavailableMessage = (): void => {
+        vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+    };
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("intelligit.selectRepository", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.showGitLog", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.openUndocked", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.dockWindow", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.toggleUndocked", showUnavailableMessage),
+    );
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-    if (!vscode.workspace.workspaceFolders?.length) return;
+    registerStaleUndockedPanelSerializer(context);
+
+    if (!vscode.workspace.workspaceFolders?.length) {
+        registerUnavailableCommands(context);
+        return;
+    }
 
     let repositories = await discoverGitRepositories(workspaceRoots());
     if (repositories.length === 0) {
@@ -120,6 +149,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
             vscode.commands.registerCommand("intelligit.dockWindow", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
+            vscode.commands.registerCommand("intelligit.toggleUndocked", () => {
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
         );

@@ -363,8 +363,10 @@ describe("low coverage components", () => {
 
         const push = branchRow.querySelector(".branch-track-push") as HTMLElement;
         const pull = branchRow.querySelector(".branch-track-pull") as HTMLElement;
-        expect(push?.textContent).toBe("\u2B062");
-        expect(pull?.textContent).toBe("\u2B073");
+        expect(push?.textContent).toBe("2");
+        expect(pull?.textContent).toBe("3");
+        expect(push.querySelector("svg")).toBeTruthy();
+        expect(pull.querySelector("svg")).toBeTruthy();
         expect(push?.style.color).toBe(
             "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
         );

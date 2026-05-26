@@ -1,5 +1,5 @@
 import React from "react";
-import { LuSearch, LuX } from "react-icons/lu";
+import { ClearIcon, SearchIcon } from "../../shared/components/Icons";
 import { SEARCH_CLEAR_BUTTON_STYLE, SEARCH_CONTAINER_STYLE, SEARCH_INPUT_STYLE } from "../styles";
 
 export interface Props {
@@ -11,7 +11,7 @@ export interface Props {
 export function BranchSearchBar({ value, onChange, onClear }: Props): React.ReactElement {
     return (
         <div style={SEARCH_CONTAINER_STYLE}>
-            <LuSearch size={16} style={{ opacity: 0.95, flexShrink: 0 }} />
+            <SearchIcon size={16} style={{ opacity: 0.95 }} />
             <input
                 className="branch-search-input"
                 type="text"
@@ -29,7 +29,7 @@ export function BranchSearchBar({ value, onChange, onClear }: Props): React.Reac
                     onClick={onClear}
                     style={SEARCH_CLEAR_BUTTON_STYLE}
                 >
-                    <LuX size={14} />
+                    <ClearIcon size={14} />
                 </button>
             )}
         </div>
