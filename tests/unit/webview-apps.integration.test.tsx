@@ -277,7 +277,7 @@ describe("CommitPanelApp integration", () => {
 });
 
 describe("CommitGraphApp integration", () => {
-    it("handles host messages, filtering, branch actions, and commit actions", async () => {
+    it("handles host messages, filtering, branch actions, commit actions, and changed-file clicks", async () => {
         vi.resetModules();
         const vscode = installVsCodeMock();
         const rootHost = createRootHost();
@@ -410,7 +410,7 @@ describe("CommitGraphApp integration", () => {
         ) as HTMLElement | null;
         expect(changedFileRow).toBeTruthy();
         act(() => {
-            changedFileRow?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+            changedFileRow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
         const branchRow = Array.from(document.querySelectorAll(".branch-row")).find((row) =>

@@ -467,17 +467,14 @@ const CommitFileRow = React.memo(function CommitFileRow({
     useEffect(() => {
         const el = rowRef.current;
         if (!el) return;
-        const handleDblClick = () => openDiff();
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Enter") {
                 e.preventDefault();
                 openDiff();
             }
         };
-        el.addEventListener("dblclick", handleDblClick);
         el.addEventListener("keydown", handleKeyDown);
         return () => {
-            el.removeEventListener("dblclick", handleDblClick);
             el.removeEventListener("keydown", handleKeyDown);
         };
     }, [openDiff]);
@@ -509,6 +506,7 @@ const CommitFileRow = React.memo(function CommitFileRow({
             tabIndex={0}
             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
             data-vscode-context={vscodeContext}
+            onClick={openDiff}
             title={file.path}
         >
             <InfoIndentGuides treeDepth={depth} />

@@ -45,6 +45,7 @@ const withProgress = vi.fn(
         ),
 );
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
+const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
 const saveDocListeners: Array<() => void> = [];
@@ -357,6 +358,7 @@ vi.mock("vscode", () => ({
     },
     window: {
         registerWebviewViewProvider,
+        registerWebviewPanelSerializer,
         createTreeView: vi.fn(() => ({
             badge: undefined,
             dispose: vi.fn(),
@@ -638,6 +640,56 @@ describe("extension integration", () => {
         showQuickPick.mockImplementation(
             async (items: Array<{ parentNumber: number }>) => items[0],
         );
+    });
+
+    it("registers unavailable command handlers in an empty workspace", async () => {
+        workspaceFolders = undefined;
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+
+        await registeredCommands.get("intelligit.openUndocked")?.();
+        await registeredCommands.get("intelligit.toggleUndocked")?.();
+
+        expect(registeredCommands.has("intelligit.openUndocked")).toBe(true);
+        expect(registeredCommands.has("intelligit.dockWindow")).toBe(true);
+        expect(registeredCommands.has("intelligit.toggleUndocked")).toBe(true);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "No Git repositories found in this workspace.",
+        );
+        expect(latestUndockedProvider).toBeUndefined();
+    });
+
+    it("disposes stale restored undocked panels instead of leaving an empty editor", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+
+        const serializer = registerWebviewPanelSerializer.mock.calls.find(
+            ([viewType]) => viewType === "intelligit.undocked",
+        )?.[1] as
+            | {
+                  deserializeWebviewPanel: (
+                      panel: { dispose: () => void },
+                      state: unknown,
+                  ) => Promise<void>;
+              }
+            | undefined;
+        const restoredPanel = { dispose: vi.fn() };
+
+        await serializer?.deserializeWebviewPanel(restoredPanel, {});
+
+        expect(serializer).toBeDefined();
+        expect(restoredPanel.dispose).toHaveBeenCalledTimes(1);
+        expect(latestUndockedProvider).toBeUndefined();
     });
 
     it("activates and executes branch/file command handlers", async () => {
@@ -1317,7 +1369,9 @@ describe("extension integration", () => {
 
         workspaceFolders = undefined;
         await activate(context);
-        expect(registeredCommands.size).toBe(0);
+        expect(registeredCommands.has("intelligit.openUndocked")).toBe(true);
+        expect(registeredCommands.has("intelligit.toggleUndocked")).toBe(true);
+        registeredCommands.clear();
 
         workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         gitOpsState.isRepository.mockResolvedValueOnce(false);
