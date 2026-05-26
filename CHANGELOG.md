@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.5] - 2026-05-26
+
+### Changed
+
+- Open commit Changed Files diffs on double-click instead of single-click, matching standard VS Code and PyCharm tree interactions.
+
+### Fixed
+
+- Render commit diff sides from read-only virtual documents so historical file snapshots cannot be edited accidentally and closing the diff does not prompt to save.
+
+### Tests
+
+- Add regression coverage for Changed Files single-click suppression, double-click diff opening, and read-only diff URI usage.
+
 ## [0.8.4] - 2026-05-26
 
 ### Fixed
