@@ -1,6 +1,7 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import type { ThemeTreeIcon } from "../../../../types";
+import { FileIcon, FolderIcon, ICON_SIZE } from "./Icons";
 
 interface TreeFileIconProps {
     status?: string;
@@ -25,13 +26,13 @@ function ThemeGlyphIcon({
     return (
         <Box
             as="span"
-            w="14px"
-            h="14px"
+            w={`${ICON_SIZE}px`}
+            h={`${ICON_SIZE}px`}
             flexShrink={0}
             display="inline-flex"
             alignItems="center"
             justifyContent="center"
-            lineHeight="14px"
+            lineHeight={`${ICON_SIZE}px`}
             fontSize={icon.fontSize ?? "14px"}
             fontFamily={icon.fontFamily}
             fontWeight={icon.fontWeight}
@@ -55,8 +56,8 @@ export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactEl
             <Box
                 as="img"
                 src={icon.uri}
-                w="14px"
-                h="14px"
+                w={`${ICON_SIZE}px`}
+                h={`${ICON_SIZE}px`}
                 flexShrink={0}
                 objectFit="contain"
                 opacity={status === "D" ? 0.6 : undefined}
@@ -74,8 +75,8 @@ export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactEl
     return (
         <Box
             as="span"
-            w="14px"
-            h="14px"
+            w={`${ICON_SIZE}px`}
+            h={`${ICON_SIZE}px`}
             flexShrink={0}
             display="inline-flex"
             alignItems="center"
@@ -83,13 +84,7 @@ export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactEl
             color={color}
             data-tree-icon="file"
         >
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                    fill="currentColor"
-                    fillRule="evenodd"
-                    d="M4 1h5.586a1 1 0 0 1 .707.293l2.414 2.414A1 1 0 0 1 13 4.414V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zm0 1v12h8V4.414L9.586 2H4zm5 .5V5h2.5z"
-                />
-            </svg>
+            <FileIcon color={color} />
         </Box>
     );
 }
@@ -100,8 +95,8 @@ export function TreeFolderIcon({ isExpanded, icon }: TreeFolderIconProps): React
             <Box
                 as="img"
                 src={icon.uri}
-                w="14px"
-                h="14px"
+                w={`${ICON_SIZE}px`}
+                h={`${ICON_SIZE}px`}
                 flexShrink={0}
                 objectFit="contain"
                 data-tree-icon="folder"
@@ -130,12 +125,7 @@ export function TreeFolderIcon({ isExpanded, icon }: TreeFolderIconProps): React
             color={color}
             data-tree-icon="folder"
         >
-            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-                <path
-                    fill="currentColor"
-                    d="M14.5 4H7.71l-.85-.85A.5.5 0 0 0 6.5 3H1.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h13a.5.5 0 0 0 .5-.5V4.5a.5.5 0 0 0-.5-.5z"
-                />
-            </svg>
+            <FolderIcon color={color} />
         </Box>
     );
 }

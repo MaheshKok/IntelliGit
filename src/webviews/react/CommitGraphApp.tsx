@@ -25,6 +25,7 @@ import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { ThemeIconFontFaces } from "./shared/components";
+import { JETBRAINS_UI } from "./shared/tokens";
 
 const vscode = getVsCodeApi<CommitGraphOutbound, unknown>();
 const MIN_BRANCH_WIDTH = 80;
@@ -262,7 +263,15 @@ function App(): React.ReactElement {
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
-            <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+            <div
+                style={{
+                    display: "flex",
+                    height: "100%",
+                    overflow: "hidden",
+                    background: JETBRAINS_UI.color.editor,
+                    color: JETBRAINS_UI.color.foreground,
+                }}
+            >
                 {/* Branch column */}
                 <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
                     <BranchColumn
@@ -284,7 +293,7 @@ function App(): React.ReactElement {
                         width: 4,
                         flexShrink: 0,
                         cursor: "col-resize",
-                        background: "var(--vscode-panel-border)",
+                        background: JETBRAINS_UI.color.divider,
                     }}
                 />
 
@@ -311,7 +320,7 @@ function App(): React.ReactElement {
                             width: 4,
                             flexShrink: 0,
                             cursor: "col-resize",
-                            background: "var(--vscode-panel-border)",
+                            background: JETBRAINS_UI.color.divider,
                         }}
                     />
                     <div

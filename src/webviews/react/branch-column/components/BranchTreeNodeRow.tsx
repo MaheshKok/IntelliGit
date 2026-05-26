@@ -1,8 +1,14 @@
 import React from "react";
 import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { renderHighlightedLabel } from "../highlight";
-import { ChevronIcon, GitBranchIcon, StarIcon, TagRightIcon } from "../icons";
-import { TreeFolderIcon } from "../../shared/components";
+import {
+    ChevronIcon,
+    GitBranchIcon,
+    StarIcon,
+    TagRightIcon,
+    TreeFolderIcon,
+} from "../../shared/components";
+import { JETBRAINS_UI } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils";
 import { getSettings } from "../../shared/settings";
 import {
@@ -15,8 +21,6 @@ import {
 } from "../styles";
 import type { TreeNode } from "../types";
 
-const BRANCH_TREE_ICON_BLUE = "var(--vscode-charts-blue, #58a6ff)";
-const CURRENT_BRANCH_ICON_TEAL = "var(--vscode-charts-green, #7fd4cf)";
 const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
 interface Props {
@@ -112,10 +116,10 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
                         left: tooltipPos.x,
                         top: tooltipPos.y,
                         transform: "translate(-50%, -100%)",
-                        background: "var(--vscode-editorHoverWidget-background, #2f3646)",
+                        background: JETBRAINS_UI.color.tooltipBackground,
                         color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
-                        border: "1px solid var(--vscode-editorHoverWidget-border, rgba(255,255,255,0.12))",
-                        borderRadius: 4,
+                        border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
+                        borderRadius: JETBRAINS_UI.size.radius,
                         fontSize: 11,
                         lineHeight: "14px",
                         padding: "3px 6px",
@@ -234,11 +238,11 @@ export function BranchTreeNodeRow({
         >
             <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
             {isCurrent ? (
-                <TagRightIcon color={CURRENT_BRANCH_ICON_TEAL} />
+                <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
             ) : isMainLike ? (
                 <StarIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
             ) : (
-                <GitBranchIcon color={BRANCH_TREE_ICON_BLUE} />
+                <GitBranchIcon color={JETBRAINS_UI.color.branch} />
             )}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <TrackingBadge branch={node.branch} />}

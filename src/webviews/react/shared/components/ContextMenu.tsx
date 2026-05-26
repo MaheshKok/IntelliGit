@@ -8,20 +8,15 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
+import { JETBRAINS_UI } from "../tokens";
 
 const ITEM_HEIGHT = 28;
 const ITEM_FONT_SIZE = 13;
 const CONTEXT_MENU_STYLE_ID = "intelligit-ctx-styles";
-/** PyCharm New UI context menu colours, used as fallbacks when VS Code theme vars are unavailable. */
-const PYCHARM_MENU_BG = "#2B2D30";
-const PYCHARM_MENU_BORDER = "#43454A";
-const PYCHARM_MENU_FG = "#BBBFC4";
-const PYCHARM_MENU_SEPARATOR = "#3E4042";
-const PYCHARM_MENU_HINT = "#6E7074";
 const CONTEXT_MENU_STYLE_RULES = `
     .intelligit-context-item[data-disabled="false"]:hover,
     .intelligit-context-item[data-disabled="false"]:focus-visible {
-        background: var(--vscode-menu-selectionBackground, #2E436E);
+        background: var(--vscode-menu-selectionBackground, ${JETBRAINS_UI.color.menuSelection});
         color: var(--vscode-menu-selectionForeground, #DFE1E5);
     }
     .intelligit-context-item[data-disabled="false"]:focus-visible {
@@ -126,8 +121,8 @@ export function ContextMenu({
                 left: pos.left,
                 top: pos.top,
                 zIndex: 9999,
-                background: `var(--vscode-menu-background, ${PYCHARM_MENU_BG})`,
-                border: `1px solid var(--vscode-menu-border, ${PYCHARM_MENU_BORDER})`,
+                background: `var(--vscode-menu-background, ${JETBRAINS_UI.color.menuBackground})`,
+                border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
                 borderRadius: 8,
                 padding: "4px 0",
                 minWidth,
@@ -143,7 +138,7 @@ export function ContextMenu({
                             style={{
                                 height: 1,
                                 margin: "4px 8px",
-                                background: `var(--vscode-menu-separatorBackground, ${PYCHARM_MENU_SEPARATOR})`,
+                                background: `var(--vscode-menu-separatorBackground, ${JETBRAINS_UI.color.menuSeparator})`,
                             }}
                         />
                     );
@@ -180,7 +175,7 @@ export function ContextMenu({
                             lineHeight: `${ITEM_HEIGHT}px`,
                             color: item.disabled
                                 ? "var(--vscode-disabledForeground, rgba(187,191,196,1))"
-                                : `var(--vscode-menu-foreground, ${PYCHARM_MENU_FG})`,
+                                : `var(--vscode-menu-foreground, ${JETBRAINS_UI.color.menuForeground})`,
                             whiteSpace: "nowrap",
                         }}
                     >
@@ -211,8 +206,8 @@ export function ContextMenu({
                                     overflow: "visible",
                                     fontSize: 12,
                                     color: item.disabled
-                                        ? `var(--vscode-disabledForeground, ${PYCHARM_MENU_HINT})`
-                                        : `var(--vscode-descriptionForeground, ${PYCHARM_MENU_HINT})`,
+                                        ? `var(--vscode-disabledForeground, ${JETBRAINS_UI.color.menuHint})`
+                                        : `var(--vscode-descriptionForeground, ${JETBRAINS_UI.color.menuHint})`,
                                     paddingLeft: 16,
                                 }}
                             >

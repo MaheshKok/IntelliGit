@@ -1,8 +1,9 @@
 import React from "react";
-import { LuGitBranch, LuTag } from "react-icons/lu";
+import { JETBRAINS_UI } from "../tokens";
+import { RefBranchIcon, RefTagIcon } from "./Icons";
 
-export const BRANCH_REF_ICON_COLOR = "var(--vscode-charts-blue, #58a6ff)";
-export const TAG_REF_ICON_COLOR = "var(--vscode-charts-orange, #FF9800)";
+export const BRANCH_REF_ICON_COLOR = JETBRAINS_UI.color.branch;
+export const TAG_REF_ICON_COLOR = JETBRAINS_UI.color.tag;
 
 function RefTypeIconInner({
     kind,
@@ -15,9 +16,12 @@ function RefTypeIconInner({
     branchColor?: string;
     tagColor?: string;
 }): React.ReactElement {
-    const Icon = kind === "branch" ? LuGitBranch : LuTag;
     const color = kind === "branch" ? branchColor : tagColor;
-    return <Icon size={size} color={color} />;
+    return kind === "branch" ? (
+        <RefBranchIcon size={size} color={color} />
+    ) : (
+        <RefTagIcon size={size} color={color} />
+    );
 }
 
 export const RefTypeIcon = React.memo(RefTypeIconInner);

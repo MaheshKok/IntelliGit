@@ -1,10 +1,10 @@
-import { GRAPH_LANE_COLORS } from "./shared/tokens";
+import { GRAPH_LANE_COLORS, JETBRAINS_UI } from "./shared/tokens";
 
 export const COLORS = GRAPH_LANE_COLORS;
 
-export const LANE_WIDTH = 20;
-export const DOT_RADIUS = 5;
-export const ROW_HEIGHT = 28;
+export const LANE_WIDTH = JETBRAINS_UI.graph.laneWidth;
+export const DOT_RADIUS = JETBRAINS_UI.graph.dotRadius;
+export const ROW_HEIGHT = JETBRAINS_UI.size.rowHeight;
 
 export interface GraphRow {
     column: number;
