@@ -27,17 +27,34 @@ class ReadonlyDiffContentProvider implements vscode.TextDocumentContentProvider 
     provideTextDocumentContent(uri: vscode.Uri): string {
         return readonlyDiffDocuments.get(uri.toString()) ?? "";
     }
+
+    dispose(): void {
+        readonlyDiffDocuments.clear();
+    }
 }
 
 export function registerReadonlyDiffContentProvider(
     context: vscode.ExtensionContext,
 ): vscode.Disposable {
-    const disposable = vscode.workspace.registerTextDocumentContentProvider(
+    const provider = new ReadonlyDiffContentProvider();
+    const providerRegistration = vscode.workspace.registerTextDocumentContentProvider(
         READONLY_DIFF_SCHEME,
-        new ReadonlyDiffContentProvider(),
+        provider,
     );
-    context.subscriptions.push(disposable);
-    return disposable;
+    const closeListener = vscode.workspace.onDidCloseTextDocument((document) => {
+        if (document.uri.scheme === READONLY_DIFF_SCHEME) {
+            readonlyDiffDocuments.delete(document.uri.toString());
+        }
+    });
+    const cleanup = {
+        dispose: () => {
+            providerRegistration.dispose();
+            closeListener.dispose();
+            provider.dispose();
+        },
+    };
+    context.subscriptions.push(providerRegistration, closeListener, cleanup);
+    return cleanup;
 }
 
 function encodePathForVirtualUri(filePath: string): string {

@@ -49,6 +49,9 @@ const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
 const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
+const closeDocListeners: Array<
+    (document: { uri: { scheme: string; toString: () => string } }) => void
+> = [];
 const saveDocListeners: Array<() => void> = [];
 const createFileListeners: Array<() => void> = [];
 const deleteFileListeners: Array<() => void> = [];
@@ -419,6 +422,12 @@ vi.mock("vscode", () => ({
         fs: { writeFile },
         openTextDocument,
         registerTextDocumentContentProvider,
+        onDidCloseTextDocument: vi.fn(
+            (listener: (document: { uri: { scheme: string; toString: () => string } }) => void) => {
+                closeDocListeners.push(listener);
+                return { dispose: vi.fn() };
+            },
+        ),
         onDidChangeTextDocument: vi.fn((listener: () => void) => {
             textDocListeners.push(listener);
             return { dispose: vi.fn() };
@@ -548,6 +557,7 @@ describe("extension integration", () => {
         registeredCommands.clear();
         mockDisposables.length = 0;
         textDocListeners.length = 0;
+        closeDocListeners.length = 0;
         saveDocListeners.length = 0;
         createFileListeners.length = 0;
         deleteFileListeners.length = 0;
@@ -1319,8 +1329,24 @@ describe("extension integration", () => {
         const diffCall = executeCommandFallback.mock.calls.find(
             ([command]) => command === "vscode.diff",
         );
-        expect((diffCall?.[1] as { scheme?: string }).scheme).toBe("intelligit-diff");
-        expect((diffCall?.[2] as { scheme?: string }).scheme).toBe("intelligit-diff");
+        const leftUri = diffCall?.[1] as { scheme?: string; toString: () => string };
+        const rightUri = diffCall?.[2] as { scheme?: string; toString: () => string };
+        expect(leftUri.scheme).toBe("intelligit-diff");
+        expect(rightUri.scheme).toBe("intelligit-diff");
+
+        const provider = registerTextDocumentContentProvider.mock.calls.at(-1)?.[1] as {
+            provideTextDocumentContent: (uri: unknown) => string;
+            dispose: () => void;
+        };
+        expect(provider.provideTextDocumentContent(leftUri)).toBe("content:parent1");
+        expect(provider.provideTextDocumentContent(rightUri)).toBe("content:a1b2c3d4");
+
+        closeDocListeners.forEach((listener) => listener({ uri: leftUri }));
+        expect(provider.provideTextDocumentContent(leftUri)).toBe("");
+        expect(provider.provideTextDocumentContent(rightUri)).toBe("content:a1b2c3d4");
+
+        provider.dispose();
+        expect(provider.provideTextDocumentContent(rightUri)).toBe("");
     });
 
     it("prompts merge parent selection before opening commit file diff", async () => {
