@@ -14,18 +14,19 @@ import { JETBRAINS_UI } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils";
 import { getSettings } from "../../shared/settings";
 import {
+    BRANCH_TREE_GUIDE_BASE,
+    BRANCH_TREE_INDENT_BASE,
+    BRANCH_TREE_INDENT_STEP,
     INDENT_GUIDE_STYLE,
     NODE_LABEL_STYLE,
     ROW_STYLE,
     TRACKING_BADGE_STYLE,
     TRACKING_PULL_STYLE,
     TRACKING_PUSH_STYLE,
-    TREE_INDENT_STEP,
 } from "../styles";
 import type { TreeNode } from "../types";
 
 const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
-const BRANCH_GUIDE_BASE_LEFT = 13;
 
 interface Props {
     node: TreeNode;
@@ -150,7 +151,7 @@ function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | 
                     aria-hidden="true"
                     style={{
                         ...INDENT_GUIDE_STYLE,
-                        left: BRANCH_GUIDE_BASE_LEFT + index * TREE_INDENT_STEP,
+                        left: BRANCH_TREE_GUIDE_BASE + index * BRANCH_TREE_INDENT_STEP,
                     }}
                 />
             ))}
@@ -185,7 +186,10 @@ export function BranchTreeNodeRow({
     const isFolder = node.children.length > 0 && !node.branch;
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
-    const rowStyle = { ...ROW_STYLE, paddingLeft: depth * TREE_INDENT_STEP };
+    const rowStyle = {
+        ...ROW_STYLE,
+        paddingLeft: BRANCH_TREE_INDENT_BASE + depth * BRANCH_TREE_INDENT_STEP,
+    };
 
     if (isFolder) {
         const resolvedFolderIcon = resolveFolderIcon(

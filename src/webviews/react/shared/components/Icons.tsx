@@ -136,7 +136,7 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
         <svg
             width={ICON_SIZE}
             height={ICON_SIZE}
-            viewBox="0 0 16 16"
+            viewBox="0 0 14 14"
             aria-hidden="true"
             focusable="false"
             style={{
@@ -146,7 +146,7 @@ export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactEle
                 transition: "transform 0.1s",
             }}
         >
-            <path fill="currentColor" d="M6 4l4 4-4 4z" />
+            <path fill="currentColor" d="M3.5 1.5 10.5 7l-7 5.5z" />
         </svg>
     );
 }

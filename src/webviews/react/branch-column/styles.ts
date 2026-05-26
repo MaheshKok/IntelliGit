@@ -4,6 +4,9 @@ import { BASE_ICON_STYLE, ICON_SIZE } from "../shared/components/Icons";
 import { JETBRAINS_UI } from "../shared/tokens";
 
 export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;
+export const BRANCH_TREE_INDENT_BASE = 18;
+export const BRANCH_TREE_INDENT_STEP = 14;
+export const BRANCH_TREE_GUIDE_BASE = 23;
 export const NODE_ICON_SIZE = ICON_SIZE;
 
 export const BRANCH_ROW_CLASS_CSS = `
