@@ -5,6 +5,7 @@ import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
+import { ChevronIcon } from "../../shared/components";
 
 interface Props {
     label: string;
@@ -49,19 +50,7 @@ export function SectionHeader({
                 onToggleOpen();
             }}
         >
-            <Box
-                as="span"
-                fontSize="10px"
-                w="13px"
-                textAlign="center"
-                flexShrink={0}
-                opacity={0.7}
-                transform={isOpen ? "rotate(90deg)" : undefined}
-                transition="transform 0.15s ease"
-                display="inline-block"
-            >
-                &#9654;
-            </Box>
+            <ChevronIcon expanded={isOpen} />
             <VscCheckbox
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}

@@ -152,12 +152,18 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
 };
 
 export const TRACKING_PUSH_STYLE: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
     color: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
     opacity: 0.95,
     fontWeight: 700,
 };
 
 export const TRACKING_PULL_STYLE: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
     color: "var(--vscode-gitDecoration-deletedResourceForeground, #c74e39)",
     opacity: 0.95,
     fontWeight: 700,
