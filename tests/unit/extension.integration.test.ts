@@ -46,6 +46,7 @@ const withProgress = vi.fn(
 );
 const registerWebviewViewProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
+const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
 const saveDocListeners: Array<() => void> = [];
@@ -339,6 +340,12 @@ vi.mock("vscode", () => ({
     ProgressLocation: { Notification: 15 },
     Uri: {
         file: (value: string) => ({ fsPath: value, path: value }),
+        parse: (value: string) => ({
+            fsPath: value,
+            path: value,
+            scheme: value.split(":", 1)[0],
+            toString: () => value,
+        }),
         joinPath: (base: { fsPath?: string; path?: string }, ...parts: string[]) => {
             const prefix = base.fsPath ?? base.path ?? "";
             const joined = [prefix, ...parts].join("/").replace(/\/+/g, "/");
@@ -411,6 +418,7 @@ vi.mock("vscode", () => ({
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
         fs: { writeFile },
         openTextDocument,
+        registerTextDocumentContentProvider,
         onDidChangeTextDocument: vi.fn((listener: () => void) => {
             textDocListeners.push(listener);
             return { dispose: vi.fn() };
@@ -1304,6 +1312,15 @@ describe("extension integration", () => {
             expect.anything(),
             "src/feature.ts (parent1 ↔ a1b2c3d4)",
         );
+        expect(registerTextDocumentContentProvider).toHaveBeenCalledWith(
+            "intelligit-diff",
+            expect.objectContaining({ provideTextDocumentContent: expect.any(Function) }),
+        );
+        const diffCall = executeCommandFallback.mock.calls.find(
+            ([command]) => command === "vscode.diff",
+        );
+        expect((diffCall?.[1] as { scheme?: string }).scheme).toBe("intelligit-diff");
+        expect((diffCall?.[2] as { scheme?: string }).scheme).toBe("intelligit-diff");
     });
 
     it("prompts merge parent selection before opening commit file diff", async () => {
