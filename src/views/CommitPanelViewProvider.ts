@@ -277,6 +277,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 );
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
+                if (!push) {
+                    void this.maybeOfferPublishBranch();
+                }
                 break;
             }
 
@@ -293,6 +296,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 vscode.window.showInformationMessage("Committed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
+                void this.maybeOfferPublishBranch();
                 break;
             }
 
@@ -534,6 +538,30 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onDidChangeFileCount.dispose();
+    }
+
+    private async maybeOfferPublishBranch(): Promise<void> {
+        try {
+            const hasCommits = await this.gitOps.hasAnyCommits();
+            if (!hasCommits) return;
+
+            const branches = await this.gitOps.getBranches();
+            const currentBranch = branches.find((b) => b.isCurrent);
+            if (!currentBranch) return;
+
+            // Already published — nothing to do
+            if (currentBranch.upstream) return;
+
+            const publish = await vscode.window.showInformationMessage(
+                `Branch "${currentBranch.name}" has not been published.`,
+                "Publish Branch...",
+            );
+            if (publish === "Publish Branch...") {
+                await vscode.commands.executeCommand("intelligit.publishBranch");
+            }
+        } catch {
+            // Silently ignore — publish is optional, don't block the user
+        }
     }
 
     private refreshDataWithErrorHandling(): void {

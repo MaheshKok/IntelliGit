@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Open Folder" action that delegates to VS Code's built-in `vscode.openFolder` command.
 - `GitOps.init()` method for initializing new Git repositories programmatically.
 - New commands `intelligit.cloneRepository`, `intelligit.openFolder`, and `intelligit.initializeRepository` registered in the command palette.
+- "Publish Branch" flow after first commit: detects unpublished branches, creates remote repositories on GitHub or GitLab, adds the remote, and pushes with `--set-upstream`.
+- `intelligit.publishBranch` command for manually triggering the publish flow from the command palette.
+- `GitOps` methods for publish support: `hasAnyCommits`, `getRemotes`, `branchHasUpstream`, `addRemote`, `removeRemote`, `pushWithUpstream`.
 
 ### Changed
 
@@ -24,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - GitLab personal access tokens are stored in VS Code SecretStorage, not in user settings.
-- Authenticated HTTPS clones use a temporary `GIT_ASKPASS` helper so credentials are not placed in the clone URL or saved as the origin remote.
+- Clone and publish pushes use transient Git askpass credentials so provider tokens are not written into remote URLs or shell arguments.
 
 ## [0.8.5] - 2026-05-26
 

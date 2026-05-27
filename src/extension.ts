@@ -36,6 +36,7 @@ import { runWithNotificationProgress } from "./utils/notifications";
 import { discoverGitRepositories, type DiscoveredRepository } from "./services/repositoryDiscovery";
 import { OnboardingViewProvider } from "./views/OnboardingViewProvider";
 import { runCloneFlow } from "./services/cloneService";
+import { runPublishBranchFlow } from "./services/publishService";
 
 const SELECTED_REPOSITORY_KEY = "intelligit.selectedRepositoryRoot";
 const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspace.";
@@ -112,6 +113,7 @@ function registerOnboardingCommands(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand("intelligit.openUndocked", showUnavailableMessage),
         vscode.commands.registerCommand("intelligit.dockWindow", showUnavailableMessage),
         vscode.commands.registerCommand("intelligit.toggleUndocked", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.publishBranch", showUnavailableMessage),
     );
 }
 
@@ -251,6 +253,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
             vscode.commands.registerCommand("intelligit.toggleUndocked", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
+            vscode.commands.registerCommand("intelligit.publishBranch", () => {
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
         );
@@ -660,6 +665,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
             await refreshActiveRepository();
+        }),
+
+        vscode.commands.registerCommand("intelligit.publishBranch", async () => {
+            const branches = await gitOps.getBranches();
+            const currentBranch = branches.find((b) => b.isCurrent);
+            if (!currentBranch) {
+                vscode.window.showErrorMessage("No current branch found.");
+                return;
+            }
+            await runPublishBranchFlow(gitOps, currentBranch.name, repoRoot, context.secrets);
         }),
 
         vscode.commands.registerCommand("intelligit.selectRepository", async () => {

@@ -48,7 +48,8 @@
         "onView:intelligit.commitGraph",
         "onCommand:intelligit.cloneRepository",
         "onCommand:intelligit.openFolder",
-        "onCommand:intelligit.initializeRepository"
+        "onCommand:intelligit.initializeRepository",
+        "onCommand:intelligit.publishBranch"
     ],
     "main": "./dist/extension.js",
     "contributes": {
@@ -308,6 +309,12 @@
                 "title": "Initialize Repository",
                 "category": "IntelliGit",
                 "icon": "$(new-folder)"
+            },
+            {
+                "command": "intelligit.publishBranch",
+                "title": "Publish Branch",
+                "category": "IntelliGit",
+                "icon": "$(cloud-upload)"
             }
         ],
         "submenus": [
