@@ -103,6 +103,11 @@ export class GitOps {
         private readonly confirmSetUpstreamPush?: ConfirmSetUpstreamPush,
     ) {}
 
+    async init(repoPath: string): Promise<string> {
+        const executor = new GitExecutor(repoPath);
+        return executor.run(["init"]);
+    }
+
     async isRepository(): Promise<boolean> {
         try {
             await this.executor.run(["rev-parse", "--is-inside-work-tree"]);

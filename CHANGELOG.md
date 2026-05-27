@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-05-27
+
+### Added
+
+- Interactive onboarding webview shown when no workspace folder is open or no Git repository exists, replacing the previous static placeholder text.
+- "Initialize Repository" action that runs `git init` in the selected workspace folder and offers to reload the window to activate IntelliGit.
+- "Clone Repository" action that delegates to VS Code's built-in `git.clone` command.
+- "Open Folder" action that delegates to VS Code's built-in `vscode.openFolder` command.
+- `GitOps.init()` method for initializing new Git repositories programmatically.
+- New commands `intelligit.cloneRepository`, `intelligit.openFolder`, and `intelligit.initializeRepository` registered in the command palette.
+
+### Changed
+
+- The empty-state webview providers now use `OnboardingViewProvider` with contextual actions instead of the static `EmptyIntelliGitWebviewProvider`.
+
 ## [0.8.5] - 2026-05-26
 
 ### Changed
