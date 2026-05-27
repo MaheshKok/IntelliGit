@@ -492,6 +492,10 @@ const CommitFileRow = React.memo(function CommitFileRow({
         onOpenDiff?.(commitHash, file.path);
     }, [onOpenDiff, commitHash, file.path]);
 
+    const selectRow = useCallback(() => {
+        onSelect(file.path);
+    }, [onSelect, file.path]);
+
     useEffect(() => {
         const el = rowRef.current;
         if (!el) return;
@@ -499,13 +503,16 @@ const CommitFileRow = React.memo(function CommitFileRow({
             if (e.key === "Enter") {
                 e.preventDefault();
                 openDiff();
+            } else if (e.key === " " || e.code === "Space") {
+                e.preventDefault();
+                selectRow();
             }
         };
         el.addEventListener("keydown", handleKeyDown);
         return () => {
             el.removeEventListener("keydown", handleKeyDown);
         };
-    }, [openDiff]);
+    }, [openDiff, selectRow]);
 
     const vscodeContext = useMemo(
         () =>
@@ -545,7 +552,7 @@ const CommitFileRow = React.memo(function CommitFileRow({
                 outlineOffset: "-1px",
             }}
             data-vscode-context={vscodeContext}
-            onClick={() => onSelect(file.path)}
+            onClick={selectRow}
             onDoubleClick={openDiff}
             title={file.path}
         >

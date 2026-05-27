@@ -240,7 +240,7 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
         };
 
         const fetchPage = (): void => {
-            if (page > GITHUB_REPO_PAGE_LIMIT) {
+            if (page > GITHUB_REPO_PAGE_LIMIT + 1) {
                 finish(() =>
                     reject(
                         new Error(
@@ -278,6 +278,20 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
                         }
                         try {
                             const repos = JSON.parse(data) as GitHubRepo[];
+                            if (page > GITHUB_REPO_PAGE_LIMIT) {
+                                if (repos.length > 0) {
+                                    finish(() =>
+                                        reject(
+                                            new Error(
+                                                `GitHub repository list exceeds ${GITHUB_REPO_PAGE_LIMIT * 100} repositories. Enter the clone URL directly instead.`,
+                                            ),
+                                        ),
+                                    );
+                                } else {
+                                    finish(() => resolve(allRepos));
+                                }
+                                return;
+                            }
                             allRepos.push(...repos);
                             if (repos.length === 100) {
                                 page++;
@@ -301,7 +315,6 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
                 req.setTimeout(0);
                 finish(() => reject(err));
             });
-            req.end();
         };
 
         fetchPage();

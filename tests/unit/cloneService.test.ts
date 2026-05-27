@@ -153,15 +153,15 @@ describe("cloneService phase 3", () => {
                     return res;
                 }),
             };
+            queueMicrotask(() => {
+                callback(res);
+                handlers.get("data")?.(Buffer.from("[]"));
+                handlers.get("end")?.();
+            });
             const req = {
                 on: vi.fn(),
                 setTimeout: vi.fn(),
                 destroy: vi.fn(),
-                end: vi.fn(() => {
-                    callback(res);
-                    handlers.get("data")?.(Buffer.from("[]"));
-                    handlers.get("end")?.();
-                }),
             };
             return req;
         });
@@ -217,11 +217,9 @@ describe("cloneService phase 3", () => {
             }),
             setTimeout: vi.fn((_ms: number, handler: () => void) => {
                 timeoutHandler = handler;
+                timeoutHandler();
             }),
             destroy: vi.fn(),
-            end: vi.fn(() => {
-                timeoutHandler?.();
-            }),
         }));
 
         await runCloneFlow();
@@ -251,23 +249,64 @@ describe("cloneService phase 3", () => {
                     return res;
                 }),
             };
+            queueMicrotask(() => {
+                callback(res);
+                handlers.get("data")?.(Buffer.from(JSON.stringify(fullPage)));
+                handlers.get("end")?.();
+            });
             const req = {
                 on: vi.fn(),
                 setTimeout: vi.fn(),
                 destroy: vi.fn(),
-                end: vi.fn(() => {
-                    callback(res);
-                    handlers.get("data")?.(Buffer.from(JSON.stringify(fullPage)));
-                    handlers.get("end")?.();
-                }),
             };
             return req;
         });
 
         await runCloneFlow();
 
-        expect(mocks.httpsGet).toHaveBeenCalledTimes(50);
+        expect(mocks.httpsGet).toHaveBeenCalledTimes(51);
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to list GitHub repositories: GitHub repository list exceeds 5000 repositories. Enter the clone URL directly instead.",
+        );
+    });
+
+    it("allows GitHub repository listings with exactly the bounded page limit", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "browse" });
+        const fullPage = Array.from({ length: 100 }, (_, index) => ({
+            full_name: `user/repo-${index}`,
+            clone_url: `https://github.com/user/repo-${index}.git`,
+            ssh_url: `git@github.com:user/repo-${index}.git`,
+            description: null,
+            private: false,
+        }));
+        mocks.httpsGet.mockImplementation((url: string, _options, callback) => {
+            const page = Number(new URL(url).searchParams.get("page"));
+            const handlers = new Map<string, (chunk?: Buffer) => void>();
+            const res = {
+                statusCode: 200,
+                on: vi.fn((event: string, handler: (chunk?: Buffer) => void) => {
+                    handlers.set(event, handler);
+                    return res;
+                }),
+            };
+            queueMicrotask(() => {
+                callback(res);
+                handlers.get("data")?.(Buffer.from(JSON.stringify(page <= 50 ? fullPage : [])));
+                handlers.get("end")?.();
+            });
+            return {
+                on: vi.fn(),
+                setTimeout: vi.fn(),
+                destroy: vi.fn(),
+            };
+        });
+
+        await runCloneFlow();
+
+        expect(mocks.httpsGet).toHaveBeenCalledTimes(51);
+        expect(mocks.showErrorMessage).not.toHaveBeenCalledWith(
             "Failed to list GitHub repositories: GitHub repository list exceeds 5000 repositories. Enter the clone URL directly instead.",
         );
     });
