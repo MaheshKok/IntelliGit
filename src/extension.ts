@@ -35,6 +35,7 @@ import {
 import { runWithNotificationProgress } from "./utils/notifications";
 import { discoverGitRepositories, type DiscoveredRepository } from "./services/repositoryDiscovery";
 import { OnboardingViewProvider } from "./views/OnboardingViewProvider";
+import { runCloneFlow } from "./services/cloneService";
 
 const SELECTED_REPOSITORY_KEY = "intelligit.selectedRepositoryRoot";
 const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspace.";
@@ -45,9 +46,9 @@ function registerOnboardingCommands(context: vscode.ExtensionContext): void {
     };
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("intelligit.cloneRepository", async () => {
-            await vscode.commands.executeCommand("git.clone");
-        }),
+        vscode.commands.registerCommand("intelligit.cloneRepository", () =>
+            runCloneFlow(context.secrets),
+        ),
         vscode.commands.registerCommand("intelligit.openFolder", async () => {
             await vscode.commands.executeCommand("vscode.openFolder");
         }),
@@ -187,9 +188,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Git repositories found. Reload the window to activate IntelliGit for them.",
                 );
             }),
-            vscode.commands.registerCommand("intelligit.cloneRepository", async () => {
-                await vscode.commands.executeCommand("git.clone");
-            }),
+            vscode.commands.registerCommand("intelligit.cloneRepository", () =>
+                runCloneFlow(context.secrets),
+            ),
             vscode.commands.registerCommand("intelligit.openFolder", async () => {
                 await vscode.commands.executeCommand("vscode.openFolder");
             }),

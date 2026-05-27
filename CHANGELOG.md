@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Interactive onboarding webview shown when no workspace folder is open or no Git repository exists, replacing the previous static placeholder text.
 - "Initialize Repository" action that runs `git init` in the selected workspace folder and offers to reload the window to activate IntelliGit.
-- "Clone Repository" action that delegates to VS Code's built-in `git.clone` command.
+- Custom clone flow with three provider options: GitHub (OAuth via VS Code session, browse repos or enter URL), GitLab (PAT via SecretStorage), and SSH.
 - "Open Folder" action that delegates to VS Code's built-in `vscode.openFolder` command.
 - `GitOps.init()` method for initializing new Git repositories programmatically.
 - New commands `intelligit.cloneRepository`, `intelligit.openFolder`, and `intelligit.initializeRepository` registered in the command palette.
@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The empty-state webview providers now use `OnboardingViewProvider` with contextual actions instead of the static `EmptyIntelliGitWebviewProvider`.
+- `intelligit.cloneRepository` now runs the custom IntelliGit clone flow instead of delegating to VS Code's built-in `git.clone`.
+
+### Security
+
+- GitLab personal access tokens are stored in VS Code SecretStorage, not in user settings.
+- Authenticated HTTPS clones use a temporary `GIT_ASKPASS` helper so credentials are not placed in the clone URL or saved as the origin remote.
 
 ## [0.8.5] - 2026-05-26
 
