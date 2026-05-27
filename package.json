@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.5",
+    "version": "0.8.6",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -45,7 +45,11 @@
         "onCommand:intelligit.dockWindow",
         "onCommand:intelligit.toggleUndocked",
         "onWebviewPanel:intelligit.undocked",
-        "onView:intelligit.commitGraph"
+        "onView:intelligit.commitGraph",
+        "onCommand:intelligit.cloneRepository",
+        "onCommand:intelligit.openFolder",
+        "onCommand:intelligit.initializeRepository",
+        "onCommand:intelligit.publishBranch"
     ],
     "main": "./dist/extension.js",
     "contributes": {
@@ -287,6 +291,30 @@
                 "title": "Toggle Undocked Window",
                 "category": "IntelliGit",
                 "icon": "$(split-horizontal)"
+            },
+            {
+                "command": "intelligit.cloneRepository",
+                "title": "Clone Repository",
+                "category": "IntelliGit",
+                "icon": "$(repo-clone)"
+            },
+            {
+                "command": "intelligit.openFolder",
+                "title": "Open Folder",
+                "category": "IntelliGit",
+                "icon": "$(folder-opened)"
+            },
+            {
+                "command": "intelligit.initializeRepository",
+                "title": "Initialize Repository",
+                "category": "IntelliGit",
+                "icon": "$(new-folder)"
+            },
+            {
+                "command": "intelligit.publishBranch",
+                "title": "Publish Branch",
+                "category": "IntelliGit",
+                "icon": "$(cloud-upload)"
             }
         ],
         "submenus": [

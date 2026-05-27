@@ -491,6 +491,7 @@ vi.mock("../../src/git/operations", async (importOriginal) => {
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
+            init = async (_repoPath: string) => executorRun(["init"]);
         },
     };
 });
@@ -535,6 +536,61 @@ async function waitForAsync(): Promise<void> {
         }
     }
     await Promise.resolve();
+}
+
+type FakeWebviewView = {
+    view: {
+        webview: {
+            options: Record<string, unknown>;
+            html: string;
+            onDidReceiveMessage: ReturnType<typeof vi.fn>;
+        };
+        onDidDispose: ReturnType<typeof vi.fn>;
+    };
+    send: (message: unknown) => Promise<void>;
+};
+
+function createFakeWebviewView(): FakeWebviewView {
+    let messageHandler: ((message: unknown) => void | Promise<void>) | undefined;
+    const webview = {
+        options: {},
+        html: "",
+        onDidReceiveMessage: vi.fn((handler: (message: unknown) => void | Promise<void>) => {
+            messageHandler = handler;
+            return { dispose: vi.fn() };
+        }),
+    };
+    return {
+        view: {
+            webview,
+            onDidDispose: vi.fn(() => ({ dispose: vi.fn() })),
+        },
+        send: async (message: unknown) => {
+            await messageHandler?.(message);
+        },
+    };
+}
+
+function resolveRegisteredWebviewProvider(viewType: string): FakeWebviewView {
+    const provider = registerWebviewViewProvider.mock.calls.find(([id]) => id === viewType)?.[1] as
+        | {
+              resolveWebviewView: (
+                  view: unknown,
+                  context: unknown,
+                  token: unknown,
+              ) => void | Promise<void>;
+          }
+        | undefined;
+    if (!provider) {
+        throw new Error(`No provider registered for ${viewType}`);
+    }
+    const webview = createFakeWebviewView();
+    provider.resolveWebviewView(webview.view, {}, {});
+    return webview;
+}
+
+function renderedButtonActions(html: string): string[] {
+    return Array.from(html.matchAll(/<button[^>]+data-action="([^"]+)"/g)).map((match) => match[1]);
 }
 
 function createWorkspaceState(
@@ -660,7 +716,7 @@ describe("extension integration", () => {
         );
     });
 
-    it("registers unavailable command handlers in an empty workspace", async () => {
+    it("activates onboarding with clone and open-folder actions when no workspace is open", async () => {
         workspaceFolders = undefined;
         const { activate } = await import("../../src/extension");
         const context = {
@@ -670,9 +726,21 @@ describe("extension integration", () => {
 
         await activate(context);
 
+        const graphWebview = resolveRegisteredWebviewProvider("intelligit.commitGraph");
+        const panelWebview = resolveRegisteredWebviewProvider("intelligit.commitPanel");
         await registeredCommands.get("intelligit.openUndocked")?.();
         await registeredCommands.get("intelligit.toggleUndocked")?.();
 
+        expect(renderedButtonActions(graphWebview.view.webview.html)).toEqual([
+            "cloneRepository",
+            "openFolder",
+        ]);
+        expect(renderedButtonActions(panelWebview.view.webview.html)).toEqual([
+            "cloneRepository",
+            "openFolder",
+        ]);
+        expect(registeredCommands.has("intelligit.cloneRepository")).toBe(true);
+        expect(registeredCommands.has("intelligit.openFolder")).toBe(true);
         expect(registeredCommands.has("intelligit.openUndocked")).toBe(true);
         expect(registeredCommands.has("intelligit.dockWindow")).toBe(true);
         expect(registeredCommands.has("intelligit.toggleUndocked")).toBe(true);
@@ -680,6 +748,63 @@ describe("extension integration", () => {
             "No Git repositories found in this workspace.",
         );
         expect(latestUndockedProvider).toBeUndefined();
+    });
+
+    it("activates onboarding with initialize action when a workspace is not a Git repository", async () => {
+        gitOpsState.isRepository.mockResolvedValue(false);
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+
+        const graphWebview = resolveRegisteredWebviewProvider("intelligit.commitGraph");
+        const panelWebview = resolveRegisteredWebviewProvider("intelligit.commitPanel");
+
+        expect(renderedButtonActions(graphWebview.view.webview.html)).toEqual([
+            "initializeRepository",
+            "cloneRepository",
+            "openFolder",
+        ]);
+        expect(renderedButtonActions(panelWebview.view.webview.html)).toEqual([
+            "initializeRepository",
+            "cloneRepository",
+            "openFolder",
+        ]);
+        expect(registeredCommands.has("intelligit.initializeRepository")).toBe(true);
+    });
+
+    it("initializes Git in an uninitialized workspace and prompts reload after rediscovery", async () => {
+        let initialized = false;
+        gitOpsState.isRepository.mockImplementation(async () => initialized);
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "init") {
+                initialized = true;
+                return "Initialized empty Git repository";
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        showInformationMessage.mockImplementation(async (_message: string, ...items: string[]) =>
+            items.includes("Reload Now") ? "Reload Now" : undefined,
+        );
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await registeredCommands.get("intelligit.initializeRepository")?.();
+
+        expect(executorRun).toHaveBeenCalledWith(["init"]);
+        expect(gitOpsState.isRepository).toHaveBeenCalledTimes(2);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Repository initialized. Reload window to activate IntelliGit?",
+            "Reload Now",
+        );
+        expect(executeCommandFallback).toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 
     it("disposes stale restored undocked panels instead of leaving an empty editor", async () => {

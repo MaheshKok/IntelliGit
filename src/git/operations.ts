@@ -103,6 +103,11 @@ export class GitOps {
         private readonly confirmSetUpstreamPush?: ConfirmSetUpstreamPush,
     ) {}
 
+    async init(repoPath: string): Promise<string> {
+        const executor = new GitExecutor(repoPath);
+        return executor.run(["init"]);
+    }
+
     async isRepository(): Promise<boolean> {
         try {
             await this.executor.run(["rev-parse", "--is-inside-work-tree"]);
@@ -110,6 +115,53 @@ export class GitOps {
         } catch {
             return false;
         }
+    }
+
+    async hasAnyCommits(): Promise<boolean> {
+        try {
+            const out = await this.executor.run(["rev-list", "--count", "HEAD"]);
+            return parseInt(out.trim(), 10) > 0;
+        } catch {
+            return false;
+        }
+    }
+
+    async getRemotes(): Promise<string[]> {
+        try {
+            const out = await this.executor.run(["remote"]);
+            return out
+                .trim()
+                .split("\n")
+                .map((r) => r.trim())
+                .filter(Boolean);
+        } catch {
+            return [];
+        }
+    }
+
+    async branchHasUpstream(branch: string): Promise<boolean> {
+        try {
+            const out = await this.executor.run([
+                "rev-parse",
+                "--abbrev-ref",
+                `${branch}@{upstream}`,
+            ]);
+            return out.trim().length > 0 && out.trim() !== branch;
+        } catch {
+            return false;
+        }
+    }
+
+    async addRemote(name: string, url: string): Promise<void> {
+        await this.executor.run(["remote", "add", name, url]);
+    }
+
+    async removeRemote(name: string): Promise<void> {
+        await this.executor.run(["remote", "remove", name]);
+    }
+
+    async pushWithUpstream(remote: string, branch: string): Promise<string> {
+        return this.executor.run(["push", "-u", remote, branch]);
     }
 
     async getRepositoryRoot(): Promise<string> {

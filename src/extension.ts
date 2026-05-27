@@ -34,41 +34,93 @@ import {
 } from "./services/diffService";
 import { runWithNotificationProgress } from "./utils/notifications";
 import { discoverGitRepositories, type DiscoveredRepository } from "./services/repositoryDiscovery";
+import { OnboardingViewProvider } from "./views/OnboardingViewProvider";
+import { runCloneFlow } from "./services/cloneService";
+import { runPublishBranchFlow } from "./services/publishService";
 
 const SELECTED_REPOSITORY_KEY = "intelligit.selectedRepositoryRoot";
 const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspace.";
 
-class EmptyIntelliGitWebviewProvider implements vscode.WebviewViewProvider {
-    constructor(
-        private readonly title: string,
-        private readonly message: string,
-    ) {}
+function registerOnboardingCommands(context: vscode.ExtensionContext): void {
+    const showUnavailableMessage = (): void => {
+        vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+    };
 
-    resolveWebviewView(webviewView: vscode.WebviewView): void {
-        webviewView.webview.html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>${this.title}</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 12px;
-            color: var(--vscode-descriptionForeground);
-            background: var(--vscode-editor-background);
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-        }
-    </style>
-</head>
-<body>${this.message}</body>
-</html>`;
-    }
+    context.subscriptions.push(
+        vscode.commands.registerCommand("intelligit.cloneRepository", () =>
+            runCloneFlow(context.secrets),
+        ),
+        vscode.commands.registerCommand("intelligit.openFolder", async () => {
+            await vscode.commands.executeCommand("vscode.openFolder");
+        }),
+        vscode.commands.registerCommand("intelligit.initializeRepository", initializeRepository),
+        vscode.commands.registerCommand("intelligit.selectRepository", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.showGitLog", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.openUndocked", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.dockWindow", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.toggleUndocked", showUnavailableMessage),
+        vscode.commands.registerCommand("intelligit.publishBranch", showUnavailableMessage),
+    );
 }
 
 function workspaceRoots(): string[] {
     return vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+}
+
+async function initializeRepository(): Promise<void> {
+    const roots = workspaceRoots();
+    if (roots.length === 0) {
+        vscode.window.showErrorMessage("Open a folder first to initialize a repository.");
+        return;
+    }
+
+    let targetPath: string;
+    if (roots.length === 1) {
+        targetPath = roots[0];
+    } else {
+        const picked = await vscode.window.showQuickPick(
+            roots.map((root) => ({
+                label: root.split("/").pop() || root,
+                description: root,
+                path: root,
+            })),
+            { placeHolder: "Select a folder to initialize a Git repository" },
+        );
+        if (!picked) return;
+        targetPath = picked.path;
+    }
+
+    try {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: "Initializing Git repository...",
+                cancellable: false,
+            },
+            async () => {
+                const gitOps = new GitOps(new GitExecutor(targetPath));
+                await gitOps.init(targetPath);
+            },
+        );
+
+        const newRepos = await discoverGitRepositories(workspaceRoots());
+        if (newRepos.length > 0) {
+            const reload = await vscode.window.showInformationMessage(
+                "Repository initialized. Reload window to activate IntelliGit?",
+                "Reload Now",
+            );
+            if (reload === "Reload Now") {
+                await vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+        } else {
+            vscode.window.showErrorMessage(
+                "Failed to initialize repository. Check folder permissions.",
+            );
+        }
+    } catch (err) {
+        const message = getErrorMessage(err);
+        vscode.window.showErrorMessage(`Failed to initialize repository: ${message}`);
+    }
 }
 
 function selectInitialRepository(
@@ -88,26 +140,22 @@ function registerStaleUndockedPanelSerializer(context: vscode.ExtensionContext):
     );
 }
 
-function registerUnavailableCommands(context: vscode.ExtensionContext): void {
-    const showUnavailableMessage = (): void => {
-        vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
-    };
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand("intelligit.selectRepository", showUnavailableMessage),
-        vscode.commands.registerCommand("intelligit.showGitLog", showUnavailableMessage),
-        vscode.commands.registerCommand("intelligit.openUndocked", showUnavailableMessage),
-        vscode.commands.registerCommand("intelligit.dockWindow", showUnavailableMessage),
-        vscode.commands.registerCommand("intelligit.toggleUndocked", showUnavailableMessage),
-    );
-}
-
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     registerStaleUndockedPanelSerializer(context);
     registerReadonlyDiffContentProvider(context);
 
     if (!vscode.workspace.workspaceFolders?.length) {
-        registerUnavailableCommands(context);
+        registerOnboardingCommands(context);
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(
+                CommitGraphViewProvider.viewType,
+                new OnboardingViewProvider("no-workspace", "IntelliGit"),
+            ),
+            vscode.window.registerWebviewViewProvider(
+                CommitPanelViewProvider.viewType,
+                new OnboardingViewProvider("no-workspace", "Commit"),
+            ),
+        );
         return;
     }
 
@@ -128,11 +176,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new EmptyIntelliGitWebviewProvider("IntelliGit", NO_REPOSITORY_MESSAGE),
+                new OnboardingViewProvider("no-git-repo", "IntelliGit"),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new EmptyIntelliGitWebviewProvider("Commit", NO_REPOSITORY_MESSAGE),
+                new OnboardingViewProvider("no-git-repo", "Commit"),
             ),
             vscode.commands.registerCommand("intelligit.selectRepository", async () => {
                 repositories = await discoverGitRepositories(workspaceRoots());
@@ -144,6 +192,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     "Git repositories found. Reload the window to activate IntelliGit for them.",
                 );
             }),
+            vscode.commands.registerCommand("intelligit.cloneRepository", () =>
+                runCloneFlow(context.secrets),
+            ),
+            vscode.commands.registerCommand("intelligit.openFolder", async () => {
+                await vscode.commands.executeCommand("vscode.openFolder");
+            }),
+            vscode.commands.registerCommand(
+                "intelligit.initializeRepository",
+                initializeRepository,
+            ),
             vscode.commands.registerCommand("intelligit.showGitLog", async () => {
                 await vscode.commands.executeCommand("intelligit.commitGraph.focus");
             }),
@@ -154,6 +212,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
             vscode.commands.registerCommand("intelligit.toggleUndocked", () => {
+                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+            }),
+            vscode.commands.registerCommand("intelligit.publishBranch", () => {
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
         );
@@ -563,6 +624,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
             await refreshActiveRepository();
+        }),
+
+        vscode.commands.registerCommand("intelligit.publishBranch", async () => {
+            const branches = await gitOps.getBranches();
+            const currentBranch = branches.find((b) => b.isCurrent);
+            if (!currentBranch) {
+                vscode.window.showErrorMessage("No current branch found.");
+                return;
+            }
+            await runPublishBranchFlow(gitOps, currentBranch.name, repoRoot, context.secrets);
         }),
 
         vscode.commands.registerCommand("intelligit.selectRepository", async () => {

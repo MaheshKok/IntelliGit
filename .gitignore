@@ -25,3 +25,5 @@ CLAUDE.md
 !.env.example
 .memory/
 .gitnexus
+
+.hermes/

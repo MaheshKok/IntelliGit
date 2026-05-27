@@ -70,6 +70,49 @@ describe("GitOps", () => {
         });
     });
 
+    describe("publish and onboarding git commands", () => {
+        it("initializes a Git repository at the requested path", async () => {
+            const repo = await mkdtemp(path.join(tmpdir(), "intelligit-init-"));
+            const ops = new GitOps(createMockExecutor({}));
+            try {
+                await ops.init(repo);
+
+                const gitDir = (await git(repo, ["rev-parse", "--git-dir"])).trim();
+                expect(gitDir).toBe(".git");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("constructs remote add and remove commands", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.addRemote("origin", "https://github.com/user/repo.git");
+            await ops.removeRemote("origin");
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toEqual([
+                ["remote", "add", "origin", "https://github.com/user/repo.git"],
+                ["remote", "remove", "origin"],
+            ]);
+        });
+
+        it("constructs publish push with upstream command", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.pushWithUpstream("upstream", "feature/test");
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
+                "push",
+                "-u",
+                "upstream",
+                "feature/test",
+            ]);
+        });
+    });
+
     describe("getBranches", () => {
         it("parses local and remote branches", async () => {
             const output = [
@@ -413,16 +456,20 @@ describe("GitOps", () => {
                 const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
                 await writeFile(path.join(repo, "space name.txt"), "space\n", "utf8");
                 await writeFile(path.join(repo, "--weird.txt"), "dash\n", "utf8");
-                await writeFile(path.join(repo, "nested", "tracked.txt"), "nested changed\n", "utf8");
+                await writeFile(
+                    path.join(repo, "nested", "tracked.txt"),
+                    "nested changed\n",
+                    "utf8",
+                );
 
                 await ops.stageFiles(["space name.txt", "--weird.txt", "nested/tracked.txt"]);
                 expect(await status(repo)).toBe(
-                    "A  --weird.txt\nM  nested/tracked.txt\nA  \"space name.txt\"\n",
+                    'A  --weird.txt\nM  nested/tracked.txt\nA  "space name.txt"\n',
                 );
 
                 await ops.unstageFiles(["--weird.txt", "space name.txt", "nested/tracked.txt"]);
                 expect(await status(repo)).toBe(
-                    " M nested/tracked.txt\n?? --weird.txt\n?? \"space name.txt\"\n",
+                    ' M nested/tracked.txt\n?? --weird.txt\n?? "space name.txt"\n',
                 );
             } finally {
                 await rm(repo, { recursive: true, force: true });
@@ -488,7 +535,9 @@ describe("GitOps", () => {
                 await git(repo, ["add", "transient.txt"]);
                 await rm(path.join(repo, "transient.txt"));
 
-                expect(await status(repo)).toBe("R  tracked.txt -> renamed.txt\nAD transient.txt\n");
+                expect(await status(repo)).toBe(
+                    "R  tracked.txt -> renamed.txt\nAD transient.txt\n",
+                );
 
                 await ops.rollbackFiles(["renamed.txt", "transient.txt"]);
 
@@ -521,9 +570,7 @@ describe("GitOps", () => {
 
                 // Stage a rename via git mv
                 await git(repo, ["mv", "tracked.txt", "renamed.txt"]);
-                expect(await status(repo)).toBe(
-                    "R  tracked.txt -> renamed.txt\n",
-                );
+                expect(await status(repo)).toBe("R  tracked.txt -> renamed.txt\n");
 
                 // Rollback the rename (unstage + restore original file)
                 await ops.rollbackFiles(["renamed.txt"]);
@@ -950,12 +997,7 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["src/a.ts"]);
 
-            expect(executor.run).toHaveBeenCalledWith([
-                "status",
-                "--porcelain=v1",
-                "-z",
-                "-uall",
-            ]);
+            expect(executor.run).toHaveBeenCalledWith(["status", "--porcelain=v1", "-z", "-uall"]);
             expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "src/a.ts"]);
             expect(executor.run).toHaveBeenCalledWith(["checkout", "--", "src/a.ts"]);
         });

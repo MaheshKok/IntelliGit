@@ -5,6 +5,34 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] - 2026-05-27
+
+### Added
+
+- Interactive onboarding webview shown when no workspace folder is open or no Git repository exists, replacing the previous static placeholder text.
+- "Initialize Repository" action that runs `git init` in the selected workspace folder and offers to reload the window to activate IntelliGit.
+- Custom clone flow with three provider options: GitHub (OAuth via VS Code session, browse repos or enter URL), GitLab (PAT via SecretStorage), and SSH.
+- "Open Folder" action that delegates to VS Code's built-in `vscode.openFolder` command.
+- `GitOps.init()` method for initializing new Git repositories programmatically.
+- New commands `intelligit.cloneRepository`, `intelligit.openFolder`, and `intelligit.initializeRepository` registered in the command palette.
+- "Publish Branch" flow after first commit: detects unpublished branches, creates remote repositories on GitHub or GitLab, adds the remote, and pushes with `--set-upstream`.
+- `intelligit.publishBranch` command for manually triggering the publish flow from the command palette.
+- `GitOps` methods for publish support: `hasAnyCommits`, `getRemotes`, `branchHasUpstream`, `addRemote`, `removeRemote`, `pushWithUpstream`.
+
+### Changed
+
+- The empty-state webview providers now use `OnboardingViewProvider` with contextual actions instead of the static `EmptyIntelliGitWebviewProvider`.
+- `intelligit.cloneRepository` now runs the custom IntelliGit clone flow instead of delegating to VS Code's built-in `git.clone`.
+
+### Security
+
+- GitLab personal access tokens are stored in VS Code SecretStorage, not in user settings.
+- Clone and publish pushes use transient Git askpass credentials so provider tokens are not written into remote URLs or shell arguments.
+
+### Tests
+
+- Add focused activation, onboarding, Git command construction, clone command, and publish-flow coverage for the onboarding and publish workflows.
+
 ## [0.8.5] - 2026-05-26
 
 ### Changed

@@ -396,6 +396,12 @@ describe("CommitGraphApp integration", () => {
                                     additions: 3,
                                     deletions: 1,
                                 },
+                                {
+                                    path: "src/keyboard.ts",
+                                    status: "A",
+                                    additions: 2,
+                                    deletions: 0,
+                                },
                             ],
                         },
                     },
@@ -409,6 +415,7 @@ describe("CommitGraphApp integration", () => {
             '[title="src/feature.ts"]',
         ) as HTMLElement | null;
         expect(changedFileRow).toBeTruthy();
+        expect(changedFileRow?.getAttribute("aria-selected")).toBe("false");
         const openDiffMessagesBeforeClick = vscode.postMessage.mock.calls.filter(
             ([message]) =>
                 (message as { type?: string }).type === "openCommitFileDiff" &&
@@ -417,6 +424,20 @@ describe("CommitGraphApp integration", () => {
         act(() => {
             changedFileRow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
+        await flush();
+        expect(changedFileRow?.getAttribute("aria-selected")).toBe("true");
+        const keyboardFileRow = document.querySelector(
+            '[title="src/keyboard.ts"]',
+        ) as HTMLElement | null;
+        expect(keyboardFileRow?.getAttribute("aria-selected")).toBe("false");
+        act(() => {
+            keyboardFileRow?.dispatchEvent(
+                new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true }),
+            );
+        });
+        await flush();
+        expect(changedFileRow?.getAttribute("aria-selected")).toBe("false");
+        expect(keyboardFileRow?.getAttribute("aria-selected")).toBe("true");
         expect(
             vscode.postMessage.mock.calls.filter(
                 ([message]) =>
