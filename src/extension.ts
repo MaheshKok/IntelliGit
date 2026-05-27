@@ -53,61 +53,7 @@ function registerOnboardingCommands(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand("intelligit.openFolder", async () => {
             await vscode.commands.executeCommand("vscode.openFolder");
         }),
-        vscode.commands.registerCommand("intelligit.initializeRepository", async () => {
-            const roots = workspaceRoots();
-            if (roots.length === 0) {
-                vscode.window.showErrorMessage("Open a folder first to initialize a repository.");
-                return;
-            }
-
-            let targetPath: string;
-            if (roots.length === 1) {
-                targetPath = roots[0];
-            } else {
-                const picked = await vscode.window.showQuickPick(
-                    roots.map((root) => ({
-                        label: root.split("/").pop() || root,
-                        description: root,
-                        path: root,
-                    })),
-                    { placeHolder: "Select a folder to initialize a Git repository" },
-                );
-                if (!picked) return;
-                targetPath = picked.path;
-            }
-
-            try {
-                await vscode.window.withProgress(
-                    {
-                        location: vscode.ProgressLocation.Notification,
-                        title: "Initializing Git repository...",
-                        cancellable: false,
-                    },
-                    async () => {
-                        const executor = new GitExecutor(targetPath);
-                        await executor.run(["init"]);
-                    },
-                );
-
-                const newRepos = await discoverGitRepositories(workspaceRoots());
-                if (newRepos.length > 0) {
-                    const reload = await vscode.window.showInformationMessage(
-                        "Repository initialized. Reload window to activate IntelliGit?",
-                        "Reload Now",
-                    );
-                    if (reload === "Reload Now") {
-                        await vscode.commands.executeCommand("workbench.action.reloadWindow");
-                    }
-                } else {
-                    vscode.window.showErrorMessage(
-                        "Failed to initialize repository. Check folder permissions.",
-                    );
-                }
-            } catch (err) {
-                const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Failed to initialize repository: ${message}`);
-            }
-        }),
+        vscode.commands.registerCommand("intelligit.initializeRepository", initializeRepository),
         vscode.commands.registerCommand("intelligit.selectRepository", showUnavailableMessage),
         vscode.commands.registerCommand("intelligit.showGitLog", showUnavailableMessage),
         vscode.commands.registerCommand("intelligit.openUndocked", showUnavailableMessage),
@@ -119,6 +65,62 @@ function registerOnboardingCommands(context: vscode.ExtensionContext): void {
 
 function workspaceRoots(): string[] {
     return vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
+}
+
+async function initializeRepository(): Promise<void> {
+    const roots = workspaceRoots();
+    if (roots.length === 0) {
+        vscode.window.showErrorMessage("Open a folder first to initialize a repository.");
+        return;
+    }
+
+    let targetPath: string;
+    if (roots.length === 1) {
+        targetPath = roots[0];
+    } else {
+        const picked = await vscode.window.showQuickPick(
+            roots.map((root) => ({
+                label: root.split("/").pop() || root,
+                description: root,
+                path: root,
+            })),
+            { placeHolder: "Select a folder to initialize a Git repository" },
+        );
+        if (!picked) return;
+        targetPath = picked.path;
+    }
+
+    try {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: "Initializing Git repository...",
+                cancellable: false,
+            },
+            async () => {
+                const gitOps = new GitOps(new GitExecutor(targetPath));
+                await gitOps.init(targetPath);
+            },
+        );
+
+        const newRepos = await discoverGitRepositories(workspaceRoots());
+        if (newRepos.length > 0) {
+            const reload = await vscode.window.showInformationMessage(
+                "Repository initialized. Reload window to activate IntelliGit?",
+                "Reload Now",
+            );
+            if (reload === "Reload Now") {
+                await vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
+        } else {
+            vscode.window.showErrorMessage(
+                "Failed to initialize repository. Check folder permissions.",
+            );
+        }
+    } catch (err) {
+        const message = getErrorMessage(err);
+        vscode.window.showErrorMessage(`Failed to initialize repository: ${message}`);
+    }
 }
 
 function selectInitialRepository(
@@ -196,53 +198,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.openFolder", async () => {
                 await vscode.commands.executeCommand("vscode.openFolder");
             }),
-            vscode.commands.registerCommand("intelligit.initializeRepository", async () => {
-                const roots = workspaceRoots();
-                if (roots.length === 0) return;
-                let targetPath = roots.length === 1 ? roots[0] : "";
-                if (!targetPath) {
-                    const picked = await vscode.window.showQuickPick(
-                        roots.map((root) => ({
-                            label: root.split("/").pop() || root,
-                            description: root,
-                            path: root,
-                        })),
-                        { placeHolder: "Select a folder to initialize a Git repository" },
-                    );
-                    if (!picked) return;
-                    targetPath = picked.path;
-                }
-                try {
-                    await vscode.window.withProgress(
-                        {
-                            location: vscode.ProgressLocation.Notification,
-                            title: "Initializing Git repository...",
-                            cancellable: false,
-                        },
-                        async () => {
-                            const initExecutor = new GitExecutor(targetPath);
-                            await initExecutor.run(["init"]);
-                        },
-                    );
-                    const newRepos = await discoverGitRepositories(workspaceRoots());
-                    if (newRepos.length > 0) {
-                        const reload = await vscode.window.showInformationMessage(
-                            "Repository initialized. Reload window to activate IntelliGit?",
-                            "Reload Now",
-                        );
-                        if (reload === "Reload Now") {
-                            await vscode.commands.executeCommand("workbench.action.reloadWindow");
-                        }
-                    } else {
-                        vscode.window.showErrorMessage(
-                            "Failed to initialize repository. Check folder permissions.",
-                        );
-                    }
-                } catch (err) {
-                    const message = getErrorMessage(err);
-                    vscode.window.showErrorMessage(`Failed to initialize repository: ${message}`);
-                }
-            }),
+            vscode.commands.registerCommand(
+                "intelligit.initializeRepository",
+                initializeRepository,
+            ),
             vscode.commands.registerCommand("intelligit.showGitLog", async () => {
                 await vscode.commands.executeCommand("intelligit.commitGraph.focus");
             }),

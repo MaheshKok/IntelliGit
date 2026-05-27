@@ -284,6 +284,26 @@ describe("view providers integration", () => {
         expect(html).toContain("btn-primary");
     });
 
+    it("OnboardingViewProvider uses nonce-based CSP for inline style and script blocks", async () => {
+        const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
+        const provider = new OnboardingViewProvider("no-git-repo", "Commit");
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const html = (webview.view.webview as { html: string }).html;
+        const nonceMatch = html.match(/script-src 'nonce-([^']+)'/);
+        expect(nonceMatch?.[1]).toBeTruthy();
+        expect(html).not.toContain("'unsafe-inline'");
+        expect(html).toContain(`style-src 'nonce-${nonceMatch?.[1]}' vscode-resource:`);
+        expect(html).toContain(`<style nonce="${nonceMatch?.[1]}">`);
+        expect(html).toContain(`<script nonce="${nonceMatch?.[1]}">`);
+    });
+
     it("OnboardingViewProvider forwards button messages to extension commands", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider("no-git-repo", "Commit");

@@ -88,6 +88,8 @@ function mockGitHubCreateRepo(): void {
         };
         return {
             on: vi.fn(),
+            setTimeout: vi.fn(),
+            destroy: vi.fn(),
             write: vi.fn(),
             end: vi.fn(() => {
                 callback(res);
@@ -103,6 +105,58 @@ function mockGitHubCreateRepo(): void {
                 handlers.get("end")?.();
             }),
         };
+    });
+}
+
+function mockCreateRepoResponse(statusCode: number, body: string): void {
+    mocks.httpsRequest.mockImplementation((_url, _options, callback) => {
+        const handlers = new Map<string, (chunk?: Buffer) => void>();
+        const res = {
+            statusCode,
+            on: vi.fn((event: string, handler: (chunk?: Buffer) => void) => {
+                handlers.set(event, handler);
+                return res;
+            }),
+        };
+        return {
+            on: vi.fn(),
+            setTimeout: vi.fn(),
+            destroy: vi.fn(),
+            write: vi.fn(),
+            end: vi.fn(() => {
+                callback(res);
+                handlers.get("data")?.(Buffer.from(body));
+                handlers.get("end")?.();
+            }),
+        };
+    });
+}
+
+function mockCreateRepoTimeout(): void {
+    mocks.httpsRequest.mockImplementation((_url, _options, _callback) => {
+        let timeoutHandler: (() => void) | undefined;
+        let errorHandler: ((err: Error) => void) | undefined;
+        const req = {
+            on: vi.fn((event: string, handler: () => void) => {
+                if (event === "timeout") timeoutHandler = handler;
+                if (event === "error") errorHandler = handler as (err: Error) => void;
+                return req;
+            }),
+            setTimeout: vi.fn((_ms: number, handler?: () => void) => {
+                timeoutHandler = handler;
+                return req;
+            }),
+            destroy: vi.fn(),
+            write: vi.fn(),
+            end: vi.fn(() => {
+                if (timeoutHandler) {
+                    timeoutHandler();
+                } else {
+                    errorHandler?.(new Error("request ended without timeout handler"));
+                }
+            }),
+        };
+        return req;
     });
 }
 
@@ -221,6 +275,54 @@ describe("publishService phase 5", () => {
             recursive: true,
             force: true,
         });
+    });
+
+    it("surfaces a clear error when GitHub repository creation times out", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mockCreateRepoTimeout();
+
+        await runPublishBranchFlow(gitOps, "main", "/repo");
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to create repository: Request timed out while creating repository",
+        );
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
+    });
+
+    it("reports malformed GitHub create-repo responses instead of throwing", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mockCreateRepoResponse(201, "{not-json");
+
+        await runPublishBranchFlow(gitOps, "main", "/repo");
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to create repository: Invalid GitHub API response",
+        );
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
+    });
+
+    it("reports malformed GitLab create-project responses instead of throwing", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "gitlab" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mockCreateRepoResponse(201, "{not-json");
+
+        await runPublishBranchFlow(gitOps, "main", "/repo", secretStorage("glpat-token") as never);
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to create repository: Invalid GitLab API response",
+        );
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
     });
 
     it("keeps an existing origin untouched when the user chooses to push there", async () => {

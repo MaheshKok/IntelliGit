@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
     fsWriteFile: vi.fn(),
     fsChmod: vi.fn(),
     execFile: vi.fn(),
+    httpsGet: vi.fn(),
     gitRuns: [] as Array<{ root: string; args: string[] }>,
     gitRun: vi.fn(),
 }));
@@ -65,6 +66,10 @@ vi.mock("fs/promises", () => ({
 
 vi.mock("child_process", () => ({
     execFile: mocks.execFile,
+}));
+
+vi.mock("https", () => ({
+    get: mocks.httpsGet,
 }));
 
 vi.mock("../../src/git/executor", () => ({
@@ -139,6 +144,27 @@ describe("cloneService phase 3", () => {
             callback(null, "", "");
             return {} as never;
         });
+        mocks.httpsGet.mockImplementation((_url, _options, callback) => {
+            const handlers = new Map<string, (chunk?: Buffer) => void>();
+            const res = {
+                statusCode: 200,
+                on: vi.fn((event: string, handler: (chunk?: Buffer) => void) => {
+                    handlers.set(event, handler);
+                    return res;
+                }),
+            };
+            const req = {
+                on: vi.fn(),
+                setTimeout: vi.fn(),
+                destroy: vi.fn(),
+                end: vi.fn(() => {
+                    callback(res);
+                    handlers.get("data")?.(Buffer.from("[]"));
+                    handlers.get("end")?.();
+                }),
+            };
+            return req;
+        });
         mocks.gitRun.mockResolvedValue("");
     });
 
@@ -163,6 +189,87 @@ describe("cloneService phase 3", () => {
                 args: ["clone", "git@github.com:user/repo.git", "repo"],
             },
         ]);
+    });
+
+    it("falls back to a safe repo directory when the URL basename is unsafe", async () => {
+        mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
+        mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/..git");
+
+        await runCloneFlow();
+
+        expect(mocks.gitRuns).toEqual([
+            {
+                root: "/dest",
+                args: ["clone", "git@github.com:user/..git", "repo"],
+            },
+        ]);
+    });
+
+    it("times out stalled GitHub repository listing requests", async () => {
+        let timeoutHandler: (() => void) | undefined;
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "browse" });
+        mocks.httpsGet.mockImplementation((_url, _options, _callback) => ({
+            on: vi.fn((event: string, handler: () => void) => {
+                if (event === "timeout") timeoutHandler = handler;
+                return undefined;
+            }),
+            setTimeout: vi.fn((_ms: number, handler: () => void) => {
+                timeoutHandler = handler;
+            }),
+            destroy: vi.fn(),
+            end: vi.fn(() => {
+                timeoutHandler?.();
+            }),
+        }));
+
+        await runCloneFlow();
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to list GitHub repositories: Request timed out while fetching repositories",
+        );
+    });
+
+    it("fails explicitly when GitHub repository listing exceeds the bounded page limit", async () => {
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "browse" });
+        const fullPage = Array.from({ length: 100 }, (_, index) => ({
+            full_name: `user/repo-${index}`,
+            clone_url: `https://github.com/user/repo-${index}.git`,
+            ssh_url: `git@github.com:user/repo-${index}.git`,
+            description: null,
+            private: false,
+        }));
+        mocks.httpsGet.mockImplementation((_url, _options, callback) => {
+            const handlers = new Map<string, (chunk?: Buffer) => void>();
+            const res = {
+                statusCode: 200,
+                on: vi.fn((event: string, handler: (chunk?: Buffer) => void) => {
+                    handlers.set(event, handler);
+                    return res;
+                }),
+            };
+            const req = {
+                on: vi.fn(),
+                setTimeout: vi.fn(),
+                destroy: vi.fn(),
+                end: vi.fn(() => {
+                    callback(res);
+                    handlers.get("data")?.(Buffer.from(JSON.stringify(fullPage)));
+                    handlers.get("end")?.();
+                }),
+            };
+            return req;
+        });
+
+        await runCloneFlow();
+
+        expect(mocks.httpsGet).toHaveBeenCalledTimes(50);
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to list GitHub repositories: GitHub repository list exceeds 5000 repositories. Enter the clone URL directly instead.",
+        );
     });
 
     it("rejects non-HTTPS GitLab clone URLs", async () => {

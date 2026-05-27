@@ -491,6 +491,7 @@ vi.mock("../../src/git/operations", async (importOriginal) => {
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
+            init = async (_repoPath: string) => executorRun(["init"]);
         },
     };
 });

@@ -13,6 +13,9 @@ import { getErrorMessage } from "../utils/errors";
 
 type CloneProvider = "github" | "gitlab" | "ssh";
 
+const GITHUB_REPO_PAGE_LIMIT = 50;
+const REQUEST_TIMEOUT_MS = 30_000;
+
 interface GitHttpAuth {
     username: string;
     token: string;
@@ -186,14 +189,22 @@ async function acquireGitHubSession(): Promise<vscode.AuthenticationSession | un
 }
 
 async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
-    const repos = await vscode.window.withProgress<GitHubRepo[]>(
-        {
-            location: vscode.ProgressLocation.Notification,
-            title: "Fetching your GitHub repositories...",
-            cancellable: false,
-        },
-        () => fetchGitHubRepos(token),
-    );
+    let repos: GitHubRepo[];
+    try {
+        repos = await vscode.window.withProgress<GitHubRepo[]>(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: "Fetching your GitHub repositories...",
+                cancellable: false,
+            },
+            () => fetchGitHubRepos(token),
+        );
+    } catch (err) {
+        vscode.window.showErrorMessage(
+            `Failed to list GitHub repositories: ${getErrorMessage(err)}`,
+        );
+        return undefined;
+    }
 
     if (!repos || repos.length === 0) {
         vscode.window.showInformationMessage("No repositories found on your GitHub account.");
@@ -220,8 +231,25 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
     return new Promise((resolve, reject) => {
         const allRepos: GitHubRepo[] = [];
         let page = 1;
+        let settled = false;
+
+        const finish = (fn: () => void): void => {
+            if (settled) return;
+            settled = true;
+            fn();
+        };
 
         const fetchPage = (): void => {
+            if (page > GITHUB_REPO_PAGE_LIMIT) {
+                finish(() =>
+                    reject(
+                        new Error(
+                            `GitHub repository list exceeds ${GITHUB_REPO_PAGE_LIMIT * 100} repositories. Enter the clone URL directly instead.`,
+                        ),
+                    ),
+                );
+                return;
+            }
             const url = `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated`;
             const req = https.get(
                 url,
@@ -236,10 +264,14 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
                     let data = "";
                     res.on("data", (chunk: Buffer) => (data += chunk.toString()));
                     res.on("end", () => {
+                        req.setTimeout(0);
+                        if (settled) return;
                         if (res.statusCode !== 200) {
-                            reject(
-                                new Error(
-                                    `GitHub API returned ${res.statusCode}: ${data.slice(0, 200)}`,
+                            finish(() =>
+                                reject(
+                                    new Error(
+                                        `GitHub API returned ${res.statusCode}: ${data.slice(0, 200)}`,
+                                    ),
                                 ),
                             );
                             return;
@@ -251,15 +283,24 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
                                 page++;
                                 fetchPage();
                             } else {
-                                resolve(allRepos);
+                                finish(() => resolve(allRepos));
                             }
-                        } catch (err) {
-                            reject(err);
+                        } catch {
+                            finish(() =>
+                                reject(new Error("Invalid GitHub repositories API response")),
+                            );
                         }
                     });
                 },
             );
-            req.on("error", reject);
+            req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+                req.destroy();
+                finish(() => reject(new Error("Request timed out while fetching repositories")));
+            });
+            req.on("error", (err) => {
+                req.setTimeout(0);
+                finish(() => reject(err));
+            });
             req.end();
         };
 
@@ -573,9 +614,24 @@ function showCloneErrorMessage(title: string, err: unknown, hints: string[]): vo
 function extractRepoName(cloneUrl: string): string {
     const cleaned = cloneUrl.replace(/\.git$/, "").replace(/\/$/, "");
     const match = cleaned.match(/\/([^/]+)$/);
-    if (match) return match[1];
+    if (match) return sanitizeRepoDirectoryName(match[1]);
     const segments = cleaned.split(/[:/]/);
-    return segments[segments.length - 1] || "repo";
+    return sanitizeRepoDirectoryName(segments[segments.length - 1]);
+}
+
+function sanitizeRepoDirectoryName(value: string | undefined): string {
+    const sanitized = (value ?? "")
+        .replace(/[\\/]/g, "")
+        .split("")
+        .filter((char) => {
+            const code = char.charCodeAt(0);
+            return code >= 32 && code !== 127;
+        })
+        .join("")
+        .replace(/[^a-zA-Z0-9._-]/g, "")
+        .trim();
+    if (!sanitized || sanitized === "." || sanitized === "..") return "repo";
+    return sanitized;
 }
 
 async function runGitCloneWithAskpass(

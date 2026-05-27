@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { randomBytes } from "crypto";
 
 export type OnboardingContext = "no-workspace" | "no-git-repo";
 
@@ -41,11 +42,12 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
             }
         });
 
-        webviewView.webview.html = this.getHtml();
+        webviewView.webview.html = this.getHtml(webviewView.webview);
     }
 
-    private getHtml(): string {
+    private getHtml(webview: vscode.Webview): string {
         const isNoWorkspace = this.contextType === "no-workspace";
+        const nonce = randomBytes(16).toString("base64");
 
         const actions: Array<{ id: string; label: string; icon: string }> = [];
         if (isNoWorkspace) {
@@ -79,9 +81,9 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+        content="default-src 'none'; style-src 'nonce-${nonce}' ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource};">
     <title>${this.title}</title>
-    <style>
+    <style nonce="${nonce}">
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             display: flex;
@@ -156,7 +158,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     <div class="onboarding-actions">
         ${buttonsHtml}
     </div>
-    <script>
+    <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         document.querySelectorAll('.onboarding-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {

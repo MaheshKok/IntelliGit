@@ -12,6 +12,7 @@ import { getErrorMessage } from "../utils/errors";
 // ---------------------------------------------------------------------------
 
 type PublishProvider = "github" | "gitlab";
+const REQUEST_TIMEOUT_MS = 30_000;
 
 interface CreatedRepo {
     cloneUrl: string;
@@ -286,6 +287,17 @@ async function createGitHubRepo(
     });
 
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const fail = (message: string): void => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(message));
+        };
+        const succeed = (repo: CreatedRepo): void => {
+            if (settled) return;
+            settled = true;
+            resolve(repo);
+        };
         const req = https.request(
             "https://api.github.com/user/repos",
             {
@@ -302,21 +314,34 @@ async function createGitHubRepo(
                 let data = "";
                 res.on("data", (chunk: Buffer) => (data += chunk.toString()));
                 res.on("end", () => {
+                    req.setTimeout(0);
+                    if (settled) return;
                     if (res.statusCode === 201) {
-                        const repo = JSON.parse(data);
-                        resolve({
-                            cloneUrl: repo.clone_url as string,
-                            sshUrl: repo.ssh_url as string,
-                            htmlUrl: repo.html_url as string,
-                        });
+                        try {
+                            const repo = JSON.parse(data);
+                            succeed({
+                                cloneUrl: repo.clone_url as string,
+                                sshUrl: repo.ssh_url as string,
+                                htmlUrl: repo.html_url as string,
+                            });
+                        } catch {
+                            fail("Invalid GitHub API response");
+                        }
                     } else {
                         const msg = tryExtractApiError(data);
-                        reject(new Error(msg || `GitHub API returned ${res.statusCode}`));
+                        fail(msg || `GitHub API returned ${res.statusCode}`);
                     }
                 });
             },
         );
-        req.on("error", reject);
+        req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+            req.destroy();
+            fail("Request timed out while creating repository");
+        });
+        req.on("error", (err) => {
+            req.setTimeout(0);
+            fail(getErrorMessage(err));
+        });
         req.write(body);
         req.end();
     });
@@ -392,6 +417,17 @@ async function createGitLabRepo(
     }).toString();
 
     return new Promise((resolve, reject) => {
+        let settled = false;
+        const fail = (message: string): void => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(message));
+        };
+        const succeed = (repo: CreatedRepo): void => {
+            if (settled) return;
+            settled = true;
+            resolve(repo);
+        };
         const req = https.request(
             "https://gitlab.com/api/v4/projects",
             {
@@ -407,21 +443,34 @@ async function createGitLabRepo(
                 let data = "";
                 res.on("data", (chunk: Buffer) => (data += chunk.toString()));
                 res.on("end", () => {
+                    req.setTimeout(0);
+                    if (settled) return;
                     if (res.statusCode === 201) {
-                        const project = JSON.parse(data);
-                        resolve({
-                            cloneUrl: project.http_url_to_repo || project.web_url + ".git",
-                            sshUrl: project.ssh_url_to_repo || "",
-                            htmlUrl: project.web_url as string,
-                        });
+                        try {
+                            const project = JSON.parse(data);
+                            succeed({
+                                cloneUrl: project.http_url_to_repo || project.web_url + ".git",
+                                sshUrl: project.ssh_url_to_repo || "",
+                                htmlUrl: project.web_url as string,
+                            });
+                        } catch {
+                            fail("Invalid GitLab API response");
+                        }
                     } else {
                         const msg = tryExtractApiError(data);
-                        reject(new Error(msg || `GitLab API returned ${res.statusCode}`));
+                        fail(msg || `GitLab API returned ${res.statusCode}`);
                     }
                 });
             },
         );
-        req.on("error", reject);
+        req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+            req.destroy();
+            fail("Request timed out while creating repository");
+        });
+        req.on("error", (err) => {
+            req.setTimeout(0);
+            fail(getErrorMessage(err));
+        });
         req.write(body);
         req.end();
     });
