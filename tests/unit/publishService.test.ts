@@ -72,6 +72,7 @@ function makeGitOps(remotes: string[] = []): GitOps {
         addRemote: vi.fn(async () => undefined),
         removeRemote: vi.fn(async () => undefined),
         pushWithUpstream: vi.fn(async () => ""),
+        branchHasUpstream: vi.fn(async () => true),
     } as unknown as GitOps;
 }
 
@@ -105,7 +106,24 @@ function mockGitHubCreateRepo(): void {
     });
 }
 
-describe("publishService phase 4", () => {
+function secretStorage(initial?: string): {
+    store: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+} {
+    let token = initial;
+    return {
+        get: vi.fn(async () => token),
+        store: vi.fn(async (_key: string, value: string) => {
+            token = value;
+        }),
+        delete: vi.fn(async () => {
+            token = undefined;
+        }),
+    };
+}
+
+describe("publishService phase 5", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.configValues.clear();
@@ -137,18 +155,46 @@ describe("publishService phase 4", () => {
         mockGitHubCreateRepo();
     });
 
-    it("pushes to an existing origin without creating a provider repo or changing remotes", async () => {
-        const gitOps = makeGitOps(["origin"]);
-        mocks.showQuickPick.mockResolvedValueOnce({ action: "existing" });
+    it("offers GitHub and GitLab providers before creating a repository", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick.mockResolvedValueOnce(undefined);
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
 
-        expect(gitOps.pushWithUpstream).toHaveBeenCalledWith("origin", "main");
+        const providerItems = mocks.showQuickPick.mock.calls[0][0] as Array<{ provider: string }>;
+        expect(providerItems.map((item) => item.provider)).toEqual(["github", "gitlab"]);
         expect(mocks.httpsRequest).not.toHaveBeenCalled();
-        expect(mocks.getSession).not.toHaveBeenCalled();
-        expect(gitOps.addRemote).not.toHaveBeenCalled();
-        expect(gitOps.removeRemote).not.toHaveBeenCalled();
-        expect(mocks.execFile).not.toHaveBeenCalled();
+    });
+
+    it("offers private and public visibility after provider selection", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce(undefined);
+
+        await runPublishBranchFlow(gitOps, "main", "/repo");
+
+        const visibilityItems = mocks.showQuickPick.mock.calls[1][0] as Array<{ value: string }>;
+        expect(visibilityItems.map((item) => item.value)).toEqual(["private", "public"]);
+        expect(mocks.httpsRequest).not.toHaveBeenCalled();
+    });
+
+    it("defaults the repository name to the workspace folder name", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox.mockResolvedValueOnce(undefined);
+
+        await runPublishBranchFlow(gitOps, "main", "/workspace/my-project");
+
+        expect(mocks.showInputBox).toHaveBeenCalledWith(
+            expect.objectContaining({
+                prompt: "Repository name",
+                value: "my-project",
+            }),
+        );
+        expect(mocks.httpsRequest).not.toHaveBeenCalled();
     });
 
     it("adds a clean provider remote and pushes with askpass credentials", async () => {
@@ -177,7 +223,38 @@ describe("publishService phase 4", () => {
         });
     });
 
-    it("removes a newly added remote when the authenticated push fails", async () => {
+    it("keeps an existing origin untouched when the user chooses to push there", async () => {
+        const gitOps = makeGitOps(["origin"]);
+        mocks.showQuickPick.mockResolvedValueOnce({ action: "existing" });
+
+        await runPublishBranchFlow(gitOps, "main", "/repo");
+
+        expect(gitOps.pushWithUpstream).toHaveBeenCalledWith("origin", "main");
+        expect(mocks.httpsRequest).not.toHaveBeenCalled();
+        expect(mocks.getSession).not.toHaveBeenCalled();
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
+        expect(gitOps.removeRemote).not.toHaveBeenCalled();
+        expect(mocks.execFile).not.toHaveBeenCalled();
+    });
+
+    it("supports creating a provider remote under a non-origin name when origin exists", async () => {
+        const gitOps = makeGitOps(["origin"]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ action: "create" })
+            .mockResolvedValueOnce({ provider: "github" })
+            .mockResolvedValueOnce({ value: "public" });
+        mocks.showInputBox.mockResolvedValueOnce("upstream").mockResolvedValueOnce("repo");
+
+        await runPublishBranchFlow(gitOps, "feature/test", "/repo");
+
+        expect(gitOps.addRemote).toHaveBeenCalledWith(
+            "upstream",
+            "https://github.com/user/repo.git",
+        );
+        expect(mocks.execFile.mock.calls[0][1]).toEqual(["push", "-u", "upstream", "feature/test"]);
+    });
+
+    it("removes a newly added provider remote when the authenticated push fails", async () => {
         const gitOps = makeGitOps([]);
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
@@ -190,10 +267,31 @@ describe("publishService phase 4", () => {
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
 
-        expect(gitOps.addRemote).toHaveBeenCalledWith("origin", "https://github.com/user/repo.git");
         expect(gitOps.removeRemote).toHaveBeenCalledWith("origin");
         expect(mocks.showErrorMessage).toHaveBeenCalledWith(
             "Failed to publish branch: permission denied",
+        );
+    });
+
+    it("migrates a legacy GitLab token before creating the project", async () => {
+        const gitOps = makeGitOps([]);
+        const secrets = secretStorage();
+        mocks.configValues.set("gitlab.personalAccessToken", "legacy-token");
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "gitlab" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox.mockResolvedValueOnce("repo");
+
+        await runPublishBranchFlow(gitOps, "main", "/repo", secrets as never);
+
+        expect(secrets.store).toHaveBeenCalledWith(
+            "intelligit.gitlab.personalAccessToken",
+            "legacy-token",
+        );
+        expect(mocks.configUpdate).toHaveBeenCalledWith(
+            "gitlab.personalAccessToken",
+            undefined,
+            true,
         );
     });
 });

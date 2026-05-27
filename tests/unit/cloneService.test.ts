@@ -151,6 +151,20 @@ describe("cloneService phase 3", () => {
         expect(items.map((item) => item.provider)).toEqual(["github", "gitlab", "ssh"]);
     });
 
+    it("runs SSH clone with the selected destination and inferred repo directory", async () => {
+        mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
+        mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/repo.git");
+
+        await runCloneFlow();
+
+        expect(mocks.gitRuns).toEqual([
+            {
+                root: "/dest",
+                args: ["clone", "git@github.com:user/repo.git", "repo"],
+            },
+        ]);
+    });
+
     it("rejects non-HTTPS GitLab clone URLs", async () => {
         mocks.showQuickPick.mockResolvedValueOnce({ provider: "gitlab" });
         mocks.showInputBox

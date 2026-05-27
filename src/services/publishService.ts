@@ -85,22 +85,8 @@ export async function runPublishBranchFlow(
     if (!repoName) return;
 
     // 5. Authenticate
-    let auth: PublishAuth;
-    if (provider === "github") {
-        const session = await acquireGitHubSession();
-        if (!session) return;
-        auth = {
-            token: session.accessToken,
-            gitUsername: "x-access-token",
-        };
-    } else {
-        const token = await getGitLabToken(secrets);
-        if (!token) return;
-        auth = {
-            token,
-            gitUsername: "oauth2",
-        };
-    }
+    const auth = await acquireAuth(provider, secrets);
+    if (!auth) return;
 
     // 6. Create the remote repository via provider API.
     let created: CreatedRepo;
@@ -200,6 +186,31 @@ async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined
     }
 
     return { kind: "create", remoteName: "origin" };
+}
+
+// ---------------------------------------------------------------------------
+// Auth acquisition
+// ---------------------------------------------------------------------------
+
+async function acquireAuth(
+    provider: PublishProvider,
+    secrets?: vscode.SecretStorage,
+): Promise<PublishAuth | undefined> {
+    if (provider === "github") {
+        const session = await acquireGitHubSession();
+        if (!session) return undefined;
+        return {
+            token: session.accessToken,
+            gitUsername: "x-access-token",
+        };
+    }
+
+    const token = await getGitLabToken(secrets);
+    if (!token) return undefined;
+    return {
+        token,
+        gitUsername: "oauth2",
+    };
 }
 
 // ---------------------------------------------------------------------------

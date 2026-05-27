@@ -175,6 +175,10 @@ function createWebviewView() {
     };
 }
 
+function renderedButtonActions(html: string): string[] {
+    return Array.from(html.matchAll(/<button[^>]+data-action="([^"]+)"/g)).map((match) => match[1]);
+}
+
 function makeGitOpsMock() {
     return {
         getLog: vi.fn(async () => [
@@ -243,6 +247,61 @@ describe("view providers integration", () => {
         vi.clearAllMocks();
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
+    });
+
+    it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {
+        const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
+        const provider = new OnboardingViewProvider("no-workspace", "IntelliGit");
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const html = (webview.view.webview as { html: string }).html;
+        expect(renderedButtonActions(html)).toEqual(["cloneRepository", "openFolder"]);
+    });
+
+    it("OnboardingViewProvider renders init, clone, and open-folder actions for an uninitialized workspace", async () => {
+        const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
+        const provider = new OnboardingViewProvider("no-git-repo", "Commit");
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const html = (webview.view.webview as { html: string }).html;
+        expect(renderedButtonActions(html)).toEqual([
+            "initializeRepository",
+            "cloneRepository",
+            "openFolder",
+        ]);
+        expect(html).toContain("btn-primary");
+    });
+
+    it("OnboardingViewProvider forwards button messages to extension commands", async () => {
+        const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
+        const provider = new OnboardingViewProvider("no-git-repo", "Commit");
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "initializeRepository" });
+        await webview.send({ type: "cloneRepository" });
+        await webview.send({ type: "openFolder" });
+
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.initializeRepository");
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.cloneRepository");
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.openFolder");
     });
 
     it("CommitInfoViewProvider handles ready/set/clear lifecycle", async () => {

@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - GitLab personal access tokens are stored in VS Code SecretStorage, not in user settings.
 - Clone and publish pushes use transient Git askpass credentials so provider tokens are not written into remote URLs or shell arguments.
 
+### Tests
+
+- Add focused activation, onboarding, Git command construction, clone command, and publish-flow coverage for the onboarding and publish workflows.
+
 ## [0.8.5] - 2026-05-26
 
 ### Changed
