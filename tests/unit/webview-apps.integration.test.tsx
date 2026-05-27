@@ -409,6 +409,7 @@ describe("CommitGraphApp integration", () => {
             '[title="src/feature.ts"]',
         ) as HTMLElement | null;
         expect(changedFileRow).toBeTruthy();
+        expect(changedFileRow?.getAttribute("aria-selected")).toBe("false");
         const openDiffMessagesBeforeClick = vscode.postMessage.mock.calls.filter(
             ([message]) =>
                 (message as { type?: string }).type === "openCommitFileDiff" &&
@@ -417,6 +418,8 @@ describe("CommitGraphApp integration", () => {
         act(() => {
             changedFileRow?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
+        await flush();
+        expect(changedFileRow?.getAttribute("aria-selected")).toBe("true");
         expect(
             vscode.postMessage.mock.calls.filter(
                 ([message]) =>
