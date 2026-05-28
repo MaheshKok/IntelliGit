@@ -16,14 +16,15 @@ const sharedTabStyles = {
     minH: "32px",
     fontSize: "12px",
     fontWeight: 600,
-    color: "var(--vscode-foreground)",
+    color: "var(--intelligit-pycharm-foreground)",
     opacity: 0.75,
     borderBottom: "2px solid transparent",
+    borderRadius: 0,
     _selected: {
         opacity: 1,
-        borderBottomColor: "var(--vscode-focusBorder, #007acc)",
+        borderBottomColor: "var(--intelligit-pycharm-blue)",
     },
-    _hover: { opacity: 0.85 },
+    _hover: { opacity: 0.9, bg: "rgba(255,255,255,0.02)" },
 } as const;
 
 export function TabBar({ stashCount, commitContent, shelfContent }: Props): React.ReactElement {
@@ -37,8 +38,18 @@ export function TabBar({ stashCount, commitContent, shelfContent }: Props): Reac
     ];
 
     return (
-        <Tabs variant="unstyled" display="flex" flexDirection="column" h="100%">
-            <TabList borderBottom="1px solid var(--vscode-panel-border, #444)" flexShrink={0}>
+        <Tabs
+            variant="unstyled"
+            display="flex"
+            flexDirection="column"
+            h="100%"
+            bg="var(--intelligit-pycharm-panel)"
+        >
+            <TabList
+                bg="var(--intelligit-pycharm-header)"
+                borderBottom="1px solid var(--intelligit-pycharm-border)"
+                flexShrink={0}
+            >
                 {tabs.map((tab) => (
                     <Tab key={tab.key} {...sharedTabStyles}>
                         {tab.label}

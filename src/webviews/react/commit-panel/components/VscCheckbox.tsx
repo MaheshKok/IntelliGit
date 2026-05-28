@@ -13,10 +13,11 @@ interface Props {
 
 const SIZE = 14;
 const BORDER_RADIUS = 2;
+const BORDER_WIDTH = 1.5;
 const UNCHECKED_BG = "transparent";
-const UNCHECKED_BORDER = "rgba(206, 214, 230, 0.62)";
-const CHECKED_BG = "rgba(98, 135, 199, 0.14)";
-const CHECKED_BORDER = "#7b9fd5";
+const UNCHECKED_BORDER = "var(--intelligit-pycharm-checkbox-unchecked-border)";
+const CHECKED_BG = "var(--intelligit-pycharm-checkbox-checked-bg)";
+const CHECKED_BORDER = "var(--intelligit-pycharm-blue)";
 const CHECK_COLOR = "#c8ddff";
 
 function VscCheckboxInner({
@@ -74,7 +75,7 @@ function VscCheckboxInner({
                     justifyContent: "center",
                     width: SIZE,
                     height: SIZE,
-                    border: `1px solid ${filled ? CHECKED_BORDER : UNCHECKED_BORDER}`,
+                    border: `${BORDER_WIDTH}px solid ${filled ? CHECKED_BORDER : UNCHECKED_BORDER}`,
                     borderRadius: BORDER_RADIUS,
                     background: filled ? CHECKED_BG : UNCHECKED_BG,
                     pointerEvents: "none",

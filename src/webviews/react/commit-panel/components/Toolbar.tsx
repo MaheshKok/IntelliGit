@@ -2,7 +2,7 @@
 // Shelve Changes, Show Diff, Expand All, Collapse All.
 
 import React from "react";
-import { Flex, Box, IconButton, Tooltip } from "@chakra-ui/react";
+import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
 import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
 
@@ -32,12 +32,14 @@ export function Toolbar({
     return (
         <Flex
             align="center"
-            gap="7px"
-            px="6px"
+            gap="12px"
+            px="8px"
             py="2px"
-            minH="24px"
-            borderBottom="1px solid var(--vscode-panel-border, #444)"
+            minH="28px"
+            bg="var(--intelligit-pycharm-header)"
+            borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
+            w="100%"
         >
             {isRefreshing && <style>{SPIN_KEYFRAMES}</style>}
             <ToolbarButton
@@ -76,7 +78,6 @@ export function Toolbar({
                     d="M2 3.5A1.5 1.5 0 0 1 3.5 2h5.586a1.5 1.5 0 0 1 1.06.44l2.415 2.414A1.5 1.5 0 0 1 13 5.914V12.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V5.914L9.086 2.5H3.5zM7 7V5h1v2h2v1H8v2H7V8H5V7h2z"
                 />
             </ToolbarButton>
-            <Box flex={1} />
             <ToolbarButton label="Expand All" onClick={onExpandAll} color="#f3b1cf">
                 <ExpandAllIconGlyph />
             </ToolbarButton>

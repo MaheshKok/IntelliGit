@@ -25,7 +25,7 @@ export function CommitArea({
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     return (
-        <Flex direction="column" overflow="hidden" flex={1}>
+        <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
             <Flex
                 as="label"
                 htmlFor={amendCheckboxId}
@@ -43,7 +43,7 @@ export function CommitArea({
                     inputId={amendCheckboxId}
                     inputTestId="amend-checkbox"
                 />
-                <Box as="span" color="var(--vscode-foreground)" opacity={0.9}>
+                <Box as="span" color="var(--intelligit-pycharm-foreground)" opacity={0.92}>
                     Amend commit
                 </Box>
             </Flex>
@@ -55,19 +55,18 @@ export function CommitArea({
                     resize="none"
                     w="100%"
                     h="100%"
-                    bg="var(--vscode-input-background, var(--vscode-editor-background))"
-                    color="var(--vscode-input-foreground)"
+                    bg="var(--intelligit-pycharm-input)"
+                    color="var(--intelligit-pycharm-foreground)"
                     border="1px solid"
-                    borderColor="var(--vscode-input-border, rgba(127, 127, 127, 0.35))"
+                    borderColor="var(--intelligit-pycharm-input-border)"
                     borderRadius="3px"
                     p="7px 9px"
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
-                    _placeholder={{ color: "var(--vscode-input-placeholderForeground)" }}
+                    _placeholder={{ color: "rgba(214, 219, 229, 0.48)" }}
                     _focus={{
-                        borderColor:
-                            "var(--vscode-focusBorder, var(--vscode-inputOption-activeBorder))",
-                        boxShadow: "0 0 0 1px var(--vscode-focusBorder, transparent)",
+                        borderColor: "var(--intelligit-pycharm-blue)",
+                        boxShadow: "0 0 0 1px rgba(95, 140, 255, 0.28)",
                     }}
                 />
             </Box>

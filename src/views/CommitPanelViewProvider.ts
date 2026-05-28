@@ -34,7 +34,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private lastFileCount = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
-    private repositoryLabel = "";
 
     // Embedded commit graph state
     private currentBranch: string | null = null;
@@ -111,8 +110,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    setRepositoryLabel(label: string): void {
-        this.repositoryLabel = label;
+    setRepositoryLabel(_label: string): void {
         this.updateViewCount(this.lastFileCount);
     }
 
@@ -754,12 +752,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
         if (!this.view) return;
-        const countText = count > 0 ? ` (${count})` : "";
-        this.view.description = this.repositoryLabel
-            ? `${this.repositoryLabel}${countText}`
-            : count > 0
-              ? String(count)
-              : "";
+        this.view.description = count > 0 ? String(count) : "";
+        this.view.badge =
+            count > 0
+                ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
+                : undefined;
     }
 
     private postGraphCommitDetailState(): void {
@@ -807,7 +804,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             extensionUri: this.extensionUri,
             webview,
             scriptFile: "webview-commitpanel.js",
-            title: "Commit",
+            title: "Changes",
             backgroundVar: "var(--vscode-sideBar-background, var(--vscode-editor-background))",
         });
     }

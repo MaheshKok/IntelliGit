@@ -192,6 +192,7 @@ type MockExtensionContext = {
 };
 
 let latestCommitGraphProvider: MockCommitGraphViewProvider | undefined;
+let latestSidebarGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
 let latestUndockedProvider: MockUndockedViewProvider | undefined;
 
@@ -201,6 +202,7 @@ function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void 
 
 class MockCommitGraphViewProvider {
     static readonly viewType = "intelligit.commitGraph";
+    static readonly sidebarViewType = "intelligit.sidebarGraph";
     private commitSelectedEmitter = new MockEventEmitter<string>();
     private branchFilterEmitter = new MockEventEmitter<string | null>();
     private branchActionEmitter = new MockEventEmitter<{ action: string; branchName: string }>();
@@ -213,9 +215,17 @@ class MockCommitGraphViewProvider {
         filePath: string;
     }>();
 
-    constructor(_uri: unknown, _gitOps: unknown) {
+    constructor(
+        _uri: unknown,
+        _gitOps: unknown,
+        options?: { scriptFile?: string; title?: string },
+    ) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
-        latestCommitGraphProvider = this;
+        if (options?.scriptFile === "webview-compactcommitgraph.js") {
+            latestSidebarGraphProvider = this;
+        } else {
+            latestCommitGraphProvider = this;
+        }
     }
     onCommitSelected = this.commitSelectedEmitter.event;
     onBranchFilterChanged = this.branchFilterEmitter.event;
@@ -671,6 +681,7 @@ describe("extension integration", () => {
         configurationValues.clear();
         workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         latestCommitGraphProvider = undefined;
+        latestSidebarGraphProvider = undefined;
         latestCommitPanelProvider = undefined;
         latestUndockedProvider = undefined;
 

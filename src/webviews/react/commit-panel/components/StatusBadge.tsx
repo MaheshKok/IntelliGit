@@ -9,8 +9,19 @@ interface Props {
     status: string;
 }
 
+const PYCHARM_STATUS_COLORS: Record<string, string> = {
+    M: "var(--intelligit-pycharm-modified)",
+    A: "var(--intelligit-pycharm-added)",
+    D: "var(--intelligit-pycharm-deleted)",
+    R: "var(--vscode-gitDecoration-renamedResourceForeground, #a371f7)",
+    U: "var(--vscode-gitDecoration-conflictingResourceForeground, #e5c07b)",
+    "?": "var(--intelligit-pycharm-added)",
+    C: "var(--intelligit-pycharm-added)",
+    T: "var(--intelligit-pycharm-modified)",
+};
+
 function StatusBadgeInner({ status }: Props): React.ReactElement {
-    const color = GIT_STATUS_COLORS[status] ?? "#888";
+    const color = PYCHARM_STATUS_COLORS[status] ?? GIT_STATUS_COLORS[status] ?? "#888";
     const label = GIT_STATUS_LABELS[status] ?? status;
     const letter = status === "?" ? "U" : status;
 

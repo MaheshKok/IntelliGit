@@ -115,7 +115,7 @@ export function FileTree({
     if (files.length === 0) {
         return (
             <Box
-                color="var(--vscode-descriptionForeground)"
+                color="var(--intelligit-pycharm-muted)"
                 fontSize="12px"
                 p="8px 12px"
                 textAlign="center"

@@ -391,6 +391,8 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
+        provider.setRepositoryLabel("pycharm-git-for-vscode");
+        expect(webview.view.description).toBeUndefined();
         await webview.send({ type: "ready" });
         expect(gitOps.getLog).toHaveBeenCalled();
 
@@ -653,7 +655,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider updates description and fires file count after commit", async () => {
+    it("CommitPanelViewProvider updates count badges and fires file count after commit", async () => {
         const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
         const draftStore = createMemento();
@@ -674,18 +676,22 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
+        provider.setRepositoryLabel("pycharm-git-for-vscode");
         await webview.send({ type: "ready" });
 
         const view = (provider as unknown as { view: Record<string, unknown> }).view;
 
-        // Initial state: getStatus returns 1 file → description set, event fired
+        // Initial state: getStatus returns 1 file -> numeric description and activity badge,
+        // without the repository name repeated beside the view title.
         expect(view.description).toBe("1");
+        expect(view.badge).toEqual({ tooltip: "1 changed file", value: 1 });
         expect(counts).toContain(1);
 
-        // After commit, getStatus returns 0 files → description cleared, event fired with 0
+        // After commit, getStatus returns 0 files -> description and badge cleared.
         gitOps.getStatus.mockResolvedValueOnce([]);
         await webview.send({ type: "commit", message: "feat: clear", amend: false });
         expect(view.description).toBe("");
+        expect(view.badge).toBeUndefined();
         expect(counts).toContain(0);
 
         provider.dispose();

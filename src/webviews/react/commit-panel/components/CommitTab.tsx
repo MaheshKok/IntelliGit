@@ -123,7 +123,12 @@ export function CommitTab({
                 />
             ) : null}
 
-            <Box flex="1 1 auto" overflowY="auto" minH="40px">
+            <Box
+                flex="1 1 auto"
+                overflowY="auto"
+                minH="40px"
+                bg="var(--intelligit-pycharm-panel)"
+            >
                 <FileTree
                     files={files}
                     groupByDir={groupByDir}
@@ -146,9 +151,9 @@ export function CommitTab({
             <Box
                 flex="0 0 4px"
                 cursor="row-resize"
-                bg="var(--vscode-panel-border, #444)"
+                bg="var(--intelligit-pycharm-border)"
                 position="relative"
-                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                _hover={{ bg: "var(--intelligit-pycharm-blue)" }}
                 onMouseDown={onDragMouseDown}
                 _after={{
                     content: '""',
