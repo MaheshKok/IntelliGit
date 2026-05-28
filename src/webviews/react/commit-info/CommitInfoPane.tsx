@@ -128,6 +128,8 @@ export function CommitInfoPane({
             bg={JETBRAINS_UI.color.panel}
         >
             <Box
+                display="flex"
+                alignItems="center"
                 px="8px"
                 py="4px"
                 fontWeight={600}
@@ -206,6 +208,8 @@ export function CommitInfoPane({
                 overflow="hidden"
             >
                 <Box
+                    display="flex"
+                    alignItems="center"
                     px="8px"
                     py="4px"
                     fontWeight={600}
@@ -444,19 +448,7 @@ function CommitFolderRow({
             title={folder.path}
         >
             <InfoIndentGuides treeDepth={depth} />
-            <Box
-                as="span"
-                fontSize="11px"
-                w="14px"
-                textAlign="center"
-                flexShrink={0}
-                opacity={0.7}
-                transform={isExpanded ? "rotate(90deg)" : undefined}
-                transition="transform 0.15s ease"
-                display="inline-block"
-            >
-                &#9654;
-            </Box>
+            <ChevronIcon expanded={isExpanded} />
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} opacity={0.85}>
                 {folder.name}

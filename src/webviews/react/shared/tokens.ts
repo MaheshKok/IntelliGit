@@ -39,14 +39,14 @@ export const JETBRAINS_UI = {
         treeIndent: 18,
     },
     graph: {
-        laneWidth: 20,
-        maxWidth: 200,
-        lineWidth: 2.4,
-        mergeLineWidth: 2.2,
-        dotRadius: 5,
-        dotInnerRadius: 2.15,
-        dotRingWidth: 2.6,
-        leftPad: 4,
+        laneWidth: 10,
+        maxWidth: 100,
+        lineWidth: 1.5,
+        mergeLineWidth: 1.3,
+        dotRadius: 4.5,
+        dotInnerRadius: 2,
+        dotRingWidth: 2,
+        leftPad: 2,
     },
 } as const;
 

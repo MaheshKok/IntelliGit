@@ -9,7 +9,7 @@ import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { getSettings } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
-import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
+import { ChevronIcon, CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
@@ -286,18 +286,7 @@ export function ShelfTab({
                                     mx="8px"
                                     my="1px"
                                 >
-                                    <Box
-                                        as="span"
-                                        w="14px"
-                                        textAlign="center"
-                                        fontSize="10px"
-                                        opacity={0.7}
-                                        flexShrink={0}
-                                        transform={isExpanded ? "rotate(90deg)" : undefined}
-                                        transition="transform 0.15s"
-                                    >
-                                        &#9654;
-                                    </Box>
+                                    <ChevronIcon expanded={isExpanded} />
                                     <Box
                                         as="span"
                                         flex={1}
@@ -616,15 +605,7 @@ function ShelfFileTree({
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onToggleDir(entry.path)}
                         >
-                            <Box
-                                as="span"
-                                w="11px"
-                                textAlign="center"
-                                opacity={0.7}
-                                transform={isExpanded ? "rotate(90deg)" : undefined}
-                            >
-                                &#9654;
-                            </Box>
+                            <ChevronIcon expanded={isExpanded} />
                             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
                             <Box
                                 as="span"
