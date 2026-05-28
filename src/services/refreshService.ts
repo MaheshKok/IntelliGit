@@ -11,6 +11,7 @@ import type { Branch } from "../types";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "../views/MergeConflictsTreeProvider";
+import type { UndockedViewProvider } from "../views/UndockedViewProvider";
 
 export interface RefreshServiceDeps {
     gitOps: GitOps;
@@ -19,6 +20,7 @@ export interface RefreshServiceDeps {
     mergeConflicts: MergeConflictsTreeProvider;
     mergeConflictsView: vscode.TreeView<unknown>;
     onBranchesUpdated: (branches: Branch[]) => void;
+    getUndocked?: () => UndockedViewProvider | undefined;
 }
 
 export class RefreshService implements vscode.Disposable {
@@ -42,8 +44,16 @@ export class RefreshService implements vscode.Disposable {
         );
     }
 
+    async refreshCommitPanels(): Promise<void> {
+        const undocked = this.deps.getUndocked?.();
+        await Promise.all([
+            this.deps.commitPanel.refresh(),
+            ...(undocked ? [undocked.refresh()] : []),
+        ]);
+    }
+
     async refreshConflictUi(): Promise<void> {
-        await this.deps.commitPanel.refresh();
+        await this.refreshCommitPanels();
         await this.refreshMergeConflicts();
     }
 
@@ -54,7 +64,7 @@ export class RefreshService implements vscode.Disposable {
     debouncedLightRefresh(): void {
         if (this.lightTimer) clearTimeout(this.lightTimer);
         this.lightTimer = setTimeout(() => {
-            void this.deps.commitPanel.refresh().catch((err) => {
+            void this.refreshCommitPanels().catch((err) => {
                 console.error("[IntelliGit] Light refresh failed:", err);
             });
         }, 300);
@@ -67,8 +77,11 @@ export class RefreshService implements vscode.Disposable {
                 const branches = await this.deps.gitOps.getBranches();
                 this.deps.onBranchesUpdated(branches);
                 this.deps.commitGraph.setBranches(branches);
+                this.deps.commitPanel.setBranches(branches);
+                const undocked = this.deps.getUndocked?.();
+                undocked?.setBranches(branches);
                 await this.deps.commitGraph.refresh();
-                await this.deps.commitPanel.refresh();
+                await this.refreshCommitPanels();
                 await this.refreshMergeConflicts();
             })().catch((err) => {
                 console.error("[IntelliGit] Full refresh failed:", err);

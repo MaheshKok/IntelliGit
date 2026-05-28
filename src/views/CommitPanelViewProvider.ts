@@ -5,13 +5,19 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { ThemeFolderIconMap, WorkingFile, StashEntry } from "../types";
+import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile, StashEntry } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
-import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
+import { promptRebaseAfterPushRejection, isValidGitHash } from "../services/gitHelpers";
 import type { InboundMessage } from "../webviews/react/commit-panel/types";
+import type {
+    BranchAction,
+    CommitAction,
+    CommitGraphInbound,
+} from "../webviews/react/commitGraphTypes";
+import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 
@@ -30,8 +36,48 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private readonly iconTheme: IconThemeService;
     private repositoryLabel = "";
 
+    // Embedded commit graph state
+    private currentBranch: string | null = null;
+    private filterText = "";
+    private offset = 0;
+    private loadingMore = false;
+    private requestSeq = 0;
+    private readonly PAGE_SIZE = 500;
+    private branches: Branch[] = [];
+    private selectedCommitDetail: CommitDetail | null = null;
+    private commitDetailFolderIconsByName: ThemeFolderIconMap = {};
+    private branchFolderIconsByName: ThemeFolderIconMap = {};
+    private commitDetailSeq = 0;
+
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
+
+    private readonly _onDidChangeWorkingTree = new vscode.EventEmitter<void>();
+    readonly onDidChangeWorkingTree = this._onDidChangeWorkingTree.event;
+
+    private readonly _onCommitSelected = new vscode.EventEmitter<string>();
+    readonly onCommitSelected = this._onCommitSelected.event;
+
+    private readonly _onBranchFilterChanged = new vscode.EventEmitter<string | null>();
+    readonly onBranchFilterChanged = this._onBranchFilterChanged.event;
+
+    private readonly _onBranchAction = new vscode.EventEmitter<{
+        action: BranchAction;
+        branchName: string;
+    }>();
+    readonly onBranchAction = this._onBranchAction.event;
+
+    private readonly _onCommitAction = new vscode.EventEmitter<{
+        action: CommitAction;
+        hash: string;
+    }>();
+    readonly onCommitAction = this._onCommitAction.event;
+
+    private readonly _onOpenCommitFileDiff = new vscode.EventEmitter<{
+        commitHash: string;
+        filePath: string;
+    }>();
+    readonly onOpenCommitFileDiff = this._onOpenCommitFileDiff.event;
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -48,6 +94,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.files = [];
         this.stashes = [];
         this.shelfFiles = [];
+        this.currentBranch = null;
+        this.filterText = "";
+        this.offset = 0;
+        this.loadingMore = false;
+        this.selectedCommitDetail = null;
+        this.commitDetailFolderIconsByName = {};
+        this.branchFolderIconsByName = {};
         this.updateViewCount(0);
         this.postToWebview({
             type: "restoreCommitDraft",
@@ -58,6 +111,33 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     setRepositoryLabel(label: string): void {
         this.repositoryLabel = label;
         this.updateViewCount(this.lastFileCount);
+    }
+
+    setBranches(branches: Branch[]): void {
+        this.branches = branches;
+        this.sendGraphBranches().catch((err) => {
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(`Branch update error: ${message}`);
+        });
+    }
+
+    setCommitDetail(detail: CommitDetail): void {
+        const requestId = ++this.commitDetailSeq;
+        this.selectedCommitDetail = detail;
+        this.commitDetailFolderIconsByName = {};
+        this.postGraphCommitDetailState();
+        this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
+            if (requestId !== this.commitDetailSeq) return;
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(`Commit detail error: ${message}`);
+        });
+    }
+
+    clearCommitDetail(): void {
+        this.commitDetailSeq += 1;
+        this.selectedCommitDetail = null;
+        this.commitDetailFolderIconsByName = {};
+        this.postToWebview({ type: "clearCommitDetail" });
     }
 
     resolveWebviewView(
@@ -100,6 +180,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     async refresh(): Promise<void> {
         await this.refreshData();
+        await this.refreshGraphData();
     }
 
     private async refreshData(): Promise<void> {
@@ -166,6 +247,103 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    private async refreshGraphData(): Promise<void> {
+        await this.iconTheme.initIconThemeData();
+        await this.sendGraphBranches();
+        await this.loadInitialGraphCommits();
+        this.postGraphCommitDetailState();
+    }
+
+    private async sendGraphBranches(): Promise<void> {
+        this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
+        this.postToWebview({
+            type: "setBranches",
+            branches: this.branches,
+            folderIcon: folderIcons.folderIcon,
+            folderExpandedIcon: folderIcons.folderExpandedIcon,
+            folderIconsByName: this.branchFolderIconsByName,
+            iconFonts,
+        });
+    }
+
+    private async loadInitialGraphCommits(): Promise<void> {
+        const requestId = ++this.requestSeq;
+        this.offset = 0;
+        this.loadingMore = false;
+
+        if (this.currentBranch && !this.branches.some((b) => b.name === this.currentBranch)) {
+            this.currentBranch = null;
+            this.postToWebview({ type: "setSelectedBranch", branch: null });
+        }
+
+        try {
+            const [commits, unpushedHashes] = await Promise.all([
+                this.gitOps.getLog(
+                    this.PAGE_SIZE,
+                    this.currentBranch ?? undefined,
+                    this.filterText || undefined,
+                    0,
+                ),
+                this.gitOps.getUnpushedCommitHashes(),
+            ]);
+            if (requestId !== this.requestSeq) return;
+            this.offset = commits.length;
+            this.postToWebview({
+                type: "loadCommits",
+                commits,
+                hasMore: commits.length >= this.PAGE_SIZE,
+                append: false,
+                unpushedHashes,
+            });
+        } catch (err) {
+            if (requestId !== this.requestSeq) return;
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(`Git log error: ${message}`);
+            this.postToWebview({ type: "loadError", message });
+        }
+    }
+
+    private async loadMoreGraphCommits(): Promise<void> {
+        if (this.loadingMore) return;
+        this.loadingMore = true;
+        const requestId = ++this.requestSeq;
+        try {
+            const [commits, unpushedHashes] = await Promise.all([
+                this.gitOps.getLog(
+                    this.PAGE_SIZE,
+                    this.currentBranch ?? undefined,
+                    this.filterText || undefined,
+                    this.offset,
+                ),
+                this.gitOps.getUnpushedCommitHashes(),
+            ]);
+            if (requestId !== this.requestSeq) return;
+            this.offset += commits.length;
+            this.postToWebview({
+                type: "loadCommits",
+                commits,
+                hasMore: commits.length >= this.PAGE_SIZE,
+                append: true,
+                unpushedHashes,
+            });
+        } catch (err) {
+            if (requestId !== this.requestSeq) return;
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(`Git log error: ${message}`);
+            this.postToWebview({ type: "loadError", message });
+        } finally {
+            if (requestId === this.requestSeq) {
+                this.loadingMore = false;
+            }
+        }
+    }
+
+    private async filterGraphByText(text: string): Promise<void> {
+        this.filterText = text;
+        await this.loadInitialGraphCommits();
+    }
+
     private assertStringArray(value: unknown, field: string): string[] {
         if (!Array.isArray(value)) {
             throw new Error(`Expected string[] for '${field}', got ${typeof value}`);
@@ -188,6 +366,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return value;
     }
 
+    private assertNullableString(value: unknown, field: string): string | null {
+        if (value === null) return null;
+        return this.assertString(value, field);
+    }
+
+    private assertGitHash(value: unknown, field: string): string {
+        const hash = this.assertString(value, field).trim();
+        if (!isValidGitHash(hash)) {
+            throw new Error(`Invalid git hash for '${field}'.`);
+        }
+        return hash;
+    }
+
     private assertNumber(value: unknown, field: string): number {
         if (typeof value !== "number" || !Number.isFinite(value)) {
             throw new Error(`Expected number for '${field}', got ${typeof value}`);
@@ -199,6 +390,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         switch (msg.type) {
             case "ready":
                 await this.refreshData();
+                await this.refreshGraphData();
                 this.postToWebview({
                     type: "restoreCommitDraft",
                     message: this.getStoredCommitDraft(),
@@ -207,6 +399,61 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "refresh":
                 await this.refreshData();
+                await this.refreshGraphData();
+                break;
+
+            case "selectCommit":
+                this._onCommitSelected.fire(this.assertGitHash(msg.hash, "hash"));
+                break;
+
+            case "loadMore":
+                await this.loadMoreGraphCommits();
+                break;
+
+            case "filterText":
+                await this.filterGraphByText(this.assertString(msg.text, "text"));
+                break;
+
+            case "filterBranch":
+                this.currentBranch = this.assertNullableString(msg.branch, "branch");
+                this.filterText = "";
+                this._onBranchFilterChanged.fire(this.currentBranch);
+                this.postToWebview({
+                    type: "setSelectedBranch",
+                    branch: this.currentBranch,
+                });
+                await this.loadInitialGraphCommits();
+                break;
+
+            case "branchAction": {
+                const branchAction = this.assertString(msg.action, "action");
+                if (!isBranchAction(branchAction)) {
+                    throw new Error("Invalid branch action received from webview.");
+                }
+                this._onBranchAction.fire({
+                    action: branchAction,
+                    branchName: this.assertString(msg.branchName, "branchName"),
+                });
+                break;
+            }
+
+            case "commitAction": {
+                const commitAction = this.assertString(msg.action, "action");
+                if (!isCommitAction(commitAction)) {
+                    throw new Error("Invalid commit action received from webview.");
+                }
+                this._onCommitAction.fire({
+                    action: commitAction,
+                    hash: this.assertGitHash(msg.hash, "hash"),
+                });
+                break;
+            }
+
+            case "openCommitFileDiff":
+                this._onOpenCommitFileDiff.fire({
+                    commitHash: this.assertGitHash(msg.commitHash, "commitHash"),
+                    filePath: assertRepoRelativePath(this.assertString(msg.filePath, "filePath")),
+                });
                 break;
 
             case "saveCommitDraft": {
@@ -222,6 +469,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 await this.gitOps.stageFiles(paths);
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -229,6 +477,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 await this.gitOps.unstageFiles(paths);
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -268,6 +517,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ) {
                         this.postToWebview({ type: "committed" });
                         await this.refreshData();
+                        this._onDidChangeWorkingTree.fire();
                         return;
                     }
                     throw err;
@@ -277,6 +527,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 );
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 if (!push) {
                     void this.maybeOfferPublishBranch();
                 }
@@ -296,6 +547,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 vscode.window.showInformationMessage("Committed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 void this.maybeOfferPublishBranch();
                 break;
             }
@@ -319,6 +571,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ) {
                         this.postToWebview({ type: "committed" });
                         await this.refreshData();
+                        this._onDidChangeWorkingTree.fire();
                         return;
                     }
                     throw err;
@@ -326,6 +579,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -362,6 +616,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 }
                 vscode.window.showInformationMessage("Changes rolled back.");
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -382,6 +637,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.gitOps.shelveSave(paths, name);
                 vscode.window.showInformationMessage("Changes shelved.");
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -390,6 +646,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.gitOps.shelvePop(index);
                 vscode.window.showInformationMessage("Unshelved changes.");
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -398,6 +655,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.gitOps.shelveApply(index);
                 vscode.window.showInformationMessage("Applied shelved changes.");
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -412,6 +670,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.gitOps.shelveDelete(index);
                 vscode.window.showInformationMessage("Shelved change deleted.");
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -472,6 +731,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (!deleted) return;
                 vscode.window.showInformationMessage(`Deleted ${filePath}`);
                 await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -499,7 +759,34 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
               : "";
     }
 
-    private postToWebview(msg: InboundMessage): void {
+    private postGraphCommitDetailState(): void {
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
+        if (this.selectedCommitDetail) {
+            this.postToWebview({
+                type: "setCommitDetail",
+                detail: this.selectedCommitDetail,
+                folderIcon: folderIcons.folderIcon,
+                folderExpandedIcon: folderIcons.folderExpandedIcon,
+                folderIconsByName: this.commitDetailFolderIconsByName,
+                iconFonts,
+            });
+            return;
+        }
+        this.postToWebview({ type: "clearCommitDetail" });
+    }
+
+    private async decorateAndStoreCommitDetail(
+        detail: CommitDetail,
+        requestId: number,
+    ): Promise<void> {
+        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
+        if (requestId !== this.commitDetailSeq) return;
+        this.selectedCommitDetail = decorated.detail;
+        this.commitDetailFolderIconsByName = decorated.folderIconsByName;
+        this.postGraphCommitDetailState();
+    }
+
+    private postToWebview(msg: InboundMessage | CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
     }
 
@@ -538,6 +825,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onDidChangeFileCount.dispose();
+        this._onDidChangeWorkingTree.dispose();
+        this._onCommitSelected.dispose();
+        this._onBranchFilterChanged.dispose();
+        this._onBranchAction.dispose();
+        this._onCommitAction.dispose();
+        this._onOpenCommitFileDiff.dispose();
     }
 
     private async maybeOfferPublishBranch(): Promise<void> {

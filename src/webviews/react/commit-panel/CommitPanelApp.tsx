@@ -10,9 +10,10 @@ import { CommitTab } from "./components/CommitTab";
 import { ShelfTab } from "./components/ShelfTab";
 import { useExtensionMessages } from "./hooks/useExtensionMessages";
 import { useCheckedFiles } from "./hooks/useCheckedFiles";
-import { getVsCodeApi } from "./hooks/useVsCodeApi";
 import { useDragResize } from "./hooks/useDragResize";
+import { getVsCodeApi } from "./hooks/useVsCodeApi";
 import { ThemeIconFontFaces } from "../shared/components";
+import { NativeCommitGraph } from "../NativeCommitGraph";
 
 function App(): React.ReactElement {
     const [state, dispatch] = useExtensionMessages();
@@ -77,16 +78,16 @@ function App(): React.ReactElement {
     }, [stageCheckedAndCommit]);
 
     const containerRef = useRef<HTMLDivElement>(null);
-    const savedBottomHeight = vscode.getState?.()?.bottomPanelHeight;
-    const { height: bottomHeight, onMouseDown } = useDragResize(
-        typeof savedBottomHeight === "number" ? savedBottomHeight : 120,
-        40,
+    const savedBottomHeight = vscode.getState?.()?.commitGraphPanelHeight;
+    const { height: graphHeight, onMouseDown } = useDragResize(
+        typeof savedBottomHeight === "number" ? savedBottomHeight : 220,
+        120,
         containerRef,
         {
-            maxReservedHeight: 120,
+            maxReservedHeight: 180,
             onResize: (h: number) => {
                 const prev = vscode.getState?.() ?? {};
-                vscode.setState({ ...prev, bottomPanelHeight: h });
+                vscode.setState({ ...prev, commitGraphPanelHeight: h });
             },
         },
     );
@@ -144,17 +145,12 @@ function App(): React.ReactElement {
                 onMouseDown={onMouseDown}
                 _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
             />
-            <Box
-                h={`${bottomHeight}px`}
-                flexShrink={0}
-                overflow="auto"
-                display="flex"
-                alignItems="center"
-                justifyContent="center"
-            >
-                <Box color="var(--vscode-descriptionForeground)" fontSize="13px" fontStyle="italic">
-                    Coming...
-                </Box>
+            <Box h={`${graphHeight}px`} flexShrink={0} overflow="hidden" minH="120px">
+                <NativeCommitGraph
+                    vscode={vscode}
+                    stateKeyPrefix="commitPanelGraph"
+                    sendReady={false}
+                />
             </Box>
         </Box>
     );

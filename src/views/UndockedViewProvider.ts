@@ -68,6 +68,9 @@ export class UndockedViewProvider {
     private readonly _onDidChangeFileCount = new vscode.EventEmitter<number>();
     readonly onDidChangeFileCount = this._onDidChangeFileCount.event;
 
+    private readonly _onDidChangeWorkingTree = new vscode.EventEmitter<void>();
+    readonly onDidChangeWorkingTree = this._onDidChangeWorkingTree.event;
+
     private readonly _onDockRequested = new vscode.EventEmitter<void>();
     readonly onDockRequested = this._onDockRequested.event;
 
@@ -187,6 +190,7 @@ export class UndockedViewProvider {
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
+        this._onDidChangeWorkingTree.dispose();
         this._onDockRequested.dispose();
         this._onDidDispose.dispose();
         this.panel?.dispose();
@@ -280,6 +284,7 @@ export class UndockedViewProvider {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 await this.gitOps.stageFiles(paths);
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -287,6 +292,7 @@ export class UndockedViewProvider {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 await this.gitOps.unstageFiles(paths);
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -326,6 +332,7 @@ export class UndockedViewProvider {
                     ) {
                         this.postToWebview({ type: "committed" });
                         await this.refreshCommitPanelData();
+                        this._onDidChangeWorkingTree.fire();
                         return;
                     }
                     throw err;
@@ -335,6 +342,7 @@ export class UndockedViewProvider {
                 );
                 this.postToWebview({ type: "committed" });
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -351,6 +359,7 @@ export class UndockedViewProvider {
                 vscode.window.showInformationMessage("Committed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -373,6 +382,7 @@ export class UndockedViewProvider {
                     ) {
                         this.postToWebview({ type: "committed" });
                         await this.refreshCommitPanelData();
+                        this._onDidChangeWorkingTree.fire();
                         return;
                     }
                     throw err;
@@ -380,6 +390,7 @@ export class UndockedViewProvider {
                 vscode.window.showInformationMessage("Committed and pushed successfully.");
                 this.postToWebview({ type: "committed" });
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -416,6 +427,7 @@ export class UndockedViewProvider {
                 }
                 vscode.window.showInformationMessage("Changes rolled back.");
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -435,6 +447,7 @@ export class UndockedViewProvider {
                 await this.gitOps.shelveSave(paths, name);
                 vscode.window.showInformationMessage("Changes shelved.");
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -443,6 +456,7 @@ export class UndockedViewProvider {
                 await this.gitOps.shelvePop(index);
                 vscode.window.showInformationMessage("Unshelved changes.");
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -451,6 +465,7 @@ export class UndockedViewProvider {
                 await this.gitOps.shelveApply(index);
                 vscode.window.showInformationMessage("Applied shelved changes.");
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -465,6 +480,7 @@ export class UndockedViewProvider {
                 await this.gitOps.shelveDelete(index);
                 vscode.window.showInformationMessage("Shelved change deleted.");
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
@@ -511,6 +527,7 @@ export class UndockedViewProvider {
                 if (!deleted) return;
                 vscode.window.showInformationMessage(`Deleted ${filePath}`);
                 await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
                 break;
             }
 
