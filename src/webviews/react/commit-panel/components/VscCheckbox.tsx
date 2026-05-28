@@ -15,8 +15,8 @@ const SIZE = 14;
 const BORDER_RADIUS = 2;
 const BORDER_WIDTH = 1.5;
 const UNCHECKED_BG = "transparent";
-const UNCHECKED_BORDER = "rgba(206, 214, 230, 0.72)";
-const CHECKED_BG = "rgba(95, 140, 255, 0.16)";
+const UNCHECKED_BORDER = "var(--intelligit-pycharm-checkbox-unchecked-border)";
+const CHECKED_BG = "var(--intelligit-pycharm-checkbox-checked-bg)";
 const CHECKED_BORDER = "var(--intelligit-pycharm-blue)";
 const CHECK_COLOR = "#c8ddff";
 

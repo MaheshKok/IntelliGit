@@ -31,6 +31,8 @@ const theme = extendTheme({
                 "--intelligit-pycharm-added": "#79c981",
                 "--intelligit-pycharm-deleted": "#f26b51",
                 "--intelligit-pycharm-modified": "#e7bd63",
+                "--intelligit-pycharm-checkbox-unchecked-border": "rgba(206, 214, 230, 0.72)",
+                "--intelligit-pycharm-checkbox-checked-bg": "rgba(95, 140, 255, 0.16)",
             },
             "*, *::before, *::after": {
                 boxSizing: "border-box",
