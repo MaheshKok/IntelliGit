@@ -62,7 +62,8 @@ function FolderRowInner({
             cursor="pointer"
             position="relative"
             whiteSpace="nowrap"
-            _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
+            color="var(--intelligit-pycharm-foreground)"
+            _hover={{ bg: "rgba(255,255,255,0.05)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleExpand(dirPath);
@@ -77,7 +78,7 @@ function FolderRowInner({
                 onChange={() => onToggleCheck(dirPath)}
             />
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
-            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.85}>
+            <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.82}>
                 {name}
             </Box>
             <Box
@@ -86,7 +87,7 @@ function FolderRowInner({
                 flexShrink={0}
                 whiteSpace="nowrap"
                 fontSize="11px"
-                color="var(--vscode-descriptionForeground)"
+                color="var(--intelligit-pycharm-muted)"
             >
                 {fileCount} {fileCount === 1 ? "file" : "files"}
             </Box>

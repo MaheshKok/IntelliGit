@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-05-28
+
+### Changed
+
+- Restyled the Commit tool window to more closely match PyCharm's dark Git UI, including tabs, toolbar chrome, section rows, file tree spacing, status colours, and commit controls.
+- Kept commit-panel toolbar actions in one compact, evenly spaced group instead of stretching actions across the full panel width.
+
+### Fixed
+
+- Aligned file and folder selection checkboxes in the Changes tree and increased checkbox border weight for a sharper PyCharm-style appearance.
+
 ## [0.8.7] - 2026-05-28
 
 ### Changed

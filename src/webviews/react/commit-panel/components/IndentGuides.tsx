@@ -9,7 +9,7 @@ const INDENT_BASE = 20;
 const GUIDE_BASE = 28; // INDENT_BASE(20) + chevron_half(8) = 28
 const SECTION_GUIDE = 17; // section header mx(4) + px(5) + chevron_half(8) = 17
 const INDENT_GUIDE_COLOR =
-    "var(--vscode-editorIndentGuide-background1, var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.2)))";
+    "var(--vscode-editorIndentGuide-background1, var(--vscode-tree-indentGuidesStroke, rgba(160, 168, 184, 0.28)))";
 
 interface Props {
     treeDepth: number;

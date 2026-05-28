@@ -107,9 +107,9 @@ function App(): React.ReactElement {
         cursor: "pointer",
         userSelect: "none",
         flexShrink: 0,
-        background: "var(--vscode-sideBarSectionHeader-background)",
-        color: "var(--vscode-foreground)",
-        borderBottom: "1px solid var(--vscode-panel-border)",
+        background: "var(--intelligit-pycharm-header)",
+        color: "var(--intelligit-pycharm-foreground)",
+        borderBottom: "1px solid var(--intelligit-pycharm-border)",
     };
 
     const sectionBodyStyle = (
@@ -129,16 +129,22 @@ function App(): React.ReactElement {
     });
 
     return (
-        <Box ref={containerRef} display="flex" flexDirection="column" h="100%">
+        <Box
+            ref={containerRef}
+            display="flex"
+            flexDirection="column"
+            h="100%"
+            bg="var(--intelligit-pycharm-panel)"
+        >
             <ThemeIconFontFaces fonts={state.iconFonts} />
 
             {/* Changes section header */}
             <button
                 style={{
                     ...sectionHeader,
-                    background: "none",
+                    background: "var(--intelligit-pycharm-header)",
                     border: "none",
-                    borderBottom: "1px solid var(--vscode-panel-border)",
+                    borderBottom: "1px solid var(--intelligit-pycharm-border)",
                     fontFamily: "inherit",
                     width: "100%",
                     textAlign: "left",
@@ -210,9 +216,9 @@ function App(): React.ReactElement {
                     h="5px"
                     flexShrink={0}
                     cursor="row-resize"
-                    bg="var(--vscode-panel-border)"
+                    bg="var(--intelligit-pycharm-border)"
                     onMouseDown={onMouseDown}
-                    _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                    _hover={{ bg: "var(--intelligit-pycharm-blue)" }}
                 />
             )}
 
@@ -220,9 +226,9 @@ function App(): React.ReactElement {
             <button
                 style={{
                     ...sectionHeader,
-                    background: "none",
+                    background: "var(--intelligit-pycharm-header)",
                     border: "none",
-                    borderBottom: "1px solid var(--vscode-panel-border)",
+                    borderBottom: "1px solid var(--intelligit-pycharm-border)",
                     fontFamily: "inherit",
                     width: "100%",
                     textAlign: "left",

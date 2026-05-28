@@ -42,9 +42,9 @@ export function SectionHeader({
             fontFamily={SYSTEM_FONT_STACK}
             lineHeight="22px"
             position="relative"
-            color="var(--vscode-foreground)"
-            bg="rgba(121, 140, 183, 0.26)"
-            _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
+            color="var(--intelligit-pycharm-foreground)"
+            bg="var(--intelligit-pycharm-selected)"
+            _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleOpen();
@@ -59,7 +59,8 @@ export function SectionHeader({
             <Box as="span">{label}</Box>
             <Box
                 as="span"
-                color="var(--vscode-descriptionForeground)"
+                color="var(--intelligit-pycharm-muted)"
+                opacity={0.88}
                 fontWeight="normal"
                 fontSize="11px"
             >

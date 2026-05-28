@@ -44,7 +44,8 @@ function FileRowInner({
             fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
-            _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
+            color="var(--intelligit-pycharm-foreground)"
+            _hover={{ bg: "rgba(255,255,255,0.05)" }}
             data-vscode-context={JSON.stringify({
                 webviewSection: "file",
                 filePath: file.path,
@@ -57,7 +58,7 @@ function FileRowInner({
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
-            <Box as="span" w="14px" flexShrink={0} />
+            <Box as="span" w={`${INDENT_STEP}px`} flexShrink={0} />
             <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
             <FileTypeIcon status={file.status} icon={file.icon} />
             <Box
@@ -66,32 +67,25 @@ function FileRowInner({
                 overflow="hidden"
                 textOverflow="ellipsis"
                 whiteSpace="nowrap"
-                color="var(--vscode-foreground)"
+                color="var(--intelligit-pycharm-foreground)"
                 textDecoration={file.status === "D" ? "line-through" : undefined}
             >
                 {fileName}
             </Box>
             {!groupByDir && dir && (
-                <Box as="span" color="var(--vscode-descriptionForeground)" fontSize="11px" ml="3px">
+                <Box as="span" color="var(--intelligit-pycharm-muted)" fontSize="11px" ml="3px">
                     {dir}
                 </Box>
             )}
             {(file.additions > 0 || file.deletions > 0) && (
                 <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
                     {file.additions > 0 && (
-                        <Box
-                            as="span"
-                            color="var(--vscode-gitDecoration-addedResourceForeground, #2ea043)"
-                            mr="3px"
-                        >
+                        <Box as="span" color="var(--intelligit-pycharm-added)" mr="3px">
                             +{file.additions}
                         </Box>
                     )}
                     {file.deletions > 0 && (
-                        <Box
-                            as="span"
-                            color="var(--vscode-gitDecoration-deletedResourceForeground, #f85149)"
-                        >
+                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
                             -{file.deletions}
                         </Box>
                     )}
