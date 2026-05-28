@@ -86,6 +86,11 @@
                     "id": "intelligit.mergeConflicts",
                     "name": "Merge Conflicts",
                     "when": "intelligit.hasMergeConflicts"
+                },
+                {
+                    "id": "intelligit.fileCountBadge",
+                    "name": "Changes",
+                    "visibility": "hidden"
                 }
             ],
             "intelligitPanel": [

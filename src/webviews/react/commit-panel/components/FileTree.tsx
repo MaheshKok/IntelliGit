@@ -52,6 +52,11 @@ export function FileTree({
 
     const tracked = useMemo(() => files.filter((f) => f.status !== "?"), [files]);
     const unversioned = useMemo(() => files.filter((f) => f.status === "?"), [files]);
+    const trackedUniqueCount = useMemo(() => new Set(tracked.map((f) => f.path)).size, [tracked]);
+    const unversionedUniqueCount = useMemo(
+        () => new Set(unversioned.map((f) => f.path)).size,
+        [unversioned],
+    );
 
     const trackedTree = useFileTree(tracked, groupByDir);
     const unversionedTree = useFileTree(unversioned, groupByDir);
@@ -131,7 +136,7 @@ export function FileTree({
                 <>
                     <SectionHeader
                         label="Changes"
-                        count={tracked.length}
+                        count={trackedUniqueCount}
                         isOpen={changesOpen}
                         isAllChecked={isAllChecked(tracked)}
                         isSomeChecked={isSomeChecked(tracked)}
@@ -162,7 +167,7 @@ export function FileTree({
                 <>
                     <SectionHeader
                         label="Unversioned Files"
-                        count={unversioned.length}
+                        count={unversionedUniqueCount}
                         isOpen={unversionedOpen}
                         isAllChecked={isAllChecked(unversioned)}
                         isSomeChecked={isSomeChecked(unversioned)}
