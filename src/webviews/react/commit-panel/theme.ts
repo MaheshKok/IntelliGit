@@ -16,23 +16,34 @@ const theme = extendTheme({
     styles: {
         global: {
             ":root": {
-                "--intelligit-pycharm-panel": "#2b384e",
-                "--intelligit-pycharm-header": "#2c394f",
-                "--intelligit-pycharm-border": "#3f4c63",
-                "--intelligit-pycharm-selected": "#4b5e7d",
-                "--intelligit-pycharm-selected-hover": "#556a8c",
-                "--intelligit-pycharm-input": "#191c24",
-                "--intelligit-pycharm-input-border": "#566176",
-                "--intelligit-pycharm-foreground": "#d6dbe5",
-                "--intelligit-pycharm-muted": "#9aa2af",
-                "--intelligit-pycharm-blue": "#5f8cff",
-                "--intelligit-pycharm-primary": "#5572d9",
-                "--intelligit-pycharm-primary-hover": "#6382eb",
-                "--intelligit-pycharm-added": "#79c981",
-                "--intelligit-pycharm-deleted": "#f26b51",
-                "--intelligit-pycharm-modified": "#e7bd63",
-                "--intelligit-pycharm-checkbox-unchecked-border": "rgba(206, 214, 230, 0.72)",
-                "--intelligit-pycharm-checkbox-checked-bg": "rgba(95, 140, 255, 0.16)",
+                "--intelligit-pycharm-panel":
+                    "var(--vscode-sideBar-background, var(--vscode-editor-background, #2b384e))",
+                "--intelligit-pycharm-header":
+                    "var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground, var(--intelligit-pycharm-panel)))",
+                "--intelligit-pycharm-border":
+                    "var(--vscode-sideBar-border, var(--vscode-panel-border, #3f4c63))",
+                "--intelligit-pycharm-selected":
+                    "var(--vscode-list-activeSelectionBackground, #4b5e7d)",
+                "--intelligit-pycharm-selected-hover":
+                    "var(--vscode-list-hoverBackground, #556a8c)",
+                "--intelligit-pycharm-input": "var(--vscode-input-background, #191c24)",
+                "--intelligit-pycharm-input-border": "var(--vscode-input-border, #566176)",
+                "--intelligit-pycharm-foreground": "var(--vscode-foreground, #d6dbe5)",
+                "--intelligit-pycharm-muted": "var(--vscode-descriptionForeground, #9aa2af)",
+                "--intelligit-pycharm-blue": "var(--vscode-focusBorder, #5f8cff)",
+                "--intelligit-pycharm-primary": "var(--vscode-button-background, #5572d9)",
+                "--intelligit-pycharm-primary-hover":
+                    "var(--vscode-button-hoverBackground, #6382eb)",
+                "--intelligit-pycharm-added":
+                    "var(--vscode-gitDecoration-addedResourceForeground, #79c981)",
+                "--intelligit-pycharm-deleted":
+                    "var(--vscode-gitDecoration-deletedResourceForeground, #f26b51)",
+                "--intelligit-pycharm-modified":
+                    "var(--vscode-gitDecoration-modifiedResourceForeground, #e7bd63)",
+                "--intelligit-pycharm-checkbox-unchecked-border":
+                    "var(--vscode-button-background, rgba(206, 214, 230, 0.72))",
+                "--intelligit-pycharm-checkbox-checked-bg":
+                    "var(--vscode-checkbox-background, rgba(95, 140, 255, 0.16))",
             },
             "*, *::before, *::after": {
                 boxSizing: "border-box",

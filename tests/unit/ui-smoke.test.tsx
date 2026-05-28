@@ -46,6 +46,17 @@ function branch(overrides: Partial<Branch> = {}): Branch {
 }
 
 describe("webview ui smoke", () => {
+    it("uses VS Code theme tokens for commit panel surfaces", () => {
+        const rootStyles = theme.styles.global[":root"] as Record<string, string>;
+
+        expect(rootStyles["--intelligit-pycharm-panel"]).toContain("--vscode-sideBar-background");
+        expect(rootStyles["--intelligit-pycharm-header"]).toContain(
+            "--vscode-sideBarSectionHeader-background",
+        );
+        expect(rootStyles["--intelligit-pycharm-border"]).toContain("--vscode-sideBar-border");
+        expect(rootStyles["--intelligit-pycharm-foreground"]).toContain("--vscode-foreground");
+    });
+
     it("renders branch controls and icons", () => {
         const onChange = vi.fn();
         const onClear = vi.fn();
