@@ -13,6 +13,7 @@ import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { useDragResize } from "./hooks/useDragResize";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
 import { ThemeIconFontFaces } from "../shared/components";
+import { ChevronIcon } from "../shared/components/Icons";
 import { NativeCommitGraph } from "../NativeCommitGraph";
 
 function App(): React.ReactElement {
@@ -133,9 +134,7 @@ function App(): React.ReactElement {
 
             {/* Changes section header */}
             <div style={sectionHeader} onClick={() => setCommitCollapsed((c) => !c)}>
-                <span style={{ display: "inline-block", width: 14, fontSize: 10, marginRight: 4 }}>
-                    {commitCollapsed ? "▶" : "▼"}
-                </span>
+                <ChevronIcon expanded={!commitCollapsed} />
                 Changes
             </div>
 
@@ -207,9 +206,7 @@ function App(): React.ReactElement {
 
             {/* Graph section header */}
             <div style={sectionHeader} onClick={() => setGraphCollapsed((c) => !c)}>
-                <span style={{ display: "inline-block", width: 14, fontSize: 10, marginRight: 4 }}>
-                    {graphCollapsed ? "▶" : "▼"}
-                </span>
+                <ChevronIcon expanded={!graphCollapsed} />
                 Graph
             </div>
 

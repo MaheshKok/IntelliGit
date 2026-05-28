@@ -7,6 +7,7 @@ import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
+import { ChevronIcon } from "../shared/components/Icons";
 import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
 import { JETBRAINS_UI } from "../shared/tokens";
 import {
@@ -146,7 +147,7 @@ export function CommitInfoPane({
                     }
                 }}
             >
-                {filesCollapsed ? "\u25B6" : "\u25BC"} Changed Files
+                <ChevronIcon expanded={!filesCollapsed} /> Changed Files
             </Box>
             {!filesCollapsed && (
                 <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
@@ -223,7 +224,7 @@ export function CommitInfoPane({
                         }
                     }}
                 >
-                    {detailCollapsed ? "\u25B6" : "\u25BC"} Commit Details
+                    <ChevronIcon expanded={!detailCollapsed} /> Commit Details
                 </Box>
                 {!detailCollapsed && (
                     <Box px="12px" py="6px" overflowY="auto" h={`calc(100% - 28px)`}>
