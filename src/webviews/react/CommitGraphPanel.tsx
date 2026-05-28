@@ -166,6 +166,13 @@ export function CommitGraphPanel({
 
         const handler = (event: MessageEvent<CommitGraphInbound>) => {
             const data = event.data;
+            if (
+                !data ||
+                typeof data !== "object" ||
+                typeof (data as { type?: unknown }).type !== "string"
+            ) {
+                return;
+            }
             switch (data.type) {
                 case "loadCommits":
                     loadingMore.current = false;

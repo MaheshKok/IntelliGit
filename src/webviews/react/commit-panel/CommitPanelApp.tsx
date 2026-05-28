@@ -133,10 +133,22 @@ function App(): React.ReactElement {
             <ThemeIconFontFaces fonts={state.iconFonts} />
 
             {/* Changes section header */}
-            <div style={sectionHeader} onClick={() => setCommitCollapsed((c) => !c)}>
+            <button
+                style={{
+                    ...sectionHeader,
+                    background: "none",
+                    border: "none",
+                    borderBottom: "1px solid var(--vscode-panel-border)",
+                    fontFamily: "inherit",
+                    width: "100%",
+                    textAlign: "left",
+                }}
+                aria-expanded={!commitCollapsed}
+                onClick={() => setCommitCollapsed((c) => !c)}
+            >
                 <ChevronIcon expanded={!commitCollapsed} />
                 Changes
-            </div>
+            </button>
 
             {/* Changes section body */}
             <div
@@ -205,10 +217,22 @@ function App(): React.ReactElement {
             )}
 
             {/* Graph section header */}
-            <div style={sectionHeader} onClick={() => setGraphCollapsed((c) => !c)}>
+            <button
+                style={{
+                    ...sectionHeader,
+                    background: "none",
+                    border: "none",
+                    borderBottom: "1px solid var(--vscode-panel-border)",
+                    fontFamily: "inherit",
+                    width: "100%",
+                    textAlign: "left",
+                }}
+                aria-expanded={!graphCollapsed}
+                onClick={() => setGraphCollapsed((c) => !c)}
+            >
                 <ChevronIcon expanded={!graphCollapsed} />
                 Graph
-            </div>
+            </button>
 
             {/* Graph section body */}
             <div

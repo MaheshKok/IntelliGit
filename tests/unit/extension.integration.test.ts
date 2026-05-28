@@ -1045,8 +1045,10 @@ describe("extension integration", () => {
             await waitForAsync();
 
             expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitGraphProvider!.refresh).toHaveBeenCalledTimes(1);
 
             latestCommitPanelProvider!.refresh.mockClear();
+            latestCommitGraphProvider!.refresh.mockClear();
 
             textDocListeners[0]?.();
             vi.advanceTimersByTime(300);

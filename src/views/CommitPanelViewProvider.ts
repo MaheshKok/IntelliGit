@@ -101,6 +101,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.selectedCommitDetail = null;
         this.commitDetailFolderIconsByName = {};
         this.branchFolderIconsByName = {};
+        // Bump request sequences so in-flight async responses from the old repo are ignored.
+        this.requestSeq += 1;
+        this.commitDetailSeq += 1;
         this.updateViewCount(0);
         this.postToWebview({
             type: "restoreCommitDraft",

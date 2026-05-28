@@ -449,6 +449,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 commitPanel.refresh().catch((err) => {
                     console.error("[IntelliGit] Docked commit panel refresh failed:", err);
                 });
+                commitGraph.refresh().catch((err) => {
+                    console.error("[IntelliGit] Docked commit graph refresh failed:", err);
+                });
             }),
         );
 

@@ -16,10 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Left panel graph header shows bold "Graph" label; middle panel retains "Commit | Author | Date".
 - Duplicate `intelligit.initializeRepository` command consolidated into a shared `initializeRepository()` handler using `GitOps.init()`.
 - `fetchGitHubRepos` in clone service hardened with request timeout and pagination cap.
+- New event emitters (`onDidChangeFileCount`, `onDidChangeWorkingTree`) and centralized refresh coordination keep docked and undocked UI instances in sync during repository mutations.
 
 ### Fixed
 
 - Commit panel graph rendering: reuse the same proven `CommitList` component instead of custom canvas rendering.
+- Synchronization of working-tree and commit state between docked Commit Panel and undocked views: docked panel now refreshes the commit graph when the undocked view modifies the working tree.
 
 ## [0.8.6] - 2026-05-27
 
