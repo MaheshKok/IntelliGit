@@ -222,9 +222,7 @@ export function CommitList({
 
             {headerLabel ? null : (
                 <div style={headerRowStyle(graphWidth)}>
-                    <span style={headerLabel ? { fontWeight: 700, fontSize: 13 } : { flex: 1 }}>
-                        {headerLabel ?? "Commit"}
-                    </span>
+                    <span style={{ flex: 1 }}>Commit</span>
                     {showAuthorDate && (
                         <>
                             <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>
