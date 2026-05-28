@@ -9,6 +9,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
 
     constructor(
+        private readonly extensionUri: vscode.Uri,
         private readonly contextType: OnboardingContext,
         private readonly title: string,
     ) {}
@@ -21,7 +22,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         this.view = webviewView;
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [],
+            localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
         };
 
         webviewView.onDidDispose(() => {
@@ -48,6 +49,10 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     private getHtml(webview: vscode.Webview): string {
         const isNoWorkspace = this.contextType === "no-workspace";
         const nonce = randomBytes(16).toString("base64");
+
+        const iconUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this.extensionUri, "media", "intelligit.svg"),
+        );
 
         const actions: Array<{ id: string; label: string; icon: string }> = [];
         if (isNoWorkspace) {
@@ -98,7 +103,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
             font-size: var(--vscode-font-size);
             text-align: center;
         }
-        .onboarding-icon { font-size: 40px; margin-bottom: 16px; opacity: 0.6; }
+        .onboarding-icon { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.85; }
         .onboarding-heading {
             font-size: 16px;
             font-weight: 600;
@@ -152,7 +157,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     </style>
 </head>
 <body>
-    <div class="onboarding-icon">🐙</div>
+    <img class="onboarding-icon" src="${iconUri}" alt="IntelliGit" />
     <h1 class="onboarding-heading">${heading}</h1>
     <p class="onboarding-subtitle">${subtitle}</p>
     <div class="onboarding-actions">

@@ -149,11 +149,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new OnboardingViewProvider("no-workspace", "IntelliGit"),
+                new OnboardingViewProvider(context.extensionUri, "no-workspace", "IntelliGit"),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new OnboardingViewProvider("no-workspace", "Commit"),
+                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Commit"),
             ),
         );
         return;
@@ -173,11 +173,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new OnboardingViewProvider("no-git-repo", "IntelliGit"),
+                new OnboardingViewProvider(context.extensionUri, "no-git-repo", "IntelliGit"),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new OnboardingViewProvider("no-git-repo", "Commit"),
+                new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Commit"),
             ),
             vscode.commands.registerCommand("intelligit.selectRepository", async () => {
                 repositories = await discoverGitRepositories(workspaceRoots());

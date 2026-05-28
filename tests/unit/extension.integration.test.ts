@@ -588,6 +588,7 @@ type FakeWebviewView = {
             options: Record<string, unknown>;
             html: string;
             onDidReceiveMessage: ReturnType<typeof vi.fn>;
+            asWebviewUri: (uri: { fsPath?: string; path?: string }) => { fsPath: string; path: string };
         };
         onDidDispose: ReturnType<typeof vi.fn>;
     };
@@ -599,6 +600,10 @@ function createFakeWebviewView(): FakeWebviewView {
     const webview = {
         options: {},
         html: "",
+        asWebviewUri: (uri: { fsPath?: string; path?: string }) => ({
+            fsPath: `webview:${uri.fsPath ?? uri.path ?? ""}`,
+            path: `webview:${uri.path ?? uri.fsPath ?? ""}`,
+        }),
         onDidReceiveMessage: vi.fn((handler: (message: unknown) => void | Promise<void>) => {
             messageHandler = handler;
             return { dispose: vi.fn() };
