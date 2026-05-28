@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.8",
+    "version": "0.8.9",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -86,6 +86,11 @@
                     "id": "intelligit.mergeConflicts",
                     "name": "Merge Conflicts",
                     "when": "intelligit.hasMergeConflicts"
+                },
+                {
+                    "id": "intelligit.fileCountBadge",
+                    "name": "Changes",
+                    "visibility": "hidden"
                 }
             ],
             "intelligitPanel": [

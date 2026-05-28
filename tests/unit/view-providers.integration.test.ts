@@ -681,17 +681,15 @@ describe("view providers integration", () => {
 
         const view = (provider as unknown as { view: Record<string, unknown> }).view;
 
-        // Initial state: getStatus returns 1 file -> numeric description and activity badge,
-        // without the repository name repeated beside the view title.
+        // Initial state: getStatus returns 1 file -> numeric description,
+        // and onDidChangeFileCount fires with count 1 (badge managed externally by badgeView).
         expect(view.description).toBe("1");
-        expect(view.badge).toEqual({ tooltip: "1 changed file", value: 1 });
         expect(counts).toContain(1);
 
-        // After commit, getStatus returns 0 files -> description and badge cleared.
+        // After commit, getStatus returns 0 files -> description cleared and count fires 0.
         gitOps.getStatus.mockResolvedValueOnce([]);
         await webview.send({ type: "commit", message: "feat: clear", amend: false });
         expect(view.description).toBe("");
-        expect(view.badge).toBeUndefined();
         expect(counts).toContain(0);
 
         provider.dispose();

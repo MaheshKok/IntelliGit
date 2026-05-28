@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-05-28
+
+### Changed
+
+- PyCharm theme CSS variables now delegate to VS Code's native CSS custom properties so they adapt to the active colour theme; each variable keeps a hardcoded fallback for environments where the VS Code variable is unavailable.
+- Checkbox unchecked border and checked background now use centralized `--intelligit-pycharm-checkbox-*` variables with `--vscode-checkbox-*` fallbacks.
+
+### Fixed
+
+- Commit tab drag-handle accent switched from `var(--vscode-descriptionForeground)` to `var(--intelligit-pycharm-muted)` for consistent PyCharm theming.
+
 ## [0.8.8] - 2026-05-28
 
 ### Changed
