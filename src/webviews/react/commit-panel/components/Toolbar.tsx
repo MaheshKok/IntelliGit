@@ -103,11 +103,13 @@ function ToolbarButton({
     disabled?: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
+    const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
+    const resolvedColor =
+        iconStyle === "standard" ? "var(--vscode-icon-foreground)" : (color ?? undefined);
     const svgStyle: React.CSSProperties = {
-        ...(color ? { color } : {}),
+        ...(resolvedColor ? { color: resolvedColor } : {}),
         ...(spin ? { animation: "intelligit-spin 1s linear infinite" } : {}),
     };
-    const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
         <Tooltip
             label={label}
