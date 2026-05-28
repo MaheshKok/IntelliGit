@@ -102,44 +102,20 @@ export function NativeCommitGraph({
     );
 
     return (
-        <div
-            style={{
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
-            }}
-        >
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    height: 22,
-                    paddingLeft: 8,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    flexShrink: 0,
-                    color: "var(--vscode-foreground)",
-                }}
-            >
-                Graph
-            </div>
-            <div style={{ flex: 1, overflow: "hidden" }}>
-                <CommitList
-                    commits={commits}
-                    selectedHash={selectedHash}
-                    filterText={filterText}
-                    hasMore={hasMore}
-                    unpushedHashes={unpushedHashes}
-                    selectedBranch={selectedBranch}
-                    onSelectCommit={handleSelectCommit}
-                    onFilterText={handleFilterText}
-                    onLoadMore={handleLoadMore}
-                    onCommitAction={handleCommitAction}
-                    showSearch={false}
-                    showAuthorDate={false}
-                    headerLabel="Graph"
-                />
-            </div>
-        </div>
+        <CommitList
+            commits={commits}
+            selectedHash={selectedHash}
+            filterText={filterText}
+            hasMore={hasMore}
+            unpushedHashes={unpushedHashes}
+            selectedBranch={selectedBranch}
+            onSelectCommit={handleSelectCommit}
+            onFilterText={handleFilterText}
+            onLoadMore={handleLoadMore}
+            onCommitAction={handleCommitAction}
+            showSearch={false}
+            showAuthorDate={false}
+            headerLabel="Graph"
+        />
     );
 }
