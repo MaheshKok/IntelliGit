@@ -252,6 +252,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
         treeDataProvider: mergeConflicts,
     });
+
+    // Hidden tree view that carries the changed-file-count badge on the activity bar icon.
+    const badgeProvider: vscode.TreeDataProvider<never> = {
+        getTreeItem: () => {
+            throw new Error("unreachable");
+        },
+        getChildren: () => [],
+    };
+    const badgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
+        treeDataProvider: badgeProvider,
+    });
+
+    const updateBadge = (count: number) => {
+        badgeView.badge =
+            count > 0
+                ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
+                : undefined;
+    };
     let undocked: UndockedViewProvider | undefined;
 
     // --- Refresh service ---
@@ -522,7 +540,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // --- Register view providers ---
 
     context.subscriptions.push(
+        badgeView,
         mergeConflictsView,
+        commitPanel.onDidChangeFileCount(updateBadge),
         commitPanel.onDidChangeWorkingTree(() => {
             undocked?.refresh().catch((err) => {
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);
