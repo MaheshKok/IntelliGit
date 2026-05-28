@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.9",
+    "version": "0.8.10",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -486,6 +486,19 @@
                     "type": "boolean",
                     "default": false,
                     "markdownDescription": "Open IntelliGit as a unified editor tab when Show Git Log is invoked, enabling native VS Code undocking to a second monitor."
+                },
+                "intelligit.icons": {
+                    "type": "string",
+                    "enum": [
+                        "color",
+                        "standard"
+                    ],
+                    "enumDescriptions": [
+                        "Use IntelliGit's colored icons (default).",
+                        "Use VS Code's monochromatic icon style, consistent with built-in panels."
+                    ],
+                    "default": "color",
+                    "markdownDescription": "Icon style for the IntelliGit commit panel. `color` keeps the colored icons; `standard` uses VS Code's monochromatic icon foreground."
                 }
             }
         }

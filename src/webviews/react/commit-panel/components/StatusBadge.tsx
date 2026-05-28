@@ -4,6 +4,7 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import { GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../../shared/tokens";
+import { getSettings } from "../../shared/settings";
 
 interface Props {
     status: string;
@@ -21,7 +22,11 @@ const PYCHARM_STATUS_COLORS: Record<string, string> = {
 };
 
 function StatusBadgeInner({ status }: Props): React.ReactElement {
-    const color = PYCHARM_STATUS_COLORS[status] ?? GIT_STATUS_COLORS[status] ?? "#888";
+    const { iconStyle } = getSettings();
+    const color =
+        iconStyle === "standard"
+            ? "var(--vscode-foreground)"
+            : (PYCHARM_STATUS_COLORS[status] ?? GIT_STATUS_COLORS[status] ?? "#888");
     const label = GIT_STATUS_LABELS[status] ?? status;
     const letter = status === "?" ? "U" : status;
 

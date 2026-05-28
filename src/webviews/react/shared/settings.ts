@@ -1,10 +1,15 @@
 export interface IntelligitSettings {
     hoverDelay: number;
     tooltipsEnabled: boolean;
+    iconStyle: "color" | "standard";
 }
 
 export const getSettings = (): IntelligitSettings => {
-    const defaultSettings: IntelligitSettings = { hoverDelay: 300, tooltipsEnabled: true };
+    const defaultSettings: IntelligitSettings = {
+        hoverDelay: 300,
+        tooltipsEnabled: true,
+        iconStyle: "color",
+    };
     if (typeof window !== "undefined") {
         const settings = (window as Window & { intelligitSettings?: unknown }).intelligitSettings;
         if (settings && typeof settings === "object") {
@@ -13,6 +18,7 @@ export const getSettings = (): IntelligitSettings => {
                 hoverDelay:
                     typeof settingsObj.hoverDelay === "number" ? settingsObj.hoverDelay : 300,
                 tooltipsEnabled: settingsObj.tooltipsEnabled !== false,
+                iconStyle: settingsObj.iconStyle === "standard" ? "standard" : "color",
             };
         }
     }

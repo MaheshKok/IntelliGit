@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.10] - 2026-05-28
+
+### Added
+
+- `intelligit.icons` setting (`"color"` | `"standard"`, default `"color"`): `standard` renders toolbar icons and status-badge letters using VS Code's monochromatic `--vscode-icon-foreground` token, consistent with native VS Code panels; `color` keeps the existing coloured icon style.
+
+### Fixed
+
+- Activity bar badge showed double the correct file count (e.g. 6 instead of 3) because the commit-panel webview badge and the dedicated `intelligit.fileCountBadge` tree view each contributed the same count to the container. Removed the redundant webview badge so only the dedicated tree view drives the activity bar icon number.
+- "Changes N files" section header in the commit panel counted a file twice when it had both staged and unstaged modifications. Count is now deduped by path.
+
 ## [0.8.9] - 2026-05-28
 
 ### Changed

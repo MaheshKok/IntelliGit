@@ -29,11 +29,14 @@ export function buildWebviewShellHtml({
 
     let hoverDelay = 300;
     let tooltipsEnabled = true;
+    let iconStyle: "color" | "standard" = "color";
     try {
         const config = vscode.workspace?.getConfiguration?.();
         if (config) {
             hoverDelay = config.get?.<number>("editor.hover.delay") ?? 300;
             tooltipsEnabled = config.get?.<boolean>("intelligit.tooltips.enabled") !== false;
+            const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
+            iconStyle = rawIconStyle === "standard" ? "standard" : "color";
         }
     } catch {
         // Safe fallback when workspace is not mocked or available
@@ -64,7 +67,8 @@ ${styleLinks ? `${styleLinks}\n` : ""}
     <script nonce="${nonce}">
         window.intelligitSettings = {
             hoverDelay: ${hoverDelay},
-            tooltipsEnabled: ${tooltipsEnabled}
+            tooltipsEnabled: ${tooltipsEnabled},
+            iconStyle: "${iconStyle}"
         };
     </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>
