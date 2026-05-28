@@ -29,14 +29,14 @@ export function buildWebviewShellHtml({
 
     let hoverDelay = 300;
     let tooltipsEnabled = true;
-    let iconStyle: "color" | "standard" = "color";
+    let iconStyle: "color" | "standard" = "standard";
     try {
         const config = vscode.workspace?.getConfiguration?.();
         if (config) {
             hoverDelay = config.get?.<number>("editor.hover.delay") ?? 300;
             tooltipsEnabled = config.get?.<boolean>("intelligit.tooltips.enabled") !== false;
             const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
-            iconStyle = rawIconStyle === "standard" ? "standard" : "color";
+            iconStyle = rawIconStyle === "color" ? "color" : "standard";
         }
     } catch {
         // Safe fallback when workspace is not mocked or available

@@ -497,8 +497,8 @@
                         "Use IntelliGit's colored icons (default).",
                         "Use VS Code's monochromatic icon style, consistent with built-in panels."
                     ],
-                    "default": "color",
-                    "markdownDescription": "Icon style for the IntelliGit commit panel. `color` keeps the colored icons; `standard` uses VS Code's monochromatic icon foreground."
+                    "default": "standard",
+                    "markdownDescription": "Icon style for the IntelliGit commit panel. `standard` uses VS Code's monochromatic icon foreground (default); `color` uses IntelliGit's coloured icons."
                 }
             }
         }
