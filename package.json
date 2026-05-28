@@ -46,6 +46,7 @@
         "onCommand:intelligit.toggleUndocked",
         "onWebviewPanel:intelligit.undocked",
         "onView:intelligit.commitGraph",
+        "onView:intelligit.sidebarGraph",
         "onCommand:intelligit.cloneRepository",
         "onCommand:intelligit.openFolder",
         "onCommand:intelligit.initializeRepository",
@@ -73,18 +74,18 @@
             "intelligit": [
                 {
                     "id": "intelligit.commitPanel",
-                    "name": "Commit",
+                    "name": "Changes",
+                    "type": "webview"
+                },
+                {
+                    "id": "intelligit.sidebarGraph",
+                    "name": "Graph",
                     "type": "webview"
                 },
                 {
                     "id": "intelligit.mergeConflicts",
                     "name": "Merge Conflicts",
                     "when": "intelligit.hasMergeConflicts"
-                },
-                {
-                    "id": "intelligit.fileCountBadge",
-                    "name": "Changes",
-                    "visibility": "hidden"
                 }
             ],
             "intelligitPanel": [
@@ -358,16 +359,6 @@
                 {
                     "command": "intelligit.openUndocked",
                     "when": "view == intelligit.commitGraph",
-                    "group": "navigation"
-                },
-                {
-                    "command": "intelligit.fileRefresh",
-                    "when": "view == intelligit.commitPanel && !intelligit.commitPanel.refreshing",
-                    "group": "navigation"
-                },
-                {
-                    "command": "intelligit.fileRefreshing",
-                    "when": "view == intelligit.commitPanel && intelligit.commitPanel.refreshing",
                     "group": "navigation"
                 },
                 {

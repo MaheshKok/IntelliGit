@@ -145,6 +145,87 @@ describe("app logic coverage", () => {
         expect(types).toContain("filterText");
     });
 
+    it("CompactCommitGraphApp renders the old commit-panel graph without branch controls", async () => {
+        const postMessage = vi.fn();
+        type CommitListMockProps = {
+            selectedBranch: string | null;
+            showSearch?: boolean;
+            showAuthorDate?: boolean;
+            headerLabel?: string;
+            onSelectCommit: (hash: string) => void;
+            onFilterText: (text: string) => void;
+            onLoadMore: () => void;
+            onCommitAction: (action: string, hash: string) => void;
+        };
+
+        vi.doMock("../../src/webviews/react/shared/vscodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage }),
+        }));
+        vi.doMock("../../src/webviews/react/CommitList", () => ({
+            CommitList: (props: CommitListMockProps) => (
+                <div data-testid="compact-graph">
+                    <span id="branch-scope">{props.selectedBranch ?? "all"}</span>
+                    <span id="compact-search">{String(props.showSearch)}</span>
+                    <span id="compact-author-date">{String(props.showAuthorDate)}</span>
+                    <span id="compact-header">{props.headerLabel}</span>
+                    <button id="compact-select" onClick={() => props.onSelectCommit("abc1234")} />
+                    <button id="compact-filter-short" onClick={() => props.onFilterText("ab")} />
+                    <button id="compact-filter-long" onClick={() => props.onFilterText("abcd")} />
+                    <button id="compact-load-more" onClick={() => props.onLoadMore()} />
+                    <button
+                        id="compact-commit-action"
+                        onClick={() => props.onCommitAction("copyRevision", "abc1234")}
+                    />
+                </div>
+            ),
+        }));
+
+        await import("../../src/webviews/react/CompactCommitGraphApp");
+        await flush();
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "setSelectedBranch", branch: "main" },
+                }),
+            );
+        });
+
+        act(() => {
+            document
+                .getElementById("compact-select")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("compact-filter-short")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("compact-filter-long")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("compact-load-more")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("compact-commit-action")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.querySelector('[data-testid="compact-graph"]')).toBeTruthy();
+        expect(document.getElementById("branch-main")).toBeNull();
+        expect(document.getElementById("compact-search")?.textContent).toBe("false");
+        expect(document.getElementById("compact-author-date")?.textContent).toBe("false");
+        expect(document.getElementById("compact-header")?.textContent).toBe("Graph");
+        expect(document.getElementById("branch-scope")?.textContent).toBe("main");
+
+        const types = postMessage.mock.calls.map((c) => c[0]?.type);
+        expect(types).toContain("ready");
+        expect(types).toContain("selectCommit");
+        expect(types).toContain("filterText");
+        expect(types).toContain("loadMore");
+        expect(types).toContain("commitAction");
+        expect(types).not.toContain("filterBranch");
+        expect(types).not.toContain("branchAction");
+    });
+
     it("CommitPanelApp executes amend/message/commit handlers", async () => {
         const postMessage = vi.fn();
         const dispatch = vi.fn();
@@ -218,22 +299,10 @@ describe("app logic coverage", () => {
         await import("../../src/webviews/react/commit-panel/CommitPanelApp");
         await flush();
 
-        const changesBody = document.querySelector(
-            '[data-testid="commit-panel-changes-body"]',
-        ) as HTMLDivElement | null;
-        const resizeHandle = document.querySelector(
-            '[data-testid="commit-panel-resize-handle"]',
-        ) as HTMLDivElement | null;
-        const graphBody = document.querySelector(
-            '[data-testid="commit-panel-graph-body"]',
-        ) as HTMLDivElement | null;
-        expect(changesBody?.style.flexGrow).toBe("1");
-        expect(changesBody?.style.flexShrink).toBe("1");
-        expect(changesBody?.style.flexBasis).toBe("0px");
-        expect(resizeHandle).toBeTruthy();
-        expect(graphBody?.style.flexGrow).toBe("0");
-        expect(graphBody?.style.flexShrink).toBe("0");
-        expect(graphBody?.style.flexBasis).toBe("auto");
+        expect(document.querySelector('[data-testid="commit-panel-changes-body"]')).toBeNull();
+        expect(document.querySelector('[data-testid="commit-panel-resize-handle"]')).toBeNull();
+        expect(document.querySelector('[data-testid="commit-panel-graph-body"]')).toBeNull();
+        expect(document.body.textContent).toContain("Shelf");
 
         const msg = document.getElementById("msg");
         const amend = document.getElementById("amend");

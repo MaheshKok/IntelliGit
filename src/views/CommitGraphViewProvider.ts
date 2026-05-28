@@ -21,6 +21,7 @@ import { isValidGitHash } from "../services/gitHelpers";
 
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitGraph";
+    public static readonly sidebarViewType = "intelligit.sidebarGraph";
 
     private view?: vscode.WebviewView;
     private currentBranch: string | null = null;
@@ -37,8 +38,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private commitDetailSeq = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
-    private repositoryLabel = "";
-
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
 
@@ -66,13 +65,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
+        private readonly options: {
+            scriptFile?: string;
+            title?: string;
+        } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
 
-    setRepositoryLabel(label: string): void {
-        this.repositoryLabel = label;
-        if (this.view) this.view.description = label;
+    setRepositoryLabel(_label: string): void {
+        if (this.view) this.view.description = undefined;
     }
 
     resolveWebviewView(
@@ -83,7 +85,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
-        webviewView.description = this.repositoryLabel;
+        webviewView.description = undefined;
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -350,8 +352,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         return buildWebviewShellHtml({
             extensionUri: this.extensionUri,
             webview,
-            scriptFile: "webview-commitgraph.js",
-            title: "Commit Graph",
+            scriptFile: this.options.scriptFile ?? "webview-commitgraph.js",
+            title: this.options.title ?? "Commit Graph",
             backgroundVar: "var(--vscode-editor-background)",
         });
     }

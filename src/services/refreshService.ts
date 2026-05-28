@@ -16,6 +16,7 @@ import type { UndockedViewProvider } from "../views/UndockedViewProvider";
 export interface RefreshServiceDeps {
     gitOps: GitOps;
     commitGraph: CommitGraphViewProvider;
+    additionalCommitGraphs?: CommitGraphViewProvider[];
     commitPanel: CommitPanelViewProvider;
     mergeConflicts: MergeConflictsTreeProvider;
     mergeConflictsView: vscode.TreeView<unknown>;
@@ -75,12 +76,18 @@ export class RefreshService implements vscode.Disposable {
         this.fullTimer = setTimeout(() => {
             void (async () => {
                 const branches = await this.deps.gitOps.getBranches();
+                const commitGraphs = [
+                    this.deps.commitGraph,
+                    ...(this.deps.additionalCommitGraphs ?? []),
+                ];
                 this.deps.onBranchesUpdated(branches);
-                this.deps.commitGraph.setBranches(branches);
+                for (const graph of commitGraphs) {
+                    graph.setBranches(branches);
+                }
                 this.deps.commitPanel.setBranches(branches);
                 const undocked = this.deps.getUndocked?.();
                 undocked?.setBranches(branches);
-                await this.deps.commitGraph.refresh();
+                await Promise.all(commitGraphs.map((graph) => graph.refresh()));
                 await this.refreshCommitPanels();
                 await this.refreshMergeConflicts();
             })().catch((err) => {
