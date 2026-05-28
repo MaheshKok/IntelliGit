@@ -7,6 +7,7 @@ import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
+import { ChevronIcon } from "../shared/components/Icons";
 import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
 import { JETBRAINS_UI } from "../shared/tokens";
 import {
@@ -127,6 +128,8 @@ export function CommitInfoPane({
             bg={JETBRAINS_UI.color.panel}
         >
             <Box
+                display="flex"
+                alignItems="center"
                 px="8px"
                 py="4px"
                 fontWeight={600}
@@ -146,7 +149,7 @@ export function CommitInfoPane({
                     }
                 }}
             >
-                {filesCollapsed ? "\u25B6" : "\u25BC"} Changed Files
+                <ChevronIcon expanded={!filesCollapsed} /> Changed Files
             </Box>
             {!filesCollapsed && (
                 <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
@@ -205,6 +208,8 @@ export function CommitInfoPane({
                 overflow="hidden"
             >
                 <Box
+                    display="flex"
+                    alignItems="center"
                     px="8px"
                     py="4px"
                     fontWeight={600}
@@ -223,7 +228,7 @@ export function CommitInfoPane({
                         }
                     }}
                 >
-                    {detailCollapsed ? "\u25B6" : "\u25BC"} Commit Details
+                    <ChevronIcon expanded={!detailCollapsed} /> Commit Details
                 </Box>
                 {!detailCollapsed && (
                     <Box px="12px" py="6px" overflowY="auto" h={`calc(100% - 28px)`}>
@@ -443,19 +448,7 @@ function CommitFolderRow({
             title={folder.path}
         >
             <InfoIndentGuides treeDepth={depth} />
-            <Box
-                as="span"
-                fontSize="11px"
-                w="14px"
-                textAlign="center"
-                flexShrink={0}
-                opacity={0.7}
-                transform={isExpanded ? "rotate(90deg)" : undefined}
-                transition="transform 0.15s ease"
-                display="inline-block"
-            >
-                &#9654;
-            </Box>
+            <ChevronIcon expanded={isExpanded} />
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} opacity={0.85}>
                 {folder.name}

@@ -262,17 +262,56 @@ class MockCommitInfoViewProvider {
 class MockCommitPanelViewProvider {
     static readonly viewType = "intelligit.commitPanel";
     private fileCountEmitter = new MockEventEmitter<number>();
+    private workingTreeEmitter = new MockEventEmitter<void>();
+    private commitSelectedEmitter = new MockEventEmitter<string>();
+    private branchFilterEmitter = new MockEventEmitter<string | null>();
+    private branchActionEmitter = new MockEventEmitter<{ action: string; branchName: string }>();
+    private commitActionEmitter = new MockEventEmitter<{
+        action: string;
+        hash: string;
+    }>();
+    private openCommitFileDiffEmitter = new MockEventEmitter<{
+        commitHash: string;
+        filePath: string;
+    }>();
     constructor(_uri: unknown, _gitOps: unknown) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         latestCommitPanelProvider = this;
     }
     onDidChangeFileCount = this.fileCountEmitter.event;
+    onDidChangeWorkingTree = this.workingTreeEmitter.event;
+    onCommitSelected = this.commitSelectedEmitter.event;
+    onBranchFilterChanged = this.branchFilterEmitter.event;
+    onBranchAction = this.branchActionEmitter.event;
+    onCommitAction = this.commitActionEmitter.event;
+    onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     refresh = vi.fn(async () => undefined);
     setRepositoryRootUri = vi.fn();
     setRepositoryLabel = vi.fn();
+    setBranches = vi.fn();
+    setCommitDetail = vi.fn();
+    clearCommitDetail = vi.fn();
     dispose = vi.fn();
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
+    }
+    emitWorkingTreeChanged(): void {
+        this.workingTreeEmitter.fire(undefined);
+    }
+    emitCommitSelected(hash: string): void {
+        this.commitSelectedEmitter.fire(hash);
+    }
+    emitBranchFilterChanged(value: string | null): void {
+        this.branchFilterEmitter.fire(value);
+    }
+    emitBranchAction(payload: { action: string; branchName: string }): void {
+        this.branchActionEmitter.fire(payload);
+    }
+    emitCommitAction(payload: { action: string; hash: string }): void {
+        this.commitActionEmitter.fire(payload);
+    }
+    emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
+        this.openCommitFileDiffEmitter.fire(payload);
     }
 }
 
@@ -289,6 +328,7 @@ class MockUndockedViewProvider {
         filePath: string;
     }>();
     private fileCountEmitter = new MockEventEmitter<number>();
+    private workingTreeEmitter = new MockEventEmitter<void>();
     private dockRequestedEmitter = new MockEventEmitter<void>();
     private disposeEmitter = new MockEventEmitter<void>();
 
@@ -301,6 +341,7 @@ class MockUndockedViewProvider {
     onCommitAction = this.commitActionEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     onDidChangeFileCount = this.fileCountEmitter.event;
+    onDidChangeWorkingTree = this.workingTreeEmitter.event;
     onDockRequested = this.dockRequestedEmitter.event;
     onDidDispose = this.disposeEmitter.event;
     setRepositoryLabel = vi.fn();
@@ -313,6 +354,9 @@ class MockUndockedViewProvider {
     dispose = vi.fn(() => {
         this.disposeEmitter.fire(undefined);
     });
+    emitWorkingTreeChanged(): void {
+        this.workingTreeEmitter.fire(undefined);
+    }
     requestDock(): void {
         this.dockRequestedEmitter.fire(undefined);
     }
@@ -544,6 +588,7 @@ type FakeWebviewView = {
             options: Record<string, unknown>;
             html: string;
             onDidReceiveMessage: ReturnType<typeof vi.fn>;
+            asWebviewUri: (uri: { fsPath?: string; path?: string }) => { fsPath: string; path: string };
         };
         onDidDispose: ReturnType<typeof vi.fn>;
     };
@@ -555,6 +600,10 @@ function createFakeWebviewView(): FakeWebviewView {
     const webview = {
         options: {},
         html: "",
+        asWebviewUri: (uri: { fsPath?: string; path?: string }) => ({
+            fsPath: `webview:${uri.fsPath ?? uri.path ?? ""}`,
+            path: `webview:${uri.path ?? uri.fsPath ?? ""}`,
+        }),
         onDidReceiveMessage: vi.fn((handler: (message: unknown) => void | Promise<void>) => {
             messageHandler = handler;
             return { dispose: vi.fn() };
@@ -969,6 +1018,62 @@ describe("extension integration", () => {
 
         expect(latestUndockedProvider).not.toBe(firstUndocked);
         expect(latestUndockedProvider?.open).toHaveBeenCalledTimes(1);
+    });
+
+    it("refreshes the undocked commit panel when docked commit state changes", async () => {
+        vi.useFakeTimers();
+        try {
+            configurationValues.set("undockableWindow", true);
+            const { activate } = await import("../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+            } as unknown as MockExtensionContext;
+
+            await activate(context);
+            await registeredCommands.get("intelligit.showGitLog")?.();
+
+            const undocked = latestUndockedProvider;
+            expect(undocked).toBeDefined();
+            latestCommitPanelProvider!.refresh.mockClear();
+            undocked!.refresh.mockClear();
+
+            latestCommitPanelProvider!.emitWorkingTreeChanged();
+            await waitForAsync();
+
+            expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+
+            undocked!.refresh.mockClear();
+
+            undocked!.emitWorkingTreeChanged();
+            await waitForAsync();
+
+            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitGraphProvider!.refresh).toHaveBeenCalledTimes(1);
+
+            latestCommitPanelProvider!.refresh.mockClear();
+            latestCommitGraphProvider!.refresh.mockClear();
+
+            textDocListeners[0]?.();
+            vi.advanceTimersByTime(300);
+            await waitForAsync();
+
+            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
+            expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+
+            latestCommitPanelProvider!.refresh.mockClear();
+            undocked!.refresh.mockClear();
+
+            fsWatchCallbacks[0]?.("change", "index");
+            vi.advanceTimersByTime(300);
+            await waitForAsync();
+
+            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
+            expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("ignores stale undocked restore state on activation and keeps docked providers registered", async () => {

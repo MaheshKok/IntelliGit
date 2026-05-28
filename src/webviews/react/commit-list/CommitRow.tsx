@@ -17,6 +17,9 @@ interface Props {
     laneColor?: string;
     onSelect: (hash: string) => void;
     onContextMenu: (event: React.MouseEvent, commit: Commit) => void;
+    onHover?: (commit: Commit, event: React.MouseEvent) => void;
+    onUnhover?: () => void;
+    showAuthorDate?: boolean;
 }
 
 function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: string } {
@@ -335,6 +338,9 @@ function CommitRowInner({
     laneColor,
     onSelect,
     onContextMenu,
+    onHover,
+    onUnhover,
+    showAuthorDate = true,
 }: Props): React.ReactElement {
     const isMergeCommit = commit.parentHashes.length > 1;
 
@@ -342,6 +348,8 @@ function CommitRowInner({
         <div
             onClick={() => onSelect(commit.hash)}
             onContextMenu={(event) => onContextMenu(event, commit)}
+            onMouseEnter={(event) => onHover?.(commit, event)}
+            onMouseLeave={() => onUnhover?.()}
             style={{
                 height: ROW_HEIGHT,
                 display: "flex",
@@ -364,32 +372,36 @@ function CommitRowInner({
         >
             <CommitMessageCell message={commit.message} refs={commit.refs} />
 
-            <span
-                style={{
-                    width: AUTHOR_COL_WIDTH,
-                    textAlign: "right",
-                    opacity: isMergeCommit ? 1 : 0.7,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    flexShrink: 0,
-                    marginLeft: 4,
-                }}
-            >
-                {commit.author}
-            </span>
+            {showAuthorDate && (
+                <>
+                    <span
+                        style={{
+                            width: AUTHOR_COL_WIDTH,
+                            textAlign: "right",
+                            opacity: isMergeCommit ? 1 : 0.7,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            flexShrink: 0,
+                            marginLeft: 4,
+                        }}
+                    >
+                        {commit.author}
+                    </span>
 
-            <span
-                style={{
-                    width: DATE_COL_WIDTH,
-                    textAlign: "right",
-                    opacity: isMergeCommit ? 0.8 : 0.5,
-                    flexShrink: 0,
-                    marginLeft: 4,
-                    fontSize: "11px",
-                }}
-            >
-                {formatDateTime(commit.date)}
-            </span>
+                    <span
+                        style={{
+                            width: DATE_COL_WIDTH,
+                            textAlign: "right",
+                            opacity: isMergeCommit ? 0.8 : 0.5,
+                            flexShrink: 0,
+                            marginLeft: 4,
+                            fontSize: "11px",
+                        }}
+                    >
+                        {formatDateTime(commit.date)}
+                    </span>
+                </>
+            )}
         </div>
     );
 }
@@ -406,6 +418,7 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.isUnpushed === next.isUnpushed &&
         prev.laneColor === next.laneColor &&
         prev.graphWidth === next.graphWidth &&
+        prev.showAuthorDate === next.showAuthorDate &&
         prev.onSelect === next.onSelect &&
         prev.onContextMenu === next.onContextMenu
     );

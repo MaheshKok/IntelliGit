@@ -4,10 +4,10 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 
-const INDENT_STEP = 18; // must equal ChevronIcon width (14) + marginRight (4)
+const INDENT_STEP = 18; // must equal ChevronIcon width (16) + marginRight (2)
 const INDENT_BASE = 20;
-const GUIDE_BASE = 27; // INDENT_BASE(20) + chevron_half(7) = 27
-const SECTION_GUIDE = 16; // section header mx(4) + px(5) + chevron_half(7) = 16
+const GUIDE_BASE = 28; // INDENT_BASE(20) + chevron_half(8) = 28
+const SECTION_GUIDE = 17; // section header mx(4) + px(5) + chevron_half(8) = 17
 const INDENT_GUIDE_COLOR =
     "var(--vscode-editorIndentGuide-background1, var(--vscode-tree-indentGuidesStroke, rgba(255, 255, 255, 0.2)))";
 

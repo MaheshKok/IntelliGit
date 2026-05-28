@@ -218,6 +218,23 @@ describe("app logic coverage", () => {
         await import("../../src/webviews/react/commit-panel/CommitPanelApp");
         await flush();
 
+        const changesBody = document.querySelector(
+            '[data-testid="commit-panel-changes-body"]',
+        ) as HTMLDivElement | null;
+        const resizeHandle = document.querySelector(
+            '[data-testid="commit-panel-resize-handle"]',
+        ) as HTMLDivElement | null;
+        const graphBody = document.querySelector(
+            '[data-testid="commit-panel-graph-body"]',
+        ) as HTMLDivElement | null;
+        expect(changesBody?.style.flexGrow).toBe("1");
+        expect(changesBody?.style.flexShrink).toBe("1");
+        expect(changesBody?.style.flexBasis).toBe("0px");
+        expect(resizeHandle).toBeTruthy();
+        expect(graphBody?.style.flexGrow).toBe("0");
+        expect(graphBody?.style.flexShrink).toBe("0");
+        expect(graphBody?.style.flexBasis).toBe("auto");
+
         const msg = document.getElementById("msg");
         const amend = document.getElementById("amend");
         const commit = document.getElementById("commit");

@@ -43,6 +43,11 @@ interface Props {
     onFilterText: (text: string) => void;
     onLoadMore: () => void | Promise<void>;
     onCommitAction: (action: CommitAction, hash: string) => void;
+    onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;
+    onCommitUnhover?: () => void;
+    showSearch?: boolean;
+    showAuthorDate?: boolean;
+    headerLabel?: string;
 }
 
 export function CommitList({
@@ -56,6 +61,11 @@ export function CommitList({
     onFilterText,
     onLoadMore,
     onCommitAction,
+    onCommitHover,
+    onCommitUnhover,
+    showSearch = true,
+    showAuthorDate = true,
+    headerLabel,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const viewportRef = useRef<HTMLDivElement>(null);
@@ -176,43 +186,57 @@ export function CommitList({
 
     return (
         <div style={ROOT_STYLE}>
-            <div style={FILTER_BAR_STYLE}>
-                <SearchIcon size={16} style={FILTER_ICON_STYLE} />
-                <div style={FILTER_INPUT_WRAP_STYLE}>
-                    <input
-                        type="text"
-                        placeholder="Text or hash"
-                        value={filterText}
-                        onChange={(event) => onFilterText(event.target.value)}
-                        style={FILTER_INPUT_STYLE}
-                    />
-                    {filterText.length > 0 && (
-                        <button
-                            type="button"
-                            aria-label="Clear commit search"
-                            title="Clear"
-                            onClick={() => onFilterText("")}
-                            style={FILTER_CLEAR_BUTTON_STYLE}
-                        >
-                            <ClearIcon size={12} />
-                        </button>
+            {showSearch ? (
+                <div style={FILTER_BAR_STYLE}>
+                    <SearchIcon size={16} style={FILTER_ICON_STYLE} />
+                    <div style={FILTER_INPUT_WRAP_STYLE}>
+                        <input
+                            type="text"
+                            placeholder="Text or hash"
+                            value={filterText}
+                            onChange={(event) => onFilterText(event.target.value)}
+                            style={FILTER_INPUT_STYLE}
+                        />
+                        {filterText.length > 0 && (
+                            <button
+                                type="button"
+                                aria-label="Clear commit search"
+                                title="Clear"
+                                onClick={() => onFilterText("")}
+                                style={FILTER_CLEAR_BUTTON_STYLE}
+                            >
+                                <ClearIcon size={12} />
+                            </button>
+                        )}
+                    </div>
+                    <span
+                        style={BRANCH_SCOPE_STYLE}
+                        title={
+                            selectedBranch ? `Branch: ${selectedBranch}` : "Branch: All branches"
+                        }
+                    >
+                        Branch: {selectedBranch ?? "All branches"}
+                    </span>
+                </div>
+            ) : null}
+
+            {headerLabel ? null : (
+                <div style={headerRowStyle(graphWidth)}>
+                    <span style={{ flex: 1 }}>Commit</span>
+                    {showAuthorDate && (
+                        <>
+                            <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>
+                                Author
+                            </span>
+                            <span
+                                style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 4 }}
+                            >
+                                Date
+                            </span>
+                        </>
                     )}
                 </div>
-                <span
-                    style={BRANCH_SCOPE_STYLE}
-                    title={selectedBranch ? `Branch: ${selectedBranch}` : "Branch: All branches"}
-                >
-                    Branch: {selectedBranch ?? "All branches"}
-                </span>
-            </div>
-
-            <div style={headerRowStyle(graphWidth)}>
-                <span style={{ flex: 1 }}>Commit</span>
-                <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>Author</span>
-                <span style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 4 }}>
-                    Date
-                </span>
-            </div>
+            )}
 
             <div
                 ref={viewportRef}
@@ -244,6 +268,9 @@ export function CommitList({
                                     laneColor={graphRows[idx]?.color}
                                     onSelect={onSelectCommit}
                                     onContextMenu={handleRowContextMenu}
+                                    onHover={onCommitHover}
+                                    onUnhover={onCommitUnhover}
+                                    showAuthorDate={showAuthorDate}
                                 />
                             );
                         })}

@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import { JETBRAINS_UI } from "../tokens";
 
 export const ICON_SIZE = JETBRAINS_UI.size.icon;
+const CHEVRON_ICON_SIZE = 16;
 
 export const BASE_ICON_STYLE: CSSProperties = {
     flexShrink: 0,
@@ -134,19 +135,29 @@ export function StarIcon({
 export function ChevronIcon({ expanded }: { expanded: boolean }): React.ReactElement {
     return (
         <svg
-            width={ICON_SIZE}
-            height={ICON_SIZE}
-            viewBox="0 0 14 14"
+            width={CHEVRON_ICON_SIZE}
+            height={CHEVRON_ICON_SIZE}
+            viewBox="0 0 16 16"
             aria-hidden="true"
             focusable="false"
             style={{
                 ...BASE_ICON_STYLE,
-                opacity: 0.68,
+                marginRight: 2,
+                opacity: 0.78,
                 transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+                transformOrigin: "center",
                 transition: "transform 0.1s",
+                verticalAlign: "text-bottom",
             }}
         >
-            <path fill="currentColor" d="M3.5 1.5 10.5 7l-7 5.5z" />
+            <path
+                d="M6 4.5 9.5 8 6 11.5"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="1.8"
+            />
         </svg>
     );
 }

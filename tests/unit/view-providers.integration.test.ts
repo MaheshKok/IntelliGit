@@ -251,7 +251,7 @@ describe("view providers integration", () => {
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider("no-workspace", "IntelliGit");
+        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-workspace", "IntelliGit");
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -266,7 +266,7 @@ describe("view providers integration", () => {
 
     it("OnboardingViewProvider renders init, clone, and open-folder actions for an uninitialized workspace", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider("no-git-repo", "Commit");
+        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-git-repo", "Commit");
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -286,7 +286,7 @@ describe("view providers integration", () => {
 
     it("OnboardingViewProvider uses nonce-based CSP for inline style and script blocks", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider("no-git-repo", "Commit");
+        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-git-repo", "Commit");
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -306,7 +306,7 @@ describe("view providers integration", () => {
 
     it("OnboardingViewProvider forwards button messages to extension commands", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider("no-git-repo", "Commit");
+        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-git-repo", "Commit");
         const webview = createWebviewView();
 
         provider.resolveWebviewView(

@@ -149,11 +149,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new OnboardingViewProvider("no-workspace", "IntelliGit"),
+                new OnboardingViewProvider(context.extensionUri, "no-workspace", "IntelliGit"),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new OnboardingViewProvider("no-workspace", "Commit"),
+                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Commit"),
             ),
         );
         return;
@@ -168,19 +168,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             getChildren: () => [],
         };
         context.subscriptions.push(
-            vscode.window.createTreeView("intelligit.fileCountBadge", {
-                treeDataProvider: emptyTreeProvider,
-            }),
             vscode.window.createTreeView("intelligit.mergeConflicts", {
                 treeDataProvider: emptyTreeProvider,
             }),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new OnboardingViewProvider("no-git-repo", "IntelliGit"),
+                new OnboardingViewProvider(context.extensionUri, "no-git-repo", "IntelliGit"),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new OnboardingViewProvider("no-git-repo", "Commit"),
+                new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Commit"),
             ),
             vscode.commands.registerCommand("intelligit.selectRepository", async () => {
                 repositories = await discoverGitRepositories(workspaceRoots());
@@ -252,17 +249,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // --- Register views ---
 
-    const emptyTreeProvider: vscode.TreeDataProvider<never> = {
+    const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
+        treeDataProvider: mergeConflicts,
+    });
+
+    // Hidden tree view that carries the changed-file-count badge on the activity bar icon.
+    const badgeProvider: vscode.TreeDataProvider<never> = {
         getTreeItem: () => {
             throw new Error("unreachable");
         },
         getChildren: () => [],
     };
     const badgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
-        treeDataProvider: emptyTreeProvider,
-    });
-    const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
-        treeDataProvider: mergeConflicts,
+        treeDataProvider: badgeProvider,
     });
 
     const updateBadge = (count: number) => {
@@ -271,6 +270,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
                 : undefined;
     };
+    let undocked: UndockedViewProvider | undefined;
 
     // --- Refresh service ---
 
@@ -285,6 +285,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 onBranchesUpdated: (branches) => {
                     currentBranches = branches;
                 },
+                getUndocked: () => undocked,
             },
             root,
         );
@@ -299,8 +300,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const refreshActiveRepository = async (): Promise<void> => {
         currentBranches = await gitOps.getBranches();
         commitGraph.setBranches(currentBranches);
+        commitPanel.setBranches(currentBranches);
         await commitGraph.refresh();
         await commitPanel.refresh();
+        if (undocked) {
+            undocked.setBranches(currentBranches);
+            await undocked.refresh();
+        }
         await refreshService.refreshMergeConflicts();
         await clearSelection();
     };
@@ -314,18 +320,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         commitGraph.setRepositoryLabel(repository.label);
         commitPanel.setRepositoryRootUri(repoRootUri);
         commitPanel.setRepositoryLabel(repository.label);
+        if (undocked) {
+            undocked.setRepositoryRootUri(repoRootUri);
+            undocked.setRepositoryLabel(repository.label);
+        }
         mergeConflicts.setWorkspaceRoot(repoRootUri);
         refreshService.dispose();
         refreshService = createRefreshService(repoRoot);
         refreshService.registerFileWatchers();
         await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
         await refreshActiveRepository();
-        if (undocked) {
-            undocked.setRepositoryRootUri(repoRootUri);
-            undocked.setRepositoryLabel(repository.label);
-            undocked.setBranches(currentBranches);
-            await undocked.refresh();
-        }
     };
 
     // --- Merge conflict helpers ---
@@ -372,8 +376,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         });
     };
-
-    let undocked: UndockedViewProvider | undefined;
 
     type UndockTarget = "editorTab" | "newWindow";
 
@@ -443,7 +445,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     vscode.window.showErrorMessage(`Failed to open commit diff: ${message}`);
                 }
             }),
-            undocked.onDidChangeFileCount(updateBadge),
+            undocked.onDidChangeWorkingTree(() => {
+                commitPanel.refresh().catch((err) => {
+                    console.error("[IntelliGit] Docked commit panel refresh failed:", err);
+                });
+                commitGraph.refresh().catch((err) => {
+                    console.error("[IntelliGit] Docked commit graph refresh failed:", err);
+                });
+            }),
         );
 
         return undocked;
@@ -537,6 +546,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         badgeView,
         mergeConflictsView,
         commitPanel.onDidChangeFileCount(updateBadge),
+        commitPanel.onDidChangeWorkingTree(() => {
+            undocked?.refresh().catch((err) => {
+                console.error("[IntelliGit] Undocked commit panel refresh failed:", err);
+            });
+        }),
         vscode.window.registerWebviewViewProvider(CommitGraphViewProvider.viewType, commitGraph),
         vscode.window.registerWebviewViewProvider(CommitInfoViewProvider.viewType, commitInfo),
         vscode.window.registerWebviewViewProvider(CommitPanelViewProvider.viewType, commitPanel),
@@ -551,6 +565,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const detail = await gitOps.getCommitDetail(hash);
                 if (requestId !== commitDetailRequestSeq) return;
                 commitGraph.setCommitDetail(detail);
+                commitPanel.setCommitDetail(detail);
+                commitInfo.setCommitDetail(detail);
+            } catch (err) {
+                const msg = getErrorMessage(err);
+                vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
+            }
+        }),
+        commitPanel.onCommitSelected(async (hash) => {
+            const requestId = ++commitDetailRequestSeq;
+            try {
+                const detail = await gitOps.getCommitDetail(hash);
+                if (requestId !== commitDetailRequestSeq) return;
+                commitGraph.setCommitDetail(detail);
+                commitPanel.setCommitDetail(detail);
                 commitInfo.setCommitDetail(detail);
             } catch (err) {
                 const msg = getErrorMessage(err);
@@ -562,6 +590,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         commitGraph.onBranchFilterChanged(() => {
             commitGraph.clearCommitDetail();
+            commitPanel.clearCommitDetail();
+            commitInfo.clear();
+        }),
+        commitPanel.onBranchFilterChanged(() => {
+            commitGraph.clearCommitDetail();
+            commitPanel.clearCommitDetail();
             commitInfo.clear();
         }),
     );
@@ -574,10 +608,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const item: { branch: Branch } = { branch };
             vscode.commands.executeCommand(`intelligit.${action}`, item);
         }),
+        commitPanel.onBranchAction(({ action, branchName }) => {
+            const branch = currentBranches.find((b) => b.name === branchName);
+            if (!branch) return;
+            const item: { branch: Branch } = { branch };
+            vscode.commands.executeCommand(`intelligit.${action}`, item);
+        }),
     );
 
     context.subscriptions.push(
         commitGraph.onCommitAction(async ({ action, hash }) => {
+            try {
+                await handleCommitContextAction({
+                    action,
+                    hash,
+                    executor,
+                    gitOps,
+                    repoRoot,
+                    currentBranches,
+                    refreshAll: () => refreshService.refreshAll(),
+                });
+            } catch (error) {
+                const message = getErrorMessage(error);
+                console.error(`Commit action '${action}' failed:`, error);
+                vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+            }
+        }),
+        commitPanel.onCommitAction(async ({ action, hash }) => {
             try {
                 await handleCommitContextAction({
                     action,
@@ -616,6 +673,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     context.subscriptions.push(
         commitGraph.onOpenCommitFileDiff(handleOpenCommitFileDiff),
+        commitPanel.onOpenCommitFileDiff(handleOpenCommitFileDiff),
         commitInfo.onOpenCommitFileDiff(handleOpenCommitFileDiff),
     );
 
@@ -845,7 +903,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     console.error("Failed to rollback file:", error);
                     vscode.window.showErrorMessage(`Rollback failed: ${message}`);
                 } finally {
-                    await commitPanel.refresh();
+                    await refreshService.refreshCommitPanels();
                 }
             },
         ),
@@ -886,7 +944,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         `Delete failed for '${ctx.filePath}': ${message}`,
                     );
                 } finally {
-                    await commitPanel.refresh();
+                    await refreshService.refreshCommitPanels();
                 }
             },
         ),
@@ -903,7 +961,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     console.error("Failed to shelve file:", error);
                     vscode.window.showErrorMessage(`Shelve failed: ${message}`);
                 } finally {
-                    await commitPanel.refresh();
+                    await refreshService.refreshCommitPanels();
                 }
             },
         ),
@@ -927,7 +985,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             },
         ),
         vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
-            await commitPanel.refresh();
+            await refreshService.refreshCommitPanels();
         }),
         vscode.commands.registerCommand("intelligit.fileRefreshing", () => {
             // No-op: visual-only command shown while refreshing (disabled via enablement).
@@ -938,6 +996,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     currentBranches = await gitOps.getBranches();
     commitGraph.setBranches(currentBranches);
+    commitPanel.setBranches(currentBranches);
 
     // Eagerly fetch file count so the activity bar badge shows immediately.
     commitPanel.refresh().catch((err) => {
