@@ -39,7 +39,7 @@ export function ShelfTab({
     onToggleGroupBy,
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
-    const { hoverDelay, tooltipsEnabled } = getSettings();
+    const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
     const tree = useFileTree(shelfFiles, groupByDir);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(
@@ -318,7 +318,11 @@ export function ShelfTab({
                                                 h="12px"
                                                 viewBox="0 0 16 16"
                                                 opacity={0.95}
-                                                color="#35D46A"
+                                                color={
+                                                    iconStyle === "standard"
+                                                        ? "var(--vscode-icon-foreground)"
+                                                        : "#35D46A"
+                                                }
                                             >
                                                 <path
                                                     fill="currentColor"
@@ -486,12 +490,19 @@ function StashToolbarButton({
     tooltipsEnabled: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
+    const { iconStyle } = getSettings();
+    const resolvedColor = iconStyle === "standard" ? "var(--vscode-icon-foreground)" : color;
     return (
         <Tooltip label={label} fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
             <IconButton
                 aria-label={label}
                 icon={
-                    <svg width="16" height="16" viewBox="0 0 16 16" style={{ color }}>
+                    <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        style={{ color: resolvedColor }}
+                    >
                         {children}
                     </svg>
                 }
