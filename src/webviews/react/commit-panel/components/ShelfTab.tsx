@@ -276,7 +276,7 @@ export function ShelfTab({
                                     }
                                     color={
                                         isExpanded
-                                            ? "var(--vscode-list-activeSelectionForeground)"
+                                            ? "var(--intelligit-pycharm-selected-foreground, var(--vscode-list-activeSelectionForeground))"
                                             : "var(--intelligit-pycharm-foreground)"
                                     }
                                     _hover={{
@@ -316,7 +316,7 @@ export function ShelfTab({
                                             px="7px"
                                             py="1px"
                                             borderRadius="5px"
-                                            bg="var(--vscode-badge-background, var(--intelligit-pycharm-header))"
+                                            bg="var(--intelligit-pycharm-header, var(--vscode-badge-background))"
                                             flexShrink={0}
                                         >
                                             <Box
@@ -416,11 +416,11 @@ export function ShelfTab({
                     h="32px"
                     minW="144px"
                     px="12px"
-                    bg="var(--vscode-button-secondaryBackground, var(--intelligit-pycharm-input))"
-                    borderColor="var(--vscode-button-border, var(--intelligit-pycharm-input-border))"
+                    bg="var(--intelligit-pycharm-input, var(--vscode-button-secondaryBackground))"
+                    borderColor="var(--intelligit-pycharm-input-border, var(--vscode-button-border))"
                     borderRadius="2px"
                     _hover={{
-                        bg: "var(--vscode-button-secondaryHoverBackground, var(--intelligit-pycharm-header))",
+                        bg: "var(--intelligit-pycharm-header, var(--vscode-button-secondaryHoverBackground))",
                     }}
                 >
                     Apply
@@ -434,11 +434,11 @@ export function ShelfTab({
                     h="32px"
                     minW="144px"
                     px="12px"
-                    bg="var(--vscode-button-secondaryBackground, var(--intelligit-pycharm-input))"
-                    borderColor="var(--vscode-button-border, var(--intelligit-pycharm-input-border))"
+                    bg="var(--intelligit-pycharm-input, var(--vscode-button-secondaryBackground))"
+                    borderColor="var(--intelligit-pycharm-input-border, var(--vscode-button-border))"
                     borderRadius="2px"
                     _hover={{
-                        bg: "var(--vscode-button-secondaryHoverBackground, var(--intelligit-pycharm-header))",
+                        bg: "var(--intelligit-pycharm-header, var(--vscode-button-secondaryHoverBackground))",
                     }}
                 >
                     Pop

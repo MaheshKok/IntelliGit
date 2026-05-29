@@ -5,11 +5,11 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.10] - 2026-05-29
+## [0.8.11] - 2026-05-29
 
 ### Fixed
 
-- Stash Panel now adheres to the color theme rather than an hardcoded color
+- Stash Panel now adheres to the color theme rather than a hardcoded color
 
 ## [0.8.10] - 2026-05-28
 
