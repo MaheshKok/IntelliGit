@@ -186,9 +186,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     private async refreshData(silent = true): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
-        void Promise.resolve(
-            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true),
-        ).catch(() => {});
+        if (!silent) {
+            void Promise.resolve(
+                vscode.commands.executeCommand(
+                    "setContext",
+                    "intelligit.commitPanel.refreshing",
+                    true,
+                ),
+            ).catch(() => {});
+        }
         try {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
@@ -238,13 +244,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
-            void Promise.resolve(
-                vscode.commands.executeCommand(
-                    "setContext",
-                    "intelligit.commitPanel.refreshing",
-                    false,
-                ),
-            ).catch(() => {});
+            if (!silent) {
+                void Promise.resolve(
+                    vscode.commands.executeCommand(
+                        "setContext",
+                        "intelligit.commitPanel.refreshing",
+                        false,
+                    ),
+                ).catch(() => {});
+            }
         }
     }
 
