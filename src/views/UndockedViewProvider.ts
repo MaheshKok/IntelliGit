@@ -268,7 +268,7 @@ export class UndockedViewProvider {
 
             // Commit-panel-side
             case "refresh":
-                await this.refreshCommitPanelData();
+                await this.refreshCommitPanelData(false);
                 break;
 
             case "saveCommitDraft": {
@@ -625,8 +625,8 @@ export class UndockedViewProvider {
 
     // --- Commit panel data fetching -----------------------------------------
 
-    private async refreshCommitPanelData(): Promise<void> {
-        this.postToWebview({ type: "refreshing", active: true });
+    private async refreshCommitPanelData(silent = true): Promise<void> {
+        if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
@@ -666,7 +666,7 @@ export class UndockedViewProvider {
                 iconFonts,
             });
         } finally {
-            this.postToWebview({ type: "refreshing", active: false });
+            if (!silent) this.postToWebview({ type: "refreshing", active: false });
         }
     }
 
@@ -760,7 +760,17 @@ export class UndockedViewProvider {
     private registerThemeChangeListeners(): void {
         this.themeChangeDisposables.push(
             ...registerThemeChangeListeners(() => this.refreshThemeDataWithErrorHandling()),
+            vscode.workspace.onDidChangeConfiguration((event) => {
+                if (event.affectsConfiguration("intelligit.commitWindowPosition")) {
+                    this.reloadWebviewHtml();
+                }
+            }),
         );
+    }
+
+    private reloadWebviewHtml(): void {
+        if (!this.panel) return;
+        this.panel.webview.html = this.getHtml(this.panel.webview);
     }
 
     private disposeThemeChangeDisposables(): void {

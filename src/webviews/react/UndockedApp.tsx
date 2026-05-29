@@ -15,6 +15,7 @@ import { ThemeIconFontFaces } from "./shared/components";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import { useCheckedFiles } from "./commit-panel/hooks/useCheckedFiles";
 import theme from "./commit-panel/theme";
+import { getSettings } from "./shared/settings";
 import type {
     Branch,
     Commit,
@@ -285,6 +286,8 @@ function App(): React.ReactElement {
         }
     });
 
+    const commitPanelPosition = getSettings().commitWindowPosition;
+
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnDrag(
         branchWidth,
@@ -305,7 +308,7 @@ function App(): React.ReactElement {
         setCommitPanelWidth,
         MIN_COMMIT_PANEL_WIDTH,
         MAX_COMMIT_PANEL_WIDTH,
-        true,
+        commitPanelPosition === "right",
     );
 
     // --- Persist column widths ---
@@ -561,7 +564,79 @@ function App(): React.ReactElement {
                     </button>
                 </Box>
                 <Box display="flex" flex={1} overflow="hidden" minHeight={0}>
-                    {/* ======== LEFT: Graph panel ======== */}
+                    {/* Divider and commit panel — only on left side */}
+                    {commitPanelPosition === "left" && (
+                        <>
+                            <Box
+                                width={`${commitPanelWidth}px`}
+                                flexShrink={0}
+                                overflow="hidden"
+                                display="flex"
+                                flexDirection="column"
+                            >
+                                <Box
+                                    flex={1}
+                                    overflow="hidden"
+                                    display="flex"
+                                    flexDirection="column"
+                                >
+                                    <TabBar
+                                        stashCount={cpState.stashes.length}
+                                        commitContent={
+                                            <CommitTab
+                                                files={cpState.files}
+                                                commitMessage={cpState.commitMessage}
+                                                isAmend={cpState.isAmend}
+                                                amendBranchCommits={cpState.amendBranchCommits}
+                                                amendBranchHistoryLoaded={
+                                                    cpState.amendBranchHistoryLoaded
+                                                }
+                                                isRefreshing={cpState.isRefreshing}
+                                                checkedPaths={checkedPaths}
+                                                onToggleFile={toggleFile}
+                                                onToggleFolder={toggleFolder}
+                                                onToggleSection={toggleSection}
+                                                isAllChecked={isAllChecked}
+                                                isSomeChecked={isSomeChecked}
+                                                onMessageChange={handleMessageChange}
+                                                onAmendChange={handleAmendChange}
+                                                onCommit={handleCommit}
+                                                onCommitAndPush={handleCommitAndPush}
+                                                folderIcon={cpState.folderIcon}
+                                                folderExpandedIcon={cpState.folderExpandedIcon}
+                                                folderIconsByName={cpState.folderIconsByName}
+                                                groupByDir={groupByDir}
+                                                onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                                            />
+                                        }
+                                        shelfContent={
+                                            <ShelfTab
+                                                stashes={cpState.stashes}
+                                                shelfFiles={cpState.shelfFiles}
+                                                selectedIndex={cpState.selectedShelfIndex}
+                                                folderIcon={cpState.folderIcon}
+                                                folderExpandedIcon={cpState.folderExpandedIcon}
+                                                folderIconsByName={cpState.folderIconsByName}
+                                                groupByDir={groupByDir}
+                                                onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                                            />
+                                        }
+                                    />
+                                </Box>
+                            </Box>
+
+                            <Box
+                                width="4px"
+                                flexShrink={0}
+                                cursor="col-resize"
+                                bg="var(--vscode-panel-border)"
+                                onMouseDown={onCommitPanelDividerMouseDown}
+                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
+                            />
+                        </>
+                    )}
+
+                    {/* Graph panel */}
                     <Box flex={1} display="flex" overflow="hidden" minWidth={0}>
                         <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
                             <BranchColumn
@@ -629,67 +704,77 @@ function App(): React.ReactElement {
                         </div>
                     </Box>
 
-                    {/* ======== Divider between graph and commit panel ======== */}
-                    <Box
-                        width="4px"
-                        flexShrink={0}
-                        cursor="col-resize"
-                        bg="var(--vscode-panel-border)"
-                        onMouseDown={onCommitPanelDividerMouseDown}
-                        _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
-                    />
-
-                    {/* ======== RIGHT: Commit panel ======== */}
-                    <Box
-                        width={`${commitPanelWidth}px`}
-                        flexShrink={0}
-                        overflow="hidden"
-                        display="flex"
-                        flexDirection="column"
-                    >
-                        <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
-                            <TabBar
-                                stashCount={cpState.stashes.length}
-                                commitContent={
-                                    <CommitTab
-                                        files={cpState.files}
-                                        commitMessage={cpState.commitMessage}
-                                        isAmend={cpState.isAmend}
-                                        amendBranchCommits={cpState.amendBranchCommits}
-                                        amendBranchHistoryLoaded={cpState.amendBranchHistoryLoaded}
-                                        isRefreshing={cpState.isRefreshing}
-                                        checkedPaths={checkedPaths}
-                                        onToggleFile={toggleFile}
-                                        onToggleFolder={toggleFolder}
-                                        onToggleSection={toggleSection}
-                                        isAllChecked={isAllChecked}
-                                        isSomeChecked={isSomeChecked}
-                                        onMessageChange={handleMessageChange}
-                                        onAmendChange={handleAmendChange}
-                                        onCommit={handleCommit}
-                                        onCommitAndPush={handleCommitAndPush}
-                                        folderIcon={cpState.folderIcon}
-                                        folderExpandedIcon={cpState.folderExpandedIcon}
-                                        folderIconsByName={cpState.folderIconsByName}
-                                        groupByDir={groupByDir}
-                                        onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                                    />
-                                }
-                                shelfContent={
-                                    <ShelfTab
-                                        stashes={cpState.stashes}
-                                        shelfFiles={cpState.shelfFiles}
-                                        selectedIndex={cpState.selectedShelfIndex}
-                                        folderIcon={cpState.folderIcon}
-                                        folderExpandedIcon={cpState.folderExpandedIcon}
-                                        folderIconsByName={cpState.folderIconsByName}
-                                        groupByDir={groupByDir}
-                                        onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                                    />
-                                }
+                    {/* Divider and commit panel — only on right side */}
+                    {commitPanelPosition === "right" && (
+                        <>
+                            <Box
+                                width="4px"
+                                flexShrink={0}
+                                cursor="col-resize"
+                                bg="var(--vscode-panel-border)"
+                                onMouseDown={onCommitPanelDividerMouseDown}
+                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
                             />
-                        </Box>
-                    </Box>
+
+                            <Box
+                                width={`${commitPanelWidth}px`}
+                                flexShrink={0}
+                                overflow="hidden"
+                                display="flex"
+                                flexDirection="column"
+                            >
+                                <Box
+                                    flex={1}
+                                    overflow="hidden"
+                                    display="flex"
+                                    flexDirection="column"
+                                >
+                                    <TabBar
+                                        stashCount={cpState.stashes.length}
+                                        commitContent={
+                                            <CommitTab
+                                                files={cpState.files}
+                                                commitMessage={cpState.commitMessage}
+                                                isAmend={cpState.isAmend}
+                                                amendBranchCommits={cpState.amendBranchCommits}
+                                                amendBranchHistoryLoaded={
+                                                    cpState.amendBranchHistoryLoaded
+                                                }
+                                                isRefreshing={cpState.isRefreshing}
+                                                checkedPaths={checkedPaths}
+                                                onToggleFile={toggleFile}
+                                                onToggleFolder={toggleFolder}
+                                                onToggleSection={toggleSection}
+                                                isAllChecked={isAllChecked}
+                                                isSomeChecked={isSomeChecked}
+                                                onMessageChange={handleMessageChange}
+                                                onAmendChange={handleAmendChange}
+                                                onCommit={handleCommit}
+                                                onCommitAndPush={handleCommitAndPush}
+                                                folderIcon={cpState.folderIcon}
+                                                folderExpandedIcon={cpState.folderExpandedIcon}
+                                                folderIconsByName={cpState.folderIconsByName}
+                                                groupByDir={groupByDir}
+                                                onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                                            />
+                                        }
+                                        shelfContent={
+                                            <ShelfTab
+                                                stashes={cpState.stashes}
+                                                shelfFiles={cpState.shelfFiles}
+                                                selectedIndex={cpState.selectedShelfIndex}
+                                                folderIcon={cpState.folderIcon}
+                                                folderExpandedIcon={cpState.folderExpandedIcon}
+                                                folderIconsByName={cpState.folderIconsByName}
+                                                groupByDir={groupByDir}
+                                                onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                                            />
+                                        }
+                                    />
+                                </Box>
+                            </Box>
+                        </>
+                    )}
                 </Box>
             </Box>
         </ChakraProvider>

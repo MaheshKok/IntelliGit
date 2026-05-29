@@ -184,8 +184,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         await this.refreshGraphData();
     }
 
-    private async refreshData(): Promise<void> {
-        this.postToWebview({ type: "refreshing", active: true });
+    private async refreshData(silent = true): Promise<void> {
+        if (!silent) this.postToWebview({ type: "refreshing", active: true });
         void Promise.resolve(
             vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true),
         ).catch(() => {});
@@ -237,7 +237,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 iconFonts,
             });
         } finally {
-            this.postToWebview({ type: "refreshing", active: false });
+            if (!silent) this.postToWebview({ type: "refreshing", active: false });
             void Promise.resolve(
                 vscode.commands.executeCommand(
                     "setContext",
@@ -399,7 +399,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
 
             case "refresh":
-                await this.refreshData();
+                await this.refreshData(false);
                 await this.refreshGraphData();
                 break;
 

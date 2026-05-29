@@ -76,12 +76,7 @@ function App(): React.ReactElement {
     }, [stageCheckedAndCommit]);
 
     return (
-        <Box
-            display="flex"
-            flexDirection="column"
-            h="100%"
-            bg="var(--intelligit-pycharm-panel)"
-        >
+        <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
             <ThemeIconFontFaces fonts={state.iconFonts} />
             <TabBar
                 stashCount={state.stashes.length}
