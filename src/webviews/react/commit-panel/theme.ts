@@ -24,6 +24,8 @@ const theme = extendTheme({
                     "var(--vscode-sideBar-border, var(--vscode-panel-border, #3f4c63))",
                 "--intelligit-pycharm-selected":
                     "var(--vscode-list-activeSelectionBackground, #4b5e7d)",
+                "--intelligit-pycharm-selected-foreground":
+                    "var(--vscode-list-activeSelectionForeground, var(--intelligit-pycharm-foreground))",
                 "--intelligit-pycharm-selected-hover":
                     "var(--vscode-list-hoverBackground, #556a8c)",
                 "--intelligit-pycharm-input": "var(--vscode-input-background, #191c24)",
