@@ -30,6 +30,7 @@ export function buildWebviewShellHtml({
     let hoverDelay = 300;
     let tooltipsEnabled = true;
     let iconStyle: "color" | "standard" = "standard";
+    let commitWindowPosition: "left" | "right" = "left";
     try {
         const config = vscode.workspace?.getConfiguration?.();
         if (config) {
@@ -37,6 +38,8 @@ export function buildWebviewShellHtml({
             tooltipsEnabled = config.get?.<boolean>("intelligit.tooltips.enabled") !== false;
             const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
             iconStyle = rawIconStyle === "color" ? "color" : "standard";
+            const rawPosition = config.get?.<string>("intelligit.commitWindowPosition") ?? "left";
+            commitWindowPosition = rawPosition === "right" ? "right" : "left";
         }
     } catch {
         // Safe fallback when workspace is not mocked or available
@@ -68,7 +71,8 @@ ${styleLinks ? `${styleLinks}\n` : ""}
         window.intelligitSettings = {
             hoverDelay: ${hoverDelay},
             tooltipsEnabled: ${tooltipsEnabled},
-            iconStyle: "${iconStyle}"
+            iconStyle: "${iconStyle}",
+            commitWindowPosition: "${commitWindowPosition}"
         };
     </script>
     <script nonce="${nonce}" src="${scriptUri}"></script>

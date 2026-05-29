@@ -123,12 +123,7 @@ export function CommitTab({
                 />
             ) : null}
 
-            <Box
-                flex="1 1 auto"
-                overflowY="auto"
-                minH="40px"
-                bg="var(--intelligit-pycharm-panel)"
-            >
+            <Box flex="1 1 auto" overflowY="auto" minH="40px" bg="var(--intelligit-pycharm-panel)">
                 <FileTree
                     files={files}
                     groupByDir={groupByDir}

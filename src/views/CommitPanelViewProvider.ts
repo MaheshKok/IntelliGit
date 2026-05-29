@@ -184,11 +184,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         await this.refreshGraphData();
     }
 
-    private async refreshData(): Promise<void> {
-        this.postToWebview({ type: "refreshing", active: true });
-        void Promise.resolve(
-            vscode.commands.executeCommand("setContext", "intelligit.commitPanel.refreshing", true),
-        ).catch(() => {});
+    private async refreshData(silent = true): Promise<void> {
+        if (!silent) this.postToWebview({ type: "refreshing", active: true });
+        if (!silent) {
+            void Promise.resolve(
+                vscode.commands.executeCommand(
+                    "setContext",
+                    "intelligit.commitPanel.refreshing",
+                    true,
+                ),
+            ).catch(() => {});
+        }
         try {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
@@ -237,14 +243,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 iconFonts,
             });
         } finally {
-            this.postToWebview({ type: "refreshing", active: false });
-            void Promise.resolve(
-                vscode.commands.executeCommand(
-                    "setContext",
-                    "intelligit.commitPanel.refreshing",
-                    false,
-                ),
-            ).catch(() => {});
+            if (!silent) this.postToWebview({ type: "refreshing", active: false });
+            if (!silent) {
+                void Promise.resolve(
+                    vscode.commands.executeCommand(
+                        "setContext",
+                        "intelligit.commitPanel.refreshing",
+                        false,
+                    ),
+                ).catch(() => {});
+            }
         }
     }
 
@@ -399,7 +407,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
 
             case "refresh":
-                await this.refreshData();
+                await this.refreshData(false);
                 await this.refreshGraphData();
                 break;
 

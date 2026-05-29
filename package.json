@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.11",
+    "version": "0.8.12",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -499,6 +499,19 @@
                     ],
                     "default": "standard",
                     "markdownDescription": "Icon style for the IntelliGit commit panel. `standard` uses VS Code's monochromatic icon foreground (default); `color` uses IntelliGit's coloured icons."
+                },
+                "intelligit.commitWindowPosition": {
+                    "type": "string",
+                    "enum": [
+                        "left",
+                        "right"
+                    ],
+                    "enumDescriptions": [
+                        "Place the commit panel on the left side of the undocked/tabbed window (default).",
+                        "Place the commit panel on the right side of the undocked/tabbed window."
+                    ],
+                    "default": "left",
+                    "markdownDescription": "Position of the commit panel within the undocked/tabbed IntelliGit window. `left` (default) places it on the left side of the graph; `right` places it on the right."
                 }
             }
         }

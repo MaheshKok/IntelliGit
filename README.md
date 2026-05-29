@@ -88,6 +88,38 @@ Why this helps:
 4. Open the bottom IntelliGit panel to inspect graph history, filter by branch, and review commit details.
 5. Use branch or commit context menus for advanced operations.
 
+## Settings
+
+You can configure IntelliGit from VS Code Settings or by adding these keys to `settings.json`.
+
+```jsonc
+{
+  // JetBrains IDE binary path/command or a macOS .app bundle path.
+  // Possible values: "", "pycharm", "idea", "webstorm", "/Applications/PyCharm.app", "C:\\Program Files\\JetBrains\\PyCharm 2025.1\\bin\\pycharm64.exe"
+  "intelligit.jetbrainsMergeTool.path": "",
+
+  // Prefer JetBrains merge tool for conflicts, falling back to VS Code if unavailable.
+  // Possible values: true, false
+  "intelligit.jetbrainsMergeTool.preferExternal": true,
+
+  // Enable tooltips inside IntelliGit webviews.
+  // Possible values: true, false
+  "intelligit.tooltips.enabled": true,
+
+  // Open IntelliGit as a unified editor tab when Show Git Log is invoked.
+  // Possible values: true, false
+  "intelligit.undockableWindow": false,
+
+  // Icon style used in IntelliGit panels.
+  // Possible values: "standard", "color"
+  "intelligit.icons": "standard",
+
+  // Commit panel position inside the undocked/tabbed IntelliGit window.
+  // Possible values: "left", "right"
+  "intelligit.commitWindowPosition": "left"
+}
+```
+
 ## JetBrains Merge Tool Setup (Optional)
 
 IntelliGit can open merge conflicts in a JetBrains IDE merge tool (PyCharm, IntelliJ IDEA, WebStorm, etc.).
