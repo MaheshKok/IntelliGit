@@ -183,12 +183,19 @@ export function ShelfTab({
     }, []);
 
     return (
-        <Flex direction="column" flex={1} overflow="hidden">
+        <Flex
+            direction="column"
+            flex={1}
+            overflow="hidden"
+            bg="var(--intelligit-pycharm-panel)"
+            color="var(--intelligit-pycharm-foreground)"
+        >
             <Flex
                 align="center"
                 minH="34px"
                 px="8px"
-                borderBottom="1px solid var(--vscode-panel-border, #444)"
+                bg="var(--intelligit-pycharm-header)"
+                borderBottom="1px solid var(--intelligit-pycharm-border)"
                 flexShrink={0}
             >
                 <StashToolbarButton
@@ -237,10 +244,10 @@ export function ShelfTab({
                 </StashToolbarButton>
             </Flex>
 
-            <Box flex="1 1 auto" overflowY="auto" pt="1px" bg="#343D4D">
+            <Box flex="1 1 auto" overflowY="auto" pt="1px" bg="var(--intelligit-pycharm-panel)">
                 {stashes.length === 0 ? (
                     <Box
-                        color="var(--vscode-descriptionForeground)"
+                        color="var(--intelligit-pycharm-muted)"
                         fontSize="12px"
                         p="12px"
                         textAlign="center"
@@ -264,18 +271,18 @@ export function ShelfTab({
                                     cursor="pointer"
                                     bg={
                                         isExpanded
-                                            ? "var(--vscode-list-activeSelectionBackground, #53627a)"
+                                            ? "var(--intelligit-pycharm-selected)"
                                             : "transparent"
                                     }
                                     color={
                                         isExpanded
                                             ? "var(--vscode-list-activeSelectionForeground)"
-                                            : "var(--vscode-foreground)"
+                                            : "var(--intelligit-pycharm-foreground)"
                                     }
                                     _hover={{
                                         bg: isExpanded
-                                            ? "var(--vscode-list-activeSelectionBackground)"
-                                            : "var(--vscode-list-hoverBackground)",
+                                            ? "var(--intelligit-pycharm-selected)"
+                                            : "var(--intelligit-pycharm-selected-hover)",
                                     }}
                                     onClick={() => handleStashClick(stash.index)}
                                     onContextMenu={(event) =>
@@ -305,11 +312,11 @@ export function ShelfTab({
                                             alignItems="center"
                                             fontSize="13px"
                                             gap="4px"
-                                            color="#C8CDD7"
+                                            color="var(--intelligit-pycharm-foreground)"
                                             px="7px"
                                             py="1px"
                                             borderRadius="5px"
-                                            bg="rgba(130, 150, 184, 0.28)"
+                                            bg="var(--vscode-badge-background, var(--intelligit-pycharm-header))"
                                             flexShrink={0}
                                         >
                                             <Box
@@ -321,7 +328,7 @@ export function ShelfTab({
                                                 color={
                                                     iconStyle === "standard"
                                                         ? "var(--vscode-icon-foreground)"
-                                                        : "#35D46A"
+                                                        : "var(--vscode-charts-green, #35D46A)"
                                                 }
                                             >
                                                 <path
@@ -338,7 +345,7 @@ export function ShelfTab({
                                         pl="28px"
                                         py="4px"
                                         fontSize="12px"
-                                        color="var(--vscode-descriptionForeground)"
+                                        color="var(--intelligit-pycharm-muted)"
                                     >
                                         Loading...
                                     </Box>
@@ -368,7 +375,7 @@ export function ShelfTab({
                                                     pl="28px"
                                                     py="2px"
                                                     fontSize="12px"
-                                                    color="var(--vscode-descriptionForeground)"
+                                                    color="var(--intelligit-pycharm-muted)"
                                                 >
                                                     No files in this shelved change.
                                                 </Box>
@@ -378,10 +385,10 @@ export function ShelfTab({
                                             h="4px"
                                             flexShrink={0}
                                             cursor="row-resize"
-                                            bg="var(--vscode-panel-border)"
+                                            bg="var(--intelligit-pycharm-border)"
                                             onMouseDown={handleFileTreeDragStart}
                                             _hover={{
-                                                bg: "var(--vscode-focusBorder, #007acc)",
+                                                bg: "var(--intelligit-pycharm-blue)",
                                             }}
                                         />
                                     </>
@@ -397,8 +404,8 @@ export function ShelfTab({
                 gap="10px"
                 px="30px"
                 py="12px"
-                borderTop="1px solid rgba(72, 82, 101, 0.9)"
-                bg="#343D4D"
+                borderTop="1px solid var(--intelligit-pycharm-border)"
+                bg="var(--intelligit-pycharm-panel)"
             >
                 <Button
                     variant="secondary"
@@ -409,10 +416,12 @@ export function ShelfTab({
                     h="32px"
                     minW="144px"
                     px="12px"
-                    bg="#4B566B"
-                    borderColor="#566176"
+                    bg="var(--vscode-button-secondaryBackground, var(--intelligit-pycharm-input))"
+                    borderColor="var(--vscode-button-border, var(--intelligit-pycharm-input-border))"
                     borderRadius="2px"
-                    _hover={{ bg: "#566176" }}
+                    _hover={{
+                        bg: "var(--vscode-button-secondaryHoverBackground, var(--intelligit-pycharm-header))",
+                    }}
                 >
                     Apply
                 </Button>
@@ -425,10 +434,12 @@ export function ShelfTab({
                     h="32px"
                     minW="144px"
                     px="12px"
-                    bg="#4B566B"
-                    borderColor="#566176"
+                    bg="var(--vscode-button-secondaryBackground, var(--intelligit-pycharm-input))"
+                    borderColor="var(--vscode-button-border, var(--intelligit-pycharm-input-border))"
                     borderRadius="2px"
-                    _hover={{ bg: "#566176" }}
+                    _hover={{
+                        bg: "var(--vscode-button-secondaryHoverBackground, var(--intelligit-pycharm-header))",
+                    }}
                 >
                     Pop
                 </Button>
