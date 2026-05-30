@@ -78,6 +78,7 @@ export class UndockedViewProvider {
     readonly onDidDispose = this._onDidDispose.event;
 
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
+    private static readonly COLUMN_WIDTHS_KEY = "intelligit.undockedColumnWidths";
 
     constructor(
         private readonly extensionUri: vscode.Uri,
@@ -202,6 +203,10 @@ export class UndockedViewProvider {
         switch (msg.type) {
             // Graph-side
             case "ready":
+                // Restore column widths first, before the slow git operations
+                // below, so the webview applies saved widths immediately and
+                // never overwrites them with its pre-restore equal widths.
+                this.sendPersistedColumnWidths();
                 await this.iconTheme.initIconThemeData();
                 await this.sendBranches();
                 await this.loadInitial();
@@ -264,6 +269,14 @@ export class UndockedViewProvider {
 
             case "dock":
                 this._onDockRequested.fire();
+                break;
+
+            case "columnWidths":
+                await this.workspaceState?.update(UndockedViewProvider.COLUMN_WIDTHS_KEY, {
+                    branchWidth: this.assertNumber(msg.branchWidth, "branchWidth"),
+                    infoWidth: this.assertNumber(msg.infoWidth, "infoWidth"),
+                    commitPanelWidth: this.assertNumber(msg.commitPanelWidth, "commitPanelWidth"),
+                });
                 break;
 
             // Commit-panel-side
@@ -734,6 +747,22 @@ export class UndockedViewProvider {
 
     private getStoredCommitDraft(): string {
         return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
+    }
+
+    private sendPersistedColumnWidths(): void {
+        const saved = this.workspaceState?.get<{
+            branchWidth: number;
+            infoWidth: number;
+            commitPanelWidth: number;
+        }>(UndockedViewProvider.COLUMN_WIDTHS_KEY);
+        if (saved) {
+            this.postToWebview({
+                type: "columnWidths",
+                branchWidth: saved.branchWidth,
+                infoWidth: saved.infoWidth,
+                commitPanelWidth: saved.commitPanelWidth,
+            });
+        }
     }
 
     // --- Theme change listeners ---------------------------------------------

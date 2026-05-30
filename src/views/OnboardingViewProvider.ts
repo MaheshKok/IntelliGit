@@ -61,11 +61,11 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
                 { id: "openFolder", label: "Open Folder", icon: "\u{1F4C2}" },
             );
         } else {
-            actions.push(
-                { id: "initializeRepository", label: "Initialize Repository", icon: "\u{1F680}" },
-                { id: "cloneRepository", label: "Clone Repository", icon: "\u{1F4E5}" },
-                { id: "openFolder", label: "Open Folder", icon: "\u{1F4C2}" },
-            );
+            actions.push({
+                id: "initializeRepository",
+                label: "Initialize Repository",
+                icon: "\u{1F680}",
+            });
         }
 
         const heading = isNoWorkspace ? "No Folder Open" : "No Git Repository";
@@ -93,17 +93,27 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         body {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            justify-content: flex-start;
             min-height: 100vh;
-            padding: 32px 24px;
+            padding: 12px;
             color: var(--vscode-foreground);
             background: var(--vscode-editor-background);
             font-family: var(--vscode-font-family);
             font-size: var(--vscode-font-size);
-            text-align: center;
+            text-align: left;
         }
-        .onboarding-icon { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.85; }
+        .onboarding-shell {
+            width: 100%;
+            max-width: 320px;
+        }
+        .onboarding-icon {
+            display: block;
+            width: 32px;
+            height: 32px;
+            margin: 0 auto 12px;
+            opacity: 0.85;
+        }
         .onboarding-heading {
             font-size: 16px;
             font-weight: 600;
@@ -113,23 +123,23 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         .onboarding-subtitle {
             font-size: 13px;
             color: var(--vscode-descriptionForeground);
-            margin-bottom: 28px;
-            max-width: 280px;
+            margin-bottom: 16px;
+            max-width: 320px;
             line-height: 1.5;
         }
         .onboarding-actions {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             width: 100%;
-            max-width: 260px;
         }
         .onboarding-btn {
             display: flex;
             align-items: center;
+            justify-content: flex-start;
             gap: 10px;
             width: 100%;
-            padding: 10px 16px;
+            padding: 6px 10px;
             border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border));
             border-radius: 4px;
             background: var(--vscode-button-secondaryBackground);
@@ -157,11 +167,13 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     </style>
 </head>
 <body>
-    <img class="onboarding-icon" src="${iconUri}" alt="IntelliGit" />
-    <h1 class="onboarding-heading">${heading}</h1>
-    <p class="onboarding-subtitle">${subtitle}</p>
-    <div class="onboarding-actions">
-        ${buttonsHtml}
+    <div class="onboarding-shell">
+        <img class="onboarding-icon" src="${iconUri}" alt="IntelliGit" />
+        <h1 class="onboarding-heading">${heading}</h1>
+        <p class="onboarding-subtitle">${subtitle}</p>
+        <div class="onboarding-actions">
+            ${buttonsHtml}
+        </div>
     </div>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();

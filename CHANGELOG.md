@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.13] - 2026-05-30
+
+### Fixed
+
+- Removed duplicate "Changes" display name on the hidden `intelligit.fileCountBadge` tree view that carries the activity bar badge — it no longer shares a name with the real Changes panel.
+- Undocked window sections (Commit, Branches, Graph, Changes) now start with equal widths on first open. Resized widths persist across panel close/reopen via extension workspace state.
+
 ## [0.8.12] - 2026-05-29
 
 ### Added

@@ -8,7 +8,16 @@ import type { CommitGraphInbound } from "../commitGraphTypes";
 
 // --- Inbound (extension → webview) ---
 // Union of all inbound message types from both views.
-export type UnifiedInbound = CommitGraphInbound | CommitPanelInbound;
+export type UnifiedInbound =
+    | CommitGraphInbound
+    | CommitPanelInbound
+    // Extension-sent column widths (persisted across panel open/close)
+    | {
+          type: "columnWidths";
+          branchWidth: number;
+          infoWidth: number;
+          commitPanelWidth: number;
+      };
 
 // --- Outbound (webview → extension) ---
 export type UnifiedOutbound =
@@ -52,4 +61,11 @@ export type UnifiedOutbound =
     | { type: "showShelfDiff"; index: number; path: string }
     | { type: "openFile"; path: string }
     | { type: "deleteFile"; path: string }
-    | { type: "showHistory"; path: string };
+    | { type: "showHistory"; path: string }
+    // Column width persistence
+    | {
+          type: "columnWidths";
+          branchWidth: number;
+          infoWidth: number;
+          commitPanelWidth: number;
+      };
