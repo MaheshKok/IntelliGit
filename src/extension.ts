@@ -538,7 +538,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             gitOps,
                             repoRoot,
                             currentBranches,
-                            refreshAll: () => undocked?.refresh() ?? Promise.resolve(),
+                            refreshAll: () => refreshService.refreshAll(),
                         });
                     } catch (error) {
                         const message = getErrorMessage(error);
@@ -546,20 +546,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         vscode.window.showErrorMessage(`Commit action failed: ${message}`);
                     }
                 }),
-                undocked.onOpenCommitFileDiff(async (params) => {
-                    try {
-                        await openCommitFileDiff(
-                            params.commitHash,
-                            params.filePath,
-                            repoRoot,
-                            gitOps,
-                            executor,
-                        );
-                    } catch (error) {
-                        const message = getErrorMessage(error);
-                        vscode.window.showErrorMessage(`Failed to open commit diff: ${message}`);
-                    }
-                }),
+                undocked.onOpenCommitFileDiff(handleOpenCommitFileDiff),
                 undocked.onDidChangeWorkingTree(() => {
                     commitPanel.refresh().catch((err) => {
                         console.error("[IntelliGit] Docked commit panel refresh failed:", err);

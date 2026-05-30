@@ -358,25 +358,34 @@ function App(): React.ReactElement {
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
-            return typeof w === "number" ? w : computeEqualSectionWidth();
+            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
+            return Math.max(MIN_BRANCH_WIDTH, Math.min(MAX_BRANCH_WIDTH, raw));
         } catch {
-            return computeEqualSectionWidth();
+            return Math.max(
+                MIN_BRANCH_WIDTH,
+                Math.min(MAX_BRANCH_WIDTH, computeEqualSectionWidth()),
+            );
         }
     });
     const [infoWidth, setInfoWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
-            return typeof w === "number" ? w : computeEqualSectionWidth();
+            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
+            return Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, raw));
         } catch {
-            return computeEqualSectionWidth();
+            return Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, computeEqualSectionWidth()));
         }
     });
     const [commitPanelWidth, setCommitPanelWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.commitPanelWidth;
-            return typeof w === "number" ? w : computeEqualSectionWidth();
+            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
+            return Math.max(MIN_COMMIT_PANEL_WIDTH, Math.min(MAX_COMMIT_PANEL_WIDTH, raw));
         } catch {
-            return computeEqualSectionWidth();
+            return Math.max(
+                MIN_COMMIT_PANEL_WIDTH,
+                Math.min(MAX_COMMIT_PANEL_WIDTH, computeEqualSectionWidth()),
+            );
         }
     });
 

@@ -273,9 +273,9 @@ export class UndockedViewProvider {
 
             case "columnWidths":
                 await this.workspaceState?.update(UndockedViewProvider.COLUMN_WIDTHS_KEY, {
-                    branchWidth: msg.branchWidth,
-                    infoWidth: msg.infoWidth,
-                    commitPanelWidth: msg.commitPanelWidth,
+                    branchWidth: this.assertNumber(msg.branchWidth, "branchWidth"),
+                    infoWidth: this.assertNumber(msg.infoWidth, "infoWidth"),
+                    commitPanelWidth: this.assertNumber(msg.commitPanelWidth, "commitPanelWidth"),
                 });
                 break;
 
