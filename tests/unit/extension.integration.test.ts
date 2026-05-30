@@ -598,7 +598,10 @@ type FakeWebviewView = {
             options: Record<string, unknown>;
             html: string;
             onDidReceiveMessage: ReturnType<typeof vi.fn>;
-            asWebviewUri: (uri: { fsPath?: string; path?: string }) => { fsPath: string; path: string };
+            asWebviewUri: (uri: { fsPath?: string; path?: string }) => {
+                fsPath: string;
+                path: string;
+            };
         };
         onDidDispose: ReturnType<typeof vi.fn>;
     };
@@ -821,22 +824,22 @@ describe("extension integration", () => {
         await activate(context);
 
         const graphWebview = resolveRegisteredWebviewProvider("intelligit.commitGraph");
+        const sidebarGraphWebview = resolveRegisteredWebviewProvider("intelligit.sidebarGraph");
         const panelWebview = resolveRegisteredWebviewProvider("intelligit.commitPanel");
 
         expect(renderedButtonActions(graphWebview.view.webview.html)).toEqual([
             "initializeRepository",
-            "cloneRepository",
-            "openFolder",
+        ]);
+        expect(renderedButtonActions(sidebarGraphWebview.view.webview.html)).toEqual([
+            "initializeRepository",
         ]);
         expect(renderedButtonActions(panelWebview.view.webview.html)).toEqual([
             "initializeRepository",
-            "cloneRepository",
-            "openFolder",
         ]);
         expect(registeredCommands.has("intelligit.initializeRepository")).toBe(true);
     });
 
-    it("initializes Git in an uninitialized workspace and prompts reload after rediscovery", async () => {
+    it("initializes Git in an uninitialized workspace and activates repository views without reload", async () => {
         let initialized = false;
         gitOpsState.isRepository.mockImplementation(async () => initialized);
         executorRun.mockImplementation(async (args: string[]) => {
@@ -846,9 +849,6 @@ describe("extension integration", () => {
             }
             return defaultExecutorRunImpl(args);
         });
-        showInformationMessage.mockImplementation(async (_message: string, ...items: string[]) =>
-            items.includes("Reload Now") ? "Reload Now" : undefined,
-        );
         const { activate } = await import("../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -860,11 +860,13 @@ describe("extension integration", () => {
 
         expect(executorRun).toHaveBeenCalledWith(["init"]);
         expect(gitOpsState.isRepository).toHaveBeenCalledTimes(2);
-        expect(showInformationMessage).toHaveBeenCalledWith(
-            "Repository initialized. Reload window to activate IntelliGit?",
-            "Reload Now",
-        );
-        expect(executeCommandFallback).toHaveBeenCalledWith("workbench.action.reloadWindow");
+        expect(showInformationMessage).toHaveBeenCalledWith("Repository initialized.");
+        expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
+        expect(latestCommitGraphProvider).toBeDefined();
+        expect(latestSidebarGraphProvider).toBeDefined();
+        expect(latestCommitPanelProvider).toBeDefined();
+        expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
+        expect(latestCommitPanelProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
     });
 
     it("disposes stale restored undocked panels instead of leaving an empty editor", async () => {

@@ -251,7 +251,11 @@ describe("view providers integration", () => {
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-workspace", "IntelliGit");
+        const provider = new OnboardingViewProvider(
+            { fsPath: "/ext", path: "/ext" },
+            "no-workspace",
+            "IntelliGit",
+        );
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -264,9 +268,13 @@ describe("view providers integration", () => {
         expect(renderedButtonActions(html)).toEqual(["cloneRepository", "openFolder"]);
     });
 
-    it("OnboardingViewProvider renders init, clone, and open-folder actions for an uninitialized workspace", async () => {
+    it("OnboardingViewProvider renders only initialize for an uninitialized workspace", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-git-repo", "Commit");
+        const provider = new OnboardingViewProvider(
+            { fsPath: "/ext", path: "/ext" },
+            "no-git-repo",
+            "Commit",
+        );
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -276,17 +284,17 @@ describe("view providers integration", () => {
         );
 
         const html = (webview.view.webview as { html: string }).html;
-        expect(renderedButtonActions(html)).toEqual([
-            "initializeRepository",
-            "cloneRepository",
-            "openFolder",
-        ]);
+        expect(renderedButtonActions(html)).toEqual(["initializeRepository"]);
         expect(html).toContain("btn-primary");
     });
 
     it("OnboardingViewProvider uses nonce-based CSP for inline style and script blocks", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-git-repo", "Commit");
+        const provider = new OnboardingViewProvider(
+            { fsPath: "/ext", path: "/ext" },
+            "no-git-repo",
+            "Commit",
+        );
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
@@ -306,7 +314,11 @@ describe("view providers integration", () => {
 
     it("OnboardingViewProvider forwards button messages to extension commands", async () => {
         const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
-        const provider = new OnboardingViewProvider({ fsPath: "/ext", path: "/ext" }, "no-git-repo", "Commit");
+        const provider = new OnboardingViewProvider(
+            { fsPath: "/ext", path: "/ext" },
+            "no-git-repo",
+            "Commit",
+        );
         const webview = createWebviewView();
 
         provider.resolveWebviewView(
