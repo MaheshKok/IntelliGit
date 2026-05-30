@@ -36,13 +36,25 @@ const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
-const DEFAULT_BRANCH_WIDTH = 260;
 const MIN_INFO_WIDTH = 250;
 const MAX_INFO_WIDTH = 760;
-const DEFAULT_INFO_WIDTH = 330;
-const DEFAULT_COMMIT_PANEL_WIDTH = 360;
 const MIN_COMMIT_PANEL_WIDTH = 260;
 const MAX_COMMIT_PANEL_WIDTH = 600;
+const DIVIDER_WIDTH = 4;
+
+// Compute equal initial width for all four sections from the viewport.
+// Sections: Commit | Branches | Graph | Changes (Info)
+// Three dividers (4px each) sit between the four sections.
+function computeEqualSectionWidth(): number {
+    if (typeof window === "undefined") return 300;
+    const available = window.innerWidth - 3 * DIVIDER_WIDTH;
+    // Clamp to MIN_COMMIT_PANEL_WIDTH (the highest min) so equal widths work
+    return Math.max(MIN_COMMIT_PANEL_WIDTH, Math.floor(available / 4));
+}
+
+function clampWidth(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+}
 
 function useColumnDrag(
     width: number,
@@ -334,28 +346,37 @@ function App(): React.ReactElement {
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
 
+    // Guards the cross-session width persistence: stays false until either the
+    // extension restores saved widths or the user actually drags a divider.
+    // This prevents the initial equal widths (computed before restore) from
+    // being sent back to the extension and clobbering the persisted values.
+    const widthsHydratedRef = useRef(false);
+    const markWidthsHydrated = useCallback(() => {
+        widthsHydratedRef.current = true;
+    }, []);
+
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
-            return typeof w === "number" ? w : DEFAULT_BRANCH_WIDTH;
+            return typeof w === "number" ? w : computeEqualSectionWidth();
         } catch {
-            return DEFAULT_BRANCH_WIDTH;
+            return computeEqualSectionWidth();
         }
     });
     const [infoWidth, setInfoWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
-            return typeof w === "number" ? w : DEFAULT_INFO_WIDTH;
+            return typeof w === "number" ? w : computeEqualSectionWidth();
         } catch {
-            return DEFAULT_INFO_WIDTH;
+            return computeEqualSectionWidth();
         }
     });
     const [commitPanelWidth, setCommitPanelWidth] = useState(() => {
         try {
             const w = (vscode.getState() as Record<string, unknown> | undefined)?.commitPanelWidth;
-            return typeof w === "number" ? w : DEFAULT_COMMIT_PANEL_WIDTH;
+            return typeof w === "number" ? w : computeEqualSectionWidth();
         } catch {
-            return DEFAULT_COMMIT_PANEL_WIDTH;
+            return computeEqualSectionWidth();
         }
     });
 
@@ -406,6 +427,26 @@ function App(): React.ReactElement {
         } catch {
             /* ignore */
         }
+    }, [branchWidth, infoWidth, commitPanelWidth]);
+
+    // --- Send column widths to extension for cross-session persistence ---
+    const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        // Never persist until hydrated, otherwise the pre-restore equal widths
+        // would overwrite the user's saved widths in the extension.
+        if (!widthsHydratedRef.current) return;
+        if (widthSendTimer.current) clearTimeout(widthSendTimer.current);
+        widthSendTimer.current = setTimeout(() => {
+            vscode.postMessage({
+                type: "columnWidths",
+                branchWidth,
+                infoWidth,
+                commitPanelWidth,
+            });
+        }, 300); // debounce: only fire 300ms after the last drag event
+        return () => {
+            if (widthSendTimer.current) clearTimeout(widthSendTimer.current);
+        };
     }, [branchWidth, infoWidth, commitPanelWidth]);
 
     // --- Persist groupByDir ---
@@ -512,6 +553,27 @@ function App(): React.ReactElement {
 
                 case "refreshing":
                     cpDispatch({ type: "SET_REFRESHING", active: data.active });
+                    return;
+
+                // Restore persisted column widths from extension
+                case "columnWidths":
+                    // Mark hydrated first so the subsequent state updates are
+                    // allowed to persist (and future user drags too).
+                    markWidthsHydrated();
+                    if (typeof data.branchWidth === "number")
+                        setBranchWidth(
+                            clampWidth(data.branchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH),
+                        );
+                    if (typeof data.infoWidth === "number")
+                        setInfoWidth(clampWidth(data.infoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH));
+                    if (typeof data.commitPanelWidth === "number")
+                        setCommitPanelWidth(
+                            clampWidth(
+                                data.commitPanelWidth,
+                                MIN_COMMIT_PANEL_WIDTH,
+                                MAX_COMMIT_PANEL_WIDTH,
+                            ),
+                        );
                     return;
 
                 case "error":
@@ -676,7 +738,10 @@ function App(): React.ReactElement {
                                 flexShrink={0}
                                 cursor="col-resize"
                                 bg="var(--vscode-panel-border)"
-                                onMouseDown={onCommitPanelDividerMouseDown}
+                                onMouseDown={(e) => {
+                                    markWidthsHydrated();
+                                    onCommitPanelDividerMouseDown(e);
+                                }}
                                 _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
                             />
                         </>
@@ -703,7 +768,10 @@ function App(): React.ReactElement {
                                 cursor: "col-resize",
                                 background: "var(--vscode-panel-border)",
                             }}
-                            onMouseDown={onBranchDividerMouseDown}
+                            onMouseDown={(e) => {
+                                markWidthsHydrated();
+                                onBranchDividerMouseDown(e);
+                            }}
                         />
 
                         <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
@@ -729,7 +797,10 @@ function App(): React.ReactElement {
                                     cursor: "col-resize",
                                     background: "var(--vscode-panel-border)",
                                 }}
-                                onMouseDown={onInfoDividerMouseDown}
+                                onMouseDown={(e) => {
+                                    markWidthsHydrated();
+                                    onInfoDividerMouseDown(e);
+                                }}
                             />
 
                             <div
@@ -758,7 +829,10 @@ function App(): React.ReactElement {
                                 flexShrink={0}
                                 cursor="col-resize"
                                 bg="var(--vscode-panel-border)"
-                                onMouseDown={onCommitPanelDividerMouseDown}
+                                onMouseDown={(e) => {
+                                    markWidthsHydrated();
+                                    onCommitPanelDividerMouseDown(e);
+                                }}
                                 _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
                             />
 
