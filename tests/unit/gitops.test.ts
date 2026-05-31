@@ -966,8 +966,52 @@ describe("GitOps", () => {
             await ops.commitAndPush("msg");
 
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls;
-            expect(calls[0][0]).toEqual(["commit", "-m", "msg"]);
-            expect(calls[1][0]).toEqual(["push"]);
+            expect(calls[0][0]).toEqual(["rev-parse", "--abbrev-ref", "@{upstream}"]);
+            expect(calls[1][0]).toEqual(["commit", "-m", "msg"]);
+            expect(calls[2][0]).toEqual(["push"]);
+        });
+
+        it("checks the upstream remote before committing", async () => {
+            const executor = createMockExecutor({
+                "rev-parse --abbrev-ref @{upstream}": "origin/main\n",
+                "ls-remote --exit-code origin": "feed1234\trefs/heads/main\n",
+            });
+            const ops = new GitOps(executor);
+            await ops.commitAndPush("msg");
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toEqual([
+                ["rev-parse", "--abbrev-ref", "@{upstream}"],
+                ["ls-remote", "--exit-code", "origin"],
+                ["commit", "-m", "msg"],
+                ["push"],
+            ]);
+        });
+
+        it("does not commit when the upstream remote repository is unavailable", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key === "rev-parse --abbrev-ref @{upstream}") return "origin/main\n";
+                    if (key === "ls-remote --exit-code origin") {
+                        throw new Error(
+                            "remote: Repository not found.\nfatal: repository 'https://github.com/MaheshKok/practice.git/' not found",
+                        );
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.commitAndPush("msg")).rejects.toThrow(
+                'Push remote "origin" is unavailable.',
+            );
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toEqual([
+                ["rev-parse", "--abbrev-ref", "@{upstream}"],
+                ["ls-remote", "--exit-code", "origin"],
+            ]);
         });
     });
 

@@ -274,6 +274,7 @@ export class UndockedViewProvider {
             case "columnWidths":
                 await this.workspaceState?.update(UndockedViewProvider.COLUMN_WIDTHS_KEY, {
                     branchWidth: this.assertNumber(msg.branchWidth, "branchWidth"),
+                    graphWidth: this.assertNumber(msg.graphWidth, "graphWidth"),
                     infoWidth: this.assertNumber(msg.infoWidth, "infoWidth"),
                     commitPanelWidth: this.assertNumber(msg.commitPanelWidth, "commitPanelWidth"),
                 });
@@ -406,6 +407,12 @@ export class UndockedViewProvider {
                 this._onDidChangeWorkingTree.fire();
                 break;
             }
+
+            case "publishBranch":
+                await vscode.commands.executeCommand("intelligit.publishBranch");
+                await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
+                break;
 
             case "getLastCommitMessage": {
                 const lastMsg = await this.gitOps.getLastCommitMessage();
@@ -644,6 +651,7 @@ export class UndockedViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
+            const currentBranchHasUpstream = await this.currentBranchHasUpstream();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
 
             // Default to first stash
@@ -677,6 +685,7 @@ export class UndockedViewProvider {
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: cpFolderIconsByName,
                 iconFonts,
+                currentBranchHasUpstream,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -696,6 +705,12 @@ export class UndockedViewProvider {
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
         });
+    }
+
+    private async currentBranchHasUpstream(): Promise<boolean> {
+        const branches = await this.gitOps.getBranches();
+        const currentBranch = branches.find((branch) => branch.isCurrent);
+        return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
 
     // --- Commit detail ------------------------------------------------------
@@ -752,6 +767,7 @@ export class UndockedViewProvider {
     private sendPersistedColumnWidths(): void {
         const saved = this.workspaceState?.get<{
             branchWidth: number;
+            graphWidth?: number;
             infoWidth: number;
             commitPanelWidth: number;
         }>(UndockedViewProvider.COLUMN_WIDTHS_KEY);
@@ -759,10 +775,25 @@ export class UndockedViewProvider {
             this.postToWebview({
                 type: "columnWidths",
                 branchWidth: saved.branchWidth,
+                graphWidth: saved.graphWidth ?? saved.infoWidth,
                 infoWidth: saved.infoWidth,
                 commitPanelWidth: saved.commitPanelWidth,
             });
         }
+    }
+
+    private sendSettings(): void {
+        this.postToWebview({
+            type: "settings",
+            commitWindowPosition: this.resolveCommitWindowPosition(),
+        });
+    }
+
+    private resolveCommitWindowPosition(): "left" | "right" {
+        const config = vscode.workspace.getConfiguration();
+        const rawPosition = config.get<string>("intelligit.commitWindowPosition") ?? "auto";
+        if (rawPosition === "left" || rawPosition === "right") return rawPosition;
+        return config.get<string>("workbench.sideBar.location") === "right" ? "right" : "left";
     }
 
     // --- Theme change listeners ---------------------------------------------
@@ -790,16 +821,14 @@ export class UndockedViewProvider {
         this.themeChangeDisposables.push(
             ...registerThemeChangeListeners(() => this.refreshThemeDataWithErrorHandling()),
             vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration("intelligit.commitWindowPosition")) {
-                    this.reloadWebviewHtml();
+                if (
+                    event.affectsConfiguration("intelligit.commitWindowPosition") ||
+                    event.affectsConfiguration("workbench.sideBar.location")
+                ) {
+                    this.sendSettings();
                 }
             }),
         );
-    }
-
-    private reloadWebviewHtml(): void {
-        if (!this.panel) return;
-        this.panel.webview.html = this.getHtml(this.panel.webview);
     }
 
     private disposeThemeChangeDisposables(): void {

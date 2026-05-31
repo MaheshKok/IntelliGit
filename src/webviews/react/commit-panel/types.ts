@@ -24,6 +24,7 @@ export type OutboundMessage =
     | { type: "commitSelected"; paths: string[]; message: string; amend: boolean; push: boolean }
     | { type: "commit"; message: string; amend: boolean }
     | { type: "commitAndPush"; message: string; amend: boolean }
+    | { type: "publishBranch" }
     | { type: "getLastCommitMessage" }
     | { type: "getAmendBranchCommits" }
     | { type: "rollback"; paths: string[] }
@@ -50,6 +51,7 @@ export type InboundMessage =
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
+          currentBranchHasUpstream?: boolean;
       }
     | { type: "restoreCommitDraft"; message: string }
     | { type: "lastCommitMessage"; message: string }
@@ -75,6 +77,7 @@ export interface CommitPanelState {
     amendBranchHistoryLoaded: boolean;
     isRefreshing: boolean;
     error: string | null;
+    currentBranchHasUpstream: boolean;
 }
 
 /** Actions dispatched by the message handler and UI events. */
@@ -89,6 +92,7 @@ export type CommitPanelAction =
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
+          currentBranchHasUpstream: boolean;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }

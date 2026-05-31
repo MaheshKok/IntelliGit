@@ -199,6 +199,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
+            const currentBranchHasUpstream = await this.currentBranchHasUpstream();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
 
             const hasSelected =
@@ -241,6 +242,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.folderIconsByName,
                 iconFonts,
+                currentBranchHasUpstream,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -703,9 +705,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     folderExpandedIcon: folderIcons.folderExpandedIcon,
                     folderIconsByName: this.folderIconsByName,
                     iconFonts,
+                    currentBranchHasUpstream: await this.currentBranchHasUpstream(),
                 });
                 break;
             }
+
+            case "publishBranch":
+                await vscode.commands.executeCommand("intelligit.publishBranch");
+                await this.refreshData();
+                this._onDidChangeWorkingTree.fire();
+                break;
 
             case "showShelfDiff": {
                 const index = this.assertNumber(msg.index, "index");
@@ -859,6 +868,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         } catch {
             // Silently ignore — publish is optional, don't block the user
         }
+    }
+
+    private async currentBranchHasUpstream(): Promise<boolean> {
+        const branches = await this.gitOps.getBranches();
+        const currentBranch = branches.find((branch) => branch.isCurrent);
+        return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
 
     private refreshDataWithErrorHandling(): void {

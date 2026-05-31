@@ -5,12 +5,28 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.14] - 2026-05-30
+
+### Fixed
+
+- Graph view onboarding now stays blank when no workspace or no Git repository is available, while IntelliGit and Changes keep the clone/open/initialize actions.
+- Removed duplicate "Changes" display name on the hidden `intelligit.fileCountBadge` tree view that carries the activity bar badge — it no longer shares a name with the real Changes panel.
+- Undocked window sections (Commit, Branches, Graph, Changes) now start with equal widths on first open. Resized widths persist across panel close/reopen via extension workspace state.
+- `intelligit.commitWindowPosition` now defaults to `auto`, following VS Code's `workbench.sideBar.location` unless explicitly set to `left` or `right`.
+- Commit panel now shows "Publish Branch..." instead of "Commit and Push..." when the current branch has no upstream, avoiding `git push` with no configured destination.
+- Commit and Push now checks the configured upstream remote before committing, so deleted or inaccessible remote repositories fail preemptively instead of leaving a new local commit behind.
+- Undocked window layout changes from sidebar-position settings now preserve graph selection/filter state and clamp restored pane widths to the visible viewport.
+
 ## [0.8.13] - 2026-05-30
 
 ### Fixed
 
-- Removed duplicate "Changes" display name on the hidden `intelligit.fileCountBadge` tree view that carries the activity bar badge — it no longer shares a name with the real Changes panel.
-- Undocked window sections (Commit, Branches, Graph, Changes) now start with equal widths on first open. Resized widths persist across panel close/reopen via extension workspace state.
+- Removed duplicate display name from a hidden tree view element
+  Fixed undocked window sections to open with equal starting widths and persist user resizing across close/reopen
+  Improvements
+
+- Updated onboarding interface based on workspace state
+  Simplified repository initialization confirmation with instant feedback
 
 ## [0.8.12] - 2026-05-29
 

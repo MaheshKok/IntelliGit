@@ -36,6 +36,7 @@ interface Props {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     onCommitAndPush: () => void;
+    currentBranchHasUpstream: boolean;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -60,6 +61,7 @@ export function CommitTab({
     onAmendChange,
     onCommit,
     onCommitAndPush,
+    currentBranchHasUpstream,
     groupByDir,
     onToggleGroupBy,
 }: Props): React.ReactElement {
@@ -179,6 +181,7 @@ export function CommitTab({
                     onAmendChange={onAmendChange}
                     onCommit={onCommit}
                     onCommitAndPush={onCommitAndPush}
+                    currentBranchHasUpstream={currentBranchHasUpstream}
                 />
             </Box>
         </Flex>

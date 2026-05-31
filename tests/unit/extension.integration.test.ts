@@ -790,6 +790,7 @@ describe("extension integration", () => {
         await activate(context);
 
         const graphWebview = resolveRegisteredWebviewProvider("intelligit.commitGraph");
+        const sidebarGraphWebview = resolveRegisteredWebviewProvider("intelligit.sidebarGraph");
         const panelWebview = resolveRegisteredWebviewProvider("intelligit.commitPanel");
         await registeredCommands.get("intelligit.openUndocked")?.();
         await registeredCommands.get("intelligit.toggleUndocked")?.();
@@ -798,6 +799,7 @@ describe("extension integration", () => {
             "cloneRepository",
             "openFolder",
         ]);
+        expect(renderedButtonActions(sidebarGraphWebview.view.webview.html)).toEqual([]);
         expect(renderedButtonActions(panelWebview.view.webview.html)).toEqual([
             "cloneRepository",
             "openFolder",
@@ -813,7 +815,7 @@ describe("extension integration", () => {
         expect(latestUndockedProvider).toBeUndefined();
     });
 
-    it("activates onboarding with initialize action when a workspace is not a Git repository", async () => {
+    it("activates onboarding with initialize action outside the graph view when a workspace is not a Git repository", async () => {
         gitOpsState.isRepository.mockResolvedValue(false);
         const { activate } = await import("../../src/extension");
         const context = {
@@ -830,9 +832,7 @@ describe("extension integration", () => {
         expect(renderedButtonActions(graphWebview.view.webview.html)).toEqual([
             "initializeRepository",
         ]);
-        expect(renderedButtonActions(sidebarGraphWebview.view.webview.html)).toEqual([
-            "initializeRepository",
-        ]);
+        expect(renderedButtonActions(sidebarGraphWebview.view.webview.html)).toEqual([]);
         expect(renderedButtonActions(panelWebview.view.webview.html)).toEqual([
             "initializeRepository",
         ]);

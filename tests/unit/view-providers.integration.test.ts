@@ -193,6 +193,17 @@ function makeGitOpsMock() {
                 refs: [],
             },
         ]),
+        getBranches: vi.fn(async () => [
+            {
+                name: "main",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                ahead: 0,
+                behind: 0,
+            },
+        ]),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -266,6 +277,54 @@ describe("view providers integration", () => {
 
         const html = (webview.view.webview as { html: string }).html;
         expect(renderedButtonActions(html)).toEqual(["cloneRepository", "openFolder"]);
+    });
+
+    it("OnboardingViewProvider can hide empty-workspace actions for the graph view", async () => {
+        const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
+        const provider = new OnboardingViewProvider(
+            { fsPath: "/ext", path: "/ext" },
+            "no-workspace",
+            "Graph",
+            false,
+        );
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const html = (webview.view.webview as { html: string }).html;
+        expect(renderedButtonActions(html)).toEqual([]);
+        expect(html).not.toContain("No Folder Open");
+        expect(html).not.toContain("Open a folder to get started with IntelliGit.");
+        expect(html).not.toContain('alt="IntelliGit"');
+    });
+
+    it("OnboardingViewProvider can hide initialize action for the graph view", async () => {
+        const { OnboardingViewProvider } = await import("../../src/views/OnboardingViewProvider");
+        const provider = new OnboardingViewProvider(
+            { fsPath: "/ext", path: "/ext" },
+            "no-git-repo",
+            "Graph",
+            false,
+        );
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        const html = (webview.view.webview as { html: string }).html;
+        expect(renderedButtonActions(html)).toEqual([]);
+        expect(html).not.toContain("No Git Repository");
+        expect(html).not.toContain(
+            "Initialize a Git repository or open an existing one to get started.",
+        );
+        expect(html).not.toContain('alt="IntelliGit"');
     });
 
     it("OnboardingViewProvider renders only initialize for an uninitialized workspace", async () => {
@@ -547,6 +606,32 @@ describe("view providers integration", () => {
         await webview.send({ type: "unstageFiles", paths: ["src/a.ts"] });
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider marks unpublished branches and routes publish action", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getBranches.mockResolvedValue([
+            {
+                name: "main",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+
+        await webview.send({ type: "refresh" });
+        await webview.send({ type: "publishBranch" });
+
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                currentBranchHasUpstream: false,
+            }),
+        );
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         provider.dispose();
     });
 

@@ -72,8 +72,12 @@ function App(): React.ReactElement {
     }, [stageCheckedAndCommit]);
 
     const handleCommitAndPush = useCallback(() => {
+        if (!state.currentBranchHasUpstream) {
+            vscode.postMessage({ type: "publishBranch" });
+            return;
+        }
         stageCheckedAndCommit(true);
-    }, [stageCheckedAndCommit]);
+    }, [stageCheckedAndCommit, state.currentBranchHasUpstream, vscode]);
 
     return (
         <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
@@ -98,6 +102,7 @@ function App(): React.ReactElement {
                         onAmendChange={handleAmendChange}
                         onCommit={handleCommit}
                         onCommitAndPush={handleCommitAndPush}
+                        currentBranchHasUpstream={state.currentBranchHasUpstream}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}

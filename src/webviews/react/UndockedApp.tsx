@@ -34,26 +34,61 @@ import type { UnifiedInbound, UnifiedOutbound } from "./undocked/types";
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 
-const MIN_BRANCH_WIDTH = 80;
-const MAX_BRANCH_WIDTH = 500;
-const MIN_INFO_WIDTH = 250;
-const MAX_INFO_WIDTH = 760;
-const MIN_COMMIT_PANEL_WIDTH = 260;
-const MAX_COMMIT_PANEL_WIDTH = 600;
+const MIN_SECTION_WIDTH = 220;
 const DIVIDER_WIDTH = 4;
+const SECTION_COUNT = 4;
+const TOTAL_DIVIDER_WIDTH = 3 * DIVIDER_WIDTH;
+
+interface SectionWidths {
+    branchWidth: number;
+    graphWidth: number;
+    infoWidth: number;
+    commitPanelWidth: number;
+}
 
 // Compute equal initial width for all four sections from the viewport.
 // Sections: Commit | Branches | Graph | Changes (Info)
 // Three dividers (4px each) sit between the four sections.
 function computeEqualSectionWidth(): number {
     if (typeof window === "undefined") return 300;
-    const available = window.innerWidth - 3 * DIVIDER_WIDTH;
-    // Clamp to MIN_COMMIT_PANEL_WIDTH (the highest min) so equal widths work
-    return Math.max(MIN_COMMIT_PANEL_WIDTH, Math.floor(available / 4));
+    return Math.max(MIN_SECTION_WIDTH, Math.floor(getAvailableSectionWidth() / SECTION_COUNT));
 }
 
-function clampWidth(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, value));
+function getAvailableSectionWidth(): number {
+    if (typeof window === "undefined") return SECTION_COUNT * 300;
+    return Math.max(0, window.innerWidth - TOTAL_DIVIDER_WIDTH);
+}
+
+function normalizeSectionWidths(widths: SectionWidths): SectionWidths {
+    const available = getAvailableSectionWidth();
+    const clamped: SectionWidths = {
+        branchWidth: Math.max(MIN_SECTION_WIDTH, widths.branchWidth),
+        graphWidth: Math.max(MIN_SECTION_WIDTH, widths.graphWidth),
+        infoWidth: Math.max(MIN_SECTION_WIDTH, widths.infoWidth),
+        commitPanelWidth: Math.max(MIN_SECTION_WIDTH, widths.commitPanelWidth),
+    };
+    const minTotal = SECTION_COUNT * MIN_SECTION_WIDTH;
+    if (available < minTotal) return clamped;
+
+    const total =
+        clamped.branchWidth + clamped.graphWidth + clamped.infoWidth + clamped.commitPanelWidth;
+    if (total <= available) return clamped;
+
+    const overflow = total - available;
+    const reducible = total - minTotal;
+    if (reducible <= 0) return clamped;
+
+    const reduce = (width: number): number => {
+        const excess = width - MIN_SECTION_WIDTH;
+        return Math.max(MIN_SECTION_WIDTH, Math.floor(width - overflow * (excess / reducible)));
+    };
+
+    return {
+        branchWidth: reduce(clamped.branchWidth),
+        graphWidth: reduce(clamped.graphWidth),
+        infoWidth: reduce(clamped.infoWidth),
+        commitPanelWidth: reduce(clamped.commitPanelWidth),
+    };
 }
 
 function useColumnDrag(
@@ -132,6 +167,7 @@ interface CommitPanelState {
     amendBranchHistoryLoaded: boolean;
     isRefreshing: boolean;
     error: string | null;
+    currentBranchHasUpstream: boolean;
 }
 
 interface CommitPanelPaneProps {
@@ -147,6 +183,7 @@ interface CommitPanelPaneProps {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     onCommitAndPush: () => void;
+    currentBranchHasUpstream: boolean;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -162,6 +199,7 @@ type CommitPanelAction =
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
+          currentBranchHasUpstream: boolean;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -187,6 +225,7 @@ const initialCommitPanelState: CommitPanelState = {
     amendBranchHistoryLoaded: false,
     isRefreshing: false,
     error: null,
+    currentBranchHasUpstream: true,
 };
 
 function CommitPanelPane({
@@ -202,6 +241,7 @@ function CommitPanelPane({
     onAmendChange,
     onCommit,
     onCommitAndPush,
+    currentBranchHasUpstream,
     groupByDir,
     onToggleGroupBy,
 }: CommitPanelPaneProps): React.ReactElement {
@@ -234,6 +274,7 @@ function CommitPanelPane({
                             onAmendChange={onAmendChange}
                             onCommit={onCommit}
                             onCommitAndPush={onCommitAndPush}
+                            currentBranchHasUpstream={currentBranchHasUpstream}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}
@@ -272,6 +313,7 @@ function commitPanelReducer(state: CommitPanelState, action: CommitPanelAction):
                 folderExpandedIcon: action.folderExpandedIcon ?? state.folderExpandedIcon,
                 folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
+                currentBranchHasUpstream: action.currentBranchHasUpstream,
                 error: null,
             };
         case "SET_REFRESHING":
@@ -355,39 +397,38 @@ function App(): React.ReactElement {
         widthsHydratedRef.current = true;
     }, []);
 
-    const [branchWidth, setBranchWidth] = useState(() => {
+    const readInitialWidths = (): SectionWidths => {
+        const equalWidth = computeEqualSectionWidth();
         try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
-            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_BRANCH_WIDTH, Math.min(MAX_BRANCH_WIDTH, raw));
+            const state = vscode.getState() as Record<string, unknown> | undefined;
+            return normalizeSectionWidths({
+                branchWidth:
+                    typeof state?.branchWidth === "number" ? state.branchWidth : equalWidth,
+                graphWidth: typeof state?.graphWidth === "number" ? state.graphWidth : equalWidth,
+                infoWidth: typeof state?.infoWidth === "number" ? state.infoWidth : equalWidth,
+                commitPanelWidth:
+                    typeof state?.commitPanelWidth === "number"
+                        ? state.commitPanelWidth
+                        : equalWidth,
+            });
         } catch {
-            return Math.max(
-                MIN_BRANCH_WIDTH,
-                Math.min(MAX_BRANCH_WIDTH, computeEqualSectionWidth()),
-            );
+            return normalizeSectionWidths({
+                branchWidth: equalWidth,
+                graphWidth: equalWidth,
+                infoWidth: equalWidth,
+                commitPanelWidth: equalWidth,
+            });
         }
-    });
-    const [infoWidth, setInfoWidth] = useState(() => {
-        try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
-            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, raw));
-        } catch {
-            return Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, computeEqualSectionWidth()));
-        }
-    });
-    const [commitPanelWidth, setCommitPanelWidth] = useState(() => {
-        try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.commitPanelWidth;
-            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_COMMIT_PANEL_WIDTH, Math.min(MAX_COMMIT_PANEL_WIDTH, raw));
-        } catch {
-            return Math.max(
-                MIN_COMMIT_PANEL_WIDTH,
-                Math.min(MAX_COMMIT_PANEL_WIDTH, computeEqualSectionWidth()),
-            );
-        }
-    });
+    };
+    const initialWidths = useRef<SectionWidths | null>(null);
+    if (!initialWidths.current) initialWidths.current = readInitialWidths();
+
+    const [branchWidth, setBranchWidth] = useState(() => initialWidths.current!.branchWidth);
+    const [graphWidth, setGraphWidth] = useState(() => initialWidths.current!.graphWidth);
+    const [infoWidth, setInfoWidth] = useState(() => initialWidths.current!.infoWidth);
+    const [commitPanelWidth, setCommitPanelWidth] = useState(
+        () => initialWidths.current!.commitPanelWidth,
+    );
 
     // --- Commit-panel state ---
     const [cpState, cpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
@@ -403,28 +444,43 @@ function App(): React.ReactElement {
         }
     });
 
-    const commitPanelPosition = getSettings().commitWindowPosition;
+    const [commitPanelPosition, setCommitPanelPosition] = useState<"left" | "right">(
+        () => getSettings().commitWindowPosition,
+    );
+    const availableSectionWidth = getAvailableSectionWidth();
+    const branchMax = Math.max(
+        MIN_SECTION_WIDTH,
+        availableSectionWidth - graphWidth - infoWidth - commitPanelWidth,
+    );
+    const graphMax = Math.max(
+        MIN_SECTION_WIDTH,
+        availableSectionWidth - branchWidth - infoWidth - commitPanelWidth,
+    );
+    const commitPanelMax = Math.max(
+        MIN_SECTION_WIDTH,
+        availableSectionWidth - branchWidth - graphWidth - infoWidth,
+    );
 
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnDrag(
         branchWidth,
         setBranchWidth,
-        MIN_BRANCH_WIDTH,
-        MAX_BRANCH_WIDTH,
+        MIN_SECTION_WIDTH,
+        branchMax,
         false,
     );
-    const onInfoDividerMouseDown = useColumnDrag(
-        infoWidth,
-        setInfoWidth,
-        MIN_INFO_WIDTH,
-        MAX_INFO_WIDTH,
-        true,
+    const onGraphDividerMouseDown = useColumnDrag(
+        graphWidth,
+        setGraphWidth,
+        MIN_SECTION_WIDTH,
+        graphMax,
+        false,
     );
     const onCommitPanelDividerMouseDown = useColumnDrag(
         commitPanelWidth,
         setCommitPanelWidth,
-        MIN_COMMIT_PANEL_WIDTH,
-        MAX_COMMIT_PANEL_WIDTH,
+        MIN_SECTION_WIDTH,
+        commitPanelMax,
         commitPanelPosition === "right",
     );
 
@@ -432,11 +488,11 @@ function App(): React.ReactElement {
     useEffect(() => {
         try {
             const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
-            vscode.setState({ ...prev, branchWidth, infoWidth, commitPanelWidth });
+            vscode.setState({ ...prev, branchWidth, graphWidth, infoWidth, commitPanelWidth });
         } catch {
             /* ignore */
         }
-    }, [branchWidth, infoWidth, commitPanelWidth]);
+    }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
     // --- Send column widths to extension for cross-session persistence ---
     const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -449,6 +505,7 @@ function App(): React.ReactElement {
             vscode.postMessage({
                 type: "columnWidths",
                 branchWidth,
+                graphWidth,
                 infoWidth,
                 commitPanelWidth,
             });
@@ -456,7 +513,7 @@ function App(): React.ReactElement {
         return () => {
             if (widthSendTimer.current) clearTimeout(widthSendTimer.current);
         };
-    }, [branchWidth, infoWidth, commitPanelWidth]);
+    }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
     // --- Persist groupByDir ---
     useEffect(() => {
@@ -541,6 +598,7 @@ function App(): React.ReactElement {
                         folderExpandedIcon: data.folderExpandedIcon,
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
+                        currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
                     });
                     return;
 
@@ -564,25 +622,27 @@ function App(): React.ReactElement {
                     cpDispatch({ type: "SET_REFRESHING", active: data.active });
                     return;
 
+                case "settings":
+                    setCommitPanelPosition(data.commitWindowPosition);
+                    return;
+
                 // Restore persisted column widths from extension
                 case "columnWidths":
                     // Mark hydrated first so the subsequent state updates are
                     // allowed to persist (and future user drags too).
                     markWidthsHydrated();
-                    if (typeof data.branchWidth === "number")
-                        setBranchWidth(
-                            clampWidth(data.branchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH),
-                        );
-                    if (typeof data.infoWidth === "number")
-                        setInfoWidth(clampWidth(data.infoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH));
-                    if (typeof data.commitPanelWidth === "number")
-                        setCommitPanelWidth(
-                            clampWidth(
-                                data.commitPanelWidth,
-                                MIN_COMMIT_PANEL_WIDTH,
-                                MAX_COMMIT_PANEL_WIDTH,
-                            ),
-                        );
+                    {
+                        const normalized = normalizeSectionWidths({
+                            branchWidth: data.branchWidth,
+                            graphWidth: data.graphWidth,
+                            infoWidth: data.infoWidth,
+                            commitPanelWidth: data.commitPanelWidth,
+                        });
+                        setBranchWidth(normalized.branchWidth);
+                        setGraphWidth(normalized.graphWidth);
+                        setInfoWidth(normalized.infoWidth);
+                        setCommitPanelWidth(normalized.commitPanelWidth);
+                    }
                     return;
 
                 case "error":
@@ -664,10 +724,13 @@ function App(): React.ReactElement {
     );
 
     const handleCommit = useCallback(() => stageCheckedAndCommit(false), [stageCheckedAndCommit]);
-    const handleCommitAndPush = useCallback(
-        () => stageCheckedAndCommit(true),
-        [stageCheckedAndCommit],
-    );
+    const handleCommitAndPush = useCallback(() => {
+        if (!cpState.currentBranchHasUpstream) {
+            vscode.postMessage({ type: "publishBranch" });
+            return;
+        }
+        stageCheckedAndCommit(true);
+    }, [cpState.currentBranchHasUpstream, stageCheckedAndCommit]);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -738,6 +801,7 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 onCommitAndPush={handleCommitAndPush}
+                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -757,7 +821,7 @@ function App(): React.ReactElement {
                     )}
 
                     {/* Graph panel */}
-                    <Box flex={1} display="flex" overflow="hidden" minWidth={0}>
+                    <Box display="flex" overflow="hidden" flexShrink={0}>
                         <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
                             <BranchColumn
                                 branches={branches}
@@ -783,8 +847,14 @@ function App(): React.ReactElement {
                             }}
                         />
 
-                        <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
-                            <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                        <div style={{ display: "flex", overflow: "hidden", flexShrink: 0 }}>
+                            <div
+                                style={{
+                                    width: graphWidth,
+                                    flexShrink: 0,
+                                    overflow: "hidden",
+                                }}
+                            >
                                 <CommitList
                                     commits={commits}
                                     selectedHash={selectedHash}
@@ -808,7 +878,7 @@ function App(): React.ReactElement {
                                 }}
                                 onMouseDown={(e) => {
                                     markWidthsHydrated();
-                                    onInfoDividerMouseDown(e);
+                                    onGraphDividerMouseDown(e);
                                 }}
                             />
 
@@ -858,6 +928,7 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 onCommitAndPush={handleCommitAndPush}
+                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

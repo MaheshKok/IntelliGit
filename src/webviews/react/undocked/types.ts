@@ -11,10 +11,12 @@ import type { CommitGraphInbound } from "../commitGraphTypes";
 export type UnifiedInbound =
     | CommitGraphInbound
     | CommitPanelInbound
+    | { type: "settings"; commitWindowPosition: "left" | "right" }
     // Extension-sent column widths (persisted across panel open/close)
     | {
           type: "columnWidths";
           branchWidth: number;
+          graphWidth: number;
           infoWidth: number;
           commitPanelWidth: number;
       };
@@ -49,6 +51,7 @@ export type UnifiedOutbound =
       }
     | { type: "commit"; message: string; amend: boolean }
     | { type: "commitAndPush"; message: string; amend: boolean }
+    | { type: "publishBranch" }
     | { type: "getLastCommitMessage" }
     | { type: "getAmendBranchCommits" }
     | { type: "rollback"; paths: string[] }
@@ -66,6 +69,7 @@ export type UnifiedOutbound =
     | {
           type: "columnWidths";
           branchWidth: number;
+          graphWidth: number;
           infoWidth: number;
           commitPanelWidth: number;
       };

@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.13",
+    "version": "0.8.14",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -74,7 +74,7 @@
             "intelligit": [
                 {
                     "id": "intelligit.commitPanel",
-                    "name": "Changes",
+                    "name": "Commit",
                     "type": "webview"
                 },
                 {
@@ -96,7 +96,7 @@
             "intelligitPanel": [
                 {
                     "id": "intelligit.commitGraph",
-                    "name": "",
+                    "name": "IntelliGit",
                     "type": "webview"
                 }
             ]
@@ -503,15 +503,17 @@
                 "intelligit.commitWindowPosition": {
                     "type": "string",
                     "enum": [
+                        "auto",
                         "left",
                         "right"
                     ],
                     "enumDescriptions": [
-                        "Place the commit panel on the left side of the undocked/tabbed window (default).",
+                        "Follow VS Code's `workbench.sideBar.location` setting (default).",
+                        "Place the commit panel on the left side of the undocked/tabbed window.",
                         "Place the commit panel on the right side of the undocked/tabbed window."
                     ],
-                    "default": "left",
-                    "markdownDescription": "Position of the commit panel within the undocked/tabbed IntelliGit window. `left` (default) places it on the left side of the graph; `right` places it on the right."
+                    "default": "auto",
+                    "markdownDescription": "Position of the commit panel within the undocked/tabbed IntelliGit window. `auto` (default) follows VS Code's `workbench.sideBar.location`; `left` and `right` force a side."
                 }
             }
         }

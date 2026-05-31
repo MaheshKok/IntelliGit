@@ -115,8 +115,8 @@ You can configure IntelliGit from VS Code Settings or by adding these keys to `s
   "intelligit.icons": "standard",
 
   // Commit panel position inside the undocked/tabbed IntelliGit window.
-  // Possible values: "left", "right"
-  "intelligit.commitWindowPosition": "left"
+  // Possible values: "auto", "left", "right"
+  "intelligit.commitWindowPosition": "auto"
 }
 ```
 

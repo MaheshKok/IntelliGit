@@ -191,7 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.sidebarViewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Graph"),
+                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Graph", false),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
@@ -218,7 +218,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             new OnboardingViewProvider(context.extensionUri, "no-git-repo", "IntelliGit"),
         );
         const sidebarGraphProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Graph"),
+            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Graph", false),
         );
         const commitPanelProvider = new SwitchableWebviewViewProvider(
             new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Commit"),
@@ -863,6 +863,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }),
 
             vscode.commands.registerCommand("intelligit.publishBranch", async () => {
+                const hasCommits = await gitOps.hasAnyCommits();
+                if (!hasCommits) {
+                    vscode.window.showWarningMessage(
+                        "Create a commit before publishing this branch.",
+                    );
+                    return;
+                }
                 const branches = await gitOps.getBranches();
                 const currentBranch = branches.find((b) => b.isCurrent);
                 if (!currentBranch) {

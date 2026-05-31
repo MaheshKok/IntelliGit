@@ -200,7 +200,7 @@ describe("core utilities", () => {
         expect(html).toContain('commitWindowPosition: "left"');
     });
 
-    it("buildWebviewShellHtml injects explicit right commit window position", async () => {
+    it("buildWebviewShellHtml follows VS Code sidebar location for auto commit window position", async () => {
         const joinPath = vi.fn(
             (_base: { path?: string }, ...parts: string[]): { path: string } => ({
                 path: `/${parts.join("/")}`,
@@ -211,7 +211,7 @@ describe("core utilities", () => {
             workspace: {
                 getConfiguration: () => ({
                     get: (key: string) =>
-                        key === "intelligit.commitWindowPosition" ? "right" : undefined,
+                        key === "workbench.sideBar.location" ? "right" : undefined,
                 }),
             },
         }));
@@ -232,6 +232,43 @@ describe("core utilities", () => {
         });
 
         expect(html).toContain('commitWindowPosition: "right"');
+    });
+
+    it("buildWebviewShellHtml honors explicit commit window position over auto", async () => {
+        const joinPath = vi.fn(
+            (_base: { path?: string }, ...parts: string[]): { path: string } => ({
+                path: `/${parts.join("/")}`,
+            }),
+        );
+        vi.doMock("vscode", () => ({
+            Uri: { joinPath },
+            workspace: {
+                getConfiguration: () => ({
+                    get: (key: string) => {
+                        if (key === "intelligit.commitWindowPosition") return "left";
+                        if (key === "workbench.sideBar.location") return "right";
+                        return undefined;
+                    },
+                }),
+            },
+        }));
+        const { buildWebviewShellHtml } = await import("../../src/views/webviewHtml");
+        const extensionUri = { path: "/ext" } as unknown as Parameters<
+            typeof buildWebviewShellHtml
+        >[0]["extensionUri"];
+        const webview = {
+            cspSource: "vscode-resource:",
+            asWebviewUri: (uri: { path: string }) => `webview://${uri.path}`,
+        } as unknown as Parameters<typeof buildWebviewShellHtml>[0]["webview"];
+
+        const html = buildWebviewShellHtml({
+            extensionUri,
+            webview,
+            scriptFile: "webview-undocked.js",
+            title: "IntelliGit",
+        });
+
+        expect(html).toContain('commitWindowPosition: "left"');
     });
 
     it("graph compute handles linear and merge histories", () => {
