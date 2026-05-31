@@ -1201,6 +1201,34 @@ describe("extension integration", () => {
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
     });
 
+    it("openUndocked does not move the active editor when the undocked panel is already open", async () => {
+        showQuickPick
+            .mockResolvedValueOnce({ target: "newWindow" })
+            .mockResolvedValueOnce({ target: "newWindow" });
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.openUndocked")?.();
+        const opened = latestUndockedProvider;
+        expect(opened?.open).toHaveBeenCalledTimes(1);
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "workbench.action.moveEditorToNewWindow",
+        );
+
+        executeCommandFallback.mockClear();
+        await registeredCommands.get("intelligit.openUndocked")?.();
+
+        expect(opened?.open).toHaveBeenCalledTimes(1);
+        expect(opened?.reveal).toHaveBeenCalledTimes(1);
+        expect(executeCommandFallback).not.toHaveBeenCalledWith(
+            "workbench.action.moveEditorToNewWindow",
+        );
+    });
+
     it("updates non-current local branch via fetch refspec without checkout", async () => {
         const { activate } = await import("../../src/extension");
         const context = {

@@ -40,6 +40,12 @@ import { runPublishBranchFlow } from "./services/publishService";
 
 const SELECTED_REPOSITORY_KEY = "intelligit.selectedRepositoryRoot";
 const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspace.";
+const HAS_REPOSITORY_CONTEXT = "intelligit.hasRepository";
+const HAS_MERGE_CONFLICTS_CONTEXT = "intelligit.hasMergeConflicts";
+
+function setViewContext(key: string, value: boolean): Thenable<unknown> {
+    return vscode.commands.executeCommand("setContext", key, value);
+}
 
 class SwitchableWebviewViewProvider implements vscode.WebviewViewProvider {
     private resolved:
@@ -181,6 +187,8 @@ function registerStaleUndockedPanelSerializer(context: vscode.ExtensionContext):
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     registerStaleUndockedPanelSerializer(context);
     registerReadonlyDiffContentProvider(context);
+    void setViewContext(HAS_REPOSITORY_CONTEXT, false);
+    void setViewContext(HAS_MERGE_CONFLICTS_CONTEXT, false);
 
     if (!vscode.workspace.workspaceFolders?.length) {
         registerOnboardingCommands(context);
@@ -313,7 +321,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
         );
-        void vscode.commands.executeCommand("setContext", "intelligit.hasMergeConflicts", false);
+        void setViewContext(HAS_REPOSITORY_CONTEXT, false);
+        void setViewContext(HAS_MERGE_CONFLICTS_CONTEXT, false);
         return;
     }
 
@@ -323,6 +332,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         repositoriesForActivation: DiscoveredRepository[],
         viewProviders: RepositoryViewProviders = {},
     ): Promise<void> {
+        void setViewContext(HAS_REPOSITORY_CONTEXT, true);
         repositories = repositoriesForActivation;
         let activeRepository = selectInitialRepository(
             repositories,
@@ -595,6 +605,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         };
 
         const openUndockedIntelliGit = async (target: UndockTarget): Promise<void> => {
+            if (undocked) {
+                undocked.reveal();
+                return;
+            }
+
             await vscode.workspace
                 .getConfiguration("intelligit")
                 .update("undockableWindow", true, true);
