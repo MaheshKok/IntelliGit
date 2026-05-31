@@ -193,6 +193,17 @@ function makeGitOpsMock() {
                 refs: [],
             },
         ]),
+        getBranches: vi.fn(async () => [
+            {
+                name: "main",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                ahead: 0,
+                behind: 0,
+            },
+        ]),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -595,6 +606,32 @@ describe("view providers integration", () => {
         await webview.send({ type: "unstageFiles", paths: ["src/a.ts"] });
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider marks unpublished branches and routes publish action", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getBranches.mockResolvedValue([
+            {
+                name: "main",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+
+        await webview.send({ type: "refresh" });
+        await webview.send({ type: "publishBranch" });
+
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                currentBranchHasUpstream: false,
+            }),
+        );
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         provider.dispose();
     });
 

@@ -13,6 +13,7 @@ interface Props {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     onCommitAndPush: () => void;
+    currentBranchHasUpstream: boolean;
 }
 
 export function CommitArea({
@@ -22,6 +23,7 @@ export function CommitArea({
     onAmendChange,
     onCommit,
     onCommitAndPush,
+    currentBranchHasUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     return (
@@ -87,7 +89,11 @@ export function CommitArea({
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
-                    {isAmend ? "Amend commit and Push..." : "Commit and Push..."}
+                    {currentBranchHasUpstream
+                        ? isAmend
+                            ? "Amend commit and Push..."
+                            : "Commit and Push..."
+                        : "Publish Branch..."}
                 </Button>
             </Flex>
         </Flex>

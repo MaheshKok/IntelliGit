@@ -408,6 +408,12 @@ export class UndockedViewProvider {
                 break;
             }
 
+            case "publishBranch":
+                await vscode.commands.executeCommand("intelligit.publishBranch");
+                await this.refreshCommitPanelData();
+                this._onDidChangeWorkingTree.fire();
+                break;
+
             case "getLastCommitMessage": {
                 const lastMsg = await this.gitOps.getLastCommitMessage();
                 this.postToWebview({ type: "lastCommitMessage", message: lastMsg });
@@ -645,6 +651,7 @@ export class UndockedViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
+            const currentBranchHasUpstream = await this.currentBranchHasUpstream();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
 
             // Default to first stash
@@ -678,6 +685,7 @@ export class UndockedViewProvider {
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: cpFolderIconsByName,
                 iconFonts,
+                currentBranchHasUpstream,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -697,6 +705,12 @@ export class UndockedViewProvider {
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
         });
+    }
+
+    private async currentBranchHasUpstream(): Promise<boolean> {
+        const branches = await this.gitOps.getBranches();
+        const currentBranch = branches.find((branch) => branch.isCurrent);
+        return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
 
     // --- Commit detail ------------------------------------------------------

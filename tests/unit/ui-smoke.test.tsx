@@ -220,6 +220,7 @@ describe("webview ui smoke", () => {
                     onAmendChange={noop}
                     onCommit={noop}
                     onCommitAndPush={noop}
+                    currentBranchHasUpstream={true}
                 />
                 <TabBar
                     stashCount={2}
@@ -233,5 +234,20 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Apply");
         expect(html).toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
+
+        const unpublishedHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onCommitAndPush={noop}
+                    currentBranchHasUpstream={false}
+                />
+            </ChakraProvider>,
+        );
+        expect(unpublishedHtml).toContain("Publish Branch");
     });
 });

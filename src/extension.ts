@@ -863,6 +863,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }),
 
             vscode.commands.registerCommand("intelligit.publishBranch", async () => {
+                const hasCommits = await gitOps.hasAnyCommits();
+                if (!hasCommits) {
+                    vscode.window.showWarningMessage(
+                        "Create a commit before publishing this branch.",
+                    );
+                    return;
+                }
                 const branches = await gitOps.getBranches();
                 const currentBranch = branches.find((b) => b.isCurrent);
                 if (!currentBranch) {

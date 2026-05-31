@@ -126,6 +126,7 @@ interface CommitPanelState {
     amendBranchHistoryLoaded: boolean;
     isRefreshing: boolean;
     error: string | null;
+    currentBranchHasUpstream: boolean;
 }
 
 interface CommitPanelPaneProps {
@@ -141,6 +142,7 @@ interface CommitPanelPaneProps {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     onCommitAndPush: () => void;
+    currentBranchHasUpstream: boolean;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -156,6 +158,7 @@ type CommitPanelAction =
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
+          currentBranchHasUpstream: boolean;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -181,6 +184,7 @@ const initialCommitPanelState: CommitPanelState = {
     amendBranchHistoryLoaded: false,
     isRefreshing: false,
     error: null,
+    currentBranchHasUpstream: true,
 };
 
 function CommitPanelPane({
@@ -196,6 +200,7 @@ function CommitPanelPane({
     onAmendChange,
     onCommit,
     onCommitAndPush,
+    currentBranchHasUpstream,
     groupByDir,
     onToggleGroupBy,
 }: CommitPanelPaneProps): React.ReactElement {
@@ -228,6 +233,7 @@ function CommitPanelPane({
                             onAmendChange={onAmendChange}
                             onCommit={onCommit}
                             onCommitAndPush={onCommitAndPush}
+                            currentBranchHasUpstream={currentBranchHasUpstream}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}
@@ -266,6 +272,7 @@ function commitPanelReducer(state: CommitPanelState, action: CommitPanelAction):
                 folderExpandedIcon: action.folderExpandedIcon ?? state.folderExpandedIcon,
                 folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
+                currentBranchHasUpstream: action.currentBranchHasUpstream,
                 error: null,
             };
         case "SET_REFRESHING":
@@ -519,6 +526,7 @@ function App(): React.ReactElement {
                         folderExpandedIcon: data.folderExpandedIcon,
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
+                        currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
                     });
                     return;
 
@@ -652,10 +660,13 @@ function App(): React.ReactElement {
     );
 
     const handleCommit = useCallback(() => stageCheckedAndCommit(false), [stageCheckedAndCommit]);
-    const handleCommitAndPush = useCallback(
-        () => stageCheckedAndCommit(true),
-        [stageCheckedAndCommit],
-    );
+    const handleCommitAndPush = useCallback(() => {
+        if (!cpState.currentBranchHasUpstream) {
+            vscode.postMessage({ type: "publishBranch" });
+            return;
+        }
+        stageCheckedAndCommit(true);
+    }, [cpState.currentBranchHasUpstream, stageCheckedAndCommit]);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -726,6 +737,7 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 onCommitAndPush={handleCommitAndPush}
+                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -852,6 +864,7 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 onCommitAndPush={handleCommitAndPush}
+                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

@@ -50,6 +50,7 @@ export type UnifiedOutbound =
       }
     | { type: "commit"; message: string; amend: boolean }
     | { type: "commitAndPush"; message: string; amend: boolean }
+    | { type: "publishBranch" }
     | { type: "getLastCommitMessage" }
     | { type: "getAmendBranchCommits" }
     | { type: "rollback"; paths: string[] }

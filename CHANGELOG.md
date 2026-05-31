@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed duplicate "Changes" display name on the hidden `intelligit.fileCountBadge` tree view that carries the activity bar badge — it no longer shares a name with the real Changes panel.
 - Undocked window sections (Commit, Branches, Graph, Changes) now start with equal widths on first open. Resized widths persist across panel close/reopen via extension workspace state.
 - `intelligit.commitWindowPosition` now defaults to `auto`, following VS Code's `workbench.sideBar.location` unless explicitly set to `left` or `right`.
+- Commit panel now shows "Publish Branch..." instead of "Commit and Push..." when the current branch has no upstream, avoiding `git push` with no configured destination.
 
 ## [0.8.12] - 2026-05-29
 
