@@ -74,7 +74,7 @@
             "intelligit": [
                 {
                     "id": "intelligit.commitPanel",
-                    "name": "",
+                    "name": "Commit",
                     "type": "webview"
                 },
                 {
@@ -96,7 +96,7 @@
             "intelligitPanel": [
                 {
                     "id": "intelligit.commitGraph",
-                    "name": "",
+                    "name": "IntelliGit",
                     "type": "webview"
                 }
             ]

@@ -782,6 +782,20 @@ export class UndockedViewProvider {
         }
     }
 
+    private sendSettings(): void {
+        this.postToWebview({
+            type: "settings",
+            commitWindowPosition: this.resolveCommitWindowPosition(),
+        });
+    }
+
+    private resolveCommitWindowPosition(): "left" | "right" {
+        const config = vscode.workspace.getConfiguration();
+        const rawPosition = config.get<string>("intelligit.commitWindowPosition") ?? "auto";
+        if (rawPosition === "left" || rawPosition === "right") return rawPosition;
+        return config.get<string>("workbench.sideBar.location") === "right" ? "right" : "left";
+    }
+
     // --- Theme change listeners ---------------------------------------------
 
     private refreshThemeDataWithErrorHandling(): void {
@@ -807,18 +821,14 @@ export class UndockedViewProvider {
         this.themeChangeDisposables.push(
             ...registerThemeChangeListeners(() => this.refreshThemeDataWithErrorHandling()),
             vscode.workspace.onDidChangeConfiguration((event) => {
-                if (event.affectsConfiguration("intelligit.commitWindowPosition")) {
-                    this.reloadWebviewHtml();
-                } else if (event.affectsConfiguration("workbench.sideBar.location")) {
-                    this.reloadWebviewHtml();
+                if (
+                    event.affectsConfiguration("intelligit.commitWindowPosition") ||
+                    event.affectsConfiguration("workbench.sideBar.location")
+                ) {
+                    this.sendSettings();
                 }
             }),
         );
-    }
-
-    private reloadWebviewHtml(): void {
-        if (!this.panel) return;
-        this.panel.webview.html = this.getHtml(this.panel.webview);
     }
 
     private disposeThemeChangeDisposables(): void {

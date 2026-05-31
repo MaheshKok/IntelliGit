@@ -11,6 +11,7 @@ import type { CommitGraphInbound } from "../commitGraphTypes";
 export type UnifiedInbound =
     | CommitGraphInbound
     | CommitPanelInbound
+    | { type: "settings"; commitWindowPosition: "left" | "right" }
     // Extension-sent column widths (persisted across panel open/close)
     | {
           type: "columnWidths";

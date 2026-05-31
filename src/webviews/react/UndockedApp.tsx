@@ -36,18 +36,59 @@ const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 
 const MIN_SECTION_WIDTH = 220;
 const DIVIDER_WIDTH = 4;
+const SECTION_COUNT = 4;
+const TOTAL_DIVIDER_WIDTH = 3 * DIVIDER_WIDTH;
+
+interface SectionWidths {
+    branchWidth: number;
+    graphWidth: number;
+    infoWidth: number;
+    commitPanelWidth: number;
+}
 
 // Compute equal initial width for all four sections from the viewport.
 // Sections: Commit | Branches | Graph | Changes (Info)
 // Three dividers (4px each) sit between the four sections.
 function computeEqualSectionWidth(): number {
     if (typeof window === "undefined") return 300;
-    const available = window.innerWidth - 3 * DIVIDER_WIDTH;
-    return Math.max(MIN_SECTION_WIDTH, Math.floor(available / 4));
+    return Math.max(MIN_SECTION_WIDTH, Math.floor(getAvailableSectionWidth() / SECTION_COUNT));
 }
 
-function clampWidth(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, value));
+function getAvailableSectionWidth(): number {
+    if (typeof window === "undefined") return SECTION_COUNT * 300;
+    return Math.max(0, window.innerWidth - TOTAL_DIVIDER_WIDTH);
+}
+
+function normalizeSectionWidths(widths: SectionWidths): SectionWidths {
+    const available = getAvailableSectionWidth();
+    const clamped: SectionWidths = {
+        branchWidth: Math.max(MIN_SECTION_WIDTH, widths.branchWidth),
+        graphWidth: Math.max(MIN_SECTION_WIDTH, widths.graphWidth),
+        infoWidth: Math.max(MIN_SECTION_WIDTH, widths.infoWidth),
+        commitPanelWidth: Math.max(MIN_SECTION_WIDTH, widths.commitPanelWidth),
+    };
+    const minTotal = SECTION_COUNT * MIN_SECTION_WIDTH;
+    if (available < minTotal) return clamped;
+
+    const total =
+        clamped.branchWidth + clamped.graphWidth + clamped.infoWidth + clamped.commitPanelWidth;
+    if (total <= available) return clamped;
+
+    const overflow = total - available;
+    const reducible = total - minTotal;
+    if (reducible <= 0) return clamped;
+
+    const reduce = (width: number): number => {
+        const excess = width - MIN_SECTION_WIDTH;
+        return Math.max(MIN_SECTION_WIDTH, Math.floor(width - overflow * (excess / reducible)));
+    };
+
+    return {
+        branchWidth: reduce(clamped.branchWidth),
+        graphWidth: reduce(clamped.graphWidth),
+        infoWidth: reduce(clamped.infoWidth),
+        commitPanelWidth: reduce(clamped.commitPanelWidth),
+    };
 }
 
 function useColumnDrag(
@@ -356,21 +397,37 @@ function App(): React.ReactElement {
         widthsHydratedRef.current = true;
     }, []);
 
-    const readInitialWidth = (key: string): number => {
+    const readInitialWidths = (): SectionWidths => {
+        const equalWidth = computeEqualSectionWidth();
         try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.[key];
-            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_SECTION_WIDTH, raw);
+            const state = vscode.getState() as Record<string, unknown> | undefined;
+            return normalizeSectionWidths({
+                branchWidth:
+                    typeof state?.branchWidth === "number" ? state.branchWidth : equalWidth,
+                graphWidth: typeof state?.graphWidth === "number" ? state.graphWidth : equalWidth,
+                infoWidth: typeof state?.infoWidth === "number" ? state.infoWidth : equalWidth,
+                commitPanelWidth:
+                    typeof state?.commitPanelWidth === "number"
+                        ? state.commitPanelWidth
+                        : equalWidth,
+            });
         } catch {
-            return Math.max(MIN_SECTION_WIDTH, computeEqualSectionWidth());
+            return normalizeSectionWidths({
+                branchWidth: equalWidth,
+                graphWidth: equalWidth,
+                infoWidth: equalWidth,
+                commitPanelWidth: equalWidth,
+            });
         }
     };
+    const initialWidths = useRef<SectionWidths | null>(null);
+    if (!initialWidths.current) initialWidths.current = readInitialWidths();
 
-    const [branchWidth, setBranchWidth] = useState(() => readInitialWidth("branchWidth"));
-    const [graphWidth, setGraphWidth] = useState(() => readInitialWidth("graphWidth"));
-    const [infoWidth, setInfoWidth] = useState(() => readInitialWidth("infoWidth"));
-    const [commitPanelWidth, setCommitPanelWidth] = useState(() =>
-        readInitialWidth("commitPanelWidth"),
+    const [branchWidth, setBranchWidth] = useState(() => initialWidths.current!.branchWidth);
+    const [graphWidth, setGraphWidth] = useState(() => initialWidths.current!.graphWidth);
+    const [infoWidth, setInfoWidth] = useState(() => initialWidths.current!.infoWidth);
+    const [commitPanelWidth, setCommitPanelWidth] = useState(
+        () => initialWidths.current!.commitPanelWidth,
     );
 
     // --- Commit-panel state ---
@@ -387,28 +444,43 @@ function App(): React.ReactElement {
         }
     });
 
-    const commitPanelPosition = getSettings().commitWindowPosition;
+    const [commitPanelPosition, setCommitPanelPosition] = useState<"left" | "right">(
+        () => getSettings().commitWindowPosition,
+    );
+    const availableSectionWidth = getAvailableSectionWidth();
+    const branchMax = Math.max(
+        MIN_SECTION_WIDTH,
+        availableSectionWidth - graphWidth - infoWidth - commitPanelWidth,
+    );
+    const graphMax = Math.max(
+        MIN_SECTION_WIDTH,
+        availableSectionWidth - branchWidth - infoWidth - commitPanelWidth,
+    );
+    const commitPanelMax = Math.max(
+        MIN_SECTION_WIDTH,
+        availableSectionWidth - branchWidth - graphWidth - infoWidth,
+    );
 
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnDrag(
         branchWidth,
         setBranchWidth,
         MIN_SECTION_WIDTH,
-        Number.MAX_SAFE_INTEGER,
+        branchMax,
         false,
     );
     const onGraphDividerMouseDown = useColumnDrag(
         graphWidth,
         setGraphWidth,
         MIN_SECTION_WIDTH,
-        Number.MAX_SAFE_INTEGER,
+        graphMax,
         false,
     );
     const onCommitPanelDividerMouseDown = useColumnDrag(
         commitPanelWidth,
         setCommitPanelWidth,
         MIN_SECTION_WIDTH,
-        Number.MAX_SAFE_INTEGER,
+        commitPanelMax,
         commitPanelPosition === "right",
     );
 
@@ -550,35 +622,27 @@ function App(): React.ReactElement {
                     cpDispatch({ type: "SET_REFRESHING", active: data.active });
                     return;
 
+                case "settings":
+                    setCommitPanelPosition(data.commitWindowPosition);
+                    return;
+
                 // Restore persisted column widths from extension
                 case "columnWidths":
                     // Mark hydrated first so the subsequent state updates are
                     // allowed to persist (and future user drags too).
                     markWidthsHydrated();
-                    if (typeof data.branchWidth === "number")
-                        setBranchWidth(
-                            clampWidth(
-                                data.branchWidth,
-                                MIN_SECTION_WIDTH,
-                                Number.MAX_SAFE_INTEGER,
-                            ),
-                        );
-                    if (typeof data.graphWidth === "number")
-                        setGraphWidth(
-                            clampWidth(data.graphWidth, MIN_SECTION_WIDTH, Number.MAX_SAFE_INTEGER),
-                        );
-                    if (typeof data.infoWidth === "number")
-                        setInfoWidth(
-                            clampWidth(data.infoWidth, MIN_SECTION_WIDTH, Number.MAX_SAFE_INTEGER),
-                        );
-                    if (typeof data.commitPanelWidth === "number")
-                        setCommitPanelWidth(
-                            clampWidth(
-                                data.commitPanelWidth,
-                                MIN_SECTION_WIDTH,
-                                Number.MAX_SAFE_INTEGER,
-                            ),
-                        );
+                    {
+                        const normalized = normalizeSectionWidths({
+                            branchWidth: data.branchWidth,
+                            graphWidth: data.graphWidth,
+                            infoWidth: data.infoWidth,
+                            commitPanelWidth: data.commitPanelWidth,
+                        });
+                        setBranchWidth(normalized.branchWidth);
+                        setGraphWidth(normalized.graphWidth);
+                        setInfoWidth(normalized.infoWidth);
+                        setCommitPanelWidth(normalized.commitPanelWidth);
+                    }
                     return;
 
                 case "error":

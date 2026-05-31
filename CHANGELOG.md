@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `intelligit.commitWindowPosition` now defaults to `auto`, following VS Code's `workbench.sideBar.location` unless explicitly set to `left` or `right`.
 - Commit panel now shows "Publish Branch..." instead of "Commit and Push..." when the current branch has no upstream, avoiding `git push` with no configured destination.
 - Commit and Push now checks the configured upstream remote before committing, so deleted or inaccessible remote repositories fail preemptively instead of leaving a new local commit behind.
+- Undocked window layout changes from sidebar-position settings now preserve graph selection/filter state and clamp restored pane widths to the visible viewport.
+
+## [0.8.13] - 2026-05-30
+
+### Fixed
+
+- Removed duplicate display name from a hidden tree view element
+  Fixed undocked window sections to open with equal starting widths and persist user resizing across close/reopen
+  Improvements
+
+- Updated onboarding interface based on workspace state
+  Simplified repository initialization confirmation with instant feedback
 
 ## [0.8.12] - 2026-05-29
 
