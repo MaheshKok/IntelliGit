@@ -582,8 +582,34 @@ export class GitOps {
     }
 
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
+        await this.assertPushRemoteReachable();
         await this.commit(message, amend);
         return this.push();
+    }
+
+    private async assertPushRemoteReachable(): Promise<void> {
+        let upstream: string;
+        try {
+            upstream = (await this.executor.run(["rev-parse", "--abbrev-ref", "@{upstream}"]))
+                .trim()
+                .split("\n")[0];
+        } catch {
+            return;
+        }
+
+        if (!upstream || !upstream.includes("/")) return;
+
+        const remote = upstream.split("/")[0];
+        if (!remote) return;
+
+        try {
+            await this.executor.run(["ls-remote", "--exit-code", remote]);
+        } catch (err) {
+            throw new Error(
+                `Push remote "${remote}" is unavailable. Verify the remote repository still exists, update the remote URL, or use Publish Branch to configure a new remote. ${getErrorMessage(err)}`,
+                { cause: err },
+            );
+        }
     }
 
     private async resolveCurrentBranchNameForPush(): Promise<string | null> {

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Undocked window sections (Commit, Branches, Graph, Changes) now start with equal widths on first open. Resized widths persist across panel close/reopen via extension workspace state.
 - `intelligit.commitWindowPosition` now defaults to `auto`, following VS Code's `workbench.sideBar.location` unless explicitly set to `left` or `right`.
 - Commit panel now shows "Publish Branch..." instead of "Commit and Push..." when the current branch has no upstream, avoiding `git push` with no configured destination.
+- Commit and Push now checks the configured upstream remote before committing, so deleted or inaccessible remote repositories fail preemptively instead of leaving a new local commit behind.
 
 ## [0.8.12] - 2026-05-29
 
