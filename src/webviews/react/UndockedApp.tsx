@@ -57,7 +57,7 @@ type SectionWidthKey = (typeof SECTION_WIDTH_KEYS)[number];
 // Compute equal initial widths for all four sections from the viewport.
 // Sections: Commit | Branches | Graph | Changes (Info)
 // Three dividers (4px each) sit between the four sections.
-function computeEqualSectionWidths(): SectionWidths {
+function computeEqualSectionWidths(totalWidth?: number): SectionWidths {
     const fallbackWidth = 300;
     if (typeof window === "undefined") {
         return {
@@ -68,7 +68,7 @@ function computeEqualSectionWidths(): SectionWidths {
         };
     }
 
-    const available = getAvailableSectionWidth();
+    const available = getAvailableSectionWidth(totalWidth);
     if (available <= 0) {
         return {
             branchWidth: fallbackWidth,
@@ -87,9 +87,10 @@ function computeEqualSectionWidths(): SectionWidths {
     };
 }
 
-function getAvailableSectionWidth(): number {
+function getAvailableSectionWidth(totalWidth?: number): number {
     if (typeof window === "undefined") return SECTION_COUNT * 300;
-    return Math.max(0, window.innerWidth - TOTAL_DIVIDER_WIDTH);
+    const containerWidth = typeof totalWidth === "number" ? totalWidth : window.innerWidth;
+    return Math.max(0, containerWidth - TOTAL_DIVIDER_WIDTH);
 }
 
 function sumWidths(widths: SectionWidths): number {
@@ -124,12 +125,12 @@ function migrateSectionWidths(value: unknown): SectionWidths | undefined {
     };
 }
 
-function normalizeSectionWidths(widths: SectionWidths): SectionWidths {
-    const available = getAvailableSectionWidth();
-    if (available <= 0) return computeEqualSectionWidths();
+function normalizeSectionWidths(widths: SectionWidths, totalWidth?: number): SectionWidths {
+    const available = getAvailableSectionWidth(totalWidth);
+    if (available <= 0) return computeEqualSectionWidths(totalWidth);
 
     const rawTotal = sumWidths(widths);
-    if (rawTotal <= 0) return computeEqualSectionWidths();
+    if (rawTotal <= 0) return computeEqualSectionWidths(totalWidth);
 
     const sectionMin = Math.min(MIN_SECTION_WIDTH, available / SECTION_COUNT);
     let normalized: SectionWidths = {
@@ -146,7 +147,7 @@ function normalizeSectionWidths(widths: SectionWidths): SectionWidths {
         (total, key) => total + Math.max(0, normalized[key] - sectionMin),
         0,
     );
-    if (reducible <= 0) return computeEqualSectionWidths();
+    if (reducible <= 0) return computeEqualSectionWidths(totalWidth);
 
     normalized = SECTION_WIDTH_KEYS.reduce(
         (next, key) => {
@@ -158,6 +159,10 @@ function normalizeSectionWidths(widths: SectionWidths): SectionWidths {
     );
 
     return normalized;
+}
+
+function sectionWidthsAreClose(a: SectionWidths, b: SectionWidths): boolean {
+    return SECTION_WIDTH_KEYS.every((key) => Math.abs(a[key] - b[key]) < 0.5);
 }
 
 function useColumnPairDrag(
@@ -505,12 +510,45 @@ function App(): React.ReactElement {
         infoWidth,
         commitPanelWidth,
     };
+    const layoutRef = useRef<HTMLDivElement | null>(null);
+    const sectionWidthsRef = useRef(sectionWidths);
+    sectionWidthsRef.current = sectionWidths;
     const setSectionWidths = useCallback((next: SectionWidths) => {
         setBranchWidth(next.branchWidth);
         setGraphWidth(next.graphWidth);
         setInfoWidth(next.infoWidth);
         setCommitPanelWidth(next.commitPanelWidth);
     }, []);
+
+    useEffect(() => {
+        const normalizeForCurrentWidth = () => {
+            const measuredWidth = layoutRef.current?.clientWidth;
+            const totalWidth =
+                typeof measuredWidth === "number" && measuredWidth > 0
+                    ? measuredWidth
+                    : undefined;
+            const normalized = normalizeSectionWidths(sectionWidthsRef.current, totalWidth);
+            if (!sectionWidthsAreClose(sectionWidthsRef.current, normalized)) {
+                setSectionWidths(normalized);
+            }
+        };
+
+        normalizeForCurrentWidth();
+        window.addEventListener("resize", normalizeForCurrentWidth);
+        window.visualViewport?.addEventListener("resize", normalizeForCurrentWidth);
+
+        let resizeObserver: ResizeObserver | undefined;
+        if (typeof ResizeObserver !== "undefined" && layoutRef.current) {
+            resizeObserver = new ResizeObserver(normalizeForCurrentWidth);
+            resizeObserver.observe(layoutRef.current);
+        }
+
+        return () => {
+            window.removeEventListener("resize", normalizeForCurrentWidth);
+            window.visualViewport?.removeEventListener("resize", normalizeForCurrentWidth);
+            resizeObserver?.disconnect();
+        };
+    }, [setSectionWidths]);
 
     // --- Commit-panel state ---
     const [cpState, cpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
@@ -704,12 +742,20 @@ function App(): React.ReactElement {
                     // allowed to persist (and future user drags too).
                     markWidthsHydrated();
                     {
-                        const normalized = normalizeSectionWidths({
-                            branchWidth: data.branchWidth,
-                            graphWidth: data.graphWidth,
-                            infoWidth: data.infoWidth,
-                            commitPanelWidth: data.commitPanelWidth,
-                        });
+                        const measuredWidth = layoutRef.current?.clientWidth;
+                        const totalWidth =
+                            typeof measuredWidth === "number" && measuredWidth > 0
+                                ? measuredWidth
+                                : undefined;
+                        const normalized = normalizeSectionWidths(
+                            {
+                                branchWidth: data.branchWidth,
+                                graphWidth: data.graphWidth,
+                                infoWidth: data.infoWidth,
+                                commitPanelWidth: data.commitPanelWidth,
+                            },
+                            totalWidth,
+                        );
                         setSectionWidths(normalized);
                     }
                     return;
@@ -853,7 +899,7 @@ function App(): React.ReactElement {
                         Dock
                     </button>
                 </Box>
-                <Box display="flex" flex={1} overflow="hidden" minHeight={0}>
+                <Box ref={layoutRef} display="flex" flex={1} overflow="hidden" minHeight={0}>
                     {/* Divider and commit panel — only on left side */}
                     {commitPanelPosition === "left" && (
                         <>
