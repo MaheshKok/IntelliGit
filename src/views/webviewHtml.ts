@@ -38,8 +38,14 @@ export function buildWebviewShellHtml({
             tooltipsEnabled = config.get?.<boolean>("intelligit.tooltips.enabled") !== false;
             const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
             iconStyle = rawIconStyle === "color" ? "color" : "standard";
-            const rawPosition = config.get?.<string>("intelligit.commitWindowPosition") ?? "left";
-            commitWindowPosition = rawPosition === "right" ? "right" : "left";
+            const rawPosition = config.get?.<string>("intelligit.commitWindowPosition") ?? "auto";
+            if (rawPosition === "left" || rawPosition === "right") {
+                commitWindowPosition = rawPosition;
+            } else {
+                const sidebarLocation =
+                    config.get?.<string>("workbench.sideBar.location") ?? "left";
+                commitWindowPosition = sidebarLocation === "right" ? "right" : "left";
+            }
         }
     } catch {
         // Safe fallback when workspace is not mocked or available

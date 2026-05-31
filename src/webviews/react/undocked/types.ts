@@ -15,6 +15,7 @@ export type UnifiedInbound =
     | {
           type: "columnWidths";
           branchWidth: number;
+          graphWidth: number;
           infoWidth: number;
           commitPanelWidth: number;
       };
@@ -66,6 +67,7 @@ export type UnifiedOutbound =
     | {
           type: "columnWidths";
           branchWidth: number;
+          graphWidth: number;
           infoWidth: number;
           commitPanelWidth: number;
       };

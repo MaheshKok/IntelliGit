@@ -274,6 +274,7 @@ export class UndockedViewProvider {
             case "columnWidths":
                 await this.workspaceState?.update(UndockedViewProvider.COLUMN_WIDTHS_KEY, {
                     branchWidth: this.assertNumber(msg.branchWidth, "branchWidth"),
+                    graphWidth: this.assertNumber(msg.graphWidth, "graphWidth"),
                     infoWidth: this.assertNumber(msg.infoWidth, "infoWidth"),
                     commitPanelWidth: this.assertNumber(msg.commitPanelWidth, "commitPanelWidth"),
                 });
@@ -752,6 +753,7 @@ export class UndockedViewProvider {
     private sendPersistedColumnWidths(): void {
         const saved = this.workspaceState?.get<{
             branchWidth: number;
+            graphWidth?: number;
             infoWidth: number;
             commitPanelWidth: number;
         }>(UndockedViewProvider.COLUMN_WIDTHS_KEY);
@@ -759,6 +761,7 @@ export class UndockedViewProvider {
             this.postToWebview({
                 type: "columnWidths",
                 branchWidth: saved.branchWidth,
+                graphWidth: saved.graphWidth ?? saved.infoWidth,
                 infoWidth: saved.infoWidth,
                 commitPanelWidth: saved.commitPanelWidth,
             });
@@ -791,6 +794,8 @@ export class UndockedViewProvider {
             ...registerThemeChangeListeners(() => this.refreshThemeDataWithErrorHandling()),
             vscode.workspace.onDidChangeConfiguration((event) => {
                 if (event.affectsConfiguration("intelligit.commitWindowPosition")) {
+                    this.reloadWebviewHtml();
+                } else if (event.affectsConfiguration("workbench.sideBar.location")) {
                     this.reloadWebviewHtml();
                 }
             }),

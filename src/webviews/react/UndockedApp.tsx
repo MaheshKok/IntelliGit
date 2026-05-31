@@ -34,12 +34,7 @@ import type { UnifiedInbound, UnifiedOutbound } from "./undocked/types";
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 
-const MIN_BRANCH_WIDTH = 80;
-const MAX_BRANCH_WIDTH = 500;
-const MIN_INFO_WIDTH = 250;
-const MAX_INFO_WIDTH = 760;
-const MIN_COMMIT_PANEL_WIDTH = 260;
-const MAX_COMMIT_PANEL_WIDTH = 600;
+const MIN_SECTION_WIDTH = 220;
 const DIVIDER_WIDTH = 4;
 
 // Compute equal initial width for all four sections from the viewport.
@@ -48,8 +43,7 @@ const DIVIDER_WIDTH = 4;
 function computeEqualSectionWidth(): number {
     if (typeof window === "undefined") return 300;
     const available = window.innerWidth - 3 * DIVIDER_WIDTH;
-    // Clamp to MIN_COMMIT_PANEL_WIDTH (the highest min) so equal widths work
-    return Math.max(MIN_COMMIT_PANEL_WIDTH, Math.floor(available / 4));
+    return Math.max(MIN_SECTION_WIDTH, Math.floor(available / 4));
 }
 
 function clampWidth(value: number, min: number, max: number): number {
@@ -355,39 +349,22 @@ function App(): React.ReactElement {
         widthsHydratedRef.current = true;
     }, []);
 
-    const [branchWidth, setBranchWidth] = useState(() => {
+    const readInitialWidth = (key: string): number => {
         try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.branchWidth;
+            const w = (vscode.getState() as Record<string, unknown> | undefined)?.[key];
             const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_BRANCH_WIDTH, Math.min(MAX_BRANCH_WIDTH, raw));
+            return Math.max(MIN_SECTION_WIDTH, raw);
         } catch {
-            return Math.max(
-                MIN_BRANCH_WIDTH,
-                Math.min(MAX_BRANCH_WIDTH, computeEqualSectionWidth()),
-            );
+            return Math.max(MIN_SECTION_WIDTH, computeEqualSectionWidth());
         }
-    });
-    const [infoWidth, setInfoWidth] = useState(() => {
-        try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.infoWidth;
-            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, raw));
-        } catch {
-            return Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, computeEqualSectionWidth()));
-        }
-    });
-    const [commitPanelWidth, setCommitPanelWidth] = useState(() => {
-        try {
-            const w = (vscode.getState() as Record<string, unknown> | undefined)?.commitPanelWidth;
-            const raw = typeof w === "number" ? w : computeEqualSectionWidth();
-            return Math.max(MIN_COMMIT_PANEL_WIDTH, Math.min(MAX_COMMIT_PANEL_WIDTH, raw));
-        } catch {
-            return Math.max(
-                MIN_COMMIT_PANEL_WIDTH,
-                Math.min(MAX_COMMIT_PANEL_WIDTH, computeEqualSectionWidth()),
-            );
-        }
-    });
+    };
+
+    const [branchWidth, setBranchWidth] = useState(() => readInitialWidth("branchWidth"));
+    const [graphWidth, setGraphWidth] = useState(() => readInitialWidth("graphWidth"));
+    const [infoWidth, setInfoWidth] = useState(() => readInitialWidth("infoWidth"));
+    const [commitPanelWidth, setCommitPanelWidth] = useState(() =>
+        readInitialWidth("commitPanelWidth"),
+    );
 
     // --- Commit-panel state ---
     const [cpState, cpDispatch] = useReducer(commitPanelReducer, initialCommitPanelState);
@@ -409,22 +386,22 @@ function App(): React.ReactElement {
     const onBranchDividerMouseDown = useColumnDrag(
         branchWidth,
         setBranchWidth,
-        MIN_BRANCH_WIDTH,
-        MAX_BRANCH_WIDTH,
+        MIN_SECTION_WIDTH,
+        Number.MAX_SAFE_INTEGER,
         false,
     );
-    const onInfoDividerMouseDown = useColumnDrag(
-        infoWidth,
-        setInfoWidth,
-        MIN_INFO_WIDTH,
-        MAX_INFO_WIDTH,
-        true,
+    const onGraphDividerMouseDown = useColumnDrag(
+        graphWidth,
+        setGraphWidth,
+        MIN_SECTION_WIDTH,
+        Number.MAX_SAFE_INTEGER,
+        false,
     );
     const onCommitPanelDividerMouseDown = useColumnDrag(
         commitPanelWidth,
         setCommitPanelWidth,
-        MIN_COMMIT_PANEL_WIDTH,
-        MAX_COMMIT_PANEL_WIDTH,
+        MIN_SECTION_WIDTH,
+        Number.MAX_SAFE_INTEGER,
         commitPanelPosition === "right",
     );
 
@@ -432,11 +409,11 @@ function App(): React.ReactElement {
     useEffect(() => {
         try {
             const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
-            vscode.setState({ ...prev, branchWidth, infoWidth, commitPanelWidth });
+            vscode.setState({ ...prev, branchWidth, graphWidth, infoWidth, commitPanelWidth });
         } catch {
             /* ignore */
         }
-    }, [branchWidth, infoWidth, commitPanelWidth]);
+    }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
     // --- Send column widths to extension for cross-session persistence ---
     const widthSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -449,6 +426,7 @@ function App(): React.ReactElement {
             vscode.postMessage({
                 type: "columnWidths",
                 branchWidth,
+                graphWidth,
                 infoWidth,
                 commitPanelWidth,
             });
@@ -456,7 +434,7 @@ function App(): React.ReactElement {
         return () => {
             if (widthSendTimer.current) clearTimeout(widthSendTimer.current);
         };
-    }, [branchWidth, infoWidth, commitPanelWidth]);
+    }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
     // --- Persist groupByDir ---
     useEffect(() => {
@@ -571,16 +549,26 @@ function App(): React.ReactElement {
                     markWidthsHydrated();
                     if (typeof data.branchWidth === "number")
                         setBranchWidth(
-                            clampWidth(data.branchWidth, MIN_BRANCH_WIDTH, MAX_BRANCH_WIDTH),
+                            clampWidth(
+                                data.branchWidth,
+                                MIN_SECTION_WIDTH,
+                                Number.MAX_SAFE_INTEGER,
+                            ),
+                        );
+                    if (typeof data.graphWidth === "number")
+                        setGraphWidth(
+                            clampWidth(data.graphWidth, MIN_SECTION_WIDTH, Number.MAX_SAFE_INTEGER),
                         );
                     if (typeof data.infoWidth === "number")
-                        setInfoWidth(clampWidth(data.infoWidth, MIN_INFO_WIDTH, MAX_INFO_WIDTH));
+                        setInfoWidth(
+                            clampWidth(data.infoWidth, MIN_SECTION_WIDTH, Number.MAX_SAFE_INTEGER),
+                        );
                     if (typeof data.commitPanelWidth === "number")
                         setCommitPanelWidth(
                             clampWidth(
                                 data.commitPanelWidth,
-                                MIN_COMMIT_PANEL_WIDTH,
-                                MAX_COMMIT_PANEL_WIDTH,
+                                MIN_SECTION_WIDTH,
+                                Number.MAX_SAFE_INTEGER,
                             ),
                         );
                     return;
@@ -757,7 +745,7 @@ function App(): React.ReactElement {
                     )}
 
                     {/* Graph panel */}
-                    <Box flex={1} display="flex" overflow="hidden" minWidth={0}>
+                    <Box display="flex" overflow="hidden" flexShrink={0}>
                         <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
                             <BranchColumn
                                 branches={branches}
@@ -783,8 +771,14 @@ function App(): React.ReactElement {
                             }}
                         />
 
-                        <div style={{ flex: 1, overflow: "hidden", display: "flex", minWidth: 0 }}>
-                            <div style={{ flex: 1, overflow: "hidden", minWidth: 0 }}>
+                        <div style={{ display: "flex", overflow: "hidden", flexShrink: 0 }}>
+                            <div
+                                style={{
+                                    width: graphWidth,
+                                    flexShrink: 0,
+                                    overflow: "hidden",
+                                }}
+                            >
                                 <CommitList
                                     commits={commits}
                                     selectedHash={selectedHash}
@@ -808,7 +802,7 @@ function App(): React.ReactElement {
                                 }}
                                 onMouseDown={(e) => {
                                     markWidthsHydrated();
-                                    onInfoDividerMouseDown(e);
+                                    onGraphDividerMouseDown(e);
                                 }}
                             />
 

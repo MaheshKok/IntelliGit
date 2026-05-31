@@ -12,6 +12,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         private readonly extensionUri: vscode.Uri,
         private readonly contextType: OnboardingContext,
         private readonly title: string,
+        private readonly showActions = true,
     ) {}
 
     resolveWebviewView(
@@ -55,17 +56,19 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         );
 
         const actions: Array<{ id: string; label: string; icon: string }> = [];
-        if (isNoWorkspace) {
-            actions.push(
-                { id: "cloneRepository", label: "Clone Repository", icon: "\u{1F4E5}" },
-                { id: "openFolder", label: "Open Folder", icon: "\u{1F4C2}" },
-            );
-        } else {
-            actions.push({
-                id: "initializeRepository",
-                label: "Initialize Repository",
-                icon: "\u{1F680}",
-            });
+        if (this.showActions) {
+            if (isNoWorkspace) {
+                actions.push(
+                    { id: "cloneRepository", label: "Clone Repository", icon: "\u{1F4E5}" },
+                    { id: "openFolder", label: "Open Folder", icon: "\u{1F4C2}" },
+                );
+            } else {
+                actions.push({
+                    id: "initializeRepository",
+                    label: "Initialize Repository",
+                    icon: "\u{1F680}",
+                });
+            }
         }
 
         const heading = isNoWorkspace ? "No Folder Open" : "No Git Repository";
@@ -79,6 +82,14 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
                     `<button class="onboarding-btn" data-action="${a.id}"><span class="btn-icon">${a.icon}</span><span>${a.label}</span></button>`,
             )
             .join("\n");
+        const contentHtml = this.showActions
+            ? `<img class="onboarding-icon" src="${iconUri}" alt="IntelliGit" />
+        <h1 class="onboarding-heading">${heading}</h1>
+        <p class="onboarding-subtitle">${subtitle}</p>
+        <div class="onboarding-actions">
+            ${buttonsHtml}
+        </div>`
+            : "";
 
         return `<!DOCTYPE html>
 <html lang="en">
@@ -168,12 +179,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     <div class="onboarding-shell">
-        <img class="onboarding-icon" src="${iconUri}" alt="IntelliGit" />
-        <h1 class="onboarding-heading">${heading}</h1>
-        <p class="onboarding-subtitle">${subtitle}</p>
-        <div class="onboarding-actions">
-            ${buttonsHtml}
-        </div>
+        ${contentHtml}
     </div>
     <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();

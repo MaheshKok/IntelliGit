@@ -191,7 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.sidebarViewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Graph"),
+                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Graph", false),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
@@ -218,7 +218,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             new OnboardingViewProvider(context.extensionUri, "no-git-repo", "IntelliGit"),
         );
         const sidebarGraphProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Graph"),
+            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Graph", false),
         );
         const commitPanelProvider = new SwitchableWebviewViewProvider(
             new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Commit"),
