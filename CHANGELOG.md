@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Undocked window columns now reflow to occupy the full available width after window resizing, while preserving cached user proportions and legacy incomplete width cache data.
+- Undocked window columns now use container-aware reflow via `ResizeObserver` and dynamic normalization so they continue to occupy the full available width after window resizing.
 - Removed the hidden badge-only IntelliGit view and moved the changed-file count badge onto the real Commit view, preventing a blank panel from appearing in repository workspaces.
 
 ## [0.8.15] - 2026-05-31
