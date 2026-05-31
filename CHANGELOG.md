@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Restored a dedicated hidden changed-files badge carrier view so the IntelliGit activity icon count now clears correctly after commit/refresh cycles without double counting the Commit view.
-- Commit view refresh actions now show the same spinner state as native Git while the changed-files count is being refreshed.
+- Removed the Commit view title-bar Refresh action entirely and made the in-panel Refresh button keep its blue refreshing state visible while the changed-files count is refreshed.
 - Graph commit context menus now disable `Cherry-Pick` when viewing the current branch or the all-branches graph, and only enable it for other branch scopes where the action is meaningful.
 
 ### Tests

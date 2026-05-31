@@ -21,6 +21,8 @@ import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTyp
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 
+const MIN_VISIBLE_REFRESH_MS = 300;
+
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
@@ -185,6 +187,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async refreshData(silent = true): Promise<void> {
+        const refreshStartedAt = Date.now();
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         if (!silent) {
             void Promise.resolve(
@@ -245,8 +248,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 currentBranchHasUpstream,
             });
         } finally {
-            if (!silent) this.postToWebview({ type: "refreshing", active: false });
             if (!silent) {
+                const remainingMs = MIN_VISIBLE_REFRESH_MS - (Date.now() - refreshStartedAt);
+                if (remainingMs > 0) {
+                    await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
+                }
+                this.postToWebview({ type: "refreshing", active: false });
                 void Promise.resolve(
                     vscode.commands.executeCommand(
                         "setContext",

@@ -357,16 +357,6 @@
                     "group": "navigation"
                 },
                 {
-                    "command": "intelligit.fileRefresh",
-                    "when": "view == intelligit.commitPanel && !intelligit.commitPanel.refreshing",
-                    "group": "navigation"
-                },
-                {
-                    "command": "intelligit.fileRefreshing",
-                    "when": "view == intelligit.commitPanel && intelligit.commitPanel.refreshing",
-                    "group": "navigation"
-                },
-                {
                     "command": "intelligit.selectRepository",
                     "when": "view == intelligit.commitGraph",
                     "group": "navigation"
