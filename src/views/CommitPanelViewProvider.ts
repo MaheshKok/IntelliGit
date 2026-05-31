@@ -186,6 +186,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         await this.refreshGraphData();
     }
 
+    private async refreshFromUserAction(): Promise<void> {
+        await vscode.window.withProgress(
+            { location: { viewId: CommitPanelViewProvider.viewType } },
+            async () => {
+                await this.refreshData(false);
+                await this.refreshGraphData();
+            },
+        );
+    }
+
     private async refreshData(silent = true): Promise<void> {
         const refreshStartedAt = Date.now();
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
@@ -416,8 +426,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
 
             case "refresh":
-                await this.refreshData(false);
-                await this.refreshGraphData();
+                await this.refreshFromUserAction();
                 break;
 
             case "selectCommit":

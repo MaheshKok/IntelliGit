@@ -868,7 +868,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         context.subscriptions.push(
             vscode.commands.registerCommand("intelligit.refresh", async () => {
-                await refreshActiveRepository();
+                // Route the refresh through withProgress targeting a view inside the
+                // IntelliGit activity bar container. VS Code renders this as a spinning
+                // progress badge overlaid on the IntelliGit activity bar icon for the
+                // duration of the refresh.
+                await vscode.window.withProgress(
+                    { location: { viewId: "intelligit.commitPanel" } },
+                    async () => {
+                        await refreshActiveRepository();
+                    },
+                );
             }),
 
             vscode.commands.registerCommand("intelligit.publishBranch", async () => {

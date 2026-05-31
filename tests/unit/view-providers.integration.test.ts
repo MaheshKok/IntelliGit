@@ -659,7 +659,12 @@ describe("view providers integration", () => {
             },
         ]);
 
+        withProgress.mockClear();
         await webview.send({ type: "refresh" });
+        expect(withProgress).toHaveBeenCalledWith(
+            { location: { viewId: "intelligit.commitPanel" } },
+            expect.any(Function),
+        );
         await webview.send({ type: "publishBranch" });
 
         expect(postMessageSpy).toHaveBeenCalledWith(

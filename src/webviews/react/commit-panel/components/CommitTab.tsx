@@ -1,7 +1,7 @@
 // The main Commit tab: toolbar + file tree + drag handle + commit area.
 // Composes all commit-related sub-components into the commit workflow.
 
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { Toolbar } from "./Toolbar";
 import { FileTree } from "./FileTree";
@@ -15,6 +15,8 @@ import type {
     AmendBranchCommitSummary,
 } from "../../../../types";
 import { AmendContextSection } from "./AmendContextSection";
+
+const MIN_REFRESH_FEEDBACK_MS = 700;
 
 interface Props {
     files: WorkingFile[];
@@ -74,10 +76,38 @@ export function CommitTab({
     const vscode = getVsCodeApi();
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
+    const [isRefreshFeedbackActive, setIsRefreshFeedbackActive] = useState(false);
+    const refreshFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+    const showRefreshFeedback = useCallback(() => {
+        if (refreshFeedbackTimerRef.current) {
+            clearTimeout(refreshFeedbackTimerRef.current);
+        }
+        setIsRefreshFeedbackActive(true);
+        refreshFeedbackTimerRef.current = setTimeout(() => {
+            setIsRefreshFeedbackActive(false);
+            refreshFeedbackTimerRef.current = undefined;
+        }, MIN_REFRESH_FEEDBACK_MS);
+    }, []);
+
+    useEffect(() => {
+        if (isRefreshing) {
+            showRefreshFeedback();
+        }
+    }, [isRefreshing, showRefreshFeedback]);
+
+    useEffect(() => {
+        return () => {
+            if (refreshFeedbackTimerRef.current) {
+                clearTimeout(refreshFeedbackTimerRef.current);
+            }
+        };
+    }, []);
 
     const handleRefresh = useCallback(() => {
+        showRefreshFeedback();
         vscode.postMessage({ type: "refresh" });
-    }, [vscode]);
+    }, [showRefreshFeedback, vscode]);
 
     const handleRollback = useCallback(() => {
         vscode.postMessage({ type: "rollback", paths: Array.from(checkedPaths) });
@@ -109,7 +139,7 @@ export function CommitTab({
         <Flex ref={containerRef} direction="column" flex={1} overflow="hidden">
             <Toolbar
                 onRefresh={handleRefresh}
-                isRefreshing={isRefreshing}
+                isRefreshing={isRefreshing || isRefreshFeedbackActive}
                 onRollback={handleRollback}
                 onToggleGroupBy={onToggleGroupBy}
                 onShelve={handleShelve}
