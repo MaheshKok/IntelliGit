@@ -5,13 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.15] - 2026-05-31
+## [0.8.16] - 2026-05-31
 
 ### Fixed
 
 - Undocked window columns now reflow to occupy the full available width after window resizing, while preserving cached user proportions and legacy incomplete width cache data.
-- Re-running "Undock in New Window" while IntelliGit is already undocked now only reveals the existing window instead of moving the currently active editor.
 - Removed the hidden badge-only IntelliGit view and moved the changed-file count badge onto the real Commit view, preventing a blank panel from appearing in repository workspaces.
+
+## [0.8.15] - 2026-05-31
+
+### Fixed
+
+- Undocked window sections now start with equal widths, preserve the full available width while resizing adjacent sections, and restore cached user widths across close/reopen.
+- Legacy undocked width caches missing the Graph column width are migrated instead of being discarded.
+- Re-running "Undock in New Window" while IntelliGit is already undocked now only reveals the existing window instead of moving the currently active editor.
 
 ## [0.8.14] - 2026-05-30
 
