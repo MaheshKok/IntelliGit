@@ -11,6 +11,7 @@ import {
     isBranchAction,
     isCommitAction,
 } from "../../src/webviews/react/commitGraphTypes";
+import { canCherryPickFromBranchScope } from "../../src/webviews/react/CommitList";
 import { getCommitMenuItems } from "../../src/webviews/react/commit-list/commitMenu";
 import { buildFileTree, collectDirPaths, countFiles } from "../../src/webviews/react/shared/fileTree";
 
@@ -127,7 +128,7 @@ describe("highlight rendering", () => {
 describe("commit menu", () => {
     it("disables history-rewrite actions for pushed merge commits", () => {
         const mergeCommit = makeCommit({ parentHashes: ["a", "b"] });
-        const items = getCommitMenuItems(mergeCommit, false);
+        const items = getCommitMenuItems(mergeCommit, false, false);
         const pushUpToHere = items.find((item) => item.action === "pushAllUpToHere");
         const undo = items.find((item) => item.action === "undoCommit");
         const edit = items.find((item) => item.action === "editCommitMessage");
@@ -143,7 +144,7 @@ describe("commit menu", () => {
     });
 
     it("enables actions for unpushed non-merge commits", () => {
-        const items = getCommitMenuItems(makeCommit({ parentHashes: ["parent"] }), true);
+        const items = getCommitMenuItems(makeCommit({ parentHashes: ["parent"] }), true, true);
         const disabledActions = items
             .filter((item) => !item.separator && item.disabled)
             .map((item) => item.action);
@@ -151,7 +152,7 @@ describe("commit menu", () => {
     });
 
     it("keeps checkout revision action in commit menu", () => {
-        const items = getCommitMenuItems(makeCommit(), true);
+        const items = getCommitMenuItems(makeCommit(), true, false);
         const checkoutRevision = items.find((item) => item.action === "checkoutRevision");
         const pushUpToHere = items.find((item) => item.action === "pushAllUpToHere");
         const squash = items.find((item) => item.action === "squashCommits");
@@ -159,6 +160,20 @@ describe("commit menu", () => {
         expect(pushUpToHere).toBeDefined();
         expect(squash).toBeDefined();
         expect(items.some((item) => item.action === "checkoutMain")).toBe(false);
+    });
+
+    it("only enables cherry-pick when the selected graph scope can be cherry-picked", () => {
+        const disabledItems = getCommitMenuItems(makeCommit(), true, false);
+        const enabledItems = getCommitMenuItems(makeCommit(), true, true);
+
+        expect(disabledItems.find((item) => item.action === "cherryPick")?.disabled).toBe(true);
+        expect(enabledItems.find((item) => item.action === "cherryPick")?.disabled).toBe(false);
+    });
+
+    it("allows cherry-pick only when viewing a non-current branch scope", () => {
+        expect(canCherryPickFromBranchScope(null, "main")).toBe(false);
+        expect(canCherryPickFromBranchScope("main", "main")).toBe(false);
+        expect(canCherryPickFromBranchScope("feature/work", "main")).toBe(true);
     });
 });
 

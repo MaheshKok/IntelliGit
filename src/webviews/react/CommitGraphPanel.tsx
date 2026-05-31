@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type {
@@ -144,6 +144,10 @@ export function CommitGraphPanel({
     });
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
+    const currentBranchName = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+        [branches],
+    );
     const onDividerMouseDown = useColumnDrag(
         branchWidth,
         setBranchWidth,
@@ -344,6 +348,7 @@ export function CommitGraphPanel({
                             hasMore={hasMore}
                             unpushedHashes={unpushedHashes}
                             selectedBranch={selectedBranch}
+                            currentBranchName={currentBranchName}
                             onSelectCommit={handleSelectCommit}
                             onFilterText={handleFilterText}
                             onLoadMore={handleLoadMore}

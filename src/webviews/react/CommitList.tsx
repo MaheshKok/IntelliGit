@@ -32,6 +32,13 @@ import {
 const MIN_PREFIX_LENGTH = 7;
 const MAX_GRAPH_WIDTH = JETBRAINS_UI.graph.maxWidth;
 
+export function canCherryPickFromBranchScope(
+    selectedBranch: string | null,
+    currentBranchName?: string | null,
+): boolean {
+    return selectedBranch !== null && (!currentBranchName || selectedBranch !== currentBranchName);
+}
+
 interface Props {
     commits: Commit[];
     selectedHash: string | null;
@@ -39,6 +46,7 @@ interface Props {
     hasMore: boolean;
     unpushedHashes: Set<string>;
     selectedBranch: string | null;
+    currentBranchName?: string | null;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
     onLoadMore: () => void | Promise<void>;
@@ -57,6 +65,7 @@ export function CommitList({
     hasMore,
     unpushedHashes,
     selectedBranch,
+    currentBranchName,
     onSelectCommit,
     onFilterText,
     onLoadMore,
@@ -183,6 +192,10 @@ export function CommitList({
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
+    const canCherryPickFromSelectedScope = canCherryPickFromBranchScope(
+        selectedBranch,
+        currentBranchName,
+    );
 
     return (
         <div style={ROOT_STYLE}>
@@ -299,6 +312,7 @@ export function CommitList({
                     items={getCommitMenuItems(
                         contextMenu.commit,
                         isUnpushedCommit(contextMenu.commit.hash),
+                        canCherryPickFromSelectedScope,
                     )}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}

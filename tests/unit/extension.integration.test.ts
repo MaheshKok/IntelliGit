@@ -62,6 +62,12 @@ const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
 });
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
+type MockTreeView = {
+    badge?: { value: number; tooltip?: string };
+    description?: string;
+    dispose: ReturnType<typeof vi.fn>;
+};
+const createdTreeViews = new Map<string, MockTreeView>();
 
 let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined = [
     { uri: { fsPath: "/repo", path: "/repo" } },
@@ -423,10 +429,15 @@ vi.mock("vscode", () => ({
     window: {
         registerWebviewViewProvider,
         registerWebviewPanelSerializer,
-        createTreeView: vi.fn(() => ({
-            badge: undefined,
-            dispose: vi.fn(),
-        })),
+        createTreeView: vi.fn((id: string) => {
+            const view: MockTreeView = {
+                badge: undefined,
+                description: undefined,
+                dispose: vi.fn(),
+            };
+            createdTreeViews.set(id, view);
+            return view;
+        }),
         createWebviewPanel: vi.fn(() => {
             const msgListeners: Array<(msg: unknown) => void> = [];
             const disposeListeners: Array<() => void> = [];
@@ -681,6 +692,7 @@ describe("extension integration", () => {
         deleteFileListeners.length = 0;
         renameFileListeners.length = 0;
         fsWatchCallbacks.length = 0;
+        createdTreeViews.clear();
         configurationValues.clear();
         workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         latestCommitGraphProvider = undefined;
@@ -867,6 +879,26 @@ describe("extension integration", () => {
         expect(latestCommitPanelProvider).toBeDefined();
         expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
         expect(latestCommitPanelProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
+    });
+
+    it("clears the activity bar changed-files badge when the refreshed count reaches zero", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        expect(latestCommitPanelProvider).toBeDefined();
+
+        const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
+        expect(badgeView).toBeDefined();
+
+        latestCommitPanelProvider!.emitFileCount(2);
+        expect(badgeView!.badge).toEqual({ tooltip: "2 changed files", value: 2 });
+
+        latestCommitPanelProvider!.emitFileCount(0);
+        expect(badgeView!.badge).toBeUndefined();
     });
 
     it("disposes stale restored undocked panels instead of leaving an empty editor", async () => {

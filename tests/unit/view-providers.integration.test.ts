@@ -815,9 +815,10 @@ describe("view providers integration", () => {
 
         const view = (provider as unknown as { view: Record<string, unknown> }).view;
 
-        // Initial state: getStatus returns 1 file -> numeric description, badge, and event.
+        // Initial state: getStatus returns 1 file -> numeric description and event.
+        // The activity bar count is carried by the hidden fileCountBadge view to avoid double counting.
         expect(view.description).toBe("1");
-        expect(view.badge).toEqual({ tooltip: "1 changed file", value: 1 });
+        expect(view.badge).toBeUndefined();
         expect(counts).toContain(1);
 
         // After commit, getStatus returns 0 files -> description/badge cleared and count fires 0.

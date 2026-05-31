@@ -3,9 +3,9 @@
 // same virtual scrolling. Keeps its own state management to match the
 // extension-host message contract.
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { CommitList } from "./CommitList";
-import type { Commit } from "../../types";
+import type { Branch, Commit } from "../../types";
 import type { CommitAction, CommitGraphOutbound, CommitGraphInbound } from "./commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
@@ -22,12 +22,17 @@ export function NativeCommitGraph({
     sendReady = true,
 }: Props): React.ReactElement {
     const [commits, setCommits] = useState<Commit[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
     const [selectedHash, setSelectedHash] = useState<string | null>(null);
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
+    const currentBranchName = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+        [branches],
+    );
 
     useEffect(() => {
         if (sendReady) {
@@ -63,6 +68,9 @@ export function NativeCommitGraph({
                     break;
                 case "setSelectedBranch":
                     setSelectedBranch(data.branch ?? null);
+                    break;
+                case "setBranches":
+                    setBranches(data.branches);
                     break;
                 case "loadError":
                     if (!loadingMore.current) setCommits([]);
@@ -116,6 +124,7 @@ export function NativeCommitGraph({
             hasMore={hasMore}
             unpushedHashes={unpushedHashes}
             selectedBranch={selectedBranch}
+            currentBranchName={currentBranchName}
             onSelectCommit={handleSelectCommit}
             onFilterText={handleFilterText}
             onLoadMore={handleLoadMore}

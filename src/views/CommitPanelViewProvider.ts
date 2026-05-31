@@ -180,7 +180,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     async refresh(): Promise<void> {
-        await this.refreshData();
+        await this.refreshData(false);
         await this.refreshGraphData();
     }
 
@@ -770,10 +770,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.lastFileCount = count;
         if (!this.view) return;
         this.view.description = count > 0 ? String(count) : "";
-        this.view.badge =
-            count > 0
-                ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
-                : undefined;
+        this.view.badge = undefined;
     }
 
     private postGraphCommitDetailState(): void {

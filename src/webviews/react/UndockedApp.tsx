@@ -2,7 +2,7 @@
 // Layout: [BranchCol | CommitList | CommitInfoPane] | divider | [CommitPanel].
 // Single message channel handles both graph and commit-panel message types.
 
-import React, { useState, useEffect, useCallback, useRef, useReducer } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
@@ -38,12 +38,7 @@ const MIN_SECTION_WIDTH = 220;
 const DIVIDER_WIDTH = 4;
 const SECTION_COUNT = 4;
 const TOTAL_DIVIDER_WIDTH = 3 * DIVIDER_WIDTH;
-const SECTION_WIDTH_KEYS = [
-    "branchWidth",
-    "graphWidth",
-    "infoWidth",
-    "commitPanelWidth",
-] as const;
+const SECTION_WIDTH_KEYS = ["branchWidth", "graphWidth", "infoWidth", "commitPanelWidth"] as const;
 
 interface SectionWidths {
     branchWidth: number;
@@ -473,6 +468,10 @@ function App(): React.ReactElement {
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
     const loadingMore = useRef(false);
+    const currentBranchName = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+        [branches],
+    );
 
     // Guards the cross-session width persistence: stays false until either the
     // extension restores saved widths or the user actually drags a divider.
@@ -524,9 +523,7 @@ function App(): React.ReactElement {
         const normalizeForCurrentWidth = () => {
             const measuredWidth = layoutRef.current?.clientWidth;
             const totalWidth =
-                typeof measuredWidth === "number" && measuredWidth > 0
-                    ? measuredWidth
-                    : undefined;
+                typeof measuredWidth === "number" && measuredWidth > 0 ? measuredWidth : undefined;
             const normalized = normalizeSectionWidths(sectionWidthsRef.current, totalWidth);
             if (!sectionWidthsAreClose(sectionWidthsRef.current, normalized)) {
                 setSectionWidths(normalized);
@@ -983,6 +980,7 @@ function App(): React.ReactElement {
                                     hasMore={hasMore}
                                     unpushedHashes={unpushedHashes}
                                     selectedBranch={selectedBranch}
+                                    currentBranchName={currentBranchName}
                                     onSelectCommit={handleSelectCommit}
                                     onFilterText={handleFilterText}
                                     onLoadMore={handleLoadMore}

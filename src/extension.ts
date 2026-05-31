@@ -368,6 +368,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
             treeDataProvider: mergeConflicts,
         });
+        const fileCountBadgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
+            treeDataProvider: {
+                getChildren: () => [],
+                getTreeItem: () => new vscode.TreeItem(""),
+            } satisfies vscode.TreeDataProvider<never>,
+        });
+        const updateFileCountBadge = (count: number): void => {
+            fileCountBadgeView.badge =
+                count > 0
+                    ? {
+                          tooltip: `${count} changed file${count !== 1 ? "s" : ""}`,
+                          value: count,
+                      }
+                    : undefined;
+        };
+        const resetFileCountBadge = (): void => updateFileCountBadge(0);
 
         let undocked: UndockedViewProvider | undefined;
 
@@ -428,6 +444,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 undocked.setRepositoryLabel(repository.label);
             }
             mergeConflicts.setWorkspaceRoot(repoRootUri);
+            resetFileCountBadge();
             refreshService.dispose();
             refreshService = createRefreshService(repoRoot);
             refreshService.registerFileWatchers();
@@ -543,6 +560,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         console.error("[IntelliGit] Docked commit graph refresh failed:", err);
                     });
                 }),
+                undocked.onDidChangeFileCount(updateFileCountBadge),
             );
 
             return undocked;
@@ -1207,11 +1225,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // --- Disposables ---
 
         context.subscriptions.push(
+            commitPanel.onDidChangeFileCount(updateFileCountBadge),
             { dispose: () => refreshService.dispose() },
             commitGraph,
             commitInfo,
             commitPanel,
             mergeConflicts,
+            fileCountBadgeView,
         );
     }
 }
