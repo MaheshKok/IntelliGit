@@ -252,6 +252,7 @@ describe("app logic coverage", () => {
                     iconFonts: [],
                     isRefreshing: false,
                     error: null,
+                    currentBranchHasUpstream: true,
                 },
                 dispatch,
             ],
