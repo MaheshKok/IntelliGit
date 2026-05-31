@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import React, { act } from "react";
+import type { ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { flush } from "./utils/reactDomTestUtils";
 
@@ -96,6 +97,14 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+    vi.useRealTimers();
+    vi.doUnmock("../../src/webviews/react/BranchColumn");
+    vi.doUnmock("../../src/webviews/react/CommitList");
+    vi.doUnmock("../../src/webviews/react/commit-info/CommitInfoPane");
+    vi.doUnmock("../../src/webviews/react/commit-panel/components/TabBar");
+    vi.doUnmock("../../src/webviews/react/commit-panel/components/CommitTab");
+    vi.doUnmock("../../src/webviews/react/commit-panel/components/ShelfTab");
+    vi.doUnmock("../../src/webviews/react/shared/components");
     document.body.innerHTML = "";
     vi.clearAllMocks();
 });
@@ -507,6 +516,173 @@ describe("CommitGraphApp integration", () => {
                 filePath: "src/feature.ts",
             }),
         );
+    });
+});
+
+describe("UndockedApp integration", () => {
+    function mockUndockedChildren(): void {
+        vi.doMock("../../src/webviews/react/BranchColumn", () => ({
+            BranchColumn: () => <div>Branches</div>,
+        }));
+        vi.doMock("../../src/webviews/react/CommitList", () => ({
+            CommitList: () => <div>Graph</div>,
+        }));
+        vi.doMock("../../src/webviews/react/commit-info/CommitInfoPane", () => ({
+            CommitInfoPane: () => <div>Info</div>,
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/components/TabBar", () => ({
+            TabBar: ({ commitContent }: { commitContent: ReactNode }) => <div>{commitContent}</div>,
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/components/CommitTab", () => ({
+            CommitTab: () => <div>Commit</div>,
+        }));
+        vi.doMock("../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
+            ShelfTab: () => <div>Shelf</div>,
+        }));
+        vi.doMock("../../src/webviews/react/shared/components", () => ({
+            ThemeIconFontFaces: () => null,
+        }));
+    }
+
+    it("uses equal first-open section widths, preserves total width while dragging, and persists resized widths", async () => {
+        vi.resetModules();
+        vi.useFakeTimers();
+        Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: 1200,
+        });
+
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        mockUndockedChildren();
+
+        await import("../../src/webviews/react/UndockedApp");
+        await flush();
+
+        const widthOf = (testId: string): number => {
+            const element = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement;
+            if (!element) throw new Error(`missing ${testId}`);
+            return Number.parseFloat(element.style.width);
+        };
+        const sectionIds = [
+            "undocked-commit-panel-section",
+            "undocked-branch-section",
+            "undocked-graph-section",
+            "undocked-info-section",
+        ];
+        const initialWidths = sectionIds.map(widthOf);
+
+        expect(initialWidths).toEqual(initialWidths.map(() => 297));
+        expect(initialWidths.reduce((total, width) => total + width, 0)).toBe(1188);
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "ready" });
+
+        act(() => {
+            document
+                .querySelector('[data-testid="undocked-branch-divider"]')
+                ?.dispatchEvent(
+                    new MouseEvent("mousedown", {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: 400,
+                    }),
+                );
+            document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 450 }));
+            document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+
+        expect(widthOf("undocked-branch-section")).toBe(347);
+        expect(widthOf("undocked-graph-section")).toBe(247);
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1188);
+
+        act(() => {
+            vi.advanceTimersByTime(350);
+        });
+
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "columnWidths",
+            branchWidth: 347,
+            graphWidth: 247,
+            infoWidth: 297,
+            commitPanelWidth: 297,
+        });
+        vi.useRealTimers();
+    });
+
+    it("migrates legacy persisted section widths without graphWidth", async () => {
+        vi.resetModules();
+        vi.useFakeTimers();
+        Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: 1200,
+        });
+
+        const vscode = installVsCodeMock({
+            branchWidth: 400,
+            infoWidth: 300,
+            commitPanelWidth: 200,
+        });
+        createRootHost();
+        mockUndockedChildren();
+
+        await import("../../src/webviews/react/UndockedApp");
+        await flush();
+
+        const widthOf = (testId: string): number => {
+            const element = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement;
+            if (!element) throw new Error(`missing ${testId}`);
+            return Number.parseFloat(element.style.width);
+        };
+        const sectionIds = [
+            "undocked-commit-panel-section",
+            "undocked-branch-section",
+            "undocked-graph-section",
+            "undocked-info-section",
+        ];
+
+        expect(widthOf("undocked-branch-section")).toBeCloseTo(384.27, 2);
+        expect(widthOf("undocked-graph-section")).toBeCloseTo(291.87, 2);
+        expect(widthOf("undocked-info-section")).toBeCloseTo(291.87, 2);
+        expect(widthOf("undocked-commit-panel-section")).toBe(220);
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBeCloseTo(
+            1188,
+            5,
+        );
+
+        act(() => {
+            document
+                .querySelector('[data-testid="undocked-branch-divider"]')
+                ?.dispatchEvent(
+                    new MouseEvent("mousedown", {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: 400,
+                    }),
+                );
+            document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 450 }));
+            document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+        await flush();
+        act(() => {
+            vi.advanceTimersByTime(350);
+        });
+
+        const columnWidthMessage = vscode.postMessage.mock.calls
+            .map(([message]) => message as { type?: string })
+            .find((message) => message.type === "columnWidths") as
+            | {
+                  branchWidth: number;
+                  graphWidth: number;
+                  infoWidth: number;
+                  commitPanelWidth: number;
+              }
+            | undefined;
+
+        expect(columnWidthMessage?.branchWidth).toBeCloseTo(434.27, 2);
+        expect(columnWidthMessage?.graphWidth).toBeCloseTo(241.87, 2);
+        expect(columnWidthMessage?.infoWidth).toBeCloseTo(291.87, 2);
+        expect(columnWidthMessage?.commitPanelWidth).toBe(220);
+        vi.useRealTimers();
     });
 });
 

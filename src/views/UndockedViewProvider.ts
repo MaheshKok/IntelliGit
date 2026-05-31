@@ -16,6 +16,41 @@ import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile } from "../t
 import type { BranchAction, CommitAction } from "../webviews/react/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/react/undocked/types";
 
+interface PersistedColumnWidths {
+    branchWidth: number;
+    graphWidth: number;
+    infoWidth: number;
+    commitPanelWidth: number;
+}
+
+function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | undefined {
+    if (!value || typeof value !== "object") return undefined;
+    const saved = value as Record<string, unknown>;
+    const branchWidth = saved.branchWidth;
+    const graphWidth = saved.graphWidth;
+    const infoWidth = saved.infoWidth;
+    const commitPanelWidth = saved.commitPanelWidth;
+
+    if (
+        typeof branchWidth !== "number" ||
+        !Number.isFinite(branchWidth) ||
+        typeof infoWidth !== "number" ||
+        !Number.isFinite(infoWidth) ||
+        typeof commitPanelWidth !== "number" ||
+        !Number.isFinite(commitPanelWidth)
+    ) {
+        return undefined;
+    }
+
+    return {
+        branchWidth,
+        graphWidth:
+            typeof graphWidth === "number" && Number.isFinite(graphWidth) ? graphWidth : infoWidth,
+        infoWidth,
+        commitPanelWidth,
+    };
+}
+
 export class UndockedViewProvider {
     public static readonly viewType = "intelligit.undocked";
 
@@ -150,6 +185,11 @@ export class UndockedViewProvider {
     }
 
     async open(): Promise<void> {
+        if (this.panel) {
+            this.panel.reveal();
+            return;
+        }
+
         this.panel = vscode.window.createWebviewPanel(
             UndockedViewProvider.viewType,
             `IntelliGit — ${this.repositoryLabel}`,
@@ -765,17 +805,20 @@ export class UndockedViewProvider {
     }
 
     private sendPersistedColumnWidths(): void {
-        const saved = this.workspaceState?.get<{
-            branchWidth: number;
-            graphWidth?: number;
-            infoWidth: number;
-            commitPanelWidth: number;
-        }>(UndockedViewProvider.COLUMN_WIDTHS_KEY);
-        if (saved) {
+        const saved = migratePersistedColumnWidths(
+            this.workspaceState?.get(UndockedViewProvider.COLUMN_WIDTHS_KEY),
+        );
+        if (
+            saved &&
+            Number.isFinite(saved.branchWidth) &&
+            Number.isFinite(saved.graphWidth) &&
+            Number.isFinite(saved.infoWidth) &&
+            Number.isFinite(saved.commitPanelWidth)
+        ) {
             this.postToWebview({
                 type: "columnWidths",
                 branchWidth: saved.branchWidth,
-                graphWidth: saved.graphWidth ?? saved.infoWidth,
+                graphWidth: saved.graphWidth,
                 infoWidth: saved.infoWidth,
                 commitPanelWidth: saved.commitPanelWidth,
             });

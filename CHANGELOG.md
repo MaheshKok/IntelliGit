@@ -5,6 +5,14 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.15] - 2026-05-31
+
+### Fixed
+
+- Undocked window resizing now preserves the full available width while resizing adjacent sections, and ignores legacy incomplete width cache data.
+- Re-running "Undock in New Window" while IntelliGit is already undocked now only reveals the existing window instead of moving the currently active editor.
+- Hidden badge-only view is now gated behind an active repository context so empty workspaces do not show a blank panel with VS Code's missing data-provider message.
+
 ## [0.8.14] - 2026-05-30
 
 ### Fixed

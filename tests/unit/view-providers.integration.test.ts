@@ -57,11 +57,11 @@ const workspaceState: {
     workspaceFolders: [{ uri: { fsPath: "/repo", path: "/repo" } }],
 };
 
-function createMemento(initial: Record<string, string> = {}) {
-    const store = new Map<string, string>(Object.entries(initial));
+function createMemento(initial: Record<string, unknown> = {}) {
+    const store = new Map<string, unknown>(Object.entries(initial));
     return {
         get: vi.fn((key: string) => store.get(key)),
-        update: vi.fn(async (key: string, value: string | undefined) => {
+        update: vi.fn(async (key: string, value: unknown | undefined) => {
             if (value === undefined) {
                 store.delete(key);
             } else {
@@ -434,6 +434,43 @@ describe("view providers integration", () => {
 
         webview.dispose();
         provider.dispose();
+    });
+
+    it("UndockedViewProvider migrates legacy persisted column widths", async () => {
+        const { UndockedViewProvider } = await import("../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento({
+                "intelligit.undockedColumnWidths": {
+                    branchWidth: 400,
+                    infoWidth: 300,
+                    commitPanelWidth: 200,
+                },
+            }) as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            sendPersistedColumnWidths: () => void;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+
+        testProvider.sendPersistedColumnWidths();
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "columnWidths",
+            branchWidth: 400,
+            graphWidth: 300,
+            infoWidth: 300,
+            commitPanelWidth: 200,
+        });
     });
 
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {
