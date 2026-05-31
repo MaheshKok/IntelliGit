@@ -283,6 +283,119 @@ describe("CommitPanelApp integration", () => {
         );
         expect(vscode.setState).toHaveBeenCalled();
     });
+
+    it("keeps toolbar refresh feedback visible when changed files are present", async () => {
+        vi.resetModules();
+        vi.useFakeTimers();
+        const vscode = installVsCodeMock({ checked: [] });
+        createRootHost();
+
+        await act(async () => {
+            await import("../../src/webviews/react/commit-panel/CommitPanelApp");
+        });
+        await flush();
+
+        const files = [
+            {
+                path: "README.md",
+                status: "M",
+                staged: false,
+                additions: 4,
+                deletions: 1,
+            },
+            {
+                path: "package.json",
+                status: "M",
+                staged: false,
+                additions: 1,
+                deletions: 0,
+            },
+        ];
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "update",
+                        files,
+                        stashes: [],
+                        shelfFiles: [],
+                        selectedShelfIndex: null,
+                        currentBranchHasUpstream: true,
+                    },
+                }),
+            );
+        });
+        await flush();
+
+        expect(document.body.textContent).toContain("Changes");
+        expect(document.body.textContent).toContain("2 files");
+        expect(document.querySelector('[title="README.md"]')).toBeTruthy();
+        expect(document.querySelector('[title="package.json"]')).toBeTruthy();
+        expect(document.querySelector('button[aria-label="Refresh"]')).toBeTruthy();
+
+        fireClick(document.querySelector('button[aria-label="Refresh"]'));
+        await flush();
+
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "refresh" });
+        expect(document.querySelector('[title="README.md"]')).toBeTruthy();
+        expect(document.querySelector('[title="package.json"]')).toBeTruthy();
+        let refreshingButton = document.querySelector(
+            'button[aria-label="Refreshing..."][data-refreshing="true"]',
+        ) as HTMLButtonElement | null;
+        expect(refreshingButton).toBeTruthy();
+        expect(refreshingButton?.disabled).toBe(true);
+        expect(refreshingButton?.querySelector("svg")?.getAttribute("style")).toContain(
+            "intelligit-spin",
+        );
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "refreshing", active: false },
+                }),
+            );
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "update",
+                        files,
+                        stashes: [],
+                        shelfFiles: [],
+                        selectedShelfIndex: null,
+                        currentBranchHasUpstream: true,
+                    },
+                }),
+            );
+        });
+        await flush();
+
+        expect(document.querySelector('[title="README.md"]')).toBeTruthy();
+        expect(document.querySelector('[title="package.json"]')).toBeTruthy();
+        refreshingButton = document.querySelector(
+            'button[aria-label="Refreshing..."][data-refreshing="true"]',
+        ) as HTMLButtonElement | null;
+        expect(refreshingButton).toBeTruthy();
+
+        act(() => {
+            vi.advanceTimersByTime(699);
+        });
+        await flush();
+        expect(
+            document.querySelector('button[aria-label="Refreshing..."][data-refreshing="true"]'),
+        ).toBeTruthy();
+        expect(document.querySelector('[title="README.md"]')).toBeTruthy();
+
+        act(() => {
+            vi.advanceTimersByTime(1);
+        });
+        await flush();
+
+        expect(document.querySelector('button[aria-label="Refreshing..."]')).toBeNull();
+        expect(document.querySelector('button[aria-label="Refresh"]')).toBeTruthy();
+        expect(document.querySelector('[title="README.md"]')).toBeTruthy();
+        expect(document.querySelector('[title="package.json"]')).toBeTruthy();
+    });
 });
 
 describe("CommitGraphApp integration", () => {

@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.17] - 2026-06-01
+
+### Fixed
+
+- Restored a dedicated hidden changed-files badge carrier view so the IntelliGit activity icon count now clears correctly after commit/refresh cycles without double counting the Commit view.
+- Removed the Commit view title-bar Refresh action entirely and made the in-panel Refresh button show an immediate, centered blue spin state while also routing refresh through VS Code's native view progress indicator.
+- Graph commit context menus now disable `Cherry-Pick` when viewing the current branch or the all-branches graph, and only enable it for other branch scopes where the action is meaningful.
+
+### Tests
+
+- Added regression coverage for activity-bar changed-file badge clearing and branch-scope cherry-pick enablement.
+
 ## [0.8.16] - 2026-05-31
 
 ### Fixed

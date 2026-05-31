@@ -6,14 +6,23 @@ import type { MenuItem } from "../shared/components/ContextMenu";
 type SeparatorAction = `sep-${string}`;
 type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
 
-export function getCommitMenuItems(commit: Commit, isUnpushed: boolean): CommitMenuItem[] {
+export function getCommitMenuItems(
+    commit: Commit,
+    isUnpushed: boolean,
+    canCherryPick: boolean,
+): CommitMenuItem[] {
     const isPushed = !isUnpushed;
     const isMergeCommit = commit.parentHashes.length > 1;
 
     const items: CommitMenuItem[] = [
         { label: "Copy Revision Number", action: "copyRevision", icon: iconCopy() },
         { label: "Create Patch...", action: "createPatch", icon: iconPatch() },
-        { label: "Cherry-Pick", action: "cherryPick", icon: iconCherry() },
+        {
+            label: "Cherry-Pick",
+            action: "cherryPick",
+            disabled: !canCherryPick,
+            icon: iconCherry(),
+        },
         { separator: true, label: "", action: "sep-checkout" },
     ];
 
