@@ -119,11 +119,14 @@ recognizable hook — is entirely missing and is therefore Milestone 1.
 
 ## 1. Guiding Principles for All Milestones
 
-1. **Extension host is the sole git coordinator.** New git reads/writes go
-   through `GitOps` (extend it) executed in the host. Webviews never spawn git.
-2. **One git access path.** All commands run through `GitExecutor.run(args)`
-   (`simple-git` `raw`). Add narrow, perf-critical streaming spawns only where
-   measured (see §7.2). Never introduce a second git library.
+1. **Extension host is the sole git coordinator.** All git runs in the host via
+   `GitExecutor`; webviews never spawn git. New capability goes in **focused
+   services** (`BlameService`, `WorktreeService`, …), **not** by growing the
+   already-1104-LOC `GitOps` — freeze `GitOps`, see M0.3.
+2. **One git access path.** Commands run through `GitExecutor.run(args)`
+   (`simple-git` `raw`). Note `raw` does not stream — add a narrow, cancellable
+   `child_process.spawn` path only where measured (see §7.2, M0.4). Never
+   introduce a second git library.
 3. **Immutability.** Data passed to webviews is built as new objects; never
    mutate cached entries in place (cache returns frozen copies). Aligns with repo
    coding-style rules.
@@ -554,7 +557,7 @@ perf. Mitigate with a render cap and incremental load.
 
 ---
 
-## M4 — Worktrees + Commit Graph Parity Polish
+## M4 — Free Private-Repo Worktrees + Commit Graph Parity Polish
 
 Independent; reuses existing graph code.
 
@@ -588,46 +591,33 @@ locked/prunable worktrees; relative paths; default new-worktree location setting
 
 **Effort:** M. **Risk:** Low–Med.
 
-### M4.2 Commit Graph parity polish (already exists → close gaps)
+### M4.2 Commit Graph parity polish (graph already exists → close gaps)
 
-**DECIDED — Safe-first rollout + backup refs.** Mutation aggressiveness is
-deliberately staged:
+**Reality check:** the destructive graph ops are **already implemented and
+shipping** (`commitCommands.ts`: reset/drop/squash/undo/rebase). There is no
+"Phase 1 = no history rewrite yet" — that work is done. So M4.2 is **not** about
+introducing destructive ops; it is about:
 
-- **Phase 1 (this milestone): safe / easily-reversible ops only** in the graph
-  context menu — checkout, create branch, cherry-pick, revert, merge, fetch,
-  pull. No history rewrite yet.
-- **Phase 2 (later, gated release): rebase / reset / force-push**, behind the
-  full guardrail UX below.
+1. **Wiring the M0.1 hardening into the graph context menu** — every existing
+   destructive action now goes through the auto backup-ref + Undo-toast +
+   command-preview confirmation built in M0. (The safety net itself is built in
+   M0, not here.)
+2. **Confirmation UX upgrade** for the already-shipping ops: replace the plain
+   modal with one that shows the **exact git command** + **list of affected
+   commits** (sha + summary), enforces the **clean-tree precondition** uniformly,
+   surfaces the **backup-ref name** so the user sees the undo path, and adds
+   **force-push double-confirm** (`--force-with-lease`) if/when force-push is
+   added.
+3. **Remaining graph feature gaps** (genuinely new):
+   - Prefixed search (`author:`, `message:`, `file:`, `@me`) — parse in host,
+     filter the log query / client-side.
+   - New ops not yet present: `rebaseOnto` (UI), `forcePushWithLease` — added
+     behind the M0 backup-ref + confirmation flow.
+   - Column show/hide + reorder persistence (`workspaceState`).
+   - Minimap / scroll markers (defer; experimental).
 
-**Safety net (DECIDED, applies to every history-rewriting op) — auto backup ref.**
-Before any rebase/reset/amend-that-rewrites/force-push, IntelliGit creates a
-backup ref `refs/intelligit/backup/<branch>/<unix-ts>` pointing at the pre-op
-`HEAD`. The post-op toast offers a one-click **Undo** that resets the branch back
-to that ref. This is a deliberate differentiator over GitLens — destructive
-graph actions are always trivially reversible. Backup refs are pruned on a
-retention policy (keep last N per branch; setting `intelligit.graph.backupRetention`).
-
-**Confirmation UX for Phase 2 destructive ops:**
-- Modal showing the **exact git command** and the **list of affected commits**
-  (sha + summary) that will be rewritten/discarded.
-- **Working-tree-clean precondition** — block (or offer auto-shelve) if dirty.
-- **Force-push double-confirm** (extra explicit step), and prefer
-  `--force-with-lease` over `--force`.
-- Surface the backup-ref name in the confirmation so the user sees the undo path
-  before acting.
-
-Audit existing `CommitGraphApp` against GitLens graph and fill the rest:
-
-- Prefixed search (`author:`, `message:`, `file:`, `@me`) — parse in host, filter
-  the log query / client-side.
-- Right-click action wiring to `GitOps` — Phase 1 adds `cherryPick`, `revert`,
-  `merge`; Phase 2 adds `resetTo`, `rebaseOnto`, `forcePushWithLease` (each
-  guarded by the backup-ref + confirmation flow above).
-- Column show/hide + reorder persistence (`workspaceState`).
-- Minimap / scroll markers (defer; experimental).
-
-**Effort:** M (incremental). **Risk:** Phase 1 Low; Phase 2 Med — fully mitigated
-by backup refs + command-preview confirmations + clean-tree precondition.
+**Effort:** M (incremental — most mutation logic exists; this is hardening +
+search + columns). **Risk:** Low once M0.1 backup refs are in place.
 
 ---
 
@@ -827,29 +817,38 @@ parallelized across subagents.
 
 ### 7.7 Risks register
 
-| Risk                                 | Likelihood | Impact | Mitigation                                       |
-| ------------------------------------ | ---------- | ------ | ------------------------------------------------ |
-| Blame perf on huge files             | Med        | High   | incremental blame, cache, queue, cancellation    |
-| Decoration flicker/typing lag        | Med        | Med    | debounce, shared selection pipeline              |
-| Log/blame parse bugs on edge content | Med        | High   | `%x1f` delimiters, fixture tests                 |
-| External API rate limits (M5)        | High       | Med    | cache+TTL, backoff, manual refresh               |
-| Auth/secret handling (M5/M6)         | Med        | High   | SecretStorage, VS Code auth provider, redaction  |
-| Destructive graph ops (M4)           | Low        | High   | confirmations, dry-run messaging                 |
-| AI cost creep                        | Low        | Med    | BYOK-only + VS Code LM default; no resold tokens |
+| Risk                                       | Likelihood | Impact   | Mitigation                                            |
+| ------------------------------------------ | ---------- | -------- | ----------------------------------------------------- |
+| **Already-shipping `reset --hard` data loss** | **High**   | **High** | **M0.1: gate to unpushed/warn, backup ref + Undo**    |
+| Blame perf on huge files                   | Med        | High     | viewport-ranged blame, cache, queue, cancellation     |
+| Decoration flicker/typing lag              | Med        | Med      | debounce, shared selection pipeline                   |
+| Log/blame parse bugs on edge content       | Med        | High     | `%x1f`/`%x1e` delimiters, fixture tests               |
+| Wrong-repo blame in multi-root workspace   | Med        | Med      | M0.2 `RepositoryManager`, per-document resolution     |
+| External API rate limits (M5)              | High       | Med      | cache+TTL, backoff, manual refresh                    |
+| Auth/secret handling (M5/M6)               | Med        | High     | SecretStorage, VS Code auth provider, redaction       |
+| Open-source fork of paid features          | Med        | Med      | open-core split (§10) — paid code proprietary-licensed |
+| AI cost creep                              | Low        | Med      | BYOK-only + VS Code LM default; no resold tokens      |
 
 ---
 
 ## 8. Sequencing Summary
 
-1. **M0+M1 — Authorship Layer** (the hook; establishes annotation system + cache).
+0. **M0 — Mandatory pre-work (FIRST, blocking):** harden already-shipping
+   destructive ops (backup refs + Undo; fix un-gated `reset --hard`), add
+   `RepositoryManager`, build read services + fixture-tested parsers + caches.
+1. **M1 — Authorship Layer** (the hook; smallest first: line blame + status bar +
+   hover; settings-editor *shell* only).
 2. **M2 — Hovers, Revision Navigation, Autolinks** (cheap once M1 exists).
 3. **M3 — Visual File History** (parallelizable with M2; needs only M0 data).
-4. **M4 — Worktrees + Graph parity polish** (independent; reuses graph code).
-5. **M5 — Remote Integrations + Launchpad** (network/auth vertical).
-6. **M6 — AI BYOK** (last; builds on a stable surface; zero token cost).
+4. **M4 — Free private-repo Worktrees + Graph parity polish** (the undercut;
+   wires M0 hardening into the graph).
+5. **M5 — GitHub Integration + Launchpad** (network/auth vertical; GitLab later).
+6. **M6 — AI BYOK** (last; builds on a stable surface; not the main wedge).
 
 **Recommended study order for engineers** (foundation-first):
-`extension.ts` → `git/executor.ts` → `git/operations.ts` → `services/refreshService.ts`
+`extension.ts` (esp. the single-repo `executor`/`setRoot` flow `:332`,`:433`) →
+`git/executor.ts` → `git/operations.ts` → `commands/commitCommands.ts` (the
+already-shipping destructive ops M0.1 must harden) → `services/refreshService.ts`
 → `views/CommitGraphViewProvider.ts` + `webviews/react/commitGraphTypes.ts`
 (the messaging contract) → then this doc's M0 → M1.
 
@@ -865,11 +864,13 @@ All open questions are resolved. Recorded here for traceability.
    layout. `visx` is the acceptable fallback if React-component ergonomics are
    wanted. Rejected: hand-rolled (too much reinvented scale/axis code) and
    all-in-one chart libs (wrong chart type). See M3.
-2. **M4 graph mutations — RESOLVED: safe-first + auto backup refs.** Phase 1 ships
-   only safe/reversible ops; rebase/reset/force-push come in a later gated phase
-   behind command-preview confirmations, clean-tree precondition, and force-push
-   double-confirm. Every history rewrite first writes
-   `refs/intelligit/backup/<branch>/<ts>` for one-click undo. See M4.2.
+2. **Destructive ops — RESOLVED: harden the already-shipping ops in M0, not
+   "later".** reset/drop/squash/undo/rebase already exist in
+   `commitCommands.ts`. M0.1 (urgent, first) adds auto backup refs
+   (`refs/intelligit/backup/<branch>/<ts>`) + one-click Undo, fixes the un-gated
+   `reset --hard`, and enforces clean-tree preconditions uniformly. M4.2 then
+   wires this net + command-preview confirmations into the graph context menu and
+   adds the remaining ops (rebaseOnto UI, force-push-with-lease). See M0.1, M4.2.
 3. **M5 provider scope — RESOLVED: GitHub first, GitLab later.** Ship the GitHub
    provider + Launchpad first using VS Code's built-in GitHub auth; add GitLab
    (PAT via SecretStorage) in a follow-up. See M5.
@@ -884,10 +885,51 @@ All open questions are resolved. Recorded here for traceability.
 
 ---
 
-## 10. Sources
+## 10. Licensing & Monetization Model (DECIDED: Open-Core)
 
-- IntelliGit codebase (`package.json`, `src/extension.ts`, `src/git/*`,
-  `src/views/*`, `src/webviews/react/*`) — verified May 2026.
+**The problem (verified):** `package.json` declares `"license": "MIT"`. Under
+MIT, any **local-only** paid feature can be legally forked and stripped of its
+paywall. A pure "charge for a local feature" model is therefore not defensible.
+
+**DECIDED — open-core split:**
+
+- **Free core stays open (MIT):** the JetBrains-style UX, blame/authorship layer,
+  commit graph, worktrees (incl. **private repos** — the deliberate undercut),
+  visual file history, safer history editing. This is the moat-by-adoption.
+- **Paid features live in a separate, proprietary-licensed module** — not under
+  MIT — so they cannot be trivially forked. Candidates align with where value is
+  hard to fork and/or carries real cost: **team Launchpad, self-hosted/enterprise
+  providers, policy controls, SSO, cloud patch sharing, priority support.**
+- **Repo structure implication:** before any paid feature is written, split the
+  workspace so proprietary code is physically and license-wise separate (e.g. a
+  `packages/` boundary with distinct `LICENSE`), and confirm the contribution/CLA
+  story. **This decision blocks paywall work — resolve the split first.**
+
+**Monetization is account/server/team-based, not local-feature-based.** This
+matches the positioning: individuals get a generous free, account-free, local
+product; teams/enterprises pay for collaboration, governance, and support. The
+[`gitlens-feature-analysis.md`](./gitlens-feature-analysis.md) §17 monetization
+levers still apply, re-scoped to this open-core boundary.
+
+**Open items to confirm before building paid features:**
+
+- Exact MIT-vs-proprietary file/package boundary and how the marketplace build
+  bundles both.
+- Whether a CLA is needed for outside contributions to the open core.
+- License-key / entitlement check mechanism for the proprietary module (server
+  validation, since client-side checks in shipped JS are bypassable).
+
+---
+
+## 11. Sources
+
+- IntelliGit codebase — verified May 2026: `package.json` (`license: MIT`,
+  `engines.vscode`), `src/extension.ts` (`:332-333` single executor, `:433`
+  `setRoot` mutation), `src/git/executor.ts` (`:13` `simpleGit.raw`),
+  `src/git/operations.ts` (1104 LOC), `src/commands/commitCommands.ts`
+  (shipping `reset --hard`/drop/squash/undo/rebase), `src/views/*`,
+  `src/webviews/react/*`.
+- [`gitlens-feature-analysis.md`](./gitlens-feature-analysis.md) — feature/tier source of truth.
 - [`gitlens-feature-analysis.md`](./gitlens-feature-analysis.md) — feature/tier source of truth.
 - VS Code Extension API: decorations, CodeLens, Hover, TextDocumentContentProvider,
   TerminalLinkProvider, authentication, SecretStorage, Language Model API.
