@@ -577,6 +577,18 @@ describe("UndockedApp integration", () => {
         expect(initialWidths.reduce((total, width) => total + width, 0)).toBe(1188);
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "ready" });
 
+        Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: 1800,
+        });
+        act(() => {
+            window.dispatchEvent(new Event("resize"));
+        });
+        await flush();
+
+        expect(sectionIds.map(widthOf)).toEqual(sectionIds.map(() => 447));
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1788);
+
         act(() => {
             document
                 .querySelector('[data-testid="undocked-branch-divider"]')
@@ -591,9 +603,9 @@ describe("UndockedApp integration", () => {
             document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         });
 
-        expect(widthOf("undocked-branch-section")).toBe(347);
-        expect(widthOf("undocked-graph-section")).toBe(247);
-        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1188);
+        expect(widthOf("undocked-branch-section")).toBe(497);
+        expect(widthOf("undocked-graph-section")).toBe(397);
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1788);
 
         act(() => {
             vi.advanceTimersByTime(350);
@@ -601,10 +613,10 @@ describe("UndockedApp integration", () => {
 
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "columnWidths",
-            branchWidth: 347,
-            graphWidth: 247,
-            infoWidth: 297,
-            commitPanelWidth: 297,
+            branchWidth: 497,
+            graphWidth: 397,
+            infoWidth: 447,
+            commitPanelWidth: 447,
         });
         vi.useRealTimers();
     });
