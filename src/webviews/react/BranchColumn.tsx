@@ -234,7 +234,7 @@ export function BranchColumn({
             )}
 
             <BranchSectionHeader
-                label="Local"
+                label={t("branch.section.local")}
                 expanded={expandedSections.has("local")}
                 onToggle={() => toggleSection("local")}
             />
@@ -261,7 +261,7 @@ export function BranchColumn({
             )}
 
             <BranchSectionHeader
-                label="Remote"
+                label={t("branch.section.remote")}
                 expanded={expandedSections.has("remote")}
                 onToggle={() => toggleSection("remote")}
             />

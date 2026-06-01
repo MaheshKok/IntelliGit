@@ -68,6 +68,7 @@ const manifestLocales = [
     "zh-cn",
     "zh-tw",
 ];
+const pilotLocales = ["de"];
 
 beforeEach(() => {
     vscodeState.language = "ja";
@@ -81,15 +82,9 @@ describe("localization catalogs", () => {
             .filter((file) => /^package\.nls\.[a-z-]+\.json$/.test(file))
             .sort();
 
-        expect(localeFiles).toEqual(
-            manifestLocales.map((locale) => `package.nls.${locale}.json`),
-        );
+        expect(localeFiles).toEqual(manifestLocales.map((locale) => `package.nls.${locale}.json`));
         for (const file of localeFiles) {
-            assertCompatibleCatalog(
-                source,
-                readJson<Catalog>(file),
-                localeFromManifestFile(file),
-            );
+            assertCompatibleCatalog(source, readJson<Catalog>(file), localeFromManifestFile(file));
         }
 
         const manifest = readJson<unknown>("package.json");
@@ -105,7 +100,12 @@ describe("localization catalogs", () => {
             expect(value).toBe(key);
         }
 
-        for (const file of catalogFiles("l10n", /^bundle\.l10n(?:\.[a-z-]+)?\.json$/)) {
+        const hostBundleFiles = catalogFiles("l10n", /^bundle\.l10n(?:\.[a-z-]+)?\.json$/);
+        for (const locale of pilotLocales) {
+            expect(hostBundleFiles).toContain(`bundle.l10n.${locale}.json`);
+        }
+
+        for (const file of hostBundleFiles) {
             const locale =
                 file === "bundle.l10n.json"
                     ? "en"
@@ -123,7 +123,12 @@ describe("localization catalogs", () => {
         const source = readJson<Catalog>("src/webviews/i18n/en.json");
         expect(Object.keys(source).length).toBeGreaterThan(0);
 
-        for (const file of catalogFiles("src/webviews/i18n", /^[a-z-]+\.json$/)) {
+        const webviewCatalogFiles = catalogFiles("src/webviews/i18n", /^[a-z-]+\.json$/);
+        for (const locale of pilotLocales) {
+            expect(webviewCatalogFiles).toContain(`${locale}.json`);
+        }
+
+        for (const file of webviewCatalogFiles) {
             const locale = file.replace(/\.json$/, "");
             assertCompatibleCatalog(
                 source,
@@ -141,6 +146,9 @@ describe("localization packaging", () => {
 
         const files = new Set(listVsceFiles());
         expect(files).toContain("l10n/bundle.l10n.json");
+        for (const locale of pilotLocales) {
+            expect(files).toContain(`l10n/bundle.l10n.${locale}.json`);
+        }
         expect(files).toContain("package.nls.json");
         for (const locale of manifestLocales) {
             expect(files).toContain(`package.nls.${locale}.json`);
@@ -149,6 +157,9 @@ describe("localization packaging", () => {
 
         const webviewLoader = readText("src/webviews/i18n/index.ts");
         expect(webviewLoader).toContain('import en from "./en.json"');
+        for (const locale of pilotLocales) {
+            expect(webviewLoader).toContain(`import ${locale} from "./${locale}.json"`);
+        }
         expect(webviewLoader).not.toMatch(/\b(readFile|workspace\.fs|joinPath)\b/);
     });
 });
@@ -161,9 +172,7 @@ describe("localized HTML output", () => {
         expect(scriptSafeJson({ value: unsafe })).not.toContain("<");
         expect(scriptSafeJson({ value: unsafe })).toContain("\\u003c/script>");
 
-        expect(escapeHtmlText(unsafe)).toBe(
-            `&lt;/script&gt;&lt;span title="x"&gt;'&amp;`,
-        );
+        expect(escapeHtmlText(unsafe)).toBe(`&lt;/script&gt;&lt;span title="x"&gt;'&amp;`);
         expect(escapeHtmlAttr(unsafe)).toBe(
             "&lt;/script&gt;&lt;span title=&quot;x&quot;&gt;&#39;&amp;",
         );
@@ -223,11 +232,7 @@ function assertCompatibleCatalog(source: Catalog, candidate: Catalog, locale: st
     }
 }
 
-function assertPluralCategories(
-    value: Record<string, string>,
-    locale: string,
-    key: string,
-): void {
+function assertPluralCategories(value: Record<string, string>, locale: string, key: string): void {
     const expected = new Intl.PluralRules(locale).resolvedOptions().pluralCategories.sort();
     expect(Object.keys(value).sort(), `${locale}:${key}`).toEqual(expected);
 }
@@ -261,7 +266,9 @@ function listVsceFiles(): string[] {
 function catalogFiles(directory: string, pattern: RegExp): string[] {
     const absolute = path.join(repoRoot, directory);
     if (!existsSync(absolute)) return [];
-    return readdirSync(absolute).filter((file) => pattern.test(file)).sort();
+    return readdirSync(absolute)
+        .filter((file) => pattern.test(file))
+        .sort();
 }
 
 function localeFromManifestFile(file: string): string {

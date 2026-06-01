@@ -21,6 +21,7 @@ import {
     alignCompareLinesForWordDiff,
 } from "./wordDiff";
 import { getResultLines } from "./mergeState";
+import { t } from "../shared/i18n";
 
 // --- Syntax highlighting ---
 
@@ -221,26 +222,26 @@ function getHunkStatus(
 } {
     if (segment.changeKind === "ours-only") {
         return resolution === "none"
-            ? { label: "Dropped left-only change", tone: "muted" }
-            : { label: "Left-only change", tone: "muted" };
+            ? { label: t("merge.status.droppedLeftOnly"), tone: "muted" }
+            : { label: t("merge.status.leftOnly"), tone: "muted" };
     }
     if (segment.changeKind === "theirs-only") {
         return resolution === "none"
-            ? { label: "Dropped right-only change", tone: "muted" }
-            : { label: "Right-only change", tone: "muted" };
+            ? { label: t("merge.status.droppedRightOnly"), tone: "muted" }
+            : { label: t("merge.status.rightOnly"), tone: "muted" };
     }
 
-    if (resolution === undefined) return { label: "Unresolved", tone: "warn" };
-    if (resolution === "ours") return { label: "Use left", tone: "ok" };
-    if (resolution === "theirs") return { label: "Use right", tone: "ok" };
-    if (resolution === "both") return { label: "Use both", tone: "ok" };
-    return { label: "Remove block", tone: "muted" };
+    if (resolution === undefined) return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
+    if (resolution === "ours") return { label: t("merge.status.useLeft"), tone: "ok" };
+    if (resolution === "theirs") return { label: t("merge.status.useRight"), tone: "ok" };
+    if (resolution === "both") return { label: t("merge.status.useBoth"), tone: "ok" };
+    return { label: t("merge.status.removeBlock"), tone: "muted" };
 }
 
 function getHunkKindLabel(segment: ConflictSegment): string {
-    if (segment.changeKind === "ours-only") return "Left only";
-    if (segment.changeKind === "theirs-only") return "Right only";
-    return "Conflict";
+    if (segment.changeKind === "ours-only") return t("merge.kind.leftOnly");
+    if (segment.changeKind === "theirs-only") return t("merge.kind.rightOnly");
+    return t("merge.kind.conflict");
 }
 
 // --- Section components ---
@@ -356,8 +357,11 @@ export function ConflictSection({
                     <span className="hunk-kind-label">{kindLabel}</span>
                     {showDetails ? (
                         <span className="hunk-detail-lines">
-                            L:{segment.oursLines.length} R:{segment.theirsLines.length} Result:{" "}
-                            {resultLines.length}
+                            {t("merge.hunk.detail", {
+                                left: segment.oursLines.length,
+                                right: segment.theirsLines.length,
+                                result: resultLines.length,
+                            })}
                         </span>
                     ) : null}
                 </div>
@@ -365,36 +369,36 @@ export function ConflictSection({
                     <button
                         className={`hunk-choice ${isOurs ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "ours")}
-                        title="Use left block"
+                        title={t("merge.hunk.useLeft")}
                     >
                         <IconArrowRight />
-                        Left
+                        {t("merge.hunk.left")}
                     </button>
                     {segment.changeKind === "conflict" ? (
                         <button
                             className={`hunk-choice ${isBoth ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "both")}
-                            title="Use both blocks"
+                            title={t("merge.hunk.useBoth")}
                         >
                             <IconSplitBoth />
-                            Both
+                            {t("merge.hunk.both")}
                         </button>
                     ) : null}
                     <button
                         className={`hunk-choice ${isTheirs ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "theirs")}
-                        title="Use right block"
+                        title={t("merge.hunk.useRight")}
                     >
                         <IconArrowLeft />
-                        Right
+                        {t("merge.hunk.right")}
                     </button>
                     <button
                         className={`hunk-choice danger ${isNone ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "none")}
-                        title="Remove this block from result"
+                        title={t("merge.hunk.dropTitle")}
                     >
                         <IconClose />
-                        Drop
+                        {t("merge.hunk.drop")}
                     </button>
                 </div>
                 <div className={`hunk-status tone-${status.tone}`}>
@@ -425,16 +429,16 @@ export function ConflictSection({
                         <button
                             className="action-btn discard-btn"
                             onClick={() => onResolve(segment.id, "theirs")}
-                            title="Ignore left block"
-                            aria-label="Ignore left block"
+                            title={t("merge.hunk.ignoreLeft")}
+                            aria-label={t("merge.hunk.ignoreLeft")}
                         >
                             <IconClose />
                         </button>
                         <button
                             className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "ours")}
-                            title="Accept left block"
-                            aria-label="Accept left block"
+                            title={t("merge.hunk.acceptLeft")}
+                            aria-label={t("merge.hunk.acceptLeft")}
                             aria-current={isOurs ? "true" : undefined}
                         >
                             <IconArrowRight />
@@ -460,8 +464,8 @@ export function ConflictSection({
                         <button
                             className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "theirs")}
-                            title="Accept right block"
-                            aria-label="Accept right block"
+                            title={t("merge.hunk.acceptRight")}
+                            aria-label={t("merge.hunk.acceptRight")}
                             aria-current={isTheirs ? "true" : undefined}
                         >
                             <IconArrowLeft />
@@ -469,8 +473,8 @@ export function ConflictSection({
                         <button
                             className="action-btn discard-btn"
                             onClick={() => onResolve(segment.id, "ours")}
-                            title="Ignore right block"
-                            aria-label="Ignore right block"
+                            title={t("merge.hunk.ignoreRight")}
+                            aria-label={t("merge.hunk.ignoreRight")}
                         >
                             <IconClose />
                         </button>
@@ -510,7 +514,7 @@ export function OverviewRail({
     onJump: (id: number) => void;
 }) {
     return (
-        <div className="overview-rail" aria-label="Conflict overview">
+        <div className="overview-rail" aria-label={t("merge.overview.label")}>
             <div className="overview-track">
                 {markers.map((marker) => (
                     <button

@@ -6,6 +6,7 @@ import { Flex, Box } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { ChevronIcon } from "../../shared/components";
+import { t } from "../../shared/i18n";
 
 interface Props {
     label: string;
@@ -64,7 +65,7 @@ export function SectionHeader({
                 fontWeight="normal"
                 fontSize="11px"
             >
-                {count} {count === 1 ? "file" : "files"}
+                {t("common.fileCount", { count })}
             </Box>
         </Flex>
     );

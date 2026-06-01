@@ -184,6 +184,9 @@ export function CommitList({
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
+    const branchScopeLabel = selectedBranch
+        ? t("commit.scope.branch", { branch: selectedBranch })
+        : t("commit.scope.allBranches");
 
     return (
         <div style={ROOT_STYLE}>
@@ -210,13 +213,8 @@ export function CommitList({
                             </button>
                         )}
                     </div>
-                    <span
-                        style={BRANCH_SCOPE_STYLE}
-                        title={
-                            selectedBranch ? `Branch: ${selectedBranch}` : "Branch: All branches"
-                        }
-                    >
-                        Branch: {selectedBranch ?? "All branches"}
+                    <span style={BRANCH_SCOPE_STYLE} title={branchScopeLabel}>
+                        {branchScopeLabel}
                     </span>
                 </div>
             ) : null}
@@ -287,7 +285,7 @@ export function CommitList({
                                 top: commits.length * ROW_HEIGHT,
                             }}
                         >
-                            Loading more...
+                            {t("commit.loadingMore")}
                         </div>
                     )}
                 </div>

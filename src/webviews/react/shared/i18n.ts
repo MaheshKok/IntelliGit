@@ -17,16 +17,15 @@ export function t(key: string, args: InterpolationArgs = {}): string {
     if (value && typeof value === "object") {
         const count = typeof args.count === "number" ? args.count : undefined;
         const locale = payload?.locale ?? "en";
-        const category =
-            count === undefined ? "other" : new Intl.PluralRules(locale).select(count);
+        const category = count === undefined ? "other" : new Intl.PluralRules(locale).select(count);
         return interpolate(value[category] ?? value.other ?? key, args);
     }
     return key;
 }
 
 function getPayload(): IntelligitI18nPayload | undefined {
-    if (typeof window === "undefined") return undefined;
-    const candidate = (window as Window & { intelligitI18n?: unknown }).intelligitI18n;
+    const root = typeof window === "undefined" ? globalThis : window;
+    const candidate = (root as typeof globalThis & { intelligitI18n?: unknown }).intelligitI18n;
     if (!candidate || typeof candidate !== "object") return undefined;
     return candidate as IntelligitI18nPayload;
 }
