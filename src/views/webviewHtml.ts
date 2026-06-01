@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { SYSTEM_FONT_STACK } from "../utils/constants";
+import { getWebviewI18nPayload } from "../webviews/i18n";
 
 interface WebviewShellOptions {
     extensionUri: vscode.Uri;
@@ -24,8 +25,9 @@ export function buildWebviewShellHtml({
     );
     const nonce = createNonce();
     const styleLinks = styleUris
-        .map((styleUri) => `    <link rel="stylesheet" href="${styleUri}">`)
+        .map((styleUri) => `    <link rel="stylesheet" href="${escapeHtmlAttr(String(styleUri))}">`)
         .join("\n");
+    const i18nPayload = getWebviewI18nPayload();
 
     let hoverDelay = 300;
     let tooltipsEnabled = true;
@@ -51,14 +53,22 @@ export function buildWebviewShellHtml({
         // Safe fallback when workspace is not mocked or available
     }
 
+    const settingsPayload = scriptSafeJson({
+        hoverDelay,
+        tooltipsEnabled,
+        iconStyle,
+        commitWindowPosition,
+    });
+    const i18nPayloadJson = scriptSafeJson(i18nPayload);
+
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtmlAttr(i18nPayload.locale)}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; script-src 'nonce-${nonce}'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; img-src ${webview.cspSource} data:;">
-    <title>${title}</title>
+    <title>${escapeHtmlText(title)}</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root {
@@ -74,16 +84,29 @@ ${styleLinks ? `${styleLinks}\n` : ""}
 <body>
     <div id="root"></div>
     <script nonce="${nonce}">
-        window.intelligitSettings = {
-            hoverDelay: ${hoverDelay},
-            tooltipsEnabled: ${tooltipsEnabled},
-            iconStyle: "${iconStyle}",
-            commitWindowPosition: "${commitWindowPosition}"
-        };
+        window.intelligitSettings = ${settingsPayload};
+        window.intelligitI18n = ${i18nPayloadJson};
     </script>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
 </body>
 </html>`;
+}
+
+export function escapeHtmlText(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+export function escapeHtmlAttr(value: string): string {
+    return escapeHtmlText(value)
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function scriptSafeJson(value: unknown): string {
+    return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
 function createNonce(): string {

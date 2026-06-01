@@ -5,6 +5,7 @@ import React from "react";
 import { Flex, Box, Textarea, Button } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
+import { t } from "../../shared/i18n";
 
 interface Props {
     commitMessage: string;
@@ -46,14 +47,14 @@ export function CommitArea({
                     inputTestId="amend-checkbox"
                 />
                 <Box as="span" color="var(--intelligit-pycharm-foreground)" opacity={0.92}>
-                    Amend commit
+                    {t("commit.amend")}
                 </Box>
             </Flex>
             <Box px="7px" flex={1} overflow="hidden">
                 <Textarea
                     value={commitMessage}
                     onChange={(e) => onMessageChange(e.target.value)}
-                    placeholder="Commit Message"
+                    placeholder={t("commit.message.placeholder")}
                     resize="none"
                     w="100%"
                     h="100%"
@@ -80,7 +81,7 @@ export function CommitArea({
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
-                    {isAmend ? "Amend commit" : "Commit"}
+                    {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
                 <Button
                     variant="secondary"
@@ -91,9 +92,9 @@ export function CommitArea({
                 >
                     {currentBranchHasUpstream
                         ? isAmend
-                            ? "Amend commit and Push..."
-                            : "Commit and Push..."
-                        : "Publish Branch..."}
+                            ? t("commit.action.amendAndPush")
+                            : t("commit.action.commitAndPush")
+                        : t("commit.action.publishBranch")}
                 </Button>
             </Flex>
         </Flex>

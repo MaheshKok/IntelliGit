@@ -14,6 +14,7 @@ import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
 import { RepoIcon, TagRightIcon } from "./shared/components";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { getVsCodeApi } from "./shared/vscodeApi";
+import { t } from "./shared/i18n";
 import {
     BRANCH_ROW_CLASS_CSS,
     HEAD_LABEL_STYLE,
@@ -304,7 +305,7 @@ export function BranchColumn({
             )}
 
             {filterNeedle && locals.length === 0 && remotes.length === 0 && !current && (
-                <div style={NO_MATCH_STYLE}>No matching branches</div>
+                <div style={NO_MATCH_STYLE}>{t("branch.noMatches")}</div>
             )}
 
             {contextMenu && (
