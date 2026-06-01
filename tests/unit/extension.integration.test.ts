@@ -504,7 +504,11 @@ vi.mock("vscode", () => ({
         }),
     },
     env: {
+        language: "en",
         clipboard: { writeText: clipboardWriteText },
+    },
+    l10n: {
+        t: (message: string) => message,
     },
 }));
 

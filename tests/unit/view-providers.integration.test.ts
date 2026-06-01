@@ -76,6 +76,12 @@ const vscodeMock = {
     TreeItem: FakeTreeItem,
     ThemeIcon: FakeThemeIcon,
     ThemeColor: FakeThemeColor,
+    env: {
+        language: "en",
+    },
+    l10n: {
+        t: (message: string) => message,
+    },
     ProgressLocation: { Notification: 15 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
@@ -126,6 +132,15 @@ const deleteFileWithFallback = vi.fn(async () => true);
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../src/views/webviewHtml", () => ({
     buildWebviewShellHtml: vi.fn(() => "<html></html>"),
+    escapeHtmlAttr: (value: string) =>
+        value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;"),
+    escapeHtmlText: (value: string) =>
+        value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
 }));
 vi.mock("../../src/utils/fileOps", async () => {
     const actual = await vi.importActual("../../src/utils/fileOps");

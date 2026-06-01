@@ -1,0 +1,314 @@
+import { execFileSync } from "child_process";
+import { existsSync, readFileSync, readdirSync } from "fs";
+import path from "path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const vscodeState = vi.hoisted(() => ({
+    language: "ja",
+    translations: new Map<string, string>(),
+}));
+
+vi.mock("vscode", () => {
+    function joinPath(base: { fsPath?: string; path?: string }, ...segments: string[]) {
+        const basePath = base.path ?? base.fsPath ?? "";
+        const joined = [basePath, ...segments].join("/").replace(/\/+/g, "/");
+        return {
+            fsPath: joined,
+            path: joined,
+            toString: () => joined,
+        };
+    }
+
+    return {
+        env: {
+            get language() {
+                return vscodeState.language;
+            },
+        },
+        l10n: {
+            t: (message: string) => vscodeState.translations.get(message) ?? message,
+        },
+        Uri: { joinPath },
+        workspace: {
+            getConfiguration: () => ({
+                get: (key: string) => {
+                    if (key === "editor.hover.delay") return 300;
+                    if (key === "intelligit.tooltips.enabled") return true;
+                    if (key === "intelligit.icons") return "standard";
+                    if (key === "intelligit.commitWindowPosition") return "left";
+                    return undefined;
+                },
+            }),
+        },
+    };
+});
+
+import { OnboardingViewProvider } from "../../src/views/OnboardingViewProvider";
+import {
+    buildWebviewShellHtml,
+    escapeHtmlAttr,
+    escapeHtmlText,
+    scriptSafeJson,
+} from "../../src/views/webviewHtml";
+
+type CatalogValue = string | Record<string, string>;
+type Catalog = Record<string, CatalogValue>;
+
+const repoRoot = process.cwd();
+const manifestLocales = [
+    "de",
+    "es",
+    "fr",
+    "ja",
+    "ko",
+    "pl",
+    "pt-br",
+    "pt-pt",
+    "ru",
+    "zh-cn",
+    "zh-tw",
+];
+
+beforeEach(() => {
+    vscodeState.language = "ja";
+    vscodeState.translations.clear();
+});
+
+describe("localization catalogs", () => {
+    it("keeps package.nls locale files complete and wired from package.json", () => {
+        const source = readJson<Catalog>("package.nls.json");
+        const localeFiles = readdirSync(repoRoot)
+            .filter((file) => /^package\.nls\.[a-z-]+\.json$/.test(file))
+            .sort();
+
+        expect(localeFiles).toEqual(
+            manifestLocales.map((locale) => `package.nls.${locale}.json`),
+        );
+        for (const file of localeFiles) {
+            assertCompatibleCatalog(
+                source,
+                readJson<Catalog>(file),
+                localeFromManifestFile(file),
+            );
+        }
+
+        const manifest = readJson<unknown>("package.json");
+        const referencedKeys = collectPercentPlaceholders(manifest);
+        expect([...referencedKeys].sort()).toEqual(Object.keys(source).sort());
+    });
+
+    it("keeps host l10n bundle files complete", () => {
+        const source = readJson<Catalog>("l10n/bundle.l10n.json");
+        expect(Object.keys(source).length).toBeGreaterThan(0);
+
+        for (const [key, value] of Object.entries(source)) {
+            expect(value).toBe(key);
+        }
+
+        for (const file of catalogFiles("l10n", /^bundle\.l10n(?:\.[a-z-]+)?\.json$/)) {
+            const locale =
+                file === "bundle.l10n.json"
+                    ? "en"
+                    : file.match(/^bundle\.l10n\.([a-z-]+)\.json$/)?.[1];
+            expect(locale).toBeDefined();
+            assertCompatibleCatalog(
+                source,
+                readJson<Catalog>(path.join("l10n", file)),
+                locale ?? "en",
+            );
+        }
+    });
+
+    it("keeps webview catalog files complete", () => {
+        const source = readJson<Catalog>("src/webviews/i18n/en.json");
+        expect(Object.keys(source).length).toBeGreaterThan(0);
+
+        for (const file of catalogFiles("src/webviews/i18n", /^[a-z-]+\.json$/)) {
+            const locale = file.replace(/\.json$/, "");
+            assertCompatibleCatalog(
+                source,
+                readJson<Catalog>(path.join("src/webviews/i18n", file)),
+                locale,
+            );
+        }
+    });
+});
+
+describe("localization packaging", () => {
+    it("packages manifest and host localization assets without relying on src catalogs at runtime", () => {
+        const packageJson = readJson<{ l10n?: string }>("package.json");
+        expect(packageJson.l10n).toBe("./l10n");
+
+        const files = new Set(listVsceFiles());
+        expect(files).toContain("l10n/bundle.l10n.json");
+        expect(files).toContain("package.nls.json");
+        for (const locale of manifestLocales) {
+            expect(files).toContain(`package.nls.${locale}.json`);
+        }
+        expect([...files].some((file) => file.startsWith("src/"))).toBe(false);
+
+        const webviewLoader = readText("src/webviews/i18n/index.ts");
+        expect(webviewLoader).toContain('import en from "./en.json"');
+        expect(webviewLoader).not.toMatch(/\b(readFile|workspace\.fs|joinPath)\b/);
+    });
+});
+
+describe("localized HTML output", () => {
+    it("escapes translated values in script payloads, text nodes, and attributes", () => {
+        const unsafe = `</script><span title="x">'&`;
+
+        expect(scriptSafeJson({ value: unsafe })).not.toContain("</script>");
+        expect(scriptSafeJson({ value: unsafe })).not.toContain("<");
+        expect(scriptSafeJson({ value: unsafe })).toContain("\\u003c/script>");
+
+        expect(escapeHtmlText(unsafe)).toBe(
+            `&lt;/script&gt;&lt;span title="x"&gt;'&amp;`,
+        );
+        expect(escapeHtmlAttr(unsafe)).toBe(
+            "&lt;/script&gt;&lt;span title=&quot;x&quot;&gt;&#39;&amp;",
+        );
+
+        const webviewHtml = buildWebviewShellHtml({
+            extensionUri: fakeUri("/extension"),
+            webview: fakeWebview(),
+            scriptFile: "webview.js",
+            title: unsafe,
+        });
+        expect(webviewHtml).toContain(`<title>${escapeHtmlText(unsafe)}</title>`);
+
+        vscodeState.translations.set("IntelliGit", unsafe);
+        const onboardingHtml = getOnboardingHtml("no-workspace", "IntelliGit");
+        expect(onboardingHtml).toContain(`alt="${escapeHtmlAttr(unsafe)}"`);
+    });
+
+    it("uses VS Code language for webview and onboarding html lang attributes", () => {
+        vscodeState.language = "ru";
+
+        const webviewHtml = buildWebviewShellHtml({
+            extensionUri: fakeUri("/extension"),
+            webview: fakeWebview(),
+            scriptFile: "webview.js",
+            title: "Graph",
+        });
+        expect(webviewHtml).toContain('<html lang="ru">');
+        expect(webviewHtml).not.toContain('<html lang="en">');
+
+        const onboardingHtml = getOnboardingHtml("no-git-repo", "Commit");
+        expect(onboardingHtml).toContain('<html lang="ru">');
+        expect(onboardingHtml).not.toContain('<html lang="en">');
+    });
+});
+
+function assertCompatibleCatalog(source: Catalog, candidate: Catalog, locale: string): void {
+    expect(Object.keys(candidate).sort()).toEqual(Object.keys(source).sort());
+
+    for (const [key, sourceValue] of Object.entries(source)) {
+        const candidateValue = candidate[key];
+        if (typeof sourceValue === "string") {
+            expect(typeof candidateValue, `${locale}:${key}`).toBe("string");
+            expect(placeholders(candidateValue as string).sort(), `${locale}:${key}`).toEqual(
+                placeholders(sourceValue).sort(),
+            );
+            continue;
+        }
+
+        expect(isStringMap(candidateValue), `${locale}:${key}`).toBe(true);
+        assertPluralCategories(candidateValue as Record<string, string>, locale, key);
+        for (const [category, value] of Object.entries(candidateValue as Record<string, string>)) {
+            const sourceTemplate = sourceValue[category] ?? sourceValue.other;
+            expect(placeholders(value).sort(), `${locale}:${key}.${category}`).toEqual(
+                placeholders(sourceTemplate).sort(),
+            );
+        }
+    }
+}
+
+function assertPluralCategories(
+    value: Record<string, string>,
+    locale: string,
+    key: string,
+): void {
+    const expected = new Intl.PluralRules(locale).resolvedOptions().pluralCategories.sort();
+    expect(Object.keys(value).sort(), `${locale}:${key}`).toEqual(expected);
+}
+
+function placeholders(value: string): string[] {
+    return Array.from(value.matchAll(/\{([A-Za-z0-9_]+)\}/g), (match) => match[1]);
+}
+
+function collectPercentPlaceholders(value: unknown, found = new Set<string>()): Set<string> {
+    if (typeof value === "string") {
+        for (const match of value.matchAll(/%([^%]+)%/g)) {
+            found.add(match[1]);
+        }
+    } else if (Array.isArray(value)) {
+        for (const item of value) collectPercentPlaceholders(item, found);
+    } else if (value && typeof value === "object") {
+        for (const item of Object.values(value)) collectPercentPlaceholders(item, found);
+    }
+    return found;
+}
+
+function listVsceFiles(): string[] {
+    return execFileSync("bunx", ["vsce", "ls", "--no-dependencies"], {
+        cwd: repoRoot,
+        encoding: "utf8",
+    })
+        .split(/\r?\n/)
+        .filter(Boolean);
+}
+
+function catalogFiles(directory: string, pattern: RegExp): string[] {
+    const absolute = path.join(repoRoot, directory);
+    if (!existsSync(absolute)) return [];
+    return readdirSync(absolute).filter((file) => pattern.test(file)).sort();
+}
+
+function localeFromManifestFile(file: string): string {
+    const match = file.match(/^package\.nls\.([a-z-]+)\.json$/);
+    if (!match) throw new Error(`Unexpected manifest catalog filename: ${file}`);
+    return match[1];
+}
+
+function readJson<T>(relativePath: string): T {
+    return JSON.parse(readText(relativePath)) as T;
+}
+
+function readText(relativePath: string): string {
+    return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
+function isStringMap(value: unknown): value is Record<string, string> {
+    return (
+        !!value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.values(value).every((item) => typeof item === "string")
+    );
+}
+
+function fakeUri(uriPath: string) {
+    return {
+        fsPath: uriPath,
+        path: uriPath,
+        toString: () => uriPath,
+    };
+}
+
+function fakeWebview() {
+    return {
+        cspSource: "vscode-resource:",
+        asWebviewUri: (uri: { path?: string; fsPath?: string }) => ({
+            toString: () => `webview:${uri.path ?? uri.fsPath ?? ""}`,
+        }),
+    };
+}
+
+function getOnboardingHtml(contextType: "no-workspace" | "no-git-repo", title: string): string {
+    const provider = new OnboardingViewProvider(fakeUri("/extension") as never, contextType, title);
+    return (
+        provider as unknown as {
+            getHtml(webview: ReturnType<typeof fakeWebview>): string;
+        }
+    ).getHtml(fakeWebview());
+}

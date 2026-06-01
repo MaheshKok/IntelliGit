@@ -4,6 +4,7 @@ import React, { act } from "react";
 import type { ReactNode } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { flush } from "./utils/reactDomTestUtils";
+import { installWebviewI18n } from "./utils/webviewI18nTestUtils";
 
 interface MockVsCodeApi {
     postMessage: ReturnType<typeof vi.fn>;
@@ -45,6 +46,7 @@ function installVsCodeMock(initialState: Record<string, unknown> = {}): MockVsCo
         configurable: true,
         value: vi.fn(() => api),
     });
+    installWebviewI18n();
     return api;
 }
 

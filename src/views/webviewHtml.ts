@@ -105,7 +105,7 @@ export function escapeHtmlAttr(value: string): string {
         .replace(/'/g, "&#39;");
 }
 
-function scriptSafeJson(value: unknown): string {
+export function scriptSafeJson(value: unknown): string {
     return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 

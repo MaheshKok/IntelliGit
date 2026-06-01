@@ -48,6 +48,12 @@ vi.mock("vscode", () => ({
     authentication: {
         getSession: mocks.getSession,
     },
+    env: {
+        language: "en",
+    },
+    l10n: {
+        t: (message: string) => message,
+    },
     ProgressLocation: {
         Notification: 15,
     },

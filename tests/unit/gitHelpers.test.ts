@@ -3,6 +3,9 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("vscode", () => ({
+    l10n: {
+        t: (message: string) => message,
+    },
     ProgressLocation: { Notification: 15 },
     window: {
         showQuickPick: vi.fn(),
