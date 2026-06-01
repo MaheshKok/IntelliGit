@@ -193,15 +193,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "IntelliGit"),
+                new OnboardingViewProvider(
+                    context.extensionUri,
+                    "no-workspace",
+                    vscode.l10n.t("IntelliGit"),
+                ),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.sidebarViewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Graph", false),
+                new OnboardingViewProvider(
+                    context.extensionUri,
+                    "no-workspace",
+                    vscode.l10n.t("Graph"),
+                    false,
+                ),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Commit"),
+                new OnboardingViewProvider(
+                    context.extensionUri,
+                    "no-workspace",
+                    vscode.l10n.t("Commit"),
+                ),
             ),
         );
         return;
@@ -221,13 +234,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             treeDataProvider: emptyTreeProvider,
         });
         const commitGraphProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "IntelliGit"),
+            new OnboardingViewProvider(
+                context.extensionUri,
+                "no-git-repo",
+                vscode.l10n.t("IntelliGit"),
+            ),
         );
         const sidebarGraphProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Graph", false),
+            new OnboardingViewProvider(
+                context.extensionUri,
+                "no-git-repo",
+                vscode.l10n.t("Graph"),
+                false,
+            ),
         );
         const commitPanelProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Commit"),
+            new OnboardingViewProvider(
+                context.extensionUri,
+                "no-git-repo",
+                vscode.l10n.t("Commit"),
+            ),
         );
 
         const registerNoRepositoryDisposable = (disposable: vscode.Disposable): void => {
