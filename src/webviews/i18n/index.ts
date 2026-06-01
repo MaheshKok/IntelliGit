@@ -37,20 +37,31 @@ const CATALOGS: Record<string, WebviewCatalog> = {
     "zh-tw": zhTw,
 };
 
+const LOCALE_ALIASES: Record<string, string> = {
+    zh: "zh-cn",
+    "zh-hans": "zh-cn",
+    "zh-hant": "zh-tw",
+    "zh-hk": "zh-tw",
+    "zh-mo": "zh-tw",
+    "zh-sg": "zh-cn",
+    pt: "pt-br",
+};
+
 export function getWebviewI18nPayload(locale = vscode.env.language): WebviewI18nPayload {
     const normalizedLocale = normalizeLocale(locale);
-    const baseCatalog = CATALOGS[normalizedLocale] ?? en;
+    const resolvedLocale = resolveCatalogLocale(normalizedLocale);
+    const baseCatalog = CATALOGS[resolvedLocale] ?? en;
     if (isPseudoLocEnabled()) {
         const pseudo = pseudoLocalizeCatalog(en);
         return {
-            locale: normalizedLocale,
+            locale: resolvedLocale,
             fallbackLocale: "en",
             catalog: pseudo,
             fallbackCatalog: pseudo,
         };
     }
     return {
-        locale: normalizedLocale,
+        locale: resolvedLocale,
         fallbackLocale: "en",
         catalog: baseCatalog,
         fallbackCatalog: en,
@@ -58,7 +69,17 @@ export function getWebviewI18nPayload(locale = vscode.env.language): WebviewI18n
 }
 
 function normalizeLocale(locale: string): string {
-    return locale.trim().toLowerCase().replace("_", "-") || "en";
+    return locale.trim().toLowerCase().replace(/_/g, "-") || "en";
+}
+
+function resolveCatalogLocale(locale: string): string {
+    if (CATALOGS[locale]) return locale;
+    if (LOCALE_ALIASES[locale]) return LOCALE_ALIASES[locale];
+    if (locale.startsWith("zh-hant-")) return "zh-tw";
+    if (locale.startsWith("zh-hans-")) return "zh-cn";
+
+    const [baseLanguage] = locale.split("-");
+    return LOCALE_ALIASES[baseLanguage] ?? (CATALOGS[baseLanguage] ? baseLanguage : "en");
 }
 
 function isPseudoLocEnabled(): boolean {

@@ -178,10 +178,39 @@ describe("webview i18n payload", () => {
         }
     });
 
+    it("resolves common base and regional locale variants to supported catalogs", () => {
+        const aliases: Record<string, string> = {
+            "de-AT": "de",
+            "es-MX": "es",
+            "fr-CA": "fr",
+            "ja-JP": "ja",
+            "ko-KR": "ko",
+            "pl-PL": "pl",
+            pt: "pt-br",
+            pt_BR: "pt-br",
+            "pt-PT": "pt-pt",
+            "ru-RU": "ru",
+            zh: "zh-cn",
+            "zh-Hans": "zh-cn",
+            "zh-Hans-CN": "zh-cn",
+            "zh-Hant": "zh-tw",
+            "zh-Hant-TW": "zh-tw",
+            "zh-HK": "zh-tw",
+        };
+
+        for (const [input, expectedLocale] of Object.entries(aliases)) {
+            const expected = readJson<Catalog>(`src/webviews/i18n/${expectedLocale}.json`);
+            const payload = getWebviewI18nPayload(input);
+
+            expect(payload.locale, input).toBe(expectedLocale);
+            expect(payload.catalog, input).toEqual(expected);
+        }
+    });
+
     it("pseudo-localizes webview strings while preserving placeholders and plural shapes", () => {
         process.env.INTELLIGIT_PSEUDO_LOC = "1";
 
-        const payload = getWebviewI18nPayload("ja");
+        const payload = getWebviewI18nPayload("ja-JP");
         expect(payload.locale).toBe("ja");
         expect(payload.catalog).toEqual(payload.fallbackCatalog);
         expect(payload.catalog["commitInfo.byAuthor"]).toBe("⟦bý {author}  ⟧");
