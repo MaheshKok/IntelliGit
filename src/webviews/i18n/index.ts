@@ -1,6 +1,16 @@
 import * as vscode from "vscode";
-import en from "./en.json";
 import de from "./de.json";
+import en from "./en.json";
+import es from "./es.json";
+import fr from "./fr.json";
+import ja from "./ja.json";
+import ko from "./ko.json";
+import pl from "./pl.json";
+import ptBr from "./pt-br.json";
+import ptPt from "./pt-pt.json";
+import ru from "./ru.json";
+import zhCn from "./zh-cn.json";
+import zhTw from "./zh-tw.json";
 
 export type WebviewCatalogValue = string | Record<string, string>;
 export type WebviewCatalog = Record<string, WebviewCatalogValue>;
@@ -13,8 +23,18 @@ export interface WebviewI18nPayload {
 }
 
 const CATALOGS: Record<string, WebviewCatalog> = {
-    en,
     de,
+    en,
+    es,
+    fr,
+    ja,
+    ko,
+    pl,
+    "pt-br": ptBr,
+    "pt-pt": ptPt,
+    ru,
+    "zh-cn": zhCn,
+    "zh-tw": zhTw,
 };
 
 export function getWebviewI18nPayload(locale = vscode.env.language): WebviewI18nPayload {

@@ -68,7 +68,7 @@ const manifestLocales = [
     "zh-cn",
     "zh-tw",
 ];
-const pilotLocales = ["de"];
+const runtimeLocales = manifestLocales;
 
 beforeEach(() => {
     vscodeState.language = "ja";
@@ -101,7 +101,7 @@ describe("localization catalogs", () => {
         }
 
         const hostBundleFiles = catalogFiles("l10n", /^bundle\.l10n(?:\.[a-z-]+)?\.json$/);
-        for (const locale of pilotLocales) {
+        for (const locale of runtimeLocales) {
             expect(hostBundleFiles).toContain(`bundle.l10n.${locale}.json`);
         }
 
@@ -124,7 +124,7 @@ describe("localization catalogs", () => {
         expect(Object.keys(source).length).toBeGreaterThan(0);
 
         const webviewCatalogFiles = catalogFiles("src/webviews/i18n", /^[a-z-]+\.json$/);
-        for (const locale of pilotLocales) {
+        for (const locale of runtimeLocales) {
             expect(webviewCatalogFiles).toContain(`${locale}.json`);
         }
 
@@ -146,7 +146,7 @@ describe("localization packaging", () => {
 
         const files = new Set(listVsceFiles());
         expect(files).toContain("l10n/bundle.l10n.json");
-        for (const locale of pilotLocales) {
+        for (const locale of runtimeLocales) {
             expect(files).toContain(`l10n/bundle.l10n.${locale}.json`);
         }
         expect(files).toContain("package.nls.json");
@@ -157,8 +157,8 @@ describe("localization packaging", () => {
 
         const webviewLoader = readText("src/webviews/i18n/index.ts");
         expect(webviewLoader).toContain('import en from "./en.json"');
-        for (const locale of pilotLocales) {
-            expect(webviewLoader).toContain(`import ${locale} from "./${locale}.json"`);
+        for (const locale of runtimeLocales) {
+            expect(webviewLoader).toContain(`from "./${locale}.json"`);
         }
         expect(webviewLoader).not.toMatch(/\b(readFile|workspace\.fs|joinPath)\b/);
     });
