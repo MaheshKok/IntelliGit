@@ -543,6 +543,7 @@
         "@typescript-eslint/eslint-plugin": "^8.59.4",
         "@typescript-eslint/parser": "^8.59.4",
         "@vitest/coverage-v8": "1.6.1",
+        "@vscode/l10n-dev": "^0.0.35",
         "@vscode/test-electron": "^2.3.9",
         "@vscode/vsce": "^2.22.0",
         "entities": "^6.0.1",

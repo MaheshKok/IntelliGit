@@ -116,7 +116,7 @@ async function initializeRepository(
 ): Promise<void> {
     const roots = workspaceRoots();
     if (roots.length === 0) {
-        vscode.window.showErrorMessage("Open a folder first to initialize a repository.");
+        vscode.window.showErrorMessage(vscode.l10n.t("Open a folder first to initialize a repository."));
         return;
     }
 
@@ -130,7 +130,7 @@ async function initializeRepository(
                 description: root,
                 path: root,
             })),
-            { placeHolder: "Select a folder to initialize a Git repository" },
+            { placeHolder: vscode.l10n.t("Select a folder to initialize a Git repository") },
         );
         if (!picked) return;
         targetPath = picked.path;
@@ -140,7 +140,7 @@ async function initializeRepository(
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: "Initializing Git repository...",
+                title: vscode.l10n.t("Initializing Git repository..."),
                 cancellable: false,
             },
             async () => {
@@ -154,10 +154,10 @@ async function initializeRepository(
             if (options.onInitialized) {
                 await options.onInitialized(newRepos);
             }
-            vscode.window.showInformationMessage("Repository initialized.");
+            vscode.window.showInformationMessage(vscode.l10n.t("Repository initialized."));
         } else {
             vscode.window.showErrorMessage(
-                "Failed to initialize repository. Check folder permissions.",
+                vscode.l10n.t("Failed to initialize repository. Check folder permissions."),
             );
         }
     } catch (err) {
@@ -272,7 +272,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     return;
                 }
                 await activateDiscoveredRepositories(repositories);
-                vscode.window.showInformationMessage("Git repositories found.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Git repositories found."));
             }),
         );
         registerNoRepositoryDisposable(
@@ -349,7 +349,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
         const sidebarGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, {
             scriptFile: "webview-compactcommitgraph.js",
-            title: "Graph",
+            title: vscode.l10n.t("Graph"),
         });
         const commitInfo = new CommitInfoViewProvider(context.extensionUri);
         const commitPanel = new CommitPanelViewProvider(
@@ -608,18 +608,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const picked = await vscode.window.showQuickPick(
                 [
                     {
-                        label: "Undock in Editor Tab",
-                        description: "Open the unified IntelliGit view as an editor tab",
+                        label: vscode.l10n.t("Undock in Editor Tab"),
+                        description: vscode.l10n.t("Open the unified IntelliGit view as an editor tab"),
                         target: "editorTab" as const,
                     },
                     {
-                        label: "Undock in New Window",
+                        label: vscode.l10n.t("Undock in New Window"),
                         description:
-                            "Open the unified IntelliGit view and move it to a floating window",
+                            vscode.l10n.t("Open the unified IntelliGit view and move it to a floating window"),
                         target: "newWindow" as const,
                     },
                 ],
-                { placeHolder: "Choose how to undock IntelliGit" },
+                { placeHolder: vscode.l10n.t("Choose how to undock IntelliGit") },
             );
             if (!picked) return;
             await openUndockedIntelliGit(picked.target);
@@ -857,14 +857,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const hasCommits = await gitOps.hasAnyCommits();
                 if (!hasCommits) {
                     vscode.window.showWarningMessage(
-                        "Create a commit before publishing this branch.",
+                        vscode.l10n.t("Create a commit before publishing this branch."),
                     );
                     return;
                 }
                 const branches = await gitOps.getBranches();
                 const currentBranch = branches.find((b) => b.isCurrent);
                 if (!currentBranch) {
-                    vscode.window.showErrorMessage("No current branch found.");
+                    vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
                     return;
                 }
                 await runPublishBranchFlow(gitOps, currentBranch.name, repoRoot, context.secrets);
@@ -882,7 +882,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         description: repo.root === repoRoot ? "Active" : repo.root,
                         repository: repo,
                     })),
-                    { placeHolder: "Select IntelliGit repository" },
+                    { placeHolder: vscode.l10n.t("Select IntelliGit repository") },
                 );
                 if (!picked) return;
                 await setActiveRepository(picked.repository);
@@ -966,7 +966,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
                 const conflicts = await gitOps.getConflictFilesDetailed();
                 if (conflicts.length === 0) {
-                    vscode.window.showInformationMessage("No unresolved merge conflicts found.");
+                    vscode.window.showInformationMessage(vscode.l10n.t("No unresolved merge conflicts found."));
                     return;
                 }
                 await openConflictSession();
@@ -1091,7 +1091,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         );
                         if (confirm !== "Rollback") return;
                         await gitOps.rollbackFiles([safePath]);
-                        vscode.window.showInformationMessage("Changes rolled back.");
+                        vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
                     } catch (error) {
                         const message = getErrorMessage(error);
                         console.error("Failed to rollback file:", error);

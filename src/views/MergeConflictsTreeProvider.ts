@@ -19,7 +19,7 @@ export class MergeConflictTreeItem extends vscode.TreeItem {
         const uri = vscode.Uri.joinPath(workspaceRoot, filePath);
         this.command = {
             command: "intelligit.openMergeConflict",
-            title: "Open Merge Conflict",
+            title: vscode.l10n.t("Open Merge Conflict"),
             arguments: [{ filePath, uri }],
         };
     }

@@ -96,7 +96,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!branch) return;
                 const onto = getCurrentBranchName();
                 if (!onto) {
-                    vscode.window.showErrorMessage("No current branch found.");
+                    vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
                     return;
                 }
                 try {

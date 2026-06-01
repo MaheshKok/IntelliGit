@@ -202,7 +202,7 @@ export async function promptRebaseAfterPushRejection(
 
     const rebaseLabel = "Rebase and Push";
     const selection = await vscode.window.showWarningMessage(
-        "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?",
+        vscode.l10n.t("Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?"),
         { modal: true },
         rebaseLabel,
     );
@@ -213,7 +213,7 @@ export async function promptRebaseAfterPushRejection(
             await gitOps.pullRebase();
             await retryPush();
         });
-        vscode.window.showInformationMessage("Rebased and pushed current branch.");
+        vscode.window.showInformationMessage(vscode.l10n.t("Rebased and pushed current branch."));
     } catch (rebaseError) {
         const message = getErrorMessage(rebaseError);
         vscode.window.showErrorMessage(`Rebase and push failed: ${message}`);
@@ -249,7 +249,7 @@ export async function pickMainlineParent(
         })),
         {
             title: `${actionLabel}: select mainline parent`,
-            placeHolder: "Pick the parent number to use with -m",
+            placeHolder: vscode.l10n.t("Pick the parent number to use with -m"),
         },
     );
 

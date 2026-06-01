@@ -42,7 +42,7 @@ export async function handleCommitContextAction(params: {
     const validatedHash = hash.trim();
     if (!isValidGitHash(validatedHash)) {
         console.error("Blocked commit action due to invalid hash:", { action, hash });
-        vscode.window.showErrorMessage("Invalid commit hash received for commit action.");
+        vscode.window.showErrorMessage(vscode.l10n.t("Invalid commit hash received for commit action."));
         return;
     }
     const short = validatedHash.slice(0, 8);
@@ -171,7 +171,7 @@ export async function handleCommitContextAction(params: {
         case "pushAllUpToHere": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Push All up to Here is available only for unpushed commits.",
+                    vscode.l10n.t("Push All up to Here is available only for unpushed commits."),
                 );
                 return;
             }
@@ -179,7 +179,7 @@ export async function handleCommitContextAction(params: {
             const checkedOutBranchName = await getCheckedOutBranchName(executor, currentBranches);
             if (!checkedOutBranchName) {
                 vscode.window.showErrorMessage(
-                    "Push All up to Here is only available when a local branch is checked out.",
+                    vscode.l10n.t("Push All up to Here is only available when a local branch is checked out."),
                 );
                 return;
             }
@@ -308,12 +308,12 @@ export async function handleCommitContextAction(params: {
         case "undoCommit": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Undo Commit is available only for unpushed commits.",
+                    vscode.l10n.t("Undo Commit is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
-                vscode.window.showErrorMessage("Undo Commit is not available for merge commits.");
+                vscode.window.showErrorMessage(vscode.l10n.t("Undo Commit is not available for merge commits."));
                 return;
             }
             try {
@@ -326,7 +326,7 @@ export async function handleCommitContextAction(params: {
             }
             const undoParents = await getCommitParentHashes(validatedHash, executor);
             if (undoParents.length === 0) {
-                vscode.window.showErrorMessage("Cannot undo the initial commit of the repository.");
+                vscode.window.showErrorMessage(vscode.l10n.t("Cannot undo the initial commit of the repository."));
                 return;
             }
             const undoCount = await getUndoCommitCount(validatedHash, executor);
@@ -349,13 +349,13 @@ export async function handleCommitContextAction(params: {
         case "editCommitMessage": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Edit Commit Message is available only for unpushed commits.",
+                    vscode.l10n.t("Edit Commit Message is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
                 vscode.window.showErrorMessage(
-                    "Edit Commit Message is not available for merge commits.",
+                    vscode.l10n.t("Edit Commit Message is not available for merge commits."),
                 );
                 return;
             }
@@ -364,13 +364,13 @@ export async function handleCommitContextAction(params: {
             if (isHashMatch(validatedHash, headHash)) {
                 const currentMessage = (await executor.run(["log", "-1", "--format=%B"])).trim();
                 const nextMessage = await vscode.window.showInputBox({
-                    prompt: "Edit commit message",
+                    prompt: vscode.l10n.t("Edit commit message"),
                     value: currentMessage,
                 });
                 if (!nextMessage) return;
                 try {
                     await executor.run(["commit", "--amend", "-m", nextMessage]);
-                    vscode.window.showInformationMessage("Commit message updated.");
+                    vscode.window.showInformationMessage(vscode.l10n.t("Commit message updated."));
                 } finally {
                     await refreshAll();
                 }
@@ -388,7 +388,7 @@ export async function handleCommitContextAction(params: {
             const rewordParents = await getCommitParentHashes(validatedHash, executor);
             if (rewordParents.length === 0) {
                 vscode.window.showErrorMessage(
-                    "Edit Commit Message is not available for the initial commit.",
+                    vscode.l10n.t("Edit Commit Message is not available for the initial commit."),
                 );
                 return;
             }
@@ -399,20 +399,20 @@ export async function handleCommitContextAction(params: {
             terminal.show();
             terminal.sendText(`git rebase -i "${validatedHash}^"`, true);
             vscode.window.showInformationMessage(
-                "Interactive rebase opened. Mark the commit as 'reword' in the todo list.",
+                vscode.l10n.t("Interactive rebase opened. Mark the commit as 'reword' in the todo list."),
             );
             return;
         }
         case "squashCommits": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is available only for unpushed commits.",
+                    vscode.l10n.t("Squash Commits is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is not available for merge commits.",
+                    vscode.l10n.t("Squash Commits is not available for merge commits."),
                 );
                 return;
             }
@@ -428,7 +428,7 @@ export async function handleCommitContextAction(params: {
             const squashParents = await getCommitParentHashes(validatedHash, executor);
             if (squashParents.length === 0) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is not available for the initial commit.",
+                    vscode.l10n.t("Squash Commits is not available for the initial commit."),
                 );
                 return;
             }
@@ -436,7 +436,7 @@ export async function handleCommitContextAction(params: {
             const status = (await executor.run(["status", "--porcelain"])).trim();
             if (status) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits requires a clean working tree. Commit, shelve, or rollback local changes first.",
+                    vscode.l10n.t("Squash Commits requires a clean working tree. Commit, shelve, or rollback local changes first."),
                 );
                 return;
             }
@@ -450,13 +450,13 @@ export async function handleCommitContextAction(params: {
             const rangeHashes = rangeLines.map((line) => line.split(/\s+/)[0]);
             if (rangeHashes.length < 2) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits requires at least two commits in the selected range.",
+                    vscode.l10n.t("Squash Commits requires at least two commits in the selected range."),
                 );
                 return;
             }
             if (rangeLines.some((line) => line.split(/\s+/).length > 2)) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is not available for ranges containing merge commits.",
+                    vscode.l10n.t("Squash Commits is not available for ranges containing merge commits."),
                 );
                 return;
             }
@@ -467,7 +467,7 @@ export async function handleCommitContextAction(params: {
             );
             if (!allRangeCommitsUnpushed) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is available only when every commit in the selected range is unpushed.",
+                    vscode.l10n.t("Squash Commits is available only when every commit in the selected range is unpushed."),
                 );
                 return;
             }
@@ -524,12 +524,12 @@ export async function handleCommitContextAction(params: {
         case "dropCommit": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Drop Commit is available only for unpushed commits.",
+                    vscode.l10n.t("Drop Commit is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
-                vscode.window.showErrorMessage("Drop Commit is not available for merge commits.");
+                vscode.window.showErrorMessage(vscode.l10n.t("Drop Commit is not available for merge commits."));
                 return;
             }
             try {
@@ -542,7 +542,7 @@ export async function handleCommitContextAction(params: {
             }
             const dropParents = await getCommitParentHashes(validatedHash, executor);
             if (dropParents.length === 0) {
-                vscode.window.showErrorMessage("Cannot drop the initial commit of the repository.");
+                vscode.window.showErrorMessage(vscode.l10n.t("Cannot drop the initial commit of the repository."));
                 return;
             }
             const confirm = await vscode.window.showWarningMessage(
@@ -573,13 +573,13 @@ export async function handleCommitContextAction(params: {
         case "interactiveRebaseFromHere": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Interactive Rebase from Here is available only for unpushed commits.",
+                    vscode.l10n.t("Interactive Rebase from Here is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
                 vscode.window.showErrorMessage(
-                    "Interactive Rebase from Here is not available for merge commits.",
+                    vscode.l10n.t("Interactive Rebase from Here is not available for merge commits."),
                 );
                 return;
             }
@@ -594,7 +594,7 @@ export async function handleCommitContextAction(params: {
             const rebaseParents = await getCommitParentHashes(validatedHash, executor);
             if (rebaseParents.length === 0) {
                 vscode.window.showErrorMessage(
-                    "Interactive Rebase from Here is not available for the initial commit.",
+                    vscode.l10n.t("Interactive Rebase from Here is not available for the initial commit."),
                 );
                 return;
             }

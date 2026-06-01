@@ -215,14 +215,14 @@ export async function compareEditorFileWithBranch(
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
-        vscode.window.showErrorMessage("Compare with Branch is only available for local files.");
+        vscode.window.showErrorMessage(vscode.l10n.t("Compare with Branch is only available for local files."));
         return;
     }
 
     const repoRelativeFilePath = getRepoRelativeFilePathFromUri(fileUri, repoRoot);
     if (!repoRelativeFilePath) {
         vscode.window.showErrorMessage(
-            "Selected file is outside the current IntelliGit repository workspace.",
+            vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),
         );
         return;
     }
@@ -244,7 +244,7 @@ export async function compareEditorFileWithBranch(
             }));
 
         const picked = await vscode.window.showQuickPick(picks, {
-            title: "Compare with Branch",
+            title: vscode.l10n.t("Compare with Branch"),
             placeHolder: `Select a branch for ${repoRelativeFilePath}`,
             ignoreFocusOut: true,
             matchOnDescription: true,
@@ -272,14 +272,14 @@ export async function compareEditorFileWithRevision(
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
-        vscode.window.showErrorMessage("Compare with Revision is only available for local files.");
+        vscode.window.showErrorMessage(vscode.l10n.t("Compare with Revision is only available for local files."));
         return;
     }
 
     const repoRelativeFilePath = getRepoRelativeFilePathFromUri(fileUri, repoRoot);
     if (!repoRelativeFilePath) {
         vscode.window.showErrorMessage(
-            "Selected file is outside the current IntelliGit repository workspace.",
+            vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),
         );
         return;
     }
@@ -296,15 +296,15 @@ export async function compareEditorFileWithRevision(
         const picks = [
             ...historyPicks,
             {
-                label: "$(edit) Enter revision manually",
-                description: "Commit hash, tag, or ref name",
+                label: vscode.l10n.t("$(edit) Enter revision manually"),
+                description: vscode.l10n.t("Commit hash, tag, or ref name"),
                 detail: undefined as string | undefined,
                 refName: MANUAL_SENTINEL,
             },
         ];
 
         const picked = await vscode.window.showQuickPick(picks, {
-            title: "Compare with Revision",
+            title: vscode.l10n.t("Compare with Revision"),
             placeHolder:
                 historyPicks.length > 0
                     ? `Select a recent revision for ${repoRelativeFilePath}`
@@ -318,7 +318,7 @@ export async function compareEditorFileWithRevision(
         let refName = picked.refName;
         if (refName === MANUAL_SENTINEL) {
             const input = await vscode.window.showInputBox({
-                title: "Compare with Revision",
+                title: vscode.l10n.t("Compare with Revision"),
                 prompt: `Enter a commit hash, tag, or ref for ${repoRelativeFilePath}`,
                 placeHolder: "HEAD~1",
                 ignoreFocusOut: true,

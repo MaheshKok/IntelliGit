@@ -75,7 +75,7 @@ export async function runPublishBranchFlow(
     // 4. Repo name
     const defaultName = path.basename(repoRoot);
     const repoName = await vscode.window.showInputBox({
-        prompt: "Repository name",
+        prompt: vscode.l10n.t("Repository name"),
         value: defaultName,
         validateInput: (value) => {
             if (!value.trim()) return "Name is required";
@@ -151,12 +151,12 @@ async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined
             [
                 {
                     label: `$(git-branch) Push to Existing "origin"`,
-                    description: "Use the current origin remote without creating a new repository",
+                    description: vscode.l10n.t("Use the current origin remote without creating a new repository"),
                     action: "existing" as const,
                 },
                 {
-                    label: "$(add) Use a Different Remote Name",
-                    description: "Add the new repository as a separate remote",
+                    label: vscode.l10n.t("$(add) Use a Different Remote Name"),
+                    description: vscode.l10n.t("Add the new repository as a separate remote"),
                     action: "create" as const,
                 },
             ],
@@ -171,7 +171,7 @@ async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined
         }
 
         const remoteName = await vscode.window.showInputBox({
-            prompt: "Remote name for the new repository",
+            prompt: vscode.l10n.t("Remote name for the new repository"),
             value: "upstream",
             validateInput: (value) => {
                 if (!value.trim()) return "Name is required";
@@ -222,17 +222,17 @@ async function pickPublishProvider(): Promise<PublishProvider | undefined> {
     const picked = await vscode.window.showQuickPick(
         [
             {
-                label: "$(github) GitHub",
-                description: "Create a repository on GitHub and push",
+                label: vscode.l10n.t("$(github) GitHub"),
+                description: vscode.l10n.t("Create a repository on GitHub and push"),
                 provider: "github" as const,
             },
             {
-                label: "$(gitlab) GitLab",
-                description: "Create a project on GitLab and push",
+                label: vscode.l10n.t("$(gitlab) GitLab"),
+                description: vscode.l10n.t("Create a project on GitLab and push"),
                 provider: "gitlab" as const,
             },
         ],
-        { placeHolder: "Where do you want to publish this branch?" },
+        { placeHolder: vscode.l10n.t("Where do you want to publish this branch?") },
     );
     return picked?.provider;
 }
@@ -241,17 +241,17 @@ async function pickVisibility(): Promise<"private" | "public" | undefined> {
     const picked = await vscode.window.showQuickPick(
         [
             {
-                label: "$(lock) Private",
-                description: "Only you and collaborators can see this repository",
+                label: vscode.l10n.t("$(lock) Private"),
+                description: vscode.l10n.t("Only you and collaborators can see this repository"),
                 value: "private" as const,
             },
             {
-                label: "$(globe) Public",
-                description: "Anyone on the internet can see this repository",
+                label: vscode.l10n.t("$(globe) Public"),
+                description: vscode.l10n.t("Anyone on the internet can see this repository"),
                 value: "public" as const,
             },
         ],
-        { placeHolder: "Choose repository visibility" },
+        { placeHolder: vscode.l10n.t("Choose repository visibility") },
     );
     return picked?.value;
 }
@@ -378,7 +378,7 @@ async function getGitLabToken(secrets?: vscode.SecretStorage): Promise<string | 
     }
 
     const input = await vscode.window.showInputBox({
-        prompt: "Enter your GitLab Personal Access Token (requires api scope to create projects)",
+        prompt: vscode.l10n.t("Enter your GitLab Personal Access Token (requires api scope to create projects)"),
         placeHolder: "glpat-...",
         password: true,
         validateInput: (value) => {
@@ -390,7 +390,7 @@ async function getGitLabToken(secrets?: vscode.SecretStorage): Promise<string | 
 
     if (secrets) {
         const save = await vscode.window.showInformationMessage(
-            "Save this token for future use?",
+            vscode.l10n.t("Save this token for future use?"),
             "Save",
             "Don't Save",
         );
@@ -398,7 +398,7 @@ async function getGitLabToken(secrets?: vscode.SecretStorage): Promise<string | 
             try {
                 await secrets.store(GITLAB_TOKEN_KEY, input);
             } catch {
-                vscode.window.showWarningMessage("Could not save token securely.");
+                vscode.window.showWarningMessage(vscode.l10n.t("Could not save token securely."));
             }
         }
     }

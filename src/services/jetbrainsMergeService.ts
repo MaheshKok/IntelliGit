@@ -78,8 +78,8 @@ export async function promptForJetBrainsMergeToolPath(): Promise<string | null> 
     const detected = existing ? null : await detectInstalledJetBrainsMergeToolPath();
     const suggested = existing || detected || getDefaultJetBrainsMergeToolPath();
     const input = await vscode.window.showInputBox({
-        title: "JetBrains Merge Tool Path",
-        prompt: "Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path.",
+        title: vscode.l10n.t("JetBrains Merge Tool Path"),
+        prompt: vscode.l10n.t("Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path."),
         placeHolder: suggested,
         value: suggested,
         ignoreFocusOut: true,
@@ -93,7 +93,7 @@ export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | nu
     const candidates = await detectInstalledJetBrainsMergeToolCandidates();
     if (candidates.length === 0) {
         vscode.window.showWarningMessage(
-            "No JetBrains IDE installations were auto-detected. Enter the path manually instead.",
+            vscode.l10n.t("No JetBrains IDE installations were auto-detected. Enter the path manually instead."),
         );
         return promptForJetBrainsMergeToolPath();
     }
@@ -118,15 +118,15 @@ export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | nu
 
     const MANUAL_SENTINEL = "__manual__";
     quickPickItems.push({
-        label: "$(edit) Enter path manually",
-        description: "Open the path prompt",
+        label: vscode.l10n.t("$(edit) Enter path manually"),
+        description: vscode.l10n.t("Open the path prompt"),
         detail: undefined,
         candidatePath: MANUAL_SENTINEL,
     });
 
     const picked = await vscode.window.showQuickPick(quickPickItems, {
-        title: "Detect JetBrains Merge Tool",
-        placeHolder: "Select a detected JetBrains IDE to use as the merge tool",
+        title: vscode.l10n.t("Detect JetBrains Merge Tool"),
+        placeHolder: vscode.l10n.t("Select a detected JetBrains IDE to use as the merge tool"),
         ignoreFocusOut: true,
         matchOnDescription: true,
         matchOnDetail: true,
@@ -193,7 +193,7 @@ export async function openJetBrainsMergeToolForFile(
     let jetBrainsPath = getJetBrainsMergeToolPath();
     if (!jetBrainsPath) {
         const action = await vscode.window.showInformationMessage(
-            "JetBrains merge tool path is not configured.",
+            vscode.l10n.t("JetBrains merge tool path is not configured."),
             "Configure",
             "Open VS Code Merge Editor",
         );

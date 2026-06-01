@@ -356,11 +356,11 @@ export class UndockedViewProvider {
                 const push = msg.push === true;
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 if (!message && !amend) {
-                    vscode.window.showWarningMessage("Enter a commit message.");
+                    vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
                     return;
                 }
                 if (paths.length === 0 && !amend) {
-                    vscode.window.showWarningMessage("Select files to commit.");
+                    vscode.window.showWarningMessage(vscode.l10n.t("Select files to commit."));
                     return;
                 }
                 if (paths.length > 0) {
@@ -404,13 +404,13 @@ export class UndockedViewProvider {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
                 const amend = msg.amend === true;
                 if (!message && !amend) {
-                    vscode.window.showWarningMessage("Enter a commit message.");
+                    vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
                     return;
                 }
                 await runWithNotificationProgress("Committing...", async () => {
                     await this.gitOps.commit(message, amend);
                 });
-                vscode.window.showInformationMessage("Committed successfully.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Committed successfully."));
                 this.postToWebview({ type: "committed" });
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
@@ -421,7 +421,7 @@ export class UndockedViewProvider {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
                 const amend = msg.amend === true;
                 if (!message && !amend) {
-                    vscode.window.showWarningMessage("Enter a commit message.");
+                    vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
                     return;
                 }
                 try {
@@ -441,7 +441,7 @@ export class UndockedViewProvider {
                     }
                     throw err;
                 }
-                vscode.window.showInformationMessage("Committed and pushed successfully.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Committed and pushed successfully."));
                 this.postToWebview({ type: "committed" });
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
@@ -470,7 +470,7 @@ export class UndockedViewProvider {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
                 if (paths.length === 0) {
                     const confirm = await vscode.window.showWarningMessage(
-                        "Rollback all changes?",
+                        vscode.l10n.t("Rollback all changes?"),
                         { modal: true },
                         "Rollback",
                     );
@@ -485,7 +485,7 @@ export class UndockedViewProvider {
                     if (confirm !== "Rollback") return;
                     await this.gitOps.rollbackFiles(paths);
                 }
-                vscode.window.showInformationMessage("Changes rolled back.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
                 break;
@@ -505,7 +505,7 @@ export class UndockedViewProvider {
                     paths = this.assertRepoPathArray(msg.paths, "paths");
                 }
                 await this.gitOps.shelveSave(paths, name);
-                vscode.window.showInformationMessage("Changes shelved.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Changes shelved."));
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
                 break;
@@ -514,7 +514,7 @@ export class UndockedViewProvider {
             case "shelfPop": {
                 const index = this.assertNumber(msg.index, "index");
                 await this.gitOps.shelvePop(index);
-                vscode.window.showInformationMessage("Unshelved changes.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Unshelved changes."));
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
                 break;
@@ -523,7 +523,7 @@ export class UndockedViewProvider {
             case "shelfApply": {
                 const index = this.assertNumber(msg.index, "index");
                 await this.gitOps.shelveApply(index);
-                vscode.window.showInformationMessage("Applied shelved changes.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Applied shelved changes."));
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
                 break;
@@ -532,13 +532,13 @@ export class UndockedViewProvider {
             case "shelfDelete": {
                 const index = this.assertNumber(msg.index, "index");
                 const confirm = await vscode.window.showWarningMessage(
-                    "Delete this shelved change?",
+                    vscode.l10n.t("Delete this shelved change?"),
                     { modal: true },
                     "Delete",
                 );
                 if (confirm !== "Delete") return;
                 await this.gitOps.shelveDelete(index);
-                vscode.window.showInformationMessage("Shelved change deleted.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Shelved change deleted."));
                 await this.refreshCommitPanelData();
                 this._onDidChangeWorkingTree.fire();
                 break;
@@ -789,7 +789,7 @@ export class UndockedViewProvider {
             extensionUri: this.extensionUri,
             webview,
             scriptFile: "webview-undocked.js",
-            title: "IntelliGit",
+            title: vscode.l10n.t("IntelliGit"),
             backgroundVar: "var(--vscode-editor-background)",
         });
     }

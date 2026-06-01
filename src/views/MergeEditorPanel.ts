@@ -186,7 +186,7 @@ export class MergeEditorPanel {
             webview,
             scriptFile: "webview-mergeeditor.js",
             styleFiles: ["webview-mergeeditor.css"],
-            title: "Merge Editor",
+            title: vscode.l10n.t("Merge Editor"),
         });
     }
 

@@ -78,7 +78,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             extensionUri: this.extensionUri,
             webview: webviewView.webview,
             scriptFile: "webview-commitinfo.js",
-            title: "Changed Files",
+            title: vscode.l10n.t("Changed Files"),
             backgroundVar: "var(--vscode-editor-background)",
         });
     }
