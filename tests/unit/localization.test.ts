@@ -1,7 +1,7 @@
 import { execFileSync } from "child_process";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import path from "path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const vscodeState = vi.hoisted(() => ({
     language: "ja",
@@ -50,11 +50,13 @@ import {
     escapeHtmlText,
     scriptSafeJson,
 } from "../../src/views/webviewHtml";
+import { getWebviewI18nPayload } from "../../src/webviews/i18n";
 
 type CatalogValue = string | Record<string, string>;
 type Catalog = Record<string, CatalogValue>;
 
 const repoRoot = process.cwd();
+const originalPseudoLoc = process.env.INTELLIGIT_PSEUDO_LOC;
 const manifestLocales = [
     "de",
     "es",
@@ -73,6 +75,15 @@ const runtimeLocales = manifestLocales;
 beforeEach(() => {
     vscodeState.language = "ja";
     vscodeState.translations.clear();
+    delete process.env.INTELLIGIT_PSEUDO_LOC;
+});
+
+afterEach(() => {
+    if (originalPseudoLoc === undefined) {
+        delete process.env.INTELLIGIT_PSEUDO_LOC;
+    } else {
+        process.env.INTELLIGIT_PSEUDO_LOC = originalPseudoLoc;
+    }
 });
 
 describe("localization catalogs", () => {
@@ -136,6 +147,51 @@ describe("localization catalogs", () => {
                 locale,
             );
         }
+    });
+
+    it("keeps generated locale artifacts out of translated catalogs", () => {
+        const localeCatalogPaths = [
+            ...manifestLocales.map((locale) => `package.nls.${locale}.json`),
+            ...runtimeLocales.map((locale) => `l10n/bundle.l10n.${locale}.json`),
+            ...runtimeLocales.map((locale) => `src/webviews/i18n/${locale}.json`),
+        ];
+
+        for (const catalogPath of localeCatalogPaths) {
+            const catalog = readJson<Catalog>(catalogPath);
+            const leaked = collectStringValues(catalog).filter((value) =>
+                /\bZXQ\d+ZX\b/i.test(value),
+            );
+            expect(leaked, catalogPath).toEqual([]);
+        }
+    });
+});
+
+describe("webview i18n payload", () => {
+    it("resolves every runtime locale through the host-side loader", () => {
+        for (const locale of runtimeLocales) {
+            const expected = readJson<Catalog>(`src/webviews/i18n/${locale}.json`);
+            const payload = getWebviewI18nPayload(locale);
+
+            expect(payload.locale).toBe(locale);
+            expect(payload.fallbackLocale).toBe("en");
+            expect(payload.catalog).toEqual(expected);
+        }
+    });
+
+    it("pseudo-localizes webview strings while preserving placeholders and plural shapes", () => {
+        process.env.INTELLIGIT_PSEUDO_LOC = "1";
+
+        const payload = getWebviewI18nPayload("ja");
+        expect(payload.locale).toBe("ja");
+        expect(payload.catalog).toEqual(payload.fallbackCatalog);
+        expect(payload.catalog["commitInfo.byAuthor"]).toBe("⟦bý {author}  ⟧");
+
+        const fileCount = payload.catalog["common.fileCount"];
+        expect(isStringMap(fileCount)).toBe(true);
+        expect(fileCount).toMatchObject({
+            one: "⟦{count} fílé  ⟧",
+            other: "⟦{count} fíléš  ⟧",
+        });
     });
 });
 
@@ -239,6 +295,13 @@ function assertPluralCategories(value: Record<string, string>, locale: string, k
 
 function placeholders(value: string): string[] {
     return Array.from(value.matchAll(/\{([A-Za-z0-9_]+)\}/g), (match) => match[1]);
+}
+
+function collectStringValues(value: CatalogValue | Catalog): string[] {
+    if (typeof value === "string") return [value];
+    return Object.values(value).flatMap((item) =>
+        typeof item === "string" ? [item] : collectStringValues(item),
+    );
 }
 
 function collectPercentPlaceholders(value: unknown, found = new Set<string>()): Set<string> {
