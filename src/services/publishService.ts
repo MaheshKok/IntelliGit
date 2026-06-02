@@ -48,7 +48,9 @@ export async function runPublishBranchFlow(
             await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
-                    title: `Pushing to ${remotePlan.remoteName}...`,
+                    title: vscode.l10n.t("Pushing to {remote}...", {
+                        remote: remotePlan.remoteName,
+                    }),
                     cancellable: false,
                 },
                 async () => {
@@ -56,7 +58,10 @@ export async function runPublishBranchFlow(
                 },
             );
             vscode.window.showInformationMessage(
-                `Branch "${branchName}" published to ${remotePlan.remoteName}.`,
+                vscode.l10n.t('Branch "{branch}" published to {remote}.', {
+                    branch: branchName,
+                    remote: remotePlan.remoteName,
+                }),
             );
         } catch (err) {
             vscode.window.showErrorMessage(`Failed to publish branch: ${getErrorMessage(err)}`);
@@ -78,8 +83,9 @@ export async function runPublishBranchFlow(
         prompt: vscode.l10n.t("Repository name"),
         value: defaultName,
         validateInput: (value) => {
-            if (!value.trim()) return "Name is required";
-            if (/[^a-zA-Z0-9._-]/.test(value)) return "Only letters, digits, ., -, _ are allowed";
+            if (!value.trim()) return vscode.l10n.t("Name is required");
+            if (/[^a-zA-Z0-9._-]/.test(value))
+                return vscode.l10n.t("Only letters, digits, ., -, _ are allowed");
             return undefined;
         },
     });
@@ -95,7 +101,9 @@ export async function runPublishBranchFlow(
         created = await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: `Creating repository on ${providerLabel(provider)}...`,
+                title: vscode.l10n.t("Creating repository on {provider}...", {
+                    provider: providerLabel(provider),
+                }),
                 cancellable: false,
             },
             async () => {
@@ -116,7 +124,9 @@ export async function runPublishBranchFlow(
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: `Pushing to ${remotePlan.remoteName}...`,
+                title: vscode.l10n.t("Pushing to {remote}...", {
+                    remote: remotePlan.remoteName,
+                }),
                 cancellable: false,
             },
             async () => {
@@ -129,11 +139,15 @@ export async function runPublishBranchFlow(
             },
         );
 
+        const openRepositoryAction = vscode.l10n.t("Open Repository");
         const openChoice = await vscode.window.showInformationMessage(
-            `Branch "${branchName}" published to ${created.htmlUrl}`,
-            "Open Repository",
+            vscode.l10n.t('Branch "{branch}" published to {url}', {
+                branch: branchName,
+                url: created.htmlUrl,
+            }),
+            openRepositoryAction,
         );
-        if (openChoice === "Open Repository") {
+        if (openChoice === openRepositoryAction) {
             await vscode.env.openExternal(vscode.Uri.parse(created.htmlUrl));
         }
     } catch (err) {
@@ -151,7 +165,9 @@ async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined
             [
                 {
                     label: `$(git-branch) Push to Existing "origin"`,
-                    description: vscode.l10n.t("Use the current origin remote without creating a new repository"),
+                    description: vscode.l10n.t(
+                        "Use the current origin remote without creating a new repository",
+                    ),
                     action: "existing" as const,
                 },
                 {
@@ -174,11 +190,13 @@ async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined
             prompt: vscode.l10n.t("Remote name for the new repository"),
             value: "upstream",
             validateInput: (value) => {
-                if (!value.trim()) return "Name is required";
+                if (!value.trim()) return vscode.l10n.t("Name is required");
                 if (remotes.includes(value.trim()))
-                    return `Remote "${value.trim()}" already exists`;
+                    return vscode.l10n.t('Remote "{remote}" already exists', {
+                        remote: value.trim(),
+                    });
                 if (/[^a-zA-Z0-9._-]/.test(value))
-                    return "Only letters, digits, ., -, _ are allowed";
+                    return vscode.l10n.t("Only letters, digits, ., -, _ are allowed");
                 return undefined;
             },
         });
@@ -378,23 +396,27 @@ async function getGitLabToken(secrets?: vscode.SecretStorage): Promise<string | 
     }
 
     const input = await vscode.window.showInputBox({
-        prompt: vscode.l10n.t("Enter your GitLab Personal Access Token (requires api scope to create projects)"),
+        prompt: vscode.l10n.t(
+            "Enter your GitLab Personal Access Token (requires api scope to create projects)",
+        ),
         placeHolder: "glpat-...",
         password: true,
         validateInput: (value) => {
-            if (!value.trim()) return "Token is required";
+            if (!value.trim()) return vscode.l10n.t("Token is required");
             return undefined;
         },
     });
     if (!input) return undefined;
 
     if (secrets) {
+        const saveAction = vscode.l10n.t("Save");
+        const dontSaveAction = vscode.l10n.t("Don't Save");
         const save = await vscode.window.showInformationMessage(
             vscode.l10n.t("Save this token for future use?"),
-            "Save",
-            "Don't Save",
+            saveAction,
+            dontSaveAction,
         );
-        if (save === "Save") {
+        if (save === saveAction) {
             try {
                 await secrets.store(GITLAB_TOKEN_KEY, input);
             } catch {

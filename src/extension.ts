@@ -1110,12 +1110,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     if (!ctx?.filePath) return;
                     try {
                         const safePath = assertRepoRelativePath(ctx.filePath);
+                        const rollbackAction = vscode.l10n.t("Rollback");
                         const confirm = await vscode.window.showWarningMessage(
-                            `Rollback ${safePath}?`,
+                            vscode.l10n.t("Rollback {path}?", { path: safePath }),
                             { modal: true },
-                            "Rollback",
+                            rollbackAction,
                         );
-                        if (confirm !== "Rollback") return;
+                        if (confirm !== rollbackAction) return;
                         await gitOps.rollbackFiles([safePath]);
                         vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
                     } catch (error) {
@@ -1143,12 +1144,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     if (!ctx?.filePath) return;
                     try {
                         const safePath = assertRepoRelativePath(ctx.filePath);
+                        const deleteAction = vscode.l10n.t("Delete");
                         const confirm = await vscode.window.showWarningMessage(
-                            `Delete ${safePath}?`,
+                            vscode.l10n.t("Delete {path}?", { path: safePath }),
                             { modal: true },
-                            "Delete",
+                            deleteAction,
                         );
-                        if (confirm !== "Delete") return;
+                        if (confirm !== deleteAction) return;
 
                         const deleted = await deleteFileWithFallback(
                             gitOps,
@@ -1156,7 +1158,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             safePath,
                         );
                         if (deleted) {
-                            vscode.window.showInformationMessage(`Deleted ${safePath}`);
+                            vscode.window.showInformationMessage(
+                                vscode.l10n.t("Deleted {path}", { path: safePath }),
+                            );
                         }
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);

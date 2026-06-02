@@ -102,8 +102,8 @@ async function cloneViaSSH(): Promise<void> {
         prompt: vscode.l10n.t("Enter the SSH clone URL (e.g. git@github.com:user/repo.git)"),
         placeHolder: "git@github.com:user/repo.git",
         validateInput: (value) => {
-            if (!value.trim()) return "URL is required";
-            if (!/^git@/.test(value)) return 'URL must start with "git@"';
+            if (!value.trim()) return vscode.l10n.t("URL is required");
+            if (!/^git@/.test(value)) return vscode.l10n.t('URL must start with "git@"');
             return undefined;
         },
     });
@@ -130,7 +130,10 @@ async function cloneViaGitHub(): Promise<void> {
 
     const mode = await vscode.window.showQuickPick(
         [
-            { label: vscode.l10n.t("$(list-tree) Browse My Repositories"), value: "browse" as const },
+            {
+                label: vscode.l10n.t("$(list-tree) Browse My Repositories"),
+                value: "browse" as const,
+            },
             { label: vscode.l10n.t("$(link) Enter Clone URL"), value: "url" as const },
         ],
         { placeHolder: vscode.l10n.t("How would you like to select a repository?") },
@@ -145,12 +148,14 @@ async function cloneViaGitHub(): Promise<void> {
         cloneUrl = repo.clone_url;
     } else {
         const input = await vscode.window.showInputBox({
-            prompt: vscode.l10n.t("Enter the GitHub HTTPS clone URL (e.g. https://github.com/user/repo.git)"),
+            prompt: vscode.l10n.t(
+                "Enter the GitHub HTTPS clone URL (e.g. https://github.com/user/repo.git)",
+            ),
             placeHolder: "https://github.com/user/repo.git",
             validateInput: (value) => {
-                if (!value.trim()) return "URL is required";
+                if (!value.trim()) return vscode.l10n.t("URL is required");
                 if (!/^https:\/\/github\.com\//.test(value))
-                    return "Must be a github.com HTTPS URL";
+                    return vscode.l10n.t("Must be a github.com HTTPS URL");
                 return undefined;
             },
         });
@@ -207,7 +212,9 @@ async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
     }
 
     if (!repos || repos.length === 0) {
-        vscode.window.showInformationMessage(vscode.l10n.t("No repositories found on your GitHub account."));
+        vscode.window.showInformationMessage(
+            vscode.l10n.t("No repositories found on your GitHub account."),
+        );
         return undefined;
     }
 
@@ -350,7 +357,9 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
                 if (!use) return;
                 if (use.value === "clear") {
                     await secrets.delete(GITLAB_TOKEN_SECRET_KEY);
-                    vscode.window.showInformationMessage(vscode.l10n.t("Saved GitLab token cleared."));
+                    vscode.window.showInformationMessage(
+                        vscode.l10n.t("Saved GitLab token cleared."),
+                    );
                     return;
                 }
                 if (use.value === "saved") {
@@ -386,11 +395,13 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
     // Prompt for token if still not set
     if (!token) {
         const input = await vscode.window.showInputBox({
-            prompt: vscode.l10n.t("Enter your GitLab Personal Access Token (requires read_repository scope)"),
+            prompt: vscode.l10n.t(
+                "Enter your GitLab Personal Access Token (requires read_repository scope)",
+            ),
             placeHolder: "glpat-...",
             password: true,
             validateInput: (value) => {
-                if (!value.trim()) return "Token is required";
+                if (!value.trim()) return vscode.l10n.t("Token is required");
                 return undefined;
             },
         });
@@ -399,27 +410,33 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
 
         // Save to SecretStorage
         if (secrets) {
+            const saveAction = vscode.l10n.t("Save");
+            const dontSaveAction = vscode.l10n.t("Don't Save");
             const save = await vscode.window.showInformationMessage(
                 vscode.l10n.t("Save this token for future use?"),
-                "Save",
-                "Don't Save",
+                saveAction,
+                dontSaveAction,
             );
-            if (save === "Save") {
+            if (save === saveAction) {
                 try {
                     await secrets.store(GITLAB_TOKEN_SECRET_KEY, token);
                 } catch {
-                    vscode.window.showWarningMessage(vscode.l10n.t("Could not save token securely."));
+                    vscode.window.showWarningMessage(
+                        vscode.l10n.t("Could not save token securely."),
+                    );
                 }
             }
         }
     }
 
     const cloneUrl = await vscode.window.showInputBox({
-        prompt: vscode.l10n.t("Enter the GitLab HTTPS clone URL (e.g. https://gitlab.com/user/repo.git)"),
+        prompt: vscode.l10n.t(
+            "Enter the GitLab HTTPS clone URL (e.g. https://gitlab.com/user/repo.git)",
+        ),
         placeHolder: "https://gitlab.com/user/repo.git",
         validateInput: (value) => {
-            if (!value.trim()) return "URL is required";
-            if (!/^https:\/\//.test(value)) return "Must be an HTTPS URL";
+            if (!value.trim()) return vscode.l10n.t("URL is required");
+            if (!/^https:\/\//.test(value)) return vscode.l10n.t("Must be an HTTPS URL");
             return undefined;
         },
     });
@@ -472,12 +489,15 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
     }
 
     // Directory exists — ask user
+    const overwriteAction = vscode.l10n.t("Overwrite");
     const overwrite = await vscode.window.showWarningMessage(
-        `Directory "${path.basename(targetPath)}" already exists. Overwrite?`,
+        vscode.l10n.t('Directory "{name}" already exists. Overwrite?', {
+            name: path.basename(targetPath),
+        }),
         { modal: true },
-        "Overwrite",
+        overwriteAction,
     );
-    if (overwrite !== "Overwrite") return;
+    if (overwrite !== overwriteAction) return;
 
     try {
         await fs.rm(targetPath, { recursive: true, force: true });
@@ -496,7 +516,7 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
             await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
-                    title: `Cloning ${extractRepoName(url)}...`,
+                    title: vscode.l10n.t("Cloning {repo}...", { repo: extractRepoName(url) }),
                     cancellable: false,
                 },
                 async () => {
@@ -526,18 +546,20 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                 }
             }
 
+            const openInNewWindowAction = vscode.l10n.t("Open in New Window");
+            const addToWorkspaceAction = vscode.l10n.t("Add to Workspace");
             const openChoice = await vscode.window.showInformationMessage(
-                `Cloned ${extractRepoName(url)} successfully.`,
-                "Open in New Window",
-                "Add to Workspace",
+                vscode.l10n.t("Cloned {repo} successfully.", { repo: extractRepoName(url) }),
+                openInNewWindowAction,
+                addToWorkspaceAction,
             );
-            if (openChoice === "Open in New Window") {
+            if (openChoice === openInNewWindowAction) {
                 await vscode.commands.executeCommand(
                     "vscode.openFolder",
                     vscode.Uri.file(targetPath),
                     true,
                 );
-            } else if (openChoice === "Add to Workspace") {
+            } else if (openChoice === addToWorkspaceAction) {
                 const count = vscode.workspace.workspaceFolders?.length ?? 0;
                 await vscode.workspace.updateWorkspaceFolders(count, 0, {
                     uri: vscode.Uri.file(targetPath),

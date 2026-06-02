@@ -509,16 +509,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     await this.gitOps.stageFiles(paths);
                 }
                 try {
-                    await runWithNotificationProgress(
-                        push ? "Committing and pushing..." : "Committing...",
-                        async () => {
-                            if (push) {
-                                await this.gitOps.commitAndPush(message, amend);
-                            } else {
-                                await this.gitOps.commit(message, amend);
-                            }
-                        },
-                    );
+                    const progressTitle = push
+                        ? vscode.l10n.t("Committing and pushing...")
+                        : vscode.l10n.t("Committing...");
+                    await runWithNotificationProgress(progressTitle, async () => {
+                        if (push) {
+                            await this.gitOps.commitAndPush(message, amend);
+                        } else {
+                            await this.gitOps.commit(message, amend);
+                        }
+                    });
                 } catch (err) {
                     if (
                         push &&
@@ -533,9 +533,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     }
                     throw err;
                 }
-                vscode.window.showInformationMessage(
-                    push ? "Committed and pushed successfully." : "Committed successfully.",
-                );
+                const successMessage = push
+                    ? vscode.l10n.t("Committed and pushed successfully.")
+                    : vscode.l10n.t("Committed successfully.");
+                vscode.window.showInformationMessage(successMessage);
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 this._onDidChangeWorkingTree.fire();
@@ -552,7 +553,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
                     return;
                 }
-                await runWithNotificationProgress("Committing...", async () => {
+                await runWithNotificationProgress(vscode.l10n.t("Committing..."), async () => {
                     await this.gitOps.commit(message, amend);
                 });
                 vscode.window.showInformationMessage(vscode.l10n.t("Committed successfully."));
@@ -571,9 +572,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     return;
                 }
                 try {
-                    await runWithNotificationProgress("Committing and pushing...", async () => {
-                        await this.gitOps.commitAndPush(message, amend);
-                    });
+                    await runWithNotificationProgress(
+                        vscode.l10n.t("Committing and pushing..."),
+                        async () => {
+                            await this.gitOps.commitAndPush(message, amend);
+                        },
+                    );
                 } catch (err) {
                     if (
                         await promptRebaseAfterPushRejection(err, this.gitOps, async () => {
@@ -587,7 +591,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     }
                     throw err;
                 }
-                vscode.window.showInformationMessage(vscode.l10n.t("Committed and pushed successfully."));
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Committed and pushed successfully."),
+                );
                 this.postToWebview({ type: "committed" });
                 await this.refreshData();
                 this._onDidChangeWorkingTree.fire();
@@ -608,21 +614,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "rollback": {
                 const paths = this.assertRepoPathArray(msg.paths, "paths");
+                const rollbackAction = vscode.l10n.t("Rollback");
                 if (paths.length === 0) {
                     const confirm = await vscode.window.showWarningMessage(
                         vscode.l10n.t("Rollback all changes?"),
                         { modal: true },
-                        "Rollback",
+                        rollbackAction,
                     );
-                    if (confirm !== "Rollback") return;
+                    if (confirm !== rollbackAction) return;
                     await this.gitOps.rollbackAll();
                 } else {
                     const confirm = await vscode.window.showWarningMessage(
-                        `Rollback ${paths.length} file(s)?`,
+                        vscode.l10n.t("Rollback {count} file(s)?", { count: paths.length }),
                         { modal: true },
-                        "Rollback",
+                        rollbackAction,
                     );
-                    if (confirm !== "Rollback") return;
+                    if (confirm !== rollbackAction) return;
                     await this.gitOps.rollbackFiles(paths);
                 }
                 vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
@@ -672,12 +679,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "shelfDelete": {
                 const index = this.assertNumber(msg.index, "index");
+                const deleteAction = vscode.l10n.t("Delete");
                 const confirm = await vscode.window.showWarningMessage(
                     vscode.l10n.t("Delete this shelved change?"),
                     { modal: true },
-                    "Delete",
+                    deleteAction,
                 );
-                if (confirm !== "Delete") return;
+                if (confirm !== deleteAction) return;
                 await this.gitOps.shelveDelete(index);
                 vscode.window.showInformationMessage(vscode.l10n.t("Shelved change deleted."));
                 await this.refreshData();
@@ -738,16 +746,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
             case "deleteFile": {
                 const filePath = assertRepoRelativePath(this.assertString(msg.path, "path"));
+                const deleteAction = vscode.l10n.t("Delete");
                 const confirm = await vscode.window.showWarningMessage(
-                    `Delete ${filePath}?`,
+                    vscode.l10n.t("Delete {path}?", { path: filePath }),
                     { modal: true },
-                    "Delete",
+                    deleteAction,
                 );
-                if (confirm !== "Delete") return;
+                if (confirm !== deleteAction) return;
                 const workspaceRoot = this.getWorkspaceRoot();
                 const deleted = await deleteFileWithFallback(this.gitOps, workspaceRoot, filePath);
                 if (!deleted) return;
-                vscode.window.showInformationMessage(`Deleted ${filePath}`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Deleted {path}", { path: filePath }),
+                );
                 await this.refreshData();
                 this._onDidChangeWorkingTree.fire();
                 break;
