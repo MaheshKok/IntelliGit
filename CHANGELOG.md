@@ -5,6 +5,52 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-02
+
+### Added
+
+- Added full extension localization infrastructure across the VS Code manifest, extension host, and React webviews.
+- Added localized catalogs for German, Spanish, French, Japanese, Korean, Polish, Portuguese (Brazil), Portuguese (Portugal), Russian, Simplified Chinese, and Traditional Chinese.
+- Added VS Code manifest localization via `package.nls.*.json`, including command titles, view titles, configuration labels, configuration descriptions, and enum labels.
+- Added extension-host localization via `l10n/bundle.l10n.*.json` for notifications, prompts, progress messages, quick-pick labels, validation errors, Git operation messages, merge-conflict actions, clone/publish/setup flows, and activity-bar badge tooltips.
+- Added webview localization via `src/webviews/i18n/*.json` for the commit panel, commit graph, branch menus, changed-file UI, commit detail panel, merge editor, conflict session, onboarding, toolbar labels, empty states, status labels, and context menus.
+- Added a single translation review CSV at `docs/localization_translation_review.csv` as the source of truth for all manifest, host, and webview translations.
+- Added CSV import and validation tooling so reviewed translations can be imported back into generated catalogs instead of editing every locale JSON file by hand.
+- Added localization tests that verify required locale coverage, catalog synchronization, placeholder preservation, plural-category shape, manifest entries, host bundles, and webview bundles.
+- Added a hardcoded-string audit for user-facing source code so new English UI strings are caught when they are not routed through `vscode.l10n.t(...)` or webview `t(...)`.
+- Added a Git terminology glossary for translators and reviewers so terms such as Git, commit, branch, stash, rebase, remote, worktree, VS Code, JetBrains, and Squash remain consistent across languages.
+
+### Changed
+
+- Converted extension host strings from raw English literals to `vscode.l10n.t(...)`, including user-visible errors, confirmations, progress titles, branch/commit actions, merge conflict commands, and repository setup messages.
+- Converted React webview UI strings to the shared webview `t(...)` helper, including placeholder interpolation and plural-aware messages.
+- Replaced hardcoded manifest text with `%key%` references backed by `package.nls.json` and locale-specific `package.nls.*.json` files.
+- Made the localization workflow reviewable: translators can update one CSV, validate placeholders and required columns, then regenerate all locale catalogs consistently.
+- Preserved placeholder tokens such as `{count}`, `{path}`, `{branch}`, `{short}`, `{remote}`, `{remoteBranch}`, and codicon tokens so translated strings do not break runtime interpolation.
+- Preserved product and technical terminology where translating it would reduce clarity, including IntelliGit, Git, VS Code, JetBrains product names, command-line flags, URLs, SSH, HTTPS, and common Git operation names.
+- Preserved Git jargon intentionally in places where localized VS Code/Git users expect the English term, such as Squash, Rebase, Checkout, commit, branch, and stash.
+- Preserved the PyCharm/JetBrains-style UI behavior while only changing string loading and translated display text.
+- Preserved the real-time changed-file count refresh work from `main`, including VS Code Git state listeners, background refresh coalescing, activity-bar badge clearing, and the blue refresh indicator during background checks.
+- Preserved the branch-scope cherry-pick guard from `main` while keeping the commit context menu localized.
+
+### Fixed
+
+- Fixed the earlier partial-localization state where only manifest metadata was translated while host runtime strings and webview UI still fell back to English.
+- Fixed missing non-English host and webview catalogs by generating and validating every supported locale.
+- Fixed translation validation gaps so tests now fail when required locale catalogs or CSV rows are missing.
+- Fixed machine-translation artifacts that corrupted placeholders or translated placeholder stand-ins instead of preserving the original tokens.
+- Fixed several reviewed translation quality issues found during deep scans, including mistranslated Git terms, untranslated Squash labels, Korean hunk/conflict wording, German checkout/rebase wording, French JetBrains merge-tool wording, and merge-session subtitle spacing around branch names.
+- Fixed the new changed-files badge view introduced from `main` so its view title and tooltip are localized instead of adding new raw English strings.
+- Fixed webview HTML localization payload escaping so translated JSON embedded in webviews cannot break the generated HTML.
+- Fixed duplicate or stale catalog drift by making the CSV validation compare generated catalogs against the review CSV.
+
+### Verification
+
+- Verified localization with `bun run l10n:validate`.
+- Verified hardcoded UI string coverage with `bun run l10n:audit`.
+- Verified focused localization tests with `bun vitest run tests/unit/localization.test.ts`.
+- Verified the merged branch with `bun run typecheck`, `bun run build`, and `bun run test`.
+
 ## [0.8.18] - 2026-06-02
 
 ### Fixed
