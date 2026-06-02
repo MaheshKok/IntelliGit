@@ -384,6 +384,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     : undefined;
         };
         const resetFileCountBadge = (): void => updateFileCountBadge(0);
+        resetFileCountBadge();
+        const fileCountBadgeSubscription =
+            commitPanel.onDidChangeFileCount(updateFileCountBadge);
 
         let undocked: UndockedViewProvider | undefined;
 
@@ -1234,7 +1237,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // --- Disposables ---
 
         context.subscriptions.push(
-            commitPanel.onDidChangeFileCount(updateFileCountBadge),
+            fileCountBadgeSubscription,
             { dispose: () => refreshService.dispose() },
             commitGraph,
             commitInfo,
