@@ -189,5 +189,7 @@
     "mergeSession.acceptYours": "Eigene übernehmen",
     "mergeSession.acceptTheirs": "Fremde übernehmen",
     "mergeSession.merge": "Mergen …",
-    "mergeSession.groupByDirectory": "Dateien nach Verzeichnis gruppieren"
+    "mergeSession.groupByDirectory": "Dateien nach Verzeichnis gruppieren",
+    "common.dock": "Andocken",
+    "common.dockIntelliGit": "IntelliGit andocken"
 }

@@ -182,5 +182,7 @@
     "mergeSession.acceptYours": "接受你的版本",
     "mergeSession.acceptTheirs": "接受对方版本",
     "mergeSession.merge": "合并...",
-    "mergeSession.groupByDirectory": "按目录对文件进行分组"
+    "mergeSession.groupByDirectory": "按目录对文件进行分组",
+    "common.dock": "停靠",
+    "common.dockIntelliGit": "停靠 IntelliGit"
 }

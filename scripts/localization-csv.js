@@ -39,6 +39,7 @@ const sourceDefinitions = [
 ];
 
 const pluralCategories = new Set(["zero", "one", "two", "few", "many", "other"]);
+const preservedLiteralTokens = ["reword", "origin", ".git/config"];
 
 const command = process.argv[2] ?? "validate";
 const quiet = process.argv.includes("--quiet");
@@ -80,6 +81,12 @@ function validate({ checkCatalogSync }) {
         }
 
         const record = recordFromRow(header, row);
+        for (const [column, value] of Object.entries(record)) {
+            if (hasReplacementCharacter(value)) {
+                errors.push(`Row ${rowNumber}: ${column} contains U+FFFD replacement characters.`);
+            }
+        }
+
         const id = rowId(record);
         if (seenRows.has(id))
             errors.push(
@@ -133,6 +140,14 @@ function validate({ checkCatalogSync }) {
             }
 
             compareTokens({
+                errors,
+                rowNumber,
+                locale,
+                key: record.key,
+                sourceValue: expected.englishSource,
+                translatedValue: value,
+            });
+            comparePreservedLiterals({
                 errors,
                 rowNumber,
                 locale,
@@ -346,6 +361,27 @@ function compareTokens({ errors, rowNumber, locale, key, sourceValue, translated
             `Row ${rowNumber}: current_${locale} contains generated placeholder artifact for ${key}.`,
         );
     }
+}
+
+function comparePreservedLiterals({
+    errors,
+    rowNumber,
+    locale,
+    key,
+    sourceValue,
+    translatedValue,
+}) {
+    for (const token of preservedLiteralTokens) {
+        if (sourceValue.includes(token) && !translatedValue.includes(token)) {
+            errors.push(
+                `Row ${rowNumber}: current_${locale} must preserve literal token "${token}" for ${key}.`,
+            );
+        }
+    }
+}
+
+function hasReplacementCharacter(value) {
+    return value.includes("\uFFFD");
 }
 
 function parseCsv(text) {

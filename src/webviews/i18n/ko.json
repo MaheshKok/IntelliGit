@@ -182,5 +182,7 @@
     "mergeSession.acceptYours": "내 버전 수락",
     "mergeSession.acceptTheirs": "상대 버전 수락",
     "mergeSession.merge": "병합...",
-    "mergeSession.groupByDirectory": "디렉터리별로 파일 그룹화"
+    "mergeSession.groupByDirectory": "디렉터리별로 파일 그룹화",
+    "common.dock": "도킹",
+    "common.dockIntelliGit": "IntelliGit 도킹"
 }

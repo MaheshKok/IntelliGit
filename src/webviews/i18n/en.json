@@ -9,6 +9,8 @@
     "common.collapseAll": "Collapse All",
     "common.cancel": "Cancel",
     "common.close": "Close",
+    "common.dock": "Dock",
+    "common.dockIntelliGit": "Dock IntelliGit",
     "common.loading": "Loading...",
     "common.showDiff": "Show Diff",
     "common.ungroupFiles": "Ungroup Files",

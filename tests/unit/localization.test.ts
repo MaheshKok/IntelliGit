@@ -156,7 +156,7 @@ describe("localization catalogs", () => {
         }
     });
 
-    it("keeps generated locale artifacts out of translated catalogs", () => {
+    it("keeps generated artifacts and replacement characters out of translated catalogs", () => {
         const localeCatalogPaths = [
             ...manifestLocales.map((locale) => `package.nls.${locale}.json`),
             ...runtimeLocales.map((locale) => `l10n/bundle.l10n.${locale}.json`),
@@ -169,6 +169,31 @@ describe("localization catalogs", () => {
                 /\bZXQ\d+ZX\b/i.test(value),
             );
             expect(leaked, catalogPath).toEqual([]);
+
+            const corrupted = collectStringValues(catalog).filter((value) =>
+                value.includes("\uFFFD"),
+            );
+            expect(corrupted, catalogPath).toEqual([]);
+        }
+    });
+
+    it("preserves literal Git tokens that users must copy exactly", () => {
+        const source = readJson<Catalog>("l10n/bundle.l10n.json");
+        const literalTokens = ["reword", "origin", ".git/config"];
+        const hostBundleFiles = runtimeLocales.map((locale) => `l10n/bundle.l10n.${locale}.json`);
+
+        for (const file of hostBundleFiles) {
+            const catalog = readJson<Catalog>(file);
+            for (const [key, sourceValue] of Object.entries(source)) {
+                if (typeof sourceValue !== "string") continue;
+                const translatedValue = catalog[key];
+                expect(typeof translatedValue, `${file}:${key}`).toBe("string");
+                for (const token of literalTokens) {
+                    if (sourceValue.includes(token)) {
+                        expect(translatedValue as string, `${file}:${key}`).toContain(token);
+                    }
+                }
+            }
         }
     });
 });

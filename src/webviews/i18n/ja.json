@@ -182,5 +182,7 @@
     "mergeSession.acceptYours": "自分側を採用",
     "mergeSession.acceptTheirs": "相手側を採用",
     "mergeSession.merge": "結合...",
-    "mergeSession.groupByDirectory": "ファイルをディレクトリごとにグループ化する"
+    "mergeSession.groupByDirectory": "ファイルをディレクトリごとにグループ化する",
+    "common.dock": "ドッキング",
+    "common.dockIntelliGit": "IntelliGit をドッキング"
 }

@@ -196,5 +196,7 @@
     "mergeSession.acceptYours": "Aceptar tu versión",
     "mergeSession.acceptTheirs": "Aceptar su versión",
     "mergeSession.merge": "Fusionar...",
-    "mergeSession.groupByDirectory": "Agrupar archivos por directorio"
+    "mergeSession.groupByDirectory": "Agrupar archivos por directorio",
+    "common.dock": "Acoplar",
+    "common.dockIntelliGit": "Acoplar IntelliGit"
 }

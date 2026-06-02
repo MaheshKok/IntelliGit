@@ -116,7 +116,7 @@
     "shelf.noFiles": "Никакие файлы в этом отложено на полку не изменяются.",
     "shelf.defaultTitle": "Изменения отложено на полку",
     "shelf.action.unstash": "Удалить...",
-    "shelf.action.showDiffNewTab": "Пок��зать разницу в новой вкладке",
+    "shelf.action.showDiffNewTab": "Показать разницу в новой вкладке",
     "shelf.action.popDescription": "Pop (применить и удалить)",
     "merge.count.changes": {
         "few": "Изменения {count}",
@@ -172,7 +172,7 @@
     "merge.hunk.acceptLeft": "Принять левый блок",
     "merge.hunk.acceptRight": "Принять правый блок",
     "merge.hunk.ignoreRight": "Игнорировать правый блок",
-    "merge.status.droppedLeftOnly": "Убр��но изменение только слева",
+    "merge.status.droppedLeftOnly": "Удалено изменение только слева",
     "merge.status.leftOnly": "Изменение только слева",
     "merge.status.droppedRightOnly": "Отброшено только правое изменение",
     "merge.status.rightOnly": "Право-только изменение",
@@ -203,5 +203,7 @@
     "mergeSession.acceptYours": "Принять свою версию",
     "mergeSession.acceptTheirs": "Принять их версию",
     "mergeSession.merge": "Объединить...",
-    "mergeSession.groupByDirectory": "Группировать файлы по каталогу"
+    "mergeSession.groupByDirectory": "Группировать файлы по каталогу",
+    "common.dock": "Пристыковать",
+    "common.dockIntelliGit": "Пристыковать IntelliGit"
 }

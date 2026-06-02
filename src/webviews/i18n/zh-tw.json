@@ -30,7 +30,7 @@
     "commit.action.amendAndPush": "修改提交和推送...",
     "commit.action.publishBranch": "發布分支...",
     "commit.search.placeholder": "文字或哈希",
-    "commit.search.clear": "清�� 提交 搜索",
+    "commit.search.clear": "清除提交搜尋",
     "commit.list.header.commit": "提交",
     "commit.list.header.author": "作者",
     "commit.list.header.date": "日期",
@@ -182,5 +182,7 @@
     "mergeSession.acceptYours": "接受你的版本",
     "mergeSession.acceptTheirs": "接受對方版本",
     "mergeSession.merge": "合併...",
-    "mergeSession.groupByDirectory": "按目錄對文件進行分組"
+    "mergeSession.groupByDirectory": "按目錄對文件進行分組",
+    "common.dock": "停駐",
+    "common.dockIntelliGit": "停駐 IntelliGit"
 }

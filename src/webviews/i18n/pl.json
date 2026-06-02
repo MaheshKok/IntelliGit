@@ -182,7 +182,7 @@
     "merge.status.useBoth": "Użyj obu",
     "merge.status.removeBlock": "Usuń blok",
     "merge.overview.label": "Przegląd konfliktu",
-    "merge.error.load": "Nie udało si�� załadować danych konfliktu: {error}",
+    "merge.error.load": "Nie udało się załadować danych konfliktu: {error}",
     "merge.error.retry": "Spróbuj ponownie",
     "merge.loading": "Ładowanie danych konfliktu...",
     "mergeSession.title": "Konflikty",
@@ -203,5 +203,7 @@
     "mergeSession.acceptYours": "Zaakceptuj swoją wersję",
     "mergeSession.acceptTheirs": "Zaakceptuj ich wersję",
     "mergeSession.merge": "Połącz...",
-    "mergeSession.groupByDirectory": "Grupuj pliki według katalogu"
+    "mergeSession.groupByDirectory": "Grupuj pliki według katalogu",
+    "common.dock": "Zadokuj",
+    "common.dockIntelliGit": "Zadokuj IntelliGit"
 }
