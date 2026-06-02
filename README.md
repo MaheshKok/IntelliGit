@@ -1,10 +1,28 @@
-# IntelliGit - Jetbrains Git for VS Code
+# IntelliGit - JetBrains-Style Git for VS Code
 
-IntelliGit brings a JetBrains-style Git workflow into VS Code, so you can stage, commit, inspect history, and manage branches without bouncing between multiple tools.
+IntelliGit gives VS Code the Git experience many developers miss from IntelliJ IDEA and PyCharm: a focused commit panel, visual commit graph, branch operations, shelf workflow, changed-file explorer, and merge-conflict tooling in one place.
+
+If you like VS Code but prefer JetBrains-style Git workflows, IntelliGit keeps you in the editor without falling back to scattered panels, terminal commands, or separate Git tools for everyday work.
+
+## What You Get
+
+- A JetBrains-inspired commit workflow with selective staging, rollback, shelve, commit, amend, and commit-and-push actions.
+- A visual commit graph with branch lanes, search, branch filtering, commit metadata, and changed-file details.
+- Branch management from the graph: checkout, rebase, merge, update, push, rename, delete, and create branches from commits.
+- Safer history actions with guardrails for pushed commits, merge commits, destructive resets, drop commit, undo commit, and interactive rebase.
+- A shelf-style workflow for parking unfinished work without losing your current context.
+- Optional JetBrains merge tool integration for conflict resolution, with VS Code fallback when needed.
+- Real-time changed-file counts and refresh indicators so the UI stays aligned with Git state.
+
+## Language Support
+
+IntelliGit supports English, German, Spanish, French, Japanese, Korean, Polish, Portuguese (Brazil), Portuguese (Portugal), Russian, Simplified Chinese (Mandarin), and Traditional Chinese.
+
+The extension localizes command names, settings, host notifications, prompts, errors, and webview UI strings for supported locales.
 
 ![alt text](image.png)
 
-## How Users Benefit 
+## Why It Helps
 
 - Move faster on daily Git work with one focused UI for commit, history, and branch actions.
 - Reduce context switching by keeping staging, diffs, commit graph, and commit details in IntelliGit panels.
