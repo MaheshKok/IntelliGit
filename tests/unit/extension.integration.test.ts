@@ -62,6 +62,35 @@ const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
 });
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
+type MockGitRepository = {
+    rootUri: { fsPath: string; path: string };
+    onDidChangeState: ReturnType<typeof vi.fn>;
+};
+const gitRepositoryStateListeners: Array<() => void> = [];
+const gitOpenRepositoryListeners: Array<(repository: MockGitRepository) => void> = [];
+const gitCloseRepositoryListeners: Array<(repository: MockGitRepository) => void> = [];
+const mockGitRepository: MockGitRepository = {
+    rootUri: { fsPath: "/repo", path: "/repo" },
+    onDidChangeState: vi.fn((listener: () => void) => {
+        gitRepositoryStateListeners.push(listener);
+        return { dispose: vi.fn() };
+    }),
+};
+const mockGitApi = {
+    repositories: [mockGitRepository],
+    onDidOpenRepository: vi.fn((listener: (repository: MockGitRepository) => void) => {
+        gitOpenRepositoryListeners.push(listener);
+        return { dispose: vi.fn() };
+    }),
+    onDidCloseRepository: vi.fn((listener: (repository: MockGitRepository) => void) => {
+        gitCloseRepositoryListeners.push(listener);
+        return { dispose: vi.fn() };
+    }),
+};
+const vscodeGitGetAPI = vi.fn(() => mockGitApi);
+const vscodeGitActivate = vi.fn(async () => ({
+    getAPI: vscodeGitGetAPI,
+}));
 
 function interpolateL10n(
     message: string,
@@ -520,6 +549,11 @@ vi.mock("vscode", () => ({
             return { dispose: vi.fn() };
         }),
     },
+    extensions: {
+        getExtension: vi.fn((id: string) =>
+            id === "vscode.git" ? { activate: vscodeGitActivate } : undefined,
+        ),
+    },
     env: {
         language: "en",
         clipboard: { writeText: clipboardWriteText },
@@ -702,6 +736,10 @@ describe("extension integration", () => {
         deleteFileListeners.length = 0;
         renameFileListeners.length = 0;
         fsWatchCallbacks.length = 0;
+        gitRepositoryStateListeners.length = 0;
+        gitOpenRepositoryListeners.length = 0;
+        gitCloseRepositoryListeners.length = 0;
+        mockGitApi.repositories = [mockGitRepository];
         configurationValues.clear();
         workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         latestCommitGraphProvider = undefined;
@@ -1105,6 +1143,39 @@ describe("extension integration", () => {
 
             expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
             expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("refreshes the commit panel from VS Code Git repository state changes", async () => {
+        vi.useFakeTimers();
+        try {
+            const { activate } = await import("../../src/extension");
+            const context = {
+                extensionUri: { fsPath: "/ext", path: "/ext" },
+                subscriptions: [],
+            } as unknown as MockExtensionContext;
+
+            await activate(context);
+            await waitForAsync();
+
+            expect(vscodeGitActivate).toHaveBeenCalledTimes(1);
+            expect(vscodeGitGetAPI).toHaveBeenCalledWith(1);
+            expect(gitRepositoryStateListeners).toHaveLength(1);
+
+            latestCommitPanelProvider!.refresh.mockClear();
+
+            gitRepositoryStateListeners[0]();
+            vi.advanceTimersByTime(299);
+            await Promise.resolve();
+
+            expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+
+            vi.advanceTimersByTime(1);
+            await waitForAsync();
+
+            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
