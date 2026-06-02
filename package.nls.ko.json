@@ -50,5 +50,6 @@
     "configuration.commitWindowPosition.enum.auto": "VS Code의 `workbench.sideBar.location` 설정(기본값)을 따르세요.",
     "configuration.commitWindowPosition.enum.left": "커밋 패널을 도킹 해제/탭된 창의 왼쪽에 배치합니다.",
     "configuration.commitWindowPosition.enum.right": "커밋 패널을 도킹 해제/탭된 창의 오른쪽에 배치합니다.",
-    "configuration.commitWindowPosition.markdownDescription": "IntelliGit 창(도킹 해제 또는 탭으로 열림) 내 커밋 패널의 위치입니다. `auto`(기본값)는 VS Code의 `workbench.sideBar.location`을 따르며, `left` 및 `right`는 특정 측면에 배치하도록 설정합니다."
+    "configuration.commitWindowPosition.markdownDescription": "IntelliGit 창(도킹 해제 또는 탭으로 열림) 내 커밋 패널의 위치입니다. `auto`(기본값)는 VS Code의 `workbench.sideBar.location`을 따르며, `left` 및 `right`는 특정 측면에 배치하도록 설정합니다.",
+    "view.fileCountBadge": "변경된 파일"
 }

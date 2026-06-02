@@ -396,6 +396,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
             treeDataProvider: mergeConflicts,
         });
+        const fileCountBadgeView = vscode.window.createTreeView("intelligit.fileCountBadge", {
+            treeDataProvider: {
+                getChildren: () => [],
+                getTreeItem: () => new vscode.TreeItem(""),
+            } satisfies vscode.TreeDataProvider<never>,
+        });
+        const updateFileCountBadge = (count: number): void => {
+            fileCountBadgeView.badge =
+                count > 0
+                    ? {
+                          tooltip:
+                              count === 1
+                                  ? vscode.l10n.t("{count} changed file", { count })
+                                  : vscode.l10n.t("{count} changed files", { count }),
+                          value: count,
+                      }
+                    : undefined;
+        };
+        const resetFileCountBadge = (): void => updateFileCountBadge(0);
+        resetFileCountBadge();
+        const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
 
         let undocked: UndockedViewProvider | undefined;
 
@@ -456,6 +477,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 undocked.setRepositoryLabel(repository.label);
             }
             mergeConflicts.setWorkspaceRoot(repoRootUri);
+            resetFileCountBadge();
             refreshService.dispose();
             refreshService = createRefreshService(repoRoot);
             refreshService.registerFileWatchers();
@@ -578,6 +600,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         console.error("[IntelliGit] Docked commit graph refresh failed:", err);
                     });
                 }),
+                undocked.onDidChangeFileCount(updateFileCountBadge),
             );
 
             return undocked;
@@ -902,7 +925,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         context.subscriptions.push(
             vscode.commands.registerCommand("intelligit.refresh", async () => {
-                await refreshActiveRepository();
+                // Route the refresh through withProgress targeting a view inside the
+                // IntelliGit activity bar container. VS Code renders this as a spinning
+                // progress badge overlaid on the IntelliGit activity bar icon for the
+                // duration of the refresh.
+                await vscode.window.withProgress(
+                    { location: { viewId: "intelligit.commitPanel" } },
+                    async () => {
+                        await refreshActiveRepository();
+                    },
+                );
             }),
 
             vscode.commands.registerCommand("intelligit.publishBranch", async () => {
@@ -1282,11 +1314,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         // --- Disposables ---
 
         context.subscriptions.push(
+            fileCountBadgeSubscription,
             { dispose: () => refreshService.dispose() },
             commitGraph,
             commitInfo,
             commitPanel,
             mergeConflicts,
+            fileCountBadgeView,
         );
     }
 }

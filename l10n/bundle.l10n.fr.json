@@ -352,5 +352,7 @@
     "Your GitLab personal access token may be invalid or expired.": "Votre jeton d'accès personnel GitLab est peut-être invalide ou expiré.",
     "{action}: select mainline parent": "{action}: sélectionner le parent principal",
     "{context}. Some change stats may be unavailable.": "{context}. Certaines statistiques de modification peuvent être indisponibles.",
-    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
+    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
+    "{count} changed file": "{count} fichier modifié",
+    "{count} changed files": "{count} fichiers modifiés"
 }

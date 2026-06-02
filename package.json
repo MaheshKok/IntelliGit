@@ -87,6 +87,11 @@
                     "id": "intelligit.mergeConflicts",
                     "name": "%view.mergeConflicts%",
                     "when": "intelligit.hasMergeConflicts"
+                },
+                {
+                    "id": "intelligit.fileCountBadge",
+                    "name": "%view.fileCountBadge%",
+                    "visibility": "hidden"
                 }
             ],
             "intelligitPanel": [
@@ -434,6 +439,11 @@
                 {
                     "command": "intelligit.fileRefresh",
                     "when": "webviewId == 'intelligit.commitPanel' && !intelligit.commitPanel.refreshing",
+                    "group": "3_info@2"
+                },
+                {
+                    "command": "intelligit.fileRefreshing",
+                    "when": "webviewId == 'intelligit.commitPanel' && intelligit.commitPanel.refreshing",
                     "group": "3_info@2"
                 },
                 {

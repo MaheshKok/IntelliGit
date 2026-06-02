@@ -7,14 +7,23 @@ import { t } from "../shared/i18n";
 type SeparatorAction = `sep-${string}`;
 type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
 
-export function getCommitMenuItems(commit: Commit, isUnpushed: boolean): CommitMenuItem[] {
+export function getCommitMenuItems(
+    commit: Commit,
+    isUnpushed: boolean,
+    canCherryPick: boolean,
+): CommitMenuItem[] {
     const isPushed = !isUnpushed;
     const isMergeCommit = commit.parentHashes.length > 1;
 
     const items: CommitMenuItem[] = [
         { label: t("commit.menu.copyRevision"), action: "copyRevision", icon: iconCopy() },
         { label: t("commit.menu.createPatch"), action: "createPatch", icon: iconPatch() },
-        { label: t("commit.menu.cherryPick"), action: "cherryPick", icon: iconCherry() },
+        {
+            label: t("commit.menu.cherryPick"),
+            action: "cherryPick",
+            disabled: !canCherryPick,
+            icon: iconCherry(),
+        },
         { separator: true, label: "", action: "sep-checkout" },
     ];
 

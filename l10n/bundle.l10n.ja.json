@@ -352,5 +352,7 @@
     "Your GitLab personal access token may be invalid or expired.": "GitLabの個人アクセストークンが無効または期限切れになっている可能性があります。",
     "{action}: select mainline parent": "{action}: メインラインの親を選択",
     "{context}. Some change stats may be unavailable.": "{context}。一部の変更統計は利用できない場合があります。",
-    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
+    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
+    "{count} changed file": "{count} 個のファイルが変更されました",
+    "{count} changed files": "{count} 個のファイルが変更されました"
 }

@@ -352,5 +352,7 @@
     "Your GitLab personal access token may be invalid or expired.": "Ваш персональный токен доступа GitLab может быть недействительным или просроченным.",
     "{action}: select mainline parent": "{action}: выбрать родительскую ветку основной строки",
     "{context}. Some change stats may be unavailable.": "{context}. Некоторые статистические данные об изменениях могут быть недоступны.",
-    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
+    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
+    "{count} changed file": "{count} файл изменён",
+    "{count} changed files": "{count} файлов изменено"
 }

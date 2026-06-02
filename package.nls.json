@@ -4,6 +4,7 @@
     "view.commit": "Commit",
     "view.graph": "Graph",
     "view.mergeConflicts": "Merge Conflicts",
+    "view.fileCountBadge": "Changed Files",
     "command.showGitLog": "Show Git Log",
     "command.undock": "Undock...",
     "command.dockIntelliGit": "Dock IntelliGit",

@@ -265,6 +265,8 @@
   "Cannot restore '{branch}': missing or invalid commit hash.": "Cannot restore '{branch}': missing or invalid commit hash.",
   "Check that the SSH URL is correct and the remote repository exists.": "Check that the SSH URL is correct and the remote repository exists.",
   "Check your network connection and that the hostname in the URL is correct.": "Check your network connection and that the hostname in the URL is correct.",
+  "{count} changed file": "{count} changed file",
+  "{count} changed files": "{count} changed files",
   "Cherry-pick Selected Change": "Cherry-pick Selected Change",
   "Cherry-pick selected change failed: {message}": "Cherry-pick selected change failed: {message}",
   "Clone failed": "Clone failed",

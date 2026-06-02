@@ -254,5 +254,20 @@ describe("webview ui smoke", () => {
             </ChakraProvider>,
         );
         expect(unpublishedHtml).toContain("Publish Branch");
+
+        const refreshingToolbarHtml = renderUi(
+            <Toolbar
+                isRefreshing={true}
+                onRefresh={noop}
+                onRollback={noop}
+                onToggleGroupBy={noop}
+                onShelve={noop}
+                onShowDiff={noop}
+                onExpandAll={noop}
+                onCollapseAll={noop}
+            />,
+        );
+        expect(refreshingToolbarHtml).toContain('data-refreshing="true"');
+        expect(refreshingToolbarHtml).toContain("intelligit-spin");
     });
 });

@@ -50,5 +50,6 @@
     "configuration.commitWindowPosition.enum.auto": "Postępuj zgodnie z ustawieniem `workbench.sideBar.location` programu VS Code (domyślne).",
     "configuration.commitWindowPosition.enum.left": "Umieść panel zatwierdzania po lewej stronie oddokowanego/zaznaczonego karty okna.",
     "configuration.commitWindowPosition.enum.right": "Umieść panel zatwierdzania po prawej stronie oddokowanego/zaznaczonego karty okna.",
-    "configuration.commitWindowPosition.markdownDescription": "Pozycja panelu zatwierdzania w niezadokowanym/zaznaczonym na karcie oknie IntelliGit. `auto` (domyślne) następuje po `workbench.sideBar.location` programu VS Code; `left` i `right` wymuszają stronę."
+    "configuration.commitWindowPosition.markdownDescription": "Pozycja panelu zatwierdzania w niezadokowanym/zaznaczonym na karcie oknie IntelliGit. `auto` (domyślne) następuje po `workbench.sideBar.location` programu VS Code; `left` i `right` wymuszają stronę.",
+    "view.fileCountBadge": "Zmienione pliki"
 }

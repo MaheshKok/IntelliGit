@@ -168,7 +168,7 @@ graph TD
   parser/cache substrate every later milestone reuses. No new feature ships before
   M0.
 - **M1 (authorship layer)** is GitLens's adoption hook and IntelliGit's biggest
-  gap. Ship the *smallest* hook first — current-line blame, status-bar blame,
+  gap. Ship the _smallest_ hook first — current-line blame, status-bar blame,
   rich hover — before the full settings UI.
 - **M2 (hovers/navigation)** extends M1's blame data — cheap once M1 exists.
 - **M3 (Visual File History)** can run in parallel with M2 (needs only M0
@@ -203,7 +203,7 @@ modal confirms everywhere; `undo`/`edit`/`squash`/`drop`/`rebase` are gated to
 a manual rollback (`:511`). **Gaps to close:**
 
 - **`resetCurrentToHere` is the dangerous outlier — fix first.** It runs
-  `reset --hard` and is **NOT** gated to unpushed; it will rewrite a *pushed*
+  `reset --hard` and is **NOT** gated to unpushed; it will rewrite a _pushed_
   branch and silently discard uncommitted changes behind a single modal. Gate it
   (warn explicitly when the target is published) and route it through the backup-ref
   net below.
@@ -271,7 +271,7 @@ parsers** that are unit-tested from fixtures.
   paint via `--incremental`" claim is only achievable by adding a **narrow,
   cancellable spawned-process path** (`child_process.spawn`, parse
   `--incremental` lines as they arrive) separate from `simple-git`. **Decision:**
-  for M1, rely on caching + ranged porcelain blame of the *visible* range only
+  for M1, rely on caching + ranged porcelain blame of the _visible_ range only
   (fast enough); defer the streaming spawn path until measured need on very large
   files. Do not promise streaming we don't have.
 
@@ -519,7 +519,7 @@ addition/deletion bars; hover → commit detail.
 - **Data (host):** extend `getFileHistoryEntries` to also return per-commit
   `additions`/`deletions` and author identity. git command:
   `git log --follow --numstat --date=iso-strict
- --format=%x1f%H%x1f%an%x1f%ae%x1f%aI -- <file>` then parse numstat blocks
+--format=%x1f%H%x1f%an%x1f%ae%x1f%aI -- <file>` then parse numstat blocks
   keyed by the `%x1f`-delimited header. (Use `\x1f` unit-separator to avoid
   delimiter collisions in messages — this is the safe parsing approach for all
   log parsers; apply repo-wide.)
@@ -536,13 +536,13 @@ addition/deletion bars; hover → commit detail.
   all-in-one chart libs like Recharts/Chart.js — wrong chart type for swim-lane +
   bubble + add/del bars. `visx` is an acceptable fallback if React-component
   ergonomics are wanted, but plain `d3-scale` + React is the smaller-bundle pick.)
-  ```tsx
-  import { scaleTime, scaleBand } from 'd3-scale';
-  const x = scaleTime().domain([minDate, maxDate]).range([0, width]);
-  const y = scaleBand().domain(authors).range([0, height]);
-  // React renders; D3 only computes positions:
-  // <circle cx={x(c.date)} cy={y(c.author)} r={radius(c.changes)} fill={color(c.author)} />
-  ```
+    ```tsx
+    import { scaleTime, scaleBand } from "d3-scale";
+    const x = scaleTime().domain([minDate, maxDate]).range([0, width]);
+    const y = scaleBand().domain(authors).range([0, height]);
+    // React renders; D3 only computes positions:
+    // <circle cx={x(c.date)} cy={y(c.author)} r={radius(c.changes)} fill={color(c.author)} />
+    ```
 - **Interaction:** click bubble → post `{type:'openCommit', sha}` → host opens
   existing `CommitInfoViewProvider`. Hover → tooltip with M2.1-style card data.
 - **Entry points:** command `intelligit.showVisualFileHistory`, editor title
@@ -609,12 +609,12 @@ introducing destructive ops; it is about:
    **force-push double-confirm** (`--force-with-lease`) if/when force-push is
    added.
 3. **Remaining graph feature gaps** (genuinely new):
-   - Prefixed search (`author:`, `message:`, `file:`, `@me`) — parse in host,
-     filter the log query / client-side.
-   - New ops not yet present: `rebaseOnto` (UI), `forcePushWithLease` — added
-     behind the M0 backup-ref + confirmation flow.
-   - Column show/hide + reorder persistence (`workspaceState`).
-   - Minimap / scroll markers (defer; experimental).
+    - Prefixed search (`author:`, `message:`, `file:`, `@me`) — parse in host,
+      filter the log query / client-side.
+    - New ops not yet present: `rebaseOnto` (UI), `forcePushWithLease` — added
+      behind the M0 backup-ref + confirmation flow.
+    - Column show/hide + reorder persistence (`workspaceState`).
+    - Minimap / scroll markers (defer; experimental).
 
 **Effort:** M (incremental — most mutation logic exists; this is hardening +
 search + columns). **Risk:** Low once M0.1 backup refs are in place.
@@ -783,17 +783,17 @@ parallelized across subagents.
 - **Token-based format strings** for blame/hover (mirror GitLens token names to
   ease migration for switchers).
 - **Architecture of the GUI (React webview, reuses existing scaffolding):**
-  - `SettingsViewProvider` (WebviewViewProvider) + `webviews/react/settings/`.
-  - **Section registry:** each feature contributes a `SettingsSection`
-    descriptor (`{ id, title, fields[], previewComponent }`). M1 registers
-    blame/CodeLens/heatmap; M2 hovers/autolinks; M3 visual-file-history; M4 graph;
-    M5 integrations; M6 ai. The shell renders whatever is registered — so the GUI
-    is always in sync with shipped features.
-  - **Two-way binding:** read via `workspace.getConfiguration('intelligit')`;
-    write via `.update(key, value, ConfigurationTarget.Global|Workspace)`; react
-    to external changes via `onDidChangeConfiguration`.
-  - **Live preview** pane per section (e.g. a sample line showing the current
-    blame format string) — the part that makes it feel premium.
+    - `SettingsViewProvider` (WebviewViewProvider) + `webviews/react/settings/`.
+    - **Section registry:** each feature contributes a `SettingsSection`
+      descriptor (`{ id, title, fields[], previewComponent }`). M1 registers
+      blame/CodeLens/heatmap; M2 hovers/autolinks; M3 visual-file-history; M4 graph;
+      M5 integrations; M6 ai. The shell renders whatever is registered — so the GUI
+      is always in sync with shipped features.
+    - **Two-way binding:** read via `workspace.getConfiguration('intelligit')`;
+      write via `.update(key, value, ConfigurationTarget.Global|Workspace)`; react
+      to external changes via `onDidChangeConfiguration`.
+    - **Live preview** pane per section (e.g. a sample line showing the current
+      blame format string) — the part that makes it feel premium.
 - **Subagent parallelization note:** once the shell + registry contract exist,
   each section is an independent, well-scoped unit suitable for a subagent to
   implement against the `SettingsSection` interface.
@@ -817,17 +817,17 @@ parallelized across subagents.
 
 ### 7.7 Risks register
 
-| Risk                                       | Likelihood | Impact   | Mitigation                                            |
-| ------------------------------------------ | ---------- | -------- | ----------------------------------------------------- |
-| **Already-shipping `reset --hard` data loss** | **High**   | **High** | **M0.1: gate to unpushed/warn, backup ref + Undo**    |
-| Blame perf on huge files                   | Med        | High     | viewport-ranged blame, cache, queue, cancellation     |
-| Decoration flicker/typing lag              | Med        | Med      | debounce, shared selection pipeline                   |
-| Log/blame parse bugs on edge content       | Med        | High     | `%x1f`/`%x1e` delimiters, fixture tests               |
-| Wrong-repo blame in multi-root workspace   | Med        | Med      | M0.2 `RepositoryManager`, per-document resolution     |
-| External API rate limits (M5)              | High       | Med      | cache+TTL, backoff, manual refresh                    |
-| Auth/secret handling (M5/M6)               | Med        | High     | SecretStorage, VS Code auth provider, redaction       |
-| Open-source fork of paid features          | Med        | Med      | open-core split (§10) — paid code proprietary-licensed |
-| AI cost creep                              | Low        | Med      | BYOK-only + VS Code LM default; no resold tokens      |
+| Risk                                          | Likelihood | Impact   | Mitigation                                             |
+| --------------------------------------------- | ---------- | -------- | ------------------------------------------------------ |
+| **Already-shipping `reset --hard` data loss** | **High**   | **High** | **M0.1: gate to unpushed/warn, backup ref + Undo**     |
+| Blame perf on huge files                      | Med        | High     | viewport-ranged blame, cache, queue, cancellation      |
+| Decoration flicker/typing lag                 | Med        | Med      | debounce, shared selection pipeline                    |
+| Log/blame parse bugs on edge content          | Med        | High     | `%x1f`/`%x1e` delimiters, fixture tests                |
+| Wrong-repo blame in multi-root workspace      | Med        | Med      | M0.2 `RepositoryManager`, per-document resolution      |
+| External API rate limits (M5)                 | High       | Med      | cache+TTL, backoff, manual refresh                     |
+| Auth/secret handling (M5/M6)                  | Med        | High     | SecretStorage, VS Code auth provider, redaction        |
+| Open-source fork of paid features             | Med        | Med      | open-core split (§10) — paid code proprietary-licensed |
+| AI cost creep                                 | Low        | Med      | BYOK-only + VS Code LM default; no resold tokens       |
 
 ---
 
@@ -837,7 +837,7 @@ parallelized across subagents.
    destructive ops (backup refs + Undo; fix un-gated `reset --hard`), add
    `RepositoryManager`, build read services + fixture-tested parsers + caches.
 1. **M1 — Authorship Layer** (the hook; smallest first: line blame + status bar +
-   hover; settings-editor *shell* only).
+   hover; settings-editor _shell_ only).
 2. **M2 — Hovers, Revision Navigation, Autolinks** (cheap once M1 exists).
 3. **M3 — Visual File History** (parallelizable with M2; needs only M0 data).
 4. **M4 — Free private-repo Worktrees + Graph parity polish** (the undercut;
@@ -929,7 +929,6 @@ levers still apply, re-scoped to this open-core boundary.
   `src/git/operations.ts` (1104 LOC), `src/commands/commitCommands.ts`
   (shipping `reset --hard`/drop/squash/undo/rebase), `src/views/*`,
   `src/webviews/react/*`.
-- [`gitlens-feature-analysis.md`](./gitlens-feature-analysis.md) — feature/tier source of truth.
 - [`gitlens-feature-analysis.md`](./gitlens-feature-analysis.md) — feature/tier source of truth.
 - VS Code Extension API: decorations, CodeLens, Hover, TextDocumentContentProvider,
   TerminalLinkProvider, authentication, SecretStorage, Language Model API.

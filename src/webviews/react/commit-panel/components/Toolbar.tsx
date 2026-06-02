@@ -9,7 +9,7 @@ import { t } from "../../shared/i18n";
 
 interface Props {
     onRefresh: () => void;
-    isRefreshing: boolean;
+    isRefreshing?: boolean;
     onRollback: () => void;
     onToggleGroupBy: () => void;
     onShelve: () => void;
@@ -121,7 +121,14 @@ function ToolbarButton({
         iconStyle === "standard" ? "var(--vscode-icon-foreground)" : (color ?? undefined);
     const svgStyle: React.CSSProperties = {
         ...(resolvedColor ? { color: resolvedColor } : {}),
-        ...(spin ? { animation: "intelligit-spin 1s linear infinite" } : {}),
+        ...(spin
+            ? {
+                  animation: "intelligit-spin 0.8s linear infinite",
+                  transformBox: "fill-box",
+                  transformOrigin: "center",
+                  willChange: "transform",
+              }
+            : {}),
     };
     return (
         <Tooltip
@@ -137,6 +144,8 @@ function ToolbarButton({
                 size="sm"
                 onClick={disabled ? undefined : onClick}
                 isDisabled={disabled}
+                _disabled={{ opacity: 1, cursor: "default" }}
+                data-refreshing={spin ? "true" : undefined}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>
                         {children}

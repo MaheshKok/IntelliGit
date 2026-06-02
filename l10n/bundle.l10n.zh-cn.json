@@ -352,5 +352,7 @@
     "Your GitLab personal access token may be invalid or expired.": "您的 GitLab 个人访问令牌可能无效或已过期。",
     "{action}: select mainline parent": "{action}: 选择主线父级",
     "{context}. Some change stats may be unavailable.": "部分变更统计数据可能无法获取。 {context}",
-    "{title}: {detail}{hintText}": "{title}: {detail} {hintText}"
+    "{title}: {detail}{hintText}": "{title}: {detail} {hintText}",
+    "{count} changed file": "{count} 个文件已更改",
+    "{count} changed files": "{count} 个文件已更改"
 }

@@ -62,6 +62,13 @@ const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
 });
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
+type MockTreeView = {
+    badge?: { value: number; tooltip?: string };
+    description?: string;
+    dispose: ReturnType<typeof vi.fn>;
+};
+const createdTreeViews = new Map<string, MockTreeView>();
+const initialTreeViewBadges = new Map<string, MockTreeView["badge"]>();
 type MockGitRepository = {
     rootUri: { fsPath: string; path: string };
     onDidChangeState: ReturnType<typeof vi.fn>;
@@ -241,6 +248,9 @@ let latestCommitGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestSidebarGraphProvider: MockCommitGraphViewProvider | undefined;
 let latestCommitPanelProvider: MockCommitPanelViewProvider | undefined;
 let latestUndockedProvider: MockUndockedViewProvider | undefined;
+let commitPanelRefreshHook:
+    | ((provider: MockCommitPanelViewProvider) => void | Promise<void>)
+    | undefined;
 
 function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void {
     latestUndockedProvider = provider;
@@ -341,7 +351,9 @@ class MockCommitPanelViewProvider {
     onBranchAction = this.branchActionEmitter.event;
     onCommitAction = this.commitActionEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
-    refresh = vi.fn(async () => undefined);
+    refresh = vi.fn(async () => {
+        await commitPanelRefreshHook?.(this);
+    });
     setRepositoryRootUri = vi.fn();
     setRepositoryLabel = vi.fn();
     setBranches = vi.fn();
@@ -469,10 +481,15 @@ vi.mock("vscode", () => ({
     window: {
         registerWebviewViewProvider,
         registerWebviewPanelSerializer,
-        createTreeView: vi.fn(() => ({
-            badge: undefined,
-            dispose: vi.fn(),
-        })),
+        createTreeView: vi.fn((id: string) => {
+            const view: MockTreeView = {
+                badge: initialTreeViewBadges.get(id),
+                description: undefined,
+                dispose: vi.fn(),
+            };
+            createdTreeViews.set(id, view);
+            return view;
+        }),
         createWebviewPanel: vi.fn(() => {
             const msgListeners: Array<(msg: unknown) => void> = [];
             const disposeListeners: Array<() => void> = [];
@@ -736,6 +753,8 @@ describe("extension integration", () => {
         deleteFileListeners.length = 0;
         renameFileListeners.length = 0;
         fsWatchCallbacks.length = 0;
+        createdTreeViews.clear();
+        initialTreeViewBadges.clear();
         gitRepositoryStateListeners.length = 0;
         gitOpenRepositoryListeners.length = 0;
         gitCloseRepositoryListeners.length = 0;
@@ -746,6 +765,7 @@ describe("extension integration", () => {
         latestSidebarGraphProvider = undefined;
         latestCommitPanelProvider = undefined;
         latestUndockedProvider = undefined;
+        commitPanelRefreshHook = undefined;
 
         executorRun.mockImplementation(defaultExecutorRunImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
@@ -926,6 +946,66 @@ describe("extension integration", () => {
         expect(latestCommitPanelProvider).toBeDefined();
         expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
         expect(latestCommitPanelProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
+    });
+
+    it("clears the activity bar changed-files badge when the refreshed count reaches zero", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        expect(latestCommitPanelProvider).toBeDefined();
+
+        const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
+        expect(badgeView).toBeDefined();
+
+        latestCommitPanelProvider!.emitFileCount(2);
+        expect(badgeView!.badge).toEqual({ tooltip: "2 changed files", value: 2 });
+
+        latestCommitPanelProvider!.emitFileCount(0);
+        expect(badgeView!.badge).toBeUndefined();
+    });
+
+    it("clears a stale activity bar changed-files badge during initial clean refresh", async () => {
+        initialTreeViewBadges.set("intelligit.fileCountBadge", {
+            tooltip: "1 changed file",
+            value: 1,
+        });
+        commitPanelRefreshHook = (provider) => {
+            provider.emitFileCount(0);
+        };
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await waitForAsync();
+
+        const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
+        expect(badgeView).toBeDefined();
+        expect(badgeView!.badge).toBeUndefined();
+    });
+
+    it("captures the file count emitted by the initial commit panel refresh", async () => {
+        commitPanelRefreshHook = (provider) => {
+            provider.emitFileCount(2);
+        };
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await waitForAsync();
+
+        const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
+        expect(badgeView).toBeDefined();
+        expect(badgeView!.badge).toEqual({ tooltip: "2 changed files", value: 2 });
     });
 
     it("disposes stale restored undocked panels instead of leaving an empty editor", async () => {

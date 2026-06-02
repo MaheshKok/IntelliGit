@@ -21,6 +21,8 @@ import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTyp
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 
+const MIN_VISIBLE_REFRESH_MS = 300;
+
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
@@ -188,7 +190,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         await this.refreshGraphData();
     }
 
+    private async refreshFromUserAction(): Promise<void> {
+        await vscode.window.withProgress(
+            { location: { viewId: CommitPanelViewProvider.viewType } },
+            async () => {
+                await this.refreshData(false);
+                await this.refreshGraphData();
+            },
+        );
+    }
+
     private async refreshData(silent = false): Promise<void> {
+        const refreshStartedAt = Date.now();
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         if (!silent) {
             void Promise.resolve(
@@ -249,8 +262,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 currentBranchHasUpstream,
             });
         } finally {
-            if (!silent) this.postToWebview({ type: "refreshing", active: false });
             if (!silent) {
+                const remainingMs = MIN_VISIBLE_REFRESH_MS - (Date.now() - refreshStartedAt);
+                if (remainingMs > 0) {
+                    await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
+                }
+                this.postToWebview({ type: "refreshing", active: false });
                 void Promise.resolve(
                     vscode.commands.executeCommand(
                         "setContext",
@@ -417,8 +434,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
 
             case "refresh":
-                await this.refreshData(false);
-                await this.refreshGraphData();
+                await this.refreshFromUserAction();
                 break;
 
             case "selectCommit":
@@ -789,10 +805,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.lastFileCount = count;
         if (!this.view) return;
         this.view.description = count > 0 ? String(count) : "";
-        this.view.badge =
-            count > 0
-                ? { tooltip: `${count} changed file${count !== 1 ? "s" : ""}`, value: count }
-                : undefined;
+        this.view.badge = undefined;
     }
 
     private postGraphCommitDetailState(): void {
