@@ -179,7 +179,11 @@ describe("localization catalogs", () => {
 
     it("preserves literal Git tokens that users must copy exactly", () => {
         const source = readJson<Catalog>("l10n/bundle.l10n.json");
-        const literalTokens = ["reword", "origin", ".git/config"];
+        const literalTokens = [
+            { token: "reword", contains: containsAsciiWord },
+            { token: "origin", contains: containsAsciiWord },
+            { token: ".git/config", contains: (value: string, token: string) => value.includes(token) },
+        ];
         const hostBundleFiles = runtimeLocales.map((locale) => `l10n/bundle.l10n.${locale}.json`);
 
         for (const file of hostBundleFiles) {
@@ -188,9 +192,9 @@ describe("localization catalogs", () => {
                 if (typeof sourceValue !== "string") continue;
                 const translatedValue = catalog[key];
                 expect(typeof translatedValue, `${file}:${key}`).toBe("string");
-                for (const token of literalTokens) {
-                    if (sourceValue.includes(token)) {
-                        expect(translatedValue as string, `${file}:${key}`).toContain(token);
+                for (const { token, contains } of literalTokens) {
+                    if (contains(sourceValue, token)) {
+                        expect(contains(translatedValue as string, token), `${file}:${key}`).toBe(true);
                     }
                 }
             }
@@ -356,6 +360,16 @@ function assertPluralCategories(value: Record<string, string>, locale: string, k
 
 function placeholders(value: string): string[] {
     return Array.from(value.matchAll(/\{([A-Za-z0-9_]+)\}/g), (match) => match[1]);
+}
+
+function containsAsciiWord(value: string, token: string): boolean {
+    return new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`).test(
+        value,
+    );
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function collectStringValues(value: CatalogValue | Catalog): string[] {

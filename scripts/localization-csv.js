@@ -39,7 +39,11 @@ const sourceDefinitions = [
 ];
 
 const pluralCategories = new Set(["zero", "one", "two", "few", "many", "other"]);
-const preservedLiteralTokens = ["reword", "origin", ".git/config"];
+const preservedLiteralTokens = [
+    { token: "reword", contains: containsAsciiWord },
+    { token: "origin", contains: containsAsciiWord },
+    { token: ".git/config", contains: (value, token) => value.includes(token) },
+];
 
 const command = process.argv[2] ?? "validate";
 const quiet = process.argv.includes("--quiet");
@@ -371,13 +375,23 @@ function comparePreservedLiterals({
     sourceValue,
     translatedValue,
 }) {
-    for (const token of preservedLiteralTokens) {
-        if (sourceValue.includes(token) && !translatedValue.includes(token)) {
+    for (const { token, contains } of preservedLiteralTokens) {
+        if (contains(sourceValue, token) && !contains(translatedValue, token)) {
             errors.push(
                 `Row ${rowNumber}: current_${locale} must preserve literal token "${token}" for ${key}.`,
             );
         }
     }
+}
+
+function containsAsciiWord(value, token) {
+    return new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`).test(
+        value,
+    );
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function hasReplacementCharacter(value) {
