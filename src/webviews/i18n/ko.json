@@ -184,5 +184,7 @@
     "mergeSession.merge": "병합...",
     "mergeSession.groupByDirectory": "디렉터리별로 파일 그룹화",
     "common.dock": "도킹",
-    "common.dockIntelliGit": "IntelliGit 도킹"
+    "common.dockIntelliGit": "IntelliGit 도킹",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

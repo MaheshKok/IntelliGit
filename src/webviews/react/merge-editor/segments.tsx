@@ -531,8 +531,8 @@ export function OverviewRail({
                             top: `${marker.topPct}%`,
                             height: `${marker.heightPct}%`,
                         }}
-                        title={`Jump to hunk #${marker.ordinal}`}
-                        aria-label={`Jump to hunk #${marker.ordinal}`}
+                        title={t("merge.overview.jumpToHunk", { ordinal: marker.ordinal })}
+                        aria-label={t("merge.overview.jumpToHunk", { ordinal: marker.ordinal })}
                         aria-current={activeConflictId === marker.id ? "true" : undefined}
                         onClick={() => onJump(marker.id)}
                     />

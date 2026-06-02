@@ -64,7 +64,11 @@ export async function runPublishBranchFlow(
                 }),
             );
         } catch (err) {
-            vscode.window.showErrorMessage(`Failed to publish branch: ${getErrorMessage(err)}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Failed to publish branch: {message}", {
+                    message: getErrorMessage(err),
+                }),
+            );
         }
         return;
     }
@@ -114,7 +118,11 @@ export async function runPublishBranchFlow(
             },
         );
     } catch (err) {
-        vscode.window.showErrorMessage(`Failed to create repository: ${getErrorMessage(err)}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Failed to create repository: {message}", {
+                message: getErrorMessage(err),
+            }),
+        );
         return;
     }
 
@@ -155,7 +163,9 @@ export async function runPublishBranchFlow(
             await gitOps.removeRemote(remotePlan.remoteName).catch(() => undefined);
         }
         const message = getErrorMessage(err);
-        vscode.window.showErrorMessage(`Failed to publish branch: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Failed to publish branch: {message}", { message }),
+        );
     }
 }
 
@@ -177,7 +187,9 @@ async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined
                 },
             ],
             {
-                placeHolder: 'Remote "origin" already exists. How do you want to proceed?',
+                placeHolder: vscode.l10n.t(
+                    'Remote "origin" already exists. How do you want to proceed?',
+                ),
             },
         );
         if (!choice) return;
@@ -288,7 +300,11 @@ async function acquireGitHubSession(): Promise<vscode.AuthenticationSession | un
             createIfNone: true,
         });
     } catch (err) {
-        vscode.window.showErrorMessage(`GitHub authentication failed: ${getErrorMessage(err)}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("GitHub authentication failed: {message}", {
+                message: getErrorMessage(err),
+            }),
+        );
         return undefined;
     }
 }

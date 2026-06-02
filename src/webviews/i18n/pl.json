@@ -205,5 +205,7 @@
     "mergeSession.merge": "Połącz...",
     "mergeSession.groupByDirectory": "Grupuj pliki według katalogu",
     "common.dock": "Zadokuj",
-    "common.dockIntelliGit": "Zadokuj IntelliGit"
+    "common.dockIntelliGit": "Zadokuj IntelliGit",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

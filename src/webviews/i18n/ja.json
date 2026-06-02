@@ -184,5 +184,7 @@
     "mergeSession.merge": "結合...",
     "mergeSession.groupByDirectory": "ファイルをディレクトリごとにグループ化する",
     "common.dock": "ドッキング",
-    "common.dockIntelliGit": "IntelliGit をドッキング"
+    "common.dockIntelliGit": "IntelliGit をドッキング",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

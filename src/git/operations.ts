@@ -54,7 +54,7 @@ function logGitOpsWarning(context: string, err: unknown, options?: { notifyUser?
         const vscode = getVsCodeApi();
         if (vscode) {
             void vscode.window.showWarningMessage(
-                `${context}. Some change stats may be unavailable.`,
+                vscode.l10n.t("{context}. Some change stats may be unavailable.", { context }),
             );
         }
     }
@@ -644,9 +644,12 @@ export class GitOps {
         const vscode = getVsCodeApi();
         if (!vscode) return false;
 
-        const confirmLabel = "Set Upstream and Push";
+        const confirmLabel = vscode.l10n.t("Set Upstream and Push");
         const selection = await vscode.window.showWarningMessage(
-            `Branch '${branch}' has no upstream. Set upstream to '${remote}/${branch}' and push?`,
+            vscode.l10n.t(
+                "Branch '{branch}' has no upstream. Set upstream to '{remote}/{remoteBranch}' and push?",
+                { branch, remote, remoteBranch: branch },
+            ),
             { modal: true },
             confirmLabel,
         );

@@ -198,5 +198,7 @@
     "mergeSession.merge": "Fusionner...",
     "mergeSession.groupByDirectory": "Regrouper les fichiers par répertoire",
     "common.dock": "Attacher",
-    "common.dockIntelliGit": "Attacher IntelliGit"
+    "common.dockIntelliGit": "Attacher IntelliGit",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

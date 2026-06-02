@@ -148,7 +148,9 @@ export class UndockedViewProvider {
         this.branches = branches;
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Branch update error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Branch update error: {message}", { message }),
+            );
         });
     }
 
@@ -160,7 +162,9 @@ export class UndockedViewProvider {
         this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
             if (requestId !== this.commitDetailSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Commit detail error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Commit detail error: {message}", { message }),
+            );
         });
     }
 
@@ -649,7 +653,9 @@ export class UndockedViewProvider {
         } catch (err) {
             if (requestId !== this.requestSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Git log error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Git log error: {message}", { message }),
+            );
             this.postToWebview({ type: "loadError", message });
         }
     }
@@ -680,7 +686,9 @@ export class UndockedViewProvider {
         } catch (err) {
             if (requestId !== this.requestSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Git log error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Git log error: {message}", { message }),
+            );
             this.postToWebview({ type: "loadError", message });
         } finally {
             if (requestId === this.requestSeq) {
@@ -855,7 +863,9 @@ export class UndockedViewProvider {
     private refreshThemeDataWithErrorHandling(): void {
         this.refreshThemeData().catch((err) => {
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`IntelliGit error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("IntelliGit error: {message}", { message }),
+            );
             this.postToWebview({ type: "error", message });
         });
     }

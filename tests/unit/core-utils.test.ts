@@ -15,6 +15,23 @@ import {
 import { getChevronIconStyle } from "../../src/webviews/react/branch-column/styles";
 import { contentContainerStyle, headerRowStyle } from "../../src/webviews/react/commit-list/styles";
 
+function interpolateL10n(
+    message: string,
+    args?: Record<string, string | number | boolean> | Array<string | number | boolean>,
+): string {
+    if (!args) return message;
+    if (Array.isArray(args)) {
+        return args.reduce(
+            (current, value, index) =>
+                current.replace(new RegExp(`\\{${index}\\}`, "g"), String(value)),
+            message,
+        );
+    }
+    return message.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) =>
+        Object.prototype.hasOwnProperty.call(args, key) ? String(args[key]) : match,
+    );
+}
+
 describe("core utilities", () => {
     beforeEach(() => {
         vi.resetModules();
@@ -41,6 +58,7 @@ describe("core utilities", () => {
         vi.doMock("vscode", () => ({
             window: { showErrorMessage },
             workspace: { fs: { delete: fsDelete } },
+            l10n: { t: interpolateL10n },
             Uri: {
                 joinPath: (root: { fsPath: string }, filePath: string) => ({
                     fsPath: `${root.fsPath}/${filePath}`,
@@ -68,6 +86,7 @@ describe("core utilities", () => {
         vi.doMock("vscode", () => ({
             window: { showErrorMessage },
             workspace: { fs: { delete: fsDelete } },
+            l10n: { t: interpolateL10n },
             Uri: {
                 joinPath: (root: { fsPath: string }, filePath: string) => ({
                     fsPath: `${root.fsPath}/${filePath}`,
@@ -100,6 +119,7 @@ describe("core utilities", () => {
         vi.doMock("vscode", () => ({
             window: { showErrorMessage },
             workspace: { fs: { delete: fsDelete } },
+            l10n: { t: interpolateL10n },
             Uri: {
                 joinPath: (_root: { fsPath: string }, filePath: string) => ({
                     fsPath: `/repo/${filePath}`,

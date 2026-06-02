@@ -198,5 +198,7 @@
     "mergeSession.merge": "Fusionar...",
     "mergeSession.groupByDirectory": "Agrupar archivos por directorio",
     "common.dock": "Acoplar",
-    "common.dockIntelliGit": "Acoplar IntelliGit"
+    "common.dockIntelliGit": "Acoplar IntelliGit",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

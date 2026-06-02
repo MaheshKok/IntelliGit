@@ -205,5 +205,7 @@
     "mergeSession.merge": "Объединить...",
     "mergeSession.groupByDirectory": "Группировать файлы по каталогу",
     "common.dock": "Пристыковать",
-    "common.dockIntelliGit": "Пристыковать IntelliGit"
+    "common.dockIntelliGit": "Пристыковать IntelliGit",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

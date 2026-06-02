@@ -240,6 +240,8 @@ function looksUserFacing(text) {
     if (!text) return false;
     const collapsed = collapse(text);
     if (!/[A-Za-z]{2,}/.test(collapsed)) return false;
+    if (/^git@[^:\s]+:[^\s]+$/i.test(collapsed)) return false;
+    if (/^HEAD(?:[~^]\d*)?$/i.test(collapsed)) return false;
     if (/^(data-|aria-|--|#|\.|\/|[a-z]+:\/\/)/i.test(collapsed)) return false;
     if (/^[a-z0-9_.:-]+$/i.test(collapsed)) return false;
     return true;

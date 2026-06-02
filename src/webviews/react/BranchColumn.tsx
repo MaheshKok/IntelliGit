@@ -228,7 +228,9 @@ export function BranchColumn({
                         style={HEAD_ROW_STYLE}
                     >
                         <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
-                        <span style={HEAD_LABEL_STYLE}>HEAD ({current.name})</span>
+                        <span style={HEAD_LABEL_STYLE}>
+                            {t("branch.head.label", { name: current.name })}
+                        </span>
                     </div>
                 </div>
             )}

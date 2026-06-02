@@ -184,5 +184,7 @@
     "mergeSession.merge": "合并...",
     "mergeSession.groupByDirectory": "按目录对文件进行分组",
     "common.dock": "停靠",
-    "common.dockIntelliGit": "停靠 IntelliGit"
+    "common.dockIntelliGit": "停靠 IntelliGit",
+    "branch.head.label": "HEAD ({name})",
+    "merge.overview.jumpToHunk": "Jump to hunk #{ordinal}"
 }

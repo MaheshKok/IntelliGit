@@ -118,7 +118,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.branches = branches;
         this.sendGraphBranches().catch((err) => {
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Branch update error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Branch update error: {message}", { message }),
+            );
         });
     }
 
@@ -130,7 +132,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
             if (requestId !== this.commitDetailSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Commit detail error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Commit detail error: {message}", { message }),
+            );
         });
     }
 
@@ -310,7 +314,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             if (requestId !== this.requestSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Git log error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Git log error: {message}", { message }),
+            );
             this.postToWebview({ type: "loadError", message });
         }
     }
@@ -341,7 +347,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             if (requestId !== this.requestSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Git log error: ${message}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Git log error: {message}", { message }),
+            );
             this.postToWebview({ type: "loadError", message });
         } finally {
             if (requestId === this.requestSeq) {
@@ -873,11 +881,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             // Already published — nothing to do
             if (currentBranch.upstream) return;
 
+            const publishBranchAction = vscode.l10n.t("Publish Branch...");
             const publish = await vscode.window.showInformationMessage(
-                `Branch "${currentBranch.name}" has not been published.`,
-                "Publish Branch...",
+                vscode.l10n.t('Branch "{branch}" has not been published.', {
+                    branch: currentBranch.name,
+                }),
+                publishBranchAction,
             );
-            if (publish === "Publish Branch...") {
+            if (publish === publishBranchAction) {
                 await vscode.commands.executeCommand("intelligit.publishBranch");
             }
         } catch {

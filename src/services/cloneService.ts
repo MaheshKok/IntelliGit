@@ -187,7 +187,10 @@ async function acquireGitHubSession(): Promise<vscode.AuthenticationSession | un
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(
-            `GitHub authentication failed: ${message}\n\nMake sure the GitHub Authentication extension is installed and enabled.`,
+            vscode.l10n.t(
+                "GitHub authentication failed: {message}\n\nMake sure the GitHub Authentication extension is installed and enabled.",
+                { message },
+            ),
         );
         return undefined;
     }
@@ -206,7 +209,9 @@ async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
         );
     } catch (err) {
         vscode.window.showErrorMessage(
-            `Failed to list GitHub repositories: ${getErrorMessage(err)}`,
+            vscode.l10n.t("Failed to list GitHub repositories: {message}", {
+                message: getErrorMessage(err),
+            }),
         );
         return undefined;
     }
@@ -484,7 +489,12 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
         }
         // Permission error, invalid path, etc. — surface to user
         const message = getErrorMessage(err);
-        vscode.window.showErrorMessage(`Cannot access "${path.basename(targetPath)}": ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t('Cannot access "{name}": {message}', {
+                name: path.basename(targetPath),
+                message,
+            }),
+        );
         return;
     }
 
@@ -504,7 +514,10 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(
-            `Cannot remove existing directory "${path.basename(targetPath)}": ${message}`,
+            vscode.l10n.t('Cannot remove existing directory "{name}": {message}', {
+                name: path.basename(targetPath),
+                message,
+            }),
         );
         return;
     }
@@ -582,25 +595,39 @@ function handleCloneError(err: unknown, url: string, provider: CloneProvider): v
         const hints: string[] = [];
         if (message.includes("permission denied") || message.includes("publickey")) {
             hints.push(
-                "Make sure your SSH key is loaded: run `ssh-add -l` in a terminal to list loaded keys.",
-                "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).",
-                "Verify your public key is added to your Git hosting account settings.",
+                vscode.l10n.t(
+                    "Make sure your SSH key is loaded: run `ssh-add -l` in a terminal to list loaded keys.",
+                ),
+                vscode.l10n.t(
+                    "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).",
+                ),
+                vscode.l10n.t(
+                    "Verify your public key is added to your Git hosting account settings.",
+                ),
             );
         }
         if (message.includes("host key verification failed")) {
             hints.push(
-                "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).",
+                vscode.l10n.t(
+                    "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).",
+                ),
             );
         }
         if (message.includes("could not resolve host")) {
             hints.push(
-                "Check your network connection and that the hostname in the URL is correct.",
+                vscode.l10n.t(
+                    "Check your network connection and that the hostname in the URL is correct.",
+                ),
             );
         }
         if (hints.length === 0) {
-            hints.push("Check that the SSH URL is correct and the remote repository exists.");
+            hints.push(
+                vscode.l10n.t(
+                    "Check that the SSH URL is correct and the remote repository exists.",
+                ),
+            );
         }
-        showCloneErrorMessage("SSH clone failed", err, hints);
+        showCloneErrorMessage(vscode.l10n.t("SSH clone failed"), err, hints);
     } else if (provider === "github") {
         const hints: string[] = [];
         if (
@@ -609,38 +636,50 @@ function handleCloneError(err: unknown, url: string, provider: CloneProvider): v
             message.includes("denied")
         ) {
             hints.push(
-                "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.",
-                'Run the "GitHub: Sign Out" command, then retry.',
+                vscode.l10n.t(
+                    "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.",
+                ),
+                vscode.l10n.t('Run the "GitHub: Sign Out" command, then retry.'),
             );
         }
         if (message.includes("not found") || message.includes("404")) {
-            hints.push("The repository may not exist or you do not have access to it.");
+            hints.push(
+                vscode.l10n.t("The repository may not exist or you do not have access to it."),
+            );
         }
-        showCloneErrorMessage("GitHub clone failed", err, hints);
+        showCloneErrorMessage(vscode.l10n.t("GitHub clone failed"), err, hints);
     } else if (provider === "gitlab") {
         const hints: string[] = [];
         if (message.includes("authentication") || message.includes("403")) {
             hints.push(
-                "Your GitLab personal access token may be invalid or expired.",
-                "Create a new token at GitLab Settings → Access Tokens with the `read_repository` scope.",
-                'To clear a saved token, select "Clear Saved Token" when prompted on the next attempt.',
+                vscode.l10n.t("Your GitLab personal access token may be invalid or expired."),
+                vscode.l10n.t(
+                    "Create a new token at GitLab Settings → Access Tokens with the `read_repository` scope.",
+                ),
+                vscode.l10n.t(
+                    'To clear a saved token, select "Clear Saved Token" when prompted on the next attempt.',
+                ),
             );
         }
         if (message.includes("not found") || message.includes("404")) {
             hints.push(
-                "The repository may not exist or is private and your token does not have access.",
+                vscode.l10n.t(
+                    "The repository may not exist or is private and your token does not have access.",
+                ),
             );
         }
-        showCloneErrorMessage("GitLab clone failed", err, hints);
+        showCloneErrorMessage(vscode.l10n.t("GitLab clone failed"), err, hints);
     } else {
-        showCloneErrorMessage("Clone failed", err, []);
+        showCloneErrorMessage(vscode.l10n.t("Clone failed"), err, []);
     }
 }
 
 function showCloneErrorMessage(title: string, err: unknown, hints: string[]): void {
     const detail = getErrorMessage(err);
     const hintText = hints.length > 0 ? `\n\n${hints.join("\n")}` : "";
-    vscode.window.showErrorMessage(`${title}: ${detail}${hintText}`);
+    vscode.window.showErrorMessage(
+        vscode.l10n.t("{title}: {detail}{hintText}", { title, detail, hintText }),
+    );
 }
 
 // ---------------------------------------------------------------------------
