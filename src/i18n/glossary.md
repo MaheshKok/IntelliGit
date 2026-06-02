@@ -65,3 +65,11 @@ Brand name `IntelliGit`; product names `GitHub`, `GitLab`, `JetBrains`,
 `PyCharm`, `WebStorm`, `IntelliJ IDEA`; codicon tokens like `$(add)`,
 `$(edit)`, `$(github)`; CLI flags (`-m`, `api`, `read_repository`); URLs and
 example hosts; `SSH`, `HTTPS`, `URL`, `Git`.
+
+Runtime template placeholders must be preserved exactly as-is, including braces
+and casing. Keep tokens such as `{message}`, `{path}`, `{count}`, `{branch}`,
+`{remote}`, `{remoteBranch}`, `{short}`, `{title}`, `{detail}`, `{name}`,
+`{url}`, `{repo}`, `{provider}`, `{fileName}`, `{number}`, `{tag}`,
+`{oldBranch}`, `{newBranch}`, `{target}`, `{head}`, `{rollbackMessage}`, and
+`{hintText}` verbatim. Tooling such as Google Sheets can corrupt placeholders;
+do not add or remove braces, translate placeholder names, or change casing.

@@ -2,7 +2,7 @@
     "$(add) Use a Different Remote Name": "$(add) (추가) 다른 원격 이름 사용",
     "$(edit) Enter path manually": "$(edit) (편집) 경로를 수동으로 입력하세요",
     "$(edit) Enter revision manually": "$(edit) (편집) 수정 내용을 수동으로 입력하세요",
-    "$(github) GitHub": "$(github) 깃허브",
+    "$(github) GitHub": "$(github) GitHub",
     "$(gitlab) GitLab": "$(gitlab) GitLab",
     "$(globe) Public": "$(globe) 공개",
     "$(link) Enter Clone URL": "$(link) (링크) 클론 URL을 입력하세요",
