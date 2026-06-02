@@ -340,6 +340,9 @@
     "Shelve failed: {message}": "擱置失敗：{message}",
     "Shelved {path}.": "已擱置 {path}。",
     "Show history failed: {message}": "顯示歷史記錄失敗：{message}",
+    "Some commit change stats may be unavailable.": "部分提交變更統計資訊可能無法取得。",
+    "Some staged change stats may be unavailable.": "部分已暫存變更統計資訊可能無法取得。",
+    "Some unstaged change stats may be unavailable.": "部分未暫存變更統計資訊可能無法取得。",
     "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "主機金鑰不在您的 known_hosts 檔案中。執行 `ssh-keyscan -H github.com >> ~/.ssh/known_hosts`（或對應的主機）。",
     "The repository may not exist or is private and your token does not have access.": "該儲存庫可能不存在或為私有儲存庫，您的令牌沒有存取權限。",
     "The repository may not exist or you do not have access to it.": "該儲存庫可能不存在，或者您沒有存取權限。",
@@ -351,7 +354,6 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "您的GitHub令牌可能已過期或缺少必要的權限。請嘗試重新登入。",
     "Your GitLab personal access token may be invalid or expired.": "您的 GitLab 個人存取權杖可能無效或已過期。",
     "{action}: select mainline parent": "{action}: 選擇主線父級",
-    "{context}. Some change stats may be unavailable.": "部分變更統計資料可能無法取得。 {context}",
     "{title}: {detail}{hintText}": "{title}: {detail} {hintText}",
     "{count} changed file": "{count} 個檔案已變更",
     "{count} changed files": "{count} 個檔案已變更"

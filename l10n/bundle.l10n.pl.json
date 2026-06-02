@@ -340,6 +340,9 @@
     "Shelve failed: {message}": "Nie udało się odłożyć na półkę: {message}",
     "Shelved {path}.": "Odłożono {path}.",
     "Show history failed: {message}": "Wyświetlanie historii nie powiodło się: {message}",
+    "Some commit change stats may be unavailable.": "Niektóre statystyki zmian w commicie mogą być niedostępne.",
+    "Some staged change stats may be unavailable.": "Niektóre statystyki zmian w indeksie mogą być niedostępne.",
+    "Some unstaged change stats may be unavailable.": "Niektóre statystyki zmian poza indeksem mogą być niedostępne.",
     "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "Klucza hosta nie ma w pliku known_hosts. Uruchom `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (lub odpowiedni host).",
     "The repository may not exist or is private and your token does not have access.": "Repozytorium może nie istnieć lub jest prywatne, a Twój token nie ma do niego dostępu.",
     "The repository may not exist or you do not have access to it.": "Być może repozytorium nie istnieje lub nie masz do niego dostępu.",
@@ -351,7 +354,6 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "Twój token GitHub mógł wygasnąć lub nie posiada wymaganych uprawnień. Spróbuj zalogować się ponownie.",
     "Your GitLab personal access token may be invalid or expired.": "Twój osobisty token dostępu GitLab może być nieprawidłowy lub wygasł.",
     "{action}: select mainline parent": "{action}: wybierz nadrzędny element linii głównej",
-    "{context}. Some change stats may be unavailable.": "{context}. Niektóre statystyki zmian mogą być niedostępne.",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} plik zmieniony",
     "{count} changed files": "{count} zmienionych plików"

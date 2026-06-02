@@ -340,6 +340,9 @@
     "Shelve failed: {message}": "Falha ao arquivar: {message}",
     "Shelved {path}.": "Arquivado {path}.",
     "Show history failed: {message}": "A exibição do histórico falhou: {message}",
+    "Some commit change stats may be unavailable.": "Algumas estatísticas de alterações do commit podem estar indisponíveis.",
+    "Some staged change stats may be unavailable.": "Algumas estatísticas de alterações preparadas podem estar indisponíveis.",
+    "Some unstaged change stats may be unavailable.": "Algumas estatísticas de alterações não preparadas podem estar indisponíveis.",
     "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "A chave do host não está no seu arquivo known_hosts. Execute `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (ou a chave do host correspondente).",
     "The repository may not exist or is private and your token does not have access.": "O repositório pode não existir ou ser privado, e seu token não tem acesso.",
     "The repository may not exist or you do not have access to it.": "O repositório pode não existir ou você pode não ter acesso a ele.",
@@ -351,7 +354,6 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "Seu token do GitHub pode ter expirado ou não ter as permissões necessárias. Tente fazer login novamente.",
     "Your GitLab personal access token may be invalid or expired.": "Seu token de acesso pessoal do GitLab pode ser inválido ou ter expirado.",
     "{action}: select mainline parent": "{action}: selecione o pai da linha principal",
-    "{context}. Some change stats may be unavailable.": "{context}. Algumas estatísticas de alterações podem não estar disponíveis.",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} arquivo alterado",
     "{count} changed files": "{count} arquivos alterados"

@@ -340,6 +340,9 @@
     "Shelve failed: {message}": "Сбой при размещении: {message}",
     "Shelved {path}.": "Отложено {path}.",
     "Show history failed: {message}": "Отображение истории не удалось: {message}",
+    "Some commit change stats may be unavailable.": "Некоторые статистические данные изменений коммита могут быть недоступны.",
+    "Some staged change stats may be unavailable.": "Некоторые статистические данные подготовленных изменений могут быть недоступны.",
+    "Some unstaged change stats may be unavailable.": "Некоторые статистические данные неподготовленных изменений могут быть недоступны.",
     "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "Ключ хоста отсутствует в файле known_hosts. Выполните команду `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (или для соответствующего хоста).",
     "The repository may not exist or is private and your token does not have access.": "Возможно, репозиторий не существует или является закрытым, и ваш токен не имеет к нему доступа.",
     "The repository may not exist or you do not have access to it.": "Возможно, репозиторий не существует, или у вас нет к нему доступа.",
@@ -351,7 +354,6 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "Возможно, срок действия вашего токена GitHub истек или у него отсутствуют необходимые права доступа. Попробуйте войти снова.",
     "Your GitLab personal access token may be invalid or expired.": "Ваш персональный токен доступа GitLab может быть недействительным или просроченным.",
     "{action}: select mainline parent": "{action}: выбрать родительскую ветку основной строки",
-    "{context}. Some change stats may be unavailable.": "{context}. Некоторые статистические данные об изменениях могут быть недоступны.",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} файл изменён",
     "{count} changed files": "{count} файлов изменено"

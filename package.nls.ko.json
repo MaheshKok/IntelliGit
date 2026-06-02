@@ -1,7 +1,7 @@
 {
     "intelligit": "인텔리깃",
     "extension.description": "커밋 그래프, 커밋 세부 정보, 셸프 워크플로 및 파일 변경 탐색기를 포함하는 VS Code용 IntelliJ 스타일 Git UI입니다.",
-    "view.commit": "저지르다",
+    "view.commit": "커밋",
     "view.graph": "그래프",
     "view.mergeConflicts": "충돌 병합",
     "command.showGitLog": "Git 로그 보기",
@@ -28,7 +28,7 @@
     "command.compareWithLocal": "현지 데이터와 비교",
     "command.cherryPickSelectedChange": "선택한 변경 사항만 골라내기",
     "command.revertSelectedChange": "선택한 변경 사항 되돌리기",
-    "command.refreshing": "상쾌한...",
+    "command.refreshing": "새로 고치는 중...",
     "command.openMergeConflict": "병합 충돌 열기",
     "command.detectJetBrainsMergeTool": "JetBrains 병합 도구 감지",
     "command.openInJetBrainsMergeTool": "JetBrains Merge Tool에서 열기",

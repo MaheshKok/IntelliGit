@@ -342,6 +342,9 @@
   "Shelve failed: {message}": "Shelve failed: {message}",
   "Shelved {path}.": "Shelved {path}.",
   "Show history failed: {message}": "Show history failed: {message}",
+  "Some commit change stats may be unavailable.": "Some commit change stats may be unavailable.",
+  "Some staged change stats may be unavailable.": "Some staged change stats may be unavailable.",
+  "Some unstaged change stats may be unavailable.": "Some unstaged change stats may be unavailable.",
   "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).",
   "The repository may not exist or is private and your token does not have access.": "The repository may not exist or is private and your token does not have access.",
   "The repository may not exist or you do not have access to it.": "The repository may not exist or you do not have access to it.",
@@ -353,6 +356,5 @@
   "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.",
   "Your GitLab personal access token may be invalid or expired.": "Your GitLab personal access token may be invalid or expired.",
   "{action}: select mainline parent": "{action}: select mainline parent",
-  "{context}. Some change stats may be unavailable.": "{context}. Some change stats may be unavailable.",
   "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
 }

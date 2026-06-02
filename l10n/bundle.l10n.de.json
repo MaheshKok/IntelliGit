@@ -340,6 +340,9 @@
   "Shelve failed: {message}": "Regal fehlgeschlagen: {message}",
   "Shelved {path}.": "Abgelegt {path}.",
   "Show history failed: {message}": "Verlauf anzeigen fehlgeschlagen: {message}",
+  "Some commit change stats may be unavailable.": "Einige Commit-Änderungsstatistiken sind möglicherweise nicht verfügbar.",
+  "Some staged change stats may be unavailable.": "Einige Statistiken zu gestagten Änderungen sind möglicherweise nicht verfügbar.",
+  "Some unstaged change stats may be unavailable.": "Einige Statistiken zu nicht gestagten Änderungen sind möglicherweise nicht verfügbar.",
   "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "Der Host-Schlüssel befindet sich nicht in Ihrer known_hosts-Datei. Führen Sie `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (oder den entsprechenden Host) aus.",
   "The repository may not exist or is private and your token does not have access.": "Das Repository existiert möglicherweise nicht oder ist privat, und Ihr Token hat keinen Zugriff darauf.",
   "The repository may not exist or you do not have access to it.": "Das Repository existiert möglicherweise nicht oder Sie haben keinen Zugriff darauf.",
@@ -351,7 +354,6 @@
   "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "Ihr GitHub-Token ist möglicherweise abgelaufen oder verfügt nicht über die erforderlichen Berechtigungen. Versuchen Sie, sich erneut anzumelden.",
   "Your GitLab personal access token may be invalid or expired.": "Ihr persönliches GitLab-Zugriffstoken ist möglicherweise ungültig oder abgelaufen.",
   "{action}: select mainline parent": "{action}: Hauptlinie auswählen",
-  "{context}. Some change stats may be unavailable.": "{context}. Einige Änderungsstatistiken sind möglicherweise nicht verfügbar.",
   "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
   "{count} changed file": "{count} Datei geändert",
   "{count} changed files": "{count} geänderte Dateien"

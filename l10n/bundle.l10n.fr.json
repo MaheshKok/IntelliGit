@@ -340,6 +340,9 @@
     "Shelve failed: {message}": "Échec de la mise en rayon : {message}",
     "Shelved {path}.": "Mis en attente {path}.",
     "Show history failed: {message}": "L'affichage de l'historique a échoué : {message}",
+    "Some commit change stats may be unavailable.": "Certaines statistiques de modification du commit peuvent être indisponibles.",
+    "Some staged change stats may be unavailable.": "Certaines statistiques de modifications indexées peuvent être indisponibles.",
+    "Some unstaged change stats may be unavailable.": "Certaines statistiques de modifications non indexées peuvent être indisponibles.",
     "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "La clé de l'hôte ne figure pas dans votre fichier known_hosts. Exécutez la commande `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (ou l'hôte approprié).",
     "The repository may not exist or is private and your token does not have access.": "Le dépôt peut ne pas exister ou être privé et votre jeton ne vous y donne pas accès.",
     "The repository may not exist or you do not have access to it.": "Le dépôt n'existe peut-être pas ou vous n'y avez pas accès.",
@@ -351,7 +354,6 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "Votre jeton GitHub a peut-être expiré ou vous ne disposez pas des autorisations nécessaires. Veuillez réessayer de vous connecter.",
     "Your GitLab personal access token may be invalid or expired.": "Votre jeton d'accès personnel GitLab est peut-être invalide ou expiré.",
     "{action}: select mainline parent": "{action}: sélectionner le parent principal",
-    "{context}. Some change stats may be unavailable.": "{context}. Certaines statistiques de modification peuvent être indisponibles.",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} fichier modifié",
     "{count} changed files": "{count} fichiers modifiés"

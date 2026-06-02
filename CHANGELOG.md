@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preserved Git jargon intentionally in places where localized VS Code/Git users expect the English term, such as Squash, Rebase, Checkout, commit, branch, and stash.
 - Preserved the PyCharm/JetBrains-style UI behavior while only changing string loading and translated display text.
 - Preserved the real-time changed-file count refresh work from `main`, including VS Code Git state listeners, background refresh coalescing, activity-bar badge clearing, and the blue refresh indicator during background checks.
+- Increased the minimum visible duration of the commit-panel refresh indicator to 600ms so background file-count checks are visible without changing the refresh logic.
 - Preserved the branch-scope cherry-pick guard from `main` while keeping the commit context menu localized.
 
 ### Fixed

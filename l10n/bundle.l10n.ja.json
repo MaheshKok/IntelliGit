@@ -340,6 +340,9 @@
     "Shelve failed: {message}": "棚の設置に失敗しました: {message}",
     "Shelved {path}.": "{path} を棚上げしました。",
     "Show history failed: {message}": "履歴の表示に失敗しました: {message}",
+    "Some commit change stats may be unavailable.": "コミットの変更統計の一部を利用できない場合があります。",
+    "Some staged change stats may be unavailable.": "ステージ済み変更の統計の一部を利用できない場合があります。",
+    "Some unstaged change stats may be unavailable.": "未ステージ変更の統計の一部を利用できない場合があります。",
     "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).": "ホストキーが known_hosts ファイルに登録されていません。`ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (または適切なホスト) を実行してください。",
     "The repository may not exist or is private and your token does not have access.": "リポジトリが存在しないか、非公開であるため、あなたのトークンではアクセスできません。",
     "The repository may not exist or you do not have access to it.": "リポジトリが存在しないか、アクセス権がない可能性があります。",
@@ -351,7 +354,6 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "GitHubトークンの有効期限が切れているか、必要な権限が付与されていない可能性があります。再度ログインしてみてください。",
     "Your GitLab personal access token may be invalid or expired.": "GitLabの個人アクセストークンが無効または期限切れになっている可能性があります。",
     "{action}: select mainline parent": "{action}: メインラインの親を選択",
-    "{context}. Some change stats may be unavailable.": "{context}。一部の変更統計は利用できない場合があります。",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} 個のファイルが変更されました",
     "{count} changed files": "{count} 個のファイルが変更されました"

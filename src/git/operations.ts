@@ -20,6 +20,7 @@ const OUTPUT_CHANNEL_NAME = "IntelliGit";
 type VsCodeApi = typeof import("vscode");
 type OutputChannelLike = { appendLine: (value: string) => void };
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
+type GitOpsWarningOptions = { userWarningMessage?: string };
 
 let cachedVsCodeApi: VsCodeApi | null | undefined;
 let outputChannel: OutputChannelLike | undefined;
@@ -43,21 +44,40 @@ function getOutputChannel(): OutputChannelLike {
     return outputChannel;
 }
 
-function logGitOpsWarning(context: string, err: unknown, options?: { notifyUser?: boolean }): void {
+function logGitOpsWarning(context: string, err: unknown, options?: GitOpsWarningOptions): void {
     const channel = getOutputChannel();
     const message = getErrorMessage(err);
     channel.appendLine(`[GitOps] ${context}: ${message}`);
     if (err instanceof Error && err.stack) {
         channel.appendLine(sanitizeErrorMessage(err.stack));
     }
-    if (options?.notifyUser) {
+    if (options?.userWarningMessage) {
         const vscode = getVsCodeApi();
         if (vscode) {
-            void vscode.window.showWarningMessage(
-                vscode.l10n.t("{context}. Some change stats may be unavailable.", { context }),
-            );
+            void vscode.window.showWarningMessage(options.userWarningMessage);
         }
     }
+}
+
+function commitStatsUnavailableMessage(): string {
+    const vscode = getVsCodeApi();
+    return vscode
+        ? vscode.l10n.t("Some commit change stats may be unavailable.")
+        : "Some commit change stats may be unavailable.";
+}
+
+function unstagedStatsUnavailableMessage(): string {
+    const vscode = getVsCodeApi();
+    return vscode
+        ? vscode.l10n.t("Some unstaged change stats may be unavailable.")
+        : "Some unstaged change stats may be unavailable.";
+}
+
+function stagedStatsUnavailableMessage(): string {
+    const vscode = getVsCodeApi();
+    return vscode
+        ? vscode.l10n.t("Some staged change stats may be unavailable.")
+        : "Some staged change stats may be unavailable.";
 }
 
 function assertStashIndex(index: number): void {
@@ -361,7 +381,9 @@ export class GitOps {
                 }
             }
         } catch (err) {
-            logGitOpsWarning("Failed to get commit numstat", err, { notifyUser: true });
+            logGitOpsWarning("Failed to get commit numstat", err, {
+                userWarningMessage: commitStatsUnavailableMessage(),
+            });
         }
 
         return {
@@ -463,7 +485,12 @@ export class GitOps {
             filesIndexByKey.set(key, i);
         }
 
-        const applyNumstat = (output: string, staged: boolean, label: string): void => {
+        const applyNumstat = (
+            output: string,
+            staged: boolean,
+            label: string,
+            userWarningMessage: string,
+        ): void => {
             try {
                 for (const line of output.trim().split("\n")) {
                     if (!line.trim()) continue;
@@ -488,24 +515,28 @@ export class GitOps {
                     }
                 }
             } catch (err) {
-                logGitOpsWarning(`Failed to get ${label} numstat`, err, { notifyUser: true });
+                logGitOpsWarning(`Failed to get ${label} numstat`, err, { userWarningMessage });
             }
         };
 
         // Fetch unstaged and staged numstat in parallel
         const [unstagedStat, stagedStat] = await Promise.all([
             this.executor.run(["diff", "--numstat"]).catch((err) => {
-                logGitOpsWarning("Failed to get unstaged numstat", err, { notifyUser: true });
+                logGitOpsWarning("Failed to get unstaged numstat", err, {
+                    userWarningMessage: unstagedStatsUnavailableMessage(),
+                });
                 return "";
             }),
             this.executor.run(["diff", "--cached", "--numstat"]).catch((err) => {
-                logGitOpsWarning("Failed to get staged numstat", err, { notifyUser: true });
+                logGitOpsWarning("Failed to get staged numstat", err, {
+                    userWarningMessage: stagedStatsUnavailableMessage(),
+                });
                 return "";
             }),
         ]);
 
-        applyNumstat(unstagedStat, false, "unstaged");
-        applyNumstat(stagedStat, true, "staged");
+        applyNumstat(unstagedStat, false, "unstaged", unstagedStatsUnavailableMessage());
+        applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
 
         return files;
     }
