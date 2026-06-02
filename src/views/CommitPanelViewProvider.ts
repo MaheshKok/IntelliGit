@@ -21,7 +21,7 @@ import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTyp
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 
-const MIN_VISIBLE_REFRESH_MS = 300;
+const MIN_VISIBLE_REFRESH_MS = 600;
 
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
