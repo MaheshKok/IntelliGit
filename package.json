@@ -448,17 +448,17 @@
                 },
                 {
                     "command": "intelligit.commitFileCompareWithLocal",
-                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",
+                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles' || webviewId == 'intelligit.undocked') && webviewSection == 'commitInfoFile'",
                     "group": "1_compare@1"
                 },
                 {
                     "command": "intelligit.commitFileCherryPickChange",
-                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",
+                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles' || webviewId == 'intelligit.undocked') && webviewSection == 'commitInfoFile'",
                     "group": "2_apply@1"
                 },
                 {
                     "command": "intelligit.commitFileRevertChange",
-                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",
+                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles' || webviewId == 'intelligit.undocked') && webviewSection == 'commitInfoFile'",
                     "group": "2_apply@2"
                 }
             ]
