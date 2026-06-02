@@ -43,19 +43,31 @@ interface VsCodeGitRepository {
     onDidChangeState?: (listener: () => unknown) => vscode.Disposable;
 }
 
+type RefreshEventType =
+    | "workspace-file"
+    | "git-index"
+    | "git-state"
+    | "git-refs"
+    | "git-repository-state";
+
 export class RefreshService implements vscode.Disposable {
+    private static readonly lightRefreshSuppressionAfterFullMs = 800;
+
     private lightTimer: ReturnType<typeof setTimeout> | undefined;
     private fullTimer: ReturnType<typeof setTimeout> | undefined;
     private readonly fsWatchers: fs.FSWatcher[] = [];
     private readonly gitRepositoryStateDisposables = new Map<string, vscode.Disposable>();
     private readonly disposables: vscode.Disposable[] = [];
+    private recentFullScheduledUntil = 0;
     private disposed = false;
 
+    /** Create a refresh coordinator for one active repository root. */
     constructor(
         private readonly deps: RefreshServiceDeps,
         private readonly repoRoot: string,
     ) {}
 
+    /** Refresh the merge-conflict tree and expose the conflict badge/context state. */
     async refreshMergeConflicts(): Promise<void> {
         const count = await this.deps.mergeConflicts.refresh();
         this.deps.mergeConflictsView.description = count > 0 ? `${count}` : "";
@@ -66,6 +78,7 @@ export class RefreshService implements vscode.Disposable {
         );
     }
 
+    /** Refresh commit panel views without reloading branch or graph state. */
     async refreshCommitPanels(): Promise<void> {
         const undocked = this.deps.getUndocked?.();
         await Promise.all([
@@ -74,15 +87,18 @@ export class RefreshService implements vscode.Disposable {
         ]);
     }
 
+    /** Refresh commit panels and merge-conflict UI after conflict-affecting commands. */
     async refreshConflictUi(): Promise<void> {
         await this.refreshCommitPanels();
         await this.refreshMergeConflicts();
     }
 
+    /** Delegate to the extension-wide refresh command. */
     async refreshAll(): Promise<void> {
         await vscode.commands.executeCommand("intelligit.refresh");
     }
 
+    /** Schedule a lightweight refresh that updates commit panel state only. */
     debouncedLightRefresh(): void {
         if (this.lightTimer) clearTimeout(this.lightTimer);
         this.lightTimer = setTimeout(() => {
@@ -92,7 +108,14 @@ export class RefreshService implements vscode.Disposable {
         }, 300);
     }
 
+    /** Schedule a full refresh and suppress redundant light refreshes from nearby Git events. */
     debouncedFullRefresh(): void {
+        this.recentFullScheduledUntil =
+            Date.now() + RefreshService.lightRefreshSuppressionAfterFullMs;
+        if (this.lightTimer) {
+            clearTimeout(this.lightTimer);
+            this.lightTimer = undefined;
+        }
         if (this.fullTimer) clearTimeout(this.fullTimer);
         this.fullTimer = setTimeout(() => {
             void (async () => {
@@ -117,8 +140,9 @@ export class RefreshService implements vscode.Disposable {
         }, 500);
     }
 
+    /** Register workspace, Git-directory, and VS Code Git API refresh listeners. */
     registerFileWatchers(): void {
-        const handler = () => this.debouncedLightRefresh();
+        const handler = () => this.scheduleRefreshEvent("workspace-file");
 
         this.disposables.push(
             vscode.workspace.onDidChangeTextDocument(handler),
@@ -132,6 +156,7 @@ export class RefreshService implements vscode.Disposable {
         this.registerVsCodeGitWatchers();
     }
 
+    /** Resolve the real Git metadata directory, including worktree-style .git files. */
     private resolveGitDir(): string {
         const dotGit = path.join(this.repoRoot, ".git");
         try {
@@ -150,6 +175,7 @@ export class RefreshService implements vscode.Disposable {
         return dotGit;
     }
 
+    /** Watch Git metadata files whose changes imply light or full UI refreshes. */
     private registerGitDirWatchers(): void {
         const gitDir = this.resolveGitDir();
         const gitStateFiles = new Set([
@@ -164,14 +190,14 @@ export class RefreshService implements vscode.Disposable {
         try {
             const dirWatcher = fs.watch(gitDir, (_event, filename) => {
                 if (!filename) {
-                    this.debouncedFullRefresh();
+                    this.scheduleRefreshEvent("git-state");
                     return;
                 }
                 if (gitStateFiles.has(filename)) {
                     if (filename === "index") {
-                        this.debouncedLightRefresh();
+                        this.scheduleRefreshEvent("git-index");
                     } else {
-                        this.debouncedFullRefresh();
+                        this.scheduleRefreshEvent("git-state");
                     }
                 }
             });
@@ -188,7 +214,7 @@ export class RefreshService implements vscode.Disposable {
             if (process.platform === "linux") {
                 const pattern = new vscode.RelativePattern(vscode.Uri.file(refsPath), "**/*");
                 const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-                const handler = () => this.debouncedFullRefresh();
+                const handler = () => this.scheduleRefreshEvent("git-refs");
                 this.disposables.push(
                     watcher.onDidChange(handler),
                     watcher.onDidCreate(handler),
@@ -197,7 +223,7 @@ export class RefreshService implements vscode.Disposable {
                 );
             } else {
                 const refsWatcher = fs.watch(refsPath, { recursive: true }, () =>
-                    this.debouncedFullRefresh(),
+                    this.scheduleRefreshEvent("git-refs"),
                 );
                 this.fsWatchers.push(refsWatcher);
             }
@@ -206,12 +232,14 @@ export class RefreshService implements vscode.Disposable {
         }
     }
 
+    /** Start asynchronous registration for VS Code's Git repository state events. */
     private registerVsCodeGitWatchers(): void {
         void this.registerVsCodeGitWatchersAsync().catch((err) => {
             console.error("[IntelliGit] Failed to register VS Code Git refresh listener:", err);
         });
     }
 
+    /** Register already-open repositories and future repository open/close events. */
     private async registerVsCodeGitWatchersAsync(): Promise<void> {
         const gitExtension = vscode.extensions?.getExtension<VsCodeGitExtension>("vscode.git");
         if (!gitExtension) return;
@@ -241,6 +269,7 @@ export class RefreshService implements vscode.Disposable {
         }
     }
 
+    /** Register a VS Code Git state listener for the active repository only. */
     private registerGitRepositoryStateWatcher(repository: VsCodeGitRepository): void {
         if (this.disposed || !this.isActiveRepository(repository) || !repository.onDidChangeState) {
             return;
@@ -251,10 +280,11 @@ export class RefreshService implements vscode.Disposable {
 
         this.gitRepositoryStateDisposables.set(
             rootKey,
-            repository.onDidChangeState(() => this.debouncedLightRefresh()),
+            repository.onDidChangeState(() => this.scheduleRefreshEvent("git-repository-state")),
         );
     }
 
+    /** Dispose the VS Code Git state listener for a repository that closed. */
     private disposeGitRepositoryStateWatcher(repository: VsCodeGitRepository): void {
         const rootKey = normalizedPath(repository.rootUri.fsPath);
         const disposable = this.gitRepositoryStateDisposables.get(rootKey);
@@ -263,10 +293,28 @@ export class RefreshService implements vscode.Disposable {
         this.gitRepositoryStateDisposables.delete(rootKey);
     }
 
+    /** Check whether a VS Code Git repository matches this service's repository root. */
     private isActiveRepository(repository: VsCodeGitRepository): boolean {
         return normalizedPath(repository.rootUri.fsPath) === normalizedPath(this.repoRoot);
     }
 
+    /** Route refresh events through one light/full coalescing policy. */
+    private scheduleRefreshEvent(eventType: RefreshEventType): void {
+        switch (eventType) {
+            case "git-state":
+            case "git-refs":
+                this.debouncedFullRefresh();
+                return;
+            case "workspace-file":
+            case "git-index":
+            case "git-repository-state":
+                if (Date.now() < this.recentFullScheduledUntil) return;
+                this.debouncedLightRefresh();
+                return;
+        }
+    }
+
+    /** Dispose timers, file watchers, and VS Code Git listeners owned by this service. */
     dispose(): void {
         this.disposed = true;
         if (this.lightTimer) clearTimeout(this.lightTimer);
@@ -284,6 +332,7 @@ export class RefreshService implements vscode.Disposable {
     }
 }
 
+/** Normalize paths for repository identity comparisons across platforms. */
 function normalizedPath(value: string): string {
     const normalized = path.resolve(value);
     return process.platform === "win32" ? normalized.toLowerCase() : normalized;

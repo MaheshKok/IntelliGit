@@ -385,8 +385,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         };
         const resetFileCountBadge = (): void => updateFileCountBadge(0);
         resetFileCountBadge();
-        const fileCountBadgeSubscription =
-            commitPanel.onDidChangeFileCount(updateFileCountBadge);
+        const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
 
         let undocked: UndockedViewProvider | undefined;
 
