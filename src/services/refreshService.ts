@@ -24,11 +24,32 @@ export interface RefreshServiceDeps {
     getUndocked?: () => UndockedViewProvider | undefined;
 }
 
+interface VsCodeGitExtension {
+    getAPI(version: 1): VsCodeGitApi;
+}
+
+interface VsCodeGitApi {
+    repositories: VsCodeGitRepository[];
+    onDidOpenRepository?: (
+        listener: (repository: VsCodeGitRepository) => unknown,
+    ) => vscode.Disposable;
+    onDidCloseRepository?: (
+        listener: (repository: VsCodeGitRepository) => unknown,
+    ) => vscode.Disposable;
+}
+
+interface VsCodeGitRepository {
+    rootUri: vscode.Uri;
+    onDidChangeState?: (listener: () => unknown) => vscode.Disposable;
+}
+
 export class RefreshService implements vscode.Disposable {
     private lightTimer: ReturnType<typeof setTimeout> | undefined;
     private fullTimer: ReturnType<typeof setTimeout> | undefined;
     private readonly fsWatchers: fs.FSWatcher[] = [];
+    private readonly gitRepositoryStateDisposables = new Map<string, vscode.Disposable>();
     private readonly disposables: vscode.Disposable[] = [];
+    private disposed = false;
 
     constructor(
         private readonly deps: RefreshServiceDeps,
@@ -108,6 +129,7 @@ export class RefreshService implements vscode.Disposable {
         );
 
         this.registerGitDirWatchers();
+        this.registerVsCodeGitWatchers();
     }
 
     private resolveGitDir(): string {
@@ -184,14 +206,85 @@ export class RefreshService implements vscode.Disposable {
         }
     }
 
+    private registerVsCodeGitWatchers(): void {
+        void this.registerVsCodeGitWatchersAsync().catch((err) => {
+            console.error("[IntelliGit] Failed to register VS Code Git refresh listener:", err);
+        });
+    }
+
+    private async registerVsCodeGitWatchersAsync(): Promise<void> {
+        const gitExtension = vscode.extensions?.getExtension<VsCodeGitExtension>("vscode.git");
+        if (!gitExtension) return;
+
+        const git = await gitExtension.activate();
+        if (this.disposed) return;
+
+        const api = git.getAPI(1);
+        for (const repository of api.repositories) {
+            this.registerGitRepositoryStateWatcher(repository);
+        }
+
+        if (api.onDidOpenRepository) {
+            this.disposables.push(
+                api.onDidOpenRepository((repository) => {
+                    this.registerGitRepositoryStateWatcher(repository);
+                }),
+            );
+        }
+
+        if (api.onDidCloseRepository) {
+            this.disposables.push(
+                api.onDidCloseRepository((repository) => {
+                    this.disposeGitRepositoryStateWatcher(repository);
+                }),
+            );
+        }
+    }
+
+    private registerGitRepositoryStateWatcher(repository: VsCodeGitRepository): void {
+        if (this.disposed || !this.isActiveRepository(repository) || !repository.onDidChangeState) {
+            return;
+        }
+
+        const rootKey = normalizedPath(repository.rootUri.fsPath);
+        if (this.gitRepositoryStateDisposables.has(rootKey)) return;
+
+        this.gitRepositoryStateDisposables.set(
+            rootKey,
+            repository.onDidChangeState(() => this.debouncedLightRefresh()),
+        );
+    }
+
+    private disposeGitRepositoryStateWatcher(repository: VsCodeGitRepository): void {
+        const rootKey = normalizedPath(repository.rootUri.fsPath);
+        const disposable = this.gitRepositoryStateDisposables.get(rootKey);
+        if (!disposable) return;
+        disposable.dispose();
+        this.gitRepositoryStateDisposables.delete(rootKey);
+    }
+
+    private isActiveRepository(repository: VsCodeGitRepository): boolean {
+        return normalizedPath(repository.rootUri.fsPath) === normalizedPath(this.repoRoot);
+    }
+
     dispose(): void {
+        this.disposed = true;
         if (this.lightTimer) clearTimeout(this.lightTimer);
         if (this.fullTimer) clearTimeout(this.fullTimer);
         for (const watcher of this.fsWatchers) {
             watcher.close();
         }
+        for (const disposable of this.gitRepositoryStateDisposables.values()) {
+            disposable.dispose();
+        }
+        this.gitRepositoryStateDisposables.clear();
         for (const disposable of this.disposables) {
             disposable.dispose();
         }
     }
+}
+
+function normalizedPath(value: string): string {
+    const normalized = path.resolve(value);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
