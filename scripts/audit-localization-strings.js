@@ -7,8 +7,15 @@ const ts = require("typescript");
 const repoRoot = path.resolve(__dirname, "..");
 const strict = process.argv.includes("--strict");
 const reportIndex = process.argv.indexOf("--write-report");
-const reportPath =
-    reportIndex === -1 ? "" : path.resolve(repoRoot, process.argv[reportIndex + 1] ?? "");
+let reportPath = "";
+if (reportIndex !== -1) {
+    const reportArg = process.argv[reportIndex + 1];
+    if (!reportArg || reportArg.startsWith("--")) {
+        console.error("--write-report requires a file path argument.");
+        process.exit(1);
+    }
+    reportPath = path.resolve(repoRoot, reportArg);
+}
 
 const userTextPropertyNames = new Set([
     "aria-label",
@@ -81,7 +88,7 @@ function auditMessageCall(filePath, sourceFile, node) {
     if (!messageMethods.has(methodName)) return;
 
     const firstArg = node.arguments[0];
-    if (!firstArg || isLocalizedExpression(firstArg, sourceFile)) return;
+    if (!firstArg || isLocalizedExpression(firstArg)) return;
 
     const text = expressionText(firstArg, sourceFile);
     if (!looksUserFacing(text)) return;
@@ -108,7 +115,7 @@ function auditObjectLiteral(filePath, sourceFile, objectLiteral) {
         const name = propertyName(property.name);
         if (!userTextPropertyNames.has(name)) continue;
         const initializer = property.initializer;
-        if (isLocalizedExpression(initializer, sourceFile)) continue;
+        if (isLocalizedExpression(initializer)) continue;
 
         const text = expressionText(initializer, sourceFile);
         if (!looksUserFacing(text)) continue;
@@ -142,7 +149,7 @@ function auditJsxAttribute(filePath, sourceFile, node) {
 
     if (!ts.isJsxExpression(node.initializer)) return;
     const expression = node.initializer.expression;
-    if (!expression || isLocalizedExpression(expression, sourceFile)) return;
+    if (!expression || isLocalizedExpression(expression)) return;
 
     const text = expressionText(expression, sourceFile);
     if (!looksUserFacing(text)) return;
@@ -188,9 +195,37 @@ function propertyName(name) {
     return name.getText();
 }
 
-function isLocalizedExpression(expression, sourceFile) {
-    const text = expression.getText(sourceFile);
-    return /\bvscode\.l10n\.t\s*\(/.test(text) || /\bt\s*\(/.test(text);
+function isLocalizedExpression(expression) {
+    if (ts.isCallExpression(expression)) {
+        return isLocalizationCallee(expression.expression);
+    }
+
+    if (ts.isConditionalExpression(expression)) {
+        return (
+            isLocalizedExpression(expression.whenTrue) &&
+            isLocalizedExpression(expression.whenFalse)
+        );
+    }
+
+    return false;
+}
+
+function isLocalizationCallee(expression) {
+    if (ts.isIdentifier(expression)) return expression.text === "t";
+
+    if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== "t") {
+        return false;
+    }
+
+    const receiver = expression.expression;
+    if (ts.isIdentifier(receiver)) return receiver.text === "l10n";
+
+    return (
+        ts.isPropertyAccessExpression(receiver) &&
+        receiver.name.text === "l10n" &&
+        ts.isIdentifier(receiver.expression) &&
+        receiver.expression.text === "vscode"
+    );
 }
 
 function expressionText(expression, sourceFile) {

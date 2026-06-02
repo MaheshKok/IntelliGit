@@ -46,7 +46,7 @@
     "configuration.undockableWindow.markdownDescription": "Open IntelliGit as a unified editor tab when Show Git Log is invoked, enabling native VS Code undocking to a second monitor.",
     "configuration.icons.enum.color": "Use IntelliGit's colored icons (default).",
     "configuration.icons.enum.standard": "Use VS Code's monochromatic icon style, consistent with built-in panels.",
-    "configuration.icons.markdownDescription": "Icon style for the IntelliGit commit panel. `standard` uses VS Code's monochromatic icon foreground (default); `color` uses IntelliGit's coloured icons.",
+    "configuration.icons.markdownDescription": "Icon style for the IntelliGit commit panel. `standard` uses VS Code's monochromatic icon foreground (default); `color` uses IntelliGit's colored icons.",
     "configuration.commitWindowPosition.enum.auto": "Follow VS Code's `workbench.sideBar.location` setting (default).",
     "configuration.commitWindowPosition.enum.left": "Place the commit panel on the left side of the undocked/tabbed window.",
     "configuration.commitWindowPosition.enum.right": "Place the commit panel on the right side of the undocked/tabbed window.",

@@ -15,7 +15,7 @@
     "command.checkoutAndRebaseOntoCurrent": "Checkout и rebase на текущую",
     "command.rebaseCurrentOntoSelected": "Rebase текущей ветки на выбранную",
     "command.mergeIntoCurrent": "Слить в текущую ветку",
-    "command.update": "Обновить",
+    "command.update": "Обновить ветку",
     "command.push": "Push",
     "command.rename": "Переименовать...",
     "command.delete": "Удалить",

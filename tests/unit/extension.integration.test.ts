@@ -63,6 +63,23 @@ const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
 
+function interpolateL10n(
+    message: string,
+    args?: Record<string, string | number | boolean> | Array<string | number | boolean>,
+): string {
+    if (!args) return message;
+    if (Array.isArray(args)) {
+        return args.reduce(
+            (current, value, index) =>
+                current.replace(new RegExp(`\\{${index}\\}`, "g"), String(value)),
+            message,
+        );
+    }
+    return message.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) =>
+        Object.prototype.hasOwnProperty.call(args, key) ? String(args[key]) : match,
+    );
+}
+
 let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined = [
     { uri: { fsPath: "/repo", path: "/repo" } },
 ];
@@ -508,7 +525,7 @@ vi.mock("vscode", () => ({
         clipboard: { writeText: clipboardWriteText },
     },
     l10n: {
-        t: (message: string) => message,
+        t: interpolateL10n,
     },
 }));
 
