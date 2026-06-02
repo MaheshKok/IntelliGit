@@ -87,6 +87,13 @@ afterEach(() => {
 });
 
 describe("localization catalogs", () => {
+    it("keeps the consolidated translation CSV valid and synced", () => {
+        execFileSync("bun", ["scripts/localization-csv.js", "validate", "--quiet"], {
+            cwd: repoRoot,
+            stdio: "pipe",
+        });
+    });
+
     it("keeps package.nls locale files complete and wired from package.json", () => {
         const source = readJson<Catalog>("package.nls.json");
         const localeFiles = readdirSync(repoRoot)
