@@ -179,7 +179,7 @@ export class UndockedViewProvider {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();
-        await this.refreshCommitPanelData();
+        await this.refreshCommitPanelData(false);
     }
 
     reveal(): void {
@@ -704,7 +704,7 @@ export class UndockedViewProvider {
 
     // --- Commit panel data fetching -----------------------------------------
 
-    private async refreshCommitPanelData(silent = true): Promise<void> {
+    private async refreshCommitPanelData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
             await this.iconTheme.initIconThemeData();

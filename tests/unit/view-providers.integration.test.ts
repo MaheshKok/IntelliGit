@@ -661,6 +661,45 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider shows refreshing state during background refresh", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        postMessageSpy.mockClear();
+
+        await provider.refresh();
+
+        const messages = postMessageSpy.mock.calls.map(([message]) => message);
+        const refreshingStartIndex = messages.findIndex(
+            (message) =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "refreshing" &&
+                "active" in message &&
+                message.active === true,
+        );
+        const updateIndex = messages.findIndex(
+            (message) =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "update",
+        );
+        const refreshingEndIndex = messages.findIndex(
+            (message) =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "refreshing" &&
+                "active" in message &&
+                message.active === false,
+        );
+
+        expect(refreshingStartIndex).toBeGreaterThanOrEqual(0);
+        expect(updateIndex).toBeGreaterThan(refreshingStartIndex);
+        expect(refreshingEndIndex).toBeGreaterThan(updateIndex);
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider marks unpublished branches and routes publish action", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         gitOps.getBranches.mockResolvedValue([

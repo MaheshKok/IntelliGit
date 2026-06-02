@@ -184,11 +184,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     async refresh(): Promise<void> {
-        await this.refreshData();
+        await this.refreshData(false);
         await this.refreshGraphData();
     }
 
-    private async refreshData(silent = true): Promise<void> {
+    private async refreshData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         if (!silent) {
             void Promise.resolve(
