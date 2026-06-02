@@ -169,7 +169,7 @@
     "merge.loading": "正在載入衝突資料…",
     "mergeSession.title": "衝突",
     "mergeSession.subtitle.pre": "合併分支",
-    "mergeSession.subtitle.mid": "分支",
+    "mergeSession.subtitle.mid": " 到分支 ",
     "mergeSession.subtitle.post": "",
     "mergeSession.defaultSource": "入支",
     "mergeSession.defaultTarget": "目前分支",
