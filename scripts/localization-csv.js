@@ -43,6 +43,28 @@ const preservedLiteralTokens = [
     { token: "origin", contains: containsAsciiWord },
     { token: ".git/config", contains: (value, token) => value.includes(token) },
 ];
+const glossaryTermCandidates = [
+    "IntelliGit",
+    "VS Code",
+    "JetBrains",
+    "GitHub",
+    "GitLab",
+    "Git",
+    "HEAD",
+    ".git/config",
+    "origin",
+    "remote",
+    "SSH",
+    "URL",
+    "Branch",
+    "Commit",
+    "Checkout",
+    "Cherry-pick",
+    "Rebase",
+    "Merge",
+    "Push",
+    "Squash Commits",
+];
 
 const command = process.argv[2] ?? "validate";
 const quiet = process.argv.includes("--quiet");
@@ -57,8 +79,20 @@ try {
         log(
             `Imported localization CSV: ${result.updatedFiles} files updated, ${result.appliedCells} cells applied, ${result.skippedCells} non-required plural cells skipped.`,
         );
+    } else if (command === "sync") {
+        const result = syncCsv();
+        log(
+            `Synchronized localization CSV: ${result.addedRows} rows added, ${result.updatedRows} rows updated, ${result.removedRows} stale rows removed, ${result.totalRows} total rows.`,
+        );
+    } else if (command === "translate") {
+        const result = translateMissing();
+        log(
+            `Localization translation check passed: ${result.checkedCells} required cells checked, no missing translations.`,
+        );
     } else {
-        throw new Error(`Unknown command "${command}". Use "validate" or "import".`);
+        throw new Error(
+            `Unknown command "${command}". Use "validate", "import", "sync", or "translate".`,
+        );
     }
 } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -236,6 +270,210 @@ function importCsv() {
     return { appliedCells, skippedCells, updatedFiles };
 }
 
+function syncCsv() {
+    const { rows, header } = readTranslationRows();
+    validateHeaderOrThrow(header);
+
+    const expectedRows = collectExpectedRows();
+    const expectedById = new Map(expectedRows.map((row) => [row.id, row]));
+    const existingById = new Map();
+    for (const row of rows) {
+        const record = recordFromRow(header, row);
+        existingById.set(rowId(record), record);
+    }
+
+    const targetCatalogs = new Map();
+    const syncedRecords = [];
+    const syncedExpectedIds = new Set();
+    let addedRows = 0;
+    let updatedRows = 0;
+    let removedRows = 0;
+
+    for (const row of rows) {
+        const existing = recordFromRow(header, row);
+        const expected = expectedById.get(rowId(existing));
+        if (!expected) {
+            removedRows += 1;
+            continue;
+        }
+
+        const record = syncExistingRecord(existing, expected, targetCatalogs);
+        if (serializeRecord(header, existing) !== serializeRecord(header, record)) {
+            updatedRows += 1;
+        }
+
+        syncedRecords.push(record);
+        syncedExpectedIds.add(expected.id);
+    }
+
+    for (const expected of expectedRows) {
+        if (syncedExpectedIds.has(expected.id)) continue;
+        syncedRecords.push(createRecord(expected, targetCatalogs));
+        addedRows += 1;
+    }
+
+    writeTranslationRecords(header, syncedRecords);
+    return { addedRows, updatedRows, removedRows, totalRows: syncedRecords.length };
+}
+
+function translateMissing() {
+    if (!process.argv.includes("--only-missing")) {
+        throw new Error(
+            'Localization translate currently supports only "--only-missing". Run "bun run l10n:translate -- --only-missing".',
+        );
+    }
+
+    const missing = missingRequiredTranslations();
+    if (missing.length > 0) {
+        const shown = missing.slice(0, 40);
+        const remaining = missing.length - shown.length;
+        throw new Error(
+            [
+                "Automatic machine translation is not configured for this repository.",
+                "Fill the missing required translation cells in docs/localization_translation_review.csv with an approved translation source, then run the import/validation pipeline.",
+                "Missing required translations:",
+                ...shown.map(
+                    (item) =>
+                        `- Row ${item.rowNumber}: current_${item.locale} for ${item.area}/${item.key}`,
+                ),
+                remaining > 0 ? `- ...and ${remaining} more missing cells.` : "",
+            ]
+                .filter(Boolean)
+                .join("\n"),
+        );
+    }
+
+    const { rows, header } = readTranslationRows();
+    let checkedCells = 0;
+    const expectedById = new Map(collectExpectedRows().map((row) => [row.id, row]));
+    for (const row of rows) {
+        const record = recordFromRow(header, row);
+        const expected = expectedById.get(rowId(record));
+        if (!expected) continue;
+        for (const locale of locales) {
+            if (
+                expected.requiredLocales.length === 0 ||
+                expected.requiredLocales.includes(locale)
+            ) {
+                checkedCells += 1;
+            }
+        }
+    }
+
+    return { checkedCells };
+}
+
+function syncExistingRecord(existing, expected, targetCatalogs) {
+    const record = {
+        ...existing,
+        area: expected.area,
+        source_file: expected.sourceFile,
+        key: expected.key,
+        plural_category: expected.pluralCategory,
+        plural_category_required_for_locales: expected.requiredLocaleText,
+        english_source: expected.englishSource,
+        placeholders_keep_exact: placeholders(expected.englishSource).join(" "),
+    };
+
+    for (const locale of locales) {
+        const column = `current_${locale}`;
+        if (expected.requiredLocales.length > 0 && !expected.requiredLocales.includes(locale)) {
+            record[column] = "";
+            continue;
+        }
+
+        if (record[column] === "") {
+            record[column] = localeValueFromCatalog(expected, locale, targetCatalogs);
+        }
+    }
+
+    return record;
+}
+
+function createRecord(expected, targetCatalogs) {
+    const record = {
+        area: expected.area,
+        source_file: expected.sourceFile,
+        key: expected.key,
+        plural_category: expected.pluralCategory,
+        plural_category_required_for_locales: expected.requiredLocaleText,
+        english_source: expected.englishSource,
+        context: defaultContext(expected),
+        placeholders_keep_exact: placeholders(expected.englishSource).join(" "),
+        glossary_terms_to_review: glossaryTerms(expected.englishSource).join("; "),
+    };
+
+    for (const locale of locales) {
+        if (expected.requiredLocales.length > 0 && !expected.requiredLocales.includes(locale)) {
+            record[`current_${locale}`] = "";
+        } else {
+            record[`current_${locale}`] = localeValueFromCatalog(expected, locale, targetCatalogs);
+        }
+    }
+
+    return record;
+}
+
+function localeValueFromCatalog(expected, locale, targetCatalogs) {
+    const targetPath = path.join(repoRoot, expected.targetFile(locale));
+    if (!fs.existsSync(targetPath)) return "";
+
+    if (!targetCatalogs.has(targetPath)) {
+        targetCatalogs.set(targetPath, readJsonAbsolute(targetPath));
+    }
+
+    const catalog = targetCatalogs.get(targetPath);
+    const value = expected.pluralParentKey
+        ? catalog[expected.pluralParentKey]?.[expected.pluralCategory]
+        : catalog[expected.key];
+    return typeof value === "string" ? value : "";
+}
+
+function defaultContext(expected) {
+    if (expected.area === "manifest") {
+        return "VS Code extension manifest string.";
+    }
+    if (expected.area === "host") {
+        return "Extension-host runtime notification, command label, prompt, or status message.";
+    }
+    return "Webview UI string.";
+}
+
+function glossaryTerms(sourceValue) {
+    return glossaryTermCandidates.filter((term) => {
+        if (term === ".git/config") return sourceValue.includes(term);
+        return containsAsciiWord(sourceValue, term);
+    });
+}
+
+function missingRequiredTranslations() {
+    const { rows, header } = readTranslationRows();
+    validateHeaderOrThrow(header);
+
+    const expectedById = new Map(collectExpectedRows().map((row) => [row.id, row]));
+    const missing = [];
+    for (const [index, row] of rows.entries()) {
+        const record = recordFromRow(header, row);
+        const expected = expectedById.get(rowId(record));
+        if (!expected) continue;
+
+        for (const locale of locales) {
+            if (expected.requiredLocales.length > 0 && !expected.requiredLocales.includes(locale)) {
+                continue;
+            }
+            if (expected.englishSource !== "" && record[`current_${locale}`] === "") {
+                missing.push({
+                    rowNumber: index + 2,
+                    locale,
+                    area: record.area,
+                    key: record.key,
+                });
+            }
+        }
+    }
+    return missing;
+}
+
 function collectExpectedRows() {
     const rows = [];
 
@@ -335,11 +573,34 @@ function readTranslationRows() {
     return { header: parsed[0], rows: parsed.slice(1) };
 }
 
+function writeTranslationRecords(header, records) {
+    const lines = [
+        header.map(formatCsvField).join(","),
+        ...records.map((record) => serializeRecord(header, record)),
+    ];
+    fs.writeFileSync(csvPath, `${lines.join("\n")}\n`, "utf8");
+}
+
+function serializeRecord(header, record) {
+    return header.map((column) => formatCsvField(record[column] ?? "")).join(",");
+}
+
+function formatCsvField(value) {
+    if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
+    return value;
+}
+
 function validateHeader(header, errors) {
     const expectedHeader = [...metadataColumns, ...locales.map((locale) => `current_${locale}`)];
     if (JSON.stringify(header) !== JSON.stringify(expectedHeader)) {
         errors.push(`CSV header must be exactly: ${expectedHeader.join(",")}.`);
     }
+}
+
+function validateHeaderOrThrow(header) {
+    const errors = [];
+    validateHeader(header, errors);
+    if (errors.length > 0) throw new Error(errors.join("\n"));
 }
 
 function compareTokens({ errors, rowNumber, locale, key, sourceValue, translatedValue }) {

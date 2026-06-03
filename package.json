@@ -531,6 +531,8 @@
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
+        "l10n:sync": "bun scripts/localization-csv.js sync",
+        "l10n:translate": "bun scripts/localization-csv.js translate",
         "l10n:validate": "bun scripts/localization-csv.js validate",
         "l10n:import": "bun scripts/localization-csv.js import",
         "l10n:audit": "bun scripts/audit-localization-strings.js",

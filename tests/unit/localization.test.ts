@@ -94,6 +94,23 @@ describe("localization catalogs", () => {
         });
     });
 
+    it("exposes localization sync and missing-translation commands", () => {
+        const packageJson = readJson<{ scripts?: Record<string, string> }>("package.json");
+        expect(packageJson.scripts?.["l10n:sync"]).toBe("bun scripts/localization-csv.js sync");
+        expect(packageJson.scripts?.["l10n:translate"]).toBe(
+            "bun scripts/localization-csv.js translate",
+        );
+
+        execFileSync(
+            "bun",
+            ["scripts/localization-csv.js", "translate", "--only-missing", "--quiet"],
+            {
+                cwd: repoRoot,
+                stdio: "pipe",
+            },
+        );
+    });
+
     it("keeps package.nls locale files complete and wired from package.json", () => {
         const source = readJson<Catalog>("package.nls.json");
         const localeFiles = readdirSync(repoRoot)
