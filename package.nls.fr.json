@@ -3,7 +3,7 @@
     "extension.description": "Interface Git de style IntelliJ pour VS Code avec graphe de commits, détails de commits, workflow de mise de côté et explorateur de changements de fichiers.",
     "view.commit": "Commit",
     "view.graph": "Graphique",
-    "view.mergeConflicts": "Fusionner les conflits",
+    "view.mergeConflicts": "Conflits de fusion",
     "command.showGitLog": "Afficher le journal Git",
     "command.undock": "Détacher...",
     "command.dockIntelliGit": "Dock IntelliGit",
