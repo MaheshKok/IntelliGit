@@ -226,7 +226,7 @@
     "No tracked remote branch configured for '{branch}'.": "Nie skonfigurowano żadnej śledzonej zdalnej gałęzi dla '{branch}'.",
     "Updated {branch}": "Zaktualizowano {branch}",
     "Update failed: {message}": "Aktualizacja nie powiodła się: {message}",
-    "Pushing {branch}...": "Wypychanie {branch}...",
+    "Pushing {branch}...": "Wysyłanie {branch}...",
     "Pushed {branch}": "Wypchnięto {branch}",
     "Push failed: {message}": "Nieudane przesłanie: {message}",
     "Rename {branch} to": "Zmień nazwę {branch} na",

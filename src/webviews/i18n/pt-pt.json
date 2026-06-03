@@ -191,8 +191,8 @@
         "other": "{count} arquivos não resolvidos"
     },
     "mergeSession.col.name": "Nome",
-    "mergeSession.col.yours": "Seu ({branch})",
-    "mergeSession.col.theirs": "Deles ({branch})",
+    "mergeSession.col.yours": "Nosso ({branch})",
+    "mergeSession.col.theirs": "Entrante ({branch})",
     "mergeSession.acceptYours": "Aceitar alterações atuais",
     "mergeSession.acceptTheirs": "Aceitar alterações recebidas",
     "mergeSession.merge": "Fusão...",

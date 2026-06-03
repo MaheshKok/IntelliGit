@@ -198,8 +198,8 @@
         "other": "{count} неразрешенных файлов"
     },
     "mergeSession.col.name": "Имя",
-    "mergeSession.col.yours": "Ваш ({branch})",
-    "mergeSession.col.theirs": "Их ({branch})",
+    "mergeSession.col.yours": "Наша ({branch})",
+    "mergeSession.col.theirs": "Входящая ({branch})",
     "mergeSession.acceptYours": "Принять текущие изменения",
     "mergeSession.acceptTheirs": "Принять входящие изменения",
     "mergeSession.merge": "Слияние...",

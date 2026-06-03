@@ -199,7 +199,7 @@
     "Squash": "Squash",
     "Squash {count} commits from {short} through HEAD into one commit?": "Объединить {count} коммитов от {short} до HEAD в один коммит?",
     "Squashing {count} commits...": "Squash {count} коммитов...",
-    "Squashed {count} commits into one commit.": "Объединено {count} коммитов в один коммит.",
+    "Squashed {count} commits into one commit.": "Сжато {count} коммитов в один коммит.",
     "{message}; rollback to {head} failed: {rollbackMessage}": "{message}; откат к {head} не удался: {rollbackMessage}",
     "Squash Commits failed: {message}": "Не удалось выполнить фиксацию изменений в Squash: {message}",
     "Drop": "Отбросить",
