@@ -116,7 +116,9 @@ async function initializeRepository(
 ): Promise<void> {
     const roots = workspaceRoots();
     if (roots.length === 0) {
-        vscode.window.showErrorMessage(vscode.l10n.t("Open a folder first to initialize a repository."));
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Open a folder first to initialize a repository."),
+        );
         return;
     }
 
@@ -670,13 +672,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 [
                     {
                         label: vscode.l10n.t("Undock in Editor Tab"),
-                        description: vscode.l10n.t("Open the unified IntelliGit view as an editor tab"),
+                        description: vscode.l10n.t(
+                            "Open the unified IntelliGit view as an editor tab",
+                        ),
                         target: "editorTab" as const,
                     },
                     {
                         label: vscode.l10n.t("Undock in New Window"),
-                        description:
-                            vscode.l10n.t("Open the unified IntelliGit view and move it to a floating window"),
+                        description: vscode.l10n.t(
+                            "Open the unified IntelliGit view and move it to a floating window",
+                        ),
                         target: "newWindow" as const,
                     },
                 ],
@@ -1050,7 +1055,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
                 const conflicts = await gitOps.getConflictFilesDetailed();
                 if (conflicts.length === 0) {
-                    vscode.window.showInformationMessage(vscode.l10n.t("No unresolved merge conflicts found."));
+                    vscode.window.showInformationMessage(
+                        vscode.l10n.t("No unresolved merge conflicts found."),
+                    );
                     return;
                 }
                 await openConflictSession();

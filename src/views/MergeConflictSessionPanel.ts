@@ -186,7 +186,9 @@ export class MergeConflictSessionPanel {
         const files = await this.gitOps.getConflictFilesDetailed();
         if (!this.isAlive()) return;
         if (files.length === 0 && options.closeWhenResolved) {
-            vscode.window.showInformationMessage(vscode.l10n.t("All merge conflicts are resolved."));
+            vscode.window.showInformationMessage(
+                vscode.l10n.t("All merge conflicts are resolved."),
+            );
             this.panel.dispose();
             return;
         }

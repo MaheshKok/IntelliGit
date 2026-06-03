@@ -258,9 +258,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             if (requestId !== this.requestSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Git log error: {message}", { message }),
-            );
+            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
             this.postToWebview({ type: "loadError", message });
         }
     }
@@ -291,9 +289,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         } catch (err) {
             if (requestId !== this.requestSeq) return;
             const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("Git log error: {message}", { message }),
-            );
+            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
             this.postToWebview({ type: "loadError", message });
         } finally {
             if (requestId === this.requestSeq) {

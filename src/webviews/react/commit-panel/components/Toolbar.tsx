@@ -77,11 +77,7 @@ export function Toolbar({
                     d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"
                 />
             </ToolbarButton>
-            <ToolbarButton
-                label={t("common.showDiffPreview")}
-                onClick={onShowDiff}
-                color="#8fd5ff"
-            >
+            <ToolbarButton label={t("common.showDiffPreview")} onClick={onShowDiff} color="#8fd5ff">
                 <path
                     fill="currentColor"
                     d="M2 3.5A1.5 1.5 0 0 1 3.5 2h5.586a1.5 1.5 0 0 1 1.06.44l2.415 2.414A1.5 1.5 0 0 1 13 5.914V12.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V5.914L9.086 2.5H3.5zM7 7V5h1v2h2v1H8v2H7V8H5V7h2z"
@@ -90,11 +86,7 @@ export function Toolbar({
             <ToolbarButton label={t("common.expandAll")} onClick={onExpandAll} color="#f3b1cf">
                 <ExpandAllIconGlyph />
             </ToolbarButton>
-            <ToolbarButton
-                label={t("common.collapseAll")}
-                onClick={onCollapseAll}
-                color="#f3b1cf"
-            >
+            <ToolbarButton label={t("common.collapseAll")} onClick={onCollapseAll} color="#f3b1cf">
                 <CollapseAllIconGlyph />
             </ToolbarButton>
         </Flex>

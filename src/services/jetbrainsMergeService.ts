@@ -87,7 +87,9 @@ export async function promptForJetBrainsMergeToolPath(): Promise<string | null> 
     const suggested = existing || detected || getDefaultJetBrainsMergeToolPath();
     const input = await vscode.window.showInputBox({
         title: vscode.l10n.t("JetBrains Merge Tool Path"),
-        prompt: vscode.l10n.t("Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path."),
+        prompt: vscode.l10n.t(
+            "Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path.",
+        ),
         placeHolder: suggested,
         value: suggested,
         ignoreFocusOut: true,
@@ -101,7 +103,9 @@ export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | nu
     const candidates = await detectInstalledJetBrainsMergeToolCandidates();
     if (candidates.length === 0) {
         vscode.window.showWarningMessage(
-            vscode.l10n.t("No JetBrains IDE installations were auto-detected. Enter the path manually instead."),
+            vscode.l10n.t(
+                "No JetBrains IDE installations were auto-detected. Enter the path manually instead.",
+            ),
         );
         return promptForJetBrainsMergeToolPath();
     }
@@ -274,10 +278,9 @@ export async function openJetBrainsMergeToolForFile(
                 );
             } else {
                 vscode.window.showInformationMessage(
-                    vscode.l10n.t(
-                        "Merge tool closed, but conflict markers remain in {path}",
-                        { path: safePath },
-                    ),
+                    vscode.l10n.t("Merge tool closed, but conflict markers remain in {path}", {
+                        path: safePath,
+                    }),
                 );
             }
         } catch (readErr) {

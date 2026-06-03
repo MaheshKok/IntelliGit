@@ -85,9 +85,7 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
             : vscode.l10n.t("No Git Repository");
         const subtitle = isNoWorkspace
             ? vscode.l10n.t("Open a folder to get started with IntelliGit.")
-            : vscode.l10n.t(
-                  "Initialize a Git repository or open an existing one to get started.",
-              );
+            : vscode.l10n.t("Initialize a Git repository or open an existing one to get started.");
 
         const buttonsHtml = actions
             .map(

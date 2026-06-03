@@ -355,10 +355,9 @@ export async function showDeletedBranchActions(
     if (action === restoreLabel) {
         if (!isValidGitHash(branch.hash)) {
             vscode.window.showErrorMessage(
-                vscode.l10n.t(
-                    "Cannot restore '{branch}': missing or invalid commit hash.",
-                    { branch: branch.name },
-                ),
+                vscode.l10n.t("Cannot restore '{branch}': missing or invalid commit hash.", {
+                    branch: branch.name,
+                }),
             );
             return;
         }

@@ -215,7 +215,9 @@ export async function compareEditorFileWithBranch(
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
-        vscode.window.showErrorMessage(vscode.l10n.t("Compare with Branch is only available for local files."));
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with Branch is only available for local files."),
+        );
         return;
     }
 
@@ -276,7 +278,9 @@ export async function compareEditorFileWithRevision(
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
-        vscode.window.showErrorMessage(vscode.l10n.t("Compare with Revision is only available for local files."));
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with Revision is only available for local files."),
+        );
         return;
     }
 
@@ -314,10 +318,9 @@ export async function compareEditorFileWithRevision(
                     ? vscode.l10n.t("Select a recent revision for {path}", {
                           path: repoRelativeFilePath,
                       })
-                    : vscode.l10n.t(
-                          "No recent file history found. Enter a revision for {path}",
-                          { path: repoRelativeFilePath },
-                      ),
+                    : vscode.l10n.t("No recent file history found. Enter a revision for {path}", {
+                          path: repoRelativeFilePath,
+                      }),
             ignoreFocusOut: true,
             matchOnDescription: true,
             matchOnDetail: true,

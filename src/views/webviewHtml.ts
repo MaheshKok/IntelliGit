@@ -93,16 +93,11 @@ ${styleLinks ? `${styleLinks}\n` : ""}
 }
 
 export function escapeHtmlText(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function escapeHtmlAttr(value: string): string {
-    return escapeHtmlText(value)
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+    return escapeHtmlText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 export function scriptSafeJson(value: unknown): string {
