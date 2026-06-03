@@ -354,7 +354,7 @@
     "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.": "您的GitHub令牌可能已过期或缺少必要的权限。请尝试重新登录。",
     "Your GitLab personal access token may be invalid or expired.": "您的 GitLab 个人访问令牌可能无效或已过期。",
     "{action}: select mainline parent": "{action}: 选择主线父级",
-    "{title}: {detail}{hintText}": "{title}: {detail} {hintText}",
+    "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} 个文件已更改",
     "{count} changed files": "{count} 个文件已更改"
 }

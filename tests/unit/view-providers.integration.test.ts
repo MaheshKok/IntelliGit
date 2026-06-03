@@ -80,7 +80,7 @@ const vscodeMock = {
         language: "en",
     },
     l10n: {
-        t: (message: string) => message,
+        t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },

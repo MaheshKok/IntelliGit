@@ -38,7 +38,6 @@ const sourceDefinitions = [
     },
 ];
 
-const pluralCategories = new Set(["zero", "one", "two", "few", "many", "other"]);
 const preservedLiteralTokens = [
     { token: "reword", contains: containsAsciiWord },
     { token: "origin", contains: containsAsciiWord },
@@ -385,9 +384,7 @@ function comparePreservedLiterals({
 }
 
 function containsAsciiWord(value, token) {
-    return new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`).test(
-        value,
-    );
+    return new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`).test(value);
 }
 
 function escapeRegExp(value) {

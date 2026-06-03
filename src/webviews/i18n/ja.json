@@ -1,6 +1,6 @@
 {
     "common.refresh": "更新",
-    "common.refreshing": "爽快…",
+    "common.refreshing": "更新中…",
     "common.rollback": "ロールバック",
     "common.groupByDirectory": "ディレクトリ別にグループ化",
     "common.shelveChanges": "変更をシェルブ",
@@ -8,7 +8,7 @@
     "common.expandAll": "すべて展開",
     "common.collapseAll": "すべて折りたたむ",
     "common.cancel": "キャンセル",
-    "common.close": "近い",
+    "common.close": "閉じる",
     "common.loading": "読み込み中…",
     "common.showDiff": "差分を表示",
     "common.ungroupFiles": "ファイルのグループ解除",

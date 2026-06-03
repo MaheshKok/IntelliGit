@@ -218,7 +218,7 @@ export function CommitList({
                             <button
                                 type="button"
                                 aria-label={t("commit.search.clear")}
-                                title={t("branch.search.clear.title")}
+                                title={t("commit.search.clear")}
                                 onClick={() => onFilterText("")}
                                 style={FILTER_CLEAR_BUTTON_STYLE}
                             >

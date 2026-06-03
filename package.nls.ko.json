@@ -6,7 +6,7 @@
     "view.mergeConflicts": "충돌 병합",
     "command.showGitLog": "Git 로그 보기",
     "command.undock": "도킹 해제...",
-    "command.dockIntelliGit": "Dock IntelliGit",
+    "command.dockIntelliGit": "IntelliGit 도킹",
     "command.refresh": "새로 고치다",
     "command.filterByBranch": "브랜치별 필터링",
     "command.selectRepository": "저장소 선택",

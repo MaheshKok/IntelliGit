@@ -6,7 +6,7 @@
     "view.mergeConflicts": "合并冲突",
     "command.showGitLog": "显示 Git 日志",
     "command.undock": "脱离……",
-    "command.dockIntelliGit": "Dock IntelliGit",
+    "command.dockIntelliGit": "停靠 IntelliGit",
     "command.refresh": "刷新",
     "command.filterByBranch": "按分支筛选",
     "command.selectRepository": "选择存储库",

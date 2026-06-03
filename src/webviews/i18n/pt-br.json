@@ -1,6 +1,6 @@
 {
     "common.refresh": "Atualizar",
-    "common.refreshing": "Refrescante...",
+    "common.refreshing": "Atualizando...",
     "common.rollback": "Reverter",
     "common.groupByDirectory": "Agrupar por diretório",
     "common.shelveChanges": "Arquivar alterações temporariamente",
@@ -16,8 +16,8 @@
     "common.pop": "Pop",
     "common.drop": "Descartar",
     "common.delete": "Excluir",
-    "common.clear": "Claro",
-    "common.branches": "Branches",
+    "common.clear": "Limpar",
+    "common.branches": "Ramos",
     "common.tags": "Etiquetas",
     "common.fileCount": {
         "many": "Arquivos {count}",
@@ -159,7 +159,7 @@
     "merge.hunk.useBoth": "Use ambos os blocos",
     "merge.hunk.both": "Ambos",
     "merge.hunk.useRight": "Use o bloco direito",
-    "merge.hunk.right": "Certo",
+    "merge.hunk.right": "Direita",
     "merge.hunk.dropTitle": "Remova este bloco do resultado.",
     "merge.hunk.drop": "Descartar",
     "merge.hunk.ignoreLeft": "Ignore o bloco esquerdo",

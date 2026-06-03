@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { interpolateL10n } from "./utils/l10nTestHelper";
 
 type CommandHandler = (...args: unknown[]) => unknown;
 
@@ -98,23 +99,6 @@ const vscodeGitGetAPI = vi.fn(() => mockGitApi);
 const vscodeGitActivate = vi.fn(async () => ({
     getAPI: vscodeGitGetAPI,
 }));
-
-function interpolateL10n(
-    message: string,
-    args?: Record<string, string | number | boolean> | Array<string | number | boolean>,
-): string {
-    if (!args) return message;
-    if (Array.isArray(args)) {
-        return args.reduce(
-            (current, value, index) =>
-                current.replace(new RegExp(`\\{${index}\\}`, "g"), String(value)),
-            message,
-        );
-    }
-    return message.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) =>
-        Object.prototype.hasOwnProperty.call(args, key) ? String(args[key]) : match,
-    );
-}
 
 let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefined = [
     { uri: { fsPath: "/repo", path: "/repo" } },

@@ -3,7 +3,7 @@
     "common.refreshing": "Actualizando...",
     "common.rollback": "Revertir",
     "common.groupByDirectory": "Agrupar por directorio",
-    "common.shelveChanges": "Shelve Changes",
+    "common.shelveChanges": "Archivar cambios",
     "common.showDiffPreview": "Mostrar vista previa de diferencias",
     "common.expandAll": "Expandir todo",
     "common.collapseAll": "Contraer todo",

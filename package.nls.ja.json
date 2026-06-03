@@ -28,7 +28,7 @@
     "command.compareWithLocal": "ローカルと比較",
     "command.cherryPickSelectedChange": "選択した変更をチェリーピック",
     "command.revertSelectedChange": "選択した変更を元に戻す",
-    "command.refreshing": "爽快…",
+    "command.refreshing": "更新中…",
     "command.openMergeConflict": "マージの競合が発生",
     "command.detectJetBrainsMergeTool": "JetBrains Merge Tool を検出",
     "command.openInJetBrainsMergeTool": "JetBrains Merge Toolで開く",
