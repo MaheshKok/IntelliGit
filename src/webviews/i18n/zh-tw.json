@@ -12,7 +12,7 @@
     "common.loading": "載入中...",
     "common.showDiff": "顯示差異",
     "common.ungroupFiles": "取消文件分組",
-    "common.apply": "應用",
+    "common.apply": "套用",
     "common.pop": "還原暫存",
     "common.drop": "丟棄",
     "common.delete": "刪除",
@@ -39,11 +39,11 @@
     "commit.menu.cherryPick": "Cherry-pick",
     "commit.menu.checkoutRevision": "檢出修訂版",
     "commit.menu.resetCurrentToHere": "重置目前分支到此處...",
-    "commit.menu.revertCommit": "撤銷提交",
-    "commit.menu.pushAllUpToHere": "推送到此處...",
+    "commit.menu.revertCommit": "還原提交",
+    "commit.menu.pushAllUpToHere": "全部推送至此處...",
     "commit.menu.undoCommit": "撤銷提交...",
     "commit.menu.editMessage": "編輯提交資訊...",
-    "commit.menu.squashCommits": "Squash 提交...",
+    "commit.menu.squashCommits": "壓縮提交...",
     "commit.menu.dropCommit": "放棄提交",
     "commit.menu.interactiveRebaseFromHere": "從此處互動式變基...",
     "commit.menu.newBranch": "建立新分支...",
@@ -57,7 +57,7 @@
         "other": "{count} 個分支標籤"
     },
     "commit.tooltip.moreTags": {
-        "other": "{count} 個標籤"
+        "other": "還有 {count} 個標籤"
     },
     "commit.tab.commit": "提交",
     "commit.tab.stash": "儲藏",
@@ -95,22 +95,22 @@
     "commitInfo.byAuthor": "作者：{author}",
     "commitInfo.emailOnDate": "{email} 於 {date}",
     "commitInfo.filesChanged": {
-        "other": "文件數已更改 {count}"
+        "other": "{count} 個檔案已變更"
     },
     "commitPanel.noChanges": "無變化",
-    "commitPanel.changes": "變化",
-    "commitPanel.unversionedFiles": "未版本化的文件",
+    "commitPanel.changes": "變更",
+    "commitPanel.unversionedFiles": "未追蹤的檔案",
     "shelf.empty": "沒有擱置的變更",
     "shelf.noFiles": "此次擱置變更中沒有文件。",
     "shelf.defaultTitle": "擱置的變更",
-    "shelf.action.unstash": "取出…",
+    "shelf.action.unstash": "取消儲藏...",
     "shelf.action.showDiffNewTab": "在新分頁中顯示差異",
     "shelf.action.popDescription": "彈出（應用和移除）",
     "merge.count.changes": {
         "other": "{count} 次更改"
     },
     "merge.count.conflicts": {
-        "other": "衝突數量 {count}"
+        "other": "{count} 個衝突"
     },
     "merge.toolbar.applyNonConflicting": "應用不衝突的更改",
     "merge.toolbar.prevConflict.title": "先前衝突（P / Shift+F7）",
@@ -118,7 +118,7 @@
     "merge.toolbar.nextConflict.title": "下一個衝突（N / F7）",
     "merge.toolbar.nextConflict.label": "下一次衝突",
     "merge.toolbar.ignoreMode.title": "重新解析包含或不包含空格差異的衝突",
-    "merge.toolbar.ignoreMode.none": "請勿忽視",
+    "merge.toolbar.ignoreMode.none": "不忽略",
     "merge.toolbar.ignoreMode.whitespace": "忽略空格",
     "merge.toolbar.highlightWords": "突出顯示單字",
     "merge.toolbar.showDetails": "顯示詳情",
@@ -134,15 +134,15 @@
     "merge.header.conflictsResolved": "{resolved}/{total} 個衝突已解決",
     "merge.pane.changesFrom": "來自 {label} 的更改",
     "merge.pane.result": "結果 {path}",
-    "merge.footer.useFileOurs": "使用我們的文件",
-    "merge.footer.useFileTheirs": "使用他們的文件",
+    "merge.footer.useFileOurs": "使用我方檔案",
+    "merge.footer.useFileTheirs": "使用他方檔案",
     "merge.footer.hint": "`N`/`P` 解決衝突 • `Ctrl/Cmd+Enter` 應用",
-    "merge.footer.apply": "應用（{resolved}/{total}）",
+    "merge.footer.apply": "套用（{resolved}/{total}）",
     "merge.kind.leftOnly": "僅左",
     "merge.kind.rightOnly": "僅右側",
     "merge.kind.conflict": "衝突",
     "merge.hunk.detail": "左：{left} 右：{right} 結果：{result}",
-    "merge.hunk.useLeft": "使用左側方塊",
+    "merge.hunk.useLeft": "使用左側區塊",
     "merge.hunk.left": "左邊",
     "merge.hunk.useBoth": "使用兩個區塊",
     "merge.hunk.both": "兩個都",
@@ -150,10 +150,10 @@
     "merge.hunk.right": "右側",
     "merge.hunk.dropTitle": "從結果中移除此區塊",
     "merge.hunk.drop": "丟棄",
-    "merge.hunk.ignoreLeft": "忽略左側方塊",
+    "merge.hunk.ignoreLeft": "忽略左側區塊",
     "merge.hunk.acceptLeft": "接受左側區塊",
     "merge.hunk.acceptRight": "接受右側方塊",
-    "merge.hunk.ignoreRight": "忽略右側方塊",
+    "merge.hunk.ignoreRight": "忽略右側區塊",
     "merge.status.droppedLeftOnly": "已丟棄僅左側的變更",
     "merge.status.leftOnly": "僅左側變更",
     "merge.status.droppedRightOnly": "已丟棄僅右側的變更",
@@ -174,7 +174,7 @@
     "mergeSession.defaultSource": "傳入分支",
     "mergeSession.defaultTarget": "目前分支",
     "mergeSession.unresolvedFiles": {
-        "other": "{count} 個未解析的檔案"
+        "other": "{count} 個未解決的檔案"
     },
     "mergeSession.col.name": "檔名",
     "mergeSession.col.yours": "您的（{branch}）",

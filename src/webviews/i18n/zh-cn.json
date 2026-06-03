@@ -39,11 +39,11 @@
     "commit.menu.cherryPick": "Cherry-pick",
     "commit.menu.checkoutRevision": "检出修订版",
     "commit.menu.resetCurrentToHere": "重置当前分支到此处...",
-    "commit.menu.revertCommit": "撤销提交",
-    "commit.menu.pushAllUpToHere": "推送到此处...",
+    "commit.menu.revertCommit": "还原提交",
+    "commit.menu.pushAllUpToHere": "全部推送至此处...",
     "commit.menu.undoCommit": "撤销提交...",
     "commit.menu.editMessage": "编辑提交信息...",
-    "commit.menu.squashCommits": "Squash 提交...",
+    "commit.menu.squashCommits": "压缩提交...",
     "commit.menu.dropCommit": "放弃提交",
     "commit.menu.interactiveRebaseFromHere": "从此处交互式变基...",
     "commit.menu.newBranch": "新建分支...",
@@ -57,7 +57,7 @@
         "other": "{count} 个分支标签"
     },
     "commit.tooltip.moreTags": {
-        "other": "{count} 个标签"
+        "other": "还有 {count} 个标签"
     },
     "commit.tab.commit": "提交",
     "commit.tab.stash": "储藏",
@@ -95,22 +95,22 @@
     "commitInfo.byAuthor": "作者：{author}",
     "commitInfo.emailOnDate": "{email} 于 {date}",
     "commitInfo.filesChanged": {
-        "other": "文件数已更改 {count}"
+        "other": "{count} 个文件已更改"
     },
     "commitPanel.noChanges": "无变化",
-    "commitPanel.changes": "变化",
-    "commitPanel.unversionedFiles": "未版本化的文件",
+    "commitPanel.changes": "更改",
+    "commitPanel.unversionedFiles": "未跟踪的文件",
     "shelf.empty": "没有搁置的变更",
     "shelf.noFiles": "此次搁置变更中没有文件。",
     "shelf.defaultTitle": "搁置的变更",
-    "shelf.action.unstash": "取出……",
+    "shelf.action.unstash": "取消储藏...",
     "shelf.action.showDiffNewTab": "在新标签页中显示差异",
     "shelf.action.popDescription": "弹出（应用和移除）",
     "merge.count.changes": {
         "other": "{count} 次更改"
     },
     "merge.count.conflicts": {
-        "other": "冲突数量 {count}"
+        "other": "{count} 个冲突"
     },
     "merge.toolbar.applyNonConflicting": "应用不冲突的更改",
     "merge.toolbar.prevConflict.title": "先前冲突（P / Shift+F7）",
@@ -118,7 +118,7 @@
     "merge.toolbar.nextConflict.title": "下一个冲突（N / F7）",
     "merge.toolbar.nextConflict.label": "下一次冲突",
     "merge.toolbar.ignoreMode.title": "重新解析包含或不包含空格差异的冲突",
-    "merge.toolbar.ignoreMode.none": "请勿忽视",
+    "merge.toolbar.ignoreMode.none": "不忽略",
     "merge.toolbar.ignoreMode.whitespace": "忽略空格",
     "merge.toolbar.highlightWords": "突出显示单词",
     "merge.toolbar.showDetails": "显示详情",
@@ -142,7 +142,7 @@
     "merge.kind.rightOnly": "仅右侧",
     "merge.kind.conflict": "冲突",
     "merge.hunk.detail": "左：{left} 右：{right} 结果：{result}",
-    "merge.hunk.useLeft": "使用左侧方块",
+    "merge.hunk.useLeft": "使用左侧块",
     "merge.hunk.left": "左边",
     "merge.hunk.useBoth": "使用两个块",
     "merge.hunk.both": "两个都",
@@ -174,7 +174,7 @@
     "mergeSession.defaultSource": "传入分支",
     "mergeSession.defaultTarget": "当前分支",
     "mergeSession.unresolvedFiles": {
-        "other": "{count} 个未解析的文件"
+        "other": "{count} 个未解决的文件"
     },
     "mergeSession.col.name": "文件名",
     "mergeSession.col.yours": "您的（{branch}）",
