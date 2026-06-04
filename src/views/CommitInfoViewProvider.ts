@@ -62,7 +62,9 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
                         });
                     } catch (err) {
                         const message = getErrorMessage(err);
-                        vscode.window.showErrorMessage(`Commit file action error: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Commit file action error: {message}", { message }),
+                        );
                     }
                     break;
             }
@@ -78,7 +80,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
             extensionUri: this.extensionUri,
             webview: webviewView.webview,
             scriptFile: "webview-commitinfo.js",
-            title: "Changed Files",
+            title: vscode.l10n.t("Changed Files"),
             backgroundVar: "var(--vscode-editor-background)",
         });
     }
@@ -91,7 +93,9 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.decorateAndStoreDetail(detail, requestId).catch((err) => {
             if (requestId !== this.requestSeq) return;
             const msg = getErrorMessage(err);
-            vscode.window.showErrorMessage(`Commit detail error: ${msg}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Commit detail error: {message}", { message: msg }),
+            );
         });
     }
 

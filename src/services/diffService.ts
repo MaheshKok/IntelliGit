@@ -215,14 +215,16 @@ export async function compareEditorFileWithBranch(
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
-        vscode.window.showErrorMessage("Compare with Branch is only available for local files.");
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with Branch is only available for local files."),
+        );
         return;
     }
 
     const repoRelativeFilePath = getRepoRelativeFilePathFromUri(fileUri, repoRoot);
     if (!repoRelativeFilePath) {
         vscode.window.showErrorMessage(
-            "Selected file is outside the current IntelliGit repository workspace.",
+            vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),
         );
         return;
     }
@@ -244,8 +246,10 @@ export async function compareEditorFileWithBranch(
             }));
 
         const picked = await vscode.window.showQuickPick(picks, {
-            title: "Compare with Branch",
-            placeHolder: `Select a branch for ${repoRelativeFilePath}`,
+            title: vscode.l10n.t("Compare with Branch"),
+            placeHolder: vscode.l10n.t("Select a branch for {path}", {
+                path: repoRelativeFilePath,
+            }),
             ignoreFocusOut: true,
             matchOnDescription: true,
             matchOnDetail: true,
@@ -261,7 +265,9 @@ export async function compareEditorFileWithBranch(
         );
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showErrorMessage(`Compare with branch failed: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with branch failed: {message}", { message }),
+        );
     }
 }
 
@@ -272,14 +278,16 @@ export async function compareEditorFileWithRevision(
 ): Promise<void> {
     const fileUri = getEditorContextFileUri(ctx);
     if (!fileUri) {
-        vscode.window.showErrorMessage("Compare with Revision is only available for local files.");
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with Revision is only available for local files."),
+        );
         return;
     }
 
     const repoRelativeFilePath = getRepoRelativeFilePathFromUri(fileUri, repoRoot);
     if (!repoRelativeFilePath) {
         vscode.window.showErrorMessage(
-            "Selected file is outside the current IntelliGit repository workspace.",
+            vscode.l10n.t("Selected file is outside the current IntelliGit repository workspace."),
         );
         return;
     }
@@ -296,19 +304,23 @@ export async function compareEditorFileWithRevision(
         const picks = [
             ...historyPicks,
             {
-                label: "$(edit) Enter revision manually",
-                description: "Commit hash, tag, or ref name",
+                label: vscode.l10n.t("$(edit) Enter revision manually"),
+                description: vscode.l10n.t("Commit hash, tag, or ref name"),
                 detail: undefined as string | undefined,
                 refName: MANUAL_SENTINEL,
             },
         ];
 
         const picked = await vscode.window.showQuickPick(picks, {
-            title: "Compare with Revision",
+            title: vscode.l10n.t("Compare with Revision"),
             placeHolder:
                 historyPicks.length > 0
-                    ? `Select a recent revision for ${repoRelativeFilePath}`
-                    : `No recent file history found. Enter a revision for ${repoRelativeFilePath}`,
+                    ? vscode.l10n.t("Select a recent revision for {path}", {
+                          path: repoRelativeFilePath,
+                      })
+                    : vscode.l10n.t("No recent file history found. Enter a revision for {path}", {
+                          path: repoRelativeFilePath,
+                      }),
             ignoreFocusOut: true,
             matchOnDescription: true,
             matchOnDetail: true,
@@ -318,8 +330,10 @@ export async function compareEditorFileWithRevision(
         let refName = picked.refName;
         if (refName === MANUAL_SENTINEL) {
             const input = await vscode.window.showInputBox({
-                title: "Compare with Revision",
-                prompt: `Enter a commit hash, tag, or ref for ${repoRelativeFilePath}`,
+                title: vscode.l10n.t("Compare with Revision"),
+                prompt: vscode.l10n.t("Enter a commit hash, tag, or ref for {path}", {
+                    path: repoRelativeFilePath,
+                }),
                 placeHolder: "HEAD~1",
                 ignoreFocusOut: true,
             });
@@ -330,7 +344,9 @@ export async function compareEditorFileWithRevision(
         await openDiffAgainstGitRef(fileUri, repoRelativeFilePath, refName, "revision", gitOps);
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showErrorMessage(`Compare with revision failed: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with revision failed: {message}", { message }),
+        );
     }
 }
 
@@ -347,7 +363,9 @@ export async function compareCommitInfoFileWithLocal(
         await openDiffAgainstGitRef(fileUri, safePath, fileCtx.commitHash, "revision", gitOps);
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showErrorMessage(`Compare with local failed: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Compare with local failed: {message}", { message }),
+        );
     }
 }
 
@@ -362,42 +380,41 @@ export async function applySelectedCommitFileChange(
 
     const short = fileCtx.commitShortHash || fileCtx.commitHash.slice(0, 8);
     const labels = COMMIT_FILE_CHANGE_MODE_LABELS[mode];
+    const confirmLabel = labels.confirmLabel();
 
     const confirmed = await vscode.window.showWarningMessage(
         labels.confirmPrompt(short, fileCtx.filePath),
         { modal: true },
-        labels.confirmLabel,
+        confirmLabel,
     );
-    if (confirmed !== labels.confirmLabel) return;
+    if (confirmed !== confirmLabel) return;
 
     try {
         const patchText = await buildCommitFilePatch(
             fileCtx.commitHash,
             fileCtx.filePath,
-            labels.actionTitle,
+            labels.actionTitle(),
             executor,
         );
         if (patchText === null) return; // merge parent selection cancelled
         if (!patchText.trim()) {
             vscode.window.showInformationMessage(
-                `No file-level patch found for ${fileCtx.filePath} in ${short}.`,
+                vscode.l10n.t("No file-level patch found for {path} in {short}.", {
+                    path: fileCtx.filePath,
+                    short,
+                }),
             );
             return;
         }
 
-        await runWithNotificationProgress(
-            `${labels.progressVerb} selected change for ${fileCtx.filePath}...`,
-            async () => {
-                await applyPatchTextToRepo(patchText, mode === "revert", executor);
-            },
-        );
+        await runWithNotificationProgress(labels.progressMessage(fileCtx.filePath), async () => {
+            await applyPatchTextToRepo(patchText, mode === "revert", executor);
+        });
 
-        vscode.window.showInformationMessage(
-            `${labels.successVerb} selected change from ${short} for ${fileCtx.filePath}.`,
-        );
+        vscode.window.showInformationMessage(labels.successMessage(short, fileCtx.filePath));
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showErrorMessage(`${labels.errorLabel} failed: ${message}`);
+        vscode.window.showErrorMessage(labels.errorMessage(message));
     } finally {
         await refreshConflictUi().catch(() => {});
     }
@@ -405,21 +422,39 @@ export async function applySelectedCommitFileChange(
 
 const COMMIT_FILE_CHANGE_MODE_LABELS = {
     "cherry-pick": {
-        actionTitle: "Cherry-pick Selected Change",
-        confirmLabel: "Apply Change",
+        actionTitle: () => vscode.l10n.t("Cherry-pick Selected Change"),
+        confirmLabel: () => vscode.l10n.t("Apply Change"),
         confirmPrompt: (short: string, filePath: string) =>
-            `Apply the change from ${short} for ${filePath} to your working tree and stage it?`,
-        progressVerb: "Applying",
-        successVerb: "Applied",
-        errorLabel: "Cherry-pick selected change",
+            vscode.l10n.t(
+                "Apply the change from {short} for {path} to your working tree and stage it?",
+                { short, path: filePath },
+            ),
+        progressMessage: (filePath: string) =>
+            vscode.l10n.t("Applying selected change for {path}...", { path: filePath }),
+        successMessage: (short: string, filePath: string) =>
+            vscode.l10n.t("Applied selected change from {short} for {path}.", {
+                short,
+                path: filePath,
+            }),
+        errorMessage: (message: string) =>
+            vscode.l10n.t("Cherry-pick selected change failed: {message}", { message }),
     },
     revert: {
-        actionTitle: "Revert Selected Change",
-        confirmLabel: "Revert Change",
+        actionTitle: () => vscode.l10n.t("Revert Selected Change"),
+        confirmLabel: () => vscode.l10n.t("Revert Change"),
         confirmPrompt: (short: string, filePath: string) =>
-            `Apply the inverse of the change from ${short} for ${filePath} to your working tree and stage it?`,
-        progressVerb: "Reverting",
-        successVerb: "Reverted",
-        errorLabel: "Revert selected change",
+            vscode.l10n.t(
+                "Apply the inverse of the change from {short} for {path} to your working tree and stage it?",
+                { short, path: filePath },
+            ),
+        progressMessage: (filePath: string) =>
+            vscode.l10n.t("Reverting selected change for {path}...", { path: filePath }),
+        successMessage: (short: string, filePath: string) =>
+            vscode.l10n.t("Reverted selected change from {short} for {path}.", {
+                short,
+                path: filePath,
+            }),
+        errorMessage: (message: string) =>
+            vscode.l10n.t("Revert selected change failed: {message}", { message }),
     },
 } as const;

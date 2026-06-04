@@ -116,7 +116,9 @@ async function initializeRepository(
 ): Promise<void> {
     const roots = workspaceRoots();
     if (roots.length === 0) {
-        vscode.window.showErrorMessage("Open a folder first to initialize a repository.");
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Open a folder first to initialize a repository."),
+        );
         return;
     }
 
@@ -130,7 +132,7 @@ async function initializeRepository(
                 description: root,
                 path: root,
             })),
-            { placeHolder: "Select a folder to initialize a Git repository" },
+            { placeHolder: vscode.l10n.t("Select a folder to initialize a Git repository") },
         );
         if (!picked) return;
         targetPath = picked.path;
@@ -140,7 +142,7 @@ async function initializeRepository(
         await vscode.window.withProgress(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: "Initializing Git repository...",
+                title: vscode.l10n.t("Initializing Git repository..."),
                 cancellable: false,
             },
             async () => {
@@ -154,15 +156,17 @@ async function initializeRepository(
             if (options.onInitialized) {
                 await options.onInitialized(newRepos);
             }
-            vscode.window.showInformationMessage("Repository initialized.");
+            vscode.window.showInformationMessage(vscode.l10n.t("Repository initialized."));
         } else {
             vscode.window.showErrorMessage(
-                "Failed to initialize repository. Check folder permissions.",
+                vscode.l10n.t("Failed to initialize repository. Check folder permissions."),
             );
         }
     } catch (err) {
         const message = getErrorMessage(err);
-        vscode.window.showErrorMessage(`Failed to initialize repository: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Failed to initialize repository: {message}", { message }),
+        );
     }
 }
 
@@ -193,15 +197,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.viewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "IntelliGit"),
+                new OnboardingViewProvider(
+                    context.extensionUri,
+                    "no-workspace",
+                    vscode.l10n.t("IntelliGit"),
+                ),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitGraphViewProvider.sidebarViewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Graph", false),
+                new OnboardingViewProvider(
+                    context.extensionUri,
+                    "no-workspace",
+                    vscode.l10n.t("Graph"),
+                    false,
+                ),
             ),
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
-                new OnboardingViewProvider(context.extensionUri, "no-workspace", "Commit"),
+                new OnboardingViewProvider(
+                    context.extensionUri,
+                    "no-workspace",
+                    vscode.l10n.t("Commit"),
+                ),
             ),
         );
         return;
@@ -221,13 +238,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             treeDataProvider: emptyTreeProvider,
         });
         const commitGraphProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "IntelliGit"),
+            new OnboardingViewProvider(
+                context.extensionUri,
+                "no-git-repo",
+                vscode.l10n.t("IntelliGit"),
+            ),
         );
         const sidebarGraphProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Graph", false),
+            new OnboardingViewProvider(
+                context.extensionUri,
+                "no-git-repo",
+                vscode.l10n.t("Graph"),
+                false,
+            ),
         );
         const commitPanelProvider = new SwitchableWebviewViewProvider(
-            new OnboardingViewProvider(context.extensionUri, "no-git-repo", "Commit"),
+            new OnboardingViewProvider(
+                context.extensionUri,
+                "no-git-repo",
+                vscode.l10n.t("Commit"),
+            ),
         );
 
         const registerNoRepositoryDisposable = (disposable: vscode.Disposable): void => {
@@ -272,7 +302,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     return;
                 }
                 await activateDiscoveredRepositories(repositories);
-                vscode.window.showInformationMessage("Git repositories found.");
+                vscode.window.showInformationMessage(vscode.l10n.t("Git repositories found."));
             }),
         );
         registerNoRepositoryDisposable(
@@ -349,7 +379,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
         const sidebarGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, {
             scriptFile: "webview-compactcommitgraph.js",
-            title: "Graph",
+            title: vscode.l10n.t("Graph"),
         });
         const commitInfo = new CommitInfoViewProvider(context.extensionUri);
         const commitPanel = new CommitPanelViewProvider(
@@ -378,7 +408,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             fileCountBadgeView.badge =
                 count > 0
                     ? {
-                          tooltip: `${count} changed file${count !== 1 ? "s" : ""}`,
+                          tooltip:
+                              count === 1
+                                  ? vscode.l10n.t("{count} changed file", { count })
+                                  : vscode.l10n.t("{count} changed files", { count }),
                           value: count,
                       }
                     : undefined;
@@ -463,7 +496,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             } catch (error) {
                 const message = getErrorMessage(error);
                 vscode.window.showWarningMessage(
-                    `VS Code merge editor command failed (${message}). Opening the file instead.`,
+                    vscode.l10n.t(
+                        "VS Code merge editor command failed ({message}). Opening the file instead.",
+                        { message },
+                    ),
                 );
                 await vscode.commands.executeCommand("vscode.open", fileUri);
             }
@@ -528,7 +564,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         undocked?.setCommitDetail(detail);
                     } catch (err) {
                         const msg = getErrorMessage(err);
-                        vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Failed to load commit: {message}", { message: msg }),
+                        );
                     }
                 }),
                 undocked.onBranchAction(({ action, branchName }) => {
@@ -550,7 +588,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     } catch (error) {
                         const message = getErrorMessage(error);
                         console.error(`Commit action '${action}' failed:`, error);
-                        vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Commit action failed: {message}", { message }),
+                        );
                     }
                 }),
                 undocked.onOpenCommitFileDiff(handleOpenCommitFileDiff),
@@ -597,7 +637,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             } catch (error) {
                 const message = getErrorMessage(error);
                 vscode.window.showWarningMessage(
-                    `Unable to move IntelliGit to a new window automatically: ${message}`,
+                    vscode.l10n.t(
+                        "Unable to move IntelliGit to a new window automatically: {message}",
+                        { message },
+                    ),
                 );
             }
         };
@@ -628,18 +671,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const picked = await vscode.window.showQuickPick(
                 [
                     {
-                        label: "Undock in Editor Tab",
-                        description: "Open the unified IntelliGit view as an editor tab",
+                        label: vscode.l10n.t("Undock in Editor Tab"),
+                        description: vscode.l10n.t(
+                            "Open the unified IntelliGit view as an editor tab",
+                        ),
                         target: "editorTab" as const,
                     },
                     {
-                        label: "Undock in New Window",
-                        description:
+                        label: vscode.l10n.t("Undock in New Window"),
+                        description: vscode.l10n.t(
                             "Open the unified IntelliGit view and move it to a floating window",
+                        ),
                         target: "newWindow" as const,
                     },
                 ],
-                { placeHolder: "Choose how to undock IntelliGit" },
+                { placeHolder: vscode.l10n.t("Choose how to undock IntelliGit") },
             );
             if (!picked) return;
             await openUndockedIntelliGit(picked.target);
@@ -711,7 +757,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     commitInfo.setCommitDetail(detail);
                 } catch (err) {
                     const msg = getErrorMessage(err);
-                    vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Failed to load commit: {message}", { message: msg }),
+                    );
                 }
             }),
             sidebarGraph.onCommitSelected(async (hash) => {
@@ -725,7 +773,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     commitInfo.setCommitDetail(detail);
                 } catch (err) {
                     const msg = getErrorMessage(err);
-                    vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Failed to load commit: {message}", { message: msg }),
+                    );
                 }
             }),
             commitPanel.onCommitSelected(async (hash) => {
@@ -739,7 +789,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     commitInfo.setCommitDetail(detail);
                 } catch (err) {
                     const msg = getErrorMessage(err);
-                    vscode.window.showErrorMessage(`Failed to load commit: ${msg}`);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Failed to load commit: {message}", { message: msg }),
+                    );
                 }
             }),
         );
@@ -802,7 +854,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error(`Commit action '${action}' failed:`, error);
-                    vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Commit action failed: {message}", { message }),
+                    );
                 }
             }),
             sidebarGraph.onCommitAction(async ({ action, hash }) => {
@@ -819,7 +873,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error(`Commit action '${action}' failed:`, error);
-                    vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Commit action failed: {message}", { message }),
+                    );
                 }
             }),
             commitPanel.onCommitAction(async ({ action, hash }) => {
@@ -836,7 +892,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error(`Commit action '${action}' failed:`, error);
-                    vscode.window.showErrorMessage(`Commit action failed: ${message}`);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Commit action failed: {message}", { message }),
+                    );
                 }
             }),
         );
@@ -855,7 +913,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 );
             } catch (error) {
                 const message = getErrorMessage(error);
-                vscode.window.showErrorMessage(`Failed to open commit diff: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Failed to open commit diff: {message}", { message }),
+                );
             }
         };
 
@@ -886,14 +946,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 const hasCommits = await gitOps.hasAnyCommits();
                 if (!hasCommits) {
                     vscode.window.showWarningMessage(
-                        "Create a commit before publishing this branch.",
+                        vscode.l10n.t("Create a commit before publishing this branch."),
                     );
                     return;
                 }
                 const branches = await gitOps.getBranches();
                 const currentBranch = branches.find((b) => b.isCurrent);
                 if (!currentBranch) {
-                    vscode.window.showErrorMessage("No current branch found.");
+                    vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
                     return;
                 }
                 await runPublishBranchFlow(gitOps, currentBranch.name, repoRoot, context.secrets);
@@ -911,7 +971,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         description: repo.root === repoRoot ? "Active" : repo.root,
                         repository: repo,
                     })),
-                    { placeHolder: "Select IntelliGit repository" },
+                    { placeHolder: vscode.l10n.t("Select IntelliGit repository") },
                 );
                 if (!picked) return;
                 await setActiveRepository(picked.repository);
@@ -995,7 +1055,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
                 const conflicts = await gitOps.getConflictFilesDetailed();
                 if (conflicts.length === 0) {
-                    vscode.window.showInformationMessage("No unresolved merge conflicts found.");
+                    vscode.window.showInformationMessage(
+                        vscode.l10n.t("No unresolved merge conflicts found."),
+                    );
                     return;
                 }
                 await openConflictSession();
@@ -1024,16 +1086,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     if (!filePath) return;
                     try {
                         await runWithNotificationProgress(
-                            `Accepting yours for ${filePath}...`,
+                            vscode.l10n.t("Accepting yours for {path}...", { path: filePath }),
                             async () => {
                                 await gitOps.acceptConflictSide(filePath, "ours");
                             },
                         );
-                        vscode.window.showInformationMessage(`Accepted yours for ${filePath}`);
+                        vscode.window.showInformationMessage(
+                            vscode.l10n.t("Accepted yours for {path}", { path: filePath }),
+                        );
                         await refreshService.refreshConflictUi();
                     } catch (error) {
                         const message = getErrorMessage(error);
-                        vscode.window.showErrorMessage(`Accept yours failed: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Accept yours failed: {message}", { message }),
+                        );
                     }
                 },
             ),
@@ -1044,16 +1110,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     if (!filePath) return;
                     try {
                         await runWithNotificationProgress(
-                            `Accepting theirs for ${filePath}...`,
+                            vscode.l10n.t("Accepting theirs for {path}...", { path: filePath }),
                             async () => {
                                 await gitOps.acceptConflictSide(filePath, "theirs");
                             },
                         );
-                        vscode.window.showInformationMessage(`Accepted theirs for ${filePath}`);
+                        vscode.window.showInformationMessage(
+                            vscode.l10n.t("Accepted theirs for {path}", { path: filePath }),
+                        );
                         await refreshService.refreshConflictUi();
                     } catch (error) {
                         const message = getErrorMessage(error);
-                        vscode.window.showErrorMessage(`Accept theirs failed: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Accept theirs failed: {message}", { message }),
+                        );
                     }
                 },
             ),
@@ -1113,18 +1183,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     if (!ctx?.filePath) return;
                     try {
                         const safePath = assertRepoRelativePath(ctx.filePath);
+                        const rollbackAction = vscode.l10n.t("Rollback");
                         const confirm = await vscode.window.showWarningMessage(
-                            `Rollback ${safePath}?`,
+                            vscode.l10n.t("Rollback {path}?", { path: safePath }),
                             { modal: true },
-                            "Rollback",
+                            rollbackAction,
                         );
-                        if (confirm !== "Rollback") return;
+                        if (confirm !== rollbackAction) return;
                         await gitOps.rollbackFiles([safePath]);
-                        vscode.window.showInformationMessage("Changes rolled back.");
+                        vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
                     } catch (error) {
                         const message = getErrorMessage(error);
                         console.error("Failed to rollback file:", error);
-                        vscode.window.showErrorMessage(`Rollback failed: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Rollback failed: {message}", { message }),
+                        );
                     } finally {
                         await refreshService.refreshCommitPanels();
                     }
@@ -1146,12 +1219,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     if (!ctx?.filePath) return;
                     try {
                         const safePath = assertRepoRelativePath(ctx.filePath);
+                        const deleteAction = vscode.l10n.t("Delete");
                         const confirm = await vscode.window.showWarningMessage(
-                            `Delete ${safePath}?`,
+                            vscode.l10n.t("Delete {path}?", { path: safePath }),
                             { modal: true },
-                            "Delete",
+                            deleteAction,
                         );
-                        if (confirm !== "Delete") return;
+                        if (confirm !== deleteAction) return;
 
                         const deleted = await deleteFileWithFallback(
                             gitOps,
@@ -1159,12 +1233,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                             safePath,
                         );
                         if (deleted) {
-                            vscode.window.showInformationMessage(`Deleted ${safePath}`);
+                            vscode.window.showInformationMessage(
+                                vscode.l10n.t("Deleted {path}", { path: safePath }),
+                            );
                         }
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);
                         vscode.window.showErrorMessage(
-                            `Delete failed for '${ctx.filePath}': ${message}`,
+                            vscode.l10n.t("Delete failed for '{path}': {message}", {
+                                path: ctx.filePath,
+                                message,
+                            }),
                         );
                     } finally {
                         await refreshService.refreshCommitPanels();
@@ -1178,11 +1257,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                     try {
                         const safePath = assertRepoRelativePath(ctx.filePath);
                         await gitOps.shelveSave([safePath]);
-                        vscode.window.showInformationMessage(`Shelved ${safePath}.`);
+                        vscode.window.showInformationMessage(
+                            vscode.l10n.t("Shelved {path}.", { path: safePath }),
+                        );
                     } catch (error) {
                         const message = getErrorMessage(error);
                         console.error("Failed to shelve file:", error);
-                        vscode.window.showErrorMessage(`Shelve failed: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Shelve failed: {message}", { message }),
+                        );
                     } finally {
                         await refreshService.refreshCommitPanels();
                     }
@@ -1196,14 +1279,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         const safePath = assertRepoRelativePath(ctx.filePath);
                         const history = await gitOps.getFileHistory(safePath);
                         const doc = await vscode.workspace.openTextDocument({
-                            content: history || "No history found.",
+                            content: history || vscode.l10n.t("No history found."),
                             language: "git-commit",
                         });
                         await vscode.window.showTextDocument(doc, { preview: true });
                     } catch (error) {
                         const message = getErrorMessage(error);
                         console.error("Failed to load file history:", error);
-                        vscode.window.showErrorMessage(`Show history failed: ${message}`);
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Show history failed: {message}", { message }),
+                        );
                     }
                 },
             ),

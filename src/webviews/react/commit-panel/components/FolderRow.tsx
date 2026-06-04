@@ -10,6 +10,7 @@ import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "./TreeIcons";
 import { resolveFolderIcon } from "../../shared/utils";
 import { ChevronIcon } from "../../shared/components";
+import { t } from "../../shared/i18n";
 
 interface Props {
     name: string;
@@ -89,7 +90,7 @@ function FolderRowInner({
                 fontSize="11px"
                 color="var(--intelligit-pycharm-muted)"
             >
-                {fileCount} {fileCount === 1 ? "file" : "files"}
+                {t("common.fileCount", { count: fileCount })}
             </Box>
         </Flex>
     );

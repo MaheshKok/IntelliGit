@@ -9,6 +9,7 @@ import { FileRow } from "./FileRow";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import type { TreeEntry } from "../types";
+import { t } from "../../shared/i18n";
 
 interface Props {
     files: WorkingFile[];
@@ -125,7 +126,7 @@ export function FileTree({
                 p="8px 12px"
                 textAlign="center"
             >
-                No changes
+                {t("commitPanel.noChanges")}
             </Box>
         );
     }
@@ -135,7 +136,7 @@ export function FileTree({
             {tracked.length > 0 && (
                 <>
                     <SectionHeader
-                        label="Changes"
+                        label={t("commitPanel.changes")}
                         count={trackedUniqueCount}
                         isOpen={changesOpen}
                         isAllChecked={isAllChecked(tracked)}
@@ -166,7 +167,7 @@ export function FileTree({
             {unversioned.length > 0 && (
                 <>
                     <SectionHeader
-                        label="Unversioned Files"
+                        label={t("commitPanel.unversionedFiles")}
                         count={unversionedUniqueCount}
                         isOpen={unversionedOpen}
                         isAllChecked={isAllChecked(unversioned)}

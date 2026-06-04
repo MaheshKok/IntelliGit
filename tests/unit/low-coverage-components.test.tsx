@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import React, { act, useRef } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch, Commit } from "../../src/types";
 import { BranchColumn } from "../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../src/webviews/react/CommitList";
@@ -9,6 +9,7 @@ import { CommitRow } from "../../src/webviews/react/commit-list/CommitRow";
 import { useDragResize } from "../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
 import { flush, initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
+import { installWebviewI18n } from "./utils/webviewI18nTestUtils";
 
 const mockVscodeApi = vi.hoisted(() => ({
     postMessage: vi.fn(),
@@ -21,6 +22,10 @@ vi.mock("../../src/webviews/react/shared/vscodeApi", () => ({
 }));
 
 initReactDomTestEnvironment();
+
+beforeEach(() => {
+    installWebviewI18n();
+});
 
 describe("low coverage components", () => {
     it("useDragResize updates and clamps height", () => {

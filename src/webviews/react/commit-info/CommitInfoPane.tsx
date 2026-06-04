@@ -10,6 +10,7 @@ import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
 import { ChevronIcon } from "../shared/components/Icons";
 import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
 import { JETBRAINS_UI } from "../shared/tokens";
+import { t } from "../shared/i18n";
 import {
     buildFileTree,
     collectDirPaths,
@@ -114,7 +115,7 @@ export function CommitInfoPane({
                 h="100%"
                 overflow="auto"
             >
-                No commit selected
+                {t("commitInfo.noSelection")}
             </Box>
         );
     }
@@ -149,7 +150,7 @@ export function CommitInfoPane({
                     }
                 }}
             >
-                <ChevronIcon expanded={!filesCollapsed} /> Changed Files
+                <ChevronIcon expanded={!filesCollapsed} /> {t("commitInfo.changedFiles")}
             </Box>
             {!filesCollapsed && (
                 <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
@@ -228,7 +229,7 @@ export function CommitInfoPane({
                         }
                     }}
                 >
-                    <ChevronIcon expanded={!detailCollapsed} /> Commit Details
+                    <ChevronIcon expanded={!detailCollapsed} /> {t("commitInfo.details")}
                 </Box>
                 {!detailCollapsed && (
                     <Box px="12px" py="6px" overflowY="auto" h={`calc(100% - 28px)`}>
@@ -258,14 +259,17 @@ export function CommitInfoPane({
                             >
                                 {detail.shortHash}
                             </span>{" "}
-                            by {detail.author}
+                            {t("commitInfo.byAuthor", { author: detail.author })}
                         </Box>
                         <Box
                             color="var(--vscode-descriptionForeground)"
                             fontSize="12px"
                             lineHeight="1.5"
                         >
-                            {detail.email} on {formatDateTime(detail.date)}
+                            {t("commitInfo.emailOnDate", {
+                                email: detail.email,
+                                date: formatDateTime(detail.date),
+                            })}
                         </Box>
                         {(branchRefs.length > 0 || tagRefs.length > 0) && (
                             <Box mt="14px">
@@ -277,7 +281,7 @@ export function CommitInfoPane({
                                             mb="4px"
                                             opacity={0.85}
                                         >
-                                            Branches
+                                            {t("common.branches")}
                                         </Box>
                                         <Flex direction="column" gap="3px">
                                             {branchRefs.map((ref) => (
@@ -294,7 +298,7 @@ export function CommitInfoPane({
                                             mb="4px"
                                             opacity={0.85}
                                         >
-                                            Tags
+                                            {t("common.tags")}
                                         </Box>
                                         <Flex direction="column" gap="3px">
                                             {tagRefs.map((tag) => (
@@ -315,7 +319,7 @@ export function CommitInfoPane({
                             lineHeight="1.5"
                             mt="4px"
                         >
-                            {detail.files.length} file{detail.files.length !== 1 ? "s" : ""} changed
+                            {t("commitInfo.filesChanged", { count: detail.files.length })}
                         </Box>
                     </Box>
                 )}
@@ -454,7 +458,7 @@ function CommitFolderRow({
                 {folder.name}
             </Box>
             <Box as="span" ml="auto" fontSize="11px" color="var(--vscode-descriptionForeground)">
-                {fileCount} file{fileCount !== 1 ? "s" : ""}
+                {t("common.fileCount", { count: fileCount })}
             </Box>
         </Flex>
     );

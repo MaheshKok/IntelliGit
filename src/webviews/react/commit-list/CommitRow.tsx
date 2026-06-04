@@ -8,6 +8,7 @@ import { splitCommitRefs } from "../shared/utils";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 import { getSettings } from "../shared/settings";
+import { t } from "../shared/i18n";
 
 interface Props {
     commit: Commit;
@@ -113,8 +114,12 @@ function CommitMessageCell({
     const visibleTagRefs = tagRefs.slice(0, 2);
     const hiddenTagCount = Math.max(0, tagRefs.length - visibleTagRefs.length);
     const refSummaryLines: string[] = [];
-    if (branchRefs.length > 0) refSummaryLines.push(`Branches: ${branchRefs.join(" • ")}`);
-    if (tagRefs.length > 0) refSummaryLines.push(`Tags: ${tagRefs.join(" • ")}`);
+    if (branchRefs.length > 0) {
+        refSummaryLines.push(t("commit.tooltip.branchesList", { refs: branchRefs.join(" • ") }));
+    }
+    if (tagRefs.length > 0) {
+        refSummaryLines.push(t("commit.tooltip.tagsList", { refs: tagRefs.join(" • ") }));
+    }
     const tooltipText =
         refSummaryLines.length > 0 ? `${message}\n\n${refSummaryLines.join("\n")}` : message;
 
@@ -193,7 +198,7 @@ function CommitMessageCell({
                         opacity: 0.85,
                         color: "var(--vscode-charts-blue, #6eb3ff)",
                     }}
-                    title={`${branchRefsCount} branch label${branchRefsCount === 1 ? "" : "s"}`}
+                    title={t("commit.tooltip.branchLabels", { count: branchRefsCount })}
                 >
                     <RefTypeIcon kind="branch" size={12} />
                     {branchRefsCount}
@@ -215,7 +220,7 @@ function CommitMessageCell({
                         fontSize: "10px",
                         opacity: 0.75,
                     }}
-                    title={`${hiddenTagCount} more tag${hiddenTagCount === 1 ? "" : "s"}`}
+                    title={t("commit.tooltip.moreTags", { count: hiddenTagCount })}
                 >
                     <RefTypeIcon kind="tag" size={11} tagColor={REF_BADGE_COLORS.tag.bg} />
                     {`+${hiddenTagCount}`}
@@ -272,7 +277,7 @@ function CommitMessageCell({
                                                 marginBottom: 5,
                                             }}
                                         >
-                                            Branches
+                                            {t("common.branches")}
                                         </span>
                                         <span
                                             style={{
@@ -302,7 +307,7 @@ function CommitMessageCell({
                                                 marginBottom: 5,
                                             }}
                                         >
-                                            Tags
+                                            {t("common.tags")}
                                         </span>
                                         <span
                                             style={{

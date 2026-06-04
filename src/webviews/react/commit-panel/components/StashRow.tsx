@@ -6,6 +6,7 @@ import { Flex, Box, Button, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
 import type { StashEntry } from "../../../../types";
 import { formatDateTime } from "../../shared/date";
+import { t } from "../../shared/i18n";
 
 interface Props {
     stash: StashEntry;
@@ -39,13 +40,13 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                 {formatDateTime(stash.date)}
             </Box>
             <Tooltip
-                label="Apply"
+                label={t("common.apply")}
                 fontSize="11px"
                 openDelay={hoverDelay}
                 isDisabled={!tooltipsEnabled}
             >
                 <Button
-                    aria-label="Apply"
+                    aria-label={t("common.apply")}
                     variant="toolbarGhost"
                     size="xs"
                     onClick={() => onApply(stash.index)}
@@ -61,17 +62,17 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     h="18px"
                     px="6px"
                 >
-                    Apply
+                    {t("common.apply")}
                 </Button>
             </Tooltip>
             <Tooltip
-                label="Pop (apply and remove)"
+                label={t("shelf.action.popDescription")}
                 fontSize="11px"
                 openDelay={hoverDelay}
                 isDisabled={!tooltipsEnabled}
             >
                 <Button
-                    aria-label="Pop"
+                    aria-label={t("common.pop")}
                     variant="toolbarGhost"
                     size="xs"
                     onClick={() => onPop(stash.index)}
@@ -88,17 +89,17 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     h="18px"
                     px="6px"
                 >
-                    Pop
+                    {t("common.pop")}
                 </Button>
             </Tooltip>
             <Tooltip
-                label="Delete"
+                label={t("common.delete")}
                 fontSize="11px"
                 openDelay={hoverDelay}
                 isDisabled={!tooltipsEnabled}
             >
                 <Button
-                    aria-label="Delete"
+                    aria-label={t("common.delete")}
                     variant="toolbarGhost"
                     size="xs"
                     onClick={() => onDrop(stash.index)}
@@ -114,7 +115,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                     h="18px"
                     px="6px"
                 >
-                    Delete
+                    {t("common.delete")}
                 </Button>
             </Tooltip>
         </Flex>

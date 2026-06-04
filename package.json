@@ -1,8 +1,8 @@
 {
     "name": "intelligit",
     "displayName": "IntelliGit",
-    "description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
-    "version": "0.8.18",
+    "description": "%extension.description%",
+    "version": "0.9.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -53,19 +53,20 @@
         "onCommand:intelligit.publishBranch"
     ],
     "main": "./dist/extension.js",
+    "l10n": "./l10n",
     "contributes": {
         "viewsContainers": {
             "activitybar": [
                 {
                     "id": "intelligit",
-                    "title": "IntelliGit",
+                    "title": "%intelligit%",
                     "icon": "media/intelligit.svg"
                 }
             ],
             "panel": [
                 {
                     "id": "intelligitPanel",
-                    "title": "IntelliGit",
+                    "title": "%intelligit%",
                     "icon": "media/intelligit.svg"
                 }
             ]
@@ -74,29 +75,29 @@
             "intelligit": [
                 {
                     "id": "intelligit.commitPanel",
-                    "name": "Commit",
+                    "name": "%view.commit%",
                     "type": "webview"
                 },
                 {
                     "id": "intelligit.sidebarGraph",
-                    "name": "Graph",
+                    "name": "%view.graph%",
                     "type": "webview"
                 },
                 {
                     "id": "intelligit.mergeConflicts",
-                    "name": "Merge Conflicts",
+                    "name": "%view.mergeConflicts%",
                     "when": "intelligit.hasMergeConflicts"
                 },
                 {
                     "id": "intelligit.fileCountBadge",
-                    "name": "Changed Files",
+                    "name": "%view.fileCountBadge%",
                     "visibility": "hidden"
                 }
             ],
             "intelligitPanel": [
                 {
                     "id": "intelligit.commitGraph",
-                    "name": "IntelliGit",
+                    "name": "%intelligit%",
                     "type": "webview"
                 }
             ]
@@ -104,229 +105,229 @@
         "commands": [
             {
                 "command": "intelligit.showGitLog",
-                "title": "Show Git Log",
-                "category": "IntelliGit",
+                "title": "%command.showGitLog%",
+                "category": "%intelligit%",
                 "icon": "$(git-commit)"
             },
             {
                 "command": "intelligit.openUndocked",
-                "title": "Undock...",
-                "category": "IntelliGit",
+                "title": "%command.undock%",
+                "category": "%intelligit%",
                 "icon": "$(multiple-windows)"
             },
             {
                 "command": "intelligit.dockWindow",
-                "title": "Dock IntelliGit",
-                "category": "IntelliGit",
+                "title": "%command.dockIntelliGit%",
+                "category": "%intelligit%",
                 "icon": "$(layout-sidebar-left)"
             },
             {
                 "command": "intelligit.refresh",
-                "title": "Refresh",
-                "category": "IntelliGit",
+                "title": "%command.refresh%",
+                "category": "%intelligit%",
                 "icon": "$(refresh)"
             },
             {
                 "command": "intelligit.filterByBranch",
-                "title": "Filter by Branch",
-                "category": "IntelliGit"
+                "title": "%command.filterByBranch%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.selectRepository",
-                "title": "Select Repository",
-                "category": "IntelliGit",
+                "title": "%command.selectRepository%",
+                "category": "%intelligit%",
                 "icon": "$(repo)"
             },
             {
                 "command": "intelligit.checkout",
-                "title": "Checkout",
-                "category": "IntelliGit"
+                "title": "%command.checkout%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.newBranchFrom",
-                "title": "New Branch from...",
-                "category": "IntelliGit"
+                "title": "%command.newBranchFrom%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.checkoutAndRebase",
-                "title": "Checkout and Rebase onto Current",
-                "category": "IntelliGit"
+                "title": "%command.checkoutAndRebaseOntoCurrent%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.rebaseCurrentOnto",
-                "title": "Rebase Current onto Selected",
-                "category": "IntelliGit"
+                "title": "%command.rebaseCurrentOntoSelected%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.mergeIntoCurrent",
-                "title": "Merge into Current",
-                "category": "IntelliGit"
+                "title": "%command.mergeIntoCurrent%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.updateBranch",
-                "title": "Update",
-                "category": "IntelliGit"
+                "title": "%command.update%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.pushBranch",
-                "title": "Push",
-                "category": "IntelliGit"
+                "title": "%command.push%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.renameBranch",
-                "title": "Rename...",
-                "category": "IntelliGit"
+                "title": "%command.rename%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.deleteBranch",
-                "title": "Delete",
-                "category": "IntelliGit"
+                "title": "%command.delete%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.fileRollback",
-                "title": "Rollback",
-                "category": "IntelliGit"
+                "title": "%command.rollback%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.fileJumpToSource",
-                "title": "Jump to Source",
-                "category": "IntelliGit"
+                "title": "%command.jumpToSource%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.fileDelete",
-                "title": "Delete",
-                "category": "IntelliGit"
+                "title": "%command.delete%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.fileShelve",
-                "title": "Shelve Changes",
-                "category": "IntelliGit"
+                "title": "%command.shelveChanges%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.fileShowHistory",
-                "title": "Show History",
-                "category": "IntelliGit"
+                "title": "%command.showHistory%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.compareWithRevision",
-                "title": "Compare with Revision",
-                "category": "IntelliGit",
+                "title": "%command.compareWithRevision%",
+                "category": "%intelligit%",
                 "icon": "$(git-commit)"
             },
             {
                 "command": "intelligit.compareWithBranch",
-                "title": "Compare with Branch",
-                "category": "IntelliGit",
+                "title": "%command.compareWithBranch%",
+                "category": "%intelligit%",
                 "icon": "$(git-branch)"
             },
             {
                 "command": "intelligit.commitFileCompareWithLocal",
-                "title": "Compare with Local",
-                "category": "IntelliGit",
+                "title": "%command.compareWithLocal%",
+                "category": "%intelligit%",
                 "icon": "$(diff)"
             },
             {
                 "command": "intelligit.commitFileCherryPickChange",
-                "title": "Cherry-pick Selected Change",
-                "category": "IntelliGit",
+                "title": "%command.cherryPickSelectedChange%",
+                "category": "%intelligit%",
                 "icon": "$(git-commit)"
             },
             {
                 "command": "intelligit.commitFileRevertChange",
-                "title": "Revert Selected Change",
-                "category": "IntelliGit",
+                "title": "%command.revertSelectedChange%",
+                "category": "%intelligit%",
                 "icon": "$(discard)"
             },
             {
                 "command": "intelligit.fileRefresh",
-                "title": "Refresh",
-                "category": "IntelliGit",
+                "title": "%command.refresh%",
+                "category": "%intelligit%",
                 "icon": "$(refresh)"
             },
             {
                 "command": "intelligit.fileRefreshing",
-                "title": "Refreshing...",
-                "category": "IntelliGit",
+                "title": "%command.refreshing%",
+                "category": "%intelligit%",
                 "icon": "$(sync~spin)",
                 "enablement": "false"
             },
             {
                 "command": "intelligit.openMergeConflict",
-                "title": "Open Merge Conflict",
-                "category": "IntelliGit",
+                "title": "%command.openMergeConflict%",
+                "category": "%intelligit%",
                 "icon": "$(go-to-file)"
             },
             {
                 "command": "intelligit.detectJetBrainsMergeTool",
-                "title": "Detect JetBrains Merge Tool",
-                "category": "IntelliGit",
+                "title": "%command.detectJetBrainsMergeTool%",
+                "category": "%intelligit%",
                 "icon": "$(search)"
             },
             {
                 "command": "intelligit.openMergeConflictInJetBrains",
-                "title": "Open in JetBrains Merge Tool",
-                "category": "IntelliGit",
+                "title": "%command.openInJetBrainsMergeTool%",
+                "category": "%intelligit%",
                 "icon": "$(link-external)"
             },
             {
                 "command": "intelligit.conflictAcceptYours",
-                "title": "Accept Yours",
-                "category": "IntelliGit",
+                "title": "%command.acceptYours%",
+                "category": "%intelligit%",
                 "icon": "$(arrow-left)"
             },
             {
                 "command": "intelligit.conflictAcceptTheirs",
-                "title": "Accept Theirs",
-                "category": "IntelliGit",
+                "title": "%command.acceptTheirs%",
+                "category": "%intelligit%",
                 "icon": "$(arrow-right)"
             },
             {
                 "command": "intelligit.mergeConflictsRefresh",
-                "title": "Refresh",
-                "category": "IntelliGit",
+                "title": "%command.refresh%",
+                "category": "%intelligit%",
                 "icon": "$(refresh)"
             },
             {
                 "command": "intelligit.openConflictSession",
-                "title": "Open Conflict Session",
-                "category": "IntelliGit",
+                "title": "%command.openConflictSession%",
+                "category": "%intelligit%",
                 "icon": "$(diff-multiple)"
             },
             {
                 "command": "intelligit.toggleUndocked",
-                "title": "Toggle Undocked Window",
-                "category": "IntelliGit",
+                "title": "%command.toggleUndockedWindow%",
+                "category": "%intelligit%",
                 "icon": "$(split-horizontal)"
             },
             {
                 "command": "intelligit.cloneRepository",
-                "title": "Clone Repository",
-                "category": "IntelliGit",
+                "title": "%command.cloneRepository%",
+                "category": "%intelligit%",
                 "icon": "$(repo-clone)"
             },
             {
                 "command": "intelligit.openFolder",
-                "title": "Open Folder",
-                "category": "IntelliGit",
+                "title": "%command.openFolder%",
+                "category": "%intelligit%",
                 "icon": "$(folder-opened)"
             },
             {
                 "command": "intelligit.initializeRepository",
-                "title": "Initialize Repository",
-                "category": "IntelliGit",
+                "title": "%command.initializeRepository%",
+                "category": "%intelligit%",
                 "icon": "$(new-folder)"
             },
             {
                 "command": "intelligit.publishBranch",
-                "title": "Publish Branch",
-                "category": "IntelliGit",
+                "title": "%command.publishBranch%",
+                "category": "%intelligit%",
                 "icon": "$(cloud-upload)"
             }
         ],
         "submenus": [
             {
                 "id": "intelligit.editorContext",
-                "label": "IntelliGit",
+                "label": "%intelligit%",
                 "icon": "$(git-branch)"
             }
         ],
@@ -447,17 +448,17 @@
                 },
                 {
                     "command": "intelligit.commitFileCompareWithLocal",
-                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",
+                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles' || webviewId == 'intelligit.undocked') && webviewSection == 'commitInfoFile'",
                     "group": "1_compare@1"
                 },
                 {
                     "command": "intelligit.commitFileCherryPickChange",
-                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",
+                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles' || webviewId == 'intelligit.undocked') && webviewSection == 'commitInfoFile'",
                     "group": "2_apply@1"
                 },
                 {
                     "command": "intelligit.commitFileRevertChange",
-                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles') && webviewSection == 'commitInfoFile'",
+                    "when": "(webviewId == 'intelligit.commitGraph' || webviewId == 'intelligit.commitFiles' || webviewId == 'intelligit.undocked') && webviewSection == 'commitInfoFile'",
                     "group": "2_apply@2"
                 }
             ]
@@ -470,27 +471,27 @@
             }
         ],
         "configuration": {
-            "title": "IntelliGit",
+            "title": "%intelligit%",
             "properties": {
                 "intelligit.jetbrainsMergeTool.path": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "JetBrains IDE binary path/command (`pycharm`, `idea`, `webstorm`) or a macOS `.app` bundle path. IntelliGit auto-resolves `.app` bundles to the executable inside `Contents/MacOS`."
+                    "markdownDescription": "%configuration.jetbrainsMergeTool.path.markdownDescription%"
                 },
                 "intelligit.jetbrainsMergeTool.preferExternal": {
                     "type": "boolean",
                     "default": true,
-                    "markdownDescription": "Prefer the external JetBrains merge tool when opening merge conflicts. Falls back to VS Code's internal merge editor if no JetBrains path is configured or launch fails."
+                    "markdownDescription": "%configuration.jetbrainsMergeTool.preferExternal.markdownDescription%"
                 },
                 "intelligit.tooltips.enabled": {
                     "type": "boolean",
                     "default": true,
-                    "markdownDescription": "Enable or disable tooltips inside the IntelliGit window (Commit Graph, Branch Column, etc.)."
+                    "markdownDescription": "%configuration.tooltips.enabled.markdownDescription%"
                 },
                 "intelligit.undockableWindow": {
                     "type": "boolean",
                     "default": false,
-                    "markdownDescription": "Open IntelliGit as a unified editor tab when Show Git Log is invoked, enabling native VS Code undocking to a second monitor."
+                    "markdownDescription": "%configuration.undockableWindow.markdownDescription%"
                 },
                 "intelligit.icons": {
                     "type": "string",
@@ -499,11 +500,11 @@
                         "standard"
                     ],
                     "enumDescriptions": [
-                        "Use IntelliGit's colored icons (default).",
-                        "Use VS Code's monochromatic icon style, consistent with built-in panels."
+                        "%configuration.icons.enum.color%",
+                        "%configuration.icons.enum.standard%"
                     ],
                     "default": "standard",
-                    "markdownDescription": "Icon style for the IntelliGit commit panel. `standard` uses VS Code's monochromatic icon foreground (default); `color` uses IntelliGit's coloured icons."
+                    "markdownDescription": "%configuration.icons.markdownDescription%"
                 },
                 "intelligit.commitWindowPosition": {
                     "type": "string",
@@ -513,12 +514,12 @@
                         "right"
                     ],
                     "enumDescriptions": [
-                        "Follow VS Code's `workbench.sideBar.location` setting (default).",
-                        "Place the commit panel on the left side of the undocked/tabbed window.",
-                        "Place the commit panel on the right side of the undocked/tabbed window."
+                        "%configuration.commitWindowPosition.enum.auto%",
+                        "%configuration.commitWindowPosition.enum.left%",
+                        "%configuration.commitWindowPosition.enum.right%"
                     ],
                     "default": "auto",
-                    "markdownDescription": "Position of the commit panel within the undocked/tabbed IntelliGit window. `auto` (default) follows VS Code's `workbench.sideBar.location`; `left` and `right` force a side."
+                    "markdownDescription": "%configuration.commitWindowPosition.markdownDescription%"
                 }
             }
         }
@@ -530,6 +531,11 @@
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
+        "l10n:sync": "bun scripts/localization-csv.js sync",
+        "l10n:translate": "bun scripts/localization-csv.js translate",
+        "l10n:validate": "bun scripts/localization-csv.js validate",
+        "l10n:import": "bun scripts/localization-csv.js import",
+        "l10n:audit": "bun scripts/audit-localization-strings.js",
         "lint": "eslint src",
         "typecheck:ext": "tsc -p tsconfig.json --noEmit",
         "typecheck:webview": "tsc -p tsconfig.webview.json --noEmit",
@@ -552,6 +558,7 @@
         "@typescript-eslint/eslint-plugin": "^8.59.4",
         "@typescript-eslint/parser": "^8.59.4",
         "@vitest/coverage-v8": "1.6.1",
+        "@vscode/l10n-dev": "^0.0.35",
         "@vscode/test-electron": "^2.3.9",
         "@vscode/vsce": "^2.22.0",
         "entities": "^6.0.1",

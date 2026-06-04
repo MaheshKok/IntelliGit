@@ -42,7 +42,9 @@ export async function handleCommitContextAction(params: {
     const validatedHash = hash.trim();
     if (!isValidGitHash(validatedHash)) {
         console.error("Blocked commit action due to invalid hash:", { action, hash });
-        vscode.window.showErrorMessage("Invalid commit hash received for commit action.");
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Invalid commit hash received for commit action."),
+        );
         return;
     }
     const short = validatedHash.slice(0, 8);
@@ -50,14 +52,16 @@ export async function handleCommitContextAction(params: {
     switch (action) {
         case "copyRevision": {
             await vscode.env.clipboard.writeText(validatedHash);
-            vscode.window.showInformationMessage(`Copied revision ${short}.`);
+            vscode.window.showInformationMessage(
+                vscode.l10n.t("Copied revision {short}.", { short }),
+            );
             return;
         }
         case "createPatch": {
             const defaultUri = vscode.Uri.file(path.join(repoRoot, `${short}.patch`));
             const targetUri = await vscode.window.showSaveDialog({
                 defaultUri,
-                filters: { Patch: ["patch", "diff"] },
+                filters: { [vscode.l10n.t("Patch")]: ["patch", "diff"] },
             });
             if (!targetUri) return;
             try {
@@ -69,23 +73,32 @@ export async function handleCommitContextAction(params: {
                 ]);
                 await vscode.workspace.fs.writeFile(targetUri, Buffer.from(patchText, "utf8"));
                 vscode.window.showInformationMessage(
-                    `Patch created: ${path.basename(targetUri.fsPath)}`,
+                    vscode.l10n.t("Patch created: {fileName}", {
+                        fileName: path.basename(targetUri.fsPath),
+                    }),
                 );
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Failed to create patch: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Failed to create patch: {message}", { message }),
+                );
             }
             return;
         }
         case "cherryPick": {
+            const cherryPickLabel = vscode.l10n.t("Cherry-pick");
             const confirm = await vscode.window.showWarningMessage(
-                `Cherry-pick commit ${short}?`,
+                vscode.l10n.t("Cherry-pick commit {short}?", { short }),
                 { modal: true },
-                "Cherry-pick",
+                cherryPickLabel,
             );
-            if (confirm !== "Cherry-pick") return;
+            if (confirm !== cherryPickLabel) return;
 
-            const mainlineParent = await pickMainlineParent(validatedHash, "Cherry-pick", executor);
+            const mainlineParent = await pickMainlineParent(
+                validatedHash,
+                cherryPickLabel,
+                executor,
+            );
             if (mainlineParent.kind === "cancelled") return;
             const args =
                 mainlineParent.kind === "notMerge"
@@ -93,59 +106,79 @@ export async function handleCommitContextAction(params: {
                     : ["cherry-pick", "-m", String(mainlineParent.parentNumber), validatedHash];
             try {
                 await executor.run(args);
-                vscode.window.showInformationMessage(`Cherry-picked ${short}.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Cherry-picked {short}.", { short }),
+                );
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Cherry-pick failed: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Cherry-pick failed: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
             return;
         }
         case "checkoutRevision": {
+            const checkoutLabel = vscode.l10n.t("Checkout");
             const confirm = await vscode.window.showWarningMessage(
-                `Checkout commit ${short}? This creates a detached HEAD state.`,
+                vscode.l10n.t("Checkout commit {short}? This creates a detached HEAD state.", {
+                    short,
+                }),
                 { modal: true },
-                "Checkout",
+                checkoutLabel,
             );
-            if (confirm !== "Checkout") return;
+            if (confirm !== checkoutLabel) return;
             try {
                 await executor.run(["checkout", validatedHash]);
-                vscode.window.showInformationMessage(`Checked out revision ${short}.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Checked out revision {short}.", { short }),
+                );
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Checkout failed: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Checkout failed: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
             return;
         }
         case "resetCurrentToHere": {
+            const resetLabel = vscode.l10n.t("Reset");
             const confirm = await vscode.window.showWarningMessage(
-                `Hard reset current branch to ${short}? This will reset the index and working tree and permanently discard any uncommitted changes.`,
+                vscode.l10n.t(
+                    "Hard reset current branch to {short}? This will reset the index and working tree and permanently discard any uncommitted changes.",
+                    { short },
+                ),
                 { modal: true },
-                "Reset",
+                resetLabel,
             );
-            if (confirm !== "Reset") return;
+            if (confirm !== resetLabel) return;
             try {
                 await executor.run(["reset", "--hard", validatedHash]);
-                vscode.window.showInformationMessage(`Reset current branch to ${short}.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Reset current branch to {short}.", { short }),
+                );
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Reset failed: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Reset failed: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
             return;
         }
         case "revertCommit": {
+            const revertLabel = vscode.l10n.t("Revert");
             const confirm = await vscode.window.showWarningMessage(
-                `Revert commit ${short}?`,
+                vscode.l10n.t("Revert commit {short}?", { short }),
                 { modal: true },
-                "Revert",
+                revertLabel,
             );
-            if (confirm !== "Revert") return;
-            const mainlineParent = await pickMainlineParent(validatedHash, "Revert", executor);
+            if (confirm !== revertLabel) return;
+            const mainlineParent = await pickMainlineParent(validatedHash, revertLabel, executor);
             if (mainlineParent.kind === "cancelled") return;
             const args =
                 mainlineParent.kind === "notMerge"
@@ -159,10 +192,12 @@ export async function handleCommitContextAction(params: {
                       ];
             try {
                 await executor.run(args);
-                vscode.window.showInformationMessage(`Reverted ${short}.`);
+                vscode.window.showInformationMessage(vscode.l10n.t("Reverted {short}.", { short }));
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Revert failed: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Revert failed: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
@@ -171,7 +206,7 @@ export async function handleCommitContextAction(params: {
         case "pushAllUpToHere": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Push All up to Here is available only for unpushed commits.",
+                    vscode.l10n.t("Push All up to Here is available only for unpushed commits."),
                 );
                 return;
             }
@@ -179,7 +214,9 @@ export async function handleCommitContextAction(params: {
             const checkedOutBranchName = await getCheckedOutBranchName(executor, currentBranches);
             if (!checkedOutBranchName) {
                 vscode.window.showErrorMessage(
-                    "Push All up to Here is only available when a local branch is checked out.",
+                    vscode.l10n.t(
+                        "Push All up to Here is only available when a local branch is checked out.",
+                    ),
                 );
                 return;
             }
@@ -188,7 +225,9 @@ export async function handleCommitContextAction(params: {
                 await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
             } catch {
                 vscode.window.showErrorMessage(
-                    `Commit ${short} is not in the current branch history.`,
+                    vscode.l10n.t("Commit {short} is not in the current branch history.", {
+                        short,
+                    }),
                 );
                 return;
             }
@@ -207,7 +246,9 @@ export async function handleCommitContextAction(params: {
             }
             if (!currentBranch) {
                 vscode.window.showErrorMessage(
-                    `Could not resolve branch metadata for '${checkedOutBranchName}'.`,
+                    vscode.l10n.t("Could not resolve branch metadata for '{branch}'.", {
+                        branch: checkedOutBranchName,
+                    }),
                 );
                 return;
             }
@@ -218,42 +259,63 @@ export async function handleCommitContextAction(params: {
                 const remote = await resolveRemoteName(currentBranch, executor);
                 if (!remote) {
                     vscode.window.showErrorMessage(
-                        `No remote configured for branch ${currentBranch.name}.`,
+                        vscode.l10n.t("No remote configured for branch {branch}.", {
+                            branch: currentBranch.name,
+                        }),
                     );
                     return;
                 }
 
+                const setUpstreamLabel = vscode.l10n.t("Set Upstream and Push");
                 const setUpstreamConfirm = await vscode.window.showWarningMessage(
-                    `Branch '${currentBranch.name}' has no upstream. Set upstream to '${remote}/${currentBranch.name}' and push commits up to ${short}?`,
+                    vscode.l10n.t(
+                        "Branch '{branch}' has no upstream. Set upstream to '{remote}/{remoteBranch}' and push commits up to {short}?",
+                        {
+                            branch: currentBranch.name,
+                            remote,
+                            remoteBranch: currentBranch.name,
+                            short,
+                        },
+                    ),
                     { modal: true },
-                    "Set Upstream and Push",
+                    setUpstreamLabel,
                 );
-                if (setUpstreamConfirm !== "Set Upstream and Push") return;
+                if (setUpstreamConfirm !== setUpstreamLabel) return;
 
                 target = { remote, remoteBranch: currentBranch.name };
                 setUpstream = true;
             }
 
+            const pushLabel = vscode.l10n.t("Push");
             const confirm = await vscode.window.showWarningMessage(
-                `Push all commits up to ${short} to ${target.remote}/${target.remoteBranch}?`,
+                vscode.l10n.t("Push all commits up to {short} to {remote}/{remoteBranch}?", {
+                    short,
+                    remote: target.remote,
+                    remoteBranch: target.remoteBranch,
+                }),
                 { modal: true },
-                "Push",
+                pushLabel,
             );
-            if (confirm !== "Push") return;
+            if (confirm !== pushLabel) return;
 
             try {
-                await runWithNotificationProgress(`Pushing commits up to ${short}...`, async () => {
-                    const destinationRef = `refs/heads/${target.remoteBranch}`;
-                    const refspec = `${validatedHash}:${destinationRef}`;
-                    await executor.run([
-                        "push",
-                        ...(setUpstream ? ["-u"] : []),
-                        target.remote,
-                        refspec,
-                    ]);
-                });
+                await runWithNotificationProgress(
+                    vscode.l10n.t("Pushing commits up to {short}...", { short }),
+                    async () => {
+                        const destinationRef = `refs/heads/${target.remoteBranch}`;
+                        const refspec = `${validatedHash}:${destinationRef}`;
+                        await executor.run([
+                            "push",
+                            ...(setUpstream ? ["-u"] : []),
+                            target.remote,
+                            refspec,
+                        ]);
+                    },
+                );
 
-                vscode.window.showInformationMessage(`Pushed commits up to ${short}.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Pushed commits up to {short}.", { short }),
+                );
             } finally {
                 await refreshAll();
             }
@@ -261,22 +323,32 @@ export async function handleCommitContextAction(params: {
         }
         case "newBranch": {
             const branchName = await vscode.window.showInputBox({
-                prompt: `New branch from ${short}`,
+                prompt: vscode.l10n.t("New branch from {short}", { short }),
                 placeHolder: "branch-name",
             });
             if (!branchName) return;
             if (!isValidBranchName(branchName)) {
                 vscode.window.showErrorMessage(
-                    `Invalid branch name '${branchName}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.`,
+                    vscode.l10n.t(
+                        "Invalid branch name '{branch}'. Names must contain only alphanumeric characters, dots, dashes, underscores, or slashes, and must not start with a dash.",
+                        { branch: branchName },
+                    ),
                 );
                 return;
             }
             try {
                 await executor.run(["branch", branchName, validatedHash]);
-                vscode.window.showInformationMessage(`Created branch ${branchName} at ${short}.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Created branch {branch} at {short}.", {
+                        branch: branchName,
+                        short,
+                    }),
+                );
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Failed to create branch: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Failed to create branch: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
@@ -284,22 +356,31 @@ export async function handleCommitContextAction(params: {
         }
         case "newTag": {
             const tagName = await vscode.window.showInputBox({
-                prompt: `New tag at ${short}`,
+                prompt: vscode.l10n.t("New tag at {short}", { short }),
                 placeHolder: "v1.0.0",
             });
             if (!tagName) return;
             if (!isValidTagName(tagName)) {
                 vscode.window.showErrorMessage(
-                    `Invalid tag name '${tagName}'. Tag names must be valid git ref names.`,
+                    vscode.l10n.t(
+                        "Invalid tag name '{tag}'. Tag names must be valid git ref names.",
+                        {
+                            tag: tagName,
+                        },
+                    ),
                 );
                 return;
             }
             try {
                 await executor.run(["tag", tagName, validatedHash]);
-                vscode.window.showInformationMessage(`Created tag ${tagName}.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Created tag {tag}.", { tag: tagName }),
+                );
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(`Failed to create tag: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Failed to create tag: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
@@ -308,38 +389,51 @@ export async function handleCommitContextAction(params: {
         case "undoCommit": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Undo Commit is available only for unpushed commits.",
+                    vscode.l10n.t("Undo Commit is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
-                vscode.window.showErrorMessage("Undo Commit is not available for merge commits.");
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Undo Commit is not available for merge commits."),
+                );
                 return;
             }
             try {
                 await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
             } catch {
                 vscode.window.showErrorMessage(
-                    `Commit ${short} is not in the current branch history.`,
+                    vscode.l10n.t("Commit {short} is not in the current branch history.", {
+                        short,
+                    }),
                 );
                 return;
             }
             const undoParents = await getCommitParentHashes(validatedHash, executor);
             if (undoParents.length === 0) {
-                vscode.window.showErrorMessage("Cannot undo the initial commit of the repository.");
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Cannot undo the initial commit of the repository."),
+                );
                 return;
             }
             const undoCount = await getUndoCommitCount(validatedHash, executor);
+            const undoLabel = vscode.l10n.t("Undo");
             const confirm = await vscode.window.showWarningMessage(
-                `Undo ${undoCount} commit(s) up to ${short} (soft reset)?`,
+                vscode.l10n.t("Undo {count} commit(s) up to {short} (soft reset)?", {
+                    count: undoCount,
+                    short,
+                }),
                 { modal: true },
-                "Undo",
+                undoLabel,
             );
-            if (confirm !== "Undo") return;
+            if (confirm !== undoLabel) return;
             try {
                 await executor.run(["reset", "--soft", `${validatedHash}^`]);
                 vscode.window.showInformationMessage(
-                    `Undid ${undoCount} commit(s) up to ${short}.`,
+                    vscode.l10n.t("Undid {count} commit(s) up to {short}.", {
+                        count: undoCount,
+                        short,
+                    }),
                 );
             } finally {
                 await refreshAll();
@@ -349,13 +443,13 @@ export async function handleCommitContextAction(params: {
         case "editCommitMessage": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Edit Commit Message is available only for unpushed commits.",
+                    vscode.l10n.t("Edit Commit Message is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
                 vscode.window.showErrorMessage(
-                    "Edit Commit Message is not available for merge commits.",
+                    vscode.l10n.t("Edit Commit Message is not available for merge commits."),
                 );
                 return;
             }
@@ -364,13 +458,13 @@ export async function handleCommitContextAction(params: {
             if (isHashMatch(validatedHash, headHash)) {
                 const currentMessage = (await executor.run(["log", "-1", "--format=%B"])).trim();
                 const nextMessage = await vscode.window.showInputBox({
-                    prompt: "Edit commit message",
+                    prompt: vscode.l10n.t("Edit commit message"),
                     value: currentMessage,
                 });
                 if (!nextMessage) return;
                 try {
                     await executor.run(["commit", "--amend", "-m", nextMessage]);
-                    vscode.window.showInformationMessage("Commit message updated.");
+                    vscode.window.showInformationMessage(vscode.l10n.t("Commit message updated."));
                 } finally {
                     await refreshAll();
                 }
@@ -381,14 +475,16 @@ export async function handleCommitContextAction(params: {
                 await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
             } catch {
                 vscode.window.showErrorMessage(
-                    `Commit ${short} is not in the current branch history.`,
+                    vscode.l10n.t("Commit {short} is not in the current branch history.", {
+                        short,
+                    }),
                 );
                 return;
             }
             const rewordParents = await getCommitParentHashes(validatedHash, executor);
             if (rewordParents.length === 0) {
                 vscode.window.showErrorMessage(
-                    "Edit Commit Message is not available for the initial commit.",
+                    vscode.l10n.t("Edit Commit Message is not available for the initial commit."),
                 );
                 return;
             }
@@ -399,20 +495,22 @@ export async function handleCommitContextAction(params: {
             terminal.show();
             terminal.sendText(`git rebase -i "${validatedHash}^"`, true);
             vscode.window.showInformationMessage(
-                "Interactive rebase opened. Mark the commit as 'reword' in the todo list.",
+                vscode.l10n.t(
+                    "Interactive rebase opened. Mark the commit as 'reword' in the todo list.",
+                ),
             );
             return;
         }
         case "squashCommits": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is available only for unpushed commits.",
+                    vscode.l10n.t("Squash Commits is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is not available for merge commits.",
+                    vscode.l10n.t("Squash Commits is not available for merge commits."),
                 );
                 return;
             }
@@ -420,7 +518,9 @@ export async function handleCommitContextAction(params: {
                 await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
             } catch {
                 vscode.window.showErrorMessage(
-                    `Commit ${short} is not in the current branch history.`,
+                    vscode.l10n.t("Commit {short} is not in the current branch history.", {
+                        short,
+                    }),
                 );
                 return;
             }
@@ -428,7 +528,7 @@ export async function handleCommitContextAction(params: {
             const squashParents = await getCommitParentHashes(validatedHash, executor);
             if (squashParents.length === 0) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is not available for the initial commit.",
+                    vscode.l10n.t("Squash Commits is not available for the initial commit."),
                 );
                 return;
             }
@@ -436,7 +536,9 @@ export async function handleCommitContextAction(params: {
             const status = (await executor.run(["status", "--porcelain"])).trim();
             if (status) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits requires a clean working tree. Commit, shelve, or rollback local changes first.",
+                    vscode.l10n.t(
+                        "Squash Commits requires a clean working tree. Commit, shelve, or rollback local changes first.",
+                    ),
                 );
                 return;
             }
@@ -450,13 +552,17 @@ export async function handleCommitContextAction(params: {
             const rangeHashes = rangeLines.map((line) => line.split(/\s+/)[0]);
             if (rangeHashes.length < 2) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits requires at least two commits in the selected range.",
+                    vscode.l10n.t(
+                        "Squash Commits requires at least two commits in the selected range.",
+                    ),
                 );
                 return;
             }
             if (rangeLines.some((line) => line.split(/\s+/).length > 2)) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is not available for ranges containing merge commits.",
+                    vscode.l10n.t(
+                        "Squash Commits is not available for ranges containing merge commits.",
+                    ),
                 );
                 return;
             }
@@ -467,7 +573,9 @@ export async function handleCommitContextAction(params: {
             );
             if (!allRangeCommitsUnpushed) {
                 vscode.window.showErrorMessage(
-                    "Squash Commits is available only when every commit in the selected range is unpushed.",
+                    vscode.l10n.t(
+                        "Squash Commits is available only when every commit in the selected range is unpushed.",
+                    ),
                 );
                 return;
             }
@@ -479,24 +587,34 @@ export async function handleCommitContextAction(params: {
                 .filter(Boolean)
                 .join("; ");
             const squashMessage = await vscode.window.showInputBox({
-                prompt: `Squashed commit message for ${rangeHashes.length} commits`,
-                value: defaultMessage || `Squash ${rangeHashes.length} commits`,
+                prompt: vscode.l10n.t("Squashed commit message for {count} commits", {
+                    count: rangeHashes.length,
+                }),
+                value:
+                    defaultMessage ||
+                    vscode.l10n.t("Squash {count} commits", { count: rangeHashes.length }),
             });
             if (!squashMessage) return;
 
+            const squashLabel = vscode.l10n.t("Squash");
             const confirm = await vscode.window.showWarningMessage(
-                `Squash ${rangeHashes.length} commits from ${short} through HEAD into one commit?`,
+                vscode.l10n.t("Squash {count} commits from {short} through HEAD into one commit?", {
+                    count: rangeHashes.length,
+                    short,
+                }),
                 { modal: true },
-                "Squash",
+                squashLabel,
             );
-            if (confirm !== "Squash") return;
+            if (confirm !== squashLabel) return;
 
             let originalHead = "";
             let softResetApplied = false;
             try {
                 originalHead = (await executor.run(["rev-parse", "HEAD"])).trim();
                 await runWithNotificationProgress(
-                    `Squashing ${rangeHashes.length} commits...`,
+                    vscode.l10n.t("Squashing {count} commits...", {
+                        count: rangeHashes.length,
+                    }),
                     async () => {
                         await executor.run(["reset", "--soft", `${validatedHash}^`]);
                         softResetApplied = true;
@@ -504,7 +622,9 @@ export async function handleCommitContextAction(params: {
                     },
                 );
                 vscode.window.showInformationMessage(
-                    `Squashed ${rangeHashes.length} commits into one commit.`,
+                    vscode.l10n.t("Squashed {count} commits into one commit.", {
+                        count: rangeHashes.length,
+                    }),
                 );
             } catch (err) {
                 let message = getErrorMessage(err);
@@ -512,10 +632,19 @@ export async function handleCommitContextAction(params: {
                     try {
                         await executor.run(["reset", "--hard", originalHead]);
                     } catch (rollbackErr) {
-                        message = `${message}; rollback to ${originalHead.slice(0, 8)} failed: ${getErrorMessage(rollbackErr)}`;
+                        message = vscode.l10n.t(
+                            "{message}; rollback to {head} failed: {rollbackMessage}",
+                            {
+                                message,
+                                head: originalHead.slice(0, 8),
+                                rollbackMessage: getErrorMessage(rollbackErr),
+                            },
+                        );
                     }
                 }
-                vscode.window.showErrorMessage(`Squash Commits failed: ${message}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Squash Commits failed: {message}", { message }),
+                );
             } finally {
                 await refreshAll();
             }
@@ -524,33 +653,40 @@ export async function handleCommitContextAction(params: {
         case "dropCommit": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Drop Commit is available only for unpushed commits.",
+                    vscode.l10n.t("Drop Commit is available only for unpushed commits."),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
-                vscode.window.showErrorMessage("Drop Commit is not available for merge commits.");
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Drop Commit is not available for merge commits."),
+                );
                 return;
             }
             try {
                 await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
             } catch {
                 vscode.window.showErrorMessage(
-                    `Commit ${short} is not in the current branch history.`,
+                    vscode.l10n.t("Commit {short} is not in the current branch history.", {
+                        short,
+                    }),
                 );
                 return;
             }
             const dropParents = await getCommitParentHashes(validatedHash, executor);
             if (dropParents.length === 0) {
-                vscode.window.showErrorMessage("Cannot drop the initial commit of the repository.");
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Cannot drop the initial commit of the repository."),
+                );
                 return;
             }
+            const dropLabel = vscode.l10n.t("Drop");
             const confirm = await vscode.window.showWarningMessage(
-                `Drop commit ${short} from current branch history?`,
+                vscode.l10n.t("Drop commit {short} from current branch history?", { short }),
                 { modal: true },
-                "Drop",
+                dropLabel,
             );
-            if (confirm !== "Drop") return;
+            if (confirm !== dropLabel) return;
             try {
                 await executor.run([
                     "rebase",
@@ -559,11 +695,16 @@ export async function handleCommitContextAction(params: {
                     validatedHash,
                     "HEAD",
                 ]);
-                vscode.window.showInformationMessage(`Dropped ${short} from history.`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Dropped {short} from history.", { short }),
+                );
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(
-                    `Failed to drop commit: ${message}. Run 'git rebase --abort' to recover.`,
+                    vscode.l10n.t(
+                        "Failed to drop commit: {message}. Run 'git rebase --abort' to recover.",
+                        { message },
+                    ),
                 );
             } finally {
                 await refreshAll();
@@ -573,13 +714,17 @@ export async function handleCommitContextAction(params: {
         case "interactiveRebaseFromHere": {
             if (!(await isCommitUnpushed(validatedHash, gitOps))) {
                 vscode.window.showErrorMessage(
-                    "Interactive Rebase from Here is available only for unpushed commits.",
+                    vscode.l10n.t(
+                        "Interactive Rebase from Here is available only for unpushed commits.",
+                    ),
                 );
                 return;
             }
             if (await isMergeCommitHash(validatedHash, executor)) {
                 vscode.window.showErrorMessage(
-                    "Interactive Rebase from Here is not available for merge commits.",
+                    vscode.l10n.t(
+                        "Interactive Rebase from Here is not available for merge commits.",
+                    ),
                 );
                 return;
             }
@@ -587,14 +732,18 @@ export async function handleCommitContextAction(params: {
                 await executor.run(["merge-base", "--is-ancestor", validatedHash, "HEAD"]);
             } catch {
                 vscode.window.showErrorMessage(
-                    `Commit ${short} is not in the current branch history.`,
+                    vscode.l10n.t("Commit {short} is not in the current branch history.", {
+                        short,
+                    }),
                 );
                 return;
             }
             const rebaseParents = await getCommitParentHashes(validatedHash, executor);
             if (rebaseParents.length === 0) {
                 vscode.window.showErrorMessage(
-                    "Interactive Rebase from Here is not available for the initial commit.",
+                    vscode.l10n.t(
+                        "Interactive Rebase from Here is not available for the initial commit.",
+                    ),
                 );
                 return;
             }
@@ -604,7 +753,9 @@ export async function handleCommitContextAction(params: {
             });
             terminal.show();
             terminal.sendText(`git rebase -i "${validatedHash}^"`, true);
-            vscode.window.showInformationMessage(`Opened interactive rebase from ${short}.`);
+            vscode.window.showInformationMessage(
+                vscode.l10n.t("Opened interactive rebase from {short}.", { short }),
+            );
             return;
         }
         default:

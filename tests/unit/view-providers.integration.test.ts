@@ -76,6 +76,12 @@ const vscodeMock = {
     TreeItem: FakeTreeItem,
     ThemeIcon: FakeThemeIcon,
     ThemeColor: FakeThemeColor,
+    env: {
+        language: "en",
+    },
+    l10n: {
+        t: (message: string, _placeholders?: unknown) => message,
+    },
     ProgressLocation: { Notification: 15 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
@@ -126,6 +132,15 @@ const deleteFileWithFallback = vi.fn(async () => true);
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../src/views/webviewHtml", () => ({
     buildWebviewShellHtml: vi.fn(() => "<html></html>"),
+    escapeHtmlAttr: (value: string) =>
+        value
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;"),
+    escapeHtmlText: (value: string) =>
+        value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
 }));
 vi.mock("../../src/utils/fileOps", async () => {
     const actual = await vi.importActual("../../src/utils/fileOps");
@@ -231,6 +246,31 @@ function makeGitOpsMock() {
         getShelvedFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
     };
+}
+
+async function flushVisibleRefresh<T>(promise: Promise<T>): Promise<T> {
+    await vi.advanceTimersByTimeAsync(1_000);
+    return promise;
+}
+
+async function flushInitialVisibleRefresh(): Promise<void> {
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+}
+
+function refreshingStates(): boolean[] {
+    return postMessageSpy.mock.calls
+        .map(([message]) => message)
+        .filter(
+            (message): message is { type: "refreshing"; active: boolean } =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "refreshing" &&
+                "active" in message &&
+                typeof message.active === "boolean",
+        )
+        .map((message) => message.active);
 }
 
 async function setupCommitPanelProvider() {
@@ -685,6 +725,47 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider keeps the blue refresh indicator visible long enough to be seen", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        await provider.refresh();
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        vi.useFakeTimers();
+        try {
+            const refresh = provider.refresh();
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(refreshingStates()).toEqual([true]);
+            expect(executeCommand).toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                true,
+            );
+
+            await vi.advanceTimersByTimeAsync(599);
+            expect(refreshingStates()).toEqual([true]);
+            expect(executeCommand).not.toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
+
+            await vi.advanceTimersByTimeAsync(1);
+            await refresh;
+
+            expect(refreshingStates()).toEqual([true, false]);
+            expect(executeCommand).toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider marks unpublished branches and routes publish action", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         gitOps.getBranches.mockResolvedValue([
@@ -873,6 +954,110 @@ describe("view providers integration", () => {
         expect(counts).toContain(0);
 
         provider.dispose();
+    });
+
+    it("CommitPanelViewProvider dedupes status rows and updates file count after working-tree actions", async () => {
+        vi.useFakeTimers();
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getStatus
+            .mockResolvedValueOnce([
+                { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+                { path: "src/a.ts", status: "M", staged: true, additions: 2, deletions: 0 },
+                { path: "src/b.ts", status: "A", staged: false, additions: 3, deletions: 0 },
+            ])
+            .mockResolvedValueOnce([
+                { path: "src/b.ts", status: "A", staged: true, additions: 3, deletions: 0 },
+            ])
+            .mockResolvedValueOnce([
+                { path: "src/b.ts", status: "A", staged: false, additions: 3, deletions: 0 },
+                { path: "src/c.ts", status: "M", staged: false, additions: 1, deletions: 1 },
+            ])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                { path: "src/d.ts", status: "M", staged: false, additions: 4, deletions: 0 },
+            ])
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([
+                { path: "src/e.ts", status: "D", staged: false, additions: 0, deletions: 5 },
+            ])
+            .mockResolvedValueOnce([]);
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+        );
+        const webview = createWebviewView();
+        const counts: number[] = [];
+        const workingTreeEvents: void[] = [];
+        provider.onDidChangeFileCount((count) => counts.push(count));
+        provider.onDidChangeWorkingTree(() => workingTreeEvents.push(undefined));
+
+        try {
+            provider.resolveWebviewView(
+                webview.view as unknown as object,
+                {} as unknown as object,
+                {} as unknown as object,
+            );
+            await flushInitialVisibleRefresh();
+
+            const view = (provider as unknown as { view: Record<string, unknown> }).view;
+            expect(view.description).toBe("2");
+            expect(view.badge).toBeUndefined();
+
+            await flushVisibleRefresh(webview.send({ type: "stageFiles", paths: ["src/a.ts"] }));
+            expect(view.description).toBe("1");
+
+            await flushVisibleRefresh(webview.send({ type: "unstageFiles", paths: ["src/b.ts"] }));
+            expect(view.description).toBe("2");
+
+            await flushVisibleRefresh(
+                webview.send({ type: "commit", message: "feat: commit", amend: false }),
+            );
+            expect(view.description).toBe("");
+
+            await flushVisibleRefresh(
+                webview.send({
+                    type: "commitSelected",
+                    message: "feat: selected",
+                    amend: false,
+                    push: true,
+                    paths: ["src/d.ts"],
+                }),
+            );
+            expect(view.description).toBe("1");
+
+            showWarningMessage.mockResolvedValueOnce("Rollback");
+            await flushVisibleRefresh(webview.send({ type: "rollback", paths: [] }));
+            expect(view.description).toBe("");
+
+            showWarningMessage.mockResolvedValueOnce("Delete");
+            await flushVisibleRefresh(webview.send({ type: "deleteFile", path: "src/e.ts" }));
+            expect(view.description).toBe("1");
+
+            await flushVisibleRefresh(
+                webview.send({ type: "shelveSave", name: "work", paths: ["src/e.ts"] }),
+            );
+            expect(view.description).toBe("");
+
+            expect(counts).toEqual([2, 1, 2, 0, 1, 0, 1, 0]);
+            expect(workingTreeEvents).toHaveLength(7);
+            expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+            expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/b.ts"]);
+            expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
+            expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: selected", false);
+            expect(gitOps.rollbackAll).toHaveBeenCalled();
+            expect(deleteFileWithFallback).toHaveBeenCalledWith(
+                gitOps,
+                expect.any(Object),
+                "src/e.ts",
+            );
+            expect(gitOps.shelveSave).toHaveBeenCalledWith(["src/e.ts"], "work");
+        } finally {
+            provider.dispose();
+            vi.useRealTimers();
+        }
     });
 
     it("CommitPanelViewProvider handles rollback actions", async () => {

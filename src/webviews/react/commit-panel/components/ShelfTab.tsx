@@ -14,6 +14,7 @@ import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from 
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
 import { getLeafName, resolveFolderIcon } from "../../shared/utils";
+import { t } from "../../shared/i18n";
 
 interface Props {
     stashes: StashEntry[];
@@ -199,7 +200,7 @@ export function ShelfTab({
                 flexShrink={0}
             >
                 <StashToolbarButton
-                    label="Show Diff"
+                    label={t("common.showDiff")}
                     color="#ff736d"
                     onClick={handleShowSelectedDiff}
                     isDisabled={selectedIndex === null || shelfFiles.length === 0}
@@ -212,7 +213,7 @@ export function ShelfTab({
                     />
                 </StashToolbarButton>
                 <StashToolbarButton
-                    label={groupByDir ? "Ungroup Files" : "Group by Directory"}
+                    label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
                     color="#b77dff"
                     onClick={onToggleGroupBy}
                     hoverDelay={hoverDelay}
@@ -225,7 +226,7 @@ export function ShelfTab({
                 </StashToolbarButton>
                 <Box flex={1} />
                 <StashToolbarButton
-                    label="Expand All"
+                    label={t("common.expandAll")}
                     color="#f3b1cf"
                     onClick={expandAll}
                     hoverDelay={hoverDelay}
@@ -234,7 +235,7 @@ export function ShelfTab({
                     <ExpandAllIconGlyph />
                 </StashToolbarButton>
                 <StashToolbarButton
-                    label="Collapse All"
+                    label={t("common.collapseAll")}
                     color="#f3b1cf"
                     onClick={collapseAll}
                     hoverDelay={hoverDelay}
@@ -252,7 +253,7 @@ export function ShelfTab({
                         p="12px"
                         textAlign="center"
                     >
-                        No shelved changes
+                        {t("shelf.empty")}
                     </Box>
                 ) : (
                     stashes.map((stash) => {
@@ -347,7 +348,7 @@ export function ShelfTab({
                                         fontSize="12px"
                                         color="var(--intelligit-pycharm-muted)"
                                     >
-                                        Loading...
+                                        {t("common.loading")}
                                     </Box>
                                 )}
                                 {hasFiles && (
@@ -377,7 +378,7 @@ export function ShelfTab({
                                                     fontSize="12px"
                                                     color="var(--intelligit-pycharm-muted)"
                                                 >
-                                                    No files in this shelved change.
+                                                    {t("shelf.noFiles")}
                                                 </Box>
                                             )}
                                         </Box>
@@ -423,7 +424,7 @@ export function ShelfTab({
                         bg: "var(--intelligit-pycharm-header, var(--vscode-button-secondaryHoverBackground))",
                     }}
                 >
-                    Apply
+                    {t("common.apply")}
                 </Button>
                 <Button
                     variant="secondary"
@@ -441,7 +442,7 @@ export function ShelfTab({
                         bg: "var(--intelligit-pycharm-header, var(--vscode-button-secondaryHoverBackground))",
                     }}
                 >
-                    Pop
+                    {t("common.pop")}
                 </Button>
             </Flex>
             {contextMenu && (
@@ -457,14 +458,14 @@ export function ShelfTab({
                         if (action === "showDiff") handleShelfAction(contextMenu.index, "showDiff");
                     }}
                     items={[
-                        { label: "Pop", action: "pop" },
-                        { label: "Apply", action: "apply" },
-                        { label: "Unstash...", action: "unstash", disabled: true },
-                        { label: "Drop", action: "drop" },
-                        { label: "Clear", action: "clear", disabled: true },
+                        { label: t("common.pop"), action: "pop" },
+                        { label: t("common.apply"), action: "apply" },
+                        { label: t("shelf.action.unstash"), action: "unstash", disabled: true },
+                        { label: t("common.drop"), action: "drop" },
+                        { label: t("common.clear"), action: "clear", disabled: true },
                         { label: "", action: "sep-1", separator: true },
                         {
-                            label: "Show Diff",
+                            label: t("common.showDiff"),
                             action: "showDiff",
                             disabled:
                                 selectedIndex !== contextMenu.index || shelfFiles.length === 0,
@@ -472,7 +473,7 @@ export function ShelfTab({
                             icon: <DiffIcon />,
                         },
                         {
-                            label: "Show Diff in a New Tab",
+                            label: t("shelf.action.showDiffNewTab"),
                             action: "showDiffNewTab",
                             disabled: true,
                             icon: <DiffIcon />,
@@ -542,9 +543,9 @@ function DiffIcon(): React.ReactElement {
 function parseShelfMessage(message: string): { title: string; branch: string | null } {
     const trimmed = message.trim();
     const match = trimmed.match(/^On\s+([^:]+):\s*(.*)$/i);
-    if (!match) return { title: trimmed || "Shelved changes", branch: null };
+    if (!match) return { title: trimmed || t("shelf.defaultTitle"), branch: null };
     return {
-        title: match[2]?.trim() || "Shelved changes",
+        title: match[2]?.trim() || t("shelf.defaultTitle"),
         branch: match[1]?.trim() || null,
     };
 }
@@ -645,7 +646,7 @@ function ShelfFileTree({
                                 color="var(--vscode-descriptionForeground)"
                                 flexShrink={0}
                             >
-                                {fileCount} {fileCount === 1 ? "file" : "files"}
+                                {t("common.fileCount", { count: fileCount })}
                             </Box>
                         </Flex>
                         {isExpanded && (

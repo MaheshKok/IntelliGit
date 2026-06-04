@@ -16,6 +16,7 @@ import { getVsCodeApi } from "./shared/vscodeApi";
 import { useCheckedFiles } from "./commit-panel/hooks/useCheckedFiles";
 import theme from "./commit-panel/theme";
 import { getSettings } from "./shared/settings";
+import { t } from "./shared/i18n";
 import type {
     Branch,
     Commit,
@@ -871,8 +872,8 @@ function App(): React.ReactElement {
                     <button
                         type="button"
                         onClick={handleDock}
-                        title="Dock IntelliGit"
-                        aria-label="Dock IntelliGit"
+                        title={t("common.dockIntelliGit")}
+                        aria-label={t("common.dockIntelliGit")}
                         style={{
                             display: "inline-flex",
                             alignItems: "center",
@@ -893,7 +894,7 @@ function App(): React.ReactElement {
                                 d="M2 3h12v10H2V3zm1 1v8h10V4H3zm1 1h3v6H4V5zm4 0h4v2H8V5z"
                             />
                         </svg>
-                        Dock
+                        {t("common.dock")}
                     </button>
                 </Box>
                 <Box ref={layoutRef} display="flex" flex={1} overflow="hidden" minHeight={0}>

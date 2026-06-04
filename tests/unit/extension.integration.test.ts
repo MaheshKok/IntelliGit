@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { interpolateL10n } from "./utils/l10nTestHelper";
 
 type CommandHandler = (...args: unknown[]) => unknown;
 
@@ -408,6 +409,9 @@ class MockUndockedViewProvider {
     emitWorkingTreeChanged(): void {
         this.workingTreeEmitter.fire(undefined);
     }
+    emitFileCount(count: number): void {
+        this.fileCountEmitter.fire(count);
+    }
     requestDock(): void {
         this.dockRequestedEmitter.fire(undefined);
     }
@@ -555,7 +559,11 @@ vi.mock("vscode", () => ({
         ),
     },
     env: {
+        language: "en",
         clipboard: { writeText: clipboardWriteText },
+    },
+    l10n: {
+        t: interpolateL10n,
     },
 }));
 
@@ -985,6 +993,54 @@ describe("extension integration", () => {
         const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
         expect(badgeView).toBeDefined();
         expect(badgeView!.badge).toEqual({ tooltip: "2 changed files", value: 2 });
+    });
+
+    it("updates the activity bar changed-files badge tooltip when refreshed counts change", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        expect(latestCommitPanelProvider).toBeDefined();
+
+        const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
+        expect(badgeView).toBeDefined();
+
+        latestCommitPanelProvider!.emitFileCount(1);
+        expect(badgeView!.badge).toEqual({ tooltip: "1 changed file", value: 1 });
+
+        latestCommitPanelProvider!.emitFileCount(3);
+        expect(badgeView!.badge).toEqual({ tooltip: "3 changed files", value: 3 });
+
+        latestCommitPanelProvider!.emitFileCount(0);
+        expect(badgeView!.badge).toBeUndefined();
+    });
+
+    it("updates and clears the activity bar changed-files badge from undocked refresh events", async () => {
+        showQuickPick.mockResolvedValueOnce({
+            label: "Undock in Editor Tab",
+            target: "editorTab",
+        });
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await registeredCommands.get("intelligit.openUndocked")?.();
+        expect(latestUndockedProvider).toBeDefined();
+
+        const badgeView = createdTreeViews.get("intelligit.fileCountBadge");
+        expect(badgeView).toBeDefined();
+
+        latestUndockedProvider!.emitFileCount(4);
+        expect(badgeView!.badge).toEqual({ tooltip: "4 changed files", value: 4 });
+
+        latestUndockedProvider!.emitFileCount(0);
+        expect(badgeView!.badge).toBeUndefined();
     });
 
     it("disposes stale restored undocked panels instead of leaving an empty editor", async () => {

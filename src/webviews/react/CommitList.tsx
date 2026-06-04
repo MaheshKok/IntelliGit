@@ -12,6 +12,7 @@ import { CommitRow } from "./commit-list/CommitRow";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "./commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
+import { t } from "./shared/i18n";
 import {
     AUTHOR_COL_WIDTH,
     BRANCH_SCOPE_STYLE,
@@ -192,6 +193,9 @@ export function CommitList({
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
+    const branchScopeLabel = selectedBranch
+        ? t("commit.scope.branch", { branch: selectedBranch })
+        : t("commit.scope.allBranches");
     const canCherryPickFromSelectedScope = canCherryPickFromBranchScope(
         selectedBranch,
         currentBranchName,
@@ -205,7 +209,7 @@ export function CommitList({
                     <div style={FILTER_INPUT_WRAP_STYLE}>
                         <input
                             type="text"
-                            placeholder="Text or hash"
+                            placeholder={t("commit.search.placeholder")}
                             value={filterText}
                             onChange={(event) => onFilterText(event.target.value)}
                             style={FILTER_INPUT_STYLE}
@@ -213,8 +217,8 @@ export function CommitList({
                         {filterText.length > 0 && (
                             <button
                                 type="button"
-                                aria-label="Clear commit search"
-                                title="Clear"
+                                aria-label={t("commit.search.clear")}
+                                title={t("commit.search.clear")}
                                 onClick={() => onFilterText("")}
                                 style={FILTER_CLEAR_BUTTON_STYLE}
                             >
@@ -222,29 +226,24 @@ export function CommitList({
                             </button>
                         )}
                     </div>
-                    <span
-                        style={BRANCH_SCOPE_STYLE}
-                        title={
-                            selectedBranch ? `Branch: ${selectedBranch}` : "Branch: All branches"
-                        }
-                    >
-                        Branch: {selectedBranch ?? "All branches"}
+                    <span style={BRANCH_SCOPE_STYLE} title={branchScopeLabel}>
+                        {branchScopeLabel}
                     </span>
                 </div>
             ) : null}
 
             {headerLabel ? null : (
                 <div style={headerRowStyle(graphWidth)}>
-                    <span style={{ flex: 1 }}>Commit</span>
+                    <span style={{ flex: 1 }}>{t("commit.list.header.commit")}</span>
                     {showAuthorDate && (
                         <>
                             <span style={{ width: AUTHOR_COL_WIDTH, textAlign: "right" }}>
-                                Author
+                                {t("commit.list.header.author")}
                             </span>
                             <span
                                 style={{ width: DATE_COL_WIDTH, textAlign: "right", marginLeft: 4 }}
                             >
-                                Date
+                                {t("commit.list.header.date")}
                             </span>
                         </>
                     )}
@@ -299,7 +298,7 @@ export function CommitList({
                                 top: commits.length * ROW_HEIGHT,
                             }}
                         >
-                            Loading more...
+                            {t("commit.loadingMore")}
                         </div>
                     )}
                 </div>

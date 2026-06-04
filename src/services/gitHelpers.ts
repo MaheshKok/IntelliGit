@@ -200,23 +200,30 @@ export async function promptRebaseAfterPushRejection(
 ): Promise<boolean> {
     if (!isRebaseablePushRejection(error)) return false;
 
-    const rebaseLabel = "Rebase and Push";
+    const rebaseLabel = vscode.l10n.t("Rebase and Push");
     const selection = await vscode.window.showWarningMessage(
-        "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?",
+        vscode.l10n.t(
+            "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?",
+        ),
         { modal: true },
         rebaseLabel,
     );
     if (selection !== rebaseLabel) return false;
 
     try {
-        await runWithNotificationProgress("Rebasing and pushing current branch...", async () => {
-            await gitOps.pullRebase();
-            await retryPush();
-        });
-        vscode.window.showInformationMessage("Rebased and pushed current branch.");
+        await runWithNotificationProgress(
+            vscode.l10n.t("Rebasing and pushing current branch..."),
+            async () => {
+                await gitOps.pullRebase();
+                await retryPush();
+            },
+        );
+        vscode.window.showInformationMessage(vscode.l10n.t("Rebased and pushed current branch."));
     } catch (rebaseError) {
         const message = getErrorMessage(rebaseError);
-        vscode.window.showErrorMessage(`Rebase and push failed: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Rebase and push failed: {message}", { message }),
+        );
         return false;
     }
 
@@ -240,16 +247,21 @@ export async function pickMainlineParent(
 
     const pick = await vscode.window.showQuickPick(
         parents.map((parent, idx) => ({
-            label: `Parent ${idx + 1} (${parent.slice(0, 8)})`,
+            label: vscode.l10n.t("Parent {number} ({short})", {
+                number: idx + 1,
+                short: parent.slice(0, 8),
+            }),
             detail:
                 idx === 0
-                    ? "Usually the target branch side of the merge."
-                    : "Alternate merge parent.",
+                    ? vscode.l10n.t("Usually the target branch side of the merge.")
+                    : vscode.l10n.t("Alternate merge parent."),
             parentNumber: idx + 1,
         })),
         {
-            title: `${actionLabel}: select mainline parent`,
-            placeHolder: "Pick the parent number to use with -m",
+            title: vscode.l10n.t("{action}: select mainline parent", {
+                action: actionLabel,
+            }),
+            placeHolder: vscode.l10n.t("Pick the parent number to use with -m"),
         },
     );
 
@@ -331,36 +343,45 @@ export async function showDeletedBranchActions(
     currentBranches: Branch[],
     executor: GitExecutor,
 ): Promise<void> {
-    const restoreLabel = "Restore";
-    const deleteTrackedLabel = "Delete Tracked Branch";
+    const restoreLabel = vscode.l10n.t("Restore");
+    const deleteTrackedLabel = vscode.l10n.t("Delete Tracked Branch");
     const tracked = resolveTrackedRemoteBranch(branch, currentBranches);
     const buttons = tracked ? [restoreLabel, deleteTrackedLabel] : [restoreLabel];
     const action = await vscode.window.showInformationMessage(
-        `Deleted: ${branch.name}`,
+        vscode.l10n.t("Deleted: {branch}", { branch: branch.name }),
         ...buttons,
     );
 
     if (action === restoreLabel) {
         if (!isValidGitHash(branch.hash)) {
             vscode.window.showErrorMessage(
-                `Cannot restore '${branch.name}': missing or invalid commit hash.`,
+                vscode.l10n.t("Cannot restore '{branch}': missing or invalid commit hash.", {
+                    branch: branch.name,
+                }),
             );
             return;
         }
         try {
             await executor.run(["branch", branch.name, branch.hash]);
-            vscode.window.showInformationMessage(`Restored ${branch.name}`);
+            vscode.window.showInformationMessage(
+                vscode.l10n.t("Restored {branch}", { branch: branch.name }),
+            );
             await vscode.commands.executeCommand("intelligit.refresh");
         } catch (error) {
             const msg = getErrorMessage(error);
-            vscode.window.showErrorMessage(`Restore failed: ${msg}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Restore failed: {message}", { message: msg }),
+            );
         }
         return;
     }
 
     if (action === deleteTrackedLabel && tracked) {
         const confirm = await vscode.window.showWarningMessage(
-            `Delete tracked branch '${tracked.remote}/${tracked.remoteBranch}'?`,
+            vscode.l10n.t("Delete tracked branch '{remote}/{remoteBranch}'?", {
+                remote: tracked.remote,
+                remoteBranch: tracked.remoteBranch,
+            }),
             { modal: true },
             deleteTrackedLabel,
         );
@@ -368,18 +389,26 @@ export async function showDeletedBranchActions(
 
         try {
             await runWithNotificationProgress(
-                `Deleting tracked branch ${tracked.remote}/${tracked.remoteBranch}...`,
+                vscode.l10n.t("Deleting tracked branch {remote}/{remoteBranch}...", {
+                    remote: tracked.remote,
+                    remoteBranch: tracked.remoteBranch,
+                }),
                 async () => {
                     await executor.run(["push", tracked.remote, "--delete", tracked.remoteBranch]);
                 },
             );
             vscode.window.showInformationMessage(
-                `Deleted tracked branch ${tracked.remote}/${tracked.remoteBranch}`,
+                vscode.l10n.t("Deleted tracked branch {remote}/{remoteBranch}", {
+                    remote: tracked.remote,
+                    remoteBranch: tracked.remoteBranch,
+                }),
             );
             await vscode.commands.executeCommand("intelligit.refresh");
         } catch (error) {
             const msg = getErrorMessage(error);
-            vscode.window.showErrorMessage(`Delete tracked branch failed: ${msg}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Delete tracked branch failed: {message}", { message: msg }),
+            );
         }
     }
 }

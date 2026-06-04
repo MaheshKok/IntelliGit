@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChakraProvider } from "@chakra-ui/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch } from "../../src/types";
 import theme from "../../src/webviews/react/commit-panel/theme";
 import { renderHighlightedLabel } from "../../src/webviews/react/branch-column/highlight";
@@ -28,6 +28,7 @@ import { TabBar } from "../../src/webviews/react/commit-panel/components/TabBar"
 import { Toolbar } from "../../src/webviews/react/commit-panel/components/Toolbar";
 import { VscCheckbox } from "../../src/webviews/react/commit-panel/components/VscCheckbox";
 import { mount, unmount } from "./utils/reactDomTestUtils";
+import { installWebviewI18n } from "./utils/webviewI18nTestUtils";
 
 function renderUi(node: React.ReactElement): string {
     return renderToStaticMarkup(<ChakraProvider theme={theme}>{node}</ChakraProvider>);
@@ -46,6 +47,10 @@ function branch(overrides: Partial<Branch> = {}): Branch {
 }
 
 describe("webview ui smoke", () => {
+    beforeEach(() => {
+        installWebviewI18n();
+    });
+
     it("uses VS Code theme tokens for commit panel surfaces", () => {
         const rootStyles = theme.styles.global[":root"] as Record<string, string>;
 

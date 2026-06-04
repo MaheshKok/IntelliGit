@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { interpolateL10n } from "./utils/l10nTestHelper";
 
 const mocks = vi.hoisted(() => ({
     showQuickPick: vi.fn(),
@@ -47,6 +48,12 @@ vi.mock("vscode", () => ({
     },
     authentication: {
         getSession: mocks.getSession,
+    },
+    env: {
+        language: "en",
+    },
+    l10n: {
+        t: interpolateL10n,
     },
     ProgressLocation: {
         Notification: 15,
