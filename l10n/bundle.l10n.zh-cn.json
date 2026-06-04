@@ -86,6 +86,7 @@
     "Open a folder first to initialize a repository.": "首先打开一个文件夹来初始化存储库。",
     "Open a folder to get started with IntelliGit.": "打开文件夹即可开始使用 IntelliGit。",
     "Open Folder": "打开文件夹",
+    "Open in Current Window": "在当前窗口中打开",
     "Open Merge Conflict": "打开合并冲突",
     "Open the path prompt": "打开路径输入框",
     "Open the unified IntelliGit view and move it to a floating window": "打开统一的 IntelliGit 视图并将其移动到浮动窗口。",

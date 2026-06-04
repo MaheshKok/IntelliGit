@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-04
+
+### Added
+
+- Added an `Open in Current Window` action to the clone success prompt so users can open a cloned repository in the existing VS Code window without adding it to a multi-root workspace.
+
+### Localized
+
+- Added localized clone action labels for `Open in Current Window` across the host localization source catalog, locale bundles, and translation review CSV.
+
+### Verification
+
+- Added clone-flow regression coverage for opening a cloned repository in the current window without calling the workspace-folder API.
+
 ## [0.9.1] - 2026-06-04
 
 ### Fixed

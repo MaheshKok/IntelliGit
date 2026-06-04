@@ -86,6 +86,7 @@
     "Open a folder first to initialize a repository.": "リポジトリを初期化するには、まずフォルダを開いてください。",
     "Open a folder to get started with IntelliGit.": "IntelliGitを使い始めるには、フォルダを開いてください。",
     "Open Folder": "フォルダーを開く",
+    "Open in Current Window": "現在のウィンドウで開く",
     "Open Merge Conflict": "マージの競合が発生",
     "Open the path prompt": "パスプロンプトを開く",
     "Open the unified IntelliGit view and move it to a floating window": "IntelliGitの統合ビューを開き、フローティングウィンドウに移動します。",

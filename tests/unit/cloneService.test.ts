@@ -198,6 +198,27 @@ describe("cloneService phase 3", () => {
         ]);
     });
 
+    it("opens a cloned repository in the current VS Code window when requested", async () => {
+        mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
+        mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/repo.git");
+        mocks.showInformationMessage.mockResolvedValueOnce("Open in Current Window");
+
+        await runCloneFlow();
+
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith(
+            "Cloned repo successfully.",
+            "Open in New Window",
+            "Open in Current Window",
+            "Add to Workspace",
+        );
+        expect(mocks.executeCommand).toHaveBeenCalledWith(
+            "vscode.openFolder",
+            { fsPath: "/dest/repo" },
+            false,
+        );
+        expect(mocks.updateWorkspaceFolders).not.toHaveBeenCalled();
+    });
+
     it("falls back to a safe repo directory when the URL basename is unsafe", async () => {
         mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
         mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/..git");

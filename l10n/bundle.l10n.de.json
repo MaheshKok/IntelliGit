@@ -86,6 +86,7 @@
   "Open a folder first to initialize a repository.": "Öffnen Sie zuerst einen Ordner, um ein Repository zu initialisieren.",
   "Open a folder to get started with IntelliGit.": "Öffnen Sie einen Ordner, um mit IntelliGit zu beginnen.",
   "Open Folder": "Ordner öffnen",
+  "Open in Current Window": "Im aktuellen Fenster öffnen",
   "Open Merge Conflict": "Merge-Konflikt öffnen",
   "Open the path prompt": "Öffnen Sie die Pfadeingabeaufforderung",
   "Open the unified IntelliGit view and move it to a floating window": "Öffnen Sie die einheitliche IntelliGit-Ansicht und verschieben Sie sie in ein schwebendes Fenster.",
