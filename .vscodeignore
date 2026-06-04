@@ -20,6 +20,11 @@ eslint.config.*
 .prettierrc*
 .prettierignore
 .editorconfig
+.dependency-cruiser.cjs
+doctor.config.*
+knip.json
+.env*
+AGENTS.md
 
 # Build tools and caches
 .vscode/**
@@ -52,6 +57,9 @@ Thumbs.db
 # Claude and swarm data
 .claude/**
 .claude-flow/**
+.agents/**
+.hermes/**
+.serena/**
 .mcp.json
 CLAUDE.md
 *.db
