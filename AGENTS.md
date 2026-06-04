@@ -45,5 +45,6 @@
   - `bun run build:prod`
   - `bun run package`
 - `bun run test:coverage` is not required for every commit. Run it when changes affect shared behavior, test coverage is in question, or coverage-sensitive work is requested.
+- `bun run deps:check` is currently report-only quality telemetry. Run it while triaging unused files, exports, and dependencies, but do not treat findings as a release blocker until the Knip baseline is intentionally promoted.
 - Do not run `bun run publish` unless the user explicitly asks to publish the extension.
 - Do not claim a validation passed unless it actually ran. If a command cannot run, state the reason and the risk.

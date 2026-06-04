@@ -1,6 +1,6 @@
 import { GRAPH_LANE_COLORS, JETBRAINS_UI } from "./shared/tokens";
 
-export const COLORS = GRAPH_LANE_COLORS;
+const COLORS = GRAPH_LANE_COLORS;
 
 export const LANE_WIDTH = JETBRAINS_UI.graph.laneWidth;
 export const DOT_RADIUS = JETBRAINS_UI.graph.dotRadius;

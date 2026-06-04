@@ -31,7 +31,7 @@ function getPayload(): IntelligitI18nPayload | undefined {
 }
 
 function interpolate(value: string, args: InterpolationArgs): string {
-    return value.replace(/\{([A-Za-z0-9_]+)\}/g, (match, name) => {
+    return value.replace(/\{([A-Za-z0-9_]+)\}/g, (match: string, name: string) => {
         const replacement = args[name];
         return replacement === undefined ? match : String(replacement);
     });

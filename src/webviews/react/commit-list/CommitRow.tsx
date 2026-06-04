@@ -131,11 +131,12 @@ function CommitMessageCell({
         const baseX = event.clientX > 0 ? event.clientX : rect.left + rect.width / 2;
         const x = Math.max(220, Math.min(window.innerWidth - 220, baseX));
         const shouldShowBelow = rect.top < 96;
+        const placement: "above" | "below" = shouldShowBelow ? "below" : "above";
 
         const newPos = {
             x,
             y: shouldShowBelow ? rect.bottom + 6 : rect.top - 8,
-            placement: (shouldShowBelow ? "below" : "above") as "above" | "below",
+            placement,
         };
 
         if (tooltipPos) {

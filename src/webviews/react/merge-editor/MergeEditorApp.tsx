@@ -3,7 +3,13 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { ConflictSegment, HunkResolution, InboundMessage, OutboundMessage } from "./types";
+import type {
+    ConflictSegment,
+    HunkResolution,
+    InboundMessage,
+    MergeSegment,
+    OutboundMessage,
+} from "./types";
 import { getVsCodeApi as getSharedVsCodeApi } from "../shared/vscodeApi";
 import { t } from "../shared/i18n";
 import {
@@ -36,6 +42,8 @@ import {
 } from "./segments";
 import "./merge-editor.css";
 
+const EMPTY_SEGMENTS: MergeSegment[] = [];
+
 // --- VS Code API ---
 
 function getVsCodeApi() {
@@ -50,7 +58,7 @@ function App() {
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
-    const segments = state.data?.segments ?? [];
+    const segments = state.data?.segments ?? EMPTY_SEGMENTS;
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 

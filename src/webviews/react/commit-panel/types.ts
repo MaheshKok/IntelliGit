@@ -110,6 +110,6 @@ export interface TreeNode extends Omit<GenericTreeFolder<WorkingFile>, "children
 }
 
 /** A leaf file node in the directory tree. */
-export type TreeFile = GenericTreeLeaf<WorkingFile>;
+type TreeFile = GenericTreeLeaf<WorkingFile>;
 
 export type TreeEntry = TreeNode | TreeFile;

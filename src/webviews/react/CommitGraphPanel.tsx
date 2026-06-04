@@ -126,7 +126,7 @@ export function CommitGraphPanel({
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
-            const state = vscode.getState() as Record<string, unknown> | undefined;
+            const state = vscode.getState();
             const w = state?.[stateKey(stateKeyPrefix, "branchWidth")];
             return typeof w === "number" ? w : DEFAULT_BRANCH_WIDTH;
         } catch {
@@ -135,7 +135,7 @@ export function CommitGraphPanel({
     });
     const [infoWidth, setInfoWidth] = useState(() => {
         try {
-            const state = vscode.getState() as Record<string, unknown> | undefined;
+            const state = vscode.getState();
             const w = state?.[stateKey(stateKeyPrefix, "infoWidth")];
             return typeof w === "number" ? w : DEFAULT_INFO_WIDTH;
         } catch {
@@ -238,7 +238,7 @@ export function CommitGraphPanel({
 
     useEffect(() => {
         try {
-            const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
+            const prev = vscode.getState() ?? {};
             vscode.setState({
                 ...prev,
                 [stateKey(stateKeyPrefix, "branchWidth")]: branchWidth,

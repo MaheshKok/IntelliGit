@@ -20,6 +20,20 @@ interface CreatedRepo {
     htmlUrl: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> | null {
+    const parsed: unknown = JSON.parse(raw);
+    return isRecord(parsed) ? parsed : null;
+}
+
+function readString(record: Record<string, unknown>, key: string): string | undefined {
+    const value = record[key];
+    return typeof value === "string" ? value : undefined;
+}
+
 interface PublishAuth {
     token: string;
     /** GitLab uses "oauth2" as the username; GitHub uses x-access-token. */
@@ -352,11 +366,18 @@ async function createGitHubRepo(
                     if (settled) return;
                     if (res.statusCode === 201) {
                         try {
-                            const repo = JSON.parse(data);
+                            const repo = parseJsonObject(data);
+                            const cloneUrl = repo ? readString(repo, "clone_url") : undefined;
+                            const sshUrl = repo ? readString(repo, "ssh_url") : undefined;
+                            const htmlUrl = repo ? readString(repo, "html_url") : undefined;
+                            if (!cloneUrl || !sshUrl || !htmlUrl) {
+                                fail("Invalid GitHub API response");
+                                return;
+                            }
                             succeed({
-                                cloneUrl: repo.clone_url as string,
-                                sshUrl: repo.ssh_url as string,
-                                htmlUrl: repo.html_url as string,
+                                cloneUrl,
+                                sshUrl,
+                                htmlUrl,
                             });
                         } catch {
                             fail("Invalid GitHub API response");
@@ -485,11 +506,22 @@ async function createGitLabRepo(
                     if (settled) return;
                     if (res.statusCode === 201) {
                         try {
-                            const project = JSON.parse(data);
+                            const project = parseJsonObject(data);
+                            const webUrl = project ? readString(project, "web_url") : undefined;
+                            const cloneUrl =
+                                (project ? readString(project, "http_url_to_repo") : undefined) ??
+                                (webUrl ? `${webUrl}.git` : undefined);
+                            const sshUrl =
+                                (project ? readString(project, "ssh_url_to_repo") : undefined) ??
+                                "";
+                            if (!cloneUrl || !webUrl) {
+                                fail("Invalid GitLab API response");
+                                return;
+                            }
                             succeed({
-                                cloneUrl: project.http_url_to_repo || project.web_url + ".git",
-                                sshUrl: project.ssh_url_to_repo || "",
-                                htmlUrl: project.web_url as string,
+                                cloneUrl,
+                                sshUrl,
+                                htmlUrl: webUrl,
                             });
                         } catch {
                             fail("Invalid GitLab API response");
@@ -520,11 +552,19 @@ async function createGitLabRepo(
 
 function tryExtractApiError(raw: string): string | null {
     try {
-        const obj = JSON.parse(raw);
-        if (obj.message) return obj.message;
-        if (obj.error) return obj.error;
-        if (obj.errors && Array.isArray(obj.errors))
-            return obj.errors.map((e: { message?: string }) => e.message).join("; ");
+        const obj = parseJsonObject(raw);
+        if (!obj) return null;
+        const message = readString(obj, "message");
+        if (message) return message;
+        const error = readString(obj, "error");
+        if (error) return error;
+        const errors = obj.errors;
+        if (Array.isArray(errors)) {
+            const messages = errors
+                .map((entry) => (isRecord(entry) ? readString(entry, "message") : undefined))
+                .filter((entry): entry is string => Boolean(entry));
+            if (messages.length > 0) return messages.join("; ");
+        }
         return null;
     } catch {
         return raw.slice(0, 300) || null;
@@ -598,7 +638,8 @@ function runGitCommand(cwd: string, args: string[], env: Record<string, string>)
             },
             (err, stdout, stderr) => {
                 if (err) {
-                    const detail = String(stderr || stdout || err.message || err);
+                    const detail =
+                        stderr.trim() || stdout.trim() || err.message || getErrorMessage(err);
                     reject(new Error(detail.trim() || "Git command failed"));
                     return;
                 }

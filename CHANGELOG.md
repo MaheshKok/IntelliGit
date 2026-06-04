@@ -11,10 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added React Doctor as a repository validation tool with a `bun run react-doctor` script.
 - Added a React Doctor configuration that runs non-interactively, offline, and fails validation on error-level diagnostics.
+- Added React Hooks linting so Rules of Hooks violations fail lint while exhaustive dependency findings start as warnings.
+- Added Knip with a report-only `bun run deps:check` script for unused files, exports, and dependencies.
 
 ### Changed
 
 - Updated the pre-commit validation checklist to run React Doctor alongside format, lint, typecheck, build, and tests.
+- Scoped ESLint by runtime so extension-host TypeScript, React webviews, and Node scripts use the correct globals and parser settings.
+- Enabled type-aware TypeScript ESLint recommendations with noisy async misuse findings staged as warnings during cleanup.
+- Wired the existing React ESLint plugin into the webview lint path and kept TypeScript-safe React rules enabled.
 - Added a reduced-motion guard to the shared webview shell so animations and transitions respect `prefers-reduced-motion`.
 
 ### Fixed

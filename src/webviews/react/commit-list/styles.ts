@@ -120,21 +120,3 @@ export const LOADING_MORE_STYLE: CSSProperties = {
     fontSize: "11px",
     opacity: 0.5,
 };
-
-export const REF_CONTAINER_STYLE: CSSProperties = {
-    display: "flex",
-    gap: "3px",
-    marginLeft: 8,
-    flexShrink: 0,
-};
-
-export const REF_LABEL_STYLE: CSSProperties = {
-    padding: "1px 6px",
-    borderRadius: "3px",
-    fontSize: "10px",
-    lineHeight: "16px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    maxWidth: 160,
-    display: "inline-block",
-};

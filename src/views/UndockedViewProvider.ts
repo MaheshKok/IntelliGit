@@ -188,7 +188,7 @@ export class UndockedViewProvider {
         }
     }
 
-    async open(): Promise<void> {
+    open(): void {
         if (this.panel) {
             this.panel.reveal();
             return;

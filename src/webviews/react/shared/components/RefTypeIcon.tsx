@@ -2,8 +2,8 @@ import React from "react";
 import { JETBRAINS_UI } from "../tokens";
 import { RefBranchIcon, RefTagIcon } from "./Icons";
 
-export const BRANCH_REF_ICON_COLOR = JETBRAINS_UI.color.branch;
-export const TAG_REF_ICON_COLOR = JETBRAINS_UI.color.tag;
+const BRANCH_REF_ICON_COLOR = JETBRAINS_UI.color.branch;
+const TAG_REF_ICON_COLOR = JETBRAINS_UI.color.tag;
 
 function RefTypeIconInner({
     kind,

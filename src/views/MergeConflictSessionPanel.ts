@@ -36,8 +36,9 @@ export class MergeConflictSessionPanel {
         panel.webview.html = this.getHtml(panel.webview);
 
         panel.webview.onDidReceiveMessage(async (msg) => {
+            const message: unknown = msg;
             try {
-                await this.handleMessage(msg);
+                await this.handleMessage(message);
             } catch (error) {
                 if (!this.isAlive()) return;
                 const message = getErrorMessage(error);
@@ -118,7 +119,8 @@ export class MergeConflictSessionPanel {
         this.callbacks = callbacks;
     }
 
-    private async handleMessage(msg: { type?: unknown; filePath?: unknown }): Promise<void> {
+    private async handleMessage(raw: unknown): Promise<void> {
+        const msg = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
         const type = typeof msg.type === "string" ? msg.type : "";
         switch (type) {
             case "ready":

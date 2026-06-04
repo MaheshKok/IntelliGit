@@ -11,6 +11,8 @@ export function normalizeLineForWordDiff(line: string): string {
     return line.replace(/\s+/g, " ").trim();
 }
 
+type AlignmentTraceAction = "pair" | "skipA" | "skipB";
+
 export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, number]> {
     const m = a.length;
     const n = b.length;
@@ -30,7 +32,7 @@ export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, n
         return pairs;
     }
 
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
     for (let i = m - 1; i >= 0; i--) {
         for (let j = n - 1; j >= 0; j--) {
             dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
@@ -72,7 +74,7 @@ export function tokenSimilarityRatio(a: string, b: string): number {
 
 export function alignCompareLinesForWordDiff(lines: string[], compareLines: string[]): string[] {
     if (lines.length === 0) return [];
-    if (compareLines.length === 0) return new Array(lines.length).fill("");
+    if (compareLines.length === 0) return Array<string>(lines.length).fill("");
     if (lines.length === compareLines.length) {
         return [...compareLines];
     }
@@ -111,9 +113,9 @@ export function alignCompareLinesForWordDiff(lines: string[], compareLines: stri
         return score;
     };
 
-    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-    const trace: ("pair" | "skipA" | "skipB")[][] = Array.from({ length: m + 1 }, () =>
-        new Array(n + 1).fill("pair"),
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
+    const trace: AlignmentTraceAction[][] = Array.from({ length: m + 1 }, () =>
+        Array<AlignmentTraceAction>(n + 1).fill("pair"),
     );
 
     for (let i = m - 1; i >= 0; i--) {

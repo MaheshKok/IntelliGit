@@ -219,10 +219,7 @@ export function BranchColumn({
                                 (event.shiftKey && event.key === "F10")
                             ) {
                                 event.preventDefault();
-                                openBranchContextMenuFromRow(
-                                    event.currentTarget as HTMLElement,
-                                    current,
-                                );
+                                openBranchContextMenuFromRow(event.currentTarget, current);
                             }
                         }}
                         style={HEAD_ROW_STYLE}
