@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { getVsCodeApi as getSharedVsCodeApi } from "../shared/vscodeApi";
+import { t } from "../shared/i18n";
 import type { MergeConflictFile } from "../../../types";
 import type { InboundMessage, OutboundMessage } from "./types";
 import "./merge-conflicts-session.css";
@@ -22,8 +23,8 @@ function fileName(filePath: string): string {
 }
 
 function App() {
-    const [sourceBranch, setSourceBranch] = useState("incoming branch");
-    const [targetBranch, setTargetBranch] = useState("current branch");
+    const [sourceBranch, setSourceBranch] = useState(t("mergeSession.defaultSource"));
+    const [targetBranch, setTargetBranch] = useState(t("mergeSession.defaultTarget"));
     const [files, setFiles] = useState<MergeConflictFile[]>([]);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [groupByDirectory, setGroupByDirectory] = useState(false);
@@ -126,24 +127,27 @@ function App() {
 
     return (
         <div className="session-root">
-            <div className="session-header">Conflicts</div>
+            <div className="session-header">{t("mergeSession.title")}</div>
             <div className="session-subtitle">
-                Merging branch <strong>{sourceBranch}</strong> into branch{" "}
+                {t("mergeSession.subtitle.pre")}
+                <strong>{sourceBranch}</strong>
+                {t("mergeSession.subtitle.mid")}
                 <strong>{targetBranch}</strong>
+                {t("mergeSession.subtitle.post")}
             </div>
 
             <div className="session-main">
                 <div className="table-wrap">
                     <div className="table-meta">
-                        {files.length} unresolved file{files.length === 1 ? "" : "s"}
+                        {t("mergeSession.unresolvedFiles", { count: files.length })}
                     </div>
                     {error ? <div className="error">{error}</div> : null}
                     <table className="conflict-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
-                                <th>Yours ({targetBranch})</th>
-                                <th>Theirs ({sourceBranch})</th>
+                                <th>{t("mergeSession.col.name")}</th>
+                                <th>{t("mergeSession.col.yours", { branch: targetBranch })}</th>
+                                <th>{t("mergeSession.col.theirs", { branch: sourceBranch })}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -167,24 +171,24 @@ function App() {
                         disabled={!selectedFile}
                         onClick={() => acceptSelected("acceptYours")}
                     >
-                        Accept Yours
+                        {t("mergeSession.acceptYours")}
                     </button>
                     <button
                         className="action-btn"
                         disabled={!selectedFile}
                         onClick={() => acceptSelected("acceptTheirs")}
                     >
-                        Accept Theirs
+                        {t("mergeSession.acceptTheirs")}
                     </button>
                     <button
                         className="action-btn primary"
                         disabled={!selectedFile}
                         onClick={() => selectedFile && openMerge(selectedFile.path)}
                     >
-                        Merge...
+                        {t("mergeSession.merge")}
                     </button>
                     <button className="action-btn" onClick={refresh}>
-                        Refresh
+                        {t("common.refresh")}
                     </button>
                 </div>
             </div>
@@ -196,10 +200,10 @@ function App() {
                         checked={groupByDirectory}
                         onChange={(event) => setGroupByDirectory(event.target.checked)}
                     />
-                    Group files by directory
+                    {t("mergeSession.groupByDirectory")}
                 </label>
                 <button className="close-btn" onClick={close}>
-                    Close
+                    {t("common.close")}
                 </button>
             </div>
         </div>

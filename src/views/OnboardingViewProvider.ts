@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { randomBytes } from "crypto";
+import { escapeHtmlAttr, escapeHtmlText } from "./webviewHtml";
 
 export type OnboardingContext = "no-workspace" | "no-git-repo";
 
@@ -59,46 +60,56 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         if (this.showActions) {
             if (isNoWorkspace) {
                 actions.push(
-                    { id: "cloneRepository", label: "Clone Repository", icon: "\u{1F4E5}" },
-                    { id: "openFolder", label: "Open Folder", icon: "\u{1F4C2}" },
+                    {
+                        id: "cloneRepository",
+                        label: vscode.l10n.t("Clone Repository"),
+                        icon: "\u{1F4E5}",
+                    },
+                    {
+                        id: "openFolder",
+                        label: vscode.l10n.t("Open Folder"),
+                        icon: "\u{1F4C2}",
+                    },
                 );
             } else {
                 actions.push({
                     id: "initializeRepository",
-                    label: "Initialize Repository",
+                    label: vscode.l10n.t("Initialize Repository"),
                     icon: "\u{1F680}",
                 });
             }
         }
 
-        const heading = isNoWorkspace ? "No Folder Open" : "No Git Repository";
+        const heading = isNoWorkspace
+            ? vscode.l10n.t("No Folder Open")
+            : vscode.l10n.t("No Git Repository");
         const subtitle = isNoWorkspace
-            ? "Open a folder to get started with IntelliGit."
-            : "Initialize a Git repository or open an existing one to get started.";
+            ? vscode.l10n.t("Open a folder to get started with IntelliGit.")
+            : vscode.l10n.t("Initialize a Git repository or open an existing one to get started.");
 
         const buttonsHtml = actions
             .map(
                 (a) =>
-                    `<button class="onboarding-btn" data-action="${a.id}"><span class="btn-icon">${a.icon}</span><span>${a.label}</span></button>`,
+                    `<button class="onboarding-btn" data-action="${escapeHtmlAttr(a.id)}"><span class="btn-icon">${escapeHtmlText(a.icon)}</span><span>${escapeHtmlText(a.label)}</span></button>`,
             )
             .join("\n");
         const contentHtml = this.showActions
-            ? `<img class="onboarding-icon" src="${iconUri}" alt="IntelliGit" />
-        <h1 class="onboarding-heading">${heading}</h1>
-        <p class="onboarding-subtitle">${subtitle}</p>
+            ? `<img class="onboarding-icon" src="${escapeHtmlAttr(String(iconUri))}" alt="${escapeHtmlAttr(vscode.l10n.t("IntelliGit"))}" />
+        <h1 class="onboarding-heading">${escapeHtmlText(heading)}</h1>
+        <p class="onboarding-subtitle">${escapeHtmlText(subtitle)}</p>
         <div class="onboarding-actions">
             ${buttonsHtml}
         </div>`
             : "";
 
         return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtmlAttr(vscode.env.language)}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src 'nonce-${nonce}' ${webview.cspSource}; script-src 'nonce-${nonce}' ${webview.cspSource}; img-src ${webview.cspSource} data:;">
-    <title>${this.title}</title>
+    <title>${escapeHtmlText(this.title)}</title>
     <style nonce="${nonce}">
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {

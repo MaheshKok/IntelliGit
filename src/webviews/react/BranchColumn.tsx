@@ -14,6 +14,7 @@ import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
 import { RepoIcon, TagRightIcon } from "./shared/components";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { getVsCodeApi } from "./shared/vscodeApi";
+import { t } from "./shared/i18n";
 import {
     BRANCH_ROW_CLASS_CSS,
     HEAD_LABEL_STYLE,
@@ -227,13 +228,15 @@ export function BranchColumn({
                         style={HEAD_ROW_STYLE}
                     >
                         <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
-                        <span style={HEAD_LABEL_STYLE}>HEAD ({current.name})</span>
+                        <span style={HEAD_LABEL_STYLE}>
+                            {t("branch.head.label", { name: current.name })}
+                        </span>
                     </div>
                 </div>
             )}
 
             <BranchSectionHeader
-                label="Local"
+                label={t("branch.section.local")}
                 expanded={expandedSections.has("local")}
                 onToggle={() => toggleSection("local")}
             />
@@ -260,7 +263,7 @@ export function BranchColumn({
             )}
 
             <BranchSectionHeader
-                label="Remote"
+                label={t("branch.section.remote")}
                 expanded={expandedSections.has("remote")}
                 onToggle={() => toggleSection("remote")}
             />
@@ -304,7 +307,7 @@ export function BranchColumn({
             )}
 
             {filterNeedle && locals.length === 0 && remotes.length === 0 && !current && (
-                <div style={NO_MATCH_STYLE}>No matching branches</div>
+                <div style={NO_MATCH_STYLE}>{t("branch.noMatches")}</div>
             )}
 
             {contextMenu && (

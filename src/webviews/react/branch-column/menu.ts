@@ -1,6 +1,7 @@
 import type { Branch } from "../../../types";
 import type { BranchAction } from "../commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
+import { t } from "../shared/i18n";
 
 type SeparatorAction = `sep-${string}`;
 type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | SeparatorAction };
@@ -28,39 +29,48 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
 
     if (branch.isCurrent) {
         return [
-            { label: `New Branch from ${current}...`, action: "newBranchFrom" },
+            { label: t("branch.menu.newBranchFrom", { branch: current }), action: "newBranchFrom" },
             separator("sep-current-1"),
-            { label: "Update", action: "updateBranch" },
-            { label: "Push...", action: "pushBranch" },
+            { label: t("branch.menu.update"), action: "updateBranch" },
+            { label: t("branch.menu.push"), action: "pushBranch" },
             separator("sep-current-2"),
-            { label: "Rename...", action: "renameBranch" },
+            { label: t("branch.menu.rename"), action: "renameBranch" },
         ];
     }
 
     const nonCurrentBase: BranchMenuItem[] = [
-        { label: "Checkout", action: "checkout" },
-        { label: `New Branch from ${selected}...`, action: "newBranchFrom" },
-        { label: `Checkout and Rebase onto ${current}`, action: "checkoutAndRebase" },
+        { label: t("branch.menu.checkout"), action: "checkout" },
+        { label: t("branch.menu.newBranchFrom", { branch: selected }), action: "newBranchFrom" },
+        {
+            label: t("branch.menu.checkoutAndRebase", { branch: current }),
+            action: "checkoutAndRebase",
+        },
         separator("sep-shared-1"),
-        { label: `Rebase ${current} onto ${selected}`, action: "rebaseCurrentOnto" },
-        { label: `Merge ${selected} into ${current}`, action: "mergeIntoCurrent" },
+        {
+            label: t("branch.menu.rebaseOnto", { current, selected }),
+            action: "rebaseCurrentOnto",
+        },
+        {
+            label: t("branch.menu.mergeInto", { selected, current }),
+            action: "mergeIntoCurrent",
+        },
         separator("sep-shared-2"),
-        { label: "Update", action: "updateBranch" },
+        { label: t("branch.menu.update"), action: "updateBranch" },
     ];
 
     if (branch.isRemote) {
         return [
             ...nonCurrentBase,
             separator("sep-remote-1"),
-            { label: "Delete", action: "deleteBranch" },
+            { label: t("branch.menu.delete"), action: "deleteBranch" },
         ];
     }
 
     return [
         ...nonCurrentBase,
-        { label: "Push...", action: "pushBranch" },
+        { label: t("branch.menu.push"), action: "pushBranch" },
         separator("sep-local-1"),
-        { label: "Rename...", action: "renameBranch" },
-        { label: "Delete", action: "deleteBranch" },
+        { label: t("branch.menu.rename"), action: "renameBranch" },
+        { label: t("branch.menu.delete"), action: "deleteBranch" },
     ];
 }

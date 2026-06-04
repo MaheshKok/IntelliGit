@@ -1,14 +1,19 @@
 // @vitest-environment jsdom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch, Commit } from "../../src/types";
 import { BranchColumn } from "../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../src/webviews/react/CommitList";
 import { ContextMenu } from "../../src/webviews/react/shared/components/ContextMenu";
 import { initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
+import { installWebviewI18n } from "./utils/webviewI18nTestUtils";
 
 initReactDomTestEnvironment();
+
+beforeEach(() => {
+    installWebviewI18n();
+});
 
 describe("ContextMenu integration", () => {
     it("supports disabled state, selection, and outside close", () => {

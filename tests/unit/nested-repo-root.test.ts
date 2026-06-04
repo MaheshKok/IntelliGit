@@ -2,6 +2,7 @@
 // root discovery when VS Code workspace folder differs from the git repo root.
 
 import { describe, it, expect, vi } from "vitest";
+import { interpolateL10n } from "./utils/l10nTestHelper";
 
 // Mock vscode before any imports that depend on it
 vi.mock("vscode", () => ({
@@ -30,6 +31,9 @@ vi.mock("vscode", () => ({
     },
     commands: {
         executeCommand: vi.fn(),
+    },
+    l10n: {
+        t: interpolateL10n,
     },
 }));
 

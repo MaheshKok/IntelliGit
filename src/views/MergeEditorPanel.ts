@@ -99,7 +99,9 @@ export class MergeEditorPanel {
             case "applyResolution": {
                 if (typeof msg.content !== "string") {
                     vscode.window.showErrorMessage(
-                        `Invalid merge resolution content for ${this.filePath}.`,
+                        vscode.l10n.t("Invalid merge resolution content for {path}.", {
+                            path: this.filePath,
+                        }),
                     );
                     return;
                 }
@@ -107,7 +109,9 @@ export class MergeEditorPanel {
                 const fileUri = vscode.Uri.joinPath(this.workspaceRoot, this.filePath);
                 await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, "utf8"));
                 await this.gitOps.stageFile(this.filePath);
-                vscode.window.showInformationMessage(`Resolved: ${this.filePath}`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Resolved: {path}", { path: this.filePath }),
+                );
                 try {
                     this.onResolved();
                 } finally {
@@ -118,7 +122,9 @@ export class MergeEditorPanel {
 
             case "acceptYours": {
                 await this.gitOps.acceptConflictSide(this.filePath, "ours");
-                vscode.window.showInformationMessage(`Accepted yours: ${this.filePath}`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Accepted yours: {path}", { path: this.filePath }),
+                );
                 try {
                     this.onResolved();
                 } finally {
@@ -129,7 +135,9 @@ export class MergeEditorPanel {
 
             case "acceptTheirs": {
                 await this.gitOps.acceptConflictSide(this.filePath, "theirs");
-                vscode.window.showInformationMessage(`Accepted theirs: ${this.filePath}`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Accepted theirs: {path}", { path: this.filePath }),
+                );
                 try {
                     this.onResolved();
                 } finally {
@@ -186,7 +194,7 @@ export class MergeEditorPanel {
             webview,
             scriptFile: "webview-mergeeditor.js",
             styleFiles: ["webview-mergeeditor.css"],
-            title: "Merge Editor",
+            title: vscode.l10n.t("Merge Editor"),
         });
     }
 

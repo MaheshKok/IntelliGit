@@ -58,22 +58,22 @@ async function pickCloneProvider(): Promise<CloneProvider | undefined> {
     const picked = await vscode.window.showQuickPick(
         [
             {
-                label: "$(github) GitHub",
-                description: "Sign in with your GitHub account",
+                label: vscode.l10n.t("$(github) GitHub"),
+                description: vscode.l10n.t("Sign in with your GitHub account"),
                 provider: "github" as const,
             },
             {
-                label: "$(gitlab) GitLab",
-                description: "Clone with personal access token or URL",
+                label: vscode.l10n.t("$(gitlab) GitLab"),
+                description: vscode.l10n.t("Clone with personal access token or URL"),
                 provider: "gitlab" as const,
             },
             {
-                label: "$(remote) SSH",
-                description: "Clone via git@... SSH URL",
+                label: vscode.l10n.t("$(remote) SSH"),
+                description: vscode.l10n.t("Clone via git@... SSH URL"),
                 provider: "ssh" as const,
             },
         ],
-        { placeHolder: "Choose how to clone a repository" },
+        { placeHolder: vscode.l10n.t("Choose how to clone a repository") },
     );
     return picked?.provider;
 }
@@ -87,8 +87,8 @@ async function pickDestinationFolder(): Promise<string | undefined> {
         canSelectFiles: false,
         canSelectFolders: true,
         canSelectMany: false,
-        openLabel: "Select Destination",
-        title: "Choose where to clone the repository",
+        openLabel: vscode.l10n.t("Select Destination"),
+        title: vscode.l10n.t("Choose where to clone the repository"),
     });
     return uris?.[0]?.fsPath;
 }
@@ -99,11 +99,11 @@ async function pickDestinationFolder(): Promise<string | undefined> {
 
 async function cloneViaSSH(): Promise<void> {
     const url = await vscode.window.showInputBox({
-        prompt: "Enter the SSH clone URL (e.g. git@github.com:user/repo.git)",
+        prompt: vscode.l10n.t("Enter the SSH clone URL (e.g. git@github.com:user/repo.git)"),
         placeHolder: "git@github.com:user/repo.git",
         validateInput: (value) => {
-            if (!value.trim()) return "URL is required";
-            if (!/^git@/.test(value)) return 'URL must start with "git@"';
+            if (!value.trim()) return vscode.l10n.t("URL is required");
+            if (!/^git@/.test(value)) return vscode.l10n.t('URL must start with "git@"');
             return undefined;
         },
     });
@@ -130,10 +130,13 @@ async function cloneViaGitHub(): Promise<void> {
 
     const mode = await vscode.window.showQuickPick(
         [
-            { label: "$(list-tree) Browse My Repositories", value: "browse" as const },
-            { label: "$(link) Enter Clone URL", value: "url" as const },
+            {
+                label: vscode.l10n.t("$(list-tree) Browse My Repositories"),
+                value: "browse" as const,
+            },
+            { label: vscode.l10n.t("$(link) Enter Clone URL"), value: "url" as const },
         ],
-        { placeHolder: "How would you like to select a repository?" },
+        { placeHolder: vscode.l10n.t("How would you like to select a repository?") },
     );
     if (!mode) return;
 
@@ -145,12 +148,14 @@ async function cloneViaGitHub(): Promise<void> {
         cloneUrl = repo.clone_url;
     } else {
         const input = await vscode.window.showInputBox({
-            prompt: "Enter the GitHub HTTPS clone URL (e.g. https://github.com/user/repo.git)",
+            prompt: vscode.l10n.t(
+                "Enter the GitHub HTTPS clone URL (e.g. https://github.com/user/repo.git)",
+            ),
             placeHolder: "https://github.com/user/repo.git",
             validateInput: (value) => {
-                if (!value.trim()) return "URL is required";
+                if (!value.trim()) return vscode.l10n.t("URL is required");
                 if (!/^https:\/\/github\.com\//.test(value))
-                    return "Must be a github.com HTTPS URL";
+                    return vscode.l10n.t("Must be a github.com HTTPS URL");
                 return undefined;
             },
         });
@@ -182,7 +187,10 @@ async function acquireGitHubSession(): Promise<vscode.AuthenticationSession | un
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(
-            `GitHub authentication failed: ${message}\n\nMake sure the GitHub Authentication extension is installed and enabled.`,
+            vscode.l10n.t(
+                "GitHub authentication failed: {message}\n\nMake sure the GitHub Authentication extension is installed and enabled.",
+                { message },
+            ),
         );
         return undefined;
     }
@@ -194,20 +202,24 @@ async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
         repos = await vscode.window.withProgress<GitHubRepo[]>(
             {
                 location: vscode.ProgressLocation.Notification,
-                title: "Fetching your GitHub repositories...",
+                title: vscode.l10n.t("Fetching your GitHub repositories..."),
                 cancellable: false,
             },
             () => fetchGitHubRepos(token),
         );
     } catch (err) {
         vscode.window.showErrorMessage(
-            `Failed to list GitHub repositories: ${getErrorMessage(err)}`,
+            vscode.l10n.t("Failed to list GitHub repositories: {message}", {
+                message: getErrorMessage(err),
+            }),
         );
         return undefined;
     }
 
     if (!repos || repos.length === 0) {
-        vscode.window.showInformationMessage("No repositories found on your GitHub account.");
+        vscode.window.showInformationMessage(
+            vscode.l10n.t("No repositories found on your GitHub account."),
+        );
         return undefined;
     }
 
@@ -219,7 +231,7 @@ async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
     }));
 
     const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: "Search or select a repository to clone",
+        placeHolder: vscode.l10n.t("Search or select a repository to clone"),
         matchOnDescription: true,
         matchOnDetail: true,
     });
@@ -338,19 +350,21 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
                 const use = await vscode.window.showQuickPick(
                     [
                         {
-                            label: "Use Saved Token",
+                            label: vscode.l10n.t("Use Saved Token"),
                             description: "********",
                             value: "saved" as const,
                         },
-                        { label: "Enter a Different Token", value: "new" as const },
-                        { label: "Clear Saved Token", value: "clear" as const },
+                        { label: vscode.l10n.t("Enter a Different Token"), value: "new" as const },
+                        { label: vscode.l10n.t("Clear Saved Token"), value: "clear" as const },
                     ],
-                    { placeHolder: "GitLab authentication" },
+                    { placeHolder: vscode.l10n.t("GitLab authentication") },
                 );
                 if (!use) return;
                 if (use.value === "clear") {
                     await secrets.delete(GITLAB_TOKEN_SECRET_KEY);
-                    vscode.window.showInformationMessage("Saved GitLab token cleared.");
+                    vscode.window.showInformationMessage(
+                        vscode.l10n.t("Saved GitLab token cleared."),
+                    );
                     return;
                 }
                 if (use.value === "saved") {
@@ -386,11 +400,13 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
     // Prompt for token if still not set
     if (!token) {
         const input = await vscode.window.showInputBox({
-            prompt: "Enter your GitLab Personal Access Token (requires read_repository scope)",
+            prompt: vscode.l10n.t(
+                "Enter your GitLab Personal Access Token (requires read_repository scope)",
+            ),
             placeHolder: "glpat-...",
             password: true,
             validateInput: (value) => {
-                if (!value.trim()) return "Token is required";
+                if (!value.trim()) return vscode.l10n.t("Token is required");
                 return undefined;
             },
         });
@@ -399,27 +415,33 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
 
         // Save to SecretStorage
         if (secrets) {
+            const saveAction = vscode.l10n.t("Save");
+            const dontSaveAction = vscode.l10n.t("Don't Save");
             const save = await vscode.window.showInformationMessage(
-                "Save this token for future use?",
-                "Save",
-                "Don't Save",
+                vscode.l10n.t("Save this token for future use?"),
+                saveAction,
+                dontSaveAction,
             );
-            if (save === "Save") {
+            if (save === saveAction) {
                 try {
                     await secrets.store(GITLAB_TOKEN_SECRET_KEY, token);
                 } catch {
-                    vscode.window.showWarningMessage("Could not save token securely.");
+                    vscode.window.showWarningMessage(
+                        vscode.l10n.t("Could not save token securely."),
+                    );
                 }
             }
         }
     }
 
     const cloneUrl = await vscode.window.showInputBox({
-        prompt: "Enter the GitLab HTTPS clone URL (e.g. https://gitlab.com/user/repo.git)",
+        prompt: vscode.l10n.t(
+            "Enter the GitLab HTTPS clone URL (e.g. https://gitlab.com/user/repo.git)",
+        ),
         placeHolder: "https://gitlab.com/user/repo.git",
         validateInput: (value) => {
-            if (!value.trim()) return "URL is required";
-            if (!/^https:\/\//.test(value)) return "Must be an HTTPS URL";
+            if (!value.trim()) return vscode.l10n.t("URL is required");
+            if (!/^https:\/\//.test(value)) return vscode.l10n.t("Must be an HTTPS URL");
             return undefined;
         },
     });
@@ -467,24 +489,35 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
         }
         // Permission error, invalid path, etc. — surface to user
         const message = getErrorMessage(err);
-        vscode.window.showErrorMessage(`Cannot access "${path.basename(targetPath)}": ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t('Cannot access "{name}": {message}', {
+                name: path.basename(targetPath),
+                message,
+            }),
+        );
         return;
     }
 
     // Directory exists — ask user
+    const overwriteAction = vscode.l10n.t("Overwrite");
     const overwrite = await vscode.window.showWarningMessage(
-        `Directory "${path.basename(targetPath)}" already exists. Overwrite?`,
+        vscode.l10n.t('Directory "{name}" already exists. Overwrite?', {
+            name: path.basename(targetPath),
+        }),
         { modal: true },
-        "Overwrite",
+        overwriteAction,
     );
-    if (overwrite !== "Overwrite") return;
+    if (overwrite !== overwriteAction) return;
 
     try {
         await fs.rm(targetPath, { recursive: true, force: true });
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(
-            `Cannot remove existing directory "${path.basename(targetPath)}": ${message}`,
+            vscode.l10n.t('Cannot remove existing directory "{name}": {message}', {
+                name: path.basename(targetPath),
+                message,
+            }),
         );
         return;
     }
@@ -496,7 +529,7 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
             await vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
-                    title: `Cloning ${extractRepoName(url)}...`,
+                    title: vscode.l10n.t("Cloning {repo}...", { repo: extractRepoName(url) }),
                     cancellable: false,
                 },
                 async () => {
@@ -519,24 +552,27 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                 } catch {
                     // Non-fatal: the clone succeeded; warn but don't block.
                     vscode.window.showWarningMessage(
-                        "Cloned successfully, but could not clean the remote URL. " +
-                            "You may want to verify the origin remote in .git/config.",
+                        vscode.l10n.t(
+                            "Cloned successfully, but could not clean the remote URL. You may want to verify the origin remote in .git/config.",
+                        ),
                     );
                 }
             }
 
+            const openInNewWindowAction = vscode.l10n.t("Open in New Window");
+            const addToWorkspaceAction = vscode.l10n.t("Add to Workspace");
             const openChoice = await vscode.window.showInformationMessage(
-                `Cloned ${extractRepoName(url)} successfully.`,
-                "Open in New Window",
-                "Add to Workspace",
+                vscode.l10n.t("Cloned {repo} successfully.", { repo: extractRepoName(url) }),
+                openInNewWindowAction,
+                addToWorkspaceAction,
             );
-            if (openChoice === "Open in New Window") {
+            if (openChoice === openInNewWindowAction) {
                 await vscode.commands.executeCommand(
                     "vscode.openFolder",
                     vscode.Uri.file(targetPath),
                     true,
                 );
-            } else if (openChoice === "Add to Workspace") {
+            } else if (openChoice === addToWorkspaceAction) {
                 const count = vscode.workspace.workspaceFolders?.length ?? 0;
                 await vscode.workspace.updateWorkspaceFolders(count, 0, {
                     uri: vscode.Uri.file(targetPath),
@@ -559,25 +595,39 @@ function handleCloneError(err: unknown, url: string, provider: CloneProvider): v
         const hints: string[] = [];
         if (message.includes("permission denied") || message.includes("publickey")) {
             hints.push(
-                "Make sure your SSH key is loaded: run `ssh-add -l` in a terminal to list loaded keys.",
-                "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).",
-                "Verify your public key is added to your Git hosting account settings.",
+                vscode.l10n.t(
+                    "Make sure your SSH key is loaded: run `ssh-add -l` in a terminal to list loaded keys.",
+                ),
+                vscode.l10n.t(
+                    "If no keys are listed, add yours with `ssh-add ~/.ssh/id_ed25519` (or `~/.ssh/id_rsa`).",
+                ),
+                vscode.l10n.t(
+                    "Verify your public key is added to your Git hosting account settings.",
+                ),
             );
         }
         if (message.includes("host key verification failed")) {
             hints.push(
-                "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).",
+                vscode.l10n.t(
+                    "The host key is not in your known_hosts file. Run `ssh-keyscan -H github.com >> ~/.ssh/known_hosts` (or the appropriate host).",
+                ),
             );
         }
         if (message.includes("could not resolve host")) {
             hints.push(
-                "Check your network connection and that the hostname in the URL is correct.",
+                vscode.l10n.t(
+                    "Check your network connection and that the hostname in the URL is correct.",
+                ),
             );
         }
         if (hints.length === 0) {
-            hints.push("Check that the SSH URL is correct and the remote repository exists.");
+            hints.push(
+                vscode.l10n.t(
+                    "Check that the SSH URL is correct and the remote repository exists.",
+                ),
+            );
         }
-        showCloneErrorMessage("SSH clone failed", err, hints);
+        showCloneErrorMessage(vscode.l10n.t("SSH clone failed"), err, hints);
     } else if (provider === "github") {
         const hints: string[] = [];
         if (
@@ -586,38 +636,50 @@ function handleCloneError(err: unknown, url: string, provider: CloneProvider): v
             message.includes("denied")
         ) {
             hints.push(
-                "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.",
-                'Run the "GitHub: Sign Out" command, then retry.',
+                vscode.l10n.t(
+                    "Your GitHub token may have expired or lacks the necessary permissions. Try signing in again.",
+                ),
+                vscode.l10n.t('Run the "GitHub: Sign Out" command, then retry.'),
             );
         }
         if (message.includes("not found") || message.includes("404")) {
-            hints.push("The repository may not exist or you do not have access to it.");
+            hints.push(
+                vscode.l10n.t("The repository may not exist or you do not have access to it."),
+            );
         }
-        showCloneErrorMessage("GitHub clone failed", err, hints);
+        showCloneErrorMessage(vscode.l10n.t("GitHub clone failed"), err, hints);
     } else if (provider === "gitlab") {
         const hints: string[] = [];
         if (message.includes("authentication") || message.includes("403")) {
             hints.push(
-                "Your GitLab personal access token may be invalid or expired.",
-                "Create a new token at GitLab Settings → Access Tokens with the `read_repository` scope.",
-                'To clear a saved token, select "Clear Saved Token" when prompted on the next attempt.',
+                vscode.l10n.t("Your GitLab personal access token may be invalid or expired."),
+                vscode.l10n.t(
+                    "Create a new token at GitLab Settings → Access Tokens with the `read_repository` scope.",
+                ),
+                vscode.l10n.t(
+                    'To clear a saved token, select "Clear Saved Token" when prompted on the next attempt.',
+                ),
             );
         }
         if (message.includes("not found") || message.includes("404")) {
             hints.push(
-                "The repository may not exist or is private and your token does not have access.",
+                vscode.l10n.t(
+                    "The repository may not exist or is private and your token does not have access.",
+                ),
             );
         }
-        showCloneErrorMessage("GitLab clone failed", err, hints);
+        showCloneErrorMessage(vscode.l10n.t("GitLab clone failed"), err, hints);
     } else {
-        showCloneErrorMessage("Clone failed", err, []);
+        showCloneErrorMessage(vscode.l10n.t("Clone failed"), err, []);
     }
 }
 
 function showCloneErrorMessage(title: string, err: unknown, hints: string[]): void {
     const detail = getErrorMessage(err);
     const hintText = hints.length > 0 ? `\n\n${hints.join("\n")}` : "";
-    vscode.window.showErrorMessage(`${title}: ${detail}${hintText}`);
+    vscode.window.showErrorMessage(
+        vscode.l10n.t("{title}: {detail}{hintText}", { title, detail, hintText }),
+    );
 }
 
 // ---------------------------------------------------------------------------

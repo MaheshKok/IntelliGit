@@ -6,6 +6,7 @@ import { Box, Flex } from "@chakra-ui/react";
 import type { AmendBranchCommitSummary } from "../../../../types";
 import { formatDateTime } from "../../shared/date";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
+import { t } from "../../shared/i18n";
 
 interface Props {
     commits: AmendBranchCommitSummary[];
@@ -32,7 +33,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                     color="var(--vscode-foreground)"
                     letterSpacing="0.02em"
                 >
-                    Commits on this branch
+                    {t("commit.amendContext.title")}
                 </Box>
                 <Box
                     fontSize="10px"
@@ -41,15 +42,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                     mt="3px"
                     lineHeight="1.35"
                 >
-                    Working tree{" "}
-                    <Box as="span" fontWeight={600}>
-                        Changes
-                    </Box>{" "}
-                    and{" "}
-                    <Box as="span" fontWeight={600}>
-                        Unversioned Files
-                    </Box>{" "}
-                    are listed below.
+                    {t("commit.amendContext.description")}
                 </Box>
             </Box>
             <Box flex={1} overflowY="auto" px="4px" pb="6px" minH="48px" aria-busy={!historyLoaded}>
@@ -61,7 +54,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                         color="var(--vscode-descriptionForeground)"
                         fontFamily={SYSTEM_FONT_STACK}
                     >
-                        Loading branch history...
+                        {t("commit.amendContext.loading")}
                     </Box>
                 ) : commits.length === 0 ? (
                     <Box
@@ -71,7 +64,7 @@ export function AmendContextSection({ commits, historyLoaded }: Props): React.Re
                         color="var(--vscode-descriptionForeground)"
                         fontFamily={SYSTEM_FONT_STACK}
                     >
-                        No commits to show.
+                        {t("commit.amendContext.empty")}
                     </Box>
                 ) : (
                     commits.map((c, index) => (

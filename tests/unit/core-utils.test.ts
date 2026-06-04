@@ -14,6 +14,7 @@ import {
 } from "../../src/utils/errors";
 import { getChevronIconStyle } from "../../src/webviews/react/branch-column/styles";
 import { contentContainerStyle, headerRowStyle } from "../../src/webviews/react/commit-list/styles";
+import { interpolateL10n } from "./utils/l10nTestHelper";
 
 describe("core utilities", () => {
     beforeEach(() => {
@@ -41,6 +42,7 @@ describe("core utilities", () => {
         vi.doMock("vscode", () => ({
             window: { showErrorMessage },
             workspace: { fs: { delete: fsDelete } },
+            l10n: { t: interpolateL10n },
             Uri: {
                 joinPath: (root: { fsPath: string }, filePath: string) => ({
                     fsPath: `${root.fsPath}/${filePath}`,
@@ -68,6 +70,7 @@ describe("core utilities", () => {
         vi.doMock("vscode", () => ({
             window: { showErrorMessage },
             workspace: { fs: { delete: fsDelete } },
+            l10n: { t: interpolateL10n },
             Uri: {
                 joinPath: (root: { fsPath: string }, filePath: string) => ({
                     fsPath: `${root.fsPath}/${filePath}`,
@@ -100,6 +103,7 @@ describe("core utilities", () => {
         vi.doMock("vscode", () => ({
             window: { showErrorMessage },
             workspace: { fs: { delete: fsDelete } },
+            l10n: { t: interpolateL10n },
             Uri: {
                 joinPath: (_root: { fsPath: string }, filePath: string) => ({
                     fsPath: `/repo/${filePath}`,
@@ -168,6 +172,7 @@ describe("core utilities", () => {
             }),
         );
         vi.doMock("vscode", () => ({
+            env: { language: "en" },
             Uri: { joinPath },
             workspace: {
                 getConfiguration: () => ({
@@ -197,7 +202,7 @@ describe("core utilities", () => {
         expect(html).toContain("script-src 'nonce-");
         expect(html).toContain('src="webview:///dist/webview-commitgraph.js"');
         expect(html).toContain("background: #123");
-        expect(html).toContain('commitWindowPosition: "left"');
+        expect(html).toContain('"commitWindowPosition":"left"');
     });
 
     it("buildWebviewShellHtml follows VS Code sidebar location for auto commit window position", async () => {
@@ -207,6 +212,7 @@ describe("core utilities", () => {
             }),
         );
         vi.doMock("vscode", () => ({
+            env: { language: "en" },
             Uri: { joinPath },
             workspace: {
                 getConfiguration: () => ({
@@ -231,7 +237,7 @@ describe("core utilities", () => {
             title: "IntelliGit",
         });
 
-        expect(html).toContain('commitWindowPosition: "right"');
+        expect(html).toContain('"commitWindowPosition":"right"');
     });
 
     it("buildWebviewShellHtml honors explicit commit window position over auto", async () => {
@@ -241,6 +247,7 @@ describe("core utilities", () => {
             }),
         );
         vi.doMock("vscode", () => ({
+            env: { language: "en" },
             Uri: { joinPath },
             workspace: {
                 getConfiguration: () => ({
@@ -268,7 +275,7 @@ describe("core utilities", () => {
             title: "IntelliGit",
         });
 
-        expect(html).toContain('commitWindowPosition: "left"');
+        expect(html).toContain('"commitWindowPosition":"left"');
     });
 
     it("graph compute handles linear and merge histories", () => {

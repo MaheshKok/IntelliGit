@@ -47,7 +47,9 @@ async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | nul
     if (!trimmed) return null;
 
     if (path.isAbsolute(trimmed) && !fs.existsSync(trimmed)) {
-        vscode.window.showErrorMessage(`JetBrains path not found: ${trimmed}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("JetBrains path not found: {path}", { path: trimmed }),
+        );
         return null;
     }
 
@@ -56,7 +58,9 @@ async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | nul
         resolvedBinaryPath = await resolveJetBrainsMergeBinaryPath(trimmed);
     } catch (err) {
         const msg = getErrorMessage(err);
-        vscode.window.showErrorMessage(`Invalid JetBrains merge tool path: ${msg}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Invalid JetBrains merge tool path: {message}", { message: msg }),
+        );
         return null;
     }
 
@@ -65,11 +69,15 @@ async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | nul
         await config.update("jetbrainsMergeTool.path", trimmed, vscode.ConfigurationTarget.Global);
     }
 
-    const resolutionText =
+    vscode.window.showInformationMessage(
         resolvedBinaryPath === trimmed
-            ? `Executable: ${resolvedBinaryPath}`
-            : `Resolved executable: ${resolvedBinaryPath}`;
-    vscode.window.showInformationMessage(`Saved JetBrains merge tool path. ${resolutionText}`);
+            ? vscode.l10n.t("Saved JetBrains merge tool path. Executable: {path}", {
+                  path: resolvedBinaryPath,
+              })
+            : vscode.l10n.t("Saved JetBrains merge tool path. Resolved executable: {path}", {
+                  path: resolvedBinaryPath,
+              }),
+    );
     return trimmed;
 }
 
@@ -78,8 +86,10 @@ export async function promptForJetBrainsMergeToolPath(): Promise<string | null> 
     const detected = existing ? null : await detectInstalledJetBrainsMergeToolPath();
     const suggested = existing || detected || getDefaultJetBrainsMergeToolPath();
     const input = await vscode.window.showInputBox({
-        title: "JetBrains Merge Tool Path",
-        prompt: "Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path.",
+        title: vscode.l10n.t("JetBrains Merge Tool Path"),
+        prompt: vscode.l10n.t(
+            "Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path.",
+        ),
         placeHolder: suggested,
         value: suggested,
         ignoreFocusOut: true,
@@ -93,7 +103,9 @@ export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | nu
     const candidates = await detectInstalledJetBrainsMergeToolCandidates();
     if (candidates.length === 0) {
         vscode.window.showWarningMessage(
-            "No JetBrains IDE installations were auto-detected. Enter the path manually instead.",
+            vscode.l10n.t(
+                "No JetBrains IDE installations were auto-detected. Enter the path manually instead.",
+            ),
         );
         return promptForJetBrainsMergeToolPath();
     }
@@ -103,7 +115,10 @@ export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | nu
             let detail: string | undefined;
             try {
                 const resolved = await resolveJetBrainsMergeBinaryPath(candidatePath);
-                detail = resolved === candidatePath ? undefined : `Resolved: ${resolved}`;
+                detail =
+                    resolved === candidatePath
+                        ? undefined
+                        : vscode.l10n.t("Resolved: {path}", { path: resolved });
             } catch {
                 detail = undefined;
             }
@@ -118,15 +133,15 @@ export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | nu
 
     const MANUAL_SENTINEL = "__manual__";
     quickPickItems.push({
-        label: "$(edit) Enter path manually",
-        description: "Open the path prompt",
+        label: vscode.l10n.t("$(edit) Enter path manually"),
+        description: vscode.l10n.t("Open the path prompt"),
         detail: undefined,
         candidatePath: MANUAL_SENTINEL,
     });
 
     const picked = await vscode.window.showQuickPick(quickPickItems, {
-        title: "Detect JetBrains Merge Tool",
-        placeHolder: "Select a detected JetBrains IDE to use as the merge tool",
+        title: vscode.l10n.t("Detect JetBrains Merge Tool"),
+        placeHolder: vscode.l10n.t("Select a detected JetBrains IDE to use as the merge tool"),
         ignoreFocusOut: true,
         matchOnDescription: true,
         matchOnDetail: true,
@@ -186,34 +201,46 @@ export async function openJetBrainsMergeToolForFile(
         safePath = assertRepoRelativePath(filePath);
     } catch (error) {
         const msg = getErrorMessage(error);
-        vscode.window.showErrorMessage(`Invalid merge file path: ${msg}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Invalid merge file path: {message}", { message: msg }),
+        );
         return false;
     }
 
     let jetBrainsPath = getJetBrainsMergeToolPath();
     if (!jetBrainsPath) {
+        const configureAction = vscode.l10n.t("Configure");
+        const openVsCodeMergeEditorAction = vscode.l10n.t("Open VS Code Merge Editor");
         const action = await vscode.window.showInformationMessage(
-            "JetBrains merge tool path is not configured.",
-            "Configure",
-            "Open VS Code Merge Editor",
+            vscode.l10n.t("JetBrains merge tool path is not configured."),
+            configureAction,
+            openVsCodeMergeEditorAction,
         );
-        if (action === "Open VS Code Merge Editor") {
+        if (action === openVsCodeMergeEditorAction) {
             try {
                 await openBuiltInMergeEditorForFile(safePath);
                 return true;
             } catch (error) {
                 const msg = getErrorMessage(error);
-                vscode.window.showErrorMessage(`Failed to open VS Code merge editor: ${msg}`);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Failed to open VS Code merge editor: {message}", {
+                        message: msg,
+                    }),
+                );
                 return false;
             }
         }
-        if (action !== "Configure") return false;
+        if (action !== configureAction) return false;
         let configured: string | null;
         try {
             configured = await promptForJetBrainsMergeToolPath();
         } catch (error) {
             const msg = getErrorMessage(error);
-            vscode.window.showErrorMessage(`Failed to configure JetBrains merge tool: ${msg}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Failed to configure JetBrains merge tool: {message}", {
+                    message: msg,
+                }),
+            );
             return false;
         }
         if (!configured) return false;
@@ -228,7 +255,7 @@ export async function openJetBrainsMergeToolForFile(
             .catch(() => null);
 
         await runWithNotificationProgress(
-            `Opening JetBrains merge tool for ${safePath}...`,
+            vscode.l10n.t("Opening JetBrains merge tool for {path}...", { path: safePath }),
             async () => {
                 await launchJetBrainsMergeTool({
                     binaryPath: jetBrainsPath,
@@ -246,16 +273,23 @@ export async function openJetBrainsMergeToolForFile(
             const mergedText = await readMergedFileWithRetry(outputFileFsPath, beforeMergeText);
             if (!containsConflictMarkers(mergedText)) {
                 await gitOps.stageFile(safePath);
-                vscode.window.showInformationMessage(`Merged and staged: ${safePath}`);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Merged and staged: {path}", { path: safePath }),
+                );
             } else {
                 vscode.window.showInformationMessage(
-                    `Merge tool closed, but conflict markers remain in ${safePath}`,
+                    vscode.l10n.t("Merge tool closed, but conflict markers remain in {path}", {
+                        path: safePath,
+                    }),
                 );
             }
         } catch (readErr) {
             const msg = getErrorMessage(readErr);
             vscode.window.showWarningMessage(
-                `Could not inspect merged file '${safePath}' after JetBrains merge: ${msg}`,
+                vscode.l10n.t(
+                    "Could not inspect merged file '{path}' after JetBrains merge: {message}",
+                    { path: safePath, message: msg },
+                ),
             );
         }
 
@@ -263,12 +297,16 @@ export async function openJetBrainsMergeToolForFile(
             await refreshConflictUi();
         } catch (uiError) {
             const msg = getErrorMessage(uiError);
-            vscode.window.showErrorMessage(`Failed to refresh conflict UI: ${msg}`);
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Failed to refresh conflict UI: {message}", { message: msg }),
+            );
         }
         return true;
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showErrorMessage(`JetBrains merge tool failed: ${message}`);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("JetBrains merge tool failed: {message}", { message }),
+        );
         return false;
     }
 }

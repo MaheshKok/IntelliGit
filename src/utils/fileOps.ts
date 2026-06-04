@@ -46,7 +46,7 @@ export async function deleteFileWithFallback(
         if (!isUntrackedPathspecError(error)) {
             const message = getErrorMessage(error);
             console.error("Failed to delete file with git rm:", error);
-            vscode.window.showErrorMessage(`Delete failed: ${message}`);
+            vscode.window.showErrorMessage(vscode.l10n.t("Delete failed: {message}", { message }));
             return false;
         }
 
@@ -56,7 +56,7 @@ export async function deleteFileWithFallback(
         } catch (fsError) {
             const message = getErrorMessage(fsError);
             console.error("Failed to delete file from filesystem:", fsError);
-            vscode.window.showErrorMessage(`Delete failed: ${message}`);
+            vscode.window.showErrorMessage(vscode.l10n.t("Delete failed: {message}", { message }));
             return false;
         }
     }

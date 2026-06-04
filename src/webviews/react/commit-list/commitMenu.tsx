@@ -2,6 +2,7 @@ import React from "react";
 import type { Commit } from "../../../types";
 import type { CommitAction } from "../commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
+import { t } from "../shared/i18n";
 
 type SeparatorAction = `sep-${string}`;
 type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
@@ -15,10 +16,10 @@ export function getCommitMenuItems(
     const isMergeCommit = commit.parentHashes.length > 1;
 
     const items: CommitMenuItem[] = [
-        { label: "Copy Revision Number", action: "copyRevision", icon: iconCopy() },
-        { label: "Create Patch...", action: "createPatch", icon: iconPatch() },
+        { label: t("commit.menu.copyRevision"), action: "copyRevision", icon: iconCopy() },
+        { label: t("commit.menu.createPatch"), action: "createPatch", icon: iconPatch() },
         {
-            label: "Cherry-Pick",
+            label: t("commit.menu.cherryPick"),
             action: "cherryPick",
             disabled: !canCherryPick,
             icon: iconCherry(),
@@ -26,52 +27,52 @@ export function getCommitMenuItems(
         { separator: true, label: "", action: "sep-checkout" },
     ];
 
-    items.push({ label: "Checkout Revision", action: "checkoutRevision" });
+    items.push({ label: t("commit.menu.checkoutRevision"), action: "checkoutRevision" });
 
     items.push({ separator: true, label: "", action: "sep-reset" });
     items.push({
-        label: "Reset Current Branch to Here...",
+        label: t("commit.menu.resetCurrentToHere"),
         action: "resetCurrentToHere",
         icon: iconReset(),
     });
-    items.push({ label: "Revert Commit", action: "revertCommit" });
+    items.push({ label: t("commit.menu.revertCommit"), action: "revertCommit" });
     items.push({
-        label: "Push All up to Here...",
+        label: t("commit.menu.pushAllUpToHere"),
         action: "pushAllUpToHere",
         disabled: isPushed,
         icon: iconPush(),
     });
     items.push({
-        label: "Undo Commit...",
+        label: t("commit.menu.undoCommit"),
         action: "undoCommit",
         disabled: isPushed || isMergeCommit,
     });
 
     items.push({ separator: true, label: "", action: "sep-history" });
     items.push({
-        label: "Edit Commit Message...",
+        label: t("commit.menu.editMessage"),
         action: "editCommitMessage",
         disabled: isPushed || isMergeCommit,
     });
     items.push({
-        label: "Squash Commits...",
+        label: t("commit.menu.squashCommits"),
         action: "squashCommits",
         disabled: isPushed || isMergeCommit,
     });
     items.push({
-        label: "Drop Commit",
+        label: t("commit.menu.dropCommit"),
         action: "dropCommit",
         disabled: isPushed || isMergeCommit,
     });
     items.push({
-        label: "Interactively Rebase from Here...",
+        label: t("commit.menu.interactiveRebaseFromHere"),
         action: "interactiveRebaseFromHere",
         disabled: isPushed || isMergeCommit,
     });
 
     items.push({ separator: true, label: "", action: "sep-create" });
-    items.push({ label: "New Branch...", action: "newBranch" });
-    items.push({ label: "New Tag...", action: "newTag" });
+    items.push({ label: t("commit.menu.newBranch"), action: "newBranch" });
+    items.push({ label: t("commit.menu.newTag"), action: "newTag" });
 
     return items;
 }

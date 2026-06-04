@@ -3,6 +3,7 @@
 
 import React from "react";
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from "@chakra-ui/react";
+import { t } from "../../shared/i18n";
 
 interface Props {
     stashCount: number;
@@ -29,10 +30,13 @@ const sharedTabStyles = {
 
 export function TabBar({ stashCount, commitContent, shelfContent }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
-        { key: "commit", label: "Commit", content: commitContent },
+        { key: "commit", label: t("commit.tab.commit"), content: commitContent },
         {
             key: "shelf",
-            label: `Stash${stashCount > 0 ? ` (${stashCount})` : ""}`,
+            label:
+                stashCount > 0
+                    ? t("commit.tab.stashWithCount", { count: stashCount })
+                    : t("commit.tab.stash"),
             content: shelfContent,
         },
     ];
