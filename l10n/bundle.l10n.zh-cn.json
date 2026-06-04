@@ -356,5 +356,6 @@
     "{action}: select mainline parent": "{action}: 选择主线父级",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} 个文件已更改",
-    "{count} changed files": "{count} 个文件已更改"
+    "{count} changed files": "{count} 个文件已更改",
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "本地分支和远程分支已产生分歧。请合并或变基已跟踪的远程分支，然后重试。"
 }

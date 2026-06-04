@@ -1436,6 +1436,195 @@ describe("extension integration", () => {
         );
     });
 
+    it("updates the current local branch by fetching then merging the tracked remote ref", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: {
+                name: "main",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                remote: "origin",
+            },
+        });
+
+        const calls = executorRun.mock.calls.map(([args]) => args);
+        const fetchCallIndex = calls.findIndex(
+            (args) =>
+                Array.isArray(args) &&
+                args[0] === "fetch" &&
+                args[1] === "origin" &&
+                args.includes("--prune"),
+        );
+        const mergeCallIndex = calls.findIndex(
+            (args) => Array.isArray(args) && args.includes("merge") && args.includes("origin/main"),
+        );
+
+        expect(fetchCallIndex).toBeGreaterThanOrEqual(0);
+        expect(mergeCallIndex).toBeGreaterThanOrEqual(0);
+        expect(fetchCallIndex).toBeLessThan(mergeCallIndex);
+        expect(executorRun).toHaveBeenCalledWith([
+            "fetch",
+            "origin",
+            "--recurse-submodules=no",
+            "--progress",
+            "--prune",
+        ]);
+        expect(executorRun).toHaveBeenCalledWith([
+            "-c",
+            "credential.helper=",
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "log.showSignature=false",
+            "merge",
+            "origin/main",
+            "--no-stat",
+            "-v",
+        ]);
+        expect(executorRun).not.toHaveBeenCalledWith(["pull", "--ff-only"]);
+        expect(executorRun).not.toHaveBeenCalledWith(["pull", "--ff-only", "origin", "main"]);
+    });
+
+    it("shows a concise professional update error for fast-forward divergence output", async () => {
+        const divergentError = [
+            "From github.com:MaheshKok/IntelliGit",
+            " * branch            main       -> FETCH_HEAD",
+            "hint: Diverging branches can't be fast-forwarded, you need to either:",
+            "hint:",
+            "hint: \tgit merge --no-ff",
+            "hint:",
+            "hint: or:",
+            "hint:",
+            "hint: \tgit rebase",
+            "hint:",
+            'hint: Disable this message with "git config set advice.diverging false"',
+            "fatal: Not possible to fast-forward, aborting.",
+        ].join("\n");
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "fetch" && args[1] === "origin" && args[2] === "main:main") {
+                throw new Error(divergentError);
+            }
+            return defaultExecutorRunImpl(args);
+        });
+
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" },
+        });
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Update failed: The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.",
+        );
+    });
+
+    it("opens conflict session when current-branch update merge fails with unresolved conflicts", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args.includes("merge") && args.includes("origin/main")) {
+                throw new Error("merge conflict");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: {
+                name: "main",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                remote: "origin",
+            },
+        });
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        expect(createWebviewPanelMock).toHaveBeenCalledWith(
+            "intelligit.mergeConflictSession",
+            "Conflicts",
+            expect.any(Number),
+            expect.objectContaining({ enableScripts: true }),
+        );
+        expect(showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("unresolved conflict file"),
+        );
+        expect(showErrorMessage).not.toHaveBeenCalledWith(expect.stringContaining("Update failed:"));
+        const panelResult = createWebviewPanelMock.mock.results[0]?.value as
+            | { dispose?: () => void }
+            | undefined;
+        panelResult?.dispose?.();
+    });
+
+    it("does not open conflict session for current-branch update fetch failures", async () => {
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "fetch" && args[1] === "origin") {
+                throw new Error("fetch failed");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: {
+                name: "main",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                remote: "origin",
+            },
+        });
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        expect(createWebviewPanelMock).not.toHaveBeenCalledWith(
+            "intelligit.mergeConflictSession",
+            "Conflicts",
+            expect.any(Number),
+            expect.objectContaining({ enableScripts: true }),
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith("Update failed: fetch failed");
+    });
+
     it("updates non-current local branch via fetch refspec without checkout", async () => {
         const { activate } = await import("../../src/extension");
         const context = {

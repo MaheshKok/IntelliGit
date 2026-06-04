@@ -37,6 +37,60 @@ export interface BranchCommandEntry {
     handler: (item: { branch?: Branch }) => Promise<void>;
 }
 
+const PYCHARM_MERGE_CONFIG_ARGS = [
+    "-c",
+    "credential.helper=",
+    "-c",
+    "core.quotepath=false",
+    "-c",
+    "log.showSignature=false",
+];
+
+function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }): string {
+    return `${tracked.remote}/${tracked.remoteBranch}`;
+}
+
+function buildPycharmMergeArgs(remoteRef: string): string[] {
+    return [...PYCHARM_MERGE_CONFIG_ARGS, "merge", remoteRef, "--no-stat", "-v"];
+}
+
+function formatUpdateFailureMessage(error: unknown): string {
+    const raw = getErrorMessage(error);
+    if (isFastForwardDivergenceMessage(raw)) {
+        return vscode.l10n.t(
+            "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.",
+        );
+    }
+    return compactGitErrorMessage(raw);
+}
+
+function isFastForwardDivergenceMessage(message: string): boolean {
+    const lower = message.toLowerCase();
+    return (
+        lower.includes("diverging branches") ||
+        lower.includes("not possible to fast-forward") ||
+        lower.includes("non-fast-forward")
+    );
+}
+
+function compactGitErrorMessage(message: string): string {
+    const compact = message
+        .replace(/\r\n/g, "\n")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => {
+            if (!line) return false;
+            if (line.startsWith("hint:")) return false;
+            if (line.startsWith("From ")) return false;
+            if (/^\*\s+branch\s+.+->\s+FETCH_HEAD$/i.test(line)) return false;
+            return true;
+        })
+        .map((line) => line.replace(/^(fatal|error):\s*/i, ""))
+        .join(" ")
+        .trim();
+    return compact || message.trim();
+}
+
 export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntry[] {
     const {
         executor,
@@ -46,6 +100,28 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         openConflictSession,
         refreshConflictUi,
     } = deps;
+
+    const showUpdateConflictSession = async (sourceBranch?: string): Promise<boolean> => {
+        try {
+            const conflicts = await gitOps.getConflictFilesDetailed();
+            if (conflicts.length === 0) return false;
+
+            await openConflictSession({
+                sourceBranch,
+                targetBranch: getCurrentBranchName() || undefined,
+            });
+            await refreshConflictUi();
+            vscode.window.showWarningMessage(
+                vscode.l10n.t(
+                    "Merge produced {count} unresolved conflict file(s). Opened Conflicts session.",
+                    { count: conflicts.length },
+                ),
+            );
+            return true;
+        } catch {
+            return false;
+        }
+    };
 
     return [
         {
@@ -213,28 +289,13 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 const name = branch?.name;
                 if (!name || branch?.isRemote) return;
+                const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
+                const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
+                let mergeAttempted = false;
                 try {
                     await runWithNotificationProgress(
                         vscode.l10n.t("Updating {branch}...", { branch: name }),
                         async () => {
-                            const tracked = resolveTrackedRemoteBranch(
-                                branch,
-                                getCurrentBranches(),
-                            );
-                            if (branch.isCurrent) {
-                                if (tracked) {
-                                    await executor.run([
-                                        "pull",
-                                        "--ff-only",
-                                        tracked.remote,
-                                        tracked.remoteBranch,
-                                    ]);
-                                } else {
-                                    await executor.run(["pull", "--ff-only"]);
-                                }
-                                return;
-                            }
-
                             if (!tracked) {
                                 throw new Error(
                                     vscode.l10n.t(
@@ -242,6 +303,21 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                         { branch: name },
                                     ),
                                 );
+                            }
+
+                            if (branch.isCurrent) {
+                                await executor.run([
+                                    "fetch",
+                                    tracked.remote,
+                                    "--recurse-submodules=no",
+                                    "--progress",
+                                    "--prune",
+                                ]);
+                                mergeAttempted = true;
+                                await executor.run(
+                                    buildPycharmMergeArgs(buildTrackedRemoteRef(tracked)),
+                                );
+                                return;
                             }
 
                             await executor.run([
@@ -259,7 +335,14 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    const msg = getErrorMessage(err);
+                    if (
+                        branch.isCurrent &&
+                        mergeAttempted &&
+                        (await showUpdateConflictSession(trackedRemoteRef))
+                    ) {
+                        return;
+                    }
+                    const msg = formatUpdateFailureMessage(err);
                     vscode.window.showErrorMessage(
                         vscode.l10n.t("Update failed: {message}", { message: msg }),
                     );

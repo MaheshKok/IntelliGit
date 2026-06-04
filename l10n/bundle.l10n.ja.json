@@ -356,5 +356,6 @@
     "{action}: select mainline parent": "{action}: メインラインの親を選択",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} 個のファイルが変更されました",
-    "{count} changed files": "{count} 個のファイルが変更されました"
+    "{count} changed files": "{count} 個のファイルが変更されました",
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "ローカル ブランチとリモート ブランチが分岐しています。追跡中のリモート ブランチをマージまたはリベースしてから、もう一度お試しください。"
 }
