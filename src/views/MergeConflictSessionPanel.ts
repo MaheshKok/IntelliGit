@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
+import { assertRepoRelativePath } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
 import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
 
@@ -139,10 +140,11 @@ export class MergeConflictSessionPanel {
             case "acceptYours": {
                 const filePath = this.getFilePath(msg.filePath);
                 if (!filePath) return;
+                const safePath = assertRepoRelativePath(filePath);
                 await runWithNotificationProgress(
-                    `Accepting yours for ${filePath}...`,
+                    `Accepting yours for ${safePath}...`,
                     async () => {
-                        await this.gitOps.acceptConflictSide(filePath, "ours");
+                        await this.gitOps.acceptConflictSide(safePath, "ours");
                     },
                 );
                 await this.callbacks.onConflictStateChanged();
@@ -153,10 +155,11 @@ export class MergeConflictSessionPanel {
             case "acceptTheirs": {
                 const filePath = this.getFilePath(msg.filePath);
                 if (!filePath) return;
+                const safePath = assertRepoRelativePath(filePath);
                 await runWithNotificationProgress(
-                    `Accepting theirs for ${filePath}...`,
+                    `Accepting theirs for ${safePath}...`,
                     async () => {
-                        await this.gitOps.acceptConflictSide(filePath, "theirs");
+                        await this.gitOps.acceptConflictSide(safePath, "theirs");
                     },
                 );
                 await this.callbacks.onConflictStateChanged();

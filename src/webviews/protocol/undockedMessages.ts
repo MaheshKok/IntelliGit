@@ -3,7 +3,10 @@
 // webviews into a single channel.
 
 import type { BranchAction, CommitAction } from "./commitGraphTypes";
-import type { InboundMessage as CommitPanelInbound } from "./commitPanelMessages";
+import type {
+    InboundMessage as CommitPanelInbound,
+    OutboundMessage as CommitPanelOutbound,
+} from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
 
 // --- Inbound (extension → webview) ---
@@ -22,8 +25,7 @@ export type UnifiedInbound =
       };
 
 // --- Outbound (webview → extension) ---
-export type UnifiedOutbound =
-    // Graph-side messages
+type GraphOutbound =
     | { type: "ready" }
     | { type: "selectCommit"; hash: string }
     | { type: "loadMore" }
@@ -36,35 +38,11 @@ export type UnifiedOutbound =
           commitHash: string;
           filePath: string;
       }
-    | { type: "dock" }
-    // Commit-panel-side messages
-    | { type: "refresh" }
-    | { type: "saveCommitDraft"; message: string }
-    | { type: "stageFiles"; paths: string[] }
-    | { type: "unstageFiles"; paths: string[] }
-    | {
-          type: "commitSelected";
-          paths: string[];
-          message: string;
-          amend: boolean;
-          push: boolean;
-      }
-    | { type: "commit"; message: string; amend: boolean }
-    | { type: "commitAndPush"; message: string; amend: boolean }
-    | { type: "publishBranch" }
-    | { type: "getLastCommitMessage" }
-    | { type: "getAmendBranchCommits" }
-    | { type: "rollback"; paths: string[] }
-    | { type: "showDiff"; path: string }
-    | { type: "shelveSave"; name?: string; paths?: string[] }
-    | { type: "shelfPop"; index: number }
-    | { type: "shelfApply"; index: number }
-    | { type: "shelfDelete"; index: number }
-    | { type: "shelfSelect"; index: number }
-    | { type: "showShelfDiff"; index: number; path: string }
-    | { type: "openFile"; path: string }
-    | { type: "deleteFile"; path: string }
-    | { type: "showHistory"; path: string }
+    | { type: "dock" };
+
+export type UnifiedOutbound =
+    | GraphOutbound
+    | CommitPanelOutbound
     // Column width persistence
     | {
           type: "columnWidths";

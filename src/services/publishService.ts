@@ -556,6 +556,11 @@ function tryExtractApiError(raw: string): string | null {
         if (!obj) return null;
         const message = readString(obj, "message");
         if (message) return message;
+        const structuredMessage = obj.message;
+        if (isRecord(structuredMessage) || Array.isArray(structuredMessage)) {
+            const messages = collectStringMessages(structuredMessage);
+            if (messages.length > 0) return messages.join("; ");
+        }
         const error = readString(obj, "error");
         if (error) return error;
         const errors = obj.errors;
@@ -569,6 +574,26 @@ function tryExtractApiError(raw: string): string | null {
     } catch {
         return raw.slice(0, 300) || null;
     }
+}
+
+function collectStringMessages(value: unknown): string[] {
+    const messages: string[] = [];
+    const visit = (entry: unknown): void => {
+        if (typeof entry === "string") {
+            const message = entry.trim();
+            if (message) messages.push(message);
+            return;
+        }
+        if (Array.isArray(entry)) {
+            for (const item of entry) visit(item);
+            return;
+        }
+        if (isRecord(entry)) {
+            for (const item of Object.values(entry)) visit(item);
+        }
+    };
+    visit(value);
+    return messages;
 }
 
 async function runGitPushWithAskpass(
