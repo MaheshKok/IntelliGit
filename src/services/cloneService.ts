@@ -560,10 +560,12 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
             }
 
             const openInNewWindowAction = vscode.l10n.t("Open in New Window");
+            const openInCurrentWindowAction = vscode.l10n.t("Open in Current Window");
             const addToWorkspaceAction = vscode.l10n.t("Add to Workspace");
             const openChoice = await vscode.window.showInformationMessage(
                 vscode.l10n.t("Cloned {repo} successfully.", { repo: extractRepoName(url) }),
                 openInNewWindowAction,
+                openInCurrentWindowAction,
                 addToWorkspaceAction,
             );
             if (openChoice === openInNewWindowAction) {
@@ -571,6 +573,12 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                     "vscode.openFolder",
                     vscode.Uri.file(targetPath),
                     true,
+                );
+            } else if (openChoice === openInCurrentWindowAction) {
+                await vscode.commands.executeCommand(
+                    "vscode.openFolder",
+                    vscode.Uri.file(targetPath),
+                    false,
                 );
             } else if (openChoice === addToWorkspaceAction) {
                 const count = vscode.workspace.workspaceFolders?.length ?? 0;

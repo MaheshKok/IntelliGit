@@ -102,6 +102,7 @@
   "Open a folder first to initialize a repository.": "Open a folder first to initialize a repository.",
   "Open a folder to get started with IntelliGit.": "Open a folder to get started with IntelliGit.",
   "Open Folder": "Open Folder",
+  "Open in Current Window": "Open in Current Window",
   "Open in New Window": "Open in New Window",
   "Open Merge Conflict": "Open Merge Conflict",
   "Open Repository": "Open Repository",

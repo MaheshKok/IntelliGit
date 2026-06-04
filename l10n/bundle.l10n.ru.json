@@ -86,6 +86,7 @@
     "Open a folder first to initialize a repository.": "Для инициализации репозитория сначала откройте папку.",
     "Open a folder to get started with IntelliGit.": "Чтобы начать работу с IntelliGit, откройте папку.",
     "Open Folder": "Открыть папку",
+    "Open in Current Window": "Открыть в текущем окне",
     "Open Merge Conflict": "Открытый конфликт слияния",
     "Open the path prompt": "Откройте подсказку пути",
     "Open the unified IntelliGit view and move it to a floating window": "Откройте унифицированное представление IntelliGit и переместите его в плавающее окно.",
