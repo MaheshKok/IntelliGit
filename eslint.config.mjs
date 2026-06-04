@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
+import sonarjs from "eslint-plugin-sonarjs";
 import tseslint from "typescript-eslint";
 import { defineConfig } from "eslint/config";
 
@@ -33,6 +34,19 @@ const stagedTypeAwareRules = {
     "@typescript-eslint/require-await": "warn",
 };
 
+const sonarRules = {
+    "sonarjs/cognitive-complexity": ["warn", 150],
+    "sonarjs/no-all-duplicated-branches": "warn",
+    "sonarjs/no-collapsible-if": "warn",
+    "sonarjs/no-duplicated-branches": "warn",
+    "sonarjs/no-identical-conditions": "warn",
+    "sonarjs/no-identical-expressions": "warn",
+    "sonarjs/no-inverted-boolean-check": "warn",
+    "sonarjs/no-nested-switch": "warn",
+    "sonarjs/no-redundant-boolean": "warn",
+    "sonarjs/prefer-single-boolean-return": "warn",
+};
+
 export default defineConfig([
     {
         ignores: ["dist/**", "coverage/**", "node_modules/**", "*.vsix"],
@@ -46,6 +60,13 @@ export default defineConfig([
             sourceType: "commonjs",
             globals: globals.node,
         },
+        plugins: {
+            sonarjs,
+        },
+        rules: {
+            ...js.configs.recommended.rules,
+            ...sonarRules,
+        },
     },
     ...typeCheckedConfigs,
     {
@@ -58,9 +79,13 @@ export default defineConfig([
             },
             globals: globals.node,
         },
+        plugins: {
+            sonarjs,
+        },
         rules: {
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
             ...stagedTypeAwareRules,
+            ...sonarRules,
         },
     },
     {
@@ -78,6 +103,7 @@ export default defineConfig([
         plugins: {
             react,
             "react-hooks": reactHooks,
+            sonarjs,
         },
         settings: {
             react: {
@@ -92,6 +118,7 @@ export default defineConfig([
             "react-hooks/exhaustive-deps": "warn",
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
             ...stagedTypeAwareRules,
+            ...sonarRules,
             "@typescript-eslint/no-misused-promises": [
                 "warn",
                 {

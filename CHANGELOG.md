@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added React Hooks linting so Rules of Hooks violations fail lint while exhaustive dependency findings start as warnings.
 - Added Knip with a report-only `bun run deps:check` script for unused files, exports, and dependencies.
 - Added dependency-cruiser with a strict `bun run architecture:check` script for source dependency boundaries and circular import detection.
+- Added SonarJS lint rules for high-signal code-smell detection with cognitive complexity gated at an intentionally high initial threshold.
 
 ### Changed
 
