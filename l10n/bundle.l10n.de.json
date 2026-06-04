@@ -356,5 +356,6 @@
   "{action}: select mainline parent": "{action}: Hauptlinie auswählen",
   "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
   "{count} changed file": "{count} Datei geändert",
-  "{count} changed files": "{count} geänderte Dateien"
+  "{count} changed files": "{count} geänderte Dateien",
+  "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "Die lokale und die Remote-Branch sind auseinandergegangen. Führen Sie einen Merge oder Rebase der verfolgten Remote-Branch durch, und versuchen Sie es erneut."
 }

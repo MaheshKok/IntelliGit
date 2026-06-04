@@ -5,7 +5,7 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.9.1] - 2026-06-04
+## [0.9.2] - 2026-06-04
 
 ### Added
 
@@ -44,6 +44,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Verified React Doctor reports zero error-level diagnostics.
 - Verified dependency-cruiser reports no architecture violations.
 - Verified strict ESLint, strict Knip, typecheck, build, localization validation, localization audit, localization CSV validation, and the full test suite pass.
+
+## [0.9.1] - 2026-06-04
+
+### Fixed
+
+- Updated the current-branch Update flow to fetch the tracked remote first, then merge the tracked remote ref with PyCharm-style Git arguments instead of failing on divergent histories with a fast-forward-only pull.
+- Replaced raw divergent-branch Git output with a concise localized error message that removes fetch boilerplate, Git hints, and fatal/internal details.
+- Open the Conflicts session when an Update merge produces unresolved conflict files, so merge conflicts enter the existing resolution workflow instead of surfacing as a generic failure.
+
+### Preserved
+
+- Non-current local branches still update through the existing fetch-refspec flow without checking out or merging those branches.
+
+### Localized
+
+- Added the new divergent-branch Update message to the localization source catalog, locale bundles, and translation review CSV.
+- Applied reviewed translations for updated host locale bundles: `de`, `es`, `fr`, `ja`, `ko`, `pl`, `pt-br`, `pt-pt`, `ru`, `zh-cn`, and `zh-tw`.
+
+### Verification
+
+- Added regression coverage for current-branch fetch + merge behavior, concise divergence error messaging, and preserved non-current branch update behavior.
+- Verified with format, lint, typecheck, build, localization validation, localization audit, CSV validation, and the full test suite.
 
 ## [0.9.0] - 2026-06-02
 

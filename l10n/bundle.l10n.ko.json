@@ -356,5 +356,6 @@
     "{action}: select mainline parent": "{action}: 메인라인 부모 선택",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count}개 파일 변경됨",
-    "{count} changed files": "{count}개 파일 변경됨"
+    "{count} changed files": "{count}개 파일 변경됨",
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "로컬 브랜치와 원격 브랜치가 갈라졌습니다. 추적 중인 원격 브랜치를 병합하거나 리베이스한 다음 다시 시도하세요."
 }
