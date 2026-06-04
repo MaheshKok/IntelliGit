@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Localized
 
 - Added the new divergent-branch Update message to the localization source catalog, locale bundles, and translation review CSV.
-- Applied reviewed translations for German, Spanish, French, Portuguese (Portugal), Simplified Chinese, and Traditional Chinese.
+- Applied reviewed translations for updated host locale bundles: `de`, `es`, `fr`, `ja`, `ko`, `pl`, `pt-br`, `pt-pt`, `ru`, `zh-cn`, and `zh-tw`.
 
 ### Verification
 

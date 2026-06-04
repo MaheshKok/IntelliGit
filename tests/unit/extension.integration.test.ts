@@ -1530,6 +1530,101 @@ describe("extension integration", () => {
         );
     });
 
+    it("opens conflict session when current-branch update merge fails with unresolved conflicts", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args.includes("merge") && args.includes("origin/main")) {
+                throw new Error("merge conflict");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: {
+                name: "main",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                remote: "origin",
+            },
+        });
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        expect(createWebviewPanelMock).toHaveBeenCalledWith(
+            "intelligit.mergeConflictSession",
+            "Conflicts",
+            expect.any(Number),
+            expect.objectContaining({ enableScripts: true }),
+        );
+        expect(showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("unresolved conflict file"),
+        );
+        expect(showErrorMessage).not.toHaveBeenCalledWith(expect.stringContaining("Update failed:"));
+        const panelResult = createWebviewPanelMock.mock.results[0]?.value as
+            | { dispose?: () => void }
+            | undefined;
+        panelResult?.dispose?.();
+    });
+
+    it("does not open conflict session for current-branch update fetch failures", async () => {
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "fetch" && args[1] === "origin") {
+                throw new Error("fetch failed");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: {
+                name: "main",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                remote: "origin",
+            },
+        });
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        expect(createWebviewPanelMock).not.toHaveBeenCalledWith(
+            "intelligit.mergeConflictSession",
+            "Conflicts",
+            expect.any(Number),
+            expect.objectContaining({ enableScripts: true }),
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith("Update failed: fetch failed");
+    });
+
     it("updates non-current local branch via fetch refspec without checkout", async () => {
         const { activate } = await import("../../src/extension");
         const context = {

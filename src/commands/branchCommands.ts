@@ -291,6 +291,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!name || branch?.isRemote) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
+                let mergeAttempted = false;
                 try {
                     await runWithNotificationProgress(
                         vscode.l10n.t("Updating {branch}...", { branch: name }),
@@ -312,6 +313,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                     "--progress",
                                     "--prune",
                                 ]);
+                                mergeAttempted = true;
                                 await executor.run(
                                     buildPycharmMergeArgs(buildTrackedRemoteRef(tracked)),
                                 );
@@ -333,7 +335,11 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
-                    if (branch.isCurrent && (await showUpdateConflictSession(trackedRemoteRef))) {
+                    if (
+                        branch.isCurrent &&
+                        mergeAttempted &&
+                        (await showUpdateConflictSession(trackedRemoteRef))
+                    ) {
                         return;
                     }
                     const msg = formatUpdateFailureMessage(err);
