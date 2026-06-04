@@ -11,11 +11,29 @@ import type {
 } from "../types";
 import { getErrorMessage, sanitizeErrorMessage } from "../utils/errors";
 import { isValidBranchName } from "../utils/gitRefs";
+import {
+    AMEND_BRANCH_COMMIT_FORMAT,
+    COMMIT_DETAIL_FORMAT,
+    COMMIT_LOG_FORMAT,
+    isUnmergedConflictCode,
+    mapCommitFileStatus,
+    mapConflictSideState,
+    mapStatusCode,
+    parseAmendBranchCommitSummaries,
+    parseCommitDetail,
+    parseCommitLog,
+    parseFileHistoryEntries,
+    parseStashEntries,
+} from "./parsers";
+import {
+    applyNumstatToWorkingFiles,
+    parseAlreadyStagedDeletedPaths,
+    parseWorkingTreeStatus,
+    planRollbackFiles,
+} from "./workingTree";
 
 declare const require: (id: string) => unknown;
 
-const FIELD_SEP = "<<|>>";
-const RECORD_SEP = "<<||>>";
 const OUTPUT_CHANNEL_NAME = "IntelliGit";
 
 type VsCodeApi = typeof import("vscode");
@@ -242,10 +260,7 @@ export class GitOps {
         filterText?: string,
         skip: number = 0,
     ): Promise<Commit[]> {
-        const format =
-            ["%H", "%h", "%s", "%an", "%ae", "%aI", "%P", "%D"].join(FIELD_SEP) + RECORD_SEP;
-
-        const args = ["log", `--max-count=${maxCount}`, `--pretty=format:${format}`];
+        const args = ["log", `--max-count=${maxCount}`, `--pretty=format:${COMMIT_LOG_FORMAT}`];
         if (skip > 0) {
             args.push(`--skip=${skip}`);
         }
@@ -266,32 +281,7 @@ export class GitOps {
         }
 
         const result = await this.executor.run(args);
-        const commits: Commit[] = [];
-
-        for (const record of result.split(RECORD_SEP)) {
-            const trimmed = record.trim();
-            if (!trimmed) continue;
-
-            const parts = trimmed.split(FIELD_SEP);
-            if (parts.length < 7) continue;
-
-            commits.push({
-                hash: parts[0],
-                shortHash: parts[1],
-                message: parts[2],
-                author: parts[3],
-                email: parts[4],
-                date: parts[5],
-                parentHashes: parts[6] ? parts[6].split(" ").filter(Boolean) : [],
-                refs: parts[7]
-                    ? parts[7]
-                          .split(",")
-                          .map((r) => r.trim())
-                          .filter(Boolean)
-                    : [],
-            });
-        }
-        return commits;
+        return parseCommitLog(result);
     }
 
     async getUnpushedCommitHashes(): Promise<string[]> {
@@ -310,10 +300,12 @@ export class GitOps {
     }
 
     async getCommitDetail(hash: string): Promise<CommitDetail> {
-        const format = ["%H", "%h", "%s", "%b", "%an", "%ae", "%aI", "%P", "%D"].join(FIELD_SEP);
-
-        const info = await this.executor.run(["show", `--format=${format}`, "--no-patch", hash]);
-        const parts = info.trim().split(FIELD_SEP);
+        const info = await this.executor.run([
+            "show",
+            `--format=${COMMIT_DETAIL_FORMAT}`,
+            "--no-patch",
+            hash,
+        ]);
 
         const filesByPath = new Map<string, CommitFile>();
         const upsertFile = (path: string, status: CommitFile["status"]): CommitFile => {
@@ -390,104 +382,14 @@ export class GitOps {
             });
         }
 
-        return {
-            hash: parts[0] || hash,
-            shortHash: parts[1] || hash.slice(0, 7),
-            message: parts[2] || "",
-            body: parts[3] || "",
-            author: parts[4] || "",
-            email: parts[5] || "",
-            date: parts[6] || "",
-            parentHashes: parts[7] ? parts[7].split(" ").filter(Boolean) : [],
-            refs: parts[8]
-                ? parts[8]
-                      .split(",")
-                      .map((r) => r.trim())
-                      .filter(Boolean)
-                : [],
-            files: Array.from(filesByPath.values()),
-        };
+        return parseCommitDetail(info, hash, Array.from(filesByPath.values()));
     }
 
     // --- Working tree operations ---
 
     async getStatus(): Promise<WorkingFile[]> {
         const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
-        const files: WorkingFile[] = [];
-        const entries = result.split("\0");
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry) continue;
-            if (entry.length < 4) continue;
-
-            const index = entry.charAt(0);
-            const worktree = entry.charAt(1);
-            const hasStaged = index !== " " && index !== "?";
-            const hasUnstaged = worktree !== " ";
-
-            const stagedStatus = mapStatusCode(index);
-            const unstagedStatus = mapStatusCode(worktree);
-
-            const path = entry.slice(3);
-            if (!path) continue;
-
-            const isRenameOrCopy =
-                index === "R" || index === "C" || worktree === "R" || worktree === "C";
-            if (isRenameOrCopy && i + 1 < entries.length) {
-                // In porcelain -z output, rename/copy emits an extra NUL-terminated source path.
-                i += 1;
-            }
-
-            if (hasStaged && hasUnstaged) {
-                if (stagedStatus) {
-                    files.push({
-                        path,
-                        status: stagedStatus,
-                        staged: true,
-                        additions: 0,
-                        deletions: 0,
-                    });
-                }
-                // Skip only unstaged "M" for newly added files (index === 'A').
-                // A new file edited after staging is still just a new file —
-                // the duplicate "M" row is misleading. Other unstaged statuses
-                // (e.g. "D" for a staged-add then deleted) must still be shown.
-                if (unstagedStatus && !(index === "A" && unstagedStatus === "M")) {
-                    files.push({
-                        path,
-                        status: unstagedStatus,
-                        staged: false,
-                        additions: 0,
-                        deletions: 0,
-                    });
-                }
-            } else if (hasStaged && stagedStatus) {
-                files.push({
-                    path,
-                    status: stagedStatus,
-                    staged: true,
-                    additions: 0,
-                    deletions: 0,
-                });
-            } else if (hasUnstaged && unstagedStatus) {
-                files.push({
-                    path,
-                    status: unstagedStatus,
-                    staged: false,
-                    additions: 0,
-                    deletions: 0,
-                });
-            }
-        }
-
-        // Build keyed lookups for O(1) numstat matching (both value and index)
-        const filesByKey = new Map<string, WorkingFile>();
-        const filesIndexByKey = new Map<string, number>();
-        for (let i = 0; i < files.length; i++) {
-            const key = `${files[i].path}:${files[i].staged}`;
-            filesByKey.set(key, files[i]);
-            filesIndexByKey.set(key, i);
-        }
+        const files = parseWorkingTreeStatus(result);
 
         const applyNumstat = (
             output: string,
@@ -496,28 +398,7 @@ export class GitOps {
             userWarningMessage: string,
         ): void => {
             try {
-                for (const line of output.trim().split("\n")) {
-                    if (!line.trim()) continue;
-                    const cols = line.split("\t");
-                    if (cols.length < 3) continue;
-                    const add = cols[0];
-                    const del = cols[1];
-                    const filePath = cols[cols.length - 1];
-                    const parsedAdd = add === "-" ? 0 : parseInt(add);
-                    const parsedDel = del === "-" ? 0 : parseInt(del);
-                    const key = `${filePath}:${staged}`;
-                    const file = filesByKey.get(key);
-                    if (file) {
-                        const updated = {
-                            ...file,
-                            additions: Number.isNaN(parsedAdd) ? 0 : parsedAdd,
-                            deletions: Number.isNaN(parsedDel) ? 0 : parsedDel,
-                        };
-                        filesByKey.set(key, updated);
-                        const idx = filesIndexByKey.get(key);
-                        if (idx !== undefined) files[idx] = updated;
-                    }
-                }
+                applyNumstatToWorkingFiles(files, output, staged);
             } catch (err) {
                 logGitOpsWarning(`Failed to get ${label} numstat`, err, { userWarningMessage });
             }
@@ -556,28 +437,7 @@ export class GitOps {
         const status = await this.executor.run(["status", "--porcelain=v1", "-z", "--", ...paths]);
         if (!status.trim()) return paths;
 
-        const alreadyStagedDeleted = new Set<string>();
-        const entries = status.split("\0");
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry || entry.length < 4) continue;
-
-            const index = entry.charAt(0);
-            const worktree = entry.charAt(1);
-            const path = entry.slice(3);
-            if (!path) continue;
-
-            const isRenameOrCopy =
-                index === "R" || index === "C" || worktree === "R" || worktree === "C";
-            if (isRenameOrCopy && i + 1 < entries.length) {
-                i += 1;
-            }
-
-            if (index === "D" && worktree === " ") {
-                alreadyStagedDeleted.add(path);
-            }
-        }
-
+        const alreadyStagedDeleted = parseAlreadyStagedDeletedPaths(status);
         return paths.filter((path) => !alreadyStagedDeleted.has(path));
     }
 
@@ -705,26 +565,6 @@ export class GitOps {
      * Uses US/RS field separators in `git log --format` because `%s` may contain tabs.
      */
     async getAmendBranchCommits(limit = 80): Promise<AmendBranchCommitSummary[]> {
-        const FIELD_SEP = "\x1f";
-        const RECORD_SEP = "\x1e";
-        const fmt = `%h%x1f%s%x1f%cI%x1e`;
-        const parse = (output: string): AmendBranchCommitSummary[] => {
-            const rows: AmendBranchCommitSummary[] = [];
-            for (const record of output.split(RECORD_SEP)) {
-                const trimmed = record.trim();
-                if (!trimmed) continue;
-                const parts = trimmed.split(FIELD_SEP);
-                if (parts.length < 3) continue;
-                const shortHash = parts[0]?.trim() ?? "";
-                const date = parts[parts.length - 1]?.trim() ?? "";
-                const subject = parts.slice(1, -1).join(FIELD_SEP);
-                if (shortHash) {
-                    rows.push({ shortHash, subject, date });
-                }
-            }
-            return rows;
-        };
-
         try {
             const upstream = (
                 await this.executor.run(["rev-parse", "--abbrev-ref", "@{upstream}"])
@@ -739,9 +579,9 @@ export class GitOps {
                         "log",
                         range,
                         `--max-count=${limit}`,
-                        `--format=${fmt}`,
+                        `--format=${AMEND_BRANCH_COMMIT_FORMAT}`,
                     ]);
-                    const parsed = parse(out);
+                    const parsed = parseAmendBranchCommitSummaries(out);
                     if (parsed.length > 0) {
                         return parsed;
                     }
@@ -756,9 +596,9 @@ export class GitOps {
                 "log",
                 "HEAD",
                 `--max-count=${limit}`,
-                `--format=${fmt}`,
+                `--format=${AMEND_BRANCH_COMMIT_FORMAT}`,
             ]);
-            return parse(out);
+            return parseAmendBranchCommitSummaries(out);
         } catch {
             return [];
         }
@@ -766,65 +606,16 @@ export class GitOps {
 
     async rollbackFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        const selectedPaths = new Set(paths);
         const status = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
-        const cleanupPaths = new Set<string>();
-        const resetPaths = new Set<string>(paths);
-        const checkoutPaths = new Set<string>(paths);
-        const entries = status.split("\0");
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry || entry.length < 4) continue;
+        const { resetPaths, checkoutPaths, cleanupPaths } = planRollbackFiles(paths, status);
 
-            const index = entry.charAt(0);
-            const worktree = entry.charAt(1);
-            const path = entry.slice(3);
-            if (!path) continue;
-
-            const isRenameOrCopy =
-                index === "R" || index === "C" || worktree === "R" || worktree === "C";
-            const sourcePath = isRenameOrCopy && i + 1 < entries.length ? entries[i + 1] : "";
-            if (isRenameOrCopy && i + 1 < entries.length) {
-                i += 1;
-            }
-            if (!selectedPaths.has(path) && (!sourcePath || !selectedPaths.has(sourcePath))) {
-                continue;
-            }
-
-            if (index === "R" && sourcePath) {
-                resetPaths.add(path);
-                resetPaths.add(sourcePath);
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-                checkoutPaths.add(sourcePath);
-                continue;
-            }
-
-            if (index === "C" && sourcePath) {
-                resetPaths.add(path);
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-                continue;
-            }
-
-            if (index === "?" && worktree === "?") {
-                resetPaths.delete(path);
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-            }
-            if (index === "A") {
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-            }
-        }
-
-        if (resetPaths.size > 0) {
+        if (resetPaths.length > 0) {
             await this.executor.run(["reset", "HEAD", "--", ...resetPaths]);
         }
-        if (checkoutPaths.size > 0) {
+        if (checkoutPaths.length > 0) {
             await this.executor.run(["checkout", "--", ...checkoutPaths]);
         }
-        if (cleanupPaths.size > 0) {
+        if (cleanupPaths.length > 0) {
             await this.executor.run(["clean", "-fd", "--", ...cleanupPaths]);
         }
     }
@@ -858,19 +649,7 @@ export class GitOps {
     async listShelved(): Promise<StashEntry[]> {
         try {
             const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
-            const entries: StashEntry[] = [];
-            for (const line of result.trim().split("\n")) {
-                if (!line.trim()) continue;
-                const [hash, ref, message, date] = line.split("\t");
-                const indexMatch = ref.match(/\{(\d+)\}/);
-                entries.push({
-                    index: indexMatch ? parseInt(indexMatch[1]) : entries.length,
-                    message: message || "",
-                    date: date || "",
-                    hash: hash || "",
-                });
-            }
-            return entries;
+            return parseStashEntries(result);
         } catch {
             return [];
         }
@@ -972,22 +751,7 @@ export class GitOps {
             filePath,
         ]);
 
-        return raw
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line) => {
-                const [hash = "", shortHash = "", author = "", date = "", ...subjectParts] =
-                    line.split("\t");
-                return {
-                    hash,
-                    shortHash,
-                    author,
-                    date,
-                    subject: subjectParts.join("\t"),
-                };
-            })
-            .filter((entry) => entry.hash && entry.shortHash);
+        return parseFileHistoryEntries(raw);
     }
 
     async getFileContentAtRef(filePath: string, ref: string): Promise<string> {
@@ -1080,50 +844,6 @@ export class GitOps {
         const args = force ? ["rm", "-f", "--", filePath] : ["rm", "--", filePath];
         await this.executor.run(args);
     }
-}
-
-const VALID_COMMIT_FILE_STATUSES = new Set<CommitFile["status"]>(["A", "M", "D", "R", "C", "T"]);
-
-function mapCommitFileStatus(code: string): CommitFile["status"] {
-    if (VALID_COMMIT_FILE_STATUSES.has(code as CommitFile["status"])) {
-        return code as CommitFile["status"];
-    }
-    return "M";
-}
-
-function mapStatusCode(code: string): WorkingFile["status"] | null {
-    switch (code) {
-        case "M":
-            return "M";
-        case "A":
-            return "A";
-        case "D":
-            return "D";
-        case "R":
-            return "R";
-        case "C":
-            return "C";
-        case "?":
-            return "?";
-        case "U":
-            return "U";
-        case " ":
-            return null;
-        default:
-            return "M";
-    }
-}
-
-const UNMERGED_CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
-
-function isUnmergedConflictCode(code: string): boolean {
-    return UNMERGED_CONFLICT_CODES.has(code);
-}
-
-function mapConflictSideState(code: string): MergeConflictFile["ours"] {
-    if (code === "A") return "Added";
-    if (code === "D") return "Deleted";
-    return "Modified";
 }
 
 function isNoUpstreamPushError(err: unknown): boolean {

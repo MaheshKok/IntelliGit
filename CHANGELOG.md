@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Replaced fictional 90% coverage thresholds with an enforceable coverage floor and wired CI to run `bun run test:coverage` so coverage gates are actually enforced.
 - Promoted type-aware async and unsafe-value lint rules to errors, and restored a meaningful cognitive-complexity gate with explicit grandfathered hotspots.
+- Split Git history and working-tree parsing into focused helper modules so `GitOps` can delegate pure parsing/planning logic without changing runtime behavior.
 
 ### Fixed
 

@@ -48,9 +48,14 @@ async function createAskpassEnv(auth: GitAskpassAuth): Promise<GitAskpassEnv> {
               "",
           ].join("\n");
 
-    await fs.writeFile(askpassPath, script, { mode: 0o700 });
-    if (!isWindows) {
-        await fs.chmod(askpassPath, 0o700);
+    try {
+        await fs.writeFile(askpassPath, script, { mode: 0o700 });
+        if (!isWindows) {
+            await fs.chmod(askpassPath, 0o700);
+        }
+    } catch (err) {
+        await fs.rm(askpassDir, { recursive: true, force: true }).catch(() => undefined);
+        throw err;
     }
 
     return {

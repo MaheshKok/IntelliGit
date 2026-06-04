@@ -25,6 +25,7 @@ AGENTS.md
 .env*
 !.env.example
 .memory/
+.mcp.json
 .gitnexus
 
 .hermes/
