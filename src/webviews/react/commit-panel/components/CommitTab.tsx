@@ -92,6 +92,7 @@ export function CommitTab({
 
     useEffect(() => {
         if (isRefreshing) {
+            // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
             showRefreshFeedback();
         }
     }, [isRefreshing, showRefreshFeedback]);

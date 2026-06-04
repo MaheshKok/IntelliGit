@@ -44,6 +44,17 @@ interface Props {
 }
 
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
+    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
+    const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    React.useEffect(() => {
+        return () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+        };
+    }, []);
+
     if (branch.ahead <= 0 && branch.behind <= 0) return null;
     const tooltipParts: string[] = [];
     if (branch.behind > 0) {
@@ -53,8 +64,6 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
         tooltipParts.push(`${branch.ahead} outgoing commit${branch.ahead === 1 ? "" : "s"}`);
     }
     const tooltipText = tooltipParts.join(" and ");
-    const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
-    const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const { hoverDelay, tooltipsEnabled } = getSettings();
@@ -85,14 +94,6 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
         }
         setTooltipPos(null);
     };
-
-    React.useEffect(() => {
-        return () => {
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
-        };
-    }, []);
 
     return (
         <span

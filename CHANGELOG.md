@@ -5,6 +5,28 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-06-04
+
+### Added
+
+- Added React Doctor as a repository validation tool with a `bun run react-doctor` script.
+- Added a React Doctor configuration that runs non-interactively, offline, and fails validation on error-level diagnostics.
+
+### Changed
+
+- Updated the pre-commit validation checklist to run React Doctor alongside format, lint, typecheck, build, and tests.
+- Added a reduced-motion guard to the shared webview shell so animations and transitions respect `prefers-reduced-motion`.
+
+### Fixed
+
+- Fixed React Doctor error-level findings for conditional hook usage in the branch tracking badge.
+- Removed prop-sync effects from commit-info and shelf rendering paths by deriving stale local state from the current commit or selected stash context.
+- Documented narrow React Doctor suppressions where toolbar refresh and file-tree expand/collapse signals intentionally drive local UI state.
+
+### Verification
+
+- Verified React Doctor reports zero error-level diagnostics.
+
 ## [0.9.0] - 2026-06-02
 
 ### Added
