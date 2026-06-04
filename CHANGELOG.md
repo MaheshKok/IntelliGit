@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Replaced fictional 90% coverage thresholds with the current enforceable coverage floor and wired CI to run `bun run test:coverage` so coverage gates are actually enforced.
+- Replaced fictional 90% coverage thresholds with an enforceable coverage floor and wired CI to run `bun run test:coverage` so coverage gates are actually enforced.
 - Promoted type-aware async and unsafe-value lint rules to errors, and restored a meaningful cognitive-complexity gate with explicit grandfathered hotspots.
 
 ### Fixed
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verification
 
-- Added regression coverage for branch-argument hardening, conflict-marker detection, and merge/conflict webview behavior.
+- Added regression coverage for branch-argument hardening, conflict-marker detection, JetBrains merge service/tool launch paths, diff service file operations, undocked provider protocols, file icon theme resolution, and merge/conflict webview behavior.
 - Verified format, lint, strict lint, architecture, React Doctor, typecheck, build, localization validation, localization audit, CSV validation, tests, coverage, production build, package, and VSIX package-content audit.
 
 ## [0.9.3] - 2026-06-04
