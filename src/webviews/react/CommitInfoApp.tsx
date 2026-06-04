@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
-import type { CommitInfoOutbound, CommitInfoInbound } from "./commitInfoTypes";
+import type { CommitInfoOutbound, CommitInfoInbound } from "../protocol/commitInfoTypes";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";

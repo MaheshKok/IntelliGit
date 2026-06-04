@@ -3,7 +3,7 @@ import { GitOps } from "../git/operations";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
-import type { MergeConflictSessionData } from "../webviews/react/merge-conflicts-session/types";
+import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
 
 interface MergeConflictSessionLabels {
     sourceBranch?: string;

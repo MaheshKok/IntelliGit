@@ -10,7 +10,7 @@ import {
     COMMIT_ACTION_VALUES,
     isBranchAction,
     isCommitAction,
-} from "../../src/webviews/react/commitGraphTypes";
+} from "../../src/webviews/protocol/commitGraphTypes";
 import { canCherryPickFromBranchScope } from "../../src/webviews/react/CommitList";
 import { getCommitMenuItems } from "../../src/webviews/react/commit-list/commitMenu";
 import { buildFileTree, collectDirPaths, countFiles } from "../../src/webviews/react/shared/fileTree";

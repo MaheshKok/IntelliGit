@@ -14,7 +14,7 @@ import type {
     CommitAction,
     CommitGraphOutbound,
     CommitGraphInbound,
-} from "./commitGraphTypes";
+} from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";

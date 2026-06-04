@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a React Doctor configuration that runs non-interactively, offline, and fails validation on error-level diagnostics.
 - Added React Hooks linting so Rules of Hooks violations fail lint while exhaustive dependency findings start as warnings.
 - Added Knip with a report-only `bun run deps:check` script for unused files, exports, and dependencies.
+- Added dependency-cruiser with a strict `bun run architecture:check` script for source dependency boundaries and circular import detection.
 
 ### Changed
 
@@ -21,16 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enabled type-aware TypeScript ESLint recommendations with noisy async misuse findings staged as warnings during cleanup.
 - Wired the existing React ESLint plugin into the webview lint path and kept TypeScript-safe React rules enabled.
 - Added a reduced-motion guard to the shared webview shell so animations and transitions respect `prefers-reduced-motion`.
+- Moved shared webview message protocol types into `src/webviews/protocol` so extension-host code no longer imports React UI modules.
+- Moved the refresh coordinator into the views layer because it directly orchestrates view provider refreshes.
 
 ### Fixed
 
 - Fixed React Doctor error-level findings for conditional hook usage in the branch tracking badge.
 - Removed prop-sync effects from commit-info and shelf rendering paths by deriving stale local state from the current commit or selected stash context.
 - Documented narrow React Doctor suppressions where toolbar refresh and file-tree expand/collapse signals intentionally drive local UI state.
+- Enforced host/webview architecture boundaries while preserving message-based communication between the extension host and React webviews.
 
 ### Verification
 
 - Verified React Doctor reports zero error-level diagnostics.
+- Verified architecture boundaries with `bun run architecture:check`.
 
 ## [0.9.0] - 2026-06-02
 

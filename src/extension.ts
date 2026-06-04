@@ -17,7 +17,7 @@ import { getErrorMessage } from "./utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "./utils/fileOps";
 import { handleCommitContextAction } from "./commands/commitCommands";
 import { createBranchCommands } from "./commands/branchCommands";
-import { RefreshService } from "./services/refreshService";
+import { RefreshService } from "./views/RefreshService";
 import {
     openJetBrainsMergeToolForFile,
     getJetBrainsMergeToolPath,

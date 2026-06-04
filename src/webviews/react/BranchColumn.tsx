@@ -4,7 +4,7 @@
 
 import React, { useMemo, useState, useCallback, useEffect } from "react";
 import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../types";
-import { isBranchAction, type BranchAction } from "./commitGraphTypes";
+import { isBranchAction, type BranchAction } from "../protocol/commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { getBranchMenuItems } from "./branch-column/menu";
 import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";

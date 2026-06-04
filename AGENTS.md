@@ -34,6 +34,7 @@
 - Before committing code changes, run the smallest relevant focused tests first, then run the standard validation set:
   - `bun run format:check`
   - `bun run lint`
+  - `bun run architecture:check`
   - `bun run react-doctor`
   - `bun run typecheck`
   - `bun run build`

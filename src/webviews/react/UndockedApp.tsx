@@ -28,8 +28,8 @@ import type {
     StashEntry,
     AmendBranchCommitSummary,
 } from "../../types";
-import type { BranchAction, CommitAction } from "./commitGraphTypes";
-import type { UnifiedInbound, UnifiedOutbound } from "./undocked/types";
+import type { BranchAction, CommitAction } from "../protocol/commitGraphTypes";
+import type { UnifiedInbound, UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
 

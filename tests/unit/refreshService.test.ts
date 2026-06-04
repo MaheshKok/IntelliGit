@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitOps } from "../../src/git/operations";
-import { RefreshService, type RefreshServiceDeps } from "../../src/services/refreshService";
+import { RefreshService, type RefreshServiceDeps } from "../../src/views/RefreshService";
 import type { Branch } from "../../src/types";
 import type { CommitGraphViewProvider } from "../../src/views/CommitGraphViewProvider";
 import type { CommitPanelViewProvider } from "../../src/views/CommitPanelViewProvider";

@@ -2,9 +2,9 @@
 // Combines message types from both the CommitGraph and CommitPanel
 // webviews into a single channel.
 
-import type { BranchAction, CommitAction } from "../commitGraphTypes";
-import type { InboundMessage as CommitPanelInbound } from "../commit-panel/types";
-import type { CommitGraphInbound } from "../commitGraphTypes";
+import type { BranchAction, CommitAction } from "./commitGraphTypes";
+import type { InboundMessage as CommitPanelInbound } from "./commitPanelMessages";
+import type { CommitGraphInbound } from "./commitGraphTypes";
 
 // --- Inbound (extension → webview) ---
 // Union of all inbound message types from both views.

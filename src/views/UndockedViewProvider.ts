@@ -11,10 +11,10 @@ import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
 import { promptRebaseAfterPushRejection, isValidGitHash } from "../services/gitHelpers";
-import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
+import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile } from "../types";
-import type { BranchAction, CommitAction } from "../webviews/react/commitGraphTypes";
-import type { UnifiedOutbound, UnifiedInbound } from "../webviews/react/undocked/types";
+import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
+import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
 
 interface PersistedColumnWidths {
     branchWidth: number;

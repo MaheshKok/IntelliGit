@@ -11,13 +11,13 @@ import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
 import { promptRebaseAfterPushRejection, isValidGitHash } from "../services/gitHelpers";
-import type { InboundMessage } from "../webviews/react/commit-panel/types";
+import type { InboundMessage } from "../webviews/protocol/commitPanelMessages";
 import type {
     BranchAction,
     CommitAction,
     CommitGraphInbound,
-} from "../webviews/react/commitGraphTypes";
-import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
+} from "../webviews/protocol/commitGraphTypes";
+import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 

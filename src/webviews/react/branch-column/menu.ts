@@ -1,5 +1,5 @@
 import type { Branch } from "../../../types";
-import type { BranchAction } from "../commitGraphTypes";
+import type { BranchAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 
