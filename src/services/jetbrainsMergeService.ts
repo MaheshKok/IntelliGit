@@ -81,7 +81,7 @@ async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | nul
     return trimmed;
 }
 
-export async function promptForJetBrainsMergeToolPath(): Promise<string | null> {
+async function promptForJetBrainsMergeToolPath(): Promise<string | null> {
     const existing = getJetBrainsMergeToolPath();
     const detected = existing ? null : await detectInstalledJetBrainsMergeToolPath();
     const suggested = existing || detected || getDefaultJetBrainsMergeToolPath();

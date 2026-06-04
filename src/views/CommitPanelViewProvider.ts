@@ -11,13 +11,13 @@ import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
 import { promptRebaseAfterPushRejection, isValidGitHash } from "../services/gitHelpers";
-import type { InboundMessage } from "../webviews/react/commit-panel/types";
+import type { InboundMessage } from "../webviews/protocol/commitPanelMessages";
 import type {
     BranchAction,
     CommitAction,
     CommitGraphInbound,
-} from "../webviews/react/commitGraphTypes";
-import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
+} from "../webviews/protocol/commitGraphTypes";
+import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 
@@ -171,8 +171,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
+            const message: unknown = msg;
             try {
-                await this.handleMessage(msg);
+                await this.handleMessage(message);
             } catch (err) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(message);
@@ -418,7 +419,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return value;
     }
 
-    private async handleMessage(msg: { type: string; [key: string]: unknown }): Promise<void> {
+    private assertMessage(msg: unknown): { type: string; [key: string]: unknown } {
+        if (typeof msg === "object" && msg !== null && "type" in msg) {
+            const typed = msg as { type?: unknown; [key: string]: unknown };
+            if (typeof typed.type === "string")
+                return typed as { type: string; [key: string]: unknown };
+        }
+        throw new Error("Invalid message received from webview.");
+    }
+
+    private async handleMessage(raw: unknown): Promise<void> {
+        const msg = this.assertMessage(raw);
         switch (msg.type) {
             case "ready":
                 await this.refreshData();

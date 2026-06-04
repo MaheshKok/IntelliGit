@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { getVsCodeApi as getSharedVsCodeApi } from "../shared/vscodeApi";
 import { t } from "../shared/i18n";
 import type { MergeConflictFile } from "../../../types";
-import type { InboundMessage, OutboundMessage } from "./types";
+import type { InboundMessage, OutboundMessage } from "../../protocol/mergeConflictSessionTypes";
 import "./merge-conflicts-session.css";
 
 function getVsCodeApi() {

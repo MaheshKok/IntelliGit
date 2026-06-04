@@ -161,10 +161,7 @@ async function walkDirectories(
 
         let entries: Array<{ isDirectory(): boolean; name: string }>;
         try {
-            entries = (await fsp.readdir(dirPath, { withFileTypes: true })) as Array<{
-                isDirectory(): boolean;
-                name: string;
-            }>;
+            entries = await fsp.readdir(dirPath, { withFileTypes: true });
         } catch {
             return;
         }

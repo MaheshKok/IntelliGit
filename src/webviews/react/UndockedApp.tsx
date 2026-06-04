@@ -28,8 +28,8 @@ import type {
     StashEntry,
     AmendBranchCommitSummary,
 } from "../../types";
-import type { BranchAction, CommitAction } from "./commitGraphTypes";
-import type { UnifiedInbound, UnifiedOutbound } from "./undocked/types";
+import type { BranchAction, CommitAction } from "../protocol/commitGraphTypes";
+import type { UnifiedInbound, UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -485,7 +485,7 @@ function App(): React.ReactElement {
 
     const readInitialWidths = (): SectionWidths => {
         try {
-            const state = vscode.getState() as Record<string, unknown> | undefined;
+            const state = vscode.getState();
             const migrated = migrateSectionWidths(state);
             if (migrated) {
                 return normalizeSectionWidths(migrated);
@@ -595,7 +595,7 @@ function App(): React.ReactElement {
     // --- Persist column widths ---
     useEffect(() => {
         try {
-            const prev = (vscode.getState() ?? {}) as Record<string, unknown>;
+            const prev = vscode.getState() ?? {};
             vscode.setState({ ...prev, branchWidth, graphWidth, infoWidth, commitPanelWidth });
         } catch {
             /* ignore */
@@ -769,7 +769,7 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "ready" });
 
         return () => window.removeEventListener("message", handler);
-    }, []);
+    }, [markWidthsHydrated, setSectionWidths]);
 
     // --- Graph-side callbacks ---
     const handleSelectCommit = useCallback((hash: string) => {

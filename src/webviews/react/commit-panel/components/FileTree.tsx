@@ -66,7 +66,9 @@ export function FileTree({
     React.useEffect(() => {
         if (expandAllSignal === 0 || expandAllSignal === lastExpandSignal.current) return;
         lastExpandSignal.current = expandAllSignal;
+        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
         setChangesOpen(true);
+        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
         setUnversionedOpen(true);
         const allDirs = [
             ...collectAllDirPaths(trackedTree),
@@ -82,8 +84,11 @@ export function FileTree({
         if (collapseAllSignal === 0 || collapseAllSignal === lastCollapseSignal.current) return;
         lastCollapseSignal.current = collapseAllSignal;
         // Keep top-level sections visible; collapse only nested directory expansion state.
+        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
         setChangesOpen(true);
+        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
         setUnversionedOpen(true);
+        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
         setExpandedDirs(new Set());
     }, [collapseAllSignal]);
 

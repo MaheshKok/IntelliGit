@@ -12,8 +12,8 @@ import ru from "./ru.json";
 import zhCn from "./zh-cn.json";
 import zhTw from "./zh-tw.json";
 
-export type WebviewCatalogValue = string | Record<string, string>;
-export type WebviewCatalog = Record<string, WebviewCatalogValue>;
+type WebviewCatalogValue = string | Record<string, string>;
+type WebviewCatalog = Record<string, WebviewCatalogValue>;
 
 export interface WebviewI18nPayload {
     locale: string;

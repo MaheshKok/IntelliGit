@@ -49,8 +49,26 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
-            - name: Run linter
-              run: bun run lint
+            - name: Check formatting
+              run: bun run format:check
+
+            - name: Run React Doctor
+              run: bun run react-doctor
+
+            - name: Run strict ESLint
+              run: bun run lint:strict
+
+            - name: Check unused files and dependencies
+              run: bun run deps:check:strict
+
+            - name: Check architecture boundaries
+              run: bun run architecture:check
+
+            - name: Validate localization catalogs
+              run: bun run l10n:validate
+
+            - name: Audit hardcoded localization strings
+              run: bun run l10n:audit
 
             - name: Run type check
               run: bun run typecheck

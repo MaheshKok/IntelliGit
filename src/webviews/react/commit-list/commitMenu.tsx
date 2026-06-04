@@ -1,6 +1,6 @@
 import React from "react";
 import type { Commit } from "../../../types";
-import type { CommitAction } from "../commitGraphTypes";
+import type { CommitAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 

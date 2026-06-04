@@ -5,5 +5,4 @@ export {
     RepoIcon,
     StarIcon,
     TagIcon,
-    TagRightIcon,
 } from "../shared/components/Icons";

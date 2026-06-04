@@ -120,7 +120,7 @@ function WordDiffLine({
 
 export type LineNumberValue = number | null;
 
-export interface LineNumberSpec {
+interface LineNumberSpec {
     primary: LineNumberValue[];
     secondary?: LineNumberValue[];
 }

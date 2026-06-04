@@ -1581,6 +1581,53 @@ describe("extension integration", () => {
         panelResult?.dispose?.();
     });
 
+    it("rejects unsafe conflict-session accept paths before git operations", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        await registeredCommands.get("intelligit.openConflictSession")?.();
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        type CreatedPanel = {
+            webview: {
+                onDidReceiveMessage: ReturnType<typeof vi.fn>;
+            };
+            dispose?: () => void;
+        };
+        const panelResult = createWebviewPanelMock.mock.results[0]?.value as
+            | CreatedPanel
+            | undefined;
+        const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
+            | ((msg: unknown) => Promise<void>)
+            | undefined;
+        expect(handler).toBeDefined();
+
+        gitOpsState.acceptConflictSide.mockClear();
+        showErrorMessage.mockClear();
+        await handler?.({ type: "acceptYours", filePath: "../secret.txt" });
+        await handler?.({ type: "acceptTheirs", filePath: "/tmp/secret.txt" });
+
+        expect(gitOpsState.acceptConflictSide).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Rejected path escaping repo root: ../secret.txt",
+        );
+        expect(showErrorMessage).toHaveBeenCalledWith("Rejected non-relative path: /tmp/secret.txt");
+        panelResult?.dispose?.();
+    });
+
     it("does not open conflict session for current-branch update fetch failures", async () => {
         executorRun.mockImplementation(async (args: string[]) => {
             if (args[0] === "fetch" && args[1] === "origin") {

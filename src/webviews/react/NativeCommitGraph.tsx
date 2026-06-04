@@ -6,7 +6,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit } from "../../types";
-import type { CommitAction, CommitGraphOutbound, CommitGraphInbound } from "./commitGraphTypes";
+import type {
+    CommitAction,
+    CommitGraphOutbound,
+    CommitGraphInbound,
+} from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 

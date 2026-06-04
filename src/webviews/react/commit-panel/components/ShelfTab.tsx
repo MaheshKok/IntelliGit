@@ -29,6 +29,12 @@ interface Props {
 
 type ShelfActionKind = "apply" | "pop" | "delete" | "showDiff";
 
+interface ExpansionOverride {
+    selectedIndex: number | null;
+    expandedIndex: number | null;
+    isLoading: boolean;
+}
+
 export function ShelfTab({
     stashes,
     shelfFiles,
@@ -50,28 +56,37 @@ export function ShelfTab({
     // It is set optimistically on click (before files arrive from the extension host).
     // selectedIndex (prop) updates once the host responds with loaded files.
     // Collapsing only clears local state — no host message needed since no files to load.
-    // The useEffect below re-syncs expandedIndex from selectedIndex on parent-driven
-    // changes (e.g. after apply/pop/delete removes the selected stash).
-    const [expandedIndex, setExpandedIndex] = useState<number | null>(selectedIndex);
-    const [isLoading, setIsLoading] = useState(false);
+    // Store the selectedIndex that produced the local override so parent-driven
+    // changes (e.g. after apply/pop/delete removes the selected stash) evict stale
+    // local expansion/loading state during render without a prop-sync effect.
+    const [expansionOverride, setExpansionOverride] = useState<ExpansionOverride | null>(null);
+    const hasCurrentExpansionOverride = expansionOverride?.selectedIndex === selectedIndex;
+    const expandedIndex = hasCurrentExpansionOverride
+        ? expansionOverride.expandedIndex
+        : selectedIndex;
+    const isLoading = hasCurrentExpansionOverride ? expansionOverride.isLoading : false;
 
-    useEffect(() => {
-        setExpandedIndex(selectedIndex);
-        setIsLoading(false);
-    }, [selectedIndex]);
+    const setLocalExpansion = useCallback(
+        (nextExpandedIndex: number | null, nextIsLoading: boolean) => {
+            setExpansionOverride({
+                selectedIndex,
+                expandedIndex: nextExpandedIndex,
+                isLoading: nextIsLoading,
+            });
+        },
+        [selectedIndex],
+    );
 
     const handleStashClick = useCallback(
         (index: number) => {
             if (expandedIndex === index) {
-                setExpandedIndex(null);
-                setIsLoading(false);
+                setLocalExpansion(null, false);
             } else {
-                setExpandedIndex(index);
-                setIsLoading(true);
+                setLocalExpansion(index, true);
                 vscode.postMessage({ type: "shelfSelect", index });
             }
         },
-        [expandedIndex, vscode],
+        [expandedIndex, setLocalExpansion, vscode],
     );
 
     const handleShelfAction = useCallback(
@@ -133,13 +148,12 @@ export function ShelfTab({
             event.preventDefault();
             event.stopPropagation();
             if (expandedIndex !== index) {
-                setExpandedIndex(index);
-                setIsLoading(true);
+                setLocalExpansion(index, true);
                 vscode.postMessage({ type: "shelfSelect", index });
             }
             setContextMenu({ x: event.clientX, y: event.clientY, index });
         },
-        [expandedIndex, vscode],
+        [expandedIndex, setLocalExpansion, vscode],
     );
 
     const [fileTreeHeight, setFileTreeHeight] = useState(150);

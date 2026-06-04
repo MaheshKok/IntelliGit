@@ -8,10 +8,10 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
-import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
-import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
-import { MergeConflictsTreeProvider } from "../views/MergeConflictsTreeProvider";
-import type { UndockedViewProvider } from "../views/UndockedViewProvider";
+import { CommitGraphViewProvider } from "./CommitGraphViewProvider";
+import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
+import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
+import type { UndockedViewProvider } from "./UndockedViewProvider";
 
 export interface RefreshServiceDeps {
     gitOps: GitOps;

@@ -7,7 +7,7 @@ export interface CommonSegment {
     lines: string[];
 }
 
-export type ConflictChangeKind = "conflict" | "ours-only" | "theirs-only";
+type ConflictChangeKind = "conflict" | "ours-only" | "theirs-only";
 
 export interface ConflictSegment {
     type: "conflict";

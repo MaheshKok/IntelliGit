@@ -6,7 +6,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
-import type { CommitAction } from "../webviews/react/commitGraphTypes";
+import type { CommitAction } from "../webviews/protocol/commitGraphTypes";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
 import {

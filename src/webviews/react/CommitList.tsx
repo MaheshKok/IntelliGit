@@ -10,7 +10,7 @@ import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitRow } from "./commit-list/CommitRow";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
-import { isCommitAction, type CommitAction } from "./commitGraphTypes";
+import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { t } from "./shared/i18n";
 import {

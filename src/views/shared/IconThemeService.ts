@@ -54,7 +54,7 @@ export class IconThemeService implements vscode.Disposable {
         if (!this.iconThemeDirty && this.iconThemeInitialized) return;
 
         const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
-        const themeRoot = await this.iconResolver.getThemeResourceRootUri();
+        const themeRoot = this.iconResolver.getThemeResourceRootUri();
         const nextThemeRootUri = themeRoot?.toString();
         if (this.lastThemeRootUri !== nextThemeRootUri) {
             const existingRoots = this.webview.options.localResourceRoots ?? [];

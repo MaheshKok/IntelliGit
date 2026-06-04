@@ -85,19 +85,19 @@ export function getRepoRelativeFilePathFromUri(uri: vscode.Uri, repoRoot: string
     return normalizeGitPath(relative);
 }
 
-export function getEditorContextFileUri(ctx?: unknown): vscode.Uri | null {
+function getEditorContextFileUri(ctx?: unknown): vscode.Uri | null {
     if (ctx instanceof vscode.Uri) return ctx;
     const activeUri = vscode.window.activeTextEditor?.document.uri;
     return activeUri?.scheme === "file" ? activeUri : null;
 }
 
-export interface CommitInfoFileContext {
+interface CommitInfoFileContext {
     filePath: string;
     commitHash: string;
     commitShortHash?: string;
 }
 
-export function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null {
+function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null {
     if (!value || typeof value !== "object") return null;
     const maybe = value as {
         filePath?: unknown;
@@ -113,7 +113,7 @@ export function getCommitInfoFileContext(value: unknown): CommitInfoFileContext 
     return { filePath, commitHash, commitShortHash };
 }
 
-export async function openDiffAgainstGitRef(
+async function openDiffAgainstGitRef(
     fileUri: vscode.Uri,
     repoRelativeFilePath: string,
     ref: string,
@@ -183,7 +183,7 @@ export async function openCommitFileDiff(
     await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
 }
 
-export async function applyPatchTextToRepo(
+async function applyPatchTextToRepo(
     patchText: string,
     reverse: boolean,
     executor: GitExecutor,

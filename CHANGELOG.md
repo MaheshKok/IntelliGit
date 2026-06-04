@@ -5,6 +5,46 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-06-04
+
+### Added
+
+- Added React Doctor as a repository validation tool with a `bun run react-doctor` script and a non-interactive, offline configuration that fails on error-level diagnostics.
+- Added runtime-scoped ESLint quality gates for the extension host, React webviews, Node scripts, and typed TypeScript sources.
+- Added React Hooks linting so Rules of Hooks violations fail lint while exhaustive dependency findings start as warnings.
+- Added type-aware TypeScript ESLint recommendations with the initial noisy cleanup staged through targeted warning-level rules.
+- Added Knip with both report-only and strict validation paths for unused files, exports, dependencies, and devDependencies.
+- Added dependency-cruiser with a strict `bun run architecture:check` script for focused architecture validation.
+- Added dependency-cruiser rules for unresolved imports, circular dependencies, extension-host/webview boundaries, domain-layer-to-UI boundaries, and webview imports of Node or VS Code runtime APIs.
+- Added SonarJS lint rules for selected high-signal code-smell detection, with cognitive complexity starting as a warning at an intentionally high baseline threshold.
+
+### Changed
+
+- Updated the pre-commit validation checklist to run React Doctor and dependency-cruiser alongside format, lint, architecture, typecheck, build, localization, and tests.
+- Split ESLint configuration by runtime so extension-host TypeScript, React webviews, Node scripts, and typed TypeScript sources use the correct globals, parser projects, and plugin sets.
+- Wired the existing React ESLint plugin safely into the React webview lint path with flat config support and a pinned React version.
+- Moved shared webview message protocol types into `src/webviews/protocol` so extension-host code no longer imports React UI modules.
+- Moved the refresh coordinator into the views layer because it directly orchestrates view provider refreshes.
+- Kept SonarJS code-smell checks warning-level for CI adoption while ensuring the local strict lint gate is already clean.
+
+### Removed
+
+- Removed unused files, exports, and dependencies identified during Knip cleanup.
+
+### Fixed
+
+- Fixed React Doctor error-level findings for conditional hook usage in the branch tracking badge.
+- Fixed React Hooks exhaustive-dependency findings that were safe to address in the initial cleanup pass.
+- Fixed type-aware TypeScript ESLint findings around async handling, unsafe values, unnecessary assertions, and promise usage.
+- Fixed architecture boundary violations by moving shared protocols and refresh coordination to layers that match their runtime responsibilities.
+- Enforced host/webview architecture boundaries while preserving message-based communication between the extension host and React webviews.
+
+### Verification
+
+- Verified React Doctor reports zero error-level diagnostics.
+- Verified dependency-cruiser reports no architecture violations.
+- Verified strict ESLint, strict Knip, typecheck, build, localization validation, localization audit, localization CSV validation, and the full test suite pass.
+
 ## [0.9.1] - 2026-06-04
 
 ### Fixed

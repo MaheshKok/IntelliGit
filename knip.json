@@ -1,0 +1,14 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "entry": [
+        "src/webviews/react/CommitGraphApp.tsx",
+        "src/webviews/react/CompactCommitGraphApp.tsx",
+        "src/webviews/react/commit-panel/CommitPanelApp.tsx",
+        "src/webviews/react/CommitInfoApp.tsx",
+        "src/webviews/react/merge-editor/MergeEditorApp.tsx",
+        "src/webviews/react/merge-conflicts-session/MergeConflictSessionApp.tsx",
+        "src/webviews/react/UndockedApp.tsx"
+    ],
+    "project": ["src/**/*.{ts,tsx}", "scripts/**/*.js", "tests/**/*.{ts,tsx}"],
+    "ignoreFiles": ["src/webviews/react/css-modules.d.ts"]
+}

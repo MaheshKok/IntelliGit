@@ -15,12 +15,3 @@ export function splitCommitRefs(refs: string[]): SplitCommitRefs {
     }
     return { branches, tags };
 }
-
-export function stripTagPrefix(ref: string): string {
-    return ref.startsWith("tag:") ? ref.slice(4).trim() : ref;
-}
-
-export function withTagPrefix(tag: string): string {
-    if (tag.startsWith("tag:")) return tag;
-    return `tag:${tag}`;
-}
