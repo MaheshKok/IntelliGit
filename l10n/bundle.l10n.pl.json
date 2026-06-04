@@ -356,5 +356,6 @@
     "{action}: select mainline parent": "{action}: wybierz nadrzędny element linii głównej",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} plik zmieniony",
-    "{count} changed files": "{count} zmienionych plików"
+    "{count} changed files": "{count} zmienionych plików",
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "Gałąź lokalna i zdalna rozeszły się. Scal lub wykonaj rebase śledzonej gałęzi zdalnej, a następnie spróbuj ponownie."
 }

@@ -226,6 +226,7 @@
   "No tracked remote branch configured for '{branch}'.": "No tracked remote branch configured for '{branch}'.",
   "Updated {branch}": "Updated {branch}",
   "Update failed: {message}": "Update failed: {message}",
+  "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.",
   "Pushing {branch}...": "Pushing {branch}...",
   "Pushed {branch}": "Pushed {branch}",
   "Push failed: {message}": "Push failed: {message}",
