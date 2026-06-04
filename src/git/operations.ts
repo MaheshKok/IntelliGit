@@ -10,6 +10,7 @@ import type {
     AmendBranchCommitSummary,
 } from "../types";
 import { getErrorMessage, sanitizeErrorMessage } from "../utils/errors";
+import { isValidBranchName } from "../utils/gitRefs";
 
 declare const require: (id: string) => unknown;
 
@@ -249,16 +250,19 @@ export class GitOps {
             args.push(`--skip=${skip}`);
         }
 
-        if (branch) {
-            args.push(branch);
-        } else {
-            args.push("--all");
-        }
-
         if (filterText) {
             // Use --fixed-strings to treat the filter as a literal string,
             // preventing ReDoS via git's regex engine on user input.
             args.push(`--grep=${filterText}`, "-i", "--fixed-strings");
+        }
+
+        if (branch) {
+            if (!isValidBranchName(branch)) {
+                throw new Error("Invalid branch filter received for git log.");
+            }
+            args.push("--end-of-options", branch);
+        } else {
+            args.push("--all");
         }
 
         const result = await this.executor.run(args);

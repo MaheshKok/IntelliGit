@@ -5,6 +5,28 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.4] - 2026-06-04
+
+### Changed
+
+- Replaced fictional 90% coverage thresholds with the current enforceable coverage floor and wired CI to run `bun run test:coverage` so coverage gates are actually enforced.
+- Promoted type-aware async and unsafe-value lint rules to errors, and restored a meaningful cognitive-complexity gate with explicit grandfathered hotspots.
+
+### Fixed
+
+- Hardened Git log branch filtering by validating branch refs and passing branch filters after `--end-of-options`.
+- Replaced conflict-marker detection with a linear scan so large non-conflicted files avoid regex backtracking risk.
+- Excluded local Repowise metadata from packaged VSIX artifacts.
+
+### Security
+
+- Consolidated clone and publish `GIT_ASKPASS` credential plumbing into one shared helper so future credential-handling fixes cannot drift between flows.
+
+### Verification
+
+- Added regression coverage for branch-argument hardening, conflict-marker detection, and merge/conflict webview behavior.
+- Verified format, lint, strict lint, architecture, React Doctor, typecheck, build, localization validation, localization audit, CSV validation, tests, coverage, production build, package, and VSIX package-content audit.
+
 ## [0.9.3] - 2026-06-04
 
 ### Added

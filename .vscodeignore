@@ -59,6 +59,7 @@ Thumbs.db
 .claude-flow/**
 .agents/**
 .hermes/**
+.repowise/**
 .serena/**
 .mcp.json
 CLAUDE.md

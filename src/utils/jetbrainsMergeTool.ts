@@ -431,7 +431,24 @@ function buildTempFileNames(relativeFilePath: string): {
 }
 
 export function containsConflictMarkers(text: string): boolean {
-    return /^<<<<<<<[^\r\n]*\r?\n[\s\S]*?^=======\r?$[\s\S]*?^>>>>>>>[^\r\n]*$/m.test(text);
+    let state: "none" | "ours" | "theirs" = "none";
+
+    for (const rawLine of text.split("\n")) {
+        const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+        if (line.startsWith("<<<<<<<")) {
+            state = "ours";
+            continue;
+        }
+        if (state === "ours" && line === "=======") {
+            state = "theirs";
+            continue;
+        }
+        if (state === "theirs" && line.startsWith(">>>>>>>")) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 export async function launchJetBrainsMergeTool(

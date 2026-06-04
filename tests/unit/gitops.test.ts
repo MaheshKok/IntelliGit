@@ -221,14 +221,27 @@ describe("GitOps", () => {
             expect(commits[0].parentHashes).toEqual(["parent1", "parent2"]);
         });
 
-        it("passes branch filter argument", async () => {
+        it("passes validated branch filter after an end-of-options guard", async () => {
             const executor = createMockExecutor({ log: "" });
             const ops = new GitOps(executor);
-            await ops.getLog(100, "feature");
+            await ops.getLog(100, "feature/test", "fix bug");
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
-            expect(call).toContain("feature");
+            expect(call).toContain("feature/test");
+            expect(call).toContain("--end-of-options");
             expect(call).not.toContain("--all");
+            expect(call.indexOf("--grep=fix bug")).toBeLessThan(call.indexOf("--end-of-options"));
+            expect(call.indexOf("--end-of-options")).toBeLessThan(call.indexOf("feature/test"));
+        });
+
+        it("rejects unsafe branch filter arguments before invoking git", async () => {
+            const executor = createMockExecutor({ log: "" });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getLog(100, "--output=/tmp/intelligit-log")).rejects.toThrow(
+                "Invalid branch filter",
+            );
+            expect(executor.run).not.toHaveBeenCalled();
         });
 
         it("passes filter text argument", async () => {
