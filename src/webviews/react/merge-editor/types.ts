@@ -3,11 +3,7 @@
 import type { MergeEditorData, MergeSegment } from "../../../mergeEditor/conflictParser";
 
 export type { MergeEditorData, MergeSegment };
-export type {
-    CommonSegment,
-    ConflictSegment,
-    ConflictChangeKind,
-} from "../../../mergeEditor/conflictParser";
+export type { CommonSegment, ConflictSegment } from "../../../mergeEditor/conflictParser";
 
 export type OutboundMessage =
     | { type: "ready" }
@@ -23,8 +19,3 @@ export type InboundMessage =
 
 /** Resolution choice for a single conflict hunk. */
 export type HunkResolution = "ours" | "theirs" | "both" | "none";
-
-export interface MergeEditorState {
-    data: MergeEditorData | null;
-    resolutions: Record<number, HunkResolution>;
-}

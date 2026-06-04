@@ -1,4 +1,4 @@
-import type { MergeConflictFile } from "../../../types";
+import type { MergeConflictFile } from "../../types";
 
 export interface MergeConflictSessionData {
     sourceBranch: string;

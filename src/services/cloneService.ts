@@ -582,7 +582,7 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                 );
             } else if (openChoice === addToWorkspaceAction) {
                 const count = vscode.workspace.workspaceFolders?.length ?? 0;
-                await vscode.workspace.updateWorkspaceFolders(count, 0, {
+                vscode.workspace.updateWorkspaceFolders(count, 0, {
                     uri: vscode.Uri.file(targetPath),
                 });
             }
@@ -782,7 +782,8 @@ function runGitCommand(cwd: string, args: string[], env: Record<string, string>)
             },
             (err, stdout, stderr) => {
                 if (err) {
-                    const detail = String(stderr || stdout || err.message || err);
+                    const detail =
+                        stderr.trim() || stdout.trim() || err.message || getErrorMessage(err);
                     reject(new Error(detail.trim() || "Git command failed"));
                     return;
                 }

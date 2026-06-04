@@ -32,7 +32,8 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         });
 
         webviewView.webview.onDidReceiveMessage((msg) => {
-            switch (msg.type) {
+            const type = this.getMessageType(msg);
+            switch (type) {
                 case "cloneRepository":
                     void vscode.commands.executeCommand("intelligit.cloneRepository");
                     break;
@@ -46,6 +47,12 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         });
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
+    }
+
+    private getMessageType(message: unknown): string {
+        if (typeof message !== "object" || message === null || !("type" in message)) return "";
+        const type = (message as { type?: unknown }).type;
+        return typeof type === "string" ? type : "";
     }
 
     private getHtml(webview: vscode.Webview): string {

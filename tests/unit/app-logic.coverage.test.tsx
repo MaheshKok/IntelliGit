@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BranchAction } from "../../src/webviews/react/commitGraphTypes";
+import type { BranchAction } from "../../src/webviews/protocol/commitGraphTypes";
 
 function setupRoot(): void {
     document.body.innerHTML = "";

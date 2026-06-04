@@ -10,8 +10,8 @@ import type {
     CommitAction,
     CommitGraphOutbound,
     CommitGraphInbound,
-} from "../webviews/react/commitGraphTypes";
-import { isBranchAction, isCommitAction } from "../webviews/react/commitGraphTypes";
+} from "../webviews/protocol/commitGraphTypes";
+import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import { getErrorMessage } from "../utils/errors";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";

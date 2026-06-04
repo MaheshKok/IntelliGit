@@ -378,11 +378,11 @@ export class FileIconThemeResolver {
         return undefined;
     }
 
-    private async resolveThemeContribution(): Promise<{
+    private resolveThemeContribution(): {
         extensionPath: string;
         contribution: IconThemeContribution;
         themeId: string;
-    } | null> {
+    } | null {
         try {
             const themeId = this.resolveConfiguredThemeId();
             if (!themeId) return null;
@@ -414,7 +414,7 @@ export class FileIconThemeResolver {
     }
 
     private async getParsedTheme(): Promise<{ themeId: string; parsed: ParsedIconTheme } | null> {
-        const contribution = await this.resolveThemeContribution();
+        const contribution = this.resolveThemeContribution();
         if (!contribution) return null;
 
         const themeFilePath = path.resolve(
@@ -743,8 +743,8 @@ export class FileIconThemeResolver {
         return fonts;
     }
 
-    async getThemeResourceRootUri(): Promise<vscode.Uri | null> {
-        const contribution = await this.resolveThemeContribution();
+    getThemeResourceRootUri(): vscode.Uri | null {
+        const contribution = this.resolveThemeContribution();
         if (!contribution) return null;
         return createFileUri(contribution.extensionPath);
     }

@@ -22,6 +22,16 @@ import {
 type TreeEntry = GenericTreeEntry<CommitFile>;
 type TreeFolder = GenericTreeFolder<CommitFile>;
 
+interface CommitScopedExpandedDirs {
+    commitHash: string | null;
+    dirs: Set<string>;
+}
+
+interface CommitScopedSelection {
+    commitHash: string | null;
+    path: string | null;
+}
+
 const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
@@ -72,10 +82,16 @@ export function CommitInfoPane({
     folderIconsByName?: ThemeFolderIconMap;
     onOpenDiff?: (commitHash: string, filePath: string) => void;
 }): React.ReactElement {
-    const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+    const [expandedDirsState, setExpandedDirsState] = useState<CommitScopedExpandedDirs>({
+        commitHash: null,
+        dirs: new Set(),
+    });
     const [filesCollapsed, setFilesCollapsed] = useState(false);
     const [detailCollapsed, setDetailCollapsed] = useState(false);
-    const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+    const [selectedFileState, setSelectedFileState] = useState<CommitScopedSelection>({
+        commitHash: null,
+        path: null,
+    });
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onResizeStart } = useDragResize(
         220,
@@ -87,23 +103,42 @@ export function CommitInfoPane({
         },
     );
 
+    const detailHash = detail?.hash ?? null;
     const tree = useMemo(() => buildFileTree(detail?.files ?? []), [detail?.files]);
+    const defaultExpandedDirs = useMemo(() => new Set(collectDirPaths(tree)), [tree]);
+    const expandedDirs =
+        expandedDirsState.commitHash === detailHash ? expandedDirsState.dirs : defaultExpandedDirs;
+    const selectedFilePath =
+        selectedFileState.commitHash === detailHash &&
+        selectedFileState.path &&
+        detail?.files.some((file) => file.path === selectedFileState.path)
+            ? selectedFileState.path
+            : null;
     const { branches: branchRefs, tags: tagRefs } = useMemo(
         () => splitCommitRefs(detail?.refs ?? []),
         [detail?.refs],
     );
 
-    useEffect(() => {
-        if (!detail) {
-            setExpandedDirs(new Set());
-            setSelectedFilePath(null);
-            return;
-        }
-        setExpandedDirs(new Set(collectDirPaths(tree)));
-        setSelectedFilePath((current) =>
-            current && detail.files.some((file) => file.path === current) ? current : null,
-        );
-    }, [detail, tree]);
+    const toggleDir = useCallback(
+        (dir: string) => {
+            setExpandedDirsState((prev) => {
+                const currentDirs =
+                    prev.commitHash === detailHash ? prev.dirs : defaultExpandedDirs;
+                const next = new Set(currentDirs);
+                if (next.has(dir)) next.delete(dir);
+                else next.add(dir);
+                return { commitHash: detailHash, dirs: next };
+            });
+        },
+        [defaultExpandedDirs, detailHash],
+    );
+
+    const selectFile = useCallback(
+        (path: string) => {
+            setSelectedFileState({ commitHash: detailHash, path });
+        },
+        [detailHash],
+    );
 
     if (!detail) {
         return (
@@ -164,15 +199,8 @@ export function CommitInfoPane({
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
                         folderIconsByName={folderIconsByName}
-                        onToggleDir={(dir) =>
-                            setExpandedDirs((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(dir)) next.delete(dir);
-                                else next.add(dir);
-                                return next;
-                            })
-                        }
-                        onSelectFile={setSelectedFilePath}
+                        onToggleDir={toggleDir}
+                        onSelectFile={selectFile}
                         onOpenDiff={onOpenDiff}
                     />
                 </Box>

@@ -1,5 +1,5 @@
 import type { OutboundMessage } from "../types";
-import type { CommitGraphOutbound } from "../../commitGraphTypes";
+import type { CommitGraphOutbound } from "../../../protocol/commitGraphTypes";
 import { getVsCodeApi as getSharedVsCodeApi } from "../../shared/vscodeApi";
 
 interface VsCodeApi {

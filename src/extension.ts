@@ -17,7 +17,7 @@ import { getErrorMessage } from "./utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "./utils/fileOps";
 import { handleCommitContextAction } from "./commands/commitCommands";
 import { createBranchCommands } from "./commands/branchCommands";
-import { RefreshService } from "./services/refreshService";
+import { RefreshService } from "./views/RefreshService";
 import {
     openJetBrainsMergeToolForFile,
     getJetBrainsMergeToolPath,
@@ -180,8 +180,9 @@ function selectInitialRepository(
 function registerStaleUndockedPanelSerializer(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.window.registerWebviewPanelSerializer(UndockedViewProvider.viewType, {
-            async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> {
+            deserializeWebviewPanel(panel: vscode.WebviewPanel): Thenable<void> {
                 panel.dispose();
+                return Promise.resolve();
             },
         }),
     );
@@ -461,7 +462,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 await undocked.refresh();
             }
             await refreshService.refreshMergeConflicts();
-            await clearSelection();
+            clearSelection();
         };
 
         const setActiveRepository = async (repository: DiscoveredRepository): Promise<void> => {
@@ -550,7 +551,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             context.subscriptions.push(undocked);
 
             context.subscriptions.push(
-                undocked.onDidDispose(async () => {
+                undocked.onDidDispose(() => {
                     undocked = undefined;
                 }),
                 undocked.onDockRequested(async () => {
@@ -623,7 +624,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             }
 
             const panel = ensureUndockedPanel();
-            await panel.open();
+            panel.open();
             if (undocked !== panel) return;
 
             if (!options?.deferDataLoad) {
@@ -984,7 +985,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                         commitGraph.filterByBranch(branchName ?? null),
                         sidebarGraph.filterByBranch(branchName ?? null),
                     ]);
-                    await clearSelection();
+                    clearSelection();
                 },
             ),
 

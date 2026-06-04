@@ -330,6 +330,31 @@ describe("publishService phase 5", () => {
         expect(gitOps.addRemote).not.toHaveBeenCalled();
     });
 
+    it("surfaces structured GitLab validation messages", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "gitlab" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mockCreateRepoResponse(
+            400,
+            JSON.stringify({
+                message: {
+                    name: ["has already been taken"],
+                    path: ["is invalid"],
+                    base: [{ detail: "namespace is unavailable" }],
+                },
+            }),
+        );
+
+        await runPublishBranchFlow(gitOps, "main", "/repo", secretStorage("glpat-token") as never);
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to create repository: has already been taken; is invalid; namespace is unavailable",
+        );
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
+    });
+
     it("keeps an existing origin untouched when the user chooses to push there", async () => {
         const gitOps = makeGitOps(["origin"]);
         mocks.showQuickPick.mockResolvedValueOnce({ action: "existing" });

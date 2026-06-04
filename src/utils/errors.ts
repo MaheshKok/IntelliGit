@@ -19,10 +19,11 @@ export function sanitizeErrorMessage(message: string): string {
 
 export function isUntrackedPathspecError(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase();
-    const code =
+    const rawCode =
         typeof error === "object" && error !== null && "code" in error
-            ? String((error as { code?: unknown }).code ?? "").toLowerCase()
-            : "";
+            ? (error as { code?: unknown }).code
+            : undefined;
+    const code = typeof rawCode === "string" ? rawCode.toLowerCase() : "";
 
     return (
         message.includes("did not match any files") ||

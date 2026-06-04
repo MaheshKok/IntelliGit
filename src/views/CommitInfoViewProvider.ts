@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { CommitDetail, ThemeFolderIconMap } from "../types";
-import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/react/commitInfoTypes";
+import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/protocol/commitInfoTypes";
 import { IconThemeService } from "./shared";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";

@@ -1,0 +1,6 @@
+{
+    "offline": true,
+    "share": false,
+    "failOn": "error",
+    "respectInlineDisables": true
+}
