@@ -1,4 +1,5 @@
 import type { WorkingFile } from "../types";
+import { normalizeGitNumstatPath } from "./numstat";
 import { mapStatusCode } from "./parsers";
 
 function upsertShelvedFile(
@@ -33,7 +34,7 @@ function applyNumstat(files: Map<string, WorkingFile>, output: string): void {
         if (!line.trim()) continue;
         const parts = line.split("\t");
         if (parts.length < 3) continue;
-        const path = parts[2].trim();
+        const path = normalizeGitNumstatPath(parts[2]);
         if (!path) continue;
         const entry = upsertShelvedFile(files, path);
         files.set(path, {

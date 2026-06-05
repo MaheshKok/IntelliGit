@@ -1,3 +1,4 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
@@ -74,7 +75,7 @@ export async function initializeRepository(
     } else {
         const picked = await vscode.window.showQuickPick(
             roots.map((root) => ({
-                label: root.split("/").pop() || root,
+                label: path.basename(root) || root,
                 description: root,
                 path: root,
             })),
@@ -120,6 +121,9 @@ export function selectInitialRepository(
     repositories: DiscoveredRepository[],
     storedRoot: string | undefined,
 ): DiscoveredRepository {
+    if (repositories.length === 0) {
+        throw new Error("No repositories discovered.");
+    }
     return repositories.find((repo) => repo.root === storedRoot) ?? repositories[0];
 }
 

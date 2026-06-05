@@ -123,6 +123,12 @@ const vscodeMock = {
             workspaceState.workspaceFolders = value;
         },
         openTextDocument,
+        getConfiguration: vi.fn(() => ({
+            get: vi.fn((key: string) => {
+                if (key === "workbench.sideBar.location") return "left";
+                return undefined;
+            }),
+        })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     },
 };
@@ -593,6 +599,17 @@ describe("view providers integration", () => {
             type: "restoreCommitDraft",
             message: "stored draft",
         });
+
+        postMessageSpy.mockClear();
+        await send({ type: "shelfSelect", index: 0 });
+        expect(gitOps.getShelvedFiles).toHaveBeenLastCalledWith(0);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                selectedShelfIndex: 0,
+                shelfFiles: [expect.objectContaining({ path: "src/a.ts" })],
+            }),
+        );
 
         await send({
             type: "columnWidths",

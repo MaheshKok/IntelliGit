@@ -1,4 +1,5 @@
 import type { WorkingFile } from "../types";
+import { normalizeGitNumstatPath } from "./numstat";
 import { mapStatusCode } from "./parsers";
 
 export interface RollbackPlan {
@@ -71,7 +72,7 @@ export function applyNumstatToWorkingFiles(
         const cols = line.split("\t");
         if (cols.length < 3) continue;
 
-        const filePath = cols[cols.length - 1];
+        const filePath = normalizeGitNumstatPath(cols[cols.length - 1]);
         const key = workingFileKey(filePath, staged);
         const file = filesByKey.get(key);
         if (!file) continue;

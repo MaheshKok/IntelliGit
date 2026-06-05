@@ -11,8 +11,21 @@ import {
 import type { CommitActionContext } from "./commitActionContext";
 
 export async function undoCommit(ctx: CommitActionContext): Promise<void> {
-    if (!(await ensureUnpushed(ctx, "Undo Commit is available only for unpushed commits."))) return;
-    if (await rejectMergeCommit(ctx, "Undo Commit is not available for merge commits.")) return;
+    if (
+        !(await ensureUnpushed(
+            ctx,
+            vscode.l10n.t("Undo Commit is available only for unpushed commits."),
+        ))
+    ) {
+        return;
+    }
+    if (
+        await rejectMergeCommit(
+            ctx,
+            vscode.l10n.t("Undo Commit is not available for merge commits."),
+        )
+    )
+        return;
     if (!(await ensureInCurrentBranchHistory(ctx))) return;
 
     const undoParents = await getCommitParentHashes(ctx.validatedHash, ctx.executor);
@@ -41,6 +54,9 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
                 short: ctx.short,
             }),
         );
+    } catch (err) {
+        const message = getErrorMessage(err);
+        vscode.window.showErrorMessage(vscode.l10n.t("Undo Commit failed: {message}", { message }));
     } finally {
         await ctx.refreshAll();
     }
@@ -48,11 +64,19 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
 
 export async function editCommitMessage(ctx: CommitActionContext): Promise<void> {
     if (
-        !(await ensureUnpushed(ctx, "Edit Commit Message is available only for unpushed commits."))
+        !(await ensureUnpushed(
+            ctx,
+            vscode.l10n.t("Edit Commit Message is available only for unpushed commits."),
+        ))
     ) {
         return;
     }
-    if (await rejectMergeCommit(ctx, "Edit Commit Message is not available for merge commits."))
+    if (
+        await rejectMergeCommit(
+            ctx,
+            vscode.l10n.t("Edit Commit Message is not available for merge commits."),
+        )
+    )
         return;
 
     const headHash = (await ctx.executor.run(["rev-parse", "HEAD"])).trim();
@@ -77,10 +101,21 @@ export async function editCommitMessage(ctx: CommitActionContext): Promise<void>
 }
 
 export async function squashCommits(ctx: CommitActionContext): Promise<void> {
-    if (!(await ensureUnpushed(ctx, "Squash Commits is available only for unpushed commits."))) {
+    if (
+        !(await ensureUnpushed(
+            ctx,
+            vscode.l10n.t("Squash Commits is available only for unpushed commits."),
+        ))
+    ) {
         return;
     }
-    if (await rejectMergeCommit(ctx, "Squash Commits is not available for merge commits.")) return;
+    if (
+        await rejectMergeCommit(
+            ctx,
+            vscode.l10n.t("Squash Commits is not available for merge commits."),
+        )
+    )
+        return;
     if (!(await ensureInCurrentBranchHistory(ctx))) return;
 
     const squashParents = await getCommitParentHashes(ctx.validatedHash, ctx.executor);
@@ -125,8 +160,20 @@ export async function squashCommits(ctx: CommitActionContext): Promise<void> {
 }
 
 export async function dropCommit(ctx: CommitActionContext): Promise<void> {
-    if (!(await ensureUnpushed(ctx, "Drop Commit is available only for unpushed commits."))) return;
-    if (await rejectMergeCommit(ctx, "Drop Commit is not available for merge commits.")) return;
+    if (
+        !(await ensureUnpushed(
+            ctx,
+            vscode.l10n.t("Drop Commit is available only for unpushed commits."),
+        ))
+    )
+        return;
+    if (
+        await rejectMergeCommit(
+            ctx,
+            vscode.l10n.t("Drop Commit is not available for merge commits."),
+        )
+    )
+        return;
     if (!(await ensureInCurrentBranchHistory(ctx))) return;
 
     const dropParents = await getCommitParentHashes(ctx.validatedHash, ctx.executor);
@@ -171,7 +218,7 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
     if (
         !(await ensureUnpushed(
             ctx,
-            "Interactive Rebase from Here is available only for unpushed commits.",
+            vscode.l10n.t("Interactive Rebase from Here is available only for unpushed commits."),
         ))
     ) {
         return;
@@ -179,7 +226,7 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
     if (
         await rejectMergeCommit(
             ctx,
-            "Interactive Rebase from Here is not available for merge commits.",
+            vscode.l10n.t("Interactive Rebase from Here is not available for merge commits."),
         )
     ) {
         return;
@@ -202,13 +249,13 @@ export async function interactiveRebaseFromHere(ctx: CommitActionContext): Promi
 
 async function ensureUnpushed(ctx: CommitActionContext, message: string): Promise<boolean> {
     if (await isCommitUnpushed(ctx.validatedHash, ctx.gitOps)) return true;
-    vscode.window.showErrorMessage(vscode.l10n.t(message));
+    vscode.window.showErrorMessage(message);
     return false;
 }
 
 async function rejectMergeCommit(ctx: CommitActionContext, message: string): Promise<boolean> {
     if (!(await isMergeCommitHash(ctx.validatedHash, ctx.executor))) return false;
-    vscode.window.showErrorMessage(vscode.l10n.t(message));
+    vscode.window.showErrorMessage(message);
     return true;
 }
 
@@ -236,6 +283,11 @@ async function amendHeadCommitMessage(ctx: CommitActionContext): Promise<void> {
     try {
         await ctx.executor.run(["commit", "--amend", "-m", nextMessage]);
         vscode.window.showInformationMessage(vscode.l10n.t("Commit message updated."));
+    } catch (err) {
+        const message = getErrorMessage(err);
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Commit message update failed: {message}", { message }),
+        );
     } finally {
         await ctx.refreshAll();
     }

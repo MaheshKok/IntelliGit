@@ -29,6 +29,7 @@ export function activateNoRepositoryMode(
     let repositories: DiscoveredRepository[] = [];
     const noRepositoryDisposables: vscode.Disposable[] = [];
     let repositoryModeActivated = false;
+    let repositoryModeActivationPromise: Promise<void> | undefined;
     const emptyTreeProvider: vscode.TreeDataProvider<never> = {
         getTreeItem: () => {
             throw new Error("unreachable");
@@ -64,16 +65,32 @@ export function activateNoRepositoryMode(
     const activateDiscoveredRepositories = async (
         discoveredRepositories: DiscoveredRepository[],
     ): Promise<void> => {
-        if (repositoryModeActivated) return;
-        repositoryModeActivated = true;
-        for (const disposable of noRepositoryDisposables) {
-            disposable.dispose();
+        if (repositoryModeActivationPromise) {
+            await repositoryModeActivationPromise;
+            return;
         }
-        await deps.activateRepositoryMode(discoveredRepositories, {
-            commitGraph: commitGraphProvider,
-            sidebarGraph: sidebarGraphProvider,
-            commitPanel: commitPanelProvider,
-        });
+        if (repositoryModeActivated) return;
+
+        repositoryModeActivated = true;
+        repositoryModeActivationPromise = (async () => {
+            for (const disposable of noRepositoryDisposables) {
+                disposable.dispose();
+            }
+            await deps.activateRepositoryMode(discoveredRepositories, {
+                commitGraph: commitGraphProvider,
+                sidebarGraph: sidebarGraphProvider,
+                commitPanel: commitPanelProvider,
+            });
+        })();
+
+        try {
+            await repositoryModeActivationPromise;
+        } catch (error) {
+            repositoryModeActivated = false;
+            throw error;
+        } finally {
+            repositoryModeActivationPromise = undefined;
+        }
     };
 
     context.subscriptions.push(

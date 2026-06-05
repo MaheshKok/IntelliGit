@@ -161,8 +161,8 @@ describe("GitOps", () => {
     });
 
     describe("getLog", () => {
-        const FIELD_SEP = "<<|>>";
-        const RECORD_SEP = "<<||>>";
+        const FIELD_SEP = "\x1f";
+        const RECORD_SEP = "\x1e";
 
         function makeCommitRecord(
             hash: string,
@@ -202,6 +202,24 @@ describe("GitOps", () => {
             expect(commits[0].author).toBe("John");
             expect(commits[0].parentHashes).toEqual([]);
             expect(commits[0].refs).toContain("HEAD -> main");
+        });
+
+        it("preserves literal separator text in commit subjects", async () => {
+            const output = makeCommitRecord(
+                "abc123full",
+                "abc123",
+                "Handle <<|>> and <<||>> in subject",
+                "John",
+                "john@test.com",
+                "2024-01-01T00:00:00Z",
+                "",
+                "",
+            );
+            const executor = createMockExecutor({ log: output });
+            const ops = new GitOps(executor);
+            const commits = await ops.getLog();
+
+            expect(commits[0].message).toBe("Handle <<|>> and <<||>> in subject");
         });
 
         it("parses parent hashes", async () => {
@@ -265,7 +283,7 @@ describe("GitOps", () => {
     });
 
     describe("getCommitDetail", () => {
-        const FIELD_SEP = "<<|>>";
+        const FIELD_SEP = "\x1f";
 
         it("parses commit detail with files", async () => {
             const showOutput = [
@@ -306,6 +324,43 @@ describe("GitOps", () => {
             expect(detail.files[1].path).toBe("src/bar.ts");
             expect(detail.files[1].status).toBe("A");
             expect(detail.files[1].additions).toBe(5);
+        });
+
+        it("applies numstat for renamed commit files to the destination path", async () => {
+            const showOutput = [
+                "abc123full",
+                "abc123",
+                "Rename file",
+                "",
+                "John",
+                "john@test.com",
+                "2024-01-01T00:00:00Z",
+                "parent1",
+                "",
+            ].join(FIELD_SEP);
+            const nameStatusOutput = "R100\tsrc/old-name.ts\tsrc/new-name.ts\n";
+            const numstatOutput = "1\t0\tsrc/{old-name.ts => new-name.ts}\n";
+
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args[0] === "show") return showOutput;
+                    if (args.includes("--name-status")) return nameStatusOutput;
+                    if (args.includes("--numstat")) return numstatOutput;
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+
+            const ops = new GitOps(executor);
+            const detail = await ops.getCommitDetail("abc123full");
+
+            expect(detail.files).toEqual([
+                {
+                    path: "src/new-name.ts",
+                    status: "R",
+                    additions: 1,
+                    deletions: 0,
+                },
+            ]);
         });
     });
 
@@ -356,7 +411,7 @@ describe("GitOps", () => {
 
         it("parses rename entries from porcelain -z output", async () => {
             const statusOutput = "R  src/new-name.ts\0src/old-name.ts\0";
-            const stagedStatOutput = "1\t0\tsrc/new-name.ts\n";
+            const stagedStatOutput = "1\t0\tsrc/{old-name.ts => new-name.ts}\n";
 
             const executor = {
                 run: vi.fn(async (args: string[]) => {
@@ -1284,7 +1339,7 @@ describe("GitOps", () => {
                         return "M\tsrc/a.ts\nR100\tsrc/old.ts\tsrc/new.ts\n";
                     }
                     if (args.join(" ") === "stash show --numstat stash@{1}") {
-                        return "3\t1\tsrc/a.ts\n2\t0\tsrc/new.ts\n";
+                        return "3\t1\tsrc/a.ts\n2\t0\tsrc/{old.ts => new.ts}\n";
                     }
                     return "";
                 }),

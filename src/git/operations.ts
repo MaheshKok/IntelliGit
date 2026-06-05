@@ -40,6 +40,7 @@ import {
     planRollbackFiles,
 } from "./workingTree";
 import { parseShelvedFiles } from "./stashFiles";
+import { normalizeGitNumstatPath } from "./numstat";
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
 export class UpstreamPushDeclinedError extends Error {
     constructor() {
@@ -250,7 +251,7 @@ export class GitOps {
                 if (cols.length < 3) continue;
                 const add = cols[0];
                 const del = cols[1];
-                const filePath = cols[cols.length - 1];
+                const filePath = normalizeGitNumstatPath(cols[cols.length - 1]);
                 const file = upsertFile(filePath, "M");
                 const parsedAdd = add === "-" ? 0 : parseInt(add);
                 const parsedDel = del === "-" ? 0 : parseInt(del);

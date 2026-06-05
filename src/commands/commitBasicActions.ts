@@ -267,6 +267,9 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
         vscode.window.showInformationMessage(
             vscode.l10n.t("Pushed commits up to {short}.", { short: ctx.short }),
         );
+    } catch (err) {
+        const message = getErrorMessage(err);
+        vscode.window.showErrorMessage(vscode.l10n.t("Push failed: {message}", { message }));
     } finally {
         await ctx.refreshAll();
     }

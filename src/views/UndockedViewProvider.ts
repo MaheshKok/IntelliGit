@@ -9,7 +9,7 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
-import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile } from "../types";
+import type { Branch, CommitDetail, StashEntry, ThemeFolderIconMap, WorkingFile } from "../types";
 import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
 import {
@@ -31,6 +31,7 @@ import {
     deleteFileFromPanel,
     openFileFromPanel,
     publishBranchFromPanel,
+    selectShelfFromPanel,
     showDiffFromPanel,
     showHistoryFromPanel,
     showShelfDiffFromPanel,
@@ -90,6 +91,9 @@ export class UndockedViewProvider {
     private themeChangeDisposables: vscode.Disposable[] = [];
     // Commit-panel state
     private files: WorkingFile[] = [];
+    private stashes: StashEntry[] = [];
+    private selectedShelfIndex: number | null = null;
+    private shelfFiles: WorkingFile[] = [];
     private lastFileCount = 0;
     // Event emitters
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
@@ -136,11 +140,15 @@ export class UndockedViewProvider {
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
         this.files = [];
+        this.stashes = [];
+        this.selectedShelfIndex = null;
+        this.shelfFiles = [];
+        this.branches = [];
+        this.currentBranch = null;
         this.lastFileCount = 0;
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
-        this.currentBranch = null;
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -253,6 +261,7 @@ export class UndockedViewProvider {
                 // below, so the webview applies saved widths immediately and
                 // never overwrites them with its pre-restore equal widths.
                 this.sendPersistedColumnWidths();
+                this.sendSettings();
                 await this.iconTheme.initIconThemeData();
                 await this.sendBranches();
                 await this.loadInitial();
@@ -398,10 +407,21 @@ export class UndockedViewProvider {
                 );
                 break;
             case "shelfSelect": {
-                // The commit-panel side handles shelf selection visually;
-                // we just need to refresh with the new index.
-                // The webview sends the index, but the actual shelfFiles are
-                // fetched when we refresh.
+                await selectShelfFromPanel(
+                    {
+                        ...fileActionDeps,
+                        iconTheme: this.iconTheme,
+                        getFiles: () => this.files,
+                        getStashes: () => this.stashes,
+                        currentBranchHasUpstream: () => this.currentBranchHasUpstream(),
+                        setShelfState: (state) => {
+                            this.selectedShelfIndex = state.selectedShelfIndex;
+                            this.shelfFiles = state.shelfFiles;
+                        },
+                        postUpdate: (message) => this.postToWebview(message),
+                    },
+                    msg.index,
+                );
                 break;
             }
             case "showShelfDiff":
@@ -500,8 +520,14 @@ export class UndockedViewProvider {
             const stashes = await this.gitOps.listShelved();
             const currentBranchHasUpstream = await this.currentBranchHasUpstream();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
-            // Default to first stash
-            const selectedShelfIndex = stashes.length > 0 ? stashes[0].index : null;
+            const hasSelected =
+                this.selectedShelfIndex !== null &&
+                stashes.some((entry) => entry.index === this.selectedShelfIndex);
+            const selectedShelfIndex = hasSelected
+                ? this.selectedShelfIndex
+                : stashes.length > 0
+                  ? stashes[0].index
+                  : null;
             const shelfFiles =
                 selectedShelfIndex !== null
                     ? await this.iconTheme.decorateWorkingFiles(
@@ -513,6 +539,9 @@ export class UndockedViewProvider {
                 ...shelfFiles,
             ]);
             this.files = files;
+            this.stashes = stashes;
+            this.selectedShelfIndex = selectedShelfIndex;
+            this.shelfFiles = shelfFiles;
             const uniquePaths = new Set(files.map((f) => f.path));
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);

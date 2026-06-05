@@ -8,8 +8,8 @@ import type {
     WorkingFile,
 } from "../types";
 
-const COMMIT_FIELD_SEP = "<<|>>";
-const COMMIT_RECORD_SEP = "<<||>>";
+const COMMIT_FIELD_SEP = "\x1f";
+const COMMIT_RECORD_SEP = "\x1e";
 const AMEND_FIELD_SEP = "\x1f";
 const AMEND_RECORD_SEP = "\x1e";
 
