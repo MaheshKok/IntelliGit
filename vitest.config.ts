@@ -12,11 +12,15 @@ export default defineConfig({
             reporter: ["text", "html"],
             all: true,
             include: ["src/**/*.{ts,tsx}"],
+            // Coverage ratchet: keep these thresholds at the latest passing
+            // aggregate values reported by `bun run test:coverage`. When a
+            // change improves coverage, raise the corresponding value in the
+            // same commit so future edits cannot silently lower the baseline.
             thresholds: {
-                lines: 85,
-                functions: 79,
-                branches: 77,
-                statements: 85,
+                lines: 86.08,
+                functions: 81.19,
+                branches: 78.27,
+                statements: 86.08,
             },
         },
     },
