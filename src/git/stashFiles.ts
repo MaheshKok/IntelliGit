@@ -1,0 +1,52 @@
+import type { WorkingFile } from "../types";
+import { mapStatusCode } from "./parsers";
+
+function upsertShelvedFile(
+    files: Map<string, WorkingFile>,
+    path: string,
+    status: WorkingFile["status"] = "M",
+): WorkingFile {
+    const existing = files.get(path);
+    if (existing) return existing;
+    const created: WorkingFile = { path, status, staged: false, additions: 0, deletions: 0 };
+    files.set(path, created);
+    return created;
+}
+
+function applyNameStatus(files: Map<string, WorkingFile>, output: string): void {
+    for (const line of output.trim().split("\n")) {
+        if (!line.trim()) continue;
+        const parts = line.split("\t");
+        if (parts.length < 2) continue;
+        const code = parts[0].trim();
+        const path =
+            code.startsWith("R") || code.startsWith("C")
+                ? (parts[2]?.trim() ?? parts[1]?.trim())
+                : parts[1]?.trim();
+        if (!path) continue;
+        upsertShelvedFile(files, path, mapStatusCode(code[0]) ?? "M");
+    }
+}
+
+function applyNumstat(files: Map<string, WorkingFile>, output: string): void {
+    for (const line of output.trim().split("\n")) {
+        if (!line.trim()) continue;
+        const parts = line.split("\t");
+        if (parts.length < 3) continue;
+        const path = parts[2].trim();
+        if (!path) continue;
+        const entry = upsertShelvedFile(files, path);
+        files.set(path, {
+            ...entry,
+            additions: parts[0] === "-" ? 0 : Number(parts[0]) || 0,
+            deletions: parts[1] === "-" ? 0 : Number(parts[1]) || 0,
+        });
+    }
+}
+
+export function parseShelvedFiles(nameStatus: string, numstat: string): WorkingFile[] {
+    const files = new Map<string, WorkingFile>();
+    applyNameStatus(files, nameStatus);
+    applyNumstat(files, numstat);
+    return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path));
+}

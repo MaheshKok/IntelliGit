@@ -129,27 +129,4 @@ export default defineConfig([
             ],
         },
     },
-    {
-        // Existing high-complexity hotspots are grandfathered at their current
-        // measured values so the global 40-point gate is meaningful for new code
-        // while still blocking these functions from getting worse in this branch.
-        files: ["src/commands/commitCommands.ts"],
-        rules: { "sonarjs/cognitive-complexity": ["error", 135] },
-    },
-    {
-        files: ["src/mergeEditor/conflictParser.ts"],
-        rules: { "sonarjs/cognitive-complexity": ["error", 47] },
-    },
-    {
-        files: ["src/utils/fileIconTheme.ts"],
-        rules: { "sonarjs/cognitive-complexity": ["error", 62] },
-    },
-    {
-        files: ["src/views/CommitPanelViewProvider.ts"],
-        rules: { "sonarjs/cognitive-complexity": ["error", 61] },
-    },
-    {
-        files: ["src/views/UndockedViewProvider.ts"],
-        rules: { "sonarjs/cognitive-complexity": ["error", 59] },
-    },
 ]);
