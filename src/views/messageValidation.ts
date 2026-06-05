@@ -1,7 +1,7 @@
 import { isValidGitHash } from "../services/gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
 
-export function assertStringArray(value: unknown, field: string): string[] {
+function assertStringArray(value: unknown, field: string): string[] {
     if (!Array.isArray(value)) {
         throw new Error(`Expected string[] for '${field}', got ${typeof value}`);
     }

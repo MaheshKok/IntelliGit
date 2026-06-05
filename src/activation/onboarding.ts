@@ -5,7 +5,7 @@ import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { OnboardingViewProvider } from "../views/OnboardingViewProvider";
 import { initializeRepository, NO_REPOSITORY_MESSAGE } from "./common";
 
-export function registerOnboardingCommands(context: vscode.ExtensionContext): void {
+function registerOnboardingCommands(context: vscode.ExtensionContext): void {
     const showUnavailableMessage = (): void => {
         vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
     };
@@ -27,7 +27,7 @@ export function registerOnboardingCommands(context: vscode.ExtensionContext): vo
     );
 }
 
-export function registerNoWorkspaceViews(context: vscode.ExtensionContext): void {
+function registerNoWorkspaceViews(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             CommitGraphViewProvider.viewType,
