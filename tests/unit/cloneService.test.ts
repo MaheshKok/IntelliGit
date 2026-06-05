@@ -339,7 +339,7 @@ describe("cloneService phase 3", () => {
         );
     });
 
-    it("rejects non-HTTPS GitLab clone URLs", async () => {
+    it("rejects GitLab clone URLs outside the allowed HTTPS gitlab.com shape", async () => {
         mocks.showQuickPick.mockResolvedValueOnce({ provider: "gitlab" });
         mocks.showInputBox
             .mockResolvedValueOnce("glpat-secret")
@@ -351,8 +351,14 @@ describe("cloneService phase 3", () => {
             validateInput: (value: string) => string | undefined;
         };
         expect(cloneUrlOptions.validateInput("http://gitlab.com/group/repo.git")).toBe(
-            "Must be an HTTPS URL",
+            "Must be a gitlab.com HTTPS URL",
         );
+        expect(cloneUrlOptions.validateInput("https://evil.example/group/repo.git")).toBe(
+            "Must be a gitlab.com HTTPS URL",
+        );
+        expect(
+            cloneUrlOptions.validateInput("https://oauth2:token@gitlab.com/group/repo.git"),
+        ).toBe("URL must not include embedded credentials");
         expect(cloneUrlOptions.validateInput("https://gitlab.com/group/repo.git")).toBeUndefined();
     });
 

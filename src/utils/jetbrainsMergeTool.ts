@@ -404,6 +404,9 @@ export async function detectInstalledJetBrainsMergeToolCandidates(): Promise<str
 export async function resolveJetBrainsMergeBinaryPath(binaryPath: string): Promise<string> {
     const trimmed = binaryPath.trim();
     if (!trimmed) throw new Error("JetBrains merge tool path is empty.");
+    if (!path.isAbsolute(trimmed)) {
+        throw new Error("JetBrains merge tool path must be absolute.");
+    }
     if (isMacAppBundlePath(trimmed)) {
         return resolveExecutableFromMacAppBundle(trimmed);
     }

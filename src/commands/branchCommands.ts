@@ -19,6 +19,7 @@ import {
     resolveTrackedRemoteBranch,
     showDeletedBranchActions,
 } from "../services/gitHelpers";
+import { assertValidBranchName, assertValidRemoteName } from "../utils/gitRefs";
 
 export interface BranchCommandDeps {
     executor: GitExecutor;
@@ -91,6 +92,27 @@ function compactGitErrorMessage(message: string): string {
     return compact || message.trim();
 }
 
+function validateBranchArg(name: string, label: string = "branch name"): boolean {
+    try {
+        assertValidBranchName(name, label);
+        return true;
+    } catch (err) {
+        vscode.window.showErrorMessage(getErrorMessage(err));
+        return false;
+    }
+}
+
+function validateTrackedRemote(tracked: { remote: string; remoteBranch: string }): boolean {
+    try {
+        assertValidRemoteName(tracked.remote);
+        assertValidBranchName(tracked.remoteBranch, "remote branch name");
+        return true;
+    } catch (err) {
+        vscode.window.showErrorMessage(getErrorMessage(err));
+        return false;
+    }
+}
+
 export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntry[] {
     const {
         executor,
@@ -148,6 +170,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const base = item.branch?.name;
                 if (!base) return;
+                if (!validateBranchArg(base, "base branch name")) return;
                 const newName = await vscode.window.showInputBox({
                     prompt: vscode.l10n.t("New branch from {branch}", { branch: base }),
                     placeHolder: "branch-name",
@@ -186,6 +209,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
                     return;
                 }
+                if (!validateBranchArg(onto, "current branch name")) return;
                 try {
                     const checkedOut = await checkoutBranch(branch, getCurrentBranches(), executor);
                     if (checkedOut === onto) {
@@ -217,6 +241,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
+                if (!validateBranchArg(name)) return;
                 const rebaseLabel = vscode.l10n.t("Rebase");
                 const confirm = await vscode.window.showWarningMessage(
                     vscode.l10n.t("Rebase current branch onto {branch}?", { branch: name }),
@@ -243,6 +268,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
+                if (!validateBranchArg(name)) return;
                 const mergeLabel = vscode.l10n.t("Merge");
                 const confirm = await vscode.window.showWarningMessage(
                     vscode.l10n.t("Merge {branch} into current branch?", { branch: name }),
@@ -289,7 +315,9 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 const name = branch?.name;
                 if (!name || branch?.isRemote) return;
+                if (!validateBranchArg(name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
+                if (tracked && !validateTrackedRemote(tracked)) return;
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
                 let mergeAttempted = false;
                 try {
@@ -354,8 +382,13 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
+                if (!validateBranchArg(branch.name)) return;
                 const pushBranch = async (): Promise<void> => {
                     const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
+                    if (tracked) {
+                        assertValidRemoteName(tracked.remote);
+                        assertValidBranchName(tracked.remoteBranch, "remote branch name");
+                    }
                     if (branch.isCurrent) {
                         if (tracked) {
                             await executor.run([
@@ -382,6 +415,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                     }),
                                 );
                             }
+                            assertValidRemoteName(remote);
                             await executor.run(["push", "-u", remote, branch.name]);
                         }
                     }
@@ -418,6 +452,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const name = item.branch?.name;
                 if (!name) return;
+                if (!validateBranchArg(name)) return;
                 const newName = await vscode.window.showInputBox({
                     prompt: vscode.l10n.t("Rename {branch} to", { branch: name }),
                     value: name,
@@ -457,6 +492,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const name = branch.name;
                 if (!name) return;
                 const isRemote = !!branch.isRemote;
+                if (!isRemote && !validateBranchArg(name)) return;
                 const checkedOutBranch = isRemote
                     ? null
                     : await getCheckedOutBranchName(executor, getCurrentBranches());
@@ -516,6 +552,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                             );
                             return;
                         }
+                        if (!validateTrackedRemote(target)) return;
                         await runWithNotificationProgress(
                             vscode.l10n.t("Deleting remote branch {remote}/{remoteBranch}...", {
                                 remote: target.remote,

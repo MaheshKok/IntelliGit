@@ -476,6 +476,7 @@
                 "intelligit.jetbrainsMergeTool.path": {
                     "type": "string",
                     "default": "",
+                    "scope": "machine",
                     "markdownDescription": "%configuration.jetbrainsMergeTool.path.markdownDescription%"
                 },
                 "intelligit.jetbrainsMergeTool.preferExternal": {

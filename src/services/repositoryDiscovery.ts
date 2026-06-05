@@ -31,8 +31,13 @@ async function defaultResolveGitRoot(candidateRoot: string): Promise<string | nu
     return gitOps.getRepositoryRoot();
 }
 
-function normalizeRoot(root: string): string {
-    return path.resolve(root);
+async function normalizeRoot(root: string): Promise<string> {
+    const resolved = path.resolve(root);
+    try {
+        return await fs.realpath(resolved);
+    } catch {
+        return resolved;
+    }
 }
 
 function isWithin(parent: string, child: string): boolean {
@@ -59,7 +64,8 @@ async function addResolvedRoot(
 ): Promise<void> {
     const resolved = await resolveGitRoot(candidateRoot).catch(() => null);
     if (!resolved) return;
-    const root = normalizeRoot(resolved);
+    const root = await normalizeRoot(resolved);
+    if (!workspaceRoots.some((workspaceRoot) => isWithin(workspaceRoot, root))) return;
     if (seen.has(root)) return;
     seen.set(root, { root, label: labelForRoot(root, workspaceRoots) });
 }
@@ -98,7 +104,7 @@ export async function discoverGitRepositories(
     workspaceRoots: string[],
     options: DiscoverGitRepositoriesOptions = {},
 ): Promise<DiscoveredRepository[]> {
-    const roots = workspaceRoots.map(normalizeRoot);
+    const roots = await Promise.all(workspaceRoots.map(normalizeRoot));
     const seen = new Map<string, DiscoveredRepository>();
     const resolveGitRoot = options.resolveGitRoot ?? defaultResolveGitRoot;
 

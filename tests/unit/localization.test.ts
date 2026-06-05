@@ -94,6 +94,21 @@ describe("localization catalogs", () => {
         });
     });
 
+    it("escapes spreadsheet formula-leading cells in the translation review CSV", () => {
+        const rows = parseCsvRows(readText("docs/localization_translation_review.csv"));
+        const unsafeCells: string[] = [];
+
+        rows.forEach((row, rowIndex) => {
+            row.forEach((cell, columnIndex) => {
+                if (/^[\t\r\n ]*[=+\-@]/.test(cell)) {
+                    unsafeCells.push(`row ${rowIndex + 1}, column ${columnIndex + 1}`);
+                }
+            });
+        });
+
+        expect(unsafeCells).toEqual([]);
+    });
+
     it("exposes localization sync and missing-translation commands", () => {
         const packageJson = readJson<{ scripts?: Record<string, string> }>("package.json");
         expect(packageJson.scripts?.["l10n:sync"]).toBe("bun scripts/localization-csv.js sync");
@@ -199,7 +214,10 @@ describe("localization catalogs", () => {
         const literalTokens = [
             { token: "reword", contains: containsAsciiWord },
             { token: "origin", contains: containsAsciiWord },
-            { token: ".git/config", contains: (value: string, token: string) => value.includes(token) },
+            {
+                token: ".git/config",
+                contains: (value: string, token: string) => value.includes(token),
+            },
         ];
         const hostBundleFiles = runtimeLocales.map((locale) => `l10n/bundle.l10n.${locale}.json`);
 
@@ -211,7 +229,9 @@ describe("localization catalogs", () => {
                 expect(typeof translatedValue, `${file}:${key}`).toBe("string");
                 for (const { token, contains } of literalTokens) {
                     if (contains(sourceValue, token)) {
-                        expect(contains(translatedValue as string, token), `${file}:${key}`).toBe(true);
+                        expect(contains(translatedValue as string, token), `${file}:${key}`).toBe(
+                            true,
+                        );
                     }
                 }
             }
@@ -284,7 +304,9 @@ describe("localization packaging", () => {
 
         const packagedFiles = listVsceFiles();
         if (!packagedFiles) {
-            console.warn("Skipping VSCE packaging check because node_modules/.bin/vsce is missing.");
+            console.warn(
+                "Skipping VSCE packaging check because node_modules/.bin/vsce is missing.",
+            );
             return;
         }
 
@@ -386,9 +408,7 @@ function placeholders(value: string): string[] {
 }
 
 function containsAsciiWord(value: string, token: string): boolean {
-    return new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`).test(
-        value,
-    );
+    return new RegExp(`(^|[^A-Za-z0-9_])${escapeRegExp(token)}($|[^A-Za-z0-9_])`).test(value);
 }
 
 function escapeRegExp(value: string): string {
@@ -452,6 +472,49 @@ function readJson<T>(relativePath: string): T {
 
 function readText(relativePath: string): string {
     return readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
+function parseCsvRows(input: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let index = 0; index < input.length; index++) {
+        const char = input[index];
+        if (inQuotes) {
+            if (char === '"' && input[index + 1] === '"') {
+                field += '"';
+                index += 1;
+            } else if (char === '"') {
+                inQuotes = false;
+            } else {
+                field += char;
+            }
+            continue;
+        }
+
+        if (char === '"') {
+            inQuotes = true;
+        } else if (char === ",") {
+            row.push(field);
+            field = "";
+        } else if (char === "\n") {
+            row.push(field);
+            rows.push(row);
+            row = [];
+            field = "";
+        } else if (char !== "\r") {
+            field += char;
+        }
+    }
+
+    if (field || row.length > 0) {
+        row.push(field);
+        rows.push(row);
+    }
+
+    return rows;
 }
 
 function isStringMap(value: unknown): value is Record<string, string> {

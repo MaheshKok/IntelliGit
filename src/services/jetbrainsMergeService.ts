@@ -23,8 +23,16 @@ function getIntelliGitConfig(): vscode.WorkspaceConfiguration | null {
     return getConfiguration.call(vscode.workspace, "intelligit");
 }
 
+function getGlobalConfigValue<T>(key: string, defaultValue: T): T {
+    const config = getIntelliGitConfig();
+    if (!config) return defaultValue;
+    if (typeof config.inspect !== "function") return defaultValue;
+    const inspected = config.inspect<T>(key);
+    return inspected?.globalValue ?? defaultValue;
+}
+
 export function getJetBrainsMergeToolPath(): string {
-    return getIntelliGitConfig()?.get<string>("jetbrainsMergeTool.path", "").trim() ?? "";
+    return getGlobalConfigValue("jetbrainsMergeTool.path", "").trim();
 }
 
 export function getPreferExternalMergeTool(): boolean {
@@ -38,7 +46,7 @@ function getDefaultJetBrainsMergeToolPath(): string {
         case "win32":
             return "C:\\Program Files\\JetBrains\\PyCharm\\bin\\pycharm64.exe";
         default:
-            return "pycharm";
+            return "";
     }
 }
 
@@ -88,7 +96,7 @@ async function promptForJetBrainsMergeToolPath(): Promise<string | null> {
     const input = await vscode.window.showInputBox({
         title: vscode.l10n.t("JetBrains Merge Tool Path"),
         prompt: vscode.l10n.t(
-            "Enter a JetBrains IDE binary path/command (pycharm, idea, webstorm) or a macOS .app bundle path.",
+            "Enter an absolute JetBrains IDE binary path or a macOS .app bundle path.",
         ),
         placeHolder: suggested,
         value: suggested,

@@ -10,7 +10,12 @@ import { getErrorMessage } from "../utils/errors";
 import { EMPTY_TREE_HASH } from "../utils/constants";
 import { runWithNotificationProgress } from "../utils/notifications";
 import { assertRepoRelativePath } from "../utils/fileOps";
-import { isValidBranchName as isValidBranchNameValue } from "../utils/gitRefs";
+import {
+    assertValidBranchName,
+    assertValidRemoteName,
+    isValidBranchName as isValidBranchNameValue,
+    isValidRemoteName,
+} from "../utils/gitRefs";
 
 export { isValidBranchName } from "../utils/gitRefs";
 
@@ -48,11 +53,12 @@ export async function getCheckedOutBranchName(
 ): Promise<string | null> {
     try {
         const head = (await executor.run(["rev-parse", "--abbrev-ref", "HEAD"])).trim();
-        if (head && head !== "HEAD") return head;
+        if (head && head !== "HEAD" && isValidBranchNameValue(head)) return head;
     } catch {
         // Fall back to cached branch metadata.
     }
-    return currentBranches.find((b) => b.isCurrent)?.name ?? null;
+    const fallback = currentBranches.find((b) => b.isCurrent)?.name;
+    return fallback && isValidBranchNameValue(fallback) ? fallback : null;
 }
 
 export function resolveTrackedRemoteBranch(
@@ -62,12 +68,12 @@ export function resolveTrackedRemoteBranch(
     if (branch.upstream && branch.upstream.includes("/")) {
         const [remote, ...rest] = branch.upstream.split("/");
         const remoteBranch = rest.join("/");
-        if (remote && remoteBranch) {
+        if (isValidRemoteName(remote) && isValidBranchNameValue(remoteBranch)) {
             return { remote, remoteBranch };
         }
     }
 
-    if (branch.remote) {
+    if (branch.remote && isValidRemoteName(branch.remote) && isValidBranchNameValue(branch.name)) {
         const expected = `${branch.remote}/${branch.name}`;
         if (currentBranches.some((b) => b.isRemote && b.name === expected)) {
             return { remote: branch.remote, remoteBranch: branch.name };
@@ -82,7 +88,7 @@ export function resolveTrackedRemoteBranch(
     if (suffixMatches.length === 1) {
         const [remote, ...rest] = suffixMatches[0].name.split("/");
         const remoteBranch = rest.join("/");
-        if (remote && remoteBranch) {
+        if (isValidRemoteName(remote) && isValidBranchNameValue(remoteBranch)) {
             return { remote, remoteBranch };
         }
     }
@@ -99,7 +105,7 @@ export function resolveRemoteDeleteTarget(
 
     const remote = branch.remote ?? parts[0];
     const remoteBranch = parts.slice(1).join("/");
-    if (!remote || !remoteBranch) return null;
+    if (!isValidRemoteName(remote) || !isValidBranchNameValue(remoteBranch)) return null;
 
     return { remote, remoteBranch };
 }
@@ -108,13 +114,13 @@ export async function resolveRemoteName(
     branch: Branch,
     executor: GitExecutor,
 ): Promise<string | null> {
-    if (branch.remote) return branch.remote;
+    if (branch.remote && isValidRemoteName(branch.remote)) return branch.remote;
     try {
         const raw = await executor.run(["remote"]);
         const remotes = raw
             .split("\n")
             .map((r) => r.trim())
-            .filter(Boolean);
+            .filter(isValidRemoteName);
         return remotes[0] ?? null;
     } catch {
         return null;
@@ -241,13 +247,17 @@ export async function checkoutBranch(
     executor: GitExecutor,
 ): Promise<string> {
     if (!branch.isRemote) {
+        assertValidBranchName(branch.name);
         await executor.run(["checkout", branch.name]);
         return branch.name;
     }
 
     const localName = getLocalNameFromRemote(branch.name);
+    assertValidBranchName(branch.name, "remote branch name");
+    assertValidBranchName(localName, "local branch name");
     const existingLocal = currentBranches.find((b) => !b.isRemote && b.name === localName);
     if (existingLocal) {
+        assertValidBranchName(existingLocal.name);
         await executor.run(["checkout", existingLocal.name]);
         return existingLocal.name;
     }
@@ -279,6 +289,7 @@ export async function buildCommitFilePatch(
     }
 
     return executor.run([
+        "--literal-pathspecs",
         "diff",
         "--binary",
         "--full-index",
@@ -296,6 +307,10 @@ export async function getLocalBranchMergeStatusForDelete(
     executor: GitExecutor,
 ): Promise<{ merged: boolean; target: string }> {
     const target = currentBranchName?.trim() || "HEAD";
+    assertValidBranchName(branchName);
+    if (target !== "HEAD") {
+        assertValidBranchName(target, "current branch name");
+    }
     try {
         await executor.run(["merge-base", "--is-ancestor", branchName, target]);
         return { merged: true, target };
@@ -319,6 +334,14 @@ export async function showDeletedBranchActions(
     );
 
     if (action === restoreLabel) {
+        if (!isValidBranchNameValue(branch.name)) {
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Cannot restore '{branch}': invalid branch name.", {
+                    branch: branch.name,
+                }),
+            );
+            return;
+        }
         if (!isValidGitHash(branch.hash)) {
             vscode.window.showErrorMessage(
                 vscode.l10n.t("Cannot restore '{branch}': missing or invalid commit hash.", {
@@ -343,6 +366,8 @@ export async function showDeletedBranchActions(
     }
 
     if (action === deleteTrackedLabel && tracked) {
+        assertValidRemoteName(tracked.remote);
+        assertValidBranchName(tracked.remoteBranch, "remote branch name");
         const confirm = await vscode.window.showWarningMessage(
             vscode.l10n.t("Delete tracked branch '{remote}/{remoteBranch}'?", {
                 remote: tracked.remote,

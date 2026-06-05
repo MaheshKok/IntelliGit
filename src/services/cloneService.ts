@@ -338,6 +338,25 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
 // ---------------------------------------------------------------------------
 
 const GITLAB_TOKEN_SECRET_KEY = "intelligit.gitlab.personalAccessToken";
+const GITLAB_CLONE_HOST = "gitlab.com";
+
+function validateGitLabHttpsCloneUrl(value: string): string | undefined {
+    const trimmed = value.trim();
+    if (!trimmed) return vscode.l10n.t("URL is required");
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        return vscode.l10n.t("Must be a valid GitLab HTTPS URL");
+    }
+    if (parsed.protocol !== "https:" || parsed.hostname.toLowerCase() !== GITLAB_CLONE_HOST) {
+        return vscode.l10n.t("Must be a gitlab.com HTTPS URL");
+    }
+    if (parsed.username || parsed.password) {
+        return vscode.l10n.t("URL must not include embedded credentials");
+    }
+    return undefined;
+}
 
 async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
     let token = "";
@@ -439,26 +458,23 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
             "Enter the GitLab HTTPS clone URL (e.g. https://gitlab.com/user/repo.git)",
         ),
         placeHolder: "https://gitlab.com/user/repo.git",
-        validateInput: (value) => {
-            if (!value.trim()) return vscode.l10n.t("URL is required");
-            if (!/^https:\/\//.test(value)) return vscode.l10n.t("Must be an HTTPS URL");
-            return undefined;
-        },
+        validateInput: validateGitLabHttpsCloneUrl,
     });
     if (!cloneUrl) return;
+    const cleanCloneUrl = cloneUrl.trim();
 
     const dest = await pickDestinationFolder();
     if (!dest) return;
 
-    const repoName = extractRepoName(cloneUrl);
+    const repoName = extractRepoName(cleanCloneUrl);
     const targetPath = path.join(dest, repoName);
 
     await runGitClone({
-        url: cloneUrl,
+        url: cleanCloneUrl,
         targetPath,
         provider: "gitlab",
         auth: { username: "oauth2", token },
-        cleanRemoteUrl: cloneUrl,
+        cleanRemoteUrl: cleanCloneUrl,
     });
 }
 

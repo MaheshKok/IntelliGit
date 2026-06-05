@@ -20,15 +20,17 @@ async function pathExists(filePath: string): Promise<boolean> {
 describe("containsConflictMarkers", () => {
     it("detects a complete conflict marker block", () => {
         expect(
-            containsConflictMarkers([
-                "before",
-                "<<<<<<< HEAD",
-                "ours",
-                "=======",
-                "theirs",
-                ">>>>>>> feature",
-                "after",
-            ].join("\n")),
+            containsConflictMarkers(
+                [
+                    "before",
+                    "<<<<<<< HEAD",
+                    "ours",
+                    "=======",
+                    "theirs",
+                    ">>>>>>> feature",
+                    "after",
+                ].join("\n"),
+            ),
         ).toBe(true);
     });
 
@@ -68,8 +70,8 @@ describe("launchJetBrainsMergeTool", () => {
                 scriptPath,
                 [
                     "#!/bin/sh",
-                    "printf '%s\\n' \"$@\" > \"$5.args\"",
-                    "cat \"$3\" > \"$5\"",
+                    'printf \'%s\\n\' "$@" > "$5.args"',
+                    'cat "$3" > "$5"',
                     "exit 0",
                     "",
                 ].join("\n"),
@@ -116,7 +118,7 @@ describe("launchJetBrainsMergeTool", () => {
                 scriptPath,
                 [
                     "#!/bin/sh",
-                    "printf '%s\\n' \"$@\" > \"$5.args\"",
+                    'printf \'%s\\n\' "$@" > "$5.args"',
                     "printf '%s\\n' 'merge failed loudly' >&2",
                     "exit 2",
                     "",
@@ -151,6 +153,12 @@ describe("launchJetBrainsMergeTool", () => {
     it("rejects blank merge tool paths before spawning", async () => {
         await expect(resolveJetBrainsMergeBinaryPath("   ")).rejects.toThrow(
             "JetBrains merge tool path is empty.",
+        );
+    });
+
+    it("rejects relative merge tool paths before spawning", async () => {
+        await expect(resolveJetBrainsMergeBinaryPath("pycharm")).rejects.toThrow(
+            "JetBrains merge tool path must be absolute.",
         );
     });
 });

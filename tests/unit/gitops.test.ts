@@ -68,6 +68,12 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             expect(await ops.isRepository()).toBe(false);
         });
+
+        it("returns false when rev-parse reports false", async () => {
+            const executor = createMockExecutor({ "rev-parse": "false\n" });
+            const ops = new GitOps(executor);
+            expect(await ops.isRepository()).toBe(false);
+        });
     });
 
     describe("publish and onboarding git commands", () => {
@@ -161,8 +167,7 @@ describe("GitOps", () => {
     });
 
     describe("getLog", () => {
-        const FIELD_SEP = "\x1f";
-        const RECORD_SEP = "\x1e";
+        const FIELD_SEP = "\0";
 
         function makeCommitRecord(
             hash: string,
@@ -176,7 +181,7 @@ describe("GitOps", () => {
         ): string {
             return (
                 [hash, shortHash, message, author, email, date, parents, refs].join(FIELD_SEP) +
-                RECORD_SEP
+                FIELD_SEP
             );
         }
 
@@ -204,11 +209,43 @@ describe("GitOps", () => {
             expect(commits[0].refs).toContain("HEAD -> main");
         });
 
+        it("parses multiple git log -z records separated by an extra NUL", async () => {
+            const output =
+                makeCommitRecord(
+                    "abc123full",
+                    "abc123",
+                    "First",
+                    "John",
+                    "john@test.com",
+                    "2024-01-01T00:00:00Z",
+                    "",
+                    "",
+                ) +
+                FIELD_SEP +
+                makeCommitRecord(
+                    "def456full",
+                    "def456",
+                    "Second",
+                    "Jane",
+                    "jane@test.com",
+                    "2024-01-02T00:00:00Z",
+                    "abc123full",
+                    "",
+                );
+            const executor = createMockExecutor({ log: output });
+            const ops = new GitOps(executor);
+
+            const commits = await ops.getLog();
+
+            expect(commits.map((commit) => commit.hash)).toEqual(["abc123full", "def456full"]);
+            expect(commits[1].parentHashes).toEqual(["abc123full"]);
+        });
+
         it("preserves literal separator text in commit subjects", async () => {
             const output = makeCommitRecord(
                 "abc123full",
                 "abc123",
-                "Handle <<|>> and <<||>> in subject",
+                "Handle \x1f and \x1e in subject",
                 "John",
                 "john@test.com",
                 "2024-01-01T00:00:00Z",
@@ -219,7 +256,7 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             const commits = await ops.getLog();
 
-            expect(commits[0].message).toBe("Handle <<|>> and <<||>> in subject");
+            expect(commits[0].message).toBe("Handle \x1f and \x1e in subject");
         });
 
         it("parses parent hashes", async () => {
@@ -245,6 +282,7 @@ describe("GitOps", () => {
             await ops.getLog(100, "feature/test", "fix bug");
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
+            expect(call).toContain("-z");
             expect(call).toContain("feature/test");
             expect(call).toContain("--end-of-options");
             expect(call).not.toContain("--all");
@@ -283,7 +321,7 @@ describe("GitOps", () => {
     });
 
     describe("getCommitDetail", () => {
-        const FIELD_SEP = "\x1f";
+        const FIELD_SEP = "\0";
 
         it("parses commit detail with files", async () => {
             const showOutput = [
@@ -438,6 +476,7 @@ describe("GitOps", () => {
             await ops.stageFiles(["src/a.ts", "src/b.ts"]);
 
             expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
                 "status",
                 "--porcelain=v1",
                 "-z",
@@ -445,7 +484,13 @@ describe("GitOps", () => {
                 "src/a.ts",
                 "src/b.ts",
             ]);
-            expect(executor.run).toHaveBeenCalledWith(["add", "--", "src/a.ts", "src/b.ts"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "add",
+                "--",
+                "src/a.ts",
+                "src/b.ts",
+            ]);
         });
 
         it("does not rerun git add for an already staged deleted file", async () => {
@@ -458,6 +503,7 @@ describe("GitOps", () => {
 
             expect(executor.run).toHaveBeenCalledTimes(1);
             expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
                 "status",
                 "--porcelain=v1",
                 "-z",
@@ -474,7 +520,12 @@ describe("GitOps", () => {
 
             await ops.stageFiles(["ads.py"]);
 
-            expect(executor.run).toHaveBeenCalledWith(["add", "--", "ads.py"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "add",
+                "--",
+                "ads.py",
+            ]);
         });
 
         it("stages other selected paths when one selected path is already a staged deletion", async () => {
@@ -485,7 +536,12 @@ describe("GitOps", () => {
 
             await ops.stageFiles(["ads.py", "src/a.ts"]);
 
-            expect(executor.run).toHaveBeenCalledWith(["add", "--", "src/a.ts"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "add",
+                "--",
+                "src/a.ts",
+            ]);
         });
 
         it("skips empty paths array", async () => {
@@ -539,6 +595,32 @@ describe("GitOps", () => {
                 expect(await status(repo)).toBe(
                     ' M nested/tracked.txt\n?? --weird.txt\n?? "space name.txt"\n',
                 );
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
+        it("treats Git pathspec magic syntax as a literal selected path", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+                const magicPath = ":(glob)*";
+                await writeFile(path.join(repo, magicPath), "magic\n", "utf8");
+                await writeFile(path.join(repo, "victim.txt"), "victim\n", "utf8");
+
+                await ops.stageFiles([magicPath]);
+
+                const staged = (await git(repo, ["diff", "--cached", "--name-only", "-z"]))
+                    .split("\0")
+                    .filter(Boolean);
+                expect(staged).toEqual([magicPath]);
+
+                await ops.rollbackFiles([magicPath]);
+
+                const remaining = (await git(repo, ["status", "--porcelain=v1", "-z"]))
+                    .split("\0")
+                    .filter(Boolean);
+                expect(remaining).toEqual(["?? victim.txt"]);
             } finally {
                 await rm(repo, { recursive: true, force: true });
             }
@@ -771,7 +853,7 @@ describe("GitOps", () => {
             await ops.unstageFiles(["src/a.ts"]);
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
-            expect(call).toEqual(["reset", "HEAD", "--", "src/a.ts"]);
+            expect(call).toEqual(["--literal-pathspecs", "reset", "HEAD", "--", "src/a.ts"]);
         });
 
         it("skips empty paths array", async () => {
@@ -803,9 +885,8 @@ describe("GitOps", () => {
     });
 
     describe("getAmendBranchCommits", () => {
-        const FS = "\x1f";
-        const RS = "\x1e";
-        const rec = (h: string, s: string, d: string): string => `${h}${FS}${s}${FS}${d}${RS}`;
+        const FS = "\0";
+        const rec = (h: string, s: string, d: string): string => `${h}${FS}${s}${FS}${d}${FS}`;
 
         it("returns commits from merge-base..HEAD when upstream resolves", async () => {
             const executor = {
@@ -827,6 +908,28 @@ describe("GitOps", () => {
             expect(rows).toHaveLength(2);
             expect(rows[0]).toMatchObject({ shortHash: "a111111", subject: "msg one" });
             expect(rows[1]).toMatchObject({ shortHash: "b222222", subject: "msg two" });
+        });
+
+        it("parses amend summary records separated by git log -z record NULs", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const k = args.join(" ");
+                    if (k === "rev-parse --abbrev-ref @{upstream}") throw new Error("no upstream");
+                    if (k.startsWith("log HEAD")) {
+                        return (
+                            rec("a111111", "msg one", "2024-01-01T00:00:00Z") +
+                            FS +
+                            rec("b222222", "msg two", "2024-01-02T00:00:00Z")
+                        );
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            const rows = await ops.getAmendBranchCommits(10);
+
+            expect(rows.map((row) => row.shortHash)).toEqual(["a111111", "b222222"]);
         });
 
         it("falls back to git log HEAD when upstream rev-parse fails", async () => {
@@ -927,6 +1030,8 @@ describe("GitOps", () => {
                 run: vi.fn(async (args: string[]) => {
                     const key = args.join(" ");
                     if (key === "push") throw noUpstreamError;
+                    if (key === "rev-parse --abbrev-ref HEAD") return "feature/no-upstream\n";
+                    if (key === "remote") return "origin\n";
                     if (key === "push --set-upstream origin feature/no-upstream") return "ok";
                     return "";
                 }),
@@ -940,23 +1045,27 @@ describe("GitOps", () => {
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
             expect(calls).toEqual([
                 ["push"],
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                ["remote"],
                 ["push", "--set-upstream", "origin", "feature/no-upstream"],
             ]);
         });
 
-        it("parses short -u upstream suggestion", async () => {
+        it("ignores stderr upstream suggestions and derives retry args from local git state", async () => {
             const noUpstreamError = new Error(
                 [
                     "fatal: The current branch feature/no-upstream has no upstream branch.",
                     "To push the current branch and set the remote as upstream, use",
                     "",
-                    "    git push -u origin feature/no-upstream",
+                    "    git push -u --receive-pack=/tmp/pwn feature/no-upstream",
                 ].join("\n"),
             );
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     const key = args.join(" ");
                     if (key === "push") throw noUpstreamError;
+                    if (key === "rev-parse --abbrev-ref HEAD") return "feature/no-upstream\n";
+                    if (key === "remote") return "origin\n";
                     if (key === "push --set-upstream origin feature/no-upstream") return "ok";
                     return "";
                 }),
@@ -966,21 +1075,29 @@ describe("GitOps", () => {
 
             await expect(ops.push()).resolves.toBe("ok");
             expect(confirmSetUpstream).toHaveBeenCalledWith("origin", "feature/no-upstream");
+            expect(executor.run).not.toHaveBeenCalledWith([
+                "push",
+                "--set-upstream",
+                "--receive-pack=/tmp/pwn",
+                "feature/no-upstream",
+            ]);
         });
 
-        it("parses --set-upstream=remote upstream suggestion", async () => {
+        it("uses the first valid configured remote for missing-upstream retries", async () => {
             const noUpstreamError = new Error(
                 [
                     "fatal: The current branch feature/no-upstream has no upstream branch.",
                     "To push the current branch and set the remote as upstream, use",
                     "",
-                    "    git push --set-upstream=origin feature/no-upstream",
+                    "    git push --set-upstream=evil feature/no-upstream",
                 ].join("\n"),
             );
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     const key = args.join(" ");
                     if (key === "push") throw noUpstreamError;
+                    if (key === "rev-parse --abbrev-ref HEAD") return "feature/no-upstream\n";
+                    if (key === "remote") return "--bad\norigin\n";
                     if (key === "push --set-upstream origin feature/no-upstream") return "ok";
                     return "";
                 }),
@@ -1004,6 +1121,10 @@ describe("GitOps", () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     if (args.join(" ") === "push") throw noUpstreamError;
+                    if (args.join(" ") === "rev-parse --abbrev-ref HEAD") {
+                        return "feature/no-upstream\n";
+                    }
+                    if (args.join(" ") === "remote") return "origin\n";
                     return "";
                 }),
             } as unknown as GitExecutor;
@@ -1012,7 +1133,7 @@ describe("GitOps", () => {
 
             await expect(ops.push()).rejects.toThrow(UpstreamPushDeclinedError);
             expect(confirmSetUpstream).toHaveBeenCalledTimes(1);
-            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3);
         });
     });
 
@@ -1110,8 +1231,19 @@ describe("GitOps", () => {
             await ops.rollbackFiles(["src/a.ts"]);
 
             expect(executor.run).toHaveBeenCalledWith(["status", "--porcelain=v1", "-z", "-uall"]);
-            expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "src/a.ts"]);
-            expect(executor.run).toHaveBeenCalledWith(["checkout", "--", "src/a.ts"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "reset",
+                "HEAD",
+                "--",
+                "src/a.ts",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "checkout",
+                "--",
+                "src/a.ts",
+            ]);
         });
 
         it("cleans untracked paths without sending them to reset or checkout", async () => {
@@ -1121,9 +1253,26 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["new.txt"]);
 
-            expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "new.txt"]);
-            expect(executor.run).not.toHaveBeenCalledWith(["reset", "HEAD", "--", "new.txt"]);
-            expect(executor.run).not.toHaveBeenCalledWith(["checkout", "--", "new.txt"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "clean",
+                "-fd",
+                "--",
+                "new.txt",
+            ]);
+            expect(executor.run).not.toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "reset",
+                "HEAD",
+                "--",
+                "new.txt",
+            ]);
+            expect(executor.run).not.toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "checkout",
+                "--",
+                "new.txt",
+            ]);
         });
 
         it("resets and cleans staged added paths without checking them out", async () => {
@@ -1133,9 +1282,26 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             await ops.rollbackFiles(["added.txt"]);
 
-            expect(executor.run).toHaveBeenCalledWith(["reset", "HEAD", "--", "added.txt"]);
-            expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "added.txt"]);
-            expect(executor.run).not.toHaveBeenCalledWith(["checkout", "--", "added.txt"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "reset",
+                "HEAD",
+                "--",
+                "added.txt",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "clean",
+                "-fd",
+                "--",
+                "added.txt",
+            ]);
+            expect(executor.run).not.toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "checkout",
+                "--",
+                "added.txt",
+            ]);
         });
 
         it("resets both sides of a staged rename and restores the source path", async () => {
@@ -1146,14 +1312,26 @@ describe("GitOps", () => {
             await ops.rollbackFiles(["renamed.txt"]);
 
             expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
                 "reset",
                 "HEAD",
                 "--",
                 "renamed.txt",
                 "tracked.txt",
             ]);
-            expect(executor.run).toHaveBeenCalledWith(["checkout", "--", "tracked.txt"]);
-            expect(executor.run).toHaveBeenCalledWith(["clean", "-fd", "--", "renamed.txt"]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "checkout",
+                "--",
+                "tracked.txt",
+            ]);
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "clean",
+                "-fd",
+                "--",
+                "renamed.txt",
+            ]);
         });
 
         it("skips empty paths array", async () => {
@@ -1179,10 +1357,21 @@ describe("GitOps", () => {
     describe("merge conflict helpers", () => {
         it("returns conflicted files from diff-filter=U output", async () => {
             const executor = createMockExecutor({
-                "diff --name-only --diff-filter=U": "src/a.ts\nsrc/b.ts\n\n",
+                "diff --name-only -z --diff-filter=U": "src/a.ts\0src/b.ts\0",
             });
             const ops = new GitOps(executor);
             await expect(ops.getConflictedFiles()).resolves.toEqual(["src/a.ts", "src/b.ts"]);
+        });
+
+        it("preserves leading and trailing spaces in conflicted file paths", async () => {
+            const executor = createMockExecutor({
+                "diff --name-only -z --diff-filter=U": " leading.ts\0src/trailing.ts \0",
+            });
+            const ops = new GitOps(executor);
+            await expect(ops.getConflictedFiles()).resolves.toEqual([
+                " leading.ts",
+                "src/trailing.ts ",
+            ]);
         });
 
         it("returns detailed conflict file metadata from porcelain status", async () => {
@@ -1210,10 +1399,24 @@ describe("GitOps", () => {
             await ops.acceptConflictSide("src/conflicted.ts", "theirs");
 
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-            expect(calls).toContainEqual(["checkout", "--ours", "--", "src/conflicted.ts"]);
-            expect(calls).toContainEqual(["checkout", "--theirs", "--", "src/conflicted.ts"]);
+            expect(calls).toContainEqual([
+                "--literal-pathspecs",
+                "checkout",
+                "--ours",
+                "--",
+                "src/conflicted.ts",
+            ]);
+            expect(calls).toContainEqual([
+                "--literal-pathspecs",
+                "checkout",
+                "--theirs",
+                "--",
+                "src/conflicted.ts",
+            ]);
             expect(
-                calls.filter((args) => args.join(" ") === "add -- src/conflicted.ts"),
+                calls.filter(
+                    (args) => args.join(" ") === "--literal-pathspecs add -- src/conflicted.ts",
+                ),
             ).toHaveLength(2);
         });
     });
@@ -1235,6 +1438,7 @@ describe("GitOps", () => {
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual([
+                "--literal-pathspecs",
                 "stash",
                 "push",
                 "--include-untracked",
@@ -1389,7 +1593,7 @@ describe("GitOps", () => {
 
             await expect(ops.getShelvedFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["diff", "stash@{0}^", "stash@{0}", "--", "src/a.ts"],
+                ["--literal-pathspecs", "diff", "stash@{0}^", "stash@{0}", "--", "src/a.ts"],
             ]);
         });
 
@@ -1402,6 +1606,7 @@ describe("GitOps", () => {
             await expect(ops.getFileHistory("src/a.ts", 25)).resolves.toContain("a1b2c3");
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
                 [
+                    "--literal-pathspecs",
                     "log",
                     "--max-count=25",
                     "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
@@ -1456,8 +1661,8 @@ describe("GitOps", () => {
             await ops.deleteFile("src/b.ts", true);
 
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-            expect(calls).toContainEqual(["rm", "--", "src/a.ts"]);
-            expect(calls).toContainEqual(["rm", "-f", "--", "src/b.ts"]);
+            expect(calls).toContainEqual(["--literal-pathspecs", "rm", "--", "src/a.ts"]);
+            expect(calls).toContainEqual(["--literal-pathspecs", "rm", "-f", "--", "src/b.ts"]);
         });
 
         it("rejects invalid stash indexes", async () => {

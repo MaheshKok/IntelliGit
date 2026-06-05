@@ -7,7 +7,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // --- SEC-H1 / Fix 5: Pure JS branch/tag name validation ---
 // Contract: isValidBranchName/isValidTagName must match git check-ref-format
-// rules without spawning a subprocess. Rules documented at:
+// rules without spawning a subprocess, with stricter branch-name rejection for
+// command/refspec metacharacters used by IntelliGit Git operations. Rules documented at:
 // https://git-scm.com/docs/git-check-ref-format
 
 vi.mock("vscode", () => ({
@@ -53,6 +54,10 @@ describe("isValidBranchName — git check-ref-format rules (SEC-H1)", () => {
 
     it("rejects names starting with a dash", () => {
         expect(isValidBranchName("-bad")).toBe(false);
+    });
+
+    it("rejects names starting with a plus to avoid refspec force semantics", () => {
+        expect(isValidBranchName("+main")).toBe(false);
     });
 
     it("rejects names starting with a dot", () => {

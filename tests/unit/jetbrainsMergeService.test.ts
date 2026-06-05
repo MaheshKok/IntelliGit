@@ -6,6 +6,7 @@ import { interpolateL10n } from "./utils/l10nTestHelper";
 
 const mocks = vi.hoisted(() => ({
     configValues: new Map<string, unknown>(),
+    workspaceConfigValues: new Map<string, unknown>(),
     configUpdate: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
@@ -26,7 +27,15 @@ vi.mock("vscode", () => ({
     workspace: {
         getConfiguration: () => ({
             get: (key: string, defaultValue?: unknown) =>
-                mocks.configValues.has(key) ? mocks.configValues.get(key) : defaultValue,
+                mocks.workspaceConfigValues.has(key)
+                    ? mocks.workspaceConfigValues.get(key)
+                    : mocks.configValues.has(key)
+                      ? mocks.configValues.get(key)
+                      : defaultValue,
+            inspect: (key: string) => ({
+                globalValue: mocks.configValues.get(key),
+                workspaceValue: mocks.workspaceConfigValues.get(key),
+            }),
             update: mocks.configUpdate,
         }),
     },
@@ -54,6 +63,7 @@ vi.mock("../../src/utils/notifications", () => ({
 
 import {
     detectAndPickJetBrainsMergeToolPath,
+    getJetBrainsMergeToolPath,
     openJetBrainsMergeToolForFile,
 } from "../../src/services/jetbrainsMergeService";
 import type { GitOps } from "../../src/git/operations";
@@ -73,6 +83,7 @@ describe("jetbrainsMergeService", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.configValues.clear();
+        mocks.workspaceConfigValues.clear();
         mocks.configUpdate.mockImplementation(async (key: string, value: unknown) => {
             mocks.configValues.set(key, value);
         });
@@ -84,8 +95,8 @@ describe("jetbrainsMergeService", () => {
         mocks.resolveJetBrainsMergeBinaryPath.mockImplementation(async (input: string) => input);
         mocks.detectInstalledJetBrainsMergeToolCandidates.mockResolvedValue([]);
         mocks.detectInstalledJetBrainsMergeToolPath.mockResolvedValue(null);
-        mocks.runWithNotificationProgress.mockImplementation(async (_title: string, task: () => Promise<void>) =>
-            task(),
+        mocks.runWithNotificationProgress.mockImplementation(
+            async (_title: string, task: () => Promise<void>) => task(),
         );
     });
 
@@ -123,11 +134,13 @@ describe("jetbrainsMergeService", () => {
                 "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n",
                 "utf8",
             );
-            mocks.configValues.set("jetbrainsMergeTool.path", "pycharm");
-            mocks.launchJetBrainsMergeTool.mockImplementation(async (input: { outputFileFsPath: string }) => {
-                await fsp.writeFile(input.outputFileFsPath, "resolved\n", "utf8");
-                return { exitCode: 0, signal: null };
-            });
+            mocks.configValues.set("jetbrainsMergeTool.path", "/usr/local/bin/pycharm");
+            mocks.launchJetBrainsMergeTool.mockImplementation(
+                async (input: { outputFileFsPath: string }) => {
+                    await fsp.writeFile(input.outputFileFsPath, "resolved\n", "utf8");
+                    return { exitCode: 0, signal: null };
+                },
+            );
 
             const result = await openJetBrainsMergeToolForFile(
                 safePath,
@@ -140,7 +153,7 @@ describe("jetbrainsMergeService", () => {
             expect(result).toBe(true);
             expect(mocks.launchJetBrainsMergeTool).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    binaryPath: "pycharm",
+                    binaryPath: "/usr/local/bin/pycharm",
                     repoRootFsPath: repoRoot,
                     relativeFilePath: safePath,
                     outputFileFsPath: outputPath,
@@ -151,29 +164,35 @@ describe("jetbrainsMergeService", () => {
             );
             expect(gitOps.stageFile).toHaveBeenCalledWith(safePath);
             expect(refreshConflictUi).toHaveBeenCalled();
-            expect(mocks.showInformationMessage).toHaveBeenCalledWith(`Merged and staged: ${safePath}`);
+            expect(mocks.showInformationMessage).toHaveBeenCalledWith(
+                `Merged and staged: ${safePath}`,
+            );
         } finally {
             await fsp.rm(repoRoot, { recursive: true, force: true });
         }
     });
 
     it("keeps unresolved conflict files unstaged after the external merge tool closes", async () => {
-        const repoRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-service-markers-"));
+        const repoRoot = await fsp.mkdtemp(
+            path.join(os.tmpdir(), "intelligit-merge-service-markers-"),
+        );
         const safePath = "src/conflicted.ts";
         const outputPath = path.join(repoRoot, safePath);
         const gitOps = makeGitOps();
         try {
             await fsp.mkdir(path.dirname(outputPath), { recursive: true });
             await fsp.writeFile(outputPath, "before", "utf8");
-            mocks.configValues.set("jetbrainsMergeTool.path", "pycharm");
-            mocks.launchJetBrainsMergeTool.mockImplementation(async (input: { outputFileFsPath: string }) => {
-                await fsp.writeFile(
-                    input.outputFileFsPath,
-                    "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n",
-                    "utf8",
-                );
-                return { exitCode: 0, signal: null };
-            });
+            mocks.configValues.set("jetbrainsMergeTool.path", "/usr/local/bin/pycharm");
+            mocks.launchJetBrainsMergeTool.mockImplementation(
+                async (input: { outputFileFsPath: string }) => {
+                    await fsp.writeFile(
+                        input.outputFileFsPath,
+                        "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n",
+                        "utf8",
+                    );
+                    return { exitCode: 0, signal: null };
+                },
+            );
 
             const result = await openJetBrainsMergeToolForFile(
                 safePath,
@@ -196,7 +215,7 @@ describe("jetbrainsMergeService", () => {
     it("surfaces invalid paths and launch failures without refreshing conflict UI", async () => {
         const gitOps = makeGitOps();
         const refreshConflictUi = vi.fn(async () => undefined);
-        mocks.configValues.set("jetbrainsMergeTool.path", "pycharm");
+        mocks.configValues.set("jetbrainsMergeTool.path", "/usr/local/bin/pycharm");
 
         await expect(
             openJetBrainsMergeToolForFile(
@@ -238,14 +257,18 @@ describe("jetbrainsMergeService", () => {
             mocks.resolveJetBrainsMergeBinaryPath.mockResolvedValue(
                 path.join(detectedPath, "Contents/MacOS/pycharm"),
             );
-            mocks.showQuickPick.mockImplementation(async (items: Array<{ candidatePath: string }>) =>
-                items[0],
+            mocks.showQuickPick.mockImplementation(
+                async (items: Array<{ candidatePath: string }>) => items[0],
             );
 
             const result = await detectAndPickJetBrainsMergeToolPath();
 
             expect(result).toBe(detectedPath);
-            expect(mocks.configUpdate).toHaveBeenCalledWith("jetbrainsMergeTool.path", detectedPath, 1);
+            expect(mocks.configUpdate).toHaveBeenCalledWith(
+                "jetbrainsMergeTool.path",
+                detectedPath,
+                1,
+            );
             expect(mocks.showInformationMessage).toHaveBeenCalledWith(
                 `Saved JetBrains merge tool path. Resolved executable: ${path.join(
                     detectedPath,
@@ -255,5 +278,28 @@ describe("jetbrainsMergeService", () => {
         } finally {
             await fsp.rm(testRoot, { recursive: true, force: true });
         }
+    });
+
+    it("ignores workspace-configured merge tool paths", () => {
+        mocks.workspaceConfigValues.set("jetbrainsMergeTool.path", "./workspace-tool");
+
+        expect(getJetBrainsMergeToolPath()).toBe("");
+    });
+
+    it("contributes the merge tool path setting at machine scope", async () => {
+        const manifest = JSON.parse(
+            await fsp.readFile(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as {
+            contributes?: {
+                configuration?: {
+                    properties?: Record<string, { scope?: string }>;
+                };
+            };
+        };
+
+        expect(
+            manifest.contributes?.configuration?.properties?.["intelligit.jetbrainsMergeTool.path"]
+                ?.scope,
+        ).toBe("machine");
     });
 });

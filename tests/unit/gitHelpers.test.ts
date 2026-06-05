@@ -1,5 +1,9 @@
 // Tests for pure utility functions in src/services/gitHelpers.ts.
 
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
 vi.mock("vscode", () => ({
@@ -26,10 +30,12 @@ import {
     promptRebaseAfterPushRejection,
     resolveTrackedRemoteBranch,
     resolveRemoteDeleteTarget,
+    checkoutBranch,
     buildCommitFilePatch,
 } from "../../src/services/gitHelpers";
 import type { Branch } from "../../src/types";
 import type { GitOps } from "../../src/git/operations";
+import type { GitExecutor } from "../../src/git/executor";
 
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
     return {
@@ -84,6 +90,10 @@ describe("isValidBranchName", () => {
         expect(isValidBranchName("-bad")).toBe(false);
     });
 
+    it("rejects names starting with plus to avoid refspec force semantics", () => {
+        expect(isValidBranchName("+main")).toBe(false);
+    });
+
     it("rejects empty string", () => {
         expect(isValidBranchName("")).toBe(false);
     });
@@ -122,6 +132,32 @@ describe("getLocalNameFromRemote", () => {
 
     it("preserves slashes in branch name", () => {
         expect(getLocalNameFromRemote("origin/feature/my-branch")).toBe("feature/my-branch");
+    });
+});
+
+describe("checkoutBranch", () => {
+    it("rejects option-like local branch names before invoking git", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+
+        await expect(
+            checkoutBranch(makeBranch({ name: "--upload-pack=/tmp/pwn" }), [], executor),
+        ).rejects.toThrow("Invalid branch name");
+
+        expect(executor.run).not.toHaveBeenCalled();
+    });
+
+    it("rejects option-like remote branch local names before invoking git", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+
+        await expect(
+            checkoutBranch(
+                makeBranch({ name: "origin/--upload-pack=/tmp/pwn", isRemote: true }),
+                [],
+                executor,
+            ),
+        ).rejects.toThrow("Invalid local branch name");
+
+        expect(executor.run).not.toHaveBeenCalled();
     });
 });
 
@@ -267,6 +303,19 @@ describe("resolveTrackedRemoteBranch", () => {
         const result = resolveTrackedRemoteBranch(branch, []);
         expect(result).toBeNull();
     });
+
+    it("returns null for unsafe upstream remote or branch names", () => {
+        expect(
+            resolveTrackedRemoteBranch(makeBranch({ upstream: "--receive-pack/main" }), []),
+        ).toBeNull();
+        expect(
+            resolveTrackedRemoteBranch(
+                makeBranch({ upstream: "origin/--upload-pack=/tmp/pwn" }),
+                [],
+            ),
+        ).toBeNull();
+        expect(resolveTrackedRemoteBranch(makeBranch({ upstream: "origin/+main" }), [])).toBeNull();
+    });
 });
 
 describe("resolveRemoteDeleteTarget", () => {
@@ -300,23 +349,39 @@ describe("resolveRemoteDeleteTarget", () => {
         const result = resolveRemoteDeleteTarget(branch);
         expect(result).toBeNull();
     });
+
+    it("returns null for unsafe remote delete targets", () => {
+        expect(
+            resolveRemoteDeleteTarget(
+                makeBranch({ name: "--receive-pack/feature", isRemote: true }),
+            ),
+        ).toBeNull();
+        expect(
+            resolveRemoteDeleteTarget(
+                makeBranch({ name: "origin/--upload-pack=/tmp/pwn", isRemote: true }),
+            ),
+        ).toBeNull();
+    });
 });
 
 describe("buildCommitFilePatch", () => {
-    it("uses -- before validated option-like file paths", async () => {
+    it("uses literal pathspec mode and -- before validated option-like file paths", async () => {
         const executor = {
             run: vi.fn(async (args: string[]) => {
                 if (args[0] === "rev-list") return "abc1234 parent123\n";
-                if (args[0] === "diff") return "diff --git a/--weird.txt b/--weird.txt";
+                if (args[0] === "--literal-pathspecs" && args[1] === "diff") {
+                    return "diff --git a/--weird.txt b/--weird.txt";
+                }
                 return "";
             }),
-        };
+        } as unknown as GitExecutor;
 
         await expect(
             buildCommitFilePatch("abc1234", "--weird.txt", "Apply selected change", executor),
         ).resolves.toContain("--weird.txt");
 
         expect(executor.run).toHaveBeenCalledWith([
+            "--literal-pathspecs",
             "diff",
             "--binary",
             "--full-index",
@@ -328,10 +393,52 @@ describe("buildCommitFilePatch", () => {
         ]);
     });
 
+    it("treats pathspec magic syntax as a literal commit-file path", async () => {
+        const repo = await mkdtemp(path.join(os.tmpdir(), "intelligit-patch-"));
+        const git = async (args: string[]): Promise<string> =>
+            new Promise((resolve, reject) => {
+                execFile("git", args, { cwd: repo, encoding: "utf8" }, (error, stdout, stderr) => {
+                    if (error) {
+                        reject(new Error(stderr || error.message));
+                        return;
+                    }
+                    resolve(stdout);
+                });
+            });
+
+        try {
+            await git(["init"]);
+            await git(["config", "user.email", "test@example.com"]);
+            await git(["config", "user.name", "Test User"]);
+            await writeFile(path.join(repo, ":(glob)*"), "base magic\n", "utf8");
+            await writeFile(path.join(repo, "victim.txt"), "base victim\n", "utf8");
+            await git(["add", "."]);
+            await git(["commit", "-m", "base"]);
+            await writeFile(path.join(repo, ":(glob)*"), "changed magic\n", "utf8");
+            await writeFile(path.join(repo, "victim.txt"), "changed victim\n", "utf8");
+            await git(["add", "."]);
+            await git(["commit", "-m", "change both"]);
+            const commitHash = (await git(["rev-parse", "HEAD"])).trim();
+            const executor = { run: git } as unknown as GitExecutor;
+
+            const patch = await buildCommitFilePatch(
+                commitHash,
+                ":(glob)*",
+                "Apply selected change",
+                executor,
+            );
+
+            expect(patch).toContain(":(glob)*");
+            expect(patch).not.toContain("victim.txt");
+        } finally {
+            await rm(repo, { recursive: true, force: true });
+        }
+    });
+
     it("rejects invalid commit hashes and traversal file paths before diffing", async () => {
         const executor = {
             run: vi.fn(async () => ""),
-        };
+        } as unknown as GitExecutor;
 
         await expect(
             buildCommitFilePatch("not-a-hash", "src/a.ts", "Apply selected change", executor),

@@ -1574,7 +1574,9 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalledWith(
             expect.stringContaining("unresolved conflict file"),
         );
-        expect(showErrorMessage).not.toHaveBeenCalledWith(expect.stringContaining("Update failed:"));
+        expect(showErrorMessage).not.toHaveBeenCalledWith(
+            expect.stringContaining("Update failed:"),
+        );
         const panelResult = createWebviewPanelMock.mock.results[0]?.value as
             | { dispose?: () => void }
             | undefined;
@@ -1624,7 +1626,16 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith(
             "Rejected path escaping repo root: ../secret.txt",
         );
-        expect(showErrorMessage).toHaveBeenCalledWith("Rejected non-relative path: /tmp/secret.txt");
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Rejected non-relative path: /tmp/secret.txt",
+        );
+
+        gitOpsState.acceptConflictSide.mockClear();
+        showErrorMessage.mockClear();
+        await handler?.({ type: "acceptYours", filePath: "src/conflicted.ts " });
+
+        expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts ", "ours");
+        expect(showErrorMessage).not.toHaveBeenCalled();
         panelResult?.dispose?.();
     });
 
@@ -2192,7 +2203,9 @@ describe("extension integration", () => {
 
     it("activates when the workspace contains a nested git repository", async () => {
         const { activate } = await import("../../src/extension");
-        const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-"));
+        const workspace = await fs.realpath(
+            await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-")),
+        );
         const nestedRepo = path.join(workspace, "app");
         try {
             await fs.mkdir(path.join(nestedRepo, ".git"), { recursive: true });
@@ -2220,7 +2233,9 @@ describe("extension integration", () => {
 
     it("switches the active repository from the selector", async () => {
         const { activate } = await import("../../src/extension");
-        const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-"));
+        const workspace = await fs.realpath(
+            await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-")),
+        );
         const firstRepo = path.join(workspace, "app-a");
         const secondRepo = path.join(workspace, "app-b");
         try {

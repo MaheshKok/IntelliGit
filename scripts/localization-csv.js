@@ -65,6 +65,9 @@ const glossaryTermCandidates = [
     "Push",
     "Squash Commits",
 ];
+const spreadsheetFormulaEscapePrefix = "__INTELLIGIT_TEXT__";
+const spreadsheetFormulaLiteralPrefix = "__INTELLIGIT_LITERAL_PREFIX__";
+const spreadsheetFormulaPattern = /^[\t\r\n ]*[=+\-@]/;
 
 const command = process.argv[2] ?? "validate";
 const quiet = process.argv.includes("--quiet");
@@ -586,8 +589,29 @@ function serializeRecord(header, record) {
 }
 
 function formatCsvField(value) {
-    if (/[",\r\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
-    return value;
+    const safeValue = escapeSpreadsheetFormula(value);
+    if (/[",\r\n]/.test(safeValue)) return `"${safeValue.replace(/"/g, '""')}"`;
+    return safeValue;
+}
+
+function escapeSpreadsheetFormula(value) {
+    if (
+        value.startsWith(spreadsheetFormulaEscapePrefix) ||
+        value.startsWith(spreadsheetFormulaLiteralPrefix)
+    ) {
+        return `${spreadsheetFormulaLiteralPrefix}${value}`;
+    }
+    if (!spreadsheetFormulaPattern.test(value)) return value;
+    return `${spreadsheetFormulaEscapePrefix}${value}`;
+}
+
+function unescapeSpreadsheetFormula(value) {
+    if (value.startsWith(spreadsheetFormulaLiteralPrefix)) {
+        return value.slice(spreadsheetFormulaLiteralPrefix.length);
+    }
+    if (!value.startsWith(spreadsheetFormulaEscapePrefix)) return value;
+    const unescaped = value.slice(spreadsheetFormulaEscapePrefix.length);
+    return spreadsheetFormulaPattern.test(unescaped) ? unescaped : value;
 }
 
 function validateHeader(header, errors) {
@@ -709,7 +733,9 @@ function parseCsv(text) {
 }
 
 function recordFromRow(header, row) {
-    return Object.fromEntries(header.map((column, index) => [column, row[index] ?? ""]));
+    return Object.fromEntries(
+        header.map((column, index) => [column, unescapeSpreadsheetFormula(row[index] ?? "")]),
+    );
 }
 
 function rowId(record) {

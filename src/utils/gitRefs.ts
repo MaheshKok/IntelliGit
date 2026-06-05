@@ -25,7 +25,7 @@ function containsControlChars(value: string): boolean {
  */
 export function isValidBranchName(value: string): boolean {
     if (!value || value.length > 255) return false;
-    if (value.startsWith("-") || value.startsWith(".")) return false;
+    if (value.startsWith("-") || value.startsWith("+") || value.startsWith(".")) return false;
     if (value.endsWith(".") || value.endsWith("/") || value.endsWith(".lock")) return false;
     if (value.includes("..") || value.includes("//")) return false;
     if (GIT_REF_INVALID_CHARS.test(value)) return false;
@@ -36,4 +36,26 @@ export function isValidBranchName(value: string): boolean {
     const segments = value.split("/");
     if (segments.some((seg) => !seg || seg.startsWith(".") || seg.endsWith(".lock"))) return false;
     return true;
+}
+
+export function assertValidBranchName(value: string, label: string = "branch name"): string {
+    if (!isValidBranchName(value)) {
+        throw new Error(`Invalid ${label}: ${value}`);
+    }
+    return value;
+}
+
+export function isValidRemoteName(value: string): boolean {
+    if (!value || value.length > 255) return false;
+    if (value.startsWith("-") || value.startsWith(".") || value.endsWith(".")) return false;
+    if (value.includes("..")) return false;
+    if (containsControlChars(value)) return false;
+    return /^[A-Za-z0-9._-]+$/.test(value);
+}
+
+export function assertValidRemoteName(value: string, label: string = "remote name"): string {
+    if (!isValidRemoteName(value)) {
+        throw new Error(`Invalid ${label}: ${value}`);
+    }
+    return value;
 }

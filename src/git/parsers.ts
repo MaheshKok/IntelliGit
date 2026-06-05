@@ -8,29 +8,30 @@ import type {
     WorkingFile,
 } from "../types";
 
-const COMMIT_FIELD_SEP = "\x1f";
-const COMMIT_RECORD_SEP = "\x1e";
-const AMEND_FIELD_SEP = "\x1f";
-const AMEND_RECORD_SEP = "\x1e";
+const COMMIT_FIELD_SEP = "\0";
+const GIT_NUL = "%x00";
+const COMMIT_LOG_FIELD_COUNT = 8;
+const AMEND_FIELD_COUNT = 3;
 
 export const COMMIT_LOG_FORMAT =
-    ["%H", "%h", "%s", "%an", "%ae", "%aI", "%P", "%D"].join(COMMIT_FIELD_SEP) + COMMIT_RECORD_SEP;
+    ["%H", "%h", "%s", "%an", "%ae", "%aI", "%P", "%D"].join(GIT_NUL) + GIT_NUL;
 
 export const COMMIT_DETAIL_FORMAT = ["%H", "%h", "%s", "%b", "%an", "%ae", "%aI", "%P", "%D"].join(
-    COMMIT_FIELD_SEP,
+    GIT_NUL,
 );
 
-export const AMEND_BRANCH_COMMIT_FORMAT = `%h%x1f%s%x1f%cI%x1e`;
+export const AMEND_BRANCH_COMMIT_FORMAT = `%h%x00%s%x00%cI%x00`;
 
 export function parseCommitLog(result: string): Commit[] {
     const commits: Commit[] = [];
+    const fields = result.split(COMMIT_FIELD_SEP);
 
-    for (const record of result.split(COMMIT_RECORD_SEP)) {
-        const trimmed = record.trim();
-        if (!trimmed) continue;
-
-        const parts = trimmed.split(COMMIT_FIELD_SEP);
-        if (parts.length < 7) continue;
+    for (let index = 0; index + COMMIT_LOG_FIELD_COUNT - 1 < fields.length; ) {
+        if (!fields[index]) {
+            index += 1;
+            continue;
+        }
+        const parts = fields.slice(index, index + COMMIT_LOG_FIELD_COUNT);
 
         commits.push({
             hash: parts[0],
@@ -42,6 +43,7 @@ export function parseCommitLog(result: string): Commit[] {
             parentHashes: splitCommitParents(parts[6]),
             refs: splitCommitRefs(parts[7]),
         });
+        index += COMMIT_LOG_FIELD_COUNT;
     }
 
     return commits;
@@ -70,20 +72,21 @@ export function parseCommitDetail(
 
 export function parseAmendBranchCommitSummaries(output: string): AmendBranchCommitSummary[] {
     const rows: AmendBranchCommitSummary[] = [];
+    const fields = output.split(COMMIT_FIELD_SEP);
 
-    for (const record of output.split(AMEND_RECORD_SEP)) {
-        const trimmed = record.trim();
-        if (!trimmed) continue;
-
-        const parts = trimmed.split(AMEND_FIELD_SEP);
-        if (parts.length < 3) continue;
-
+    for (let index = 0; index + AMEND_FIELD_COUNT - 1 < fields.length; ) {
+        if (!fields[index]) {
+            index += 1;
+            continue;
+        }
+        const parts = fields.slice(index, index + AMEND_FIELD_COUNT);
         const shortHash = parts[0]?.trim() ?? "";
-        const date = parts[parts.length - 1]?.trim() ?? "";
-        const subject = parts.slice(1, -1).join(AMEND_FIELD_SEP);
+        const subject = parts[1] ?? "";
+        const date = parts[2]?.trim() ?? "";
         if (shortHash) {
             rows.push({ shortHash, subject, date });
         }
+        index += AMEND_FIELD_COUNT;
     }
 
     return rows;

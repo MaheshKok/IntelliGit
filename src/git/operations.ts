@@ -10,7 +10,12 @@ import type {
     AmendBranchCommitSummary,
 } from "../types";
 import { getErrorMessage } from "../utils/errors";
-import { isValidBranchName } from "../utils/gitRefs";
+import {
+    assertValidBranchName,
+    assertValidRemoteName,
+    isValidBranchName,
+    isValidRemoteName,
+} from "../utils/gitRefs";
 import {
     assertRepoRelativeGitPath,
     assertStashIndex,
@@ -59,8 +64,8 @@ export class GitOps {
     }
     async isRepository(): Promise<boolean> {
         try {
-            await this.executor.run(["rev-parse", "--is-inside-work-tree"]);
-            return true;
+            const out = await this.executor.run(["rev-parse", "--is-inside-work-tree"]);
+            return out.trim() === "true";
         } catch {
             return false;
         }
@@ -80,13 +85,14 @@ export class GitOps {
                 .trim()
                 .split("\n")
                 .map((r) => r.trim())
-                .filter(Boolean);
+                .filter(isValidRemoteName);
         } catch {
             return [];
         }
     }
     async branchHasUpstream(branch: string): Promise<boolean> {
         try {
+            assertValidBranchName(branch);
             const out = await this.executor.run([
                 "rev-parse",
                 "--abbrev-ref",
@@ -98,12 +104,16 @@ export class GitOps {
         }
     }
     async addRemote(name: string, url: string): Promise<void> {
+        assertValidRemoteName(name);
         await this.executor.run(["remote", "add", name, url]);
     }
     async removeRemote(name: string): Promise<void> {
+        assertValidRemoteName(name);
         await this.executor.run(["remote", "remove", name]);
     }
     async pushWithUpstream(remote: string, branch: string): Promise<string> {
+        assertValidRemoteName(remote);
+        assertValidBranchName(branch);
         return this.executor.run(["push", "-u", remote, branch]);
     }
     async getRepositoryRoot(): Promise<string> {
@@ -121,12 +131,17 @@ export class GitOps {
             const isRemote = refname.startsWith("refs/remotes/");
             // Skip symbolic refs like origin/HEAD (refname:short resolves to just "origin")
             if (refname.endsWith("/HEAD")) continue;
+            if (!isValidBranchName(name)) continue;
             let remote: string | undefined;
             if (isRemote) {
                 // refname:short for remote is "origin/main", first segment is the remote name
                 remote = name.split("/")[0];
+                if (!isValidRemoteName(remote)) continue;
             } else if (upstream) {
                 remote = upstream.split("/")[0];
+                if (!isValidRemoteName(remote)) {
+                    remote = undefined;
+                }
             }
             let ahead = 0,
                 behind = 0;
@@ -155,7 +170,12 @@ export class GitOps {
         filterText?: string,
         skip: number = 0,
     ): Promise<Commit[]> {
-        const args = ["log", `--max-count=${maxCount}`, `--pretty=format:${COMMIT_LOG_FORMAT}`];
+        const args = [
+            "log",
+            "-z",
+            `--max-count=${maxCount}`,
+            `--pretty=format:${COMMIT_LOG_FORMAT}`,
+        ];
         if (skip > 0) {
             args.push(`--skip=${skip}`);
         }
@@ -308,17 +328,19 @@ export class GitOps {
         if (paths.length === 0) return;
         const pathsToStage = await this.excludeAlreadyStagedDeletedPaths(paths);
         if (pathsToStage.length === 0) return;
-        await this.executor.run(["add", "--", ...pathsToStage]);
+        await this.executor.run(withLiteralPathspecs(["add", "--", ...pathsToStage]));
     }
     private async excludeAlreadyStagedDeletedPaths(paths: string[]): Promise<string[]> {
-        const status = await this.executor.run(["status", "--porcelain=v1", "-z", "--", ...paths]);
+        const status = await this.executor.run(
+            withLiteralPathspecs(["status", "--porcelain=v1", "-z", "--", ...paths]),
+        );
         if (!status.trim()) return paths;
         const alreadyStagedDeleted = parseAlreadyStagedDeletedPaths(status);
         return paths.filter((path) => !alreadyStagedDeleted.has(path));
     }
     async unstageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        await this.executor.run(["reset", "HEAD", "--", ...paths]);
+        await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...paths]));
     }
     async commit(message: string, amend: boolean = false): Promise<string> {
         const args = ["commit", "-m", message];
@@ -330,10 +352,11 @@ export class GitOps {
             return await this.executor.run(["push"]);
         } catch (err) {
             if (!isNoUpstreamPushError(err)) throw err;
-            const suggested = parseSetUpstreamPushSuggestion(err);
-            const branch = suggested?.branch ?? (await this.resolveCurrentBranchNameForPush());
-            const remote = suggested?.remote ?? (await this.resolveDefaultRemoteNameForPush());
+            const branch = await this.resolveCurrentBranchNameForPush();
+            const remote = await this.resolveDefaultRemoteNameForPush();
             if (!branch || !remote) throw err;
+            assertValidBranchName(branch);
+            assertValidRemoteName(remote);
             const allowSetUpstream = await this.requestSetUpstreamPush(remote, branch);
             if (!allowSetUpstream) {
                 throw new UpstreamPushDeclinedError();
@@ -361,6 +384,7 @@ export class GitOps {
         if (!upstream || !upstream.includes("/")) return;
         const remote = upstream.split("/")[0];
         if (!remote) return;
+        assertValidRemoteName(remote);
         try {
             await this.executor.run(["ls-remote", "--exit-code", remote]);
         } catch (err) {
@@ -375,6 +399,7 @@ export class GitOps {
             const raw = await this.executor.run(["rev-parse", "--abbrev-ref", "HEAD"]);
             const branch = raw.trim();
             if (!branch || branch === "HEAD") return null;
+            assertValidBranchName(branch);
             return branch;
         } catch {
             return null;
@@ -386,7 +411,7 @@ export class GitOps {
             const firstRemote = remotes
                 .split("\n")
                 .map((r) => r.trim())
-                .find((r) => r.length > 0);
+                .find(isValidRemoteName);
             return firstRemote ?? null;
         } catch {
             return null;
@@ -419,7 +444,7 @@ export class GitOps {
     /**
      * Commits on the current branch relevant when amending: ahead of @{upstream}
      * if set, otherwise the recent history on HEAD (same idea as IntelliJ amend context).
-     * Uses US/RS field separators in `git log --format` because `%s` may contain tabs.
+     * Uses NUL field separators in `git log --format` because `%s` may contain tabs.
      */
     async getAmendBranchCommits(limit = 80): Promise<AmendBranchCommitSummary[]> {
         try {
@@ -435,6 +460,7 @@ export class GitOps {
                     const out = await this.executor.run([
                         "log",
                         range,
+                        "-z",
                         `--max-count=${limit}`,
                         `--format=${AMEND_BRANCH_COMMIT_FORMAT}`,
                     ]);
@@ -451,6 +477,7 @@ export class GitOps {
             const out = await this.executor.run([
                 "log",
                 "HEAD",
+                "-z",
                 `--max-count=${limit}`,
                 `--format=${AMEND_BRANCH_COMMIT_FORMAT}`,
             ]);
@@ -464,13 +491,13 @@ export class GitOps {
         const status = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
         const { resetPaths, checkoutPaths, cleanupPaths } = planRollbackFiles(paths, status);
         if (resetPaths.length > 0) {
-            await this.executor.run(["reset", "HEAD", "--", ...resetPaths]);
+            await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...resetPaths]));
         }
         if (checkoutPaths.length > 0) {
-            await this.executor.run(["checkout", "--", ...checkoutPaths]);
+            await this.executor.run(withLiteralPathspecs(["checkout", "--", ...checkoutPaths]));
         }
         if (cleanupPaths.length > 0) {
-            await this.executor.run(["clean", "-fd", "--", ...cleanupPaths]);
+            await this.executor.run(withLiteralPathspecs(["clean", "-fd", "--", ...cleanupPaths]));
         }
     }
     async rollbackAll(): Promise<void> {
@@ -484,7 +511,7 @@ export class GitOps {
         if (paths && paths.length > 0) {
             args.push("--", ...paths);
         }
-        return this.executor.run(args);
+        return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args);
     }
     async shelvePop(index: number = 0): Promise<string> {
         assertStashIndex(index);
@@ -526,17 +553,19 @@ export class GitOps {
     async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
-        return this.executor.run(["diff", `${ref}^`, ref, "--", filePath]);
+        return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));
     }
     async getFileHistory(filePath: string, maxCount: number = 50): Promise<string> {
-        return this.executor.run([
-            "log",
-            `--max-count=${maxCount}`,
-            "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
-            "--follow",
-            "--",
-            filePath,
-        ]);
+        return this.executor.run(
+            withLiteralPathspecs([
+                "log",
+                `--max-count=${maxCount}`,
+                "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
+                "--follow",
+                "--",
+                filePath,
+            ]),
+        );
     }
     async getFileHistoryEntries(
         filePath: string,
@@ -544,14 +573,16 @@ export class GitOps {
     ): Promise<
         Array<{ hash: string; shortHash: string; author: string; date: string; subject: string }>
     > {
-        const raw = await this.executor.run([
-            "log",
-            `--max-count=${maxCount}`,
-            "--pretty=format:%H%x09%h%x09%an%x09%aI%x09%s",
-            "--follow",
-            "--",
-            filePath,
-        ]);
+        const raw = await this.executor.run(
+            withLiteralPathspecs([
+                "log",
+                `--max-count=${maxCount}`,
+                "--pretty=format:%H%x09%h%x09%an%x09%aI%x09%s",
+                "--follow",
+                "--",
+                filePath,
+            ]),
+        );
         return parseFileHistoryEntries(raw);
     }
     async getFileContentAtRef(filePath: string, ref: string): Promise<string> {
@@ -567,11 +598,8 @@ export class GitOps {
         return this.executor.run(["show", `${trimmedRef}:${safeFilePath}`]);
     }
     async getConflictedFiles(): Promise<string[]> {
-        const out = await this.executor.run(["diff", "--name-only", "--diff-filter=U"]);
-        return out
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean);
+        const out = await this.executor.run(["diff", "--name-only", "-z", "--diff-filter=U"]);
+        return out.split("\0").filter(Boolean);
     }
     async getConflictFilesDetailed(): Promise<MergeConflictFile[]> {
         const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
@@ -622,28 +650,22 @@ export class GitOps {
         return { base, ours, theirs };
     }
     async stageFile(filePath: string): Promise<void> {
-        await this.executor.run(["add", "--", filePath]);
+        await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
     async acceptConflictSide(filePath: string, side: "ours" | "theirs"): Promise<void> {
         const sideArg = side === "ours" ? "--ours" : "--theirs";
-        await this.executor.run(["checkout", sideArg, "--", filePath]);
-        await this.executor.run(["add", "--", filePath]);
+        await this.executor.run(withLiteralPathspecs(["checkout", sideArg, "--", filePath]));
+        await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
     async deleteFile(filePath: string, force: boolean = false): Promise<void> {
         const args = force ? ["rm", "-f", "--", filePath] : ["rm", "--", filePath];
-        await this.executor.run(args);
+        await this.executor.run(withLiteralPathspecs(args));
     }
 }
 function isNoUpstreamPushError(err: unknown): boolean {
     const message = getErrorMessage(err).toLowerCase();
     return message.includes("has no upstream branch");
 }
-function parseSetUpstreamPushSuggestion(err: unknown): { remote: string; branch: string } | null {
-    const message = getErrorMessage(err);
-    const match = message.match(/git push\s+(?:--set-upstream(?:\s*=\s*|\s+)|-u\s+)(\S+)\s+(\S+)/);
-    if (!match) return null;
-    const remote = match[1]?.trim();
-    const branch = match[2]?.trim();
-    if (!remote || !branch) return null;
-    return { remote, branch };
+function withLiteralPathspecs(args: string[]): string[] {
+    return ["--literal-pathspecs", ...args];
 }
