@@ -6,6 +6,12 @@ const DEFAULT_DATE_OPTIONS: Intl.DateTimeFormatOptions = {
     minute: "2-digit",
 };
 
+/**
+ * Formats an ISO-like timestamp for commit list display.
+ *
+ * Invalid or unformattable inputs are returned unchanged so backend-provided
+ * timestamps remain visible instead of disappearing behind a formatting error.
+ */
 export function formatDateTime(
     iso: string,
     options: Intl.DateTimeFormatOptions = DEFAULT_DATE_OPTIONS,

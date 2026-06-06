@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented command handler contracts for branch, commit context, basic commit actions, and history mutations, then locked `src/commands/**/*.ts` into the TSDoc ratchet.
 - Documented view provider contracts for commit graph/info/panel, merge-conflict panels, onboarding, undocked views, refresh behavior, message validation, and webview HTML, then locked `src/views/**/*.ts` into the TSDoc ratchet.
 - Documented utility, merge conflict parser, and webview i18n support contracts, then locked `src/utils/**/*.ts`, `src/mergeEditor/**/*.ts`, and `src/webviews/i18n/**/*.ts` into the TSDoc ratchet.
+- Documented React shared settings, localization, VS Code API, file-tree, branch-column, and commit-list model contracts, then locked `src/webviews/react/shared/**/*.{ts,tsx}`, `src/webviews/react/branch-column/**/*.{ts,tsx}`, and `src/webviews/react/commit-list/**/*.{ts,tsx}` into the TSDoc ratchet.
 
 ### Changed
 

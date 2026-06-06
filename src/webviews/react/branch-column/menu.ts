@@ -23,6 +23,12 @@ function separator(action: SeparatorAction): BranchMenuItem {
     return { label: "", action, separator: true };
 }
 
+/**
+ * Builds the context-menu model for a branch row.
+ *
+ * Current, local, and remote branches expose different actions; labels are
+ * localized here while actionable item IDs stay aligned with the extension protocol.
+ */
 export function getBranchMenuItems(branch: Branch, currentBranchName: string): BranchMenuItem[] {
     const current = quoted(currentBranchName);
     const selected = quoted(branch.name);

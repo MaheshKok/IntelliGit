@@ -28,8 +28,9 @@ const TSDOC_LOCKED_EXTENSION_FILES = [
     "src/webviews/i18n/**/*.ts",
 ];
 const TSDOC_LOCKED_REACT_FILES = [
-    "src/webviews/react/shared/components/ContextMenu.tsx",
-    "src/webviews/react/commit-list/useCommitGraphCanvas.ts",
+    "src/webviews/react/shared/**/*.{ts,tsx}",
+    "src/webviews/react/branch-column/**/*.{ts,tsx}",
+    "src/webviews/react/commit-list/**/*.{ts,tsx}",
 ];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];

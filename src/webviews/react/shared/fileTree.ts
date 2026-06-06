@@ -2,6 +2,12 @@
 // and commit info (CommitFile) webviews. Parametric over any file type
 // that has a `path` property.
 
+/**
+ * Directory node produced by the shared file-tree builders.
+ *
+ * Folder paths use Git-style `/` separators; converted children list directories
+ * first, then file leaves, preserving insertion order within each group.
+ */
 export interface TreeFolder<F> {
     type: "folder";
     name: string;
@@ -9,11 +15,13 @@ export interface TreeFolder<F> {
     children: TreeEntry<F>[];
 }
 
+/** File leaf that carries the original file payload without cloning it. */
 export interface TreeLeaf<F> {
     type: "file";
     file: F;
 }
 
+/** Discriminated tree entry consumed by shared commit-info and commit-panel renderers. */
 export type TreeEntry<F> = TreeFolder<F> | TreeLeaf<F>;
 
 interface DirBuild<F> {
@@ -23,7 +31,12 @@ interface DirBuild<F> {
     files: F[];
 }
 
-/** Build a nested directory tree from a flat list of files with `path` properties. */
+/**
+ * Builds a nested directory tree from a flat list of files with `path` properties.
+ *
+ * The helper treats `/` as the path separator, mutates only temporary build maps,
+ * and returns entries that reference the original file objects.
+ */
 export function buildFileTree<F extends { path: string }>(files: F[]): TreeEntry<F>[] {
     const root: { dirs: Map<string, DirBuild<F>>; files: F[] } = {
         dirs: new Map(),
@@ -72,7 +85,12 @@ function convertBuild<F>(node: { dirs: Map<string, DirBuild<F>>; files: F[] }): 
     return entries;
 }
 
-/** Collect all directory paths in a tree. */
+/**
+ * Collects directory paths from a tree in traversal order.
+ *
+ * The optional accumulator is mutated so callers that recursively compose trees
+ * can reuse the same array without additional allocations.
+ */
 export function collectDirPaths<F>(entries: TreeEntry<F>[], acc: string[] = []): string[] {
     for (const entry of entries) {
         if (entry.type === "folder") {
@@ -83,7 +101,7 @@ export function collectDirPaths<F>(entries: TreeEntry<F>[], acc: string[] = []):
     return acc;
 }
 
-/** Count total files (leaves) in a tree. */
+/** Counts total file leaves without counting folder nodes. */
 export function countFiles<F>(entries: TreeEntry<F>[]): number {
     let c = 0;
     for (const entry of entries) {
