@@ -32,6 +32,14 @@ function assertNever(value: never): never {
     throw new Error(`Unhandled commit action: ${String(value)}`);
 }
 
+/**
+ * Validates and dispatches a commit graph context-menu action for the active repository.
+ *
+ * This is the single entry point used by docked and undocked commit views. It
+ * rejects malformed commit hashes before constructing the command context, then
+ * delegates UI prompts, Git mutations, refresh behavior, and error reporting to
+ * the selected action handler.
+ */
 export async function handleCommitContextAction(params: {
     action: CommitAction;
     hash: string;
@@ -63,6 +71,13 @@ export async function handleCommitContextAction(params: {
     await dispatchCommitContextAction(action, ctx);
 }
 
+/**
+ * Routes a validated commit graph context-menu action to its concrete command handler.
+ *
+ * The dispatcher assumes `handleCommitContextAction` has already rejected unsafe hashes and built a
+ * repository-scoped context. UI prompts, Git mutations, error notifications, and refresh behavior are
+ * owned by the selected action implementation.
+ */
 async function dispatchCommitContextAction(
     action: CommitAction,
     ctx: CommitActionContext,

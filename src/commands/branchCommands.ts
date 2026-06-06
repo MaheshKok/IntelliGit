@@ -21,6 +21,13 @@ import {
 } from "../services/gitHelpers";
 import { assertValidBranchName, assertValidRemoteName } from "../utils/gitRefs";
 
+/**
+ * Runtime services captured by branch context-menu command handlers.
+ *
+ * All callbacks must target the active repository for the branch tree being registered. The
+ * generated handlers rely on the branch snapshot providers for current/upstream checks and use the
+ * conflict callbacks only after merge/update operations leave unresolved files.
+ */
 export interface BranchCommandDeps {
     executor: GitExecutor;
     gitOps: GitOps;
@@ -33,6 +40,12 @@ export interface BranchCommandDeps {
     refreshConflictUi: () => Promise<void>;
 }
 
+/**
+ * VS Code command contribution paired with the branch tree item payload it expects.
+ *
+ * `id` must stay in sync with package command contributions and activation registration. Handlers
+ * tolerate missing branch payloads because VS Code can invoke commands from palettes or stale menus.
+ */
 export interface BranchCommandEntry {
     id: string;
     handler: (item: { branch?: Branch }) => Promise<void>;
@@ -51,10 +64,23 @@ function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }
     return `${tracked.remote}/${tracked.remoteBranch}`;
 }
 
+/**
+ * Builds the merge invocation used by the PyCharm-style Update Branch action.
+ *
+ * The command intentionally disables credential helpers and Git quoting noise for this one merge so
+ * update errors can be compacted into user-facing VS Code messages without changing repository
+ * configuration.
+ */
 function buildPycharmMergeArgs(remoteRef: string): string[] {
     return [...PYCHARM_MERGE_CONFIG_ARGS, "merge", remoteRef, "--no-stat", "-v"];
 }
 
+/**
+ * Normalizes Git update failures before they are shown in VS Code error notifications.
+ *
+ * Fast-forward divergence is rewritten to the actionable IntelliGit message; other Git stderr is
+ * compacted so fetch progress and hints do not overwhelm the branch action error toast.
+ */
 function formatUpdateFailureMessage(error: unknown): string {
     const raw = getErrorMessage(error);
     if (isFastForwardDivergenceMessage(raw)) {
@@ -92,6 +118,12 @@ function compactGitErrorMessage(message: string): string {
     return compact || message.trim();
 }
 
+/**
+ * Validates a branch ref before a handler passes it to Git and reports failures through VS Code UI.
+ *
+ * Returning `false` is the handler contract: invalid context-menu data should cancel the action
+ * without throwing past command registration.
+ */
 function validateBranchArg(name: string, label: string = "branch name"): boolean {
     try {
         assertValidBranchName(name, label);
@@ -102,6 +134,12 @@ function validateBranchArg(name: string, label: string = "branch name"): boolean
     }
 }
 
+/**
+ * Validates a remote/branch pair that will be interpolated into fetch, push, or delete arguments.
+ *
+ * Validation failures are shown to the user and converted to `false` so branch commands can stop
+ * before mutating remotes or local refs.
+ */
 function validateTrackedRemote(tracked: { remote: string; remoteBranch: string }): boolean {
     try {
         assertValidRemoteName(tracked.remote);
@@ -113,6 +151,21 @@ function validateTrackedRemote(tracked: { remote: string; remoteBranch: string }
     }
 }
 
+/**
+ * Creates the branch tree command handlers registered by repository activation.
+ *
+ * The returned entries wire `intelligit.checkout`, `intelligit.newBranchFrom`,
+ * `intelligit.checkoutAndRebase`, `intelligit.rebaseCurrentOnto`,
+ * `intelligit.mergeIntoCurrent`, `intelligit.updateBranch`, `intelligit.pushBranch`,
+ * `intelligit.renameBranch`, and `intelligit.deleteBranch`. Handlers require a branch payload from
+ * the branch view and otherwise no-op.
+ *
+ * Successful branch mutations refresh IntelliGit views through `intelligit.refresh`. Git failures
+ * are caught and shown as VS Code messages; merge/update conflicts open the Conflicts session and
+ * refresh conflict UI instead of surfacing the raw merge error. The handlers can modify checked-out
+ * branch state, local branch refs, remote refs, and working tree/index state for checkout, merge,
+ * rebase, update, push, rename, and delete actions.
+ */
 export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntry[] {
     const {
         executor,
@@ -123,6 +176,12 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         refreshConflictUi,
     } = deps;
 
+    /**
+     * Opens conflict UI for update/merge failures after Git has already reported conflicts.
+     *
+     * Inspection or UI-launch failures are swallowed so the original Git command can still surface
+     * its normal error message through the caller.
+     */
     const showUpdateConflictSession = async (sourceBranch?: string): Promise<boolean> => {
         try {
             const conflicts = await gitOps.getConflictFilesDetailed();
