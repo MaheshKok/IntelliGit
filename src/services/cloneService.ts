@@ -33,6 +33,14 @@ interface GitHubRepo {
 // Public entry point — called from the extension host
 // ---------------------------------------------------------------------------
 
+/**
+ * Starts IntelliGit's interactive clone workflow from commands that may not have an active repository.
+ *
+ * Provider selection, URL entry, destination picking, and post-clone workspace
+ * actions are all user-driven; cancellation at any prompt is treated as a
+ * no-op. GitHub authentication uses VS Code sessions, while GitLab can use
+ * `SecretStorage` for token migration and reuse.
+ */
 export async function runCloneFlow(secrets?: vscode.SecretStorage): Promise<void> {
     const provider = await pickCloneProvider();
     if (!provider) return;
@@ -54,6 +62,9 @@ export async function runCloneFlow(secrets?: vscode.SecretStorage): Promise<void
 // Provider picker
 // ---------------------------------------------------------------------------
 
+/**
+ * Presents the provider picker for the clone command and returns `undefined` on cancellation.
+ */
 async function pickCloneProvider(): Promise<CloneProvider | undefined> {
     const picked = await vscode.window.showQuickPick(
         [
@@ -82,6 +93,12 @@ async function pickCloneProvider(): Promise<CloneProvider | undefined> {
 // Destination folder picker (shared)
 // ---------------------------------------------------------------------------
 
+/**
+ * Lets the user choose the parent folder that will receive the cloned repository directory.
+ *
+ * The returned path is a VS Code `fsPath` for the selected local folder. The
+ * repository name is appended later after the clone URL has been sanitized.
+ */
 async function pickDestinationFolder(): Promise<string | undefined> {
     const uris = await vscode.window.showOpenDialog({
         canSelectFiles: false,
@@ -97,6 +114,13 @@ async function pickDestinationFolder(): Promise<string | undefined> {
 // SSH clone flow
 // ---------------------------------------------------------------------------
 
+/**
+ * Handles the SSH clone path for users who already have local Git SSH credentials configured.
+ *
+ * The flow validates only the expected `git@...` shape, prompts for a local
+ * destination, and then delegates clone execution. SSH authentication errors are
+ * converted into actionable user-facing hints by the shared clone error handler.
+ */
 async function cloneViaSSH(): Promise<void> {
     const url = await vscode.window.showInputBox({
         prompt: vscode.l10n.t("Enter the SSH clone URL (e.g. git@github.com:user/repo.git)"),
@@ -122,6 +146,13 @@ async function cloneViaSSH(): Promise<void> {
 // GitHub clone flow
 // ---------------------------------------------------------------------------
 
+/**
+ * Handles the GitHub clone path using VS Code authentication and HTTPS clone URLs.
+ *
+ * Users can browse repositories through the GitHub API or paste a GitHub HTTPS
+ * URL. Authenticated clones use transient askpass credentials and reset `origin`
+ * to the clean clone URL after success so tokens are not persisted in `.git/config`.
+ */
 async function cloneViaGitHub(): Promise<void> {
     const session = await acquireGitHubSession();
     if (!session) return;
@@ -178,6 +209,13 @@ async function cloneViaGitHub(): Promise<void> {
     });
 }
 
+/**
+ * Acquires a GitHub authentication session or shows the extension-level failure message.
+ *
+ * Authentication errors are swallowed after notification because clone command
+ * cancellation and auth failure both end the interactive workflow without
+ * throwing into command registration code.
+ */
 async function acquireGitHubSession(): Promise<vscode.AuthenticationSession | undefined> {
     try {
         const session = await vscode.authentication.getSession("github", ["repo"], {
@@ -196,6 +234,13 @@ async function acquireGitHubSession(): Promise<vscode.AuthenticationSession | un
     }
 }
 
+/**
+ * Fetches the authenticated user's GitHub repositories and lets them pick one to clone.
+ *
+ * The progress notification is intentionally non-cancellable because the HTTP
+ * helper does not expose cancellation. API and parsing failures are shown to the
+ * user and return `undefined` to stop the clone flow cleanly.
+ */
 async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
     let repos: GitHubRepo[];
     try {
@@ -239,6 +284,13 @@ async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
     return picked?.repo;
 }
 
+/**
+ * Reads GitHub repositories page-by-page with a bounded request count and timeout.
+ *
+ * The token is sent only in the HTTPS authorization header. Repositories above
+ * the configured page limit cause a failure that asks users to paste the clone
+ * URL directly instead of keeping the notification open indefinitely.
+ */
 function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
     return new Promise((resolve, reject) => {
         const allRepos: GitHubRepo[] = [];
@@ -340,6 +392,12 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
 const GITLAB_TOKEN_SECRET_KEY = "intelligit.gitlab.personalAccessToken";
 const GITLAB_CLONE_HOST = "gitlab.com";
 
+/**
+ * Validates the GitLab HTTPS clone URL accepted by the GitLab clone prompt.
+ *
+ * Only credential-free `https://gitlab.com/...` URLs are accepted because the
+ * token is supplied through askpass and must not be embedded in repository config.
+ */
 function validateGitLabHttpsCloneUrl(value: string): string | undefined {
     const trimmed = value.trim();
     if (!trimmed) return vscode.l10n.t("URL is required");
@@ -358,6 +416,13 @@ function validateGitLabHttpsCloneUrl(value: string): string | undefined {
     return undefined;
 }
 
+/**
+ * Handles the GitLab clone path with token lookup, optional secure storage, and HTTPS cloning.
+ *
+ * The flow first tries `SecretStorage`, then migrates the legacy setting when
+ * present, and finally prompts for a personal access token. Any prompt
+ * cancellation stops the workflow without mutating the filesystem.
+ */
 async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
     let token = "";
 
@@ -482,6 +547,9 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
 // Shared git clone executor
 // ---------------------------------------------------------------------------
 
+/**
+ * Options for the shared clone executor after provider-specific prompting has completed.
+ */
 interface CloneOptions {
     url: string;
     targetPath: string;
@@ -491,6 +559,17 @@ interface CloneOptions {
     cleanRemoteUrl?: string;
 }
 
+/**
+ * Performs the filesystem and Git work for a provider-specific clone selection.
+ *
+ * Existing target directories are removed only after a modal overwrite
+ * confirmation. Clone progress is shown in a notification, errors are displayed
+ * rather than propagated, and successful clones offer to open or add the new
+ * repository workspace folder.
+ *
+ * @remarks Keep authenticated providers on askpass and clean remote URLs. Moving
+ * credentials into `url` would risk persisting secrets to `.git/config`.
+ */
 async function runGitClone(opts: CloneOptions): Promise<void> {
     const { url, targetPath, provider, auth, cleanRemoteUrl } = opts;
 
@@ -612,6 +691,13 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
 // Clone error analysis
 // ---------------------------------------------------------------------------
 
+/**
+ * Converts raw Git clone failures into provider-specific troubleshooting messages.
+ *
+ * The original error detail is preserved for the user, while common SSH and
+ * token failures add concise recovery hints. Errors are intentionally not
+ * rethrown because command handlers should complete after showing the message.
+ */
 function handleCloneError(err: unknown, url: string, provider: CloneProvider): void {
     const message = getErrorMessage(err).toLowerCase();
 
@@ -706,6 +792,9 @@ function showCloneErrorMessage(title: string, err: unknown, hints: string[]): vo
     );
 }
 
+/**
+ * Runs an authenticated clone with transient askpass credentials from the clone provider.
+ */
 async function runGitCloneWithAskpass(
     cwd: string,
     args: string[],

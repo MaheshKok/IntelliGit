@@ -14,17 +14,42 @@ const IGNORED_DIRS = new Set([
     "vendor",
 ]);
 
+/**
+ * Repository root discovered within one of the active workspace folders.
+ *
+ * Roots are normalized through `realpath` when possible and labels are stable
+ * workspace-relative display names for repository pickers.
+ */
 export interface DiscoveredRepository {
+    /** Absolute filesystem path to the Git repository root. */
     root: string;
+    /** Display label relative to the containing workspace folder when possible. */
     label: string;
 }
 
+/**
+ * Resolves a directory candidate to its actual Git root, or `null` when it is not a repository.
+ *
+ * Tests can inject this contract to avoid spawning Git while production uses
+ * `GitOps` so worktrees and nested repository roots resolve the same way as
+ * runtime commands.
+ */
 export type ResolveGitRoot = (candidateRoot: string) => Promise<string | null>;
 
+/**
+ * Options that customize repository discovery without changing filesystem traversal.
+ */
 export interface DiscoverGitRepositoriesOptions {
+    /** Optional resolver used to validate and canonicalize each `.git` marker hit. */
     resolveGitRoot?: ResolveGitRoot;
 }
 
+/**
+ * Default resolver that asks Git whether a candidate directory is a repository root.
+ *
+ * Discovery callers receive `null` for non-repositories instead of a user-facing
+ * error because missing or inaccessible nested folders are expected during scans.
+ */
 async function defaultResolveGitRoot(candidateRoot: string): Promise<string | null> {
     const gitOps = new GitOps(new GitExecutor(candidateRoot));
     if (!(await gitOps.isRepository())) return null;
@@ -56,6 +81,12 @@ function labelForRoot(root: string, workspaceRoots: string[]): string {
     return path.basename(root) || root;
 }
 
+/**
+ * Adds a resolved repository root when it remains inside one of the workspace roots.
+ *
+ * The containment check prevents a `.git` file or symlink from causing discovery
+ * to report repositories outside the workspace the user opened.
+ */
 async function addResolvedRoot(
     candidateRoot: string,
     workspaceRoots: string[],
@@ -70,6 +101,12 @@ async function addResolvedRoot(
     seen.set(root, { root, label: labelForRoot(root, workspaceRoots) });
 }
 
+/**
+ * Recursively scans a workspace folder for `.git` markers while skipping heavy dependency dirs.
+ *
+ * Inaccessible directories are ignored so discovery remains best-effort during
+ * activation and no-repository onboarding flows.
+ */
 async function scanForGitMarkers(
     directory: string,
     workspaceRoots: string[],
@@ -100,6 +137,13 @@ async function scanForGitMarkers(
     }
 }
 
+/**
+ * Discovers Git repositories contained by the provided workspace roots.
+ *
+ * Workspace roots are normalized before scanning, discovered repositories are
+ * de-duplicated by canonical root, and results are sorted by display label.
+ * Passing an empty workspace root list is safe and returns an empty result.
+ */
 export async function discoverGitRepositories(
     workspaceRoots: string[],
     options: DiscoverGitRepositoriesOptions = {},

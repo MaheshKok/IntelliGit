@@ -31,10 +31,23 @@ function getGlobalConfigValue<T>(key: string, defaultValue: T): T {
     return inspected?.globalValue ?? defaultValue;
 }
 
+/**
+ * Reads the globally configured JetBrains IDE path used for external merge resolution.
+ *
+ * The value is trimmed before use and may be either a macOS `.app` bundle path
+ * or a direct IDE executable path; callers still resolve it to a merge-capable
+ * binary before launching.
+ */
 export function getJetBrainsMergeToolPath(): string {
     return getGlobalConfigValue("jetbrainsMergeTool.path", "").trim();
 }
 
+/**
+ * Reads whether merge conflict commands should prefer JetBrains over VS Code's built-in editor.
+ *
+ * Missing workspace configuration defaults to `true` so existing IntelliGit
+ * workflows keep attempting the external merge tool unless the user opts out.
+ */
 export function getPreferExternalMergeTool(): boolean {
     return getIntelliGitConfig()?.get<boolean>("jetbrainsMergeTool.preferExternal", true) ?? true;
 }
@@ -50,6 +63,13 @@ function getDefaultJetBrainsMergeToolPath(): string {
     }
 }
 
+/**
+ * Validates, resolves, and saves a JetBrains merge tool path in global configuration.
+ *
+ * Invalid absolute paths or non-merge-capable binaries are shown to the user and
+ * return `null`. Successful saves report the resolved executable path so users
+ * can confirm what will be launched for future conflicts.
+ */
 async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | null> {
     const trimmed = rawPath.trim();
     if (!trimmed) return null;
@@ -89,6 +109,12 @@ async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | nul
     return trimmed;
 }
 
+/**
+ * Prompts for a JetBrains IDE path, prefilled from existing config, detection, or platform defaults.
+ *
+ * Cancellation returns `null` without changing configuration. Non-empty values
+ * are delegated to the saver so validation and user notifications stay consistent.
+ */
 async function promptForJetBrainsMergeToolPath(): Promise<string | null> {
     const existing = getJetBrainsMergeToolPath();
     const detected = existing ? null : await detectInstalledJetBrainsMergeToolPath();
@@ -107,6 +133,13 @@ async function promptForJetBrainsMergeToolPath(): Promise<string | null> {
     return saveJetBrainsMergeToolPath(input);
 }
 
+/**
+ * Detects installed JetBrains IDEs and lets the user choose or manually enter the merge tool path.
+ *
+ * Detection failures or no candidates fall back to the manual prompt with a
+ * warning. The selected path is persisted globally after validation; prompt
+ * cancellation returns `null` and does not affect existing configuration.
+ */
 export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | null> {
     const candidates = await detectInstalledJetBrainsMergeToolCandidates();
     if (candidates.length === 0) {
@@ -167,6 +200,13 @@ function sleep(ms: number): Promise<void> {
     });
 }
 
+/**
+ * Reads the merge output file after the external process exits, retrying stale or conflicted reads.
+ *
+ * JetBrains tools may return before the editor has flushed the output file. The
+ * retry loop gives the filesystem a short window to update before staging or
+ * warning about remaining conflict markers.
+ */
 async function readMergedFileWithRetry(
     outputFileFsPath: string,
     beforeMergeText: string | null,
@@ -197,6 +237,14 @@ async function readMergedFileWithRetry(
         : new Error("Failed to read merged file after external merge tool closed.");
 }
 
+/**
+ * Opens the JetBrains merge tool for a repository-relative conflicted file.
+ *
+ * The file path is validated before Git or filesystem access. If the external
+ * tool is not configured, the user can configure it, open VS Code's merge editor,
+ * or cancel. Successful external merges stage the file only when conflict markers
+ * are gone; inspection and refresh failures are reported without hiding the tool result.
+ */
 export async function openJetBrainsMergeToolForFile(
     filePath: string,
     repoRoot: string,

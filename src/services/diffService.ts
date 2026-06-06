@@ -23,16 +23,32 @@ const READONLY_DIFF_SCHEME = "intelligit-diff";
 const readonlyDiffDocuments = new Map<string, string>();
 let readonlyDiffDocumentSeq = 0;
 
+/**
+ * Serves ephemeral read-only documents used as the left and right sides of VS Code diffs.
+ *
+ * Content is keyed by the full virtual URI and removed when the document closes
+ * or the provider is disposed, so callers must not treat these URIs as stable
+ * across sessions.
+ */
 class ReadonlyDiffContentProvider implements vscode.TextDocumentContentProvider {
+    /** Returns the registered virtual document text, or an empty document for stale URIs. */
     provideTextDocumentContent(uri: vscode.Uri): string {
         return readonlyDiffDocuments.get(uri.toString()) ?? "";
     }
 
+    /** Clears all virtual diff documents owned by this provider instance. */
     dispose(): void {
         readonlyDiffDocuments.clear();
     }
 }
 
+/**
+ * Registers the virtual document provider backing commit and ref comparison diffs.
+ *
+ * The returned disposable unregisters the provider, removes the close listener,
+ * and clears cached document content. Activation code should keep the disposable
+ * in the extension context so virtual diff documents do not leak between sessions.
+ */
 export function registerReadonlyDiffContentProvider(
     context: vscode.ExtensionContext,
 ): vscode.Disposable {
@@ -61,6 +77,12 @@ function encodePathForVirtualUri(filePath: string): string {
     return filePath.split("/").map(encodeURIComponent).join("/");
 }
 
+/**
+ * Creates a unique virtual URI for immutable diff content from a Git ref or commit side.
+ *
+ * `filePath` must already be a repository-relative Git path. The path is encoded
+ * as URI data only; it is not resolved against the workspace filesystem.
+ */
 function createReadonlyDiffUri(filePath: string, content: string, refLabel: string): vscode.Uri {
     readonlyDiffDocumentSeq += 1;
     const query = new URLSearchParams({
@@ -74,10 +96,23 @@ function createReadonlyDiffUri(filePath: string, content: string, refLabel: stri
     return uri;
 }
 
+/**
+ * Converts local path separators to the slash-separated path format expected by Git output.
+ *
+ * This does not resolve `..`, check containment, or touch the filesystem; callers
+ * that receive user input must validate the path separately.
+ */
 export function normalizeGitPath(fsPathValue: string): string {
     return fsPathValue.split(path.sep).join("/");
 }
 
+/**
+ * Converts a local file URI under the active repository root into a Git-relative path.
+ *
+ * Non-file URIs, the repository root itself, and paths outside `repoRoot` return
+ * `null` so command handlers can show a user-facing availability error instead
+ * of passing unsafe paths to Git or VS Code diff commands.
+ */
 export function getRepoRelativeFilePathFromUri(uri: vscode.Uri, repoRoot: string): string | null {
     if (uri.scheme !== "file") return null;
     const relative = path.relative(repoRoot, uri.fsPath);
@@ -97,6 +132,12 @@ interface CommitInfoFileContext {
     commitShortHash?: string;
 }
 
+/**
+ * Extracts the commit-info context supplied by tree and webview command handlers.
+ *
+ * The object is treated as untrusted boundary data: missing or whitespace-only
+ * commit hashes and file paths are ignored before any Git or filesystem work runs.
+ */
 function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null {
     if (!value || typeof value !== "object") return null;
     const maybe = value as {
@@ -113,6 +154,13 @@ function getCommitInfoFileContext(value: unknown): CommitInfoFileContext | null 
     return { filePath, commitHash, commitShortHash };
 }
 
+/**
+ * Opens a VS Code diff between a working-tree file and its content at a Git ref.
+ *
+ * `repoRelativeFilePath` must already be validated and slash-separated. Git read
+ * failures propagate to the caller so UI command handlers can display the
+ * workflow-specific error message.
+ */
 async function openDiffAgainstGitRef(
     fileUri: vscode.Uri,
     repoRelativeFilePath: string,
@@ -129,6 +177,17 @@ async function openDiffAgainstGitRef(
     await vscode.commands.executeCommand("vscode.diff", leftUri, fileUri, title);
 }
 
+/**
+ * Opens a read-only diff for the selected file as changed by a specific commit.
+ *
+ * The commit hash is validated before Git is called and `filePath` must be a
+ * repository-relative path. Merge commits prompt for the mainline parent; files
+ * missing on either side are represented as empty virtual documents so deletes
+ * and adds still open in the diff editor.
+ *
+ * @throws When the commit hash or file path is unsafe, or when parent discovery
+ * fails before the user can choose a merge mainline.
+ */
 export async function openCommitFileDiff(
     commitHash: string,
     filePath: string,
@@ -183,6 +242,13 @@ export async function openCommitFileDiff(
     await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
 }
 
+/**
+ * Applies a generated single-file patch to the repository index and working tree.
+ *
+ * The patch is written to a temporary file because `git apply --3way --index`
+ * expects a file path here. The temp directory is removed best-effort in
+ * `finally`; Git apply failures propagate to the caller for user notification.
+ */
 async function applyPatchTextToRepo(
     patchText: string,
     reverse: boolean,
@@ -208,6 +274,13 @@ async function applyPatchTextToRepo(
     }
 }
 
+/**
+ * Prompts for a branch and opens a read-only comparison with the active editor file.
+ *
+ * The command is safe to invoke only when a local file under `repoRoot` is active.
+ * Invalid editor context and Git failures are shown to the user; the comparison
+ * does not mutate the repository.
+ */
 export async function compareEditorFileWithBranch(
     ctx: unknown,
     repoRoot: string,
@@ -271,6 +344,13 @@ export async function compareEditorFileWithBranch(
     }
 }
 
+/**
+ * Prompts for a recent or manually entered revision and compares it with the active file.
+ *
+ * Recent history is limited to the selected repository-relative file path. Prompt
+ * cancellation is a no-op, and any Git or diff opening error is converted into a
+ * user-facing message without changing repository state.
+ */
 export async function compareEditorFileWithRevision(
     ctx: unknown,
     repoRoot: string,
@@ -350,6 +430,13 @@ export async function compareEditorFileWithRevision(
     }
 }
 
+/**
+ * Opens a diff from a commit-info file entry to the current local workspace file.
+ *
+ * The context object may come from a tree item or webview message and is ignored
+ * when it lacks a commit hash or file path. The file path must validate as
+ * repository-relative before it is joined with `repoRoot` for the local side.
+ */
 export async function compareCommitInfoFileWithLocal(
     ctx: unknown,
     repoRoot: string,
@@ -369,6 +456,14 @@ export async function compareCommitInfoFileWithLocal(
     }
 }
 
+/**
+ * Applies or reverts the selected commit's change for a single file.
+ *
+ * This workflow mutates both the working tree and index through `git apply --index --3way`
+ * after a modal confirmation. Merge commits may prompt for a
+ * mainline parent, empty patches notify without mutation, errors are shown to
+ * the user, and conflict UI refresh runs best-effort in `finally`.
+ */
 export async function applySelectedCommitFileChange(
     ctx: unknown,
     mode: "cherry-pick" | "revert",
