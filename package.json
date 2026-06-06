@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.9.3",
+    "version": "0.9.4",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -476,6 +476,7 @@
                 "intelligit.jetbrainsMergeTool.path": {
                     "type": "string",
                     "default": "",
+                    "scope": "machine",
                     "markdownDescription": "%configuration.jetbrainsMergeTool.path.markdownDescription%"
                 },
                 "intelligit.jetbrainsMergeTool.preferExternal": {

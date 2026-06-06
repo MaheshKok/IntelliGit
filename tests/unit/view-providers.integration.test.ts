@@ -123,6 +123,12 @@ const vscodeMock = {
             workspaceState.workspaceFolders = value;
         },
         openTextDocument,
+        getConfiguration: vi.fn(() => ({
+            get: vi.fn((key: string) => {
+                if (key === "workbench.sideBar.location") return "left";
+                return undefined;
+            }),
+        })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     },
 };
@@ -511,6 +517,186 @@ describe("view providers integration", () => {
             infoWidth: 300,
             commitPanelWidth: 200,
         });
+    });
+
+    it("UndockedViewProvider handles graph and commit-panel message protocols", async () => {
+        const { UndockedViewProvider } = await import("../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        const workspaceStore = createMemento({ "commitDraft:/repo": "stored draft" });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            workspaceStore as unknown as object,
+        );
+        const selected: string[] = [];
+        const branchActions: unknown[] = [];
+        const commitActions: unknown[] = [];
+        const fileDiffs: unknown[] = [];
+        const fileCounts: number[] = [];
+        const workingTreeEvents: void[] = [];
+        const dockRequests: void[] = [];
+        provider.onCommitSelected((hash) => selected.push(hash));
+        provider.onBranchAction((action) => branchActions.push(action));
+        provider.onCommitAction((action) => commitActions.push(action));
+        provider.onOpenCommitFileDiff((payload) => fileDiffs.push(payload));
+        provider.onDidChangeFileCount((count) => fileCounts.push(count));
+        provider.onDidChangeWorkingTree(() => workingTreeEvents.push(undefined));
+        provider.onDockRequested(() => dockRequests.push(undefined));
+
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            iconTheme: {
+                initIconThemeData: ReturnType<typeof vi.fn>;
+                getFolderIconsByBranches: ReturnType<typeof vi.fn>;
+                getThemeData: ReturnType<typeof vi.fn>;
+                decorateWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        testProvider.iconTheme = {
+            initIconThemeData: vi.fn(async () => undefined),
+            getFolderIconsByBranches: vi.fn(async () => ({})),
+            getThemeData: vi.fn(() => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            })),
+            decorateWorkingFiles: vi.fn(async (files: unknown) => files),
+            getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
+                detail,
+                folderIconsByName: {},
+            })),
+            dispose: vi.fn(),
+        };
+        provider.setBranches([
+            {
+                name: "main",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
+        postMessageSpy.mockClear();
+
+        await send({ type: "ready" });
+        expect(gitOps.getLog).toHaveBeenCalledWith(500, undefined, undefined, 0);
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            message: "stored draft",
+        });
+
+        postMessageSpy.mockClear();
+        await send({ type: "shelfSelect", index: 0 });
+        expect(gitOps.getShelvedFiles).toHaveBeenLastCalledWith(0);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                selectedShelfIndex: 0,
+                shelfFiles: [expect.objectContaining({ path: "src/a.ts" })],
+            }),
+        );
+
+        await send({
+            type: "columnWidths",
+            branchWidth: 410,
+            graphWidth: 510,
+            infoWidth: 310,
+            commitPanelWidth: 210,
+        });
+        expect(workspaceStore.update).toHaveBeenCalledWith("intelligit.undockedColumnWidths", {
+            branchWidth: 410,
+            graphWidth: 510,
+            infoWidth: 310,
+            commitPanelWidth: 210,
+        });
+
+        await send({ type: "selectCommit", hash: "abc1234" });
+        await send({ type: "filterText", text: "fix" });
+        await send({ type: "filterBranch", branch: "main" });
+        await send({ type: "loadMore" });
+        await send({ type: "branchAction", action: "checkout", branchName: "main" });
+        await send({ type: "commitAction", action: "copyRevision", hash: "abc1234" });
+        await send({ type: "openCommitFileDiff", commitHash: "abc1234", filePath: "src/a.ts" });
+        await send({ type: "dock" });
+        expect(selected).toEqual(["abc1234"]);
+        expect(branchActions).toEqual([{ action: "checkout", branchName: "main" }]);
+        expect(commitActions).toEqual([{ action: "copyRevision", hash: "abc1234" }]);
+        expect(fileDiffs).toEqual([{ commitHash: "abc1234", filePath: "src/a.ts" }]);
+        expect(dockRequests).toHaveLength(1);
+        expect(gitOps.getLog).toHaveBeenCalledWith(500, undefined, "fix", 0);
+        expect(gitOps.getLog).toHaveBeenCalledWith(500, "main", undefined, 0);
+        expect(gitOps.getLog).toHaveBeenCalledWith(500, "main", undefined, 1);
+
+        await send({ type: "saveCommitDraft", message: "new draft" });
+        expect(workspaceStore.update).toHaveBeenCalledWith("commitDraft:/repo", "new draft");
+
+        await send({ type: "stageFiles", paths: ["src/a.ts"] });
+        await send({ type: "unstageFiles", paths: ["src/a.ts"] });
+        await send({
+            type: "commitSelected",
+            message: "feat: selected",
+            amend: false,
+            push: true,
+            paths: ["src/a.ts"],
+        });
+        await send({ type: "commit", message: "feat: commit", amend: false });
+        await send({ type: "commitAndPush", message: "feat: push", amend: false });
+        await send({ type: "publishBranch" });
+        await send({ type: "getLastCommitMessage" });
+        await send({ type: "getAmendBranchCommits" });
+        showWarningMessage.mockResolvedValueOnce("Rollback");
+        await send({ type: "rollback", paths: ["src/a.ts"] });
+        await send({ type: "showDiff", path: "src/a.ts" });
+        await send({ type: "shelveSave", name: "work", paths: ["src/a.ts"] });
+        await send({ type: "shelfPop", index: 0 });
+        await send({ type: "shelfApply", index: 0 });
+        showWarningMessage.mockResolvedValueOnce("Delete");
+        await send({ type: "shelfDelete", index: 0 });
+        await send({ type: "showShelfDiff", index: 0, path: "src/a.ts" });
+        await send({ type: "openFile", path: "src/a.ts" });
+        showWarningMessage.mockResolvedValueOnce("Delete");
+        await send({ type: "deleteFile", path: "src/a.ts" });
+        await send({ type: "showHistory", path: "src/a.ts" });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: selected", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
+        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: push", false);
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "lastCommitMessage", message: "last message" });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "amendBranchCommits",
+            commits: [
+                { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
+            ],
+        });
+        expect(gitOps.rollbackFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        expect(executeCommand).toHaveBeenCalledWith("git.openChange", expect.any(Object));
+        expect(gitOps.shelveSave).toHaveBeenCalledWith(["src/a.ts"], "work");
+        expect(gitOps.shelvePop).toHaveBeenCalledWith(0);
+        expect(gitOps.shelveApply).toHaveBeenCalledWith(0);
+        expect(gitOps.shelveDelete).toHaveBeenCalledWith(0);
+        expect(gitOps.getShelvedFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(gitOps.getFileHistory).toHaveBeenCalledWith("src/a.ts");
+        expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
+        expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
+        expect(fileCounts.length).toBeGreaterThan(0);
     });
 
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {

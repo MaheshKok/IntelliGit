@@ -178,8 +178,7 @@ export class MergeConflictSessionPanel {
 
     private getFilePath(value: unknown): string | null {
         if (typeof value !== "string") return null;
-        const filePath = value.trim();
-        return filePath ? filePath : null;
+        return value.length > 0 ? value : null;
     }
 
     private isAlive(): boolean {

@@ -218,26 +218,8 @@ function buildSegments(
             continue;
         }
 
-        // Coalesce overlapping edits across both sides so we do not skip a later
-        // edit whose baseStart falls inside the range already expanded by the
-        // opposite side.
-        let endBase = Math.max(oursEdit?.baseEnd ?? bi, theirsEdit?.baseEnd ?? bi);
-        let overlappingOurs = collectOverlappingEdits(oursMap, bi, endBase);
-        let overlappingTheirs = collectOverlappingEdits(theirsMap, bi, endBase);
-        while (true) {
-            const nextEndBase = Math.max(
-                endBase,
-                ...overlappingOurs.map((edit) => edit.baseEnd),
-                ...overlappingTheirs.map((edit) => edit.baseEnd),
-            );
-            if (nextEndBase === endBase) break;
-            endBase = nextEndBase;
-            overlappingOurs = collectOverlappingEdits(oursMap, bi, endBase);
-            overlappingTheirs = collectOverlappingEdits(theirsMap, bi, endBase);
-        }
-
-        const hasOursEdit = overlappingOurs.length > 0;
-        const hasTheirsEdit = overlappingTheirs.length > 0;
+        const { endBase, overlappingOurs, overlappingTheirs, hasOursEdit, hasTheirsEdit } =
+            collectCoalescedEdits(oursMap, theirsMap, bi);
 
         const oLines = buildSideLinesForBaseSpan(
             baseLines,
@@ -254,27 +236,18 @@ function buildSegments(
             overlappingTheirs,
         );
 
-        // If both sides made the same change, it's not a conflict
-        if (arraysEqual(oLines, tLines, options)) {
-            if (oLines.length > 0) {
-                segments.push({ type: "common", lines: oLines });
-            }
-        } else {
-            const changeKind: ConflictChangeKind =
-                hasOursEdit && hasTheirsEdit
-                    ? "conflict"
-                    : hasOursEdit
-                      ? "ours-only"
-                      : "theirs-only";
-            segments.push({
-                type: "conflict",
-                id: conflictId++,
-                changeKind,
+        conflictId = appendResolvedSegment(
+            segments,
+            {
+                baseLines: baseLines.slice(bi, endBase),
                 oursLines: oLines,
                 theirsLines: tLines,
-                baseLines: baseLines.slice(bi, endBase),
-            });
-        }
+                hasOursEdit,
+                hasTheirsEdit,
+            },
+            conflictId,
+            options,
+        );
 
         if (endBase === cursor) {
             // Pure insertion hunks do not consume base lines. Mark this position as
@@ -294,6 +267,87 @@ function buildSegments(
     }
 
     return mergeAdjacentCommon(segments);
+}
+
+interface CoalescedEdits {
+    endBase: number;
+    overlappingOurs: EditRange[];
+    overlappingTheirs: EditRange[];
+    hasOursEdit: boolean;
+    hasTheirsEdit: boolean;
+}
+
+function collectCoalescedEdits(
+    oursMap: Map<number, EditRange>,
+    theirsMap: Map<number, EditRange>,
+    baseIndex: number,
+): CoalescedEdits {
+    // Coalesce overlapping edits across both sides so we do not skip a later
+    // edit whose baseStart falls inside the range already expanded by the
+    // opposite side.
+    let endBase = Math.max(
+        oursMap.get(baseIndex)?.baseEnd ?? baseIndex,
+        theirsMap.get(baseIndex)?.baseEnd ?? baseIndex,
+    );
+    let overlappingOurs = collectOverlappingEdits(oursMap, baseIndex, endBase);
+    let overlappingTheirs = collectOverlappingEdits(theirsMap, baseIndex, endBase);
+    while (true) {
+        const nextEndBase = Math.max(
+            endBase,
+            ...overlappingOurs.map((edit) => edit.baseEnd),
+            ...overlappingTheirs.map((edit) => edit.baseEnd),
+        );
+        if (nextEndBase === endBase) break;
+        endBase = nextEndBase;
+        overlappingOurs = collectOverlappingEdits(oursMap, baseIndex, endBase);
+        overlappingTheirs = collectOverlappingEdits(theirsMap, baseIndex, endBase);
+    }
+
+    return {
+        endBase,
+        overlappingOurs,
+        overlappingTheirs,
+        hasOursEdit: overlappingOurs.length > 0,
+        hasTheirsEdit: overlappingTheirs.length > 0,
+    };
+}
+
+interface SegmentResolution {
+    baseLines: string[];
+    oursLines: string[];
+    theirsLines: string[];
+    hasOursEdit: boolean;
+    hasTheirsEdit: boolean;
+}
+
+function appendResolvedSegment(
+    segments: MergeSegment[],
+    resolution: SegmentResolution,
+    conflictId: number,
+    options: MergeDiffOptions,
+): number {
+    // If both sides made the same change, it's not a conflict
+    if (arraysEqual(resolution.oursLines, resolution.theirsLines, options)) {
+        if (resolution.oursLines.length > 0) {
+            segments.push({ type: "common", lines: resolution.oursLines });
+        }
+        return conflictId;
+    }
+
+    segments.push({
+        type: "conflict",
+        id: conflictId,
+        changeKind: getConflictChangeKind(resolution.hasOursEdit, resolution.hasTheirsEdit),
+        oursLines: resolution.oursLines,
+        theirsLines: resolution.theirsLines,
+        baseLines: resolution.baseLines,
+    });
+    return conflictId + 1;
+}
+
+function getConflictChangeKind(hasOursEdit: boolean, hasTheirsEdit: boolean): ConflictChangeKind {
+    if (hasOursEdit && hasTheirsEdit) return "conflict";
+    return hasOursEdit ? "ours-only" : "theirs-only";
 }
 
 function buildBaseEditMap(edits: EditRange[]): Map<number, EditRange> {

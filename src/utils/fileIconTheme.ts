@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
 import { parse as parseJsonc } from "jsonc-parser";
+import { createLanguageAssociations, type LanguageAssociations } from "./languageAssociations";
 import type {
     CommitFile,
     ThemeFolderIconMap,
@@ -9,7 +10,6 @@ import type {
     ThemeTreeIcon,
     WorkingFile,
 } from "../types";
-
 interface IconDefinition {
     iconPath?: string;
     fontCharacter?: string;
@@ -17,12 +17,10 @@ interface IconDefinition {
     fontId?: string;
     baseDir: string;
 }
-
 interface ThemeFontSource {
     path: string;
     format?: string;
 }
-
 interface ThemeFontDefinition {
     id: string;
     baseDir: string;
@@ -31,7 +29,6 @@ interface ThemeFontDefinition {
     style?: string;
     size?: string;
 }
-
 interface ParsedIconTheme {
     iconDefinitions: Record<string, IconDefinition>;
     file?: string;
@@ -49,17 +46,14 @@ interface ParsedIconTheme {
     fonts: Record<string, ThemeFontDefinition>;
     defaultFontId?: string;
 }
-
 interface IconThemeContribution {
     id: string;
     path: string;
 }
-
 export interface ThemeFolderIcons {
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
 }
-
 const EMPTY_THEME: ParsedIconTheme = {
     iconDefinitions: {},
     fileExtensions: {},
@@ -71,7 +65,6 @@ const EMPTY_THEME: ParsedIconTheme = {
     folderNamesExpanded: {},
     fonts: {},
 };
-
 function normalizeMap(input: unknown): Record<string, string> {
     if (!input || typeof input !== "object") return {};
     const out: Record<string, string> = {};
@@ -80,7 +73,6 @@ function normalizeMap(input: unknown): Record<string, string> {
     }
     return out;
 }
-
 function parseFonts(
     section: Record<string, unknown>,
     baseDir: string,
@@ -91,7 +83,6 @@ function parseFonts(
     const out: Record<string, ThemeFontDefinition> = {};
     const rawFonts = section.fonts;
     if (!Array.isArray(rawFonts)) return { fonts: out };
-
     for (const font of rawFonts) {
         if (!font || typeof font !== "object") continue;
         const typed = font as Record<string, unknown>;
@@ -105,8 +96,6 @@ function parseFonts(
                 typeof (entry as Record<string, unknown>).path === "string",
         );
         if (validEntries.length === 0) continue;
-
-        // Select best font format by priority
         const preferredFormats = ["woff2", "woff", "ttf", "otf"];
         const srcEntry =
             preferredFormats.reduce<Record<string, unknown> | undefined>((best, fmt) => {
@@ -116,7 +105,6 @@ function parseFonts(
                     return p.endsWith(`.${fmt}`);
                 });
             }, undefined) ?? validEntries[0];
-
         const srcPath = srcEntry.path as string;
         const format = typeof srcEntry.format === "string" ? srcEntry.format : undefined;
         out[id] = {
@@ -131,11 +119,9 @@ function parseFonts(
             size: typeof typed.size === "string" ? typed.size : undefined,
         };
     }
-
     const defaultFontId = Object.keys(out)[0];
     return { fonts: out, defaultFontId };
 }
-
 function parseThemeSection(section: unknown, baseDir: string): ParsedIconTheme {
     if (!section || typeof section !== "object") return { ...EMPTY_THEME };
     const raw = section as Record<string, unknown>;
@@ -160,7 +146,6 @@ function parseThemeSection(section: unknown, baseDir: string): ParsedIconTheme {
             };
         }
     }
-
     const parsedFonts = parseFonts(raw, baseDir);
     return {
         iconDefinitions,
@@ -181,7 +166,6 @@ function parseThemeSection(section: unknown, baseDir: string): ParsedIconTheme {
         defaultFontId: parsedFonts.defaultFontId,
     };
 }
-
 function mergeTheme(base: ParsedIconTheme, overlay: ParsedIconTheme): ParsedIconTheme {
     return {
         iconDefinitions: { ...base.iconDefinitions, ...overlay.iconDefinitions },
@@ -204,7 +188,6 @@ function mergeTheme(base: ParsedIconTheme, overlay: ParsedIconTheme): ParsedIcon
         defaultFontId: overlay.defaultFontId ?? base.defaultFontId,
     };
 }
-
 function tryParseJson(text: string): Record<string, unknown> | null {
     try {
         return parseJsonc(text) as Record<string, unknown>;
@@ -212,11 +195,9 @@ function tryParseJson(text: string): Record<string, unknown> | null {
         return null;
     }
 }
-
 function resolveExtendsPath(themePath: string, extendsValue: string): string {
     return path.resolve(path.dirname(themePath), extendsValue);
 }
-
 function createFileUri(filePath: string): vscode.Uri | null {
     try {
         return vscode.Uri.file(filePath);
@@ -224,7 +205,6 @@ function createFileUri(filePath: string): vscode.Uri | null {
         return null;
     }
 }
-
 function pickVariantSection(
     raw: Record<string, unknown>,
     kind: vscode.ColorThemeKind,
@@ -244,7 +224,6 @@ function pickVariantSection(
     }
     return null;
 }
-
 async function loadThemeRecursive(
     themeFilePath: string,
     colorThemeKind: vscode.ColorThemeKind,
@@ -253,11 +232,9 @@ async function loadThemeRecursive(
     const normalizedPath = path.resolve(themeFilePath);
     if (visited.has(normalizedPath)) return { ...EMPTY_THEME };
     visited.add(normalizedPath);
-
     const rawText = await fs.readFile(normalizedPath, "utf8");
     const rawTheme = tryParseJson(rawText);
     if (!rawTheme) return { ...EMPTY_THEME };
-
     let merged = { ...EMPTY_THEME };
     if (typeof rawTheme.extends === "string") {
         const parentPath = resolveExtendsPath(normalizedPath, rawTheme.extends);
@@ -269,10 +246,8 @@ async function loadThemeRecursive(
             console.warn(
                 `Failed to load extended icon theme '${parentPath}' from '${normalizedPath}': ${message}`,
             );
-            // Gracefully degrade to the current file when parent theme resolution fails.
         }
     }
-
     merged = mergeTheme(merged, parseThemeSection(rawTheme, path.dirname(normalizedPath)));
     const variant = pickVariantSection(rawTheme, colorThemeKind);
     if (variant) {
@@ -280,7 +255,6 @@ async function loadThemeRecursive(
     }
     return merged;
 }
-
 function decodeFontCharacter(raw: string): string | undefined {
     const value = raw.trim();
     const slashHexMatch = value.match(/^\\([a-fA-F0-9]+)$/);
@@ -288,24 +262,19 @@ function decodeFontCharacter(raw: string): string | undefined {
         const codePoint = Number.parseInt(slashHexMatch[1], 16);
         if (Number.isFinite(codePoint)) return String.fromCodePoint(codePoint);
     }
-
     const unicodeMatch = value.match(/^\\u([a-fA-F0-9]{4})$/);
     if (unicodeMatch) {
         const codePoint = Number.parseInt(unicodeMatch[1], 16);
         if (Number.isFinite(codePoint)) return String.fromCodePoint(codePoint);
     }
-
     return value.length > 0 ? value : undefined;
 }
-
 function sanitizeFontToken(value: string): string {
     return value.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
-
 function getFolderNameLookupKeys(name: string): string[] {
     const normalized = name.trim().toLowerCase();
     if (!normalized) return [];
-
     const keys = new Set<string>([normalized]);
     const slashNormalized = normalized.replace(/\\/g, "/").replace(/\s*\/\s*/g, "/");
     keys.add(slashNormalized);
@@ -315,7 +284,6 @@ function getFolderNameLookupKeys(name: string): string[] {
     }
     return Array.from(keys);
 }
-
 export class FileIconThemeResolver {
     private languageCache:
         | {
@@ -323,7 +291,6 @@ export class FileIconThemeResolver {
               byFilename: Map<string, string>;
           }
         | undefined;
-
     private themeCache:
         | {
               key: string;
@@ -332,9 +299,7 @@ export class FileIconThemeResolver {
               fingerprint: string;
           }
         | undefined;
-
     private readonly extensionsChangeDisposable: vscode.Disposable | undefined;
-
     constructor(private readonly webview: vscode.Webview) {
         try {
             const extensionsApi = (
@@ -350,18 +315,14 @@ export class FileIconThemeResolver {
                     this.themeCache = undefined;
                 });
             }
-        } catch {
-            // Ignore environments that do not expose vscode.extensions.
-        }
+        } catch {}
     }
-
     private resolveConfiguredThemeId(): string | undefined {
         const config = vscode.workspace.getConfiguration("workbench");
         const direct = config.get<string | null>("iconTheme");
         if (typeof direct === "string" && direct.trim().length > 0) {
             return direct.trim();
         }
-
         const inspected = config.inspect<string | null>("iconTheme");
         const candidates = [
             inspected?.workspaceFolderValue,
@@ -374,10 +335,8 @@ export class FileIconThemeResolver {
                 return candidate.trim();
             }
         }
-
         return undefined;
     }
-
     private resolveThemeContribution(): {
         extensionPath: string;
         contribution: IconThemeContribution;
@@ -390,7 +349,6 @@ export class FileIconThemeResolver {
                 vscode.extensions as unknown as { all?: vscode.Extension<unknown>[] }
             ).all;
             if (!Array.isArray(allExtensions)) return null;
-
             for (const ext of allExtensions) {
                 const iconThemes = (
                     ext.packageJSON as {
@@ -412,16 +370,13 @@ export class FileIconThemeResolver {
         }
         return null;
     }
-
     private async getParsedTheme(): Promise<{ themeId: string; parsed: ParsedIconTheme } | null> {
         const contribution = this.resolveThemeContribution();
         if (!contribution) return null;
-
         const themeFilePath = path.resolve(
             contribution.extensionPath,
             contribution.contribution.path,
         );
-
         // Build a partial key without fingerprint to check if we can reuse cached fingerprint
         const partialKey = [
             contribution.themeId,
@@ -429,7 +384,6 @@ export class FileIconThemeResolver {
             contribution.extensionPath,
             contribution.contribution.path,
         ].join("|");
-
         // Reuse cached fingerprint if the contribution path hasn't changed
         let themeFileFingerprint: string;
         if (this.themeCache?.fingerprint && this.themeCache.key.startsWith(partialKey + "|")) {
@@ -437,12 +391,10 @@ export class FileIconThemeResolver {
         } else {
             themeFileFingerprint = await this.getThemeFileFingerprint(themeFilePath);
         }
-
         const key = `${partialKey}|${themeFileFingerprint}`;
         if (this.themeCache?.key === key) {
             return { themeId: this.themeCache.themeId, parsed: this.themeCache.parsed };
         }
-
         try {
             const parsed = await loadThemeRecursive(
                 themeFilePath,
@@ -460,7 +412,6 @@ export class FileIconThemeResolver {
             return null;
         }
     }
-
     private async getThemeFileFingerprint(themeFilePath: string): Promise<string> {
         try {
             const stat = await fs.stat(themeFilePath);
@@ -469,86 +420,28 @@ export class FileIconThemeResolver {
             return "unknown";
         }
     }
-
-    private getLanguageAssociations(): {
-        byExtension: Map<string, string>;
-        byFilename: Map<string, string>;
-    } {
+    private getLanguageAssociations(): LanguageAssociations {
         if (this.languageCache) return this.languageCache;
-
-        const byExtension = new Map<string, string>();
-        const byFilename = new Map<string, string>();
-        const allExtensions = (
-            vscode.extensions as unknown as { all?: vscode.Extension<unknown>[] }
-        ).all;
-        if (Array.isArray(allExtensions)) {
-            for (const ext of allExtensions) {
-                const contributedLanguages = (
-                    ext.packageJSON as {
-                        contributes?: {
-                            languages?: Array<{
-                                id?: string;
-                                extensions?: string[];
-                                filenames?: string[];
-                            }>;
-                        };
-                    }
-                )?.contributes?.languages;
-                if (!Array.isArray(contributedLanguages)) continue;
-                for (const language of contributedLanguages) {
-                    if (!language || typeof language.id !== "string") continue;
-                    const languageId = language.id.toLowerCase();
-
-                    if (Array.isArray(language.extensions)) {
-                        for (const extName of language.extensions) {
-                            if (typeof extName !== "string") continue;
-                            const key = extName.toLowerCase();
-                            if (!key.startsWith(".")) continue;
-                            if (!byExtension.has(key)) {
-                                byExtension.set(key, languageId);
-                            }
-                        }
-                    }
-
-                    if (Array.isArray(language.filenames)) {
-                        for (const filename of language.filenames) {
-                            if (typeof filename !== "string") continue;
-                            const key = filename.toLowerCase();
-                            if (!byFilename.has(key)) {
-                                byFilename.set(key, languageId);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        this.languageCache = { byExtension, byFilename };
+        this.languageCache = createLanguageAssociations();
         return this.languageCache;
     }
-
     private resolveLanguageIdForPath(filePath: string): string | undefined {
         const { byExtension, byFilename } = this.getLanguageAssociations();
         const baseName = path.basename(filePath).toLowerCase();
-
         const byName = byFilename.get(baseName);
         if (byName) return byName;
-
         const dotPositions: number[] = [];
         for (let i = 0; i < baseName.length; i++) {
             if (baseName.charAt(i) === ".") dotPositions.push(i);
         }
-
         for (const dotIndex of dotPositions) {
             if (dotIndex >= baseName.length - 1) continue;
             const candidate = baseName.slice(dotIndex);
             const lang = byExtension.get(candidate);
             if (lang) return lang;
         }
-
         return undefined;
     }
-
     private toWebviewUri(filePath: string): string | undefined {
         const fileUri = createFileUri(filePath);
         if (!fileUri) return undefined;
@@ -558,11 +451,9 @@ export class FileIconThemeResolver {
             return undefined;
         }
     }
-
     private fontFamilyName(themeId: string, fontId: string): string {
         return `intelligit-theme-${sanitizeFontToken(themeId)}-${sanitizeFontToken(fontId)}`;
     }
-
     private resolveIcon(
         iconId: string | undefined,
         themeId: string,
@@ -571,14 +462,12 @@ export class FileIconThemeResolver {
         if (!iconId) return undefined;
         const definition = theme.iconDefinitions[iconId];
         if (!definition) return undefined;
-
         if (definition.iconPath) {
             const absolutePath = path.resolve(definition.baseDir, definition.iconPath);
             const uri = this.toWebviewUri(absolutePath);
             if (!uri) return undefined;
             return { uri };
         }
-
         if (definition.fontCharacter) {
             const glyph = decodeFontCharacter(definition.fontCharacter);
             if (!glyph) return undefined;
@@ -593,20 +482,16 @@ export class FileIconThemeResolver {
                 fontStyle: font?.style,
             };
         }
-
         return undefined;
     }
-
     private resolveFileIconForPath(
         filePath: string,
         themeId: string,
         theme: ParsedIconTheme,
     ): ThemeTreeIcon | undefined {
         const baseName = path.basename(filePath).toLowerCase();
-
         const fileNameIcon = this.resolveIcon(theme.fileNames[baseName], themeId, theme);
         if (fileNameIcon) return fileNameIcon;
-
         const firstDot = baseName.indexOf(".");
         if (firstDot >= 0) {
             let ext = baseName.slice(firstDot + 1);
@@ -618,16 +503,13 @@ export class FileIconThemeResolver {
                 ext = ext.slice(nextDot + 1);
             }
         }
-
         const languageId = this.resolveLanguageIdForPath(filePath);
         if (languageId) {
             const languageIcon = this.resolveIcon(theme.languageIds[languageId], themeId, theme);
             if (languageIcon) return languageIcon;
         }
-
         return this.resolveIcon(theme.file, themeId, theme);
     }
-
     private resolveFolderIconForName(
         name: string,
         isExpanded: boolean,
@@ -641,46 +523,37 @@ export class FileIconThemeResolver {
                 : (theme.rootFolder ?? theme.folder);
             return this.resolveIcon(rootIconId, themeId, theme);
         }
-
         for (const key of keys) {
             const rootNamedIconId = isExpanded
                 ? (theme.rootFolderNamesExpanded[key] ?? theme.rootFolderNames[key])
                 : theme.rootFolderNames[key];
             const rootNamedIcon = this.resolveIcon(rootNamedIconId, themeId, theme);
             if (rootNamedIcon) return rootNamedIcon;
-
             const namedIconId = isExpanded
                 ? (theme.folderNamesExpanded[key] ?? theme.folderNames[key])
                 : theme.folderNames[key];
             const namedIcon = this.resolveIcon(namedIconId, themeId, theme);
             if (namedIcon) return namedIcon;
         }
-
         const fallbackIconId = isExpanded ? (theme.folderExpanded ?? theme.folder) : theme.folder;
-
         return this.resolveIcon(fallbackIconId, themeId, theme);
     }
-
     async decoratePathItems<T extends { path: string; icon?: ThemeTreeIcon }>(
         files: T[],
     ): Promise<T[]> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return files;
-
         return files.map((file) => ({
             ...file,
             icon: this.resolveFileIconForPath(file.path, resolved.themeId, resolved.parsed),
         }));
     }
-
     async decorateWorkingFiles(files: WorkingFile[]): Promise<WorkingFile[]> {
         return this.decoratePathItems(files);
     }
-
     async decorateCommitFiles(files: CommitFile[]): Promise<CommitFile[]> {
         return this.decoratePathItems(files);
     }
-
     async getFolderIcons(): Promise<ThemeFolderIcons> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return {};
@@ -693,16 +566,13 @@ export class FileIconThemeResolver {
             ),
         };
     }
-
     async getFolderIconsByName(folderNames: string[]): Promise<ThemeFolderIconMap> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return {};
-
         const byName: ThemeFolderIconMap = {};
         const deduped = new Set<string>(
             folderNames.map((name) => name.trim().toLowerCase()).filter((name) => name.length > 0),
         );
-
         for (const name of deduped) {
             byName[name] = {
                 collapsed: this.resolveFolderIconForName(
@@ -719,14 +589,11 @@ export class FileIconThemeResolver {
                 ),
             };
         }
-
         return byName;
     }
-
     async getThemeFonts(): Promise<ThemeIconFont[]> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return [];
-
         const fonts: ThemeIconFont[] = [];
         for (const font of Object.values(resolved.parsed.fonts)) {
             const absolutePath = path.resolve(font.baseDir, font.source.path);
@@ -742,13 +609,11 @@ export class FileIconThemeResolver {
         }
         return fonts;
     }
-
     getThemeResourceRootUri(): vscode.Uri | null {
         const contribution = this.resolveThemeContribution();
         if (!contribution) return null;
         return createFileUri(contribution.extensionPath);
     }
-
     dispose(): void {
         this.extensionsChangeDisposable?.dispose();
     }

@@ -10,7 +10,9 @@ import {
 const tempRoots: string[] = [];
 
 async function makeTempWorkspace(): Promise<string> {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-discovery-"));
+    const root = await fs.realpath(
+        await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-discovery-")),
+    );
     tempRoots.push(root);
     return root;
 }
@@ -74,6 +76,18 @@ describe("discoverGitRepositories", () => {
         const repos = await discoverGitRepositories([workspace], { resolveGitRoot });
 
         expect(repos).toEqual([{ root: path.resolve(app), label: "app" }]);
+    });
+
+    it("drops resolved git roots outside the workspace real path", async () => {
+        const workspace = await makeTempWorkspace();
+        const outside = await makeTempWorkspace();
+        await makeGitMarker(workspace);
+        await makeGitMarker(outside);
+        const resolveGitRoot = vi.fn(async () => outside);
+
+        const repos = await discoverGitRepositories([workspace], { resolveGitRoot });
+
+        expect(repos).toEqual([]);
     });
 
     it("does not scan ignored directories", async () => {

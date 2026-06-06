@@ -20,22 +20,22 @@ const typeCheckedConfigs = tseslint.configs.recommendedTypeChecked.map((config) 
     files: TYPED_TS_FILES,
 }));
 
-const stagedTypeAwareRules = {
-    "@typescript-eslint/await-thenable": "warn",
-    "@typescript-eslint/no-base-to-string": "warn",
-    "@typescript-eslint/no-floating-promises": "warn",
-    "@typescript-eslint/no-misused-promises": "warn",
-    "@typescript-eslint/no-unnecessary-type-assertion": "warn",
-    "@typescript-eslint/no-unsafe-argument": "warn",
-    "@typescript-eslint/no-unsafe-assignment": "warn",
-    "@typescript-eslint/no-unsafe-call": "warn",
-    "@typescript-eslint/no-unsafe-member-access": "warn",
-    "@typescript-eslint/no-unsafe-return": "warn",
-    "@typescript-eslint/require-await": "warn",
+const typeAwareSafetyRules = {
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-base-to-string": "error",
+    "@typescript-eslint/no-floating-promises": "error",
+    "@typescript-eslint/no-misused-promises": "error",
+    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    "@typescript-eslint/no-unsafe-argument": "error",
+    "@typescript-eslint/no-unsafe-assignment": "error",
+    "@typescript-eslint/no-unsafe-call": "error",
+    "@typescript-eslint/no-unsafe-member-access": "error",
+    "@typescript-eslint/no-unsafe-return": "error",
+    "@typescript-eslint/require-await": "error",
 };
 
 const sonarRules = {
-    "sonarjs/cognitive-complexity": ["warn", 150],
+    "sonarjs/cognitive-complexity": ["error", 40],
     "sonarjs/no-all-duplicated-branches": "warn",
     "sonarjs/no-collapsible-if": "warn",
     "sonarjs/no-duplicated-branches": "warn",
@@ -84,7 +84,7 @@ export default defineConfig([
         },
         rules: {
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-            ...stagedTypeAwareRules,
+            ...typeAwareSafetyRules,
             ...sonarRules,
         },
     },
@@ -117,10 +117,10 @@ export default defineConfig([
             "react-hooks/rules-of-hooks": "error",
             "react-hooks/exhaustive-deps": "warn",
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-            ...stagedTypeAwareRules,
+            ...typeAwareSafetyRules,
             ...sonarRules,
             "@typescript-eslint/no-misused-promises": [
-                "warn",
+                "error",
                 {
                     checksVoidReturn: {
                         attributes: false,

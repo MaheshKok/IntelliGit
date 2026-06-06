@@ -1,7 +1,7 @@
 // Entry point for the 3-way merge editor webview. Renders three columns:
 // Ours (left), Result (middle), Theirs (right) with per-hunk controls.
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type {
     ConflictSegment,

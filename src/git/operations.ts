@@ -9,134 +9,67 @@ import type {
     MergeConflictFile,
     AmendBranchCommitSummary,
 } from "../types";
-import { getErrorMessage, sanitizeErrorMessage } from "../utils/errors";
-
-declare const require: (id: string) => unknown;
-
-const FIELD_SEP = "<<|>>";
-const RECORD_SEP = "<<||>>";
-const OUTPUT_CHANNEL_NAME = "IntelliGit";
-
-type VsCodeApi = typeof import("vscode");
-type OutputChannelLike = { appendLine: (value: string) => void };
+import { getErrorMessage } from "../utils/errors";
+import {
+    assertValidBranchName,
+    assertValidRemoteName,
+    isValidBranchName,
+    isValidRemoteName,
+} from "../utils/gitRefs";
+import {
+    assertRepoRelativeGitPath,
+    assertStashIndex,
+    commitStatsUnavailableMessage,
+    getVsCodeApi,
+    logGitOpsWarning,
+    stagedStatsUnavailableMessage,
+    unstagedStatsUnavailableMessage,
+} from "./operationSupport";
+import {
+    AMEND_BRANCH_COMMIT_FORMAT,
+    COMMIT_DETAIL_FORMAT,
+    COMMIT_LOG_FORMAT,
+    isUnmergedConflictCode,
+    mapCommitFileStatus,
+    mapConflictSideState,
+    parseAmendBranchCommitSummaries,
+    parseCommitDetail,
+    parseCommitLog,
+    parseFileHistoryEntries,
+    parseStashEntries,
+} from "./parsers";
+import {
+    applyNumstatToWorkingFiles,
+    parseAlreadyStagedDeletedPaths,
+    parseWorkingTreeStatus,
+    planRollbackFiles,
+} from "./workingTree";
+import { parseShelvedFiles } from "./stashFiles";
+import { normalizeGitNumstatPath } from "./numstat";
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
-type GitOpsWarningOptions = { userWarningMessage?: string };
-
-let cachedVsCodeApi: VsCodeApi | null | undefined;
-let outputChannel: OutputChannelLike | undefined;
-
-function getVsCodeApi(): VsCodeApi | null {
-    if (cachedVsCodeApi !== undefined) return cachedVsCodeApi;
-    try {
-        cachedVsCodeApi = require("vscode") as VsCodeApi;
-    } catch {
-        cachedVsCodeApi = null;
-    }
-    return cachedVsCodeApi;
-}
-
-function getOutputChannel(): OutputChannelLike {
-    if (outputChannel) return outputChannel;
-    const vscode = getVsCodeApi();
-    outputChannel = vscode
-        ? vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME)
-        : { appendLine: (value: string) => console.warn(value) };
-    return outputChannel;
-}
-
-function logGitOpsWarning(context: string, err: unknown, options?: GitOpsWarningOptions): void {
-    const channel = getOutputChannel();
-    const message = getErrorMessage(err);
-    channel.appendLine(`[GitOps] ${context}: ${message}`);
-    if (err instanceof Error && err.stack) {
-        channel.appendLine(sanitizeErrorMessage(err.stack));
-    }
-    if (options?.userWarningMessage) {
-        const vscode = getVsCodeApi();
-        if (vscode) {
-            void vscode.window.showWarningMessage(options.userWarningMessage);
-        }
-    }
-}
-
-function commitStatsUnavailableMessage(): string {
-    const vscode = getVsCodeApi();
-    return vscode
-        ? vscode.l10n.t("Some commit change stats may be unavailable.")
-        : "Some commit change stats may be unavailable.";
-}
-
-function unstagedStatsUnavailableMessage(): string {
-    const vscode = getVsCodeApi();
-    return vscode
-        ? vscode.l10n.t("Some unstaged change stats may be unavailable.")
-        : "Some unstaged change stats may be unavailable.";
-}
-
-function stagedStatsUnavailableMessage(): string {
-    const vscode = getVsCodeApi();
-    return vscode
-        ? vscode.l10n.t("Some staged change stats may be unavailable.")
-        : "Some staged change stats may be unavailable.";
-}
-
-function assertStashIndex(index: number): void {
-    if (!Number.isInteger(index) || index < 0) {
-        throw new Error(`Invalid stash index: ${index}`);
-    }
-}
-
-function assertRepoRelativeGitPath(filePath: string): string {
-    const trimmed = filePath.trim();
-    if (
-        !trimmed ||
-        trimmed.startsWith("/") ||
-        trimmed.startsWith("\\") ||
-        /^[a-zA-Z]:[\\/]/.test(trimmed)
-    ) {
-        throw new Error(`Rejected non-relative path: ${filePath}`);
-    }
-    if (/[\0\r\n]/.test(trimmed)) {
-        throw new Error(`Rejected path containing control characters: ${filePath}`);
-    }
-    const normalized = trimmed.replace(/\\/g, "/");
-    const segments = normalized.split("/").filter((segment) => segment && segment !== ".");
-    if (segments.length === 0) {
-        throw new Error(`Rejected repo root path: ${filePath}`);
-    }
-    if (segments.some((segment) => segment === "..")) {
-        throw new Error(`Rejected path escaping repo root: ${filePath}`);
-    }
-    return segments.join("/");
-}
-
 export class UpstreamPushDeclinedError extends Error {
     constructor() {
         super("Upstream push declined by user");
         this.name = "UpstreamPushDeclinedError";
     }
 }
-
 export class GitOps {
     constructor(
         private readonly executor: GitExecutor,
         private readonly confirmSetUpstreamPush?: ConfirmSetUpstreamPush,
     ) {}
-
     async init(repoPath: string): Promise<string> {
         const executor = new GitExecutor(repoPath);
         return executor.run(["init"]);
     }
-
     async isRepository(): Promise<boolean> {
         try {
-            await this.executor.run(["rev-parse", "--is-inside-work-tree"]);
-            return true;
+            const out = await this.executor.run(["rev-parse", "--is-inside-work-tree"]);
+            return out.trim() === "true";
         } catch {
             return false;
         }
     }
-
     async hasAnyCommits(): Promise<boolean> {
         try {
             const out = await this.executor.run(["rev-list", "--count", "HEAD"]);
@@ -145,7 +78,6 @@ export class GitOps {
             return false;
         }
     }
-
     async getRemotes(): Promise<string[]> {
         try {
             const out = await this.executor.run(["remote"]);
@@ -153,14 +85,14 @@ export class GitOps {
                 .trim()
                 .split("\n")
                 .map((r) => r.trim())
-                .filter(Boolean);
+                .filter(isValidRemoteName);
         } catch {
             return [];
         }
     }
-
     async branchHasUpstream(branch: string): Promise<boolean> {
         try {
+            assertValidBranchName(branch);
             const out = await this.executor.run([
                 "rev-parse",
                 "--abbrev-ref",
@@ -171,47 +103,46 @@ export class GitOps {
             return false;
         }
     }
-
     async addRemote(name: string, url: string): Promise<void> {
+        assertValidRemoteName(name);
         await this.executor.run(["remote", "add", name, url]);
     }
-
     async removeRemote(name: string): Promise<void> {
+        assertValidRemoteName(name);
         await this.executor.run(["remote", "remove", name]);
     }
-
     async pushWithUpstream(remote: string, branch: string): Promise<string> {
+        assertValidRemoteName(remote);
+        assertValidBranchName(branch);
         return this.executor.run(["push", "-u", remote, branch]);
     }
-
     async getRepositoryRoot(): Promise<string> {
         const root = await this.executor.run(["rev-parse", "--show-toplevel"]);
         return root.trim();
     }
-
     async getBranches(): Promise<Branch[]> {
         const format =
             "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)";
         const result = await this.executor.run(["branch", "-a", `--format=${format}`]);
-
         const branches: Branch[] = [];
         for (const line of result.trim().split("\n")) {
             if (!line.trim()) continue;
             const [refname, name, hash, upstream, track, head] = line.split("\t");
-
             const isRemote = refname.startsWith("refs/remotes/");
-
             // Skip symbolic refs like origin/HEAD (refname:short resolves to just "origin")
             if (refname.endsWith("/HEAD")) continue;
-
+            if (!isValidBranchName(name)) continue;
             let remote: string | undefined;
             if (isRemote) {
                 // refname:short for remote is "origin/main", first segment is the remote name
                 remote = name.split("/")[0];
+                if (!isValidRemoteName(remote)) continue;
             } else if (upstream) {
                 remote = upstream.split("/")[0];
+                if (!isValidRemoteName(remote)) {
+                    remote = undefined;
+                }
             }
-
             let ahead = 0,
                 behind = 0;
             if (track) {
@@ -220,7 +151,6 @@ export class GitOps {
                 if (a) ahead = parseInt(a[1]);
                 if (b) behind = parseInt(b[1]);
             }
-
             branches.push({
                 name,
                 hash,
@@ -234,62 +164,37 @@ export class GitOps {
         }
         return branches;
     }
-
     async getLog(
         maxCount: number = 500,
         branch?: string,
         filterText?: string,
         skip: number = 0,
     ): Promise<Commit[]> {
-        const format =
-            ["%H", "%h", "%s", "%an", "%ae", "%aI", "%P", "%D"].join(FIELD_SEP) + RECORD_SEP;
-
-        const args = ["log", `--max-count=${maxCount}`, `--pretty=format:${format}`];
+        const args = [
+            "log",
+            "-z",
+            `--max-count=${maxCount}`,
+            `--pretty=format:${COMMIT_LOG_FORMAT}`,
+        ];
         if (skip > 0) {
             args.push(`--skip=${skip}`);
         }
-
-        if (branch) {
-            args.push(branch);
-        } else {
-            args.push("--all");
-        }
-
         if (filterText) {
             // Use --fixed-strings to treat the filter as a literal string,
             // preventing ReDoS via git's regex engine on user input.
             args.push(`--grep=${filterText}`, "-i", "--fixed-strings");
         }
-
-        const result = await this.executor.run(args);
-        const commits: Commit[] = [];
-
-        for (const record of result.split(RECORD_SEP)) {
-            const trimmed = record.trim();
-            if (!trimmed) continue;
-
-            const parts = trimmed.split(FIELD_SEP);
-            if (parts.length < 7) continue;
-
-            commits.push({
-                hash: parts[0],
-                shortHash: parts[1],
-                message: parts[2],
-                author: parts[3],
-                email: parts[4],
-                date: parts[5],
-                parentHashes: parts[6] ? parts[6].split(" ").filter(Boolean) : [],
-                refs: parts[7]
-                    ? parts[7]
-                          .split(",")
-                          .map((r) => r.trim())
-                          .filter(Boolean)
-                    : [],
-            });
+        if (branch) {
+            if (!isValidBranchName(branch)) {
+                throw new Error("Invalid branch filter received for git log.");
+            }
+            args.push("--end-of-options", branch);
+        } else {
+            args.push("--all");
         }
-        return commits;
+        const result = await this.executor.run(args);
+        return parseCommitLog(result);
     }
-
     async getUnpushedCommitHashes(): Promise<string[]> {
         try {
             // Commits reachable from local branches but not from any remote-tracking ref.
@@ -304,13 +209,13 @@ export class GitOps {
             return [];
         }
     }
-
     async getCommitDetail(hash: string): Promise<CommitDetail> {
-        const format = ["%H", "%h", "%s", "%b", "%an", "%ae", "%aI", "%P", "%D"].join(FIELD_SEP);
-
-        const info = await this.executor.run(["show", `--format=${format}`, "--no-patch", hash]);
-        const parts = info.trim().split(FIELD_SEP);
-
+        const info = await this.executor.run([
+            "show",
+            `--format=${COMMIT_DETAIL_FORMAT}`,
+            "--no-patch",
+            hash,
+        ]);
         const filesByPath = new Map<string, CommitFile>();
         const upsertFile = (path: string, status: CommitFile["status"]): CommitFile => {
             const existing = filesByPath.get(path);
@@ -332,7 +237,6 @@ export class GitOps {
             filesByPath.set(path, created);
             return created;
         };
-
         const nameStatus = await this.executor.run([
             "diff-tree",
             "--no-commit-id",
@@ -341,7 +245,6 @@ export class GitOps {
             "--name-status",
             hash,
         ]);
-
         for (const line of nameStatus.trim().split("\n")) {
             if (!line.trim()) continue;
             const cols = line.split("\t");
@@ -353,7 +256,6 @@ export class GitOps {
                 upsertFile(path, status);
             }
         }
-
         try {
             const numstat = await this.executor.run([
                 "diff-tree",
@@ -369,7 +271,7 @@ export class GitOps {
                 if (cols.length < 3) continue;
                 const add = cols[0];
                 const del = cols[1];
-                const filePath = cols[cols.length - 1];
+                const filePath = normalizeGitNumstatPath(cols[cols.length - 1]);
                 const file = upsertFile(filePath, "M");
                 const parsedAdd = add === "-" ? 0 : parseInt(add);
                 const parsedDel = del === "-" ? 0 : parseInt(del);
@@ -385,106 +287,12 @@ export class GitOps {
                 userWarningMessage: commitStatsUnavailableMessage(),
             });
         }
-
-        return {
-            hash: parts[0] || hash,
-            shortHash: parts[1] || hash.slice(0, 7),
-            message: parts[2] || "",
-            body: parts[3] || "",
-            author: parts[4] || "",
-            email: parts[5] || "",
-            date: parts[6] || "",
-            parentHashes: parts[7] ? parts[7].split(" ").filter(Boolean) : [],
-            refs: parts[8]
-                ? parts[8]
-                      .split(",")
-                      .map((r) => r.trim())
-                      .filter(Boolean)
-                : [],
-            files: Array.from(filesByPath.values()),
-        };
+        return parseCommitDetail(info, hash, Array.from(filesByPath.values()));
     }
-
     // --- Working tree operations ---
-
     async getStatus(): Promise<WorkingFile[]> {
         const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
-        const files: WorkingFile[] = [];
-        const entries = result.split("\0");
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry) continue;
-            if (entry.length < 4) continue;
-
-            const index = entry.charAt(0);
-            const worktree = entry.charAt(1);
-            const hasStaged = index !== " " && index !== "?";
-            const hasUnstaged = worktree !== " ";
-
-            const stagedStatus = mapStatusCode(index);
-            const unstagedStatus = mapStatusCode(worktree);
-
-            const path = entry.slice(3);
-            if (!path) continue;
-
-            const isRenameOrCopy =
-                index === "R" || index === "C" || worktree === "R" || worktree === "C";
-            if (isRenameOrCopy && i + 1 < entries.length) {
-                // In porcelain -z output, rename/copy emits an extra NUL-terminated source path.
-                i += 1;
-            }
-
-            if (hasStaged && hasUnstaged) {
-                if (stagedStatus) {
-                    files.push({
-                        path,
-                        status: stagedStatus,
-                        staged: true,
-                        additions: 0,
-                        deletions: 0,
-                    });
-                }
-                // Skip only unstaged "M" for newly added files (index === 'A').
-                // A new file edited after staging is still just a new file —
-                // the duplicate "M" row is misleading. Other unstaged statuses
-                // (e.g. "D" for a staged-add then deleted) must still be shown.
-                if (unstagedStatus && !(index === "A" && unstagedStatus === "M")) {
-                    files.push({
-                        path,
-                        status: unstagedStatus,
-                        staged: false,
-                        additions: 0,
-                        deletions: 0,
-                    });
-                }
-            } else if (hasStaged && stagedStatus) {
-                files.push({
-                    path,
-                    status: stagedStatus,
-                    staged: true,
-                    additions: 0,
-                    deletions: 0,
-                });
-            } else if (hasUnstaged && unstagedStatus) {
-                files.push({
-                    path,
-                    status: unstagedStatus,
-                    staged: false,
-                    additions: 0,
-                    deletions: 0,
-                });
-            }
-        }
-
-        // Build keyed lookups for O(1) numstat matching (both value and index)
-        const filesByKey = new Map<string, WorkingFile>();
-        const filesIndexByKey = new Map<string, number>();
-        for (let i = 0; i < files.length; i++) {
-            const key = `${files[i].path}:${files[i].staged}`;
-            filesByKey.set(key, files[i]);
-            filesIndexByKey.set(key, i);
-        }
-
+        const files = parseWorkingTreeStatus(result);
         const applyNumstat = (
             output: string,
             staged: boolean,
@@ -492,33 +300,11 @@ export class GitOps {
             userWarningMessage: string,
         ): void => {
             try {
-                for (const line of output.trim().split("\n")) {
-                    if (!line.trim()) continue;
-                    const cols = line.split("\t");
-                    if (cols.length < 3) continue;
-                    const add = cols[0];
-                    const del = cols[1];
-                    const filePath = cols[cols.length - 1];
-                    const parsedAdd = add === "-" ? 0 : parseInt(add);
-                    const parsedDel = del === "-" ? 0 : parseInt(del);
-                    const key = `${filePath}:${staged}`;
-                    const file = filesByKey.get(key);
-                    if (file) {
-                        const updated = {
-                            ...file,
-                            additions: Number.isNaN(parsedAdd) ? 0 : parsedAdd,
-                            deletions: Number.isNaN(parsedDel) ? 0 : parsedDel,
-                        };
-                        filesByKey.set(key, updated);
-                        const idx = filesIndexByKey.get(key);
-                        if (idx !== undefined) files[idx] = updated;
-                    }
-                }
+                applyNumstatToWorkingFiles(files, output, staged);
             } catch (err) {
                 logGitOpsWarning(`Failed to get ${label} numstat`, err, { userWarningMessage });
             }
         };
-
         // Fetch unstaged and staged numstat in parallel
         const [unstagedStat, stagedStat] = await Promise.all([
             this.executor.run(["diff", "--numstat"]).catch((err) => {
@@ -534,90 +320,58 @@ export class GitOps {
                 return "";
             }),
         ]);
-
         applyNumstat(unstagedStat, false, "unstaged", unstagedStatsUnavailableMessage());
         applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
-
         return files;
     }
-
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
         const pathsToStage = await this.excludeAlreadyStagedDeletedPaths(paths);
         if (pathsToStage.length === 0) return;
-        await this.executor.run(["add", "--", ...pathsToStage]);
+        await this.executor.run(withLiteralPathspecs(["add", "--", ...pathsToStage]));
     }
-
     private async excludeAlreadyStagedDeletedPaths(paths: string[]): Promise<string[]> {
-        const status = await this.executor.run(["status", "--porcelain=v1", "-z", "--", ...paths]);
+        const status = await this.executor.run(
+            withLiteralPathspecs(["status", "--porcelain=v1", "-z", "--", ...paths]),
+        );
         if (!status.trim()) return paths;
-
-        const alreadyStagedDeleted = new Set<string>();
-        const entries = status.split("\0");
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry || entry.length < 4) continue;
-
-            const index = entry.charAt(0);
-            const worktree = entry.charAt(1);
-            const path = entry.slice(3);
-            if (!path) continue;
-
-            const isRenameOrCopy =
-                index === "R" || index === "C" || worktree === "R" || worktree === "C";
-            if (isRenameOrCopy && i + 1 < entries.length) {
-                i += 1;
-            }
-
-            if (index === "D" && worktree === " ") {
-                alreadyStagedDeleted.add(path);
-            }
-        }
-
+        const alreadyStagedDeleted = parseAlreadyStagedDeletedPaths(status);
         return paths.filter((path) => !alreadyStagedDeleted.has(path));
     }
-
     async unstageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        await this.executor.run(["reset", "HEAD", "--", ...paths]);
+        await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...paths]));
     }
-
     async commit(message: string, amend: boolean = false): Promise<string> {
         const args = ["commit", "-m", message];
         if (amend) args.push("--amend");
         return this.executor.run(args);
     }
-
     async push(): Promise<string> {
         try {
             return await this.executor.run(["push"]);
         } catch (err) {
             if (!isNoUpstreamPushError(err)) throw err;
-
-            const suggested = parseSetUpstreamPushSuggestion(err);
-            const branch = suggested?.branch ?? (await this.resolveCurrentBranchNameForPush());
-            const remote = suggested?.remote ?? (await this.resolveDefaultRemoteNameForPush());
+            const branch = await this.resolveCurrentBranchNameForPush();
+            const remote = await this.resolveDefaultRemoteNameForPush();
             if (!branch || !remote) throw err;
-
+            assertValidBranchName(branch);
+            assertValidRemoteName(remote);
             const allowSetUpstream = await this.requestSetUpstreamPush(remote, branch);
             if (!allowSetUpstream) {
                 throw new UpstreamPushDeclinedError();
             }
-
             return this.executor.run(["push", "--set-upstream", remote, branch]);
         }
     }
-
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
     }
-
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
         await this.assertPushRemoteReachable();
         await this.commit(message, amend);
         return this.push();
     }
-
     private async assertPushRemoteReachable(): Promise<void> {
         let upstream: string;
         try {
@@ -627,12 +381,10 @@ export class GitOps {
         } catch {
             return;
         }
-
         if (!upstream || !upstream.includes("/")) return;
-
         const remote = upstream.split("/")[0];
         if (!remote) return;
-
+        assertValidRemoteName(remote);
         try {
             await this.executor.run(["ls-remote", "--exit-code", remote]);
         } catch (err) {
@@ -642,39 +394,35 @@ export class GitOps {
             );
         }
     }
-
     private async resolveCurrentBranchNameForPush(): Promise<string | null> {
         try {
             const raw = await this.executor.run(["rev-parse", "--abbrev-ref", "HEAD"]);
             const branch = raw.trim();
             if (!branch || branch === "HEAD") return null;
+            assertValidBranchName(branch);
             return branch;
         } catch {
             return null;
         }
     }
-
     private async resolveDefaultRemoteNameForPush(): Promise<string | null> {
         try {
             const remotes = await this.executor.run(["remote"]);
             const firstRemote = remotes
                 .split("\n")
                 .map((r) => r.trim())
-                .find((r) => r.length > 0);
+                .find(isValidRemoteName);
             return firstRemote ?? null;
         } catch {
             return null;
         }
     }
-
     private async requestSetUpstreamPush(remote: string, branch: string): Promise<boolean> {
         if (this.confirmSetUpstreamPush) {
             return this.confirmSetUpstreamPush(remote, branch);
         }
-
         const vscode = getVsCodeApi();
         if (!vscode) return false;
-
         const confirmLabel = vscode.l10n.t("Set Upstream and Push");
         const selection = await vscode.window.showWarningMessage(
             vscode.l10n.t(
@@ -686,7 +434,6 @@ export class GitOps {
         );
         return selection === confirmLabel;
     }
-
     async getLastCommitMessage(): Promise<string> {
         try {
             return (await this.executor.run(["log", "-1", "--format=%B"])).trim();
@@ -694,33 +441,12 @@ export class GitOps {
             return "";
         }
     }
-
     /**
      * Commits on the current branch relevant when amending: ahead of @{upstream}
      * if set, otherwise the recent history on HEAD (same idea as IntelliJ amend context).
-     * Uses US/RS field separators in `git log --format` because `%s` may contain tabs.
+     * Uses NUL field separators in `git log --format` because `%s` may contain tabs.
      */
     async getAmendBranchCommits(limit = 80): Promise<AmendBranchCommitSummary[]> {
-        const FIELD_SEP = "\x1f";
-        const RECORD_SEP = "\x1e";
-        const fmt = `%h%x1f%s%x1f%cI%x1e`;
-        const parse = (output: string): AmendBranchCommitSummary[] => {
-            const rows: AmendBranchCommitSummary[] = [];
-            for (const record of output.split(RECORD_SEP)) {
-                const trimmed = record.trim();
-                if (!trimmed) continue;
-                const parts = trimmed.split(FIELD_SEP);
-                if (parts.length < 3) continue;
-                const shortHash = parts[0]?.trim() ?? "";
-                const date = parts[parts.length - 1]?.trim() ?? "";
-                const subject = parts.slice(1, -1).join(FIELD_SEP);
-                if (shortHash) {
-                    rows.push({ shortHash, subject, date });
-                }
-            }
-            return rows;
-        };
-
         try {
             const upstream = (
                 await this.executor.run(["rev-parse", "--abbrev-ref", "@{upstream}"])
@@ -734,10 +460,11 @@ export class GitOps {
                     const out = await this.executor.run([
                         "log",
                         range,
+                        "-z",
                         `--max-count=${limit}`,
-                        `--format=${fmt}`,
+                        `--format=${AMEND_BRANCH_COMMIT_FORMAT}`,
                     ]);
-                    const parsed = parse(out);
+                    const parsed = parseAmendBranchCommitSummaries(out);
                     if (parsed.length > 0) {
                         return parsed;
                     }
@@ -746,246 +473,118 @@ export class GitOps {
         } catch {
             // No upstream or ambiguous ref — fall through to local history.
         }
-
         try {
             const out = await this.executor.run([
                 "log",
                 "HEAD",
+                "-z",
                 `--max-count=${limit}`,
-                `--format=${fmt}`,
+                `--format=${AMEND_BRANCH_COMMIT_FORMAT}`,
             ]);
-            return parse(out);
+            return parseAmendBranchCommitSummaries(out);
         } catch {
             return [];
         }
     }
-
     async rollbackFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
-        const selectedPaths = new Set(paths);
         const status = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
-        const cleanupPaths = new Set<string>();
-        const resetPaths = new Set<string>(paths);
-        const checkoutPaths = new Set<string>(paths);
-        const entries = status.split("\0");
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (!entry || entry.length < 4) continue;
-
-            const index = entry.charAt(0);
-            const worktree = entry.charAt(1);
-            const path = entry.slice(3);
-            if (!path) continue;
-
-            const isRenameOrCopy =
-                index === "R" || index === "C" || worktree === "R" || worktree === "C";
-            const sourcePath = isRenameOrCopy && i + 1 < entries.length ? entries[i + 1] : "";
-            if (isRenameOrCopy && i + 1 < entries.length) {
-                i += 1;
-            }
-            if (!selectedPaths.has(path) && (!sourcePath || !selectedPaths.has(sourcePath))) {
-                continue;
-            }
-
-            if (index === "R" && sourcePath) {
-                resetPaths.add(path);
-                resetPaths.add(sourcePath);
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-                checkoutPaths.add(sourcePath);
-                continue;
-            }
-
-            if (index === "C" && sourcePath) {
-                resetPaths.add(path);
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-                continue;
-            }
-
-            if (index === "?" && worktree === "?") {
-                resetPaths.delete(path);
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-            }
-            if (index === "A") {
-                cleanupPaths.add(path);
-                checkoutPaths.delete(path);
-            }
+        const { resetPaths, checkoutPaths, cleanupPaths } = planRollbackFiles(paths, status);
+        if (resetPaths.length > 0) {
+            await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...resetPaths]));
         }
-
-        if (resetPaths.size > 0) {
-            await this.executor.run(["reset", "HEAD", "--", ...resetPaths]);
+        if (checkoutPaths.length > 0) {
+            await this.executor.run(withLiteralPathspecs(["checkout", "--", ...checkoutPaths]));
         }
-        if (checkoutPaths.size > 0) {
-            await this.executor.run(["checkout", "--", ...checkoutPaths]);
-        }
-        if (cleanupPaths.size > 0) {
-            await this.executor.run(["clean", "-fd", "--", ...cleanupPaths]);
+        if (cleanupPaths.length > 0) {
+            await this.executor.run(withLiteralPathspecs(["clean", "-fd", "--", ...cleanupPaths]));
         }
     }
-
     async rollbackAll(): Promise<void> {
         await this.executor.run(["reset", "--hard", "HEAD"]);
         // Also clean untracked files
         await this.executor.run(["clean", "-fd"]);
     }
-
     // --- Shelf operations (implemented via git stash) ---
-
     async shelveSave(paths?: string[], message: string = "Shelved changes"): Promise<string> {
         const args = ["stash", "push", "--include-untracked", "-m", message];
         if (paths && paths.length > 0) {
             args.push("--", ...paths);
         }
-        return this.executor.run(args);
+        return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args);
     }
-
     async shelvePop(index: number = 0): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "pop", `stash@{${index}}`]);
     }
-
     async shelveApply(index: number = 0): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "apply", `stash@{${index}}`]);
     }
-
     async listShelved(): Promise<StashEntry[]> {
         try {
             const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
-            const entries: StashEntry[] = [];
-            for (const line of result.trim().split("\n")) {
-                if (!line.trim()) continue;
-                const [hash, ref, message, date] = line.split("\t");
-                const indexMatch = ref.match(/\{(\d+)\}/);
-                entries.push({
-                    index: indexMatch ? parseInt(indexMatch[1]) : entries.length,
-                    message: message || "",
-                    date: date || "",
-                    hash: hash || "",
-                });
-            }
-            return entries;
+            return parseStashEntries(result);
         } catch {
             return [];
         }
     }
-
     async shelveDelete(index: number): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
-
     async getShelvedFiles(index: number): Promise<WorkingFile[]> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
-        const files = new Map<string, WorkingFile>();
-
-        const upsert = (path: string, status: WorkingFile["status"] = "M"): WorkingFile => {
-            const existing = files.get(path);
-            if (existing) return existing;
-            const created: WorkingFile = {
-                path,
-                status,
-                staged: false,
-                additions: 0,
-                deletions: 0,
-            };
-            files.set(path, created);
-            return created;
-        };
-
+        let nameStatus = "";
+        let numstat = "";
         try {
-            const nameStatus = await this.executor.run(["stash", "show", "--name-status", ref]);
-            for (const line of nameStatus.trim().split("\n")) {
-                if (!line.trim()) continue;
-                const parts = line.split("\t");
-                if (parts.length < 2) continue;
-                const code = parts[0].trim();
-                const status = mapStatusCode(code[0]) ?? "M";
-                const path =
-                    code.startsWith("R") || code.startsWith("C")
-                        ? (parts[2]?.trim() ?? parts[1]?.trim())
-                        : parts[1]?.trim();
-                if (!path) continue;
-                upsert(path, status);
-            }
+            nameStatus = await this.executor.run(["stash", "show", "--name-status", ref]);
         } catch (err) {
             logGitOpsWarning(`Failed stash show --name-status for ${ref}`, err);
         }
-
         try {
-            const numstat = await this.executor.run(["stash", "show", "--numstat", ref]);
-            for (const line of numstat.trim().split("\n")) {
-                if (!line.trim()) continue;
-                const parts = line.split("\t");
-                if (parts.length < 3) continue;
-                const adds = parts[0] === "-" ? 0 : Number(parts[0]) || 0;
-                const dels = parts[1] === "-" ? 0 : Number(parts[1]) || 0;
-                const path = parts[2].trim();
-                if (!path) continue;
-                const entry = upsert(path);
-                const updated = { ...entry, additions: adds, deletions: dels };
-                files.set(path, updated);
-            }
+            numstat = await this.executor.run(["stash", "show", "--numstat", ref]);
         } catch (err) {
             logGitOpsWarning(`Failed stash show --numstat for ${ref}`, err);
         }
-
-        return Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path));
+        return parseShelvedFiles(nameStatus, numstat);
     }
-
     async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
-        return this.executor.run(["diff", `${ref}^`, ref, "--", filePath]);
+        return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));
     }
-
     async getFileHistory(filePath: string, maxCount: number = 50): Promise<string> {
-        return this.executor.run([
-            "log",
-            `--max-count=${maxCount}`,
-            "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
-            "--follow",
-            "--",
-            filePath,
-        ]);
+        return this.executor.run(
+            withLiteralPathspecs([
+                "log",
+                `--max-count=${maxCount}`,
+                "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
+                "--follow",
+                "--",
+                filePath,
+            ]),
+        );
     }
-
     async getFileHistoryEntries(
         filePath: string,
         maxCount: number = 30,
     ): Promise<
         Array<{ hash: string; shortHash: string; author: string; date: string; subject: string }>
     > {
-        const raw = await this.executor.run([
-            "log",
-            `--max-count=${maxCount}`,
-            "--pretty=format:%H%x09%h%x09%an%x09%aI%x09%s",
-            "--follow",
-            "--",
-            filePath,
-        ]);
-
-        return raw
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .map((line) => {
-                const [hash = "", shortHash = "", author = "", date = "", ...subjectParts] =
-                    line.split("\t");
-                return {
-                    hash,
-                    shortHash,
-                    author,
-                    date,
-                    subject: subjectParts.join("\t"),
-                };
-            })
-            .filter((entry) => entry.hash && entry.shortHash);
+        const raw = await this.executor.run(
+            withLiteralPathspecs([
+                "log",
+                `--max-count=${maxCount}`,
+                "--pretty=format:%H%x09%h%x09%an%x09%aI%x09%s",
+                "--follow",
+                "--",
+                filePath,
+            ]),
+        );
+        return parseFileHistoryEntries(raw);
     }
-
     async getFileContentAtRef(filePath: string, ref: string): Promise<string> {
         const trimmedRef = ref.trim();
         const safeFilePath = assertRepoRelativeGitPath(filePath);
@@ -998,15 +597,10 @@ export class GitOps {
         }
         return this.executor.run(["show", `${trimmedRef}:${safeFilePath}`]);
     }
-
     async getConflictedFiles(): Promise<string[]> {
-        const out = await this.executor.run(["diff", "--name-only", "--diff-filter=U"]);
-        return out
-            .split("\n")
-            .map((line) => line.trim())
-            .filter(Boolean);
+        const out = await this.executor.run(["diff", "--name-only", "-z", "--diff-filter=U"]);
+        return out.split("\0").filter(Boolean);
     }
-
     async getConflictFilesDetailed(): Promise<MergeConflictFile[]> {
         const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
         const files: MergeConflictFile[] = [];
@@ -1014,19 +608,16 @@ export class GitOps {
         for (let i = 0; i < entries.length; i++) {
             const entry = entries[i];
             if (!entry || entry.length < 4) continue;
-
             const oursCode = entry.charAt(0);
             const theirsCode = entry.charAt(1);
             const code = `${oursCode}${theirsCode}`;
             const path = entry.slice(3);
             if (!path) continue;
-
             const isRenameOrCopy =
                 oursCode === "R" || oursCode === "C" || theirsCode === "R" || theirsCode === "C";
             if (isRenameOrCopy && i + 1 < entries.length) {
                 i += 1;
             }
-
             if (!isUnmergedConflictCode(code)) continue;
             files.push({
                 path,
@@ -1035,10 +626,8 @@ export class GitOps {
                 theirs: mapConflictSideState(theirsCode),
             });
         }
-
         return files.sort((a, b) => a.path.localeCompare(b.path));
     }
-
     async getConflictFileVersions(
         filePath: string,
     ): Promise<{ base: string; ours: string; theirs: string }> {
@@ -1053,7 +642,6 @@ export class GitOps {
                 ),
             ]);
         };
-
         const [base, ours, theirs] = await Promise.all([
             withTimeout(this.executor.run(["show", `:1:${filePath}`]), "base").catch(() => ""),
             withTimeout(this.executor.run(["show", `:2:${filePath}`]), "ours").catch(() => ""),
@@ -1061,78 +649,23 @@ export class GitOps {
         ]);
         return { base, ours, theirs };
     }
-
     async stageFile(filePath: string): Promise<void> {
-        await this.executor.run(["add", "--", filePath]);
+        await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
-
     async acceptConflictSide(filePath: string, side: "ours" | "theirs"): Promise<void> {
         const sideArg = side === "ours" ? "--ours" : "--theirs";
-        await this.executor.run(["checkout", sideArg, "--", filePath]);
-        await this.executor.run(["add", "--", filePath]);
+        await this.executor.run(withLiteralPathspecs(["checkout", sideArg, "--", filePath]));
+        await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
-
     async deleteFile(filePath: string, force: boolean = false): Promise<void> {
         const args = force ? ["rm", "-f", "--", filePath] : ["rm", "--", filePath];
-        await this.executor.run(args);
+        await this.executor.run(withLiteralPathspecs(args));
     }
 }
-
-const VALID_COMMIT_FILE_STATUSES = new Set<CommitFile["status"]>(["A", "M", "D", "R", "C", "T"]);
-
-function mapCommitFileStatus(code: string): CommitFile["status"] {
-    if (VALID_COMMIT_FILE_STATUSES.has(code as CommitFile["status"])) {
-        return code as CommitFile["status"];
-    }
-    return "M";
-}
-
-function mapStatusCode(code: string): WorkingFile["status"] | null {
-    switch (code) {
-        case "M":
-            return "M";
-        case "A":
-            return "A";
-        case "D":
-            return "D";
-        case "R":
-            return "R";
-        case "C":
-            return "C";
-        case "?":
-            return "?";
-        case "U":
-            return "U";
-        case " ":
-            return null;
-        default:
-            return "M";
-    }
-}
-
-const UNMERGED_CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
-
-function isUnmergedConflictCode(code: string): boolean {
-    return UNMERGED_CONFLICT_CODES.has(code);
-}
-
-function mapConflictSideState(code: string): MergeConflictFile["ours"] {
-    if (code === "A") return "Added";
-    if (code === "D") return "Deleted";
-    return "Modified";
-}
-
 function isNoUpstreamPushError(err: unknown): boolean {
     const message = getErrorMessage(err).toLowerCase();
     return message.includes("has no upstream branch");
 }
-
-function parseSetUpstreamPushSuggestion(err: unknown): { remote: string; branch: string } | null {
-    const message = getErrorMessage(err);
-    const match = message.match(/git push\s+(?:--set-upstream(?:\s*=\s*|\s+)|-u\s+)(\S+)\s+(\S+)/);
-    if (!match) return null;
-    const remote = match[1]?.trim();
-    const branch = match[2]?.trim();
-    if (!remote || !branch) return null;
-    return { remote, branch };
+function withLiteralPathspecs(args: string[]): string[] {
+    return ["--literal-pathspecs", ...args];
 }
