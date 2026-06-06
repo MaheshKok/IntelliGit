@@ -14,6 +14,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTENSION_TS_FILES = ["src/**/*.ts"];
 const WEBVIEW_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
+const TSDOC_LOCKED_EXTENSION_FILES = [];
+const TSDOC_LOCKED_REACT_FILES = [];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];
 
@@ -44,6 +46,61 @@ const jsdocTypeScriptSettings = {
     jsdoc: {
         mode: "typescript",
     },
+};
+
+const jsdocContractRules = {
+    "jsdoc/check-param-names": "error",
+    "jsdoc/check-tag-names": "off",
+    "jsdoc/no-types": "error",
+    "jsdoc/require-description": "error",
+    "jsdoc/require-param": "off",
+    "jsdoc/require-returns": "off",
+};
+
+const requireExportDocsRules = {
+    "jsdoc/require-jsdoc": [
+        "error",
+        {
+            publicOnly: {
+                esm: true,
+                cjs: false,
+                window: false,
+            },
+            require: {
+                ClassDeclaration: true,
+                FunctionDeclaration: true,
+                MethodDefinition: true,
+            },
+            contexts: [
+                "ExportNamedDeclaration > TSInterfaceDeclaration",
+                "ExportNamedDeclaration > TSTypeAliasDeclaration",
+                "ExportNamedDeclaration > TSEnumDeclaration",
+                "ExportNamedDeclaration > VariableDeclaration",
+            ],
+        },
+    ],
+};
+
+const requireReactExportDocsRules = {
+    "jsdoc/require-jsdoc": [
+        "error",
+        {
+            require: {
+                ArrowFunctionExpression: false,
+                ClassDeclaration: false,
+                ClassExpression: false,
+                FunctionDeclaration: false,
+                FunctionExpression: false,
+                MethodDefinition: false,
+            },
+            contexts: [
+                "ExportNamedDeclaration > TSInterfaceDeclaration",
+                "ExportNamedDeclaration > TSTypeAliasDeclaration",
+                "ExportNamedDeclaration > TSEnumDeclaration",
+                "ExportNamedDeclaration > FunctionDeclaration[id.name=/^use[A-Z]/]",
+            ],
+        },
+    ],
 };
 
 const sonarRules = {
