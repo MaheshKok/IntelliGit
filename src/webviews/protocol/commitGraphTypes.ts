@@ -10,6 +10,13 @@ import type {
     ThemeTreeIcon,
 } from "../../types";
 
+/**
+ * Branch context-menu action discriminants accepted from graph webviews.
+ *
+ * These values are forwarded as `intelligit.${action}` command suffixes after
+ * the host validates the selected branch still exists, so each value must stay
+ * aligned with the branch menu producer and registered VS Code command IDs.
+ */
 export const BRANCH_ACTION_VALUES = [
     "checkout",
     "newBranchFrom",
@@ -22,6 +29,13 @@ export const BRANCH_ACTION_VALUES = [
     "deleteBranch",
 ] as const;
 
+/**
+ * Commit context-menu action discriminants accepted from graph webviews.
+ *
+ * Unlike branch actions, these values are dispatched through
+ * `handleCommitContextAction` rather than composed into command IDs. Keep this
+ * list in sync with commit menu items and the host-side exhaustive dispatcher.
+ */
 export const COMMIT_ACTION_VALUES = [
     "copyRevision",
     "createPatch",
@@ -39,54 +53,153 @@ export const COMMIT_ACTION_VALUES = [
     "newTag",
 ] as const;
 
+/** Action value sent by branch context menus and accepted by host branch routing. */
 export type BranchAction = (typeof BRANCH_ACTION_VALUES)[number];
+
+/** Action value sent by commit context menus and accepted by host commit routing. */
 export type CommitAction = (typeof COMMIT_ACTION_VALUES)[number];
 
+/**
+ * Narrows untrusted branch action strings before they cross into VS Code command dispatch.
+ */
 export function isBranchAction(value: string): value is BranchAction {
     return BRANCH_ACTION_VALUES.includes(value as BranchAction);
 }
 
+/**
+ * Narrows untrusted commit action strings before they cross into Git-mutating handlers.
+ */
 export function isCommitAction(value: string): value is CommitAction {
     return COMMIT_ACTION_VALUES.includes(value as CommitAction);
 }
 
-/** Messages sent FROM the webview TO the extension host. */
+/**
+ * Commit graph messages sent from a webview to the extension host.
+ *
+ * The sender may be the dedicated graph webview, the compact graph embedded in
+ * the commit panel, or the graph section inside the undocked webview. Treat all
+ * hash, branch, and path payloads as webview input; hosts validate hashes and
+ * repository-relative paths before firing events or invoking Git.
+ */
 export type CommitGraphOutbound =
-    | { type: "ready" }
-    | { type: "selectCommit"; hash: string }
-    | { type: "filterText"; text: string }
-    | { type: "loadMore" }
-    | { type: "filterBranch"; branch: string | null }
-    | { type: "branchAction"; action: BranchAction; branchName: string }
-    | { type: "commitAction"; action: CommitAction; hash: string }
-    | { type: "openCommitFileDiff"; commitHash: string; filePath: string };
+    | {
+          /** Lifecycle event requesting initial branch, graph, and detail state. */
+          type: "ready";
+      }
+    | {
+          /** Selection event for the commit whose detail panes should be loaded. */
+          type: "selectCommit";
+          /** Full Git object ID from `Commit.hash`; stable across graph refreshes. */
+          hash: string;
+      }
+    | {
+          /** Search request that resets graph pagination and re-runs `git log`. */
+          type: "filterText";
+          /** Literal grep text supplied by the UI; the host passes it to Git as fixed text. */
+          text: string;
+      }
+    | {
+          /** Pagination request for the next `git log` page using the current filters. */
+          type: "loadMore";
+      }
+    | {
+          /** Branch-filter request that resets text search and graph pagination. */
+          type: "filterBranch";
+          /** Git branch display/action name from `Branch.name`, or `null` for all branches. */
+          branch: string | null;
+      }
+    | {
+          /** Command requesting a branch context-menu action on the host side. */
+          type: "branchAction";
+          /** Validated against `BRANCH_ACTION_VALUES` before command dispatch. */
+          action: BranchAction;
+          /** Git branch action name from the latest branch list; host ignores missing branches. */
+          branchName: string;
+      }
+    | {
+          /** Command requesting a commit context-menu action on the host side. */
+          type: "commitAction";
+          /** Validated against `COMMIT_ACTION_VALUES` before Git action dispatch. */
+          action: CommitAction;
+          /** Full Git object ID for the targeted commit; host validates before dispatch. */
+          hash: string;
+      }
+    | {
+          /** Command asking the host to open a committed file diff. */
+          type: "openCommitFileDiff";
+          /** Full Git object ID from the rendered commit detail. */
+          commitHash: string;
+          /** Repository-relative file path from Git diff output; host validates before use. */
+          filePath: string;
+      };
 
-/** Messages sent FROM the extension host TO the webview. */
+/**
+ * Commit graph messages sent from the extension host to graph-capable webviews.
+ *
+ * Payloads are JSON-serializable snapshots produced from Git output and icon
+ * theme resolution. Optional icon fields are omitted when the active file icon
+ * theme cannot provide a serializable webview-safe resource or glyph payload.
+ */
 export type CommitGraphInbound =
     | {
+          /** Response/update containing a page of `git log` commits. */
           type: "loadCommits";
+          /** Commits parsed from Git log output; use `hash`, not row position, as the stable key. */
           commits: Commit[];
+          /** Page-size heuristic indicating another `loadMore` request may return more commits. */
           hasMore: boolean;
+          /** `false` replaces the current graph; `true` appends to the existing page list. */
           append: boolean;
+          /** Full hashes from `git rev-list --branches --not --remotes` used for display badges. */
           unpushedHashes: string[];
       }
     | {
+          /** State update carrying branch data and optional folder icon theme metadata. */
           type: "setBranches";
+          /** Branches parsed from `git branch -a`; names are display and action identifiers. */
           branches: Branch[];
+          /** Default collapsed folder icon for branch tree groups when the theme resolves one. */
           folderIcon?: ThemeTreeIcon;
+          /** Default expanded folder icon for branch tree groups when the theme resolves one. */
           folderExpandedIcon?: ThemeTreeIcon;
+          /** Named folder icon overrides keyed by file-icon-theme folder name. */
           folderIconsByName?: ThemeFolderIconMap;
+          /** Webview-safe font-face payloads needed to render glyph-based theme icons. */
           iconFonts?: ThemeIconFont[];
       }
-    | { type: "setSelectedBranch"; branch: string | null }
     | {
+          /** State update echoing the branch filter that the host accepted. */
+          type: "setSelectedBranch";
+          /** Accepted Git branch name, or `null` when the filter was cleared or became stale. */
+          branch: string | null;
+      }
+    | {
+          /** State update containing the currently selected commit detail. */
           type: "setCommitDetail";
+          /** Git `show`/`diff-tree` detail snapshot; `detail.hash` is the stable action ID. */
           detail: CommitDetail;
+          /** Default collapsed folder icon for commit file paths when available. */
           folderIcon?: ThemeTreeIcon;
+          /** Default expanded folder icon for commit file paths when available. */
           folderExpandedIcon?: ThemeTreeIcon;
+          /** Folder icon overrides for paths inside `detail.files`, keyed by folder name. */
           folderIconsByName?: ThemeFolderIconMap;
+          /** Webview-safe font-face payloads needed to render glyph-based file icons. */
           iconFonts?: ThemeIconFont[];
       }
-    | { type: "clearCommitDetail" }
-    | { type: "loadError"; message: string }
-    | { type: "error"; message: string };
+    | {
+          /** Event clearing commit detail panes after branch/filter changes or no selection. */
+          type: "clearCommitDetail";
+      }
+    | {
+          /** Response for a failed Git log request; graph panes may clear stale rows. */
+          type: "loadError";
+          /** User-visible error text normalized by the host. */
+          message: string;
+      }
+    | {
+          /** General host error event for graph-side commands and theme refresh work. */
+          type: "error";
+          /** User-visible error text normalized by the host. */
+          message: string;
+      };

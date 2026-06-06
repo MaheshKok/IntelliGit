@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `eslint-plugin-jsdoc` and `eslint-plugin-tsdoc` with TSDoc syntax validation for extension TypeScript and React webview TypeScript/TSX files, without enabling global required-documentation enforcement.
 - Added scoped TSDoc ratchet scaffolding and pilot locked globs for Git executor, shared domain types, shared React menu contracts, and commit graph canvas hook documentation.
 - Documented Git operation contracts across status parsing, log/history loading, branch/remotes, staging, rollback, stash, and conflict helpers, then locked `src/git/**/*.ts` into the TSDoc ratchet.
+- Documented webview protocol contracts for commit graph, commit info, commit panel, merge-conflict session, and undocked messages, then locked `src/webviews/protocol/**/*.ts` into the TSDoc ratchet.
 
 ### Changed
 
@@ -26,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verification
 
-- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
+- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
 
 ## [0.9.5] - 2026-06-06
 
