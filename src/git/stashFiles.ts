@@ -45,6 +45,13 @@ function applyNumstat(files: Map<string, WorkingFile>, output: string): void {
     }
 }
 
+/**
+ * Combines `git stash show --name-status` and `--numstat` output into shelved files.
+ *
+ * Name-status supplies the file set and status codes, while numstat fills additions
+ * and deletions. Missing or partial output is tolerated so callers can display the
+ * data Git returned after logging warning-worthy failures.
+ */
 export function parseShelvedFiles(nameStatus: string, numstat: string): WorkingFile[] {
     const files = new Map<string, WorkingFile>();
     applyNameStatus(files, nameStatus);

@@ -2,12 +2,24 @@ import type { WorkingFile } from "../types";
 import { normalizeGitNumstatPath } from "./numstat";
 import { mapStatusCode } from "./parsers";
 
+/**
+ * File-operation plan for rolling selected working-tree paths back to HEAD.
+ *
+ * Reset paths are removed from the index, checkout paths are restored from HEAD, and cleanup paths
+ * are removed from the filesystem when status marks them as created or untracked.
+ */
 export interface RollbackPlan {
     resetPaths: string[];
     checkoutPaths: string[];
     cleanupPaths: string[];
 }
 
+/**
+ * Parses NUL-delimited porcelain status into IntelliGit working-file rows.
+ *
+ * Rename and copy source paths are consumed from the following NUL field, staged and unstaged states
+ * are split into separate rows, and staged adds avoid duplicate modified rows for edited new files.
+ */
 export function parseWorkingTreeStatus(result: string): WorkingFile[] {
     const files: WorkingFile[] = [];
     const entries = result.split("\0");
@@ -52,6 +64,12 @@ export function parseWorkingTreeStatus(result: string): WorkingFile[] {
     return files;
 }
 
+/**
+ * Applies Git numstat additions and deletions to existing working-file rows.
+ *
+ * Paths are normalized with Git numstat escaping rules and matched by path plus staged state so staged
+ * and unstaged copies of the same file keep independent statistics.
+ */
 export function applyNumstatToWorkingFiles(
     files: WorkingFile[],
     output: string,
@@ -88,6 +106,12 @@ export function applyNumstatToWorkingFiles(
     }
 }
 
+/**
+ * Extracts paths already staged as deletions from NUL-delimited porcelain status.
+ *
+ * The result lets callers avoid passing those paths back to `git add`, which would accidentally
+ * re-stage deleted files as present when users only wanted to stage other selections.
+ */
 export function parseAlreadyStagedDeletedPaths(status: string): Set<string> {
     const alreadyStagedDeleted = new Set<string>();
     const entries = status.split("\0");
@@ -113,6 +137,12 @@ export function parseAlreadyStagedDeletedPaths(status: string): Set<string> {
     return alreadyStagedDeleted;
 }
 
+/**
+ * Builds the reset, checkout, and cleanup operations needed to roll back selected paths safely.
+ *
+ * Rename/copy source paths, untracked files, and staged additions receive separate treatment so the
+ * caller only cleans paths identified by Git status for the user's selected rollback scope.
+ */
 export function planRollbackFiles(paths: string[], status: string): RollbackPlan {
     const selectedPaths = new Set(paths);
     const cleanupPaths = new Set<string>();

@@ -13,15 +13,34 @@ const GIT_NUL = "%x00";
 const COMMIT_LOG_FIELD_COUNT = 8;
 const AMEND_FIELD_COUNT = 3;
 
+/**
+ * Pretty format used by `git log -z` for commit rows in graph and history views.
+ *
+ * Fields are NUL-delimited and include a trailing separator so subjects, authors,
+ * and ref decorations can contain tabs without corrupting parser alignment.
+ */
 export const COMMIT_LOG_FORMAT =
     ["%H", "%h", "%s", "%an", "%ae", "%aI", "%P", "%D"].join(GIT_NUL) + GIT_NUL;
 
+/**
+ * Pretty format used by `git show --no-patch` when loading a single commit detail.
+ *
+ * The body is separated with NUL bytes rather than line-based parsing because commit
+ * messages may contain blank lines, tabs, and arbitrary text from Git history.
+ */
 export const COMMIT_DETAIL_FORMAT = ["%H", "%h", "%s", "%b", "%an", "%ae", "%aI", "%P", "%D"].join(
     GIT_NUL,
 );
 
+/** Format used for compact amend-candidate rows, separated by NUL bytes. */
 export const AMEND_BRANCH_COMMIT_FORMAT = `%h%x00%s%x00%cI%x00`;
 
+/**
+ * Parses NUL-delimited `git log` output into commit rows expected by webviews.
+ *
+ * Empty separators are skipped and incomplete trailing rows are ignored so an empty
+ * repository or interrupted output yields the commits that were fully parsed.
+ */
 export function parseCommitLog(result: string): Commit[] {
     const commits: Commit[] = [];
     const fields = result.split(COMMIT_FIELD_SEP);
@@ -49,6 +68,12 @@ export function parseCommitLog(result: string): Commit[] {
     return commits;
 }
 
+/**
+ * Builds a commit-detail payload from `git show --no-patch` output and file stats.
+ *
+ * When Git omits hash fields, callers' selected hash is used as the stable fallback
+ * so UI actions can still target the commit that was requested.
+ */
 export function parseCommitDetail(
     info: string,
     fallbackHash: string,
@@ -70,6 +95,12 @@ export function parseCommitDetail(
     };
 }
 
+/**
+ * Parses compact amend-candidate rows emitted by `AMEND_BRANCH_COMMIT_FORMAT`.
+ *
+ * Rows without a short hash are discarded, and subjects are preserved verbatim so
+ * tabs or punctuation in commit summaries are not normalized for display.
+ */
 export function parseAmendBranchCommitSummaries(output: string): AmendBranchCommitSummary[] {
     const rows: AmendBranchCommitSummary[] = [];
     const fields = output.split(COMMIT_FIELD_SEP);
@@ -92,6 +123,12 @@ export function parseAmendBranchCommitSummaries(output: string): AmendBranchComm
     return rows;
 }
 
+/**
+ * Parses tab-delimited `git stash list` output into current stash-stack entries.
+ *
+ * The numeric index is extracted from Git's `stash@{n}` decoration and falls back to
+ * display order when the decoration is missing, matching how stash actions address it.
+ */
 export function parseStashEntries(result: string): StashEntry[] {
     const entries: StashEntry[] = [];
 
@@ -111,6 +148,12 @@ export function parseStashEntries(result: string): StashEntry[] {
     return entries;
 }
 
+/**
+ * Parses structured file-history rows for one repository-relative path.
+ *
+ * The subject is reconstructed from all remaining tab-delimited fields so commit
+ * subjects containing tabs do not lose information; rows missing either hash are ignored.
+ */
 export function parseFileHistoryEntries(
     raw: string,
 ): Array<{ hash: string; shortHash: string; author: string; date: string; subject: string }> {
@@ -132,6 +175,12 @@ export function parseFileHistoryEntries(
         .filter((entry) => entry.hash && entry.shortHash);
 }
 
+/**
+ * Maps `git diff-tree --name-status` status letters into commit-file statuses.
+ *
+ * Unknown or score-suffixed status letters fall back to modified so the UI keeps the
+ * file visible instead of dropping a row whose Git code was not anticipated.
+ */
 export function mapCommitFileStatus(code: string): CommitFile["status"] {
     if (VALID_COMMIT_FILE_STATUSES.has(code as CommitFile["status"])) {
         return code as CommitFile["status"];
@@ -139,6 +188,12 @@ export function mapCommitFileStatus(code: string): CommitFile["status"] {
     return "M";
 }
 
+/**
+ * Maps one column of porcelain status into the working-file status model.
+ *
+ * A blank status returns `null` to distinguish no change from an unknown Git code;
+ * unknown non-blank values fall back to modified so affected paths remain visible.
+ */
 export function mapStatusCode(code: string): WorkingFile["status"] | null {
     switch (code) {
         case "M":
@@ -162,10 +217,17 @@ export function mapStatusCode(code: string): WorkingFile["status"] | null {
     }
 }
 
+/** Returns whether a two-character porcelain status represents an unmerged conflict. */
 export function isUnmergedConflictCode(code: string): boolean {
     return UNMERGED_CONFLICT_CODES.has(code);
 }
 
+/**
+ * Converts a conflict-side status letter into the label shown in merge-conflict UI.
+ *
+ * Git reports additions and deletions explicitly; all other unmerged side codes are
+ * treated as modified so the action label remains conservative.
+ */
 export function mapConflictSideState(code: string): MergeConflictFile["ours"] {
     if (code === "A") return "Added";
     if (code === "D") return "Deleted";

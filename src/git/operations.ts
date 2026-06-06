@@ -47,21 +47,39 @@ import {
 import { parseShelvedFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
+/**
+ * Signals that the user declined IntelliGit's prompt to create upstream tracking before push.
+ */
 export class UpstreamPushDeclinedError extends Error {
+    /** Creates the user-declined push error with a stable error name for callers. */
     constructor() {
         super("Upstream push declined by user");
         this.name = "UpstreamPushDeclinedError";
     }
 }
+/**
+ * High-level Git facade used by commands, providers, and webview refresh flows.
+ *
+ * Methods delegate to GitExecutor, validate branch/remote/path inputs before shelling out where
+ * needed, and convert selected Git failures into fallback values or user-facing warnings.
+ */
 export class GitOps {
+    /**
+     * Creates a Git operation facade around an executor rooted at the active repository.
+     *
+     * The optional upstream confirmation callback lets UI callers decide whether push may mutate
+     * branch tracking with `git push --set-upstream`.
+     */
     constructor(
         private readonly executor: GitExecutor,
         private readonly confirmSetUpstreamPush?: ConfirmSetUpstreamPush,
     ) {}
+    /** Initializes a Git repository at the supplied filesystem path and returns Git output. */
     async init(repoPath: string): Promise<string> {
         const executor = new GitExecutor(repoPath);
         return executor.run(["init"]);
     }
+    /** Returns whether the executor root is inside a Git work tree, swallowing probe failures. */
     async isRepository(): Promise<boolean> {
         try {
             const out = await this.executor.run(["rev-parse", "--is-inside-work-tree"]);
@@ -70,6 +88,7 @@ export class GitOps {
             return false;
         }
     }
+    /** Returns whether HEAD has at least one reachable commit, treating empty repositories as false. */
     async hasAnyCommits(): Promise<boolean> {
         try {
             const out = await this.executor.run(["rev-list", "--count", "HEAD"]);
@@ -78,6 +97,7 @@ export class GitOps {
             return false;
         }
     }
+    /** Lists configured remotes after filtering invalid remote names and falling back to an empty list. */
     async getRemotes(): Promise<string[]> {
         try {
             const out = await this.executor.run(["remote"]);
@@ -90,6 +110,7 @@ export class GitOps {
             return [];
         }
     }
+    /** Checks whether a validated local branch resolves to a distinct upstream tracking ref. */
     async branchHasUpstream(branch: string): Promise<boolean> {
         try {
             assertValidBranchName(branch);
@@ -103,23 +124,33 @@ export class GitOps {
             return false;
         }
     }
+    /** Adds a validated remote name using the caller-provided URL without transforming credentials. */
     async addRemote(name: string, url: string): Promise<void> {
         assertValidRemoteName(name);
         await this.executor.run(["remote", "add", name, url]);
     }
+    /** Removes a validated remote name from repository configuration. */
     async removeRemote(name: string): Promise<void> {
         assertValidRemoteName(name);
         await this.executor.run(["remote", "remove", name]);
     }
+    /** Pushes a validated branch to a validated remote while creating upstream tracking. */
     async pushWithUpstream(remote: string, branch: string): Promise<string> {
         assertValidRemoteName(remote);
         assertValidBranchName(branch);
         return this.executor.run(["push", "-u", remote, branch]);
     }
+    /** Resolves the absolute repository root reported by Git for the executor's current work tree. */
     async getRepositoryRoot(): Promise<string> {
         const root = await this.executor.run(["rev-parse", "--show-toplevel"]);
         return root.trim();
     }
+    /**
+     * Reads local and remote branch metadata from Git's formatted branch output.
+     *
+     * Symbolic remote HEAD refs and invalid branch or remote names are discarded; ahead/behind counts
+     * come from Git's upstream tracking text when available.
+     */
     async getBranches(): Promise<Branch[]> {
         const format =
             "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)";
@@ -164,6 +195,12 @@ export class GitOps {
         }
         return branches;
     }
+    /**
+     * Loads commit summaries from all refs or a validated branch, optionally using a literal grep filter.
+     *
+     * Branch names are passed after `--end-of-options`; filter text uses fixed-string grep to avoid
+     * treating user input as a regular expression.
+     */
     async getLog(
         maxCount: number = 500,
         branch?: string,
@@ -195,6 +232,7 @@ export class GitOps {
         const result = await this.executor.run(args);
         return parseCommitLog(result);
     }
+    /** Lists commits reachable from local branches but not from any remote-tracking ref. */
     async getUnpushedCommitHashes(): Promise<string[]> {
         try {
             // Commits reachable from local branches but not from any remote-tracking ref.
@@ -209,6 +247,12 @@ export class GitOps {
             return [];
         }
     }
+    /**
+     * Loads commit metadata and changed-file stats for a commit hash.
+     *
+     * Name/status output is authoritative for file presence, while numstat augments additions and
+     * deletions; numstat failures are downgraded to warnings so details still render.
+     */
     async getCommitDetail(hash: string): Promise<CommitDetail> {
         const info = await this.executor.run([
             "show",
@@ -290,6 +334,12 @@ export class GitOps {
         return parseCommitDetail(info, hash, Array.from(filesByPath.values()));
     }
     // --- Working tree operations ---
+    /**
+     * Reads porcelain working-tree status and augments staged and unstaged entries with numstat data.
+     *
+     * Status parsing uses NUL-delimited output for paths, and numstat failures produce warnings rather
+     * than blocking the status view.
+     */
     async getStatus(): Promise<WorkingFile[]> {
         const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
         const files = parseWorkingTreeStatus(result);
@@ -324,12 +374,14 @@ export class GitOps {
         applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
         return files;
     }
+    /** Stages literal repository paths, skipping files already staged as deletions to avoid re-adding them. */
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
         const pathsToStage = await this.excludeAlreadyStagedDeletedPaths(paths);
         if (pathsToStage.length === 0) return;
         await this.executor.run(withLiteralPathspecs(["add", "--", ...pathsToStage]));
     }
+    /** Returns the subset of selected paths that should still be passed to `git add`. */
     private async excludeAlreadyStagedDeletedPaths(paths: string[]): Promise<string[]> {
         const status = await this.executor.run(
             withLiteralPathspecs(["status", "--porcelain=v1", "-z", "--", ...paths]),
@@ -338,15 +390,22 @@ export class GitOps {
         const alreadyStagedDeleted = parseAlreadyStagedDeletedPaths(status);
         return paths.filter((path) => !alreadyStagedDeleted.has(path));
     }
+    /** Unstages literal repository paths by resetting them from HEAD. */
     async unstageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
         await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...paths]));
     }
+    /** Creates or amends a commit with the caller-provided message and returns Git output. */
     async commit(message: string, amend: boolean = false): Promise<string> {
         const args = ["commit", "-m", message];
         if (amend) args.push("--amend");
         return this.executor.run(args);
     }
+    /**
+     * Pushes the current branch and optionally prompts to create upstream tracking on no-upstream errors.
+     *
+     * Remote and branch names are validated before the fallback `--set-upstream` push mutates tracking.
+     */
     async push(): Promise<string> {
         try {
             return await this.executor.run(["push"]);
@@ -364,14 +423,19 @@ export class GitOps {
             return this.executor.run(["push", "--set-upstream", remote, branch]);
         }
     }
+    /** Pulls the current branch with rebase semantics and returns Git output. */
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
     }
+    /** Verifies the push remote, creates or amends a commit, then pushes the current branch. */
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
         await this.assertPushRemoteReachable();
         await this.commit(message, amend);
         return this.push();
     }
+    /**
+     * Checks the configured upstream remote before committing so orphaned provider remotes are surfaced early.
+     */
     private async assertPushRemoteReachable(): Promise<void> {
         let upstream: string;
         try {
@@ -394,6 +458,7 @@ export class GitOps {
             );
         }
     }
+    /** Resolves and validates the current branch name for upstream-push fallback prompts. */
     private async resolveCurrentBranchNameForPush(): Promise<string | null> {
         try {
             const raw = await this.executor.run(["rev-parse", "--abbrev-ref", "HEAD"]);
@@ -405,6 +470,7 @@ export class GitOps {
             return null;
         }
     }
+    /** Resolves the first configured remote name for upstream-push fallback prompts. */
     private async resolveDefaultRemoteNameForPush(): Promise<string | null> {
         try {
             const remotes = await this.executor.run(["remote"]);
@@ -417,6 +483,7 @@ export class GitOps {
             return null;
         }
     }
+    /** Prompts or delegates confirmation before mutating upstream tracking during push fallback. */
     private async requestSetUpstreamPush(remote: string, branch: string): Promise<boolean> {
         if (this.confirmSetUpstreamPush) {
             return this.confirmSetUpstreamPush(remote, branch);
@@ -434,6 +501,7 @@ export class GitOps {
         );
         return selection === confirmLabel;
     }
+    /** Returns the full message for the latest commit, falling back to an empty string on Git failure. */
     async getLastCommitMessage(): Promise<string> {
         try {
             return (await this.executor.run(["log", "-1", "--format=%B"])).trim();
@@ -487,6 +555,12 @@ export class GitOps {
             return [];
         }
     }
+    /**
+     * Rolls back selected literal paths using a porcelain-derived reset, checkout, and cleanup plan.
+     *
+     * Renames, copies, staged adds, and untracked paths are handled separately so cleanup only removes
+     * paths Git status identifies as safe for the requested rollback.
+     */
     async rollbackFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
         const status = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
@@ -501,12 +575,14 @@ export class GitOps {
             await this.executor.run(withLiteralPathspecs(["clean", "-fd", "--", ...cleanupPaths]));
         }
     }
+    /** Resets the repository to HEAD and removes untracked files, discarding all working-tree changes. */
     async rollbackAll(): Promise<void> {
         await this.executor.run(["reset", "--hard", "HEAD"]);
         // Also clean untracked files
         await this.executor.run(["clean", "-fd"]);
     }
     // --- Shelf operations (implemented via git stash) ---
+    /** Saves all changes or selected literal paths into a Git stash entry with untracked files included. */
     async shelveSave(paths?: string[], message: string = "Shelved changes"): Promise<string> {
         const args = ["stash", "push", "--include-untracked", "-m", message];
         if (paths && paths.length > 0) {
@@ -514,14 +590,17 @@ export class GitOps {
         }
         return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args);
     }
+    /** Pops a validated stash index back into the working tree. */
     async shelvePop(index: number = 0): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "pop", `stash@{${index}}`]);
     }
+    /** Applies a validated stash index without dropping it. */
     async shelveApply(index: number = 0): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "apply", `stash@{${index}}`]);
     }
+    /** Lists stash entries from formatted Git output, returning an empty list when stash inspection fails. */
     async listShelved(): Promise<StashEntry[]> {
         try {
             const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
@@ -530,10 +609,16 @@ export class GitOps {
             return [];
         }
     }
+    /** Drops a validated stash index and returns Git output. */
     async shelveDelete(index: number): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
+    /**
+     * Loads changed files for a stash using best-effort name/status and numstat output.
+     *
+     * Individual stash inspection failures are logged and converted to partial file metadata.
+     */
     async getShelvedFiles(index: number): Promise<WorkingFile[]> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
@@ -551,11 +636,13 @@ export class GitOps {
         }
         return parseShelvedFiles(nameStatus, numstat);
     }
+    /** Returns the patch for a literal repository path inside a validated stash entry. */
     async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
         return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));
     }
+    /** Returns a formatted, follow-renames history listing for a literal repository path. */
     async getFileHistory(filePath: string, maxCount: number = 50): Promise<string> {
         return this.executor.run(
             withLiteralPathspecs([
@@ -568,6 +655,7 @@ export class GitOps {
             ]),
         );
     }
+    /** Returns parsed file-history entries for a literal repository path, following renames. */
     async getFileHistoryEntries(
         filePath: string,
         maxCount: number = 30,
@@ -586,6 +674,12 @@ export class GitOps {
         );
         return parseFileHistoryEntries(raw);
     }
+    /**
+     * Reads a repository-relative file at a validated Git ref.
+     *
+     * File paths are normalized as repository-relative Git paths, and refs with empty, option-like, or
+     * control-character content are rejected before constructing the `git show` argument.
+     */
     async getFileContentAtRef(filePath: string, ref: string): Promise<string> {
         const trimmedRef = ref.trim();
         const safeFilePath = assertRepoRelativeGitPath(filePath);
@@ -598,10 +692,16 @@ export class GitOps {
         }
         return this.executor.run(["show", `${trimmedRef}:${safeFilePath}`]);
     }
+    /** Lists unresolved conflict paths from Git diff's NUL-delimited unmerged output. */
     async getConflictedFiles(): Promise<string[]> {
         const out = await this.executor.run(["diff", "--name-only", "-z", "--diff-filter=U"]);
         return out.split("\0").filter(Boolean);
     }
+    /**
+     * Reads detailed merge-conflict states from porcelain status output and sorts them for display.
+     *
+     * Rename/copy source paths are skipped, and only unmerged status code pairs are returned.
+     */
     async getConflictFilesDetailed(): Promise<MergeConflictFile[]> {
         const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
         const files: MergeConflictFile[] = [];
@@ -629,6 +729,11 @@ export class GitOps {
         }
         return files.sort((a, b) => a.path.localeCompare(b.path));
     }
+    /**
+     * Reads base, ours, and theirs stages for a conflicted file with short per-stage timeouts.
+     *
+     * Missing stages are converted to empty strings so the merge UI can still open partial conflicts.
+     */
     async getConflictFileVersions(
         filePath: string,
     ): Promise<{ base: string; ours: string; theirs: string }> {
@@ -650,14 +755,17 @@ export class GitOps {
         ]);
         return { base, ours, theirs };
     }
+    /** Stages one literal repository path, typically after conflict-side resolution. */
     async stageFile(filePath: string): Promise<void> {
         await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
+    /** Checks out the selected conflict side for a literal path and stages the resolved file. */
     async acceptConflictSide(filePath: string, side: "ours" | "theirs"): Promise<void> {
         const sideArg = side === "ours" ? "--ours" : "--theirs";
         await this.executor.run(withLiteralPathspecs(["checkout", sideArg, "--", filePath]));
         await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
+    /** Removes a literal repository path through Git, optionally forcing removal of missing or staged files. */
     async deleteFile(filePath: string, force: boolean = false): Promise<void> {
         const args = force ? ["rm", "-f", "--", filePath] : ["rm", "--", filePath];
         await this.executor.run(withLiteralPathspecs(args));
