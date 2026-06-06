@@ -14,7 +14,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTENSION_TS_FILES = ["src/**/*.ts"];
 const WEBVIEW_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
-const TSDOC_LOCKED_EXTENSION_FILES = [];
+const TSDOC_LOCKED_EXTENSION_FILES = ["src/git/executor.ts"];
 const TSDOC_LOCKED_REACT_FILES = [];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];
@@ -159,6 +159,15 @@ export default defineConfig([
             ...typeAwareSafetyRules,
             ...tsdocSyntaxRules,
             ...sonarRules,
+        },
+    },
+    {
+        files: TSDOC_LOCKED_EXTENSION_FILES,
+        ignores: ["src/webviews/react/**"],
+        settings: jsdocTypeScriptSettings,
+        rules: {
+            ...jsdocContractRules,
+            ...requireExportDocsRules,
         },
     },
     {
