@@ -89,7 +89,7 @@ function isPseudoLocEnabled(): boolean {
 /**
  * Wraps every catalog value with accented, widened text so that hardcoded
  * (untranslated) strings stand out as plain ASCII and layout overflow becomes
- * visible. Placeholders like {count} are preserved verbatim.
+ * visible. Placeholder tokens are preserved verbatim.
  */
 function pseudoLocalizeCatalog(catalog: WebviewCatalog): WebviewCatalog {
     const result: WebviewCatalog = {};

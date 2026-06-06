@@ -442,9 +442,10 @@ export class GitOps {
         }
     }
     /**
-     * Commits on the current branch relevant when amending: ahead of @{upstream}
-     * if set, otherwise the recent history on HEAD (same idea as IntelliJ amend context).
-     * Uses NUL field separators in `git log --format` because `%s` may contain tabs.
+     * Commits on the current branch relevant when amending: ahead of the upstream
+     * branch if set, otherwise the recent history on HEAD (same idea as IntelliJ
+     * amend context). Uses NUL field separators in `git log --format` because `%s`
+     * may contain tabs.
      */
     async getAmendBranchCommits(limit = 80): Promise<AmendBranchCommitSummary[]> {
         try {

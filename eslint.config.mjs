@@ -2,9 +2,11 @@ import js from "@eslint/js";
 import globals from "globals";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import jsdoc from "eslint-plugin-jsdoc";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import sonarjs from "eslint-plugin-sonarjs";
+import tsdoc from "eslint-plugin-tsdoc";
 import tseslint from "typescript-eslint";
 import { defineConfig } from "eslint/config";
 
@@ -32,6 +34,16 @@ const typeAwareSafetyRules = {
     "@typescript-eslint/no-unsafe-member-access": "error",
     "@typescript-eslint/no-unsafe-return": "error",
     "@typescript-eslint/require-await": "error",
+};
+
+const tsdocSyntaxRules = {
+    "tsdoc/syntax": "error",
+};
+
+const jsdocTypeScriptSettings = {
+    jsdoc: {
+        mode: "typescript",
+    },
 };
 
 const sonarRules = {
@@ -80,11 +92,15 @@ export default defineConfig([
             globals: globals.node,
         },
         plugins: {
+            jsdoc,
             sonarjs,
+            tsdoc,
         },
+        settings: jsdocTypeScriptSettings,
         rules: {
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
             ...typeAwareSafetyRules,
+            ...tsdocSyntaxRules,
             ...sonarRules,
         },
     },
@@ -101,11 +117,14 @@ export default defineConfig([
             globals: globals.browser,
         },
         plugins: {
+            jsdoc,
             react,
             "react-hooks": reactHooks,
             sonarjs,
+            tsdoc,
         },
         settings: {
+            ...jsdocTypeScriptSettings,
             react: {
                 version: "18.2.0",
             },
@@ -118,6 +137,7 @@ export default defineConfig([
             "react-hooks/exhaustive-deps": "warn",
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
             ...typeAwareSafetyRules,
+            ...tsdocSyntaxRules,
             ...sonarRules,
             "@typescript-eslint/no-misused-promises": [
                 "error",

@@ -8,9 +8,12 @@ export function getErrorMessage(error: unknown): string {
 /**
  * Strip embedded credentials from URLs in error messages.
  * Git error output may contain remote URLs with user-info patterns:
- *   https://user:password@host  (user + password)
- *   https://token@host          (token-only, e.g. GitHub PAT)
- *   https://user:@host          (empty password)
+ *
+ * ```text
+ * https://user:password\@host  (user + password)
+ * https://token\@host          (token-only, e.g. GitHub PAT)
+ * https://user:\@host          (empty password)
+ * ```
  */
 export function sanitizeErrorMessage(message: string): string {
     // Match any user-info portion: user:pass@, token@, user:@

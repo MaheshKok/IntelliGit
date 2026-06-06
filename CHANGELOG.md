@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added the TSDoc rollout baseline audit under `docs/tsdocs` with source counts, exported-symbol estimates, documentation block counts, boundary-heavy areas, plugin status, validation script availability, and confirmed phase order.
 - Added the IntelliGit TSDoc standard under `docs/tsdocs`, including the standard block template, tag guidance, examples for the major extension areas, and the rule against type repetition.
+- Added `eslint-plugin-jsdoc` and `eslint-plugin-tsdoc` with TSDoc syntax validation for extension TypeScript and React webview TypeScript/TSX files, without enabling global required-documentation enforcement.
 
 ### Changed
 
@@ -19,10 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pointed the localization CSV tooling, tests, and workflow documentation at `docs/localization/localization_translation_review.csv` so validation uses the current reviewed-translation source path.
+- Updated existing comments that mentioned Git upstream refs, credential-bearing URLs, and placeholder examples so they pass TSDoc syntax validation without changing runtime behavior.
 
 ### Verification
 
-- Verified the documentation baseline, TSDoc standard placement, release metadata, and repository validation gates for the documentation-only rollout phase.
+- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, localization path correction, and repository validation gates for the TSDoc rollout phases.
 
 ## [0.9.5] - 2026-06-06
 
