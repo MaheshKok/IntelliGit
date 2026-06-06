@@ -6,23 +6,23 @@ This document records how the Codex Security scan of IntelliGit was run, which s
 
 The companion findings document is:
 
-`/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/SECURITY_FINDINGS_DOCUMENTATION.md`
+`<scan-dir>/SECURITY_FINDINGS_DOCUMENTATION.md`
 
 The formal scan reports are:
 
-- Markdown: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.md`
-- HTML: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.html`
+- Markdown: `<scan-dir>/report.md`
+- HTML: `<scan-dir>/report.html`
 
 ## Scan Metadata
 
 | Field | Value |
 |---|---|
-| Repository | `/Users/maheshkokare/PycharmProjects/pycharm-git-for-vscode` |
+| Repository | `<repo-root>` |
 | Product | IntelliGit VS Code extension |
 | Scan type | Repository-wide Codex Security scan |
 | Scope | Tracked files under the repository root |
-| Scan directory | `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z` |
-| Scan id | `0cbff40d3e13_20260605T191723Z` |
+| Scan directory | `<scan-dir>` |
+| Scan id | `<scan-id>` |
 | User authorization | Explicitly authorized subagents and artifact writes under the repository security scan artifact directory |
 | Source modifications | None during the security scan |
 | Final repository status | Clean after scan; an early PoC `core.worktree` config change was removed |
@@ -34,7 +34,7 @@ The formal scan reports are:
 The scan was run under this Codex goal:
 
 ```text
-Run the Codex Security repository scan for /Users/maheshkokare/PycharmProjects/pycharm-git-for-vscode; do not stop until every in-scope file/worklist row has a completion receipt or explicit deferred closure, every candidate has required ledger receipts, and the final report is written.
+Run the Codex Security repository scan for <repo-root>; do not stop until every in-scope file/worklist row has a completion receipt or explicit deferred closure, every candidate has required ledger receipts, and the final report is written.
 ```
 
 The goal was completed after the final Markdown and HTML reports were written and after closure checks confirmed:
@@ -56,7 +56,7 @@ Goal usage recorded at completion:
 The top-level skill was:
 
 - `codex-security:security-scan`
-- File: `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/security-scan/SKILL.md`
+- File: `<codex-security-plugin-dir>/skills/security-scan/SKILL.md`
 
 The scan followed the phase sequence required by that skill:
 
@@ -70,23 +70,23 @@ Supporting Codex Security skills and references used:
 
 | Purpose | Path |
 |---|---|
-| Scan artifact conventions | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/references/scan-artifacts.md` |
-| Shared hard rules | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/references/shared-hard-rules.md` |
-| Threat model workflow | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/threat-model/SKILL.md` |
-| Threat model guidance | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/threat-model/references/threat-model-guidance.md` |
-| Finding discovery workflow | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/finding-discovery/SKILL.md` |
-| Repository-wide scan workflow | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/security-scan/references/repository-wide-scan.md` |
-| Validation workflow | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/validation/SKILL.md` |
-| Validation guidance | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/validation/references/validation-guidance.md` |
-| Attack-path workflow | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/attack-path-analysis/SKILL.md` |
-| Severity policy | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/attack-path-analysis/references/severity-policy.md` |
-| Attack-path facts | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/skills/attack-path-analysis/references/attack-path-facts.md` |
-| Final report format | `/Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/references/final-report.md` |
+| Scan artifact conventions | `<codex-security-plugin-dir>/references/scan-artifacts.md` |
+| Shared hard rules | `<codex-security-plugin-dir>/references/shared-hard-rules.md` |
+| Threat model workflow | `<codex-security-plugin-dir>/skills/threat-model/SKILL.md` |
+| Threat model guidance | `<codex-security-plugin-dir>/skills/threat-model/references/threat-model-guidance.md` |
+| Finding discovery workflow | `<codex-security-plugin-dir>/skills/finding-discovery/SKILL.md` |
+| Repository-wide scan workflow | `<codex-security-plugin-dir>/skills/security-scan/references/repository-wide-scan.md` |
+| Validation workflow | `<codex-security-plugin-dir>/skills/validation/SKILL.md` |
+| Validation guidance | `<codex-security-plugin-dir>/skills/validation/references/validation-guidance.md` |
+| Attack-path workflow | `<codex-security-plugin-dir>/skills/attack-path-analysis/SKILL.md` |
+| Severity policy | `<codex-security-plugin-dir>/skills/attack-path-analysis/references/severity-policy.md` |
+| Attack-path facts | `<codex-security-plugin-dir>/skills/attack-path-analysis/references/attack-path-facts.md` |
+| Final report format | `<codex-security-plugin-dir>/references/final-report.md` |
 
 Repository guidance used:
 
-- `/Users/maheshkokare/PycharmProjects/pycharm-git-for-vscode/AGENTS.md`
-- `/Users/maheshkokare/.codex/RTK.md`, referenced from `AGENTS.md`
+- `<repo-root>/AGENTS.md`
+- `<codex-home>/RTK.md`, referenced from `AGENTS.md`
 
 Security-relevant repository guidance that influenced the scan:
 
@@ -128,17 +128,17 @@ The scan used the Codex Security artifact layout:
 Primary artifact paths:
 
 ```text
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/01_context/threat_model.md
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/01_context/seed_research.md
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/rank_input.csv
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/deep_review_input.csv
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/shard_manifest.json
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/work_ledger.jsonl
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/raw_candidates.jsonl
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/03_coverage/repository_coverage_ledger.md
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/dedupe_report.md
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/validation_report.md
-/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/attack_path_report.md
+<scan-dir>/artifacts/01_context/threat_model.md
+<scan-dir>/artifacts/01_context/seed_research.md
+<scan-dir>/artifacts/02_discovery/rank_input.csv
+<scan-dir>/artifacts/02_discovery/deep_review_input.csv
+<scan-dir>/artifacts/02_discovery/shard_manifest.json
+<scan-dir>/artifacts/02_discovery/work_ledger.jsonl
+<scan-dir>/artifacts/02_discovery/raw_candidates.jsonl
+<scan-dir>/artifacts/03_coverage/repository_coverage_ledger.md
+<scan-dir>/artifacts/04_reconciliation/dedupe_report.md
+<scan-dir>/artifacts/04_reconciliation/validation_report.md
+<scan-dir>/artifacts/04_reconciliation/attack_path_report.md
 ```
 
 ## Phase 1: Threat Model
@@ -147,9 +147,9 @@ The scan generated and used a repository-specific threat model for IntelliGit.
 
 Artifacts:
 
-- Repository-scoped threat model: `/tmp/codex-security-scans/pycharm-git-for-vscode/threat_model.md`
-- Per-scan copy: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/01_context/threat_model.md`
-- Seed research: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/01_context/seed_research.md`
+- Repository-scoped threat model: `<scan-artifacts-root>/threat_model.md`
+- Per-scan copy: `<scan-dir>/artifacts/01_context/threat_model.md`
+- Seed research: `<scan-dir>/artifacts/01_context/seed_research.md`
 
 The threat model identified these main assets and boundaries:
 
@@ -203,8 +203,8 @@ You are a Codex Security file-review subagent for the IntelliGit repository-wide
 
 You own exactly one discovery shard:
 
-- Repository root: /Users/maheshkokare/PycharmProjects/pycharm-git-for-vscode
-- Scan directory: /tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z
+- Repository root: <repo-root>
+- Scan directory: <scan-dir>
 - Threat model: artifacts/01_context/threat_model.md
 - Handoff: artifacts/02_discovery/file_review_handoff.md
 - Shard CSV: artifacts/02_discovery/subagent_shards/<SHARD>.csv
@@ -247,11 +247,11 @@ The parent agent owned orchestration, dedupe, cross-file validation, final sever
 
 The scan used 37 shard workers. The shard CSVs are under:
 
-`/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/subagent_shards/`
+`<scan-dir>/artifacts/02_discovery/subagent_shards/`
 
 The shard results are under:
 
-`/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/subagent_results/`
+`<scan-dir>/artifacts/02_discovery/subagent_results/`
 
 | Shard | Agent | Agent id | Candidate count |
 |---|---|---|---:|
@@ -297,7 +297,7 @@ The shard results are under:
 
 Each shard contained at most five tracked files. The full manifest is:
 
-`/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/02_discovery/shard_manifest.json`
+`<scan-dir>/artifacts/02_discovery/shard_manifest.json`
 
 High-signal shards that produced candidates:
 
@@ -339,7 +339,7 @@ Then it deduped the 27 raw candidates into 10 groups:
 
 Dedupe artifact:
 
-`/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/dedupe_report.md`
+`<scan-dir>/artifacts/04_reconciliation/dedupe_report.md`
 
 ## Phase 4: Validation
 
@@ -355,7 +355,7 @@ Validation rubric:
 
 Validation closure artifact:
 
-`/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/validation_report.md`
+`<scan-dir>/artifacts/04_reconciliation/validation_report.md`
 
 Shared PoC and probe logs:
 
@@ -382,8 +382,8 @@ Attack-path analysis decided final reportability, severity, confidence, countere
 
 Attack-path artifacts:
 
-- Scan-level closure: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/attack_path_report.md`
-- Per-finding reports: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/05_findings/FIND-*/attack_path_report.md`
+- Scan-level closure: `<scan-dir>/artifacts/04_reconciliation/attack_path_report.md`
+- Per-finding reports: `<scan-dir>/artifacts/05_findings/FIND-*/attack_path_report.md`
 
 Final attack-path decisions:
 
@@ -404,26 +404,26 @@ Final attack-path decisions:
 
 Final report generation produced:
 
-- `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.md`
-- `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.html`
-- `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report_validation.md`
+- `<scan-dir>/report.md`
+- `<scan-dir>/report.html`
+- `<scan-dir>/report_validation.md`
 
 The Markdown report format was validated with:
 
 ```text
-python3 /Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/scripts/validate_report_format.py --report-md /tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.md
+python3 <codex-security-plugin-dir>/scripts/validate_report_format.py --report-md <scan-dir>/report.md
 ```
 
 Validation output:
 
 ```text
-validated report format: /tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.md
+validated report format: <scan-dir>/report.md
 ```
 
 The HTML report was rendered with:
 
 ```text
-python3 /Users/maheshkokare/.codex/plugins/cache/openai-curated/codex-security/e2d08a2e/scripts/render_report_html.py /tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.md /tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.html
+python3 <codex-security-plugin-dir>/scripts/render_report_html.py <scan-dir>/report.md <scan-dir>/report.html
 ```
 
 ## Closure Checks

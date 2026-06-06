@@ -88,6 +88,7 @@ describe("discoverGitRepositories", () => {
         const repos = await discoverGitRepositories([workspace], { resolveGitRoot });
 
         expect(repos).toEqual([]);
+        expect(resolveGitRoot).toHaveBeenCalledWith(workspace);
     });
 
     it("does not scan ignored directories", async () => {

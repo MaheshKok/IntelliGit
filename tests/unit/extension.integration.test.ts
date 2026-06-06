@@ -1632,6 +1632,13 @@ describe("extension integration", () => {
 
         gitOpsState.acceptConflictSide.mockClear();
         showErrorMessage.mockClear();
+        await handler?.({ type: "acceptYours", filePath: "   " });
+
+        expect(gitOpsState.acceptConflictSide).not.toHaveBeenCalled();
+        expect(showErrorMessage).not.toHaveBeenCalled();
+
+        gitOpsState.acceptConflictSide.mockClear();
+        showErrorMessage.mockClear();
         await handler?.({ type: "acceptYours", filePath: "src/conflicted.ts " });
 
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts ", "ours");

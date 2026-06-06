@@ -13,7 +13,7 @@ Validation completed for the remediation:
 - Focused regression suite: `bun vitest run tests/unit/gitops.test.ts tests/unit/gitHelpers.test.ts tests/unit/repositoryDiscovery.test.ts tests/unit/jetbrainsMergeService.test.ts tests/unit/jetbrainsMergeTool.test.ts tests/unit/cloneService.test.ts tests/unit/extension.integration.test.ts tests/unit/localization.test.ts`
 - Standard checks: `bun run format:check`, `bun run lint`, `bun run architecture:check`, `bun run typecheck`, `bun run build`, `bun run test`
 - Localization checks: `bun run l10n:translate -- --only-missing --quiet`, `bun run l10n:import -- --quiet`, `bun run l10n:validate -- --quiet`, `bun run l10n:audit`
-- GitNexus change detection: `npx --yes gitnexus detect-changes --repo /Users/maheshkokare/PycharmProjects/pycharm-git-for-vscode`
+- GitNexus change detection: `npx --yes gitnexus detect-changes --repo <repo-root>`
 
 | Severity | Count |
 |---|---:|
@@ -28,14 +28,14 @@ Validation completed for the remediation:
 
 Formal reports:
 
-- Markdown: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.md`
-- HTML: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/report.html`
+- Markdown: `<scan-dir>/report.md`
+- HTML: `<scan-dir>/report.html`
 
 Supporting ledgers:
 
-- Dedupe: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/dedupe_report.md`
-- Validation: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/validation_report.md`
-- Attack path: `/tmp/codex-security-scans/pycharm-git-for-vscode/0cbff40d3e13_20260605T191723Z/artifacts/04_reconciliation/attack_path_report.md`
+- Dedupe: `<scan-dir>/artifacts/04_reconciliation/dedupe_report.md`
+- Validation: `<scan-dir>/artifacts/04_reconciliation/validation_report.md`
+- Attack path: `<scan-dir>/artifacts/04_reconciliation/attack_path_report.md`
 
 ## Priority Order
 

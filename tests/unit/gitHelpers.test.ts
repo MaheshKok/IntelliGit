@@ -394,6 +394,8 @@ describe("buildCommitFilePatch", () => {
     });
 
     it("treats pathspec magic syntax as a literal commit-file path", async () => {
+        if (process.platform === "win32") return;
+
         const repo = await mkdtemp(path.join(os.tmpdir(), "intelligit-patch-"));
         const git = async (args: string[]): Promise<string> =>
             new Promise((resolve, reject) => {

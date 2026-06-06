@@ -54,12 +54,13 @@ bun.lock
 .DS_Store
 Thumbs.db
 
-# Claude and swarm data
+# Claude, swarm, and local code-intelligence data
 .claude/**
 .claude-flow/**
 .agents/**
 .hermes/**
 .repowise/**
+.gitnexus/**
 .serena/**
 .mcp.json
 CLAUDE.md

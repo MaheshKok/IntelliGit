@@ -5,6 +5,24 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.5] - 2026-06-06
+
+### Fixed
+
+- Reject whitespace-only merge conflict session file paths before accepting either side, while preserving valid filenames that intentionally include leading or trailing spaces.
+- Keep the real-Git pathspec magic regression test portable by skipping the invalid filename scenario on Windows.
+- Strengthen repository discovery coverage for workspace Git root resolution.
+- Exclude local GitNexus code-intelligence metadata from packaged VSIX artifacts.
+
+### Security
+
+- Replaced machine-specific security scan paths in documentation with placeholders for the repository root, scan directory, scan id, Codex home, plugin directory, and scan artifact root.
+
+### Verification
+
+- Added regression coverage for whitespace-only conflict session paths being ignored without surfacing an error, and preserved coverage for trailing-space conflict filenames.
+- Verified platform-safe pathspec behavior, repository discovery resolver expectations, security-doc path cleanup, full project validation, and release package generation.
+
 ## [0.9.4] - 2026-06-04
 
 ### Changed
