@@ -18,6 +18,11 @@ This plan describes how to add high-signal TSDoc documentation across IntelliGit
 - Do not add runtime translation behavior or alter localization workflow as part of documentation work.
 - Do not combine the entire rollout into one mega-commit or one unreviewable PR.
 
+## Rejected alternatives
+
+- Convention-only documentation enforced by reviewers, with no lint gate. This repo already ratchets coverage and gates knip, dependency-cruiser, and zero-warning lint; an unenforced doc standard would drift exactly like untested code. The lint ratchet is what makes the effort durable.
+- TypeDoc or a generated API site during the initial rollout. IntelliGit ships as a `.vsix`, not as an imported library, so a generated API site has no real audience. The payoff (editor hover tooltips and captured contracts) comes from the comments themselves. This is reversible and can be revisited after the ratchet is closed.
+
 ## Documentation standard
 
 Use TSDoc-style block comments for exported and boundary-facing symbols:
@@ -65,7 +70,19 @@ The rollout should use two linting layers:
 1. `eslint-plugin-tsdoc` for global TSDoc syntax validation.
 2. `eslint-plugin-jsdoc` for scoped documentation presence and description requirements.
 
-The repo already uses ESLint flat config. Add documentation rules in the same style as the existing extension, webview, and script file groups.
+The repo already uses ESLint flat config. Add documentation rules in the same style as the existing extension, webview, and script file groups. The `scripts/**/*.js` build tooling is out of scope for documentation rules; apply doc rules only to `src` TypeScript and TSX files.
+
+### Required `jsdoc` setting
+
+`eslint-plugin-jsdoc` must run in TypeScript mode, or its rules misbehave on typed code (for example, mishandling type-only constructs or rejecting TSDoc tags). Add this once, alongside the doc rule groups:
+
+```js
+settings: { jsdoc: { mode: "typescript" } }
+```
+
+### Tag-validation authority
+
+`tsdoc/syntax` and `jsdoc/check-tag-names` are two validators with different tag vocabularies. Running both as `error` double-validates tags and conflicts on TSDoc-only tags such as `@remarks` (valid under `tsdoc/syntax`, rejected by `check-tag-names` unless added to `definedTags`). Make `tsdoc/syntax` the single tag authority and keep `jsdoc/check-tag-names` off.
 
 ### Global rule
 
@@ -84,18 +101,55 @@ Enable these only for completed, locked globs:
     "error",
     {
         publicOnly: true,
-        // Context selectors should be calibrated during the pilot phase.
+        // `publicOnly` only restricts the built-in `require` node types to
+        // exported symbols. It does NOT govern `contexts` selectors, which match
+        // regardless of export. Every context selector must therefore encode
+        // export itself, or the rule will demand docs on internal types too.
+        contexts: [
+            "ExportNamedDeclaration > TSInterfaceDeclaration",
+            "ExportNamedDeclaration > TSTypeAliasDeclaration",
+            "ExportNamedDeclaration > TSEnumDeclaration",
+            "ExportNamedDeclaration > VariableDeclaration",
+        ],
     },
 ],
 "jsdoc/require-description": "error",
 "jsdoc/check-param-names": "error",
-"jsdoc/check-tag-names": "error",
+"jsdoc/check-tag-names": "off",   // tsdoc/syntax owns tag validation
 "jsdoc/no-types": "error",
 "jsdoc/require-param": "off",
 "jsdoc/require-returns": "off",
 ```
 
 The `require-param` and `require-returns` rules stay off because they encourage type-restating comments in a strict TypeScript codebase. Authors should add those tags only when they document semantics that types do not capture.
+
+The `contexts` selectors above are the starting point; confirm during the pilot (Phase 3) that they fire only on exported symbols and skip anonymous callbacks and local JSX components.
+
+## Tooling compatibility prerequisite
+
+This repo pins `eslint@^10`. Before installing the doc plugins, verify that the chosen `eslint-plugin-jsdoc` and `eslint-plugin-tsdoc` versions support ESLint 10 flat config. `eslint-plugin-tsdoc` in particular has historically lagged ESLint major versions. If either plugin is incompatible, pin to a compatible plugin release or hold ESLint at a compatible version; do not proceed to enforcement until `bun run lint:strict` passes with the plugins loaded. This check gates Phase 2.
+
+## Validation gates
+
+Each document-and-lock phase below inlines the full gate set that CI enforces; a tier is locked only once all of it passes:
+
+```bash
+bun run deps:check:strict   # knip
+bun run typecheck           # typecheck:webview for React phases
+bun run lint:strict
+bun run architecture:check
+bun run test:coverage       # enforces the coverage ratchet
+```
+
+Phases that touch activation, views, or bundled entry points also run `bun run build`; React phases run `bun run typecheck:webview` and `bun run react-doctor` in place of the extension typecheck. `build` and `test:coverage` cannot be broken by comment-only diffs, but they run anyway so an incidental code edit cannot slip through. Phase 0 has no validation step (baseline only); every phase from Phase 1 onward runs the full gate set, even markdown-only phases, for uniformity.
+
+## Per-phase governance
+
+Per the repo's `.claude/CLAUDE.md`, each phase also runs the mandated gates, which the per-phase blocks do not restate:
+
+- Run the `code-reviewer` agent on the diff after authoring a directory.
+- Run the `security-reviewer` agent before committing (Tier 1 boundaries especially).
+- Run `gitnexus_detect_changes()` before committing to confirm doc-only edits produced no symbol or execution-flow drift.
 
 ## Phase 0: Baseline audit
 
@@ -151,7 +205,12 @@ Define what good documentation means before authors start editing many files.
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
+bun run lint:strict
+bun run architecture:check
+bun run typecheck
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -174,6 +233,7 @@ Install documentation lint tooling and validate existing comment syntax without 
 
 ### Tasks
 
+- Verify ESLint 10 compatibility first (see Tooling compatibility prerequisite); do not continue if the plugins cannot load under `eslint@^10`.
 - Install documentation lint plugins:
 
 ```bash
@@ -183,6 +243,7 @@ bun add -d eslint-plugin-jsdoc eslint-plugin-tsdoc
 - Do not install TypeDoc during this phase.
 - Import the plugins in `eslint.config.mjs`.
 - Add a shared `tsdocSyntaxRules` object with `"tsdoc/syntax": "error"`.
+- Add `settings: { jsdoc: { mode: "typescript" } }` to the doc rule groups (required for correct behavior on TypeScript; see Enforcement model).
 - Apply syntax validation to extension TypeScript files and React webview files.
 - Fix malformed existing TSDoc/JSDoc blocks if the syntax rule reports them.
 - Do not enable `jsdoc/require-jsdoc` yet.
@@ -190,9 +251,12 @@ bun add -d eslint-plugin-jsdoc eslint-plugin-tsdoc
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -229,16 +293,25 @@ const TSDOC_LOCKED_REACT_FILES = [
 ```
 
 - Add shared `jsdocContractRules` and `requireExportDocsRules` objects.
-- Configure `jsdoc/require-jsdoc` for exported/public symbols only.
-- Keep `jsdoc/require-param` and `jsdoc/require-returns` off.
-- Pilot on one or two small Git files, such as `src/git/executor.ts` and `src/git/operationSupport.ts`.
-- Tune `require-jsdoc` contexts so the rule catches exported boundary symbols without requiring docs on anonymous callbacks or trivial JSX internals.
+- Configure `jsdoc/require-jsdoc` for exported/public symbols only, using the export-aware `contexts` selectors from the Enforcement model.
+- Keep `jsdoc/require-param` and `jsdoc/require-returns` off; keep `jsdoc/check-tag-names` off.
+- Pilot across all three symbol shapes, not just functions, because Tier 1B and Tier 3 depend on the harder selectors:
+  - a function/class file, such as `src/git/executor.ts` or `src/git/operationSupport.ts`;
+  - a type/interface-heavy file, such as `src/types.ts` or one `src/webviews/protocol/*.ts`, to confirm interface and type-alias contexts fire only on exported declarations (the `publicOnly` option does not restrict `contexts`);
+  - one React file under `src/webviews/react/shared/**`, to confirm exported hooks are caught while local JSX components are not.
+- Validate the React selector starting point: require docs on exported hooks (`FunctionDeclaration[id.name=/^use[A-Z]/]`) and exported props interfaces, and exclude inline components. Adjust before locking any React tier.
 
 ### Validation
 
 ```bash
+bun run deps:check:strict
+bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
+bun run typecheck:webview
+bun run react-doctor
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -302,11 +375,13 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
 bun run build
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -368,10 +443,12 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -432,10 +509,12 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -494,11 +573,13 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
 bun run build
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -554,10 +635,12 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -626,11 +709,13 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
 bun run build
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -662,7 +747,7 @@ Document shared utilities, merge conflict parsing, and any localization helper c
 - `src/utils/languageAssociations.ts`
 - `src/utils/notifications.ts`
 - `src/mergeEditor/conflictParser.ts`
-- `src/i18n/**`
+- `src/i18n/**` (currently no TypeScript files; no-op until populated)
 - `src/webviews/i18n/**`
 
 ### Documentation targets
@@ -696,17 +781,19 @@ Add:
 ```js
 "src/utils/**/*.ts",
 "src/mergeEditor/**/*.ts",
-"src/i18n/**/*.ts",
+// `src/i18n` currently contains no .ts files; include only if/when it does.
 "src/webviews/i18n/**/*.ts"
 ```
 
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck
-bun run test
+bun run test:coverage
 ```
 
 If user-facing strings changed:
@@ -772,16 +859,18 @@ Add narrow React globs first, for example:
 "src/webviews/react/commit-list/**/*.{ts,tsx}"
 ```
 
-Use React-specific contexts to avoid requiring docs on every local JSX component.
+Use the React-specific contexts validated in Phase 3: require docs on exported hooks (`FunctionDeclaration[id.name=/^use[A-Z]/]`) and exported props interfaces/type aliases, and exclude inline JSX components so presentational code is not forced into noisy docs.
 
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck:webview
 bun run react-doctor
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -837,11 +926,13 @@ Add:
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck:webview
 bun run react-doctor
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -904,12 +995,14 @@ Keep React-specific exceptions if needed to avoid forcing docs on trivial local 
 ### Validation
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
+bun run architecture:check
 bun run typecheck:webview
 bun run react-doctor
 bun run build
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -943,13 +1036,15 @@ Make undocumented new exported APIs fail lint across the full source tree, with 
 Run the full standard validation set:
 
 ```bash
+bun run deps:check:strict
 bun run format:check
 bun run lint:strict
 bun run architecture:check
 bun run react-doctor
 bun run typecheck
+bun run typecheck:webview
 bun run build
-bun run test
+bun run test:coverage
 ```
 
 ### Acceptance criteria
@@ -1038,8 +1133,10 @@ The rollout is complete when:
 - Exported boundary APIs have meaningful comments.
 - React presentational noise is avoided.
 - Full source documentation ratchet is active or explicitly scoped with documented exclusions.
-- `bun run lint:strict` passes.
+- `bun run deps:check:strict` (knip) passes.
 - `bun run typecheck` passes.
+- `bun run lint:strict` passes.
+- `bun run architecture:check` passes.
+- `bun run test:coverage` passes (coverage ratchet held).
 - `bun run build` passes.
-- `bun run test` passes.
 - Documentation comments explain contracts and invariants rather than repeating types.
