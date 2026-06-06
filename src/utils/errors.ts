@@ -1,5 +1,9 @@
 // Shared error handling utilities used by extension host and view providers.
 
+/**
+ * Convert any thrown value into a display-safe message for UI notifications and logs.
+ * Credential-bearing remote URLs are sanitized before the message leaves this helper.
+ */
 export function getErrorMessage(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error);
     return sanitizeErrorMessage(raw);
@@ -20,6 +24,10 @@ export function sanitizeErrorMessage(message: string): string {
     return message.replace(/(https?:\/\/)[^\s/@]+(?::[^\s/@]*)?@/g, "$1***@");
 }
 
+/**
+ * Detect git failures that mean `git rm` was asked to remove an untracked or missing path.
+ * Callers use this to fall back to workspace filesystem deletion without masking other git errors.
+ */
 export function isUntrackedPathspecError(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase();
     const rawCode =
@@ -35,6 +43,10 @@ export function isUntrackedPathspecError(error: unknown): boolean {
     );
 }
 
+/**
+ * Detect git's protected branch deletion failure for branches that are not fully merged.
+ * The check intentionally works on sanitized message text so credential redaction stays centralized.
+ */
 export function isBranchNotFullyMergedError(error: unknown): boolean {
     return getErrorMessage(error).toLowerCase().includes("is not fully merged");
 }

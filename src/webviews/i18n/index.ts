@@ -15,6 +15,10 @@ import zhTw from "./zh-tw.json";
 type WebviewCatalogValue = string | Record<string, string>;
 type WebviewCatalog = Record<string, WebviewCatalogValue>;
 
+/**
+ * Static localization payload injected into every React webview HTML shell.
+ * The fallback catalog is always English so client-side lookup can recover missing keys.
+ */
 export interface WebviewI18nPayload {
     locale: string;
     fallbackLocale: "en";
@@ -47,6 +51,10 @@ const LOCALE_ALIASES: Record<string, string> = {
     pt: "pt-br",
 };
 
+/**
+ * Resolve the closest bundled webview catalog for a VS Code locale without fetching translations.
+ * Pseudo-localization can replace both catalogs when `INTELLIGIT_PSEUDO_LOC=1` is set.
+ */
 export function getWebviewI18nPayload(locale = vscode.env.language): WebviewI18nPayload {
     const normalizedLocale = normalizeLocale(locale);
     const resolvedLocale = resolveCatalogLocale(normalizedLocale);

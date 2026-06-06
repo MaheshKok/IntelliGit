@@ -23,6 +23,9 @@ const TSDOC_LOCKED_EXTENSION_FILES = [
     "src/activation/**/*.ts",
     "src/commands/**/*.ts",
     "src/views/**/*.ts",
+    "src/utils/**/*.ts",
+    "src/mergeEditor/**/*.ts",
+    "src/webviews/i18n/**/*.ts",
 ];
 const TSDOC_LOCKED_REACT_FILES = [
     "src/webviews/react/shared/components/ContextMenu.tsx",
