@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Linked the TSDoc standard and rollout baseline from the README development documentation.
 
+### Fixed
+
+- Pointed the localization CSV tooling, tests, and workflow documentation at `docs/localization/localization_translation_review.csv` so validation uses the current reviewed-translation source path.
+
 ### Verification
 
 - Verified the documentation baseline, TSDoc standard placement, release metadata, and repository validation gates for the documentation-only rollout phase.
