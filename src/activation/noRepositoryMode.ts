@@ -15,6 +15,9 @@ import {
     workspaceRoots,
 } from "./common";
 
+/**
+ * Hooks that let no-repository activation transition after a repository appears.
+ */
 export interface NoRepositoryModeDeps {
     activateRepositoryMode: (
         repositories: DiscoveredRepository[],
@@ -22,6 +25,19 @@ export interface NoRepositoryModeDeps {
     ) => Promise<void>;
 }
 
+/**
+ * Activates IntelliGit for a workspace that currently contains no Git repositories.
+ *
+ * This mode requires workspace folders but no discovered repository. It registers
+ * onboarding providers for the graph/panel views, an empty merge-conflicts tree,
+ * and placeholder command handlers owned by `context.subscriptions`. The
+ * no-repository command/tree disposables are also tracked separately so they can
+ * be disposed before repository mode registers real handlers.
+ *
+ * Repository discovery from select/init commands transitions to repository mode
+ * once, reusing the switchable view providers so visible onboarding views become
+ * repository-backed without duplicate provider registrations.
+ */
 export function activateNoRepositoryMode(
     context: vscode.ExtensionContext,
     deps: NoRepositoryModeDeps,
@@ -58,10 +74,23 @@ export function activateNoRepositoryMode(
         new OnboardingViewProvider(context.extensionUri, "no-git-repo", vscode.l10n.t("Commit")),
     );
 
+    /**
+     * Tracks a disposable under both extension ownership and no-repository teardown.
+     *
+     * `context.subscriptions` handles extension shutdown; the local collection
+     * allows early disposal when repository mode takes over command IDs and trees.
+     */
     const registerNoRepositoryDisposable = (disposable: vscode.Disposable): void => {
         noRepositoryDisposables.push(disposable);
         context.subscriptions.push(disposable);
     };
+    /**
+     * Switches the existing workspace into repository mode after discovery succeeds.
+     *
+     * Concurrent command invocations share the same activation promise. On success,
+     * no-repository command/tree disposables are disposed before repository handlers
+     * are registered; on failure, a later command can retry the transition.
+     */
     const activateDiscoveredRepositories = async (
         discoveredRepositories: DiscoveredRepository[],
     ): Promise<void> => {

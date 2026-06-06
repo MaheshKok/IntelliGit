@@ -30,6 +30,20 @@ import {
     registerRepositoryViewEvents,
 } from "./repositoryViewEvents";
 
+/**
+ * Activates IntelliGit's repository-backed mode for discovered Git roots.
+ *
+ * This path runs after startup discovery finds repositories or after
+ * no-repository mode initializes/selects one. It selects the initial root from
+ * workspace state when possible, creates Git services and repository view
+ * providers, registers command/event subscriptions, and starts initial provider
+ * refreshes and file watchers. The VS Code extension context owns every
+ * disposable created here.
+ *
+ * If `viewProviders` contains switchable wrappers from no-repository mode, they
+ * are reused so existing onboarding view registrations render repository content
+ * instead of registering duplicate view IDs.
+ */
 export async function activateRepositoryMode(
     context: vscode.ExtensionContext,
     repositoriesForActivation: DiscoveredRepository[],
@@ -87,6 +101,13 @@ export async function activateRepositoryMode(
     resetFileCountBadge();
     const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
 
+    /**
+     * Creates the refresh coordinator for the currently active repository root.
+     *
+     * The service keeps provider refreshes, file watchers, and merge-conflict
+     * state tied to the active root. A repository switch must dispose the previous
+     * service before registering watchers on the replacement.
+     */
     const createRefreshService = (root: string): RefreshService =>
         new RefreshService(
             {
@@ -117,6 +138,12 @@ export async function activateRepositoryMode(
         commitInfo.clear();
     };
 
+    /**
+     * Refreshes branch-dependent providers and clears stale selection state.
+     *
+     * Used by explicit refreshes and repository switches. Failures propagate to
+     * the caller; background initial refreshes attach their own logging handlers.
+     */
     const refreshActiveRepository = async (): Promise<void> => {
         currentBranches = await gitOps.getBranches();
         commitGraph.setBranches(currentBranches);
@@ -132,6 +159,13 @@ export async function activateRepositoryMode(
         clearSelection();
     };
 
+    /**
+     * Switches all repository-scoped services and providers to a newly selected root.
+     *
+     * Updates the shared executor, provider labels/root URIs, merge-conflict tree,
+     * badge state, persisted workspace selection, and refresh service watchers
+     * before loading fresh data for the selected repository.
+     */
     const setActiveRepository = async (repository: DiscoveredRepository): Promise<void> => {
         activeRepository = repository;
         repoRoot = repository.root;
@@ -155,6 +189,13 @@ export async function activateRepositoryMode(
         await refreshActiveRepository();
     };
 
+    /**
+     * Opens VS Code's built-in merge editor for a repository-relative conflict file.
+     *
+     * The path is validated before constructing the file URI. If the Git extension
+     * command is unavailable or fails, the file opens normally and the user sees a
+     * warning instead of a hard failure.
+     */
     const openBuiltInMergeEditorForFile = async (filePath: string): Promise<void> => {
         const fileUri = vscode.Uri.file(path.join(repoRoot, assertRepoRelativePath(filePath)));
         try {
@@ -171,6 +212,13 @@ export async function activateRepositoryMode(
         }
     };
 
+    /**
+     * Opens a conflict file using the preferred merge tool for the active repository.
+     *
+     * A configured JetBrains tool gets the first chance when external tools are
+     * preferred; unresolved or failed external opens fall back to VS Code's
+     * built-in merge editor path.
+     */
     const openMergeConflictForFile = async (filePath: string): Promise<void> => {
         const preferExternal = getPreferExternalMergeTool();
 
@@ -187,6 +235,12 @@ export async function activateRepositoryMode(
         await openBuiltInMergeEditorForFile(filePath);
     };
 
+    /**
+     * Opens the multi-file merge conflict session panel for the active repository.
+     *
+     * The panel callbacks route file opens through the same merge-tool preference
+     * as tree commands and refresh conflict UI after webview-side state changes.
+     */
     const openConflictSession = async (labels?: {
         sourceBranch?: string;
         targetBranch?: string;
@@ -208,6 +262,13 @@ export async function activateRepositoryMode(
         getRepoRoot,
     });
 
+    /**
+     * Creates the undocked IntelliGit provider once and wires its event subscriptions.
+     *
+     * The provider and listener disposables are owned by `context.subscriptions`.
+     * Disposal clears the cached provider, commit-detail loads use a sequence guard
+     * to ignore stale responses, and working-tree events keep docked views in sync.
+     */
     const ensureUndockedPanel = (): UndockedViewProvider => {
         if (undocked) return undocked;
 
@@ -279,6 +340,12 @@ export async function activateRepositoryMode(
         return undocked;
     };
 
+    /**
+     * Loads branch and graph data into an already-created undocked provider.
+     *
+     * Guards after awaits because the undocked panel can be disposed while Git
+     * work is pending, especially while a new-window open is being completed.
+     */
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
         currentBranches = await gitOps.getBranches();
@@ -287,6 +354,13 @@ export async function activateRepositoryMode(
         await undocked.refresh();
     };
 
+    /**
+     * Reveals or opens the unified undocked IntelliGit panel.
+     *
+     * Editor-tab opens load data immediately; new-window opens may defer loading
+     * until after VS Code moves the editor so the panel does not refresh while
+     * being reparented.
+     */
     const showUndockedGitLog = async (options?: { deferDataLoad?: boolean }): Promise<void> => {
         if (undocked) {
             undocked.reveal();
@@ -302,6 +376,13 @@ export async function activateRepositoryMode(
         }
     };
 
+    /**
+     * Enables undocked mode and opens the panel in the selected VS Code surface.
+     *
+     * Opening in a new window persists the setting first, moves the editor
+     * best-effort, then loads data after the move to avoid refreshing a transient
+     * editor.
+     */
     const openUndockedIntelliGit = async (target: UndockTarget): Promise<void> => {
         if (undocked) {
             undocked.reveal();
@@ -321,6 +402,11 @@ export async function activateRepositoryMode(
         }
     };
 
+    /**
+     * Prompts for an undock target and starts the matching undocked open flow.
+     *
+     * Canceling the quick pick leaves configuration and existing panels unchanged.
+     */
     const pickUndockTargetAndOpen = async (): Promise<void> => {
         const picked = await vscode.window.showQuickPick(
             [
@@ -343,6 +429,12 @@ export async function activateRepositoryMode(
         await openUndockedIntelliGit(picked.target);
     };
 
+    /**
+     * Returns IntelliGit to docked sidebar views and disables the undock preference.
+     *
+     * The undocked provider is disposed if present, then the docked panel and graph
+     * are focused so VS Code restores the repository-backed view locations.
+     */
     async function dockIntelliGit(): Promise<void> {
         await vscode.workspace
             .getConfiguration("intelligit")
@@ -458,6 +550,12 @@ export async function activateRepositoryMode(
     void repositories;
 }
 
+/**
+ * Creates the empty tree view used only to expose the commit panel file-count badge.
+ *
+ * The view has no children; callers own the returned disposable and update its
+ * badge as the commit panel reports working-tree file counts.
+ */
 function createFileCountBadgeView(): vscode.TreeView<never> {
     return vscode.window.createTreeView("intelligit.fileCountBadge", {
         treeDataProvider: {
@@ -467,6 +565,12 @@ function createFileCountBadgeView(): vscode.TreeView<never> {
     });
 }
 
+/**
+ * Moves the active undocked editor into a floating VS Code window when supported.
+ *
+ * This is a best-effort UI side effect. Failures are converted into a warning so
+ * the panel remains usable in its original editor tab.
+ */
 async function moveUndockedEditorToNewWindow(): Promise<void> {
     try {
         await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");

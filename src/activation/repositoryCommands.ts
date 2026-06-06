@@ -23,6 +23,12 @@ import { runWithNotificationProgress } from "../utils/notifications";
 import type { RefreshService } from "../views/RefreshService";
 import { NO_REPOSITORY_MESSAGE, workspaceRoots } from "./common";
 
+/**
+ * Runtime services and callbacks captured by repository command handlers.
+ *
+ * Accessor callbacks must reflect the currently active repository because command
+ * registrations stay alive while repository mode can switch roots.
+ */
 interface RepositoryCommandsDeps {
     context: vscode.ExtensionContext;
     executor: GitExecutor;
@@ -60,6 +66,14 @@ const isFilePathContext = (value: unknown): value is { filePath: string } => {
 const resolveConflictPath = (ctx: unknown): string | null =>
     isFilePathContext(ctx) ? ctx.filePath : null;
 
+/**
+ * Registers the command surface that requires an active IntelliGit repository.
+ *
+ * Called only from repository mode after Git services, providers, and refresh
+ * state exist. Each command disposable is pushed into `deps.context.subscriptions`;
+ * when no-repository mode transitions here it has already disposed placeholder
+ * handlers for the same command IDs.
+ */
 export function registerRepositoryCommands(deps: RepositoryCommandsDeps): void {
     registerWindowAndRepositoryCommands(deps);
     registerMergeCommands(deps);
@@ -67,6 +81,14 @@ export function registerRepositoryCommands(deps: RepositoryCommandsDeps): void {
     registerCommitFileCommands(deps);
 }
 
+/**
+ * Registers repository-level commands for refresh, publish, selection, filtering, and undocking.
+ *
+ * These handlers assume `getRepoRoot`, `gitOps`, and branch callbacks point at the
+ * current active repository. They may rediscover workspace repositories, mutate
+ * configuration, focus views, and refresh providers through the active
+ * `RefreshService`.
+ */
 function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void {
     const {
         context,
@@ -163,6 +185,14 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
     );
 }
 
+/**
+ * Registers merge-conflict and editor-compare commands for the active repository.
+ *
+ * Tree-view command contexts are treated as optional UI input and ignored when
+ * they do not carry a conflict file path. Merge side effects refresh conflict UI
+ * through the current `RefreshService`; command disposables are owned by the
+ * extension context.
+ */
 function registerMergeCommands(deps: RepositoryCommandsDeps): void {
     const {
         context,
@@ -255,6 +285,14 @@ async function acceptConflictSide(
     }
 }
 
+/**
+ * Registers branch action commands created by the branch command factory.
+ *
+ * The command item is normalized before dispatch because branch actions can be
+ * invoked from different VS Code surfaces. Handlers use callbacks so branch
+ * state, merge-conflict refreshes, and repository roots follow the active
+ * repository.
+ */
 function registerBranchCommands(deps: RepositoryCommandsDeps): void {
     const branchCommands = createBranchCommands({
         executor: deps.executor,
@@ -278,6 +316,14 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
     }
 }
 
+/**
+ * Registers commit-panel file commands that operate on repository-relative paths.
+ *
+ * Handlers validate path input before filesystem or Git side effects, prompt for
+ * destructive rollback/delete actions, and refresh commit panels after operations
+ * that can change the working tree. All disposables are owned by the extension
+ * context.
+ */
 function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
     const { context, executor, gitOps, getRepoRoot, refreshService } = deps;
 

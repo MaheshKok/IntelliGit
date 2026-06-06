@@ -7,14 +7,40 @@ import { discoverGitRepositories } from "../services/repositoryDiscovery";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
 import { getErrorMessage } from "../utils/errors";
 
+/**
+ * Workspace-state key that persists the repository root selected across activation modes.
+ */
 export const SELECTED_REPOSITORY_KEY = "intelligit.selectedRepositoryRoot";
+
+/**
+ * Empty-state copy shown when activation cannot discover any Git repositories.
+ */
 export const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspace.";
+
+/**
+ * VS Code when-clause key that enables conflict-specific views and commands.
+ */
 export const HAS_MERGE_CONFLICTS_CONTEXT = "intelligit.hasMergeConflicts";
 
+/**
+ * Updates a VS Code when-clause context key for IntelliGit views and commands.
+ *
+ * This is a host-wide side effect and does not create a disposable. Callers may
+ * intentionally fire-and-forget when activation should not block on context
+ * propagation.
+ */
 export function setViewContext(key: string, value: boolean): Thenable<unknown> {
     return vscode.commands.executeCommand("setContext", key, value);
 }
 
+/**
+ * Keeps a registered webview view ID stable while swapping the provider that renders it.
+ *
+ * No-repository mode uses this wrapper for onboarding views that can later become
+ * repository-backed views without registering duplicate view providers. The
+ * wrapper does not own the inner providers; the activation context owns the
+ * registration disposable.
+ */
 export class SwitchableWebviewViewProvider implements vscode.WebviewViewProvider {
     private resolved:
         | {
@@ -24,8 +50,14 @@ export class SwitchableWebviewViewProvider implements vscode.WebviewViewProvider
           }
         | undefined;
 
+    /**
+     * Creates a wrapper around the provider currently responsible for the view.
+     */
     constructor(private currentProvider: vscode.WebviewViewProvider) {}
 
+    /**
+     * Records the resolved VS Code view and delegates initial rendering to the active provider.
+     */
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         context: vscode.WebviewViewResolveContext,
@@ -35,6 +67,12 @@ export class SwitchableWebviewViewProvider implements vscode.WebviewViewProvider
         return this.currentProvider.resolveWebviewView(webviewView, context, token);
     }
 
+    /**
+     * Replaces the active provider and re-resolves an already visible view immediately.
+     *
+     * The existing webview registration remains owned by the original activation
+     * subscription; this only changes which provider receives future resolves.
+     */
     setProvider(provider: vscode.WebviewViewProvider): void {
         this.currentProvider = provider;
         if (!this.resolved) return;
@@ -46,16 +84,38 @@ export class SwitchableWebviewViewProvider implements vscode.WebviewViewProvider
     }
 }
 
+/**
+ * Switchable view providers that no-repository mode has already registered.
+ *
+ * Repository mode uses these wrappers to take over visible onboarding views
+ * instead of registering a second provider for the same view ID.
+ */
 export interface RepositoryViewProviders {
     commitGraph?: SwitchableWebviewViewProvider;
     sidebarGraph?: SwitchableWebviewViewProvider;
     commitPanel?: SwitchableWebviewViewProvider;
 }
 
+/**
+ * Returns absolute filesystem paths for the workspace folders visible to activation.
+ *
+ * This helper is read-only and central to startup mode selection: callers use an
+ * empty result for no-workspace onboarding, a single result for direct repository
+ * operations, and multiple results when prompting the user to choose a workspace
+ * root.
+ */
 export function workspaceRoots(): string[] {
     return vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
 }
 
+/**
+ * Initializes a Git repository from onboarding or no-repository command handlers.
+ *
+ * Requires at least one workspace folder. Multi-root workspaces prompt for the
+ * target folder, run `git init` under notification progress, rediscover
+ * repositories, and optionally hand the discovery result to `options.onInitialized`.
+ * User-facing errors are reported through VS Code notifications.
+ */
 export async function initializeRepository(
     options: {
         onInitialized?: (repositories: DiscoveredRepository[]) => Promise<void>;
@@ -117,6 +177,14 @@ export async function initializeRepository(
     }
 }
 
+/**
+ * Selects the repository that repository mode should activate first.
+ *
+ * @returns The repository matching persisted workspace state, or the first
+ * discovered repository when the stored root is missing or stale.
+ * @throws When called with no discovered repositories; callers should route that
+ * state through no-repository activation instead.
+ */
 export function selectInitialRepository(
     repositories: DiscoveredRepository[],
     storedRoot: string | undefined,
@@ -127,6 +195,13 @@ export function selectInitialRepository(
     return repositories.find((repo) => repo.root === storedRoot) ?? repositories[0];
 }
 
+/**
+ * Registers a serializer that discards restored undocked IntelliGit panels on startup.
+ *
+ * Undocked panels are recreated from repository mode so stale serialized webviews
+ * are disposed instead of being revived without live Git services. The serializer
+ * registration is owned by `context.subscriptions`.
+ */
 export function registerStaleUndockedPanelSerializer(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.window.registerWebviewPanelSerializer(UndockedViewProvider.viewType, {

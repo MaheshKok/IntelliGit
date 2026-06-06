@@ -17,11 +17,24 @@ interface CommitFileDiffDeps {
     getRepoRoot: () => string;
 }
 
+/**
+ * Shared callback used by repository-backed views to open a commit-scoped file diff.
+ *
+ * Implementations receive repository-relative file paths from view contexts and
+ * are responsible for surfacing user-visible failures.
+ */
 export type OpenCommitFileDiffHandler = (params: {
     commitHash: string;
     filePath: string;
 }) => Promise<void>;
 
+/**
+ * Creates the shared commit-file diff handler for all repository-backed views.
+ *
+ * The handler reads the active root when invoked, opens readonly diff content via
+ * `openCommitFileDiff`, and converts failures into a VS Code error notification
+ * instead of letting event emitters reject unhandled.
+ */
 export function createOpenCommitFileDiffHandler(
     deps: CommitFileDiffDeps,
 ): OpenCommitFileDiffHandler {
@@ -43,6 +56,12 @@ export function createOpenCommitFileDiffHandler(
     };
 }
 
+/**
+ * Providers and repository services captured by view event subscriptions.
+ *
+ * Accessors must resolve the current active repository state because these
+ * subscriptions remain registered across repository switches.
+ */
 export interface RepositoryViewEventDeps {
     context: vscode.ExtensionContext;
     executor: GitExecutor;
@@ -56,6 +75,18 @@ export interface RepositoryViewEventDeps {
     refreshService: () => RefreshService;
 }
 
+/**
+ * Subscribes repository views to shared selection, branch, commit, and diff handlers.
+ *
+ * Called once during repository mode after providers are created. Listener
+ * disposables are pushed to `deps.context.subscriptions`; callbacks use accessors
+ * for repository root, branches, and refresh service so they continue to target
+ * the active repository after root switches.
+ *
+ * Commit-detail loads use a sequence guard so slower responses from earlier
+ * selections cannot overwrite newer selections across graph, sidebar, panel, and
+ * commit-info views.
+ */
 export function registerRepositoryViewEvents(
     deps: RepositoryViewEventDeps,
     handleOpenCommitFileDiff: OpenCommitFileDiffHandler,
@@ -74,6 +105,12 @@ export function registerRepositoryViewEvents(
         refreshService,
     } = deps;
 
+    /**
+     * Loads one commit detail and fans it out to every docked repository view.
+     *
+     * A sequence counter drops stale async responses so rapid selection changes do
+     * not show details for a previously selected commit.
+     */
     const loadCommitDetail = async (hash: string): Promise<void> => {
         const requestId = ++commitDetailRequestSeq;
         try {
@@ -91,6 +128,9 @@ export function registerRepositoryViewEvents(
         }
     };
 
+    /**
+     * Clears commit detail state after branch filtering invalidates the selection.
+     */
     const clearCommitDetail = (): void => {
         commitGraph.clearCommitDetail();
         sidebarGraph.clearCommitDetail();
@@ -98,6 +138,12 @@ export function registerRepositoryViewEvents(
         commitInfo.clear();
     };
 
+    /**
+     * Forwards view-originated branch actions through registered VS Code commands.
+     *
+     * Branch names from webviews are matched against current branch state before
+     * dispatch so command handlers receive the same context shape as tree actions.
+     */
     const forwardBranchAction = ({
         action,
         branchName,
@@ -111,6 +157,12 @@ export function registerRepositoryViewEvents(
         void vscode.commands.executeCommand(`intelligit.${action}`, item);
     };
 
+    /**
+     * Runs a view-originated commit action against the active repository state.
+     *
+     * Refresh callbacks are resolved lazily so actions that mutate history refresh
+     * the current repository even after a repository switch.
+     */
     const runCommitAction = async ({ action, hash }: { action: CommitAction; hash: string }) => {
         try {
             await handleCommitContextAction({
