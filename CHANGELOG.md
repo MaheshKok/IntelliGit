@@ -24,10 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented commit panel React commit, shelf, file-tree selection, message bridge, and PyCharm-style UI helper contracts, then locked `src/webviews/react/commit-panel/**/*.{ts,tsx}` into the TSDoc ratchet.
 - Documented remaining React app, graph, commit-info, merge-conflict session, merge-editor, and undocked layout contracts, then expanded the React TSDoc ratchet to `src/webviews/react/**/*.{ts,tsx}`.
 - Closed the source documentation ratchet by replacing the piecemeal extension globs with full `src/**/*.ts` coverage while keeping the separate React TS/TSX ratchet and its presentational-component guard.
+- Added long-term TSDoc governance guidance with contributor/reviewer checklists, good/bad comment examples, and stale-documentation maintenance commands.
 
 ### Changed
 
 - Linked the TSDoc standard and rollout baseline from the README development documentation.
+- Expanded README development documentation with TSDoc contributor and reviewer expectations.
 
 ### Fixed
 
@@ -36,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verification
 
-- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, view-provider contract ratchet enforcement, utility and merge-editor contract ratchet enforcement, commit panel React contract ratchet enforcement, remaining React app contract ratchet enforcement, closed source documentation ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
+- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, view-provider contract ratchet enforcement, utility and merge-editor contract ratchet enforcement, commit panel React contract ratchet enforcement, remaining React app contract ratchet enforcement, closed source documentation ratchet enforcement, long-term documentation governance guidance, localization path correction, and repository validation gates for the TSDoc rollout phases.
 
 ## [0.9.5] - 2026-06-06
 

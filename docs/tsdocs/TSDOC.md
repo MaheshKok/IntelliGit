@@ -177,6 +177,55 @@ Avoid type-restating comments and other type repetition that only repeat names o
 
 If the comment can be generated from the signature alone, delete it or replace it with contract information that a reviewer cannot infer from the type.
 
+## Good and bad quick reference
+
+Good comments name a durable contract, invariant, failure mode, or maintenance
+hazard. Bad comments rename the symbol, repeat the type, or describe behavior
+that reviewers cannot verify from nearby code.
+
+Good:
+
+```ts
+/**
+ * Builds a Git-safe branch deletion argument list.
+ *
+ * Branch names are passed after `--end-of-options` so a branch that starts with
+ * `-` is treated as data instead of a Git flag.
+ */
+export function buildDeleteBranchArgs(branchName: string): string[];
+```
+
+Bad:
+
+```ts
+/**
+ * Builds delete args.
+ *
+ * @param branchName - The branch name.
+ * @returns A string array.
+ */
+export function buildDeleteBranchArgs(branchName: string): string[];
+```
+
+Good:
+
+```ts
+/**
+ * Restores persisted webview widths after old workspace state is validated and clamped.
+ *
+ * Old values can outlive layout min/max changes, so callers must normalize before
+ * rendering to avoid negative or invisible panes.
+ */
+export function restoreColumnWidths(value: unknown): ColumnWidths | undefined;
+```
+
+Bad:
+
+```ts
+/** Handles widths. */
+export function restoreColumnWidths(value: unknown): ColumnWidths | undefined;
+```
+
 ## Examples by IntelliGit area
 
 ### Git operations
@@ -274,6 +323,18 @@ export function getErrorMessage(error: unknown): string;
 
 Utility comments are useful when they explain normalization, fallback, or user-facing constraints.
 
+## Contributor checklist
+
+When a change adds or edits exported or boundary-facing TypeScript/TSX symbols:
+
+- Add or update TSDoc in the same change as the code, not as a follow-up cleanup.
+- Explain the contract, trust boundary, lifecycle assumption, fallback behavior, or
+  maintenance hazard that the type alone does not express.
+- Keep comments synchronized with behavior when refactoring; deleting stale docs is
+  better than keeping confident but false prose.
+- Run the source documentation ratchet with the normal validation gates before
+  committing.
+
 ## Review checklist
 
 Before adding or approving a TSDoc block, check:
@@ -286,6 +347,28 @@ Before adding or approving a TSDoc block, check:
 - Does `@remarks` capture durable design intent rather than temporary implementation notes?
 - Is any example short, realistic, and hard to misuse?
 - Would this comment still be useful after a small refactor?
+
+Reject comments that:
+
+- restate TypeScript types or merely rename the symbol;
+- describe behavior that is no longer true;
+- say only "handles", "gets", "sets", or "returns" without adding contract value;
+- omit meaningful docs on exported boundary APIs;
+- add `@param` or `@returns` tags with no semantic content.
+
+## Maintenance cadence
+
+At least once per release cycle, search for stale or high-risk documentation and
+verify that the comments still match the implementation:
+
+```bash
+rg -n '@todo|TODO|FIXME|@deprecated|@remarks' src docs
+bun run lint:strict
+bun run typecheck
+```
+
+Use that pass to remove obsolete notes, update deprecated migration paths, and
+refresh `@remarks` blocks that encode design constraints affected by the release.
 
 ## Rollout rule
 
