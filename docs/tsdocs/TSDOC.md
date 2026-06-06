@@ -289,4 +289,14 @@ Before adding or approving a TSDoc block, check:
 
 ## Rollout rule
 
-Do not enable required-documentation lint rules globally until the relevant source area has been documented and reviewed. Each rollout phase should document one area, validate it, and only then lock that area with scoped lint rules.
+Required-documentation linting now covers the documented source tree through two
+complete scoped ratchets: extension-host/shared TypeScript uses `src/**/*.ts`
+with React webview files excluded from that block, and React webview TS/TSX uses
+`src/webviews/react/**/*.{ts,tsx}` with React-specific selectors. Keep those
+blocks separate so JSX parser settings remain correct and presentational React
+components are not over-enforced; exported React hooks, protocol/model types, and
+other meaningful boundary APIs still need high-signal comments.
+
+When adding a new source area, first document its exported boundary APIs, then
+confirm the relevant ratchet block already covers it or extend the scoped glob in
+the same change. Do not weaken the ratchet to land undocumented exports.

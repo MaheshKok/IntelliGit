@@ -14,19 +14,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTENSION_TS_FILES = ["src/**/*.ts"];
 const WEBVIEW_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
-const TSDOC_LOCKED_EXTENSION_FILES = [
-    "src/types.ts",
-    "src/git/**/*.ts",
-    "src/webviews/protocol/**/*.ts",
-    "src/services/**/*.ts",
-    "src/extension.ts",
-    "src/activation/**/*.ts",
-    "src/commands/**/*.ts",
-    "src/views/**/*.ts",
-    "src/utils/**/*.ts",
-    "src/mergeEditor/**/*.ts",
-    "src/webviews/i18n/**/*.ts",
-];
+// Extension-host and shared TypeScript sources are fully ratcheted. The
+// locked block below ignores React because React uses JSX-aware parser settings
+// and a narrower selector that documents hooks/types without forcing every
+// presentational component.
+const TSDOC_LOCKED_EXTENSION_FILES = ["src/**/*.ts"];
 const TSDOC_LOCKED_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];
