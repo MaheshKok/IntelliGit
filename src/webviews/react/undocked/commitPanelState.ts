@@ -7,6 +7,10 @@ import type {
     WorkingFile,
 } from "../../../types";
 
+/**
+ * Commit-panel slice owned by the undocked app, mirroring working-tree, shelf,
+ * amend, theme icon, and upstream state received from extension messages.
+ */
 export interface CommitPanelState {
     files: WorkingFile[];
     stashes: StashEntry[];
@@ -25,6 +29,7 @@ export interface CommitPanelState {
     currentBranchHasUpstream: boolean;
 }
 
+/** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
 export type CommitPanelAction =
     | {
           type: "SET_FILES_AND_STASHES";
@@ -47,6 +52,7 @@ export type CommitPanelAction =
     | { type: "SET_AMEND"; isAmend: boolean }
     | { type: "SET_AMEND_BRANCH_COMMITS"; commits: AmendBranchCommitSummary[] };
 
+/** Default commit-panel state before the extension sends the first working-tree update. */
 export const initialCommitPanelState: CommitPanelState = {
     files: [],
     stashes: [],
@@ -65,6 +71,10 @@ export const initialCommitPanelState: CommitPanelState = {
     currentBranchHasUpstream: true,
 };
 
+/**
+ * Applies undocked commit-panel updates while preserving icon theme metadata
+ * across incremental working-tree refreshes.
+ */
 export function commitPanelReducer(
     state: CommitPanelState,
     action: CommitPanelAction,

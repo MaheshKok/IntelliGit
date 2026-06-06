@@ -118,6 +118,7 @@ function WordDiffLine({
 
 // --- Line numbers ---
 
+/** Line-number value for a rendered row; `null` reserves padding rows. */
 export type LineNumberValue = number | null;
 
 interface LineNumberSpec {
@@ -125,6 +126,10 @@ interface LineNumberSpec {
     secondary?: LineNumberValue[];
 }
 
+/**
+ * Builds displayed line numbers for a pane, using null placeholders when a
+ * shorter side needs visual padding to align with the hunk's row count.
+ */
 export function buildLineNumberValues(
     startAt: number,
     actualCount: number,
@@ -207,6 +212,7 @@ function CodeBlock({
 
 // --- Hunk helpers ---
 
+/** Line-number specifications for the left, result, and right merge panes. */
 export interface SegmentPaneLineNumbers {
     left: LineNumberSpec;
     middle: LineNumberSpec;
@@ -246,6 +252,10 @@ function getHunkKindLabel(segment: ConflictSegment): string {
 
 // --- Section components ---
 
+/**
+ * Renders unchanged lines across all three panes while preserving aligned line
+ * numbers and optional word highlighting.
+ */
 export function CommonSection({
     segment,
     lineCount,
@@ -287,6 +297,10 @@ export function CommonSection({
     );
 }
 
+/**
+ * Props that connect one conflict hunk to result-line computation, keyboard
+ * navigation, active-state styling, and hunk-resolution callbacks.
+ */
 export interface ConflictSectionProps {
     segment: ConflictSegment;
     resolution: HunkResolution | undefined;
@@ -302,6 +316,10 @@ export interface ConflictSectionProps {
     trueConflictOrdinal?: number;
 }
 
+/**
+ * Renders one merge-editor hunk with ours/result/theirs columns, resolution
+ * controls, status badges, and per-pane word-diff highlighting.
+ */
 export function ConflictSection({
     segment,
     resolution,
@@ -495,6 +513,10 @@ export function ConflictSection({
 
 // --- Overview rail ---
 
+/**
+ * Percentage-based minimap marker describing where a hunk appears in the full
+ * rendered merge document and whether it is resolved.
+ */
 export interface OverviewMarker {
     id: number;
     ordinal: number;
@@ -504,6 +526,10 @@ export interface OverviewMarker {
     resolved: boolean;
 }
 
+/**
+ * Renders the merge-editor overview rail and maps marker clicks back to hunk IDs
+ * without changing hunk resolution state.
+ */
 export function OverviewRail({
     markers,
     activeConflictId,

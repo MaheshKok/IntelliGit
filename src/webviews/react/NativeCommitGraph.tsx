@@ -20,6 +20,10 @@ interface Props {
     sendReady?: boolean;
 }
 
+/**
+ * Hosts the compact graph used by sidebar and commit-panel contexts, preserving
+ * the extension-host commit graph message protocol while hiding branch and detail columns.
+ */
 export function NativeCommitGraph({
     vscode,
     stateKeyPrefix: _stateKeyPrefix = "",

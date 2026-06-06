@@ -2,17 +2,26 @@
 // Computes token-level LCS, similarity ratios, and word-diff masks
 // used to highlight intra-line changes in conflict hunks.
 
+/**
+ * Splits one line into whitespace, word, and punctuation tokens for stable
+ * intra-line diffing.
+ */
 export function tokenizeWordDiff(line: string): string[] {
     if (line === "") return [];
     return line.match(/(\s+|[A-Za-z0-9_]+|[^A-Za-z0-9_\s]+)/g) ?? [line];
 }
 
+/** Normalizes whitespace before comparing candidate word-diff lines. */
 export function normalizeLineForWordDiff(line: string): string {
     return line.replace(/\s+/g, " ").trim();
 }
 
 type AlignmentTraceAction = "pair" | "skipA" | "skipB";
 
+/**
+ * Finds token pairs shared by two token streams using LCS, with a greedy
+ * fallback for very large matrices to avoid blocking the webview.
+ */
 export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, number]> {
     const m = a.length;
     const n = b.length;
@@ -56,6 +65,7 @@ export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, n
     return pairs;
 }
 
+/** Computes a symmetric token similarity ratio for deciding word-diff eligibility. */
 export function tokenSimilarityRatio(a: string, b: string): number {
     if (a === b) return 1;
     const aNorm = normalizeLineForWordDiff(a);
@@ -72,6 +82,10 @@ export function tokenSimilarityRatio(a: string, b: string): number {
     return (2 * lcsLen) / (aTokens.length + bTokens.length);
 }
 
+/**
+ * Aligns comparison lines to rendered lines so word highlighting compares likely
+ * counterparts rather than same-index rows after insertions or deletions.
+ */
 export function alignCompareLinesForWordDiff(lines: string[], compareLines: string[]): string[] {
     if (lines.length === 0) return [];
     if (compareLines.length === 0) return Array<string>(lines.length).fill("");
@@ -172,6 +186,10 @@ export function alignCompareLinesForWordDiff(lines: string[], compareLines: stri
     return aligned;
 }
 
+/**
+ * Marks tokens that differ from the aligned comparison line; unchanged LCS tokens
+ * are left unhighlighted.
+ */
 export function buildWordDiffMask(line: string, compareLine: string): boolean[] {
     const tokens = tokenizeWordDiff(line);
     const compareTokens = tokenizeWordDiff(compareLine);

@@ -97,6 +97,10 @@ function computeAnchorPosition(
     return { anchorX, anchorY };
 }
 
+/**
+ * Renders the branch sidebar, grouping local and remote branches while persisting
+ * filter text and expanded folders in VS Code webview state.
+ */
 export function BranchColumn({
     branches,
     selectedBranch,

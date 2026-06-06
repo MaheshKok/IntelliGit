@@ -69,6 +69,10 @@ function CommitRefRow({
     );
 }
 
+/**
+ * Displays the selected commit's changed-file tree and metadata, keeping file
+ * expansion and selection scoped to the active commit hash.
+ */
 export function CommitInfoPane({
     detail,
     folderIcon,

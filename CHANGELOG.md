@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented utility, merge conflict parser, and webview i18n support contracts, then locked `src/utils/**/*.ts`, `src/mergeEditor/**/*.ts`, and `src/webviews/i18n/**/*.ts` into the TSDoc ratchet.
 - Documented React shared settings, localization, VS Code API, file-tree, branch-column, and commit-list model contracts, then locked `src/webviews/react/shared/**/*.{ts,tsx}`, `src/webviews/react/branch-column/**/*.{ts,tsx}`, and `src/webviews/react/commit-list/**/*.{ts,tsx}` into the TSDoc ratchet.
 - Documented commit panel React commit, shelf, file-tree selection, message bridge, and PyCharm-style UI helper contracts, then locked `src/webviews/react/commit-panel/**/*.{ts,tsx}` into the TSDoc ratchet.
+- Documented remaining React app, graph, commit-info, merge-conflict session, merge-editor, and undocked layout contracts, then expanded the React TSDoc ratchet to `src/webviews/react/**/*.{ts,tsx}`.
 
 ### Changed
 
@@ -34,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verification
 
-- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, view-provider contract ratchet enforcement, utility and merge-editor contract ratchet enforcement, commit panel React contract ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
+- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, view-provider contract ratchet enforcement, utility and merge-editor contract ratchet enforcement, commit panel React contract ratchet enforcement, remaining React app contract ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
 
 ## [0.9.5] - 2026-06-06
 

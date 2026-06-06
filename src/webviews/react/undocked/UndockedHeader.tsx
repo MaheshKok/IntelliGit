@@ -6,6 +6,7 @@ interface UndockedHeaderProps {
     onDock: () => void;
 }
 
+/** Renders the undocked editor-tab header and invokes the dock callback. */
 export function UndockedHeader({ onDock }: UndockedHeaderProps): React.ReactElement {
     return (
         <Box

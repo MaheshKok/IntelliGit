@@ -2,10 +2,19 @@ import { GRAPH_LANE_COLORS, JETBRAINS_UI } from "./shared/tokens";
 
 const COLORS = GRAPH_LANE_COLORS;
 
+/** Horizontal spacing between adjacent commit-graph lanes. */
 export const LANE_WIDTH = JETBRAINS_UI.graph.laneWidth;
+
+/** Radius used by canvas renderers for each commit dot. */
 export const DOT_RADIUS = JETBRAINS_UI.graph.dotRadius;
+
+/** Shared vertical row height that keeps commit rows and graph lanes aligned. */
 export const ROW_HEIGHT = JETBRAINS_UI.size.rowHeight;
 
+/**
+ * Layout instructions for one visible commit row, including active lanes and
+ * parent connections that the canvas renderer turns into graph strokes.
+ */
 export interface GraphRow {
     column: number;
     color: string;
@@ -14,6 +23,10 @@ export interface GraphRow {
     connectionsDown: Array<{ fromCol: number; toCol: number; color: string }>;
 }
 
+/**
+ * Computes lane assignments for commits in display order, reusing parent lanes
+ * where possible and allocating side lanes for merge parents.
+ */
 export function computeGraph(commits: Array<{ hash: string; parentHashes: string[] }>): GraphRow[] {
     const lanes: (string | null)[] = [];
     const rows: GraphRow[] = [];

@@ -5,6 +5,7 @@ import type { MergeEditorData, MergeSegment } from "../../../mergeEditor/conflic
 export type { MergeEditorData, MergeSegment };
 export type { CommonSegment, ConflictSegment } from "../../../mergeEditor/conflictParser";
 
+/** Commands the merge editor posts to the extension host for loading, saving, and file-wide actions. */
 export type OutboundMessage =
     | { type: "ready" }
     | { type: "setIgnoreMode"; mode: "none" | "whitespace" }
@@ -13,6 +14,7 @@ export type OutboundMessage =
     | { type: "acceptTheirs" }
     | { type: "close" };
 
+/** Messages the extension host sends to initialize conflict data or report load failures. */
 export type InboundMessage =
     | { type: "setConflictData"; data: MergeEditorData }
     | { type: "loadError"; message: string };
