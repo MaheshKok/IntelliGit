@@ -209,6 +209,10 @@ bun run test
 bun run format
 ```
 
+### Documentation standards
+
+Use the IntelliGit TSDoc standard in [docs/tsdocs/TSDOC.md](docs/tsdocs/TSDOC.md) when documenting exported or boundary-facing TypeScript/TSX symbols. Prefer comments that capture contracts, invariants, side effects, and trust boundaries over comments that repeat TypeScript types. The rollout baseline is recorded in [docs/tsdocs/tsdoc-baseline-audit.md](docs/tsdocs/tsdoc-baseline-audit.md).
+
 ### Manually test the changes 
 
 ```bash

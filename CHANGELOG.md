@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-06-06
+
+### Added
+
+- Added the TSDoc rollout baseline audit under `docs/tsdocs` with source counts, exported-symbol estimates, documentation block counts, boundary-heavy areas, plugin status, validation script availability, and confirmed phase order.
+- Added the IntelliGit TSDoc standard under `docs/tsdocs`, including the standard block template, tag guidance, examples for the major extension areas, and the rule against type repetition.
+
+### Changed
+
+- Linked the TSDoc standard and rollout baseline from the README development documentation.
+
+### Verification
+
+- Verified the documentation baseline, TSDoc standard placement, release metadata, and repository validation gates for the documentation-only rollout phase.
+
 ## [0.9.5] - 2026-06-06
 
 ### Fixed
