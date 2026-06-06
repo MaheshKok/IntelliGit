@@ -20,24 +20,24 @@ gates everything machine-checkable (coverage ratchet, knip, dependency-cruiser,
 
 ## Decisions locked
 
-| Axis | Decision |
-|---|---|
-| Scope + enforcement | Tiered ratchet: boundaries first, React = headers/hooks only |
-| Enforcement plugins | `eslint-plugin-jsdoc` (presence) + `eslint-plugin-tsdoc` (syntax) |
-| Content standard | Verbosity matrix (Purpose-only / Balanced / LLM-first) + six rules |
-| Rollout | Tier order for locking, feature-area batching within a tier |
-| Localization guard | Run `l10n:validate` / `l10n:audit` if a batch touches user-facing strings |
-| TypeDoc | No. Revisit in Phase 4 only if a contributor site is wanted |
+| Axis                | Decision                                                                  |
+| ------------------- | ------------------------------------------------------------------------- |
+| Scope + enforcement | Tiered ratchet: boundaries first, React = headers/hooks only              |
+| Enforcement plugins | `eslint-plugin-jsdoc` (presence) + `eslint-plugin-tsdoc` (syntax)         |
+| Content standard    | Verbosity matrix (Purpose-only / Balanced / LLM-first) + six rules        |
+| Rollout             | Tier order for locking, feature-area batching within a tier               |
+| Localization guard  | Run `l10n:validate` / `l10n:audit` if a batch touches user-facing strings |
+| TypeDoc             | No. Revisit in Phase 4 only if a contributor site is wanted               |
 
 ## Current state (measured)
 
-| Metric | Value |
-|---|---|
-| TS/TSX files in `src` | 133 (~23,189 LOC) |
-| Files with any `/**` block | 20 |
-| Files with `@param` / `@returns` / `@throws` | 0 |
-| Exported symbols (fn/class/const/interface/type/enum) | ~393 |
-| Doc tooling installed | none |
+| Metric                                                | Value             |
+| ----------------------------------------------------- | ----------------- |
+| TS/TSX files in `src`                                 | 133 (~23,189 LOC) |
+| Files with any `/**` block                            | 20                |
+| Files with `@param` / `@returns` / `@throws`          | 0                 |
+| Exported symbols (fn/class/const/interface/type/enum) | ~393              |
+| Doc tooling installed                                 | none              |
 
 Directory distribution: `webviews/` 82 files / 11.0k LOC (React); `views/`
 15 / 3.5k; `services/` 8 / 2.7k; `utils/` 8 / 1.4k; `git/` 6 / 1.2k;
@@ -47,15 +47,15 @@ Directory distribution: `webviews/` 82 files / 11.0k LOC (React); `views/`
 
 Authoring depth by symbol type:
 
-| Symbol | Depth |
-|---|---|
-| Exported functions / classes / hooks | Balanced: summary plus non-obvious behavior; `@param`/`@returns` only when not obvious from the type |
-| Simple private helpers | Purpose-only: one sentence |
-| Complex private helpers | Balanced |
-| Security / path-validation / Git-command boundaries | LLM-first: intent, invariants, `@throws` |
-| React render-only components | Purpose-only or Balanced |
-| Algorithms / tree builders / parsers / graph code | Balanced or LLM-first |
-| Type aliases / interfaces | Short TSDoc only when meaning is not obvious |
+| Symbol                                              | Depth                                                                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Exported functions / classes / hooks                | Balanced: summary plus non-obvious behavior; `@param`/`@returns` only when not obvious from the type |
+| Simple private helpers                              | Purpose-only: one sentence                                                                           |
+| Complex private helpers                             | Balanced                                                                                             |
+| Security / path-validation / Git-command boundaries | LLM-first: intent, invariants, `@throws`                                                             |
+| React render-only components                        | Purpose-only or Balanced                                                                             |
+| Algorithms / tree builders / parsers / graph code   | Balanced or LLM-first                                                                                |
+| Type aliases / interfaces                           | Short TSDoc only when meaning is not obvious                                                         |
 
 Six rules:
 
@@ -149,12 +149,12 @@ never breaks during the rollout.
 
 ## Tier breakdown and batching
 
-| Tier | Globs (lock order) | Batches within tier | Depth bias |
-|---|---|---|---|
-| 1 — Boundaries | `src/types.ts`, `src/webviews/protocol/**`, `src/git/**`, `src/services/**` | (1) Git executor + operations, (2) merge/conflict, (3) services | LLM-first on `git/operations.ts` security invariants (end-of-options, ReDoS); Balanced elsewhere |
-| 2 — Extension internals | `src/activation/**`, `src/commands/**`, `src/views/**`, `src/utils/**`, `src/mergeEditor/**` | (4) view providers, (5) commands, (6) activation, (7) utils | Balanced |
-| 3 — React webview | `src/webviews/react/**` | shared utils, then commit-panel hooks, then commit-graph, then rest | `require-jsdoc` contexts scoped to exported hooks (`FunctionDeclaration[id.name=/^use[A-Z]/]`) plus props interfaces and type aliases only; inline JSX components excluded (file-header plus review, not lint) |
-| 4 — Close | glob = `src/**` | — | Ratchet closed; optional TypeDoc revisit |
+| Tier                    | Globs (lock order)                                                                           | Batches within tier                                                 | Depth bias                                                                                                                                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 — Boundaries          | `src/types.ts`, `src/webviews/protocol/**`, `src/git/**`, `src/services/**`                  | (1) Git executor + operations, (2) merge/conflict, (3) services     | LLM-first on `git/operations.ts` security invariants (end-of-options, ReDoS); Balanced elsewhere                                                                                                               |
+| 2 — Extension internals | `src/activation/**`, `src/commands/**`, `src/views/**`, `src/utils/**`, `src/mergeEditor/**` | (4) view providers, (5) commands, (6) activation, (7) utils         | Balanced                                                                                                                                                                                                       |
+| 3 — React webview       | `src/webviews/react/**`                                                                      | shared utils, then commit-panel hooks, then commit-graph, then rest | `require-jsdoc` contexts scoped to exported hooks (`FunctionDeclaration[id.name=/^use[A-Z]/]`) plus props interfaces and type aliases only; inline JSX components excluded (file-header plus review, not lint) |
+| 4 — Close               | glob = `src/**`                                                                              | —                                                                   | Ratchet closed; optional TypeDoc revisit                                                                                                                                                                       |
 
 ## Per-phase loop (per directory)
 
