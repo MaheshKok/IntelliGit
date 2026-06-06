@@ -58,4 +58,10 @@ function StatusBadgeInner({ status }: Props): React.ReactElement {
     );
 }
 
+/**
+ * Memoized Git status badge for commit-panel file rows.
+ *
+ * The badge maps status codes to localized tooltips and PyCharm-colored glyphs,
+ * displaying unversioned `?` files as the user-facing `U` marker.
+ */
 export const StatusBadge = React.memo(StatusBadgeInner);

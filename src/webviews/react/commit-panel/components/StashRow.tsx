@@ -122,4 +122,10 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
     );
 }
 
+/**
+ * Memoized stash entry row with inline apply, pop, and delete actions.
+ *
+ * Action callbacks receive the stash index from host data so the shelf tab can
+ * send the matching command without deriving identity from the display label.
+ */
 export const StashRow = React.memo(StashRowInner);

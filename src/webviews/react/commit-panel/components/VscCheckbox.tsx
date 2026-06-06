@@ -109,4 +109,10 @@ function VscCheckboxInner({
     );
 }
 
+/**
+ * Memoized VS Code-styled checkbox used by file, folder, section, and amend rows.
+ *
+ * The native input remains the event source while the visual shell mirrors the
+ * checked or indeterminate state for consistent dark-theme borders.
+ */
 export const VscCheckbox = React.memo(VscCheckboxInner);

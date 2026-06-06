@@ -18,6 +18,13 @@ interface Props {
     onToggleCheck: () => void;
 }
 
+/**
+ * Renders a collapsible Changes or Unversioned Files section header.
+ *
+ * The header separates open/closed state from tri-state selection so clicking the
+ * checkbox toggles every file in the section while clicking the row only expands
+ * or collapses that section.
+ */
 export function SectionHeader({
     label,
     count,

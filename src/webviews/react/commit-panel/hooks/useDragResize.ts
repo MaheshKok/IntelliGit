@@ -8,11 +8,19 @@ interface DragResizeAPI {
     onMouseDown: (e: React.MouseEvent) => void;
 }
 
+/** Options that constrain and observe commit-panel drag resizing. */
 export interface DragResizeOptions {
     maxReservedHeight?: number;
     onResize?: (height: number) => void;
 }
 
+/**
+ * Provides vertical drag-to-resize state for the commit-panel bottom area.
+ *
+ * The hook installs document-level mouse listeners only for the active drag,
+ * clamps the height against the container minus reserved space, and reports each
+ * accepted height through `onResize` without owning the resized content.
+ */
 export function useDragResize(
     initialHeight: number,
     minHeight: number,

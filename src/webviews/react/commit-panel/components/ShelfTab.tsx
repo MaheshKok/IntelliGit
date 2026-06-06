@@ -35,6 +35,14 @@ interface ExpansionOverride {
     isLoading: boolean;
 }
 
+/**
+ * Renders stash/shelf entries and the selected shelf file preview.
+ *
+ * The tab sends shelf select/apply/pop/delete/diff messages to the extension,
+ * keeps optimistic local expansion/loading state for clicked stash rows, and
+ * renders the preview tree with the shared grouping preference, and owns
+ * directory expansion, context menu, and drag-to-resize state.
+ */
 export function ShelfTab({
     stashes,
     shelfFiles,

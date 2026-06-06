@@ -14,6 +14,13 @@ interface CheckedFilesAPI {
     isSomeChecked: (files: WorkingFile[]) => boolean;
 }
 
+/**
+ * Tracks selected working-tree paths for commit, rollback, shelve, and diff actions.
+ *
+ * Selection is persisted in VS Code webview state, pruned when the host sends a
+ * new file snapshot, and toggled by exact path so grouped folders and top-level
+ * sections can share the same all-or-none behavior.
+ */
 export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
     const [checkedPaths, setCheckedPaths] = useState<Set<string>>(() => {
         const vscode = getVsCodeApi();

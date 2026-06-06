@@ -4,7 +4,9 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 
+/** Horizontal distance between nested commit-panel tree levels. */
 const INDENT_STEP = 18; // must equal ChevronIcon width (16) + marginRight (2)
+/** Left padding used before the first file or folder row glyph. */
 const INDENT_BASE = 20;
 const GUIDE_BASE = 28; // INDENT_BASE(20) + chevron_half(8) = 28
 const SECTION_GUIDE = 17; // section header mx(4) + px(5) + chevron_half(8) = 17
@@ -43,6 +45,12 @@ function IndentGuidesInner({ treeDepth }: Props): React.ReactElement {
     );
 }
 
+/**
+ * Memoized vertical guide renderer for commit-panel file and folder rows.
+ *
+ * Guides are absolutely positioned from the same indent constants used by rows,
+ * keeping section and nested-directory lines aligned while the tree scrolls.
+ */
 export const IndentGuides = React.memo(IndentGuidesInner);
 
 export { INDENT_STEP, INDENT_BASE };

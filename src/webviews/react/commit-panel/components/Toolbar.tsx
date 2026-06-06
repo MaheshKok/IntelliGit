@@ -20,6 +20,13 @@ interface Props {
 
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
 
+/**
+ * Renders commit-panel toolbar actions without owning repository state.
+ *
+ * Button callbacks are supplied by `CommitTab`, while this component handles
+ * PyCharm-style icon coloring, tooltip labels, and the temporary refresh spinner
+ * affordance.
+ */
 export function Toolbar({
     onRefresh,
     isRefreshing,

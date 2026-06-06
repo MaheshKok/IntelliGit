@@ -17,6 +17,13 @@ interface Props {
     currentBranchHasUpstream: boolean;
 }
 
+/**
+ * Renders amend controls, the commit message editor, and commit action buttons.
+ *
+ * The component does not talk to the extension host directly; callers decide how
+ * message changes, amend toggles, commit, commit-and-push, and publish requests
+ * are translated into outbound webview messages.
+ */
 export function CommitArea({
     commitMessage,
     isAmend,

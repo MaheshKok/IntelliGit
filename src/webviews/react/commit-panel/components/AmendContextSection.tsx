@@ -13,6 +13,12 @@ interface Props {
     historyLoaded: boolean;
 }
 
+/**
+ * Shows read-only branch-history context while the user is amending a commit.
+ *
+ * The parent requests and stores amend-history data; this section only renders
+ * loading, empty, and recent-commit states above the working-tree file list.
+ */
 export function AmendContextSection({ commits, historyLoaded }: Props): React.ReactElement {
     return (
         <Box

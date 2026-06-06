@@ -13,6 +13,13 @@ import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
 import { ThemeIconFontFaces } from "../shared/components";
 
+/**
+ * Root commit-panel React app wired to the VS Code webview host.
+ *
+ * This component owns panel-level message sending for commit, push, publish,
+ * amend-message loading, draft persistence, and the local group-by-directory
+ * preference shared by the commit and shelf tabs.
+ */
 function App(): React.ReactElement {
     const [state, dispatch] = useExtensionMessages();
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =

@@ -15,7 +15,14 @@ import type {
 
 export type { InboundMessage, OutboundMessage } from "../../protocol/commitPanelMessages";
 
-/** Reducer state for the commit panel app. */
+/**
+ * Reducer state for the commit panel app.
+ *
+ * The extension host owns the working-tree, stash, icon-theme, and upstream
+ * status snapshots. The React panel owns transient commit-draft, amend, and
+ * refresh state so UI interactions can stay responsive while host messages are
+ * in flight.
+ */
 export interface CommitPanelState {
     files: WorkingFile[];
     stashes: StashEntry[];
@@ -35,7 +42,13 @@ export interface CommitPanelState {
     currentBranchHasUpstream: boolean;
 }
 
-/** Actions dispatched by the message handler and UI events. */
+/**
+ * Actions dispatched by host messages and commit-panel UI events.
+ *
+ * Host-sourced updates replace repository snapshots, while local actions keep
+ * the commit message and amend mode coherent until the extension confirms a
+ * commit, refresh, or amend-history response.
+ */
 export type CommitPanelAction =
     | {
           type: "SET_FILES_AND_STASHES";
@@ -58,7 +71,13 @@ export type CommitPanelAction =
     | { type: "SET_AMEND"; isAmend: boolean }
     | { type: "SET_AMEND_BRANCH_COMMITS"; commits: AmendBranchCommitSummary[] };
 
-/** A node in the directory tree used for grouped file display. */
+/**
+ * Directory node used by grouped commit-panel file trees.
+ *
+ * `descendantFiles` is derived from the full subtree so folder checkboxes can
+ * toggle every nested working-tree path without re-walking child entries at the
+ * call site.
+ */
 export interface TreeNode extends Omit<GenericTreeFolder<WorkingFile>, "children"> {
     children: TreeEntry[];
     descendantFiles: WorkingFile[];
@@ -67,4 +86,5 @@ export interface TreeNode extends Omit<GenericTreeFolder<WorkingFile>, "children
 /** A leaf file node in the directory tree. */
 type TreeFile = GenericTreeLeaf<WorkingFile>;
 
+/** File or directory entry rendered by the commit-panel tree. */
 export type TreeEntry = TreeNode | TreeFile;

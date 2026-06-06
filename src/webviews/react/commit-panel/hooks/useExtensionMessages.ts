@@ -92,6 +92,13 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
     }
 }
 
+/**
+ * Connects the commit-panel reducer to extension-host webview messages.
+ *
+ * The hook sends the initial `ready` message on mount, applies host snapshots to
+ * local reducer state, and ignores late amend-history payloads once amend mode is
+ * no longer active.
+ */
 export function useExtensionMessages(): [CommitPanelState, React.Dispatch<CommitPanelAction>] {
     const [state, dispatch] = useReducer(reducer, initialState);
 

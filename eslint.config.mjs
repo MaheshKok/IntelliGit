@@ -31,6 +31,7 @@ const TSDOC_LOCKED_REACT_FILES = [
     "src/webviews/react/shared/**/*.{ts,tsx}",
     "src/webviews/react/branch-column/**/*.{ts,tsx}",
     "src/webviews/react/commit-list/**/*.{ts,tsx}",
+    "src/webviews/react/commit-panel/**/*.{ts,tsx}",
 ];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];
