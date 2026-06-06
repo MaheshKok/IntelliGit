@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep the real-Git pathspec magic regression test portable by skipping the invalid filename scenario on Windows.
 - Strengthen repository discovery coverage for workspace Git root resolution.
 - Exclude local GitNexus code-intelligence metadata from packaged VSIX artifacts.
+- Use the checked-out branch name when updating the selected branch, so stale cached branch metadata still takes the current-branch fetch-then-merge path.
 
 ### Security
 
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verification
 
 - Added regression coverage for whitespace-only conflict session paths being ignored without surfacing an error, and preserved coverage for trailing-space conflict filenames.
+- Added regression coverage for stale current-branch metadata using the checked-out branch update path.
 - Verified platform-safe pathspec behavior, repository discovery resolver expectations, security-doc path cleanup, full project validation, and release package generation.
 
 ## [0.9.4] - 2026-06-04

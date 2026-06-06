@@ -318,6 +318,11 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!validateBranchArg(name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                 if (tracked && !validateTrackedRemote(tracked)) return;
+                const currentBranchName = await getCheckedOutBranchName(
+                    executor,
+                    getCurrentBranches(),
+                );
+                const isSelectedBranchCurrent = branch.isCurrent || currentBranchName === name;
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
                 let mergeAttempted = false;
                 try {
@@ -333,7 +338,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                 );
                             }
 
-                            if (branch.isCurrent) {
+                            if (isSelectedBranchCurrent) {
                                 await executor.run([
                                     "fetch",
                                     tracked.remote,
@@ -364,7 +369,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     if (
-                        branch.isCurrent &&
+                        isSelectedBranchCurrent &&
                         mergeAttempted &&
                         (await showUpdateConflictSession(trackedRemoteRef))
                     ) {
