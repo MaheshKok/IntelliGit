@@ -15,7 +15,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXTENSION_TS_FILES = ["src/**/*.ts"];
 const WEBVIEW_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
 const TSDOC_LOCKED_EXTENSION_FILES = ["src/git/executor.ts"];
-const TSDOC_LOCKED_REACT_FILES = ["src/webviews/react/commit-list/useCommitGraphCanvas.ts"];
+const TSDOC_LOCKED_REACT_FILES = [
+    "src/webviews/react/shared/components/ContextMenu.tsx",
+    "src/webviews/react/commit-list/useCommitGraphCanvas.ts",
+];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];
 
