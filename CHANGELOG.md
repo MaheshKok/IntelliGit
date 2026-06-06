@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documented service contracts for clone, publish, diff, askpass, Git helpers, JetBrains merge integration, and repository discovery workflows, then locked `src/services/**/*.ts` into the TSDoc ratchet.
 - Documented extension activation lifecycle, repository/no-repository startup modes, command registration wiring, view-event forwarding, and disposable ownership, then locked `src/extension.ts` and `src/activation/**/*.ts` into the TSDoc ratchet.
 - Documented command handler contracts for branch, commit context, basic commit actions, and history mutations, then locked `src/commands/**/*.ts` into the TSDoc ratchet.
+- Documented view provider contracts for commit graph/info/panel, merge-conflict panels, onboarding, undocked views, refresh behavior, message validation, and webview HTML, then locked `src/views/**/*.ts` into the TSDoc ratchet.
 
 ### Changed
 
@@ -30,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Verification
 
-- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
+- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, view-provider contract ratchet enforcement, localization path correction, and repository validation gates for the TSDoc rollout phases.
 
 ## [0.9.5] - 2026-06-06
 

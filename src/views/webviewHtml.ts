@@ -2,6 +2,12 @@ import * as vscode from "vscode";
 import { SYSTEM_FONT_STACK } from "../utils/constants";
 import { getWebviewI18nPayload } from "../webviews/i18n";
 
+/**
+ * Inputs required to generate a bundled IntelliGit webview shell.
+ *
+ * Callers pass extension-relative script and style filenames; the HTML helper is responsible for
+ * converting them through `asWebviewUri` and applying the shared CSP/resource policy.
+ */
 interface WebviewShellOptions {
     extensionUri: vscode.Uri;
     webview: vscode.Webview;
@@ -11,6 +17,13 @@ interface WebviewShellOptions {
     backgroundVar?: string;
 }
 
+/**
+ * Builds the shared HTML shell for bundled IntelliGit webview applications.
+ *
+ * Script and stylesheet files are resolved under `dist` with `asWebviewUri`, settings/i18n payloads
+ * are serialized with script-safe JSON, and a nonce-scoped CSP prevents remote or inline script
+ * execution outside the generated bootstrap block.
+ */
 export function buildWebviewShellHtml({
     extensionUri,
     webview,
@@ -100,14 +113,32 @@ ${styleLinks ? `${styleLinks}\n` : ""}
 </html>`;
 }
 
+/**
+ * Escapes localized or dynamic text for HTML text-node contexts.
+ *
+ * Quote characters are intentionally left untouched because text nodes do not need them escaped;
+ * use {@link escapeHtmlAttr} for attribute values that are wrapped in quotes.
+ */
 export function escapeHtmlText(value: string): string {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/**
+ * Escapes text for HTML attribute contexts used by generated webview markup.
+ *
+ * Attribute escaping builds on text escaping and additionally encodes both quote characters so
+ * localized strings and resource URIs cannot break out of quoted attributes.
+ */
 export function escapeHtmlAttr(value: string): string {
     return escapeHtmlText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+/**
+ * Serializes JSON for inline script assignment without allowing `</script>` termination.
+ *
+ * The replacement preserves JSON semantics while preventing literal `<` characters from being
+ * interpreted by the HTML parser before the JavaScript engine receives the payload.
+ */
 export function scriptSafeJson(value: unknown): string {
     return JSON.stringify(value).replace(/</g, "\\u003c");
 }

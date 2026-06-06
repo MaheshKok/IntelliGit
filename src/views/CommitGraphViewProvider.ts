@@ -19,6 +19,15 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { isValidGitHash } from "../services/gitHelpers";
 
+/**
+ * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
+ *
+ * The provider owns graph pagination, branch/text filters, branch icon decoration,
+ * and the currently selected commit detail snapshot. Messages from the webview are
+ * treated as untrusted: branch and commit actions are checked against protocol
+ * allow-lists, commit hashes are validated before firing extension events, and
+ * repository-relative file paths are validated before diff commands can consume them.
+ */
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitGraph";
     public static readonly sidebarViewType = "intelligit.sidebarGraph";
@@ -62,6 +71,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }>();
     readonly onOpenCommitFileDiff = this._onOpenCommitFileDiff.event;
 
+    /**
+     * Creates the graph provider for one active repository view contribution.
+     *
+     * The optional bundle/title settings let the sidebar and bottom-panel registrations share the
+     * same protocol code while still owning separate VS Code view instances and icon-theme caches.
+     */
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
@@ -73,10 +88,25 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
 
+    /**
+     * Accepts repository label updates while keeping the graph view description available.
+     *
+     * The commit graph does not render the repository name in the VS Code title area; clearing the
+     * description prevents stale labels when activation switches repositories underneath the view.
+     */
     setRepositoryLabel(_label: string): void {
         if (this.view) this.view.description = undefined;
     }
 
+    /**
+     * Attaches a freshly resolved VS Code webview view to the commit graph protocol.
+     *
+     * Each resolution replaces the previous webview, re-registers theme listeners,
+     * limits local resources to the bundled `dist` directory, and installs the
+     * message bridge. The webview may send readiness, pagination, filtering,
+     * branch/commit action, and commit-file diff requests; invalid payloads are
+     * surfaced to the user and echoed back as webview errors.
+     */
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -169,6 +199,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Replaces the cached branch list and sends decorated branch metadata if a view is alive.
+     *
+     * Folder-icon lookup is asynchronous and can fail independently of branch discovery, so
+     * failures are reported without mutating the already cached branch array.
+     */
     setBranches(branches: Branch[]): void {
         this.branches = branches;
         this.sendBranches().catch((err) => {
@@ -179,6 +215,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Applies a host-driven branch filter and resets text search before reloading page one.
+     *
+     * This mirrors webview-originated branch filtering so external branch-tree selections and
+     * in-graph selections share the same selected-branch state.
+     */
     async filterByBranch(branch: string | null): Promise<void> {
         this.currentBranch = branch;
         this.filterText = "";
@@ -186,12 +228,25 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         await this.loadInitial();
     }
 
+    /**
+     * Refreshes theme, branch, and first-page commit data for the currently selected filters.
+     *
+     * The selected commit detail remains cached separately; graph refreshes intentionally avoid
+     * clearing it so detail panels can survive branch or working-tree updates until the host
+     * publishes a new selection.
+     */
     async refresh(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();
     }
 
+    /**
+     * Caches and posts a selected commit detail, then decorates it with folder icon metadata.
+     *
+     * The undecorated detail is sent immediately for responsiveness. A sequence token prevents
+     * slower icon decoration from overwriting a newer commit selection or a cleared detail state.
+     */
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
@@ -206,6 +261,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Clears the selected commit detail and invalidates any in-flight decoration request.
+     */
     clearCommitDetail(): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
@@ -213,6 +271,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.postCommitDetailState();
     }
 
+    /**
+     * Sends cached branches with folder icon data derived from branch path segments.
+     *
+     * Theme data is read from the attached {@link IconThemeService}; callers should initialize
+     * or refresh the service first when responding to webview readiness or theme changes.
+     */
     private async sendBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
@@ -226,6 +290,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Loads the first commit page for the active filters and drops stale async results.
+     *
+     * Branch filters are cleared when the cached branch list no longer contains the selected
+     * branch. `requestSeq` coalesces overlapping filter, refresh, and pagination operations so
+     * only the latest Git log response can update the offset or webview state.
+     */
     private async loadInitial(): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
@@ -263,6 +334,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /**
+     * Appends the next commit page unless a pagination request is already running.
+     *
+     * The loading guard prevents duplicate webview `loadMore` messages from racing the same
+     * offset, while `requestSeq` still discards results that lose to a full reload or filter
+     * change before they complete.
+     */
     private async loadMore(): Promise<void> {
         if (this.loadingMore) return;
         this.loadingMore = true;
@@ -298,6 +376,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /**
+     * Stores the current text filter and reloads the graph from the first page.
+     */
     private async filterByText(text: string): Promise<void> {
         this.filterText = text;
         await this.loadInitial();
@@ -307,6 +388,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage(msg);
     }
 
+    /**
+     * Validates a scalar webview field before it is used by Git or VS Code commands.
+     */
     private assertString(value: unknown, field: string): string {
         if (typeof value !== "string") {
             throw new Error(`Expected string for '${field}', got ${typeof value}`);
@@ -319,6 +403,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         return this.assertString(value, field);
     }
 
+    /**
+     * Normalizes and validates a webview-provided commit hash before firing host events.
+     */
     private assertGitHash(value: unknown, field: string): string {
         const hash = this.assertString(value, field).trim();
         if (!isValidGitHash(hash)) {
@@ -327,6 +414,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         return hash;
     }
 
+    /**
+     * Publishes the current commit detail cache, including the latest available theme metadata.
+     *
+     * A missing selection is represented by a `clearCommitDetail` message so the webview never
+     * has to infer cleared state from absent payloads.
+     */
     private postCommitDetailState(): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
@@ -343,6 +436,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "clearCommitDetail" });
     }
 
+    /**
+     * Decorates commit files with icon theme data and stores the result if still current.
+     */
     private async decorateAndStoreCommitDetail(
         detail: CommitDetail,
         requestId: number,
@@ -354,6 +450,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.postCommitDetailState();
     }
 
+    /**
+     * Builds the commit graph shell HTML with script/resource URIs scoped to this webview.
+     */
     private getHtml(webview: vscode.Webview): string {
         return buildWebviewShellHtml({
             extensionUri: this.extensionUri,
@@ -364,6 +463,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Releases theme resources and event emitters owned by the graph provider.
+     */
     dispose(): void {
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
@@ -374,6 +476,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onOpenCommitFileDiff.dispose();
     }
 
+    /**
+     * Runs a theme refresh without letting listener-triggered failures escape VS Code callbacks.
+     */
     private refreshThemeDataWithErrorHandling(): void {
         this.refreshThemeData().catch((err) => {
             const message = getErrorMessage(err);
@@ -384,6 +489,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         });
     }
 
+    /**
+     * Refreshes icon theme data and re-sends branch and commit detail decorations.
+     */
     private async refreshThemeData(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();

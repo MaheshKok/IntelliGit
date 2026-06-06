@@ -45,6 +45,14 @@ import {
     unstageFilesFromPanel,
 } from "./panelFileActions";
 const MIN_VISIBLE_REFRESH_MS = 600;
+
+/**
+ * Hosts the sidebar Changes webview and its embedded commit graph protocol.
+ *
+ * The provider owns working-tree, shelf, commit-draft, branch-filter, pagination, and commit
+ * detail caches for one active repository. All webview messages pass through a validation layer
+ * before reaching Git operations, VS Code commands, or path-sensitive file actions.
+ */
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
@@ -92,6 +100,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         filePath: string;
     }>();
     readonly onOpenCommitFileDiff = this._onOpenCommitFileDiff.event;
+    /**
+     * Creates the Changes provider for the active repository activation path.
+     *
+     * `repoRootUri` scopes file actions and draft persistence when known at construction time;
+     * activation may inject it later, so helpers retain a workspace-root fallback for early view
+     * restoration.
+     */
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
@@ -100,6 +115,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
+    /**
+     * Switches the panel to a new active repository and invalidates repository-scoped caches.
+     *
+     * Request sequences are bumped so pending status, graph, or decoration work from the previous
+     * root cannot overwrite the new repository's state. The commit draft key is repository-specific,
+     * so the webview receives a fresh draft restore message after the root changes.
+     */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
         this.selectedShelfIndex = null;
@@ -122,9 +144,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             message: this.getStoredCommitDraft(),
         });
     }
+    /**
+     * Handles repository label changes without replacing the Changes count description.
+     *
+     * The sidebar title already identifies the view; its description is reserved for the cached
+     * working-file count, so a label change replays the last count instead of showing the label.
+     */
     setRepositoryLabel(_label: string): void {
         this.updateViewCount(this.lastFileCount);
     }
+    /**
+     * Replaces the embedded graph branch cache and posts decorated branch metadata when possible.
+     */
     setBranches(branches: Branch[]): void {
         this.branches = branches;
         this.sendGraphBranches().catch((err) => {
@@ -134,6 +165,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             );
         });
     }
+    /**
+     * Stores the embedded graph's selected commit detail and decorates it asynchronously.
+     *
+     * A request sequence prevents late folder-icon decoration from restoring an older selection
+     * after another commit has been selected or the detail has been cleared.
+     */
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
@@ -147,12 +184,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             );
         });
     }
+    /**
+     * Clears the embedded graph detail pane and invalidates pending decoration work.
+     */
     clearCommitDetail(): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
         this.commitDetailFolderIconsByName = {};
         this.postToWebview({ type: "clearCommitDetail" });
     }
+    /**
+     * Resolves the Changes webview, binds message handling, and starts an initial data refresh.
+     *
+     * The webview is restricted to bundled `dist` resources, theme listeners are rebound for the
+     * newly attached webview, and all inbound messages are routed through {@link handleMessage} so
+     * malformed payloads are rejected before command handlers receive them.
+     */
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -189,10 +236,19 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.updateViewCount(this.lastFileCount);
         this.refreshDataWithErrorHandling();
     }
+    /**
+     * Refreshes working-tree/shelf data and then reloads embedded graph state.
+     */
     async refresh(): Promise<void> {
         await this.refreshData(false);
         await this.refreshGraphData();
     }
+    /**
+     * Runs a visible refresh for explicit user requests in the Changes view.
+     *
+     * The progress location is scoped to the view so refresh feedback appears where the user
+     * initiated it instead of as a global notification.
+     */
     private async refreshFromUserAction(): Promise<void> {
         await vscode.window.withProgress(
             { location: { viewId: CommitPanelViewProvider.viewType } },
@@ -202,6 +258,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             },
         );
     }
+    /**
+     * Reloads working-tree files, shelves, selected shelf contents, and upstream state.
+     *
+     * Non-silent refreshes set both a webview `refreshing` message and a VS Code context key, then
+     * keep the spinner visible for a short minimum duration to avoid flicker. The selected shelf is
+     * preserved when it still exists, otherwise the first available shelf becomes selected.
+     */
     private async refreshData(silent = false): Promise<void> {
         const refreshStartedAt = Date.now();
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
@@ -276,12 +339,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         }
     }
+    /**
+     * Refreshes embedded graph theme data, branch metadata, first-page commits, and detail state.
+     */
     private async refreshGraphData(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendGraphBranches();
         await this.loadInitialGraphCommits();
         this.postGraphCommitDetailState();
     }
+    /**
+     * Sends embedded graph branch data with folder icons derived from branch path segments.
+     */
     private async sendGraphBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
@@ -294,6 +363,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             iconFonts,
         });
     }
+    /**
+     * Loads the first embedded graph page and drops responses superseded by newer requests.
+     *
+     * If the active branch filter disappears from the cached branch list, the selection is cleared
+     * before loading so the webview and Git query stay in sync.
+     */
     private async loadInitialGraphCommits(): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
@@ -328,6 +403,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.postToWebview({ type: "loadError", message });
         }
     }
+    /**
+     * Appends embedded graph commits while coalescing duplicate pagination requests.
+     */
     private async loadMoreGraphCommits(): Promise<void> {
         if (this.loadingMore) return;
         this.loadingMore = true;
@@ -366,6 +444,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.filterText = text;
         await this.loadInitialGraphCommits();
     }
+    /**
+     * Validates and dispatches every message accepted by the Changes webview.
+     *
+     * Accepted messages cover graph readiness/pagination/filtering, branch and commit actions,
+     * commit-file diffs, draft persistence, staging, committing, rollback, shelf mutations, and
+     * file actions. Paths and commit hashes are validated before Git or VS Code APIs are called;
+     * unrecognized message types are ignored by the switch exhaustively falling through.
+     */
     private async handleMessage(raw: unknown): Promise<void> {
         const msg = assertMessage(raw);
         const actionDeps = {
@@ -549,12 +635,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
         }
     }
+    /**
+     * Updates the cached file count and sidebar description for the active Changes view.
+     */
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
         if (!this.view) return;
         this.view.description = count > 0 ? String(count) : "";
         this.view.badge = undefined;
     }
+    /**
+     * Posts the embedded graph detail cache, or an explicit clear message when no detail exists.
+     */
     private postGraphCommitDetailState(): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
@@ -570,6 +662,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         this.postToWebview({ type: "clearCommitDetail" });
     }
+    /**
+     * Decorates commit detail file rows and stores them only if the request is still current.
+     */
     private async decorateAndStoreCommitDetail(
         detail: CommitDetail,
         requestId: number,
@@ -583,6 +678,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private postToWebview(msg: InboundMessage | CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
     }
+    /**
+     * Resolves the repository root used by file actions in the active panel.
+     *
+     * Prefer the explicit active repository URI. The workspace-folder fallback is retained for
+     * activation paths that construct the provider before a repository root has been injected.
+     *
+     * @throws When no active repository or workspace folder can back a file action.
+     */
     private getWorkspaceRoot(): vscode.Uri {
         if (this.repoRootUri) return this.repoRootUri;
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
@@ -591,6 +694,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         return workspaceRoot;
     }
+    /**
+     * Builds the Changes shell HTML with CSP/resource URI handling delegated to the shared helper.
+     */
     private getHtml(webview: vscode.Webview): string {
         return buildWebviewShellHtml({
             extensionUri: this.extensionUri,
@@ -600,6 +706,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             backgroundVar: "var(--vscode-sideBar-background, var(--vscode-editor-background))",
         });
     }
+    /**
+     * Builds the repository-scoped workspace-state key for the commit message draft.
+     *
+     * @throws When no repository or workspace folder is available to scope the persisted draft.
+     */
     private getCommitDraftStorageKey(): string {
         const storageRoot =
             this.repoRootUri?.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -608,9 +719,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         return `${CommitPanelViewProvider.COMMIT_DRAFT_KEY_PREFIX}${storageRoot}`;
     }
+    /**
+     * Reads the persisted commit draft for the active repository, defaulting to an empty input.
+     */
     private getStoredCommitDraft(): string {
         return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
     }
+    /**
+     * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
+     */
     dispose(): void {
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
@@ -622,6 +739,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
     }
+    /**
+     * Offers to publish the current branch after a successful local-only commit.
+     *
+     * The prompt is best-effort and intentionally swallowed on failure so commit completion is not
+     * blocked by optional upstream detection or command-palette wiring.
+     */
     private async maybeOfferPublishBranch(): Promise<void> {
         try {
             const hasCommits = await this.gitOps.hasAnyCommits();
@@ -645,11 +768,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             // Silently ignore — publish is optional, don't block the user
         }
     }
+    /**
+     * Checks whether the active branch already has an upstream for push-related UI decisions.
+     */
     private async currentBranchHasUpstream(): Promise<boolean> {
         const branches = await this.gitOps.getBranches();
         const currentBranch = branches.find((branch) => branch.isCurrent);
         return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
+    /**
+     * Runs a panel data refresh from listeners without leaking rejected promises into VS Code.
+     */
     private refreshDataWithErrorHandling(): void {
         this.refreshData().catch((err) => {
             const message = getErrorMessage(err);

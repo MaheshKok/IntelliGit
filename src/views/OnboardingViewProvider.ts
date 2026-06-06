@@ -2,13 +2,29 @@ import * as vscode from "vscode";
 import { randomBytes } from "crypto";
 import { escapeHtmlAttr, escapeHtmlText } from "./webviewHtml";
 
+/**
+ * Startup context that determines which onboarding call-to-action commands are exposed.
+ */
 export type OnboardingContext = "no-workspace" | "no-git-repo";
 
+/**
+ * Hosts the lightweight onboarding webview shown before IntelliGit has an active repository.
+ *
+ * The provider owns the no-workspace/no-repository view content and accepts only command-style
+ * action messages from its own buttons. HTML is generated with a per-render nonce, escaped text,
+ * and a CSP limited to extension media plus the VS Code webview source.
+ */
 export class OnboardingViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.onboarding";
 
     private view?: vscode.WebviewView;
 
+    /**
+     * Configures onboarding content for the current activation state.
+     *
+     * The constructor records which safe command buttons may be rendered; command dispatch is still
+     * bound only after VS Code resolves the webview and installs its message listener.
+     */
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly contextType: OnboardingContext,
@@ -16,6 +32,13 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         private readonly showActions = true,
     ) {}
 
+    /**
+     * Resolves the onboarding webview and wires button messages to activation commands.
+     *
+     * Local resources are limited to extension media because this view renders inline HTML rather
+     * than a bundled React application. Unknown message types are ignored so malformed webview
+     * input cannot dispatch arbitrary commands.
+     */
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -49,12 +72,18 @@ export class OnboardingViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtml(webviewView.webview);
     }
 
+    /**
+     * Extracts the string action type from untrusted onboarding webview input.
+     */
     private getMessageType(message: unknown): string {
         if (typeof message !== "object" || message === null || !("type" in message)) return "";
         const type = (message as { type?: unknown }).type;
         return typeof type === "string" ? type : "";
     }
 
+    /**
+     * Builds the inline onboarding document with escaped copy, media URIs, and nonce-scoped script.
+     */
     private getHtml(webview: vscode.Webview): string {
         const isNoWorkspace = this.contextType === "no-workspace";
         const nonce = randomBytes(16).toString("base64");
