@@ -108,6 +108,7 @@ export function FileTree({
                 });
                 return;
             }
+            setDragSelectedUnversionedPaths(new Set());
             onFileClick(file.path);
         },
         [onFileClick],
