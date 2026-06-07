@@ -45,6 +45,14 @@ function ThemeGlyphIcon({
     );
 }
 
+/**
+ * Resolves a file tree icon with status-aware styling.
+ *
+ * Deleted files (status `D`) are rendered with reduced opacity and grayscale
+ * to visually distinguish removed content. When a theme provides a custom icon
+ * URI or glyph character, it takes precedence over the default file icon.
+ * Otherwise the generic `FileIcon` SVG is used with the status-appropriate color.
+ */
 export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactElement {
     const color =
         status === "D"
@@ -89,6 +97,13 @@ export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactEl
     );
 }
 
+/**
+ * Resolves a folder tree icon that reflects the expanded/collapsed state.
+ *
+ * Expanded folders use the `symbolIcon-folderOpenedForeground` VS Code theme
+ * variable when available, falling back to the standard folder color. Custom
+ * theme icons (URI or glyph) take precedence over the generic `FolderIcon` SVG.
+ */
 export function TreeFolderIcon({ isExpanded, icon }: TreeFolderIconProps): React.ReactElement {
     if (icon?.uri) {
         return (

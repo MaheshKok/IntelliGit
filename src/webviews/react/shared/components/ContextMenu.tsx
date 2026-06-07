@@ -54,6 +54,17 @@ interface Props {
     onClose: () => void;
 }
 
+/**
+ * Renders a JetBrains-style floating context menu as a React portal.
+ *
+ * The menu is positioned at the caller-supplied coordinates and clamped to the
+ * viewport so it never renders off-screen. Click-outside, Escape, and window
+ * blur all dismiss the menu without propagating to parent handlers.
+ *
+ * @remarks A `<style>` element with hover/focus-visible rules is injected once
+ * per document via `useInsertionEffect` to avoid per-menu style duplication.
+ * Item keyboard activation supports Enter and Space.
+ */
 export function ContextMenu({
     x,
     y,

@@ -162,6 +162,19 @@ function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | 
     );
 }
 
+/**
+ * Recursive tree row renderer for the branch column.
+ *
+ * Folder nodes render as collapsible sections with chevron toggles and indent
+ * guide lines. Branch nodes show the appropriate icon (current-branch tag,
+ * star for main/master, or generic git-branch), highlighted search-match text,
+ * and an ahead/behind tracking badge with a hover tooltip.
+ *
+ * Multi-select is supported through `selectedBranchNames`; when `onBranchClick`
+ * is provided, single-select delegation is skipped in favor of the caller's
+ * click handler. Keyboard activation uses Enter/Space with Space default-prevented
+ * to avoid scroll-on-activate in webview panels.
+ */
 export function BranchTreeNodeRow({
     node,
     depth,
