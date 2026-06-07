@@ -308,10 +308,20 @@ export async function activateRepositoryMode(
                 void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
             }),
             undocked.onDeleteBranches?.((branchNames) => {
-                const branches = branchNames
+                const requestedNames = Array.from(new Set(branchNames));
+                const branches = requestedNames
                     .map((name) => getCurrentBranches().find((branch) => branch.name === name))
                     .filter((branch): branch is Branch => Boolean(branch));
-                if (branches.length === 0) return;
+                if (branches.length !== requestedNames.length) {
+                    const found = new Set(branches.map((branch) => branch.name));
+                    const missing = requestedNames.filter((name) => !found.has(name));
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Cannot delete missing branch(es): {branches}", {
+                            branches: missing.join(", "),
+                        }),
+                    );
+                    return;
+                }
                 void vscode.commands.executeCommand("intelligit.deleteBranches", { branches });
             }) ?? new vscode.Disposable(() => undefined),
             undocked.onCommitAction(async ({ action, hash }) => {
@@ -335,7 +345,7 @@ export async function activateRepositoryMode(
             }),
             undocked.onOpenCommitFileDiff(handleOpenCommitFileDiff),
             undocked.onDidChangeWorkingTree(() => {
-                commitPanel.refresh().catch((err) => {
+                commitPanel.refreshSilent().catch((err) => {
                     console.error("[IntelliGit] Docked commit panel refresh failed:", err);
                 });
                 commitGraph.refresh().catch((err) => {
@@ -456,7 +466,7 @@ export async function activateRepositoryMode(
     context.subscriptions.push(
         mergeConflictsView,
         commitPanel.onDidChangeWorkingTree(() => {
-            undocked?.refresh().catch((err) => {
+            undocked?.refreshSilent().catch((err) => {
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);
             });
         }),
@@ -489,6 +499,7 @@ export async function activateRepositoryMode(
             vscode.window.registerWebviewViewProvider(
                 CommitPanelViewProvider.viewType,
                 commitPanel,
+                { webviewOptions: { retainContextWhenHidden: true } },
             ),
         );
     }
@@ -537,7 +548,7 @@ export async function activateRepositoryMode(
     commitGraph.setBranches(currentBranches);
     commitPanel.setBranches(currentBranches);
 
-    commitPanel.refresh().catch((err) => {
+    commitPanel.refreshSilent().catch((err) => {
         console.error("Initial commit panel refresh failed:", err);
     });
     refreshService.refreshMergeConflicts().catch((err) => {

@@ -159,6 +159,7 @@ vi.mock("../../src/utils/fileOps", async () => {
 function createWebviewView() {
     let messageHandler: MessageHandler | undefined;
     let disposeHandler: (() => void) | undefined;
+    let visibilityHandler: (() => void) | undefined;
 
     const webview = {
         options: {},
@@ -177,8 +178,13 @@ function createWebviewView() {
 
     const view: Record<string, unknown> = {
         webview,
+        visible: true,
         badge: undefined as { tooltip: string; value: number } | undefined,
         description: undefined as string | undefined,
+        onDidChangeVisibility: vi.fn((cb: () => void) => {
+            visibilityHandler = cb;
+            return { dispose: vi.fn() };
+        }),
         onDidDispose: vi.fn((cb: () => void) => {
             disposeHandler = cb;
             return { dispose: vi.fn() };
@@ -191,6 +197,10 @@ function createWebviewView() {
             if (messageHandler) {
                 await messageHandler(msg);
             }
+        },
+        setVisible: (visible: boolean) => {
+            view.visible = visible;
+            visibilityHandler?.();
         },
         dispose: () => disposeHandler?.(),
     };
@@ -263,6 +273,12 @@ async function flushVisibleRefresh<T>(promise: Promise<T>): Promise<T> {
 async function flushInitialVisibleRefresh(): Promise<void> {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(1_000);
+}
+
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 function refreshingStates(): boolean[] {
@@ -915,6 +931,28 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider resolveWebviewView replays no Git data until ready or visible", async () => {
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+        );
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(postMessageSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider handles staging and unstaging", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         expect(gitOps.getStatus).toHaveBeenCalled();
@@ -952,6 +990,19 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider accepts already intent-to-add files from stale drop checks", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "new-file.txt", status: "A", staged: false, additions: 0, deletions: 0 },
+        ]);
+
+        await webview.send({ type: "trackUnversionedFiles", paths: ["new-file.txt"] });
+
+        expect(gitOps.intentToAddFiles).toHaveBeenCalledWith(["new-file.txt"]);
+        expect(showErrorMessage).not.toHaveBeenCalledWith(expect.stringContaining("unversioned"));
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider rejects stale track-unversioned requests before intent-to-add", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         gitOps.getStatus.mockResolvedValue([
@@ -962,6 +1013,60 @@ describe("view providers integration", () => {
 
         expect(gitOps.intentToAddFiles).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("unversioned"));
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider silently refreshes when a resolved view becomes visible", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "visible.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        gitOps.getStatus.mockClear();
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        webview.setVisible(false);
+        await flushMicrotasks();
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+
+        webview.setVisible(true);
+        for (let i = 0; i < 10; i += 1) {
+            await flushMicrotasks();
+            const hasVisibleUpdate = postMessageSpy.mock.calls.some(([message]) => {
+                if (
+                    typeof message !== "object" ||
+                    message === null ||
+                    !("type" in message) ||
+                    message.type !== "update" ||
+                    !("files" in message) ||
+                    !Array.isArray(message.files)
+                ) {
+                    return false;
+                }
+                return message.files.some(
+                    (file) =>
+                        typeof file === "object" &&
+                        file !== null &&
+                        "path" in file &&
+                        file.path === "visible.ts",
+                );
+            });
+            if (hasVisibleUpdate) break;
+        }
+
+        expect(gitOps.getStatus).toHaveBeenCalled();
+        expect(refreshingStates()).toEqual([]);
+        expect(executeCommand).not.toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.commitPanel.refreshing",
+            true,
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                files: expect.arrayContaining([expect.objectContaining({ path: "visible.ts" })]),
+            }),
+        );
         provider.dispose();
     });
 
@@ -1323,7 +1428,7 @@ describe("view providers integration", () => {
                 {} as unknown as object,
                 {} as unknown as object,
             );
-            await flushInitialVisibleRefresh();
+            await webview.send({ type: "ready" });
 
             const view = (provider as unknown as { view: Record<string, unknown> }).view;
             expect(view.description).toBe("2");

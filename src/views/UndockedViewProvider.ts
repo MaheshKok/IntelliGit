@@ -238,6 +238,15 @@ export class UndockedViewProvider {
         await this.loadInitial();
         await this.refreshCommitPanelData(false);
     }
+
+    /** Refreshes graph and commit-panel data without showing commit-panel refresh feedback. */
+    async refreshSilent(): Promise<void> {
+        await this.iconTheme.initIconThemeData();
+        await this.sendBranches();
+        await this.loadInitial();
+        await this.refreshCommitPanelData(true);
+    }
+
     /**
      * Reveals the retained panel when it exists and otherwise leaves state untouched.
      *
@@ -597,12 +606,6 @@ export class UndockedViewProvider {
     }
     // --- Commit panel data fetching -----------------------------------------
     /**
-     * Reloads working-tree files, shelves, selected shelf contents, and upstream status.
-     *
-     * The selected shelf is preserved when still present; otherwise the first shelf is selected.
-     * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
-     */
-    /**
      * Validates bulk branch-delete names from the undocked webview before host dispatch.
      *
      * Each name must satisfy Git branch-ref rules so forged webview payloads cannot reach the
@@ -624,6 +627,12 @@ export class UndockedViewProvider {
         return value;
     }
 
+    /**
+     * Reloads working-tree files, shelves, selected shelf contents, and upstream status.
+     *
+     * The selected shelf is preserved when still present; otherwise the first shelf is selected.
+     * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
+     */
     private async refreshCommitPanelData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {

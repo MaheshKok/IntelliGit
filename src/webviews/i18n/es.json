@@ -201,5 +201,5 @@
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "CABECERA ({name})",
     "merge.overview.jumpToHunk": "Saltar al trozo #{ordinal}",
-    "branch.menu.deleteBranches": "Delete Branches"
+    "branch.menu.deleteBranches": "Eliminar ramas"
 }

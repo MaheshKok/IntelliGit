@@ -160,13 +160,23 @@ export function registerRepositoryViewEvents(
      * Forwards bulk branch deletion through the dedicated command payload.
      *
      * Names are resolved against the latest trusted branch list so stale or forged webview
-     * names are dropped before the command performs Git operations.
+     * names are rejected before the command performs Git operations.
      */
     const forwardDeleteBranches = (branchNames: string[]): void => {
-        const selected = branchNames
+        const requestedNames = Array.from(new Set(branchNames));
+        const selected = requestedNames
             .map((name) => getCurrentBranches().find((branch) => branch.name === name))
             .filter((branch): branch is Branch => Boolean(branch));
-        if (selected.length === 0) return;
+        if (selected.length !== requestedNames.length) {
+            const found = new Set(selected.map((branch) => branch.name));
+            const missing = requestedNames.filter((name) => !found.has(name));
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Cannot delete missing branch(es): {branches}", {
+                    branches: missing.join(", "),
+                }),
+            );
+            return;
+        }
         void vscode.commands.executeCommand("intelligit.deleteBranches", { branches: selected });
     };
 

@@ -96,8 +96,8 @@ export class RefreshService implements vscode.Disposable {
     async refreshCommitPanels(): Promise<void> {
         const undocked = this.deps.getUndocked?.();
         await Promise.all([
-            this.deps.commitPanel.refresh(),
-            ...(undocked ? [undocked.refresh()] : []),
+            this.deps.commitPanel.refreshSilent(),
+            ...(undocked ? [undocked.refreshSilent()] : []),
         ]);
     }
 

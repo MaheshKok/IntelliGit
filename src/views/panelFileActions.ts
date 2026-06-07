@@ -95,7 +95,10 @@ export async function trackUnversionedFilesFromPanel(
 
     const currentFiles = await deps.gitOps.getStatus();
     const currentByPath = new Map(currentFiles.map((file) => [file.path, file]));
-    const stalePaths = paths.filter((path) => currentByPath.get(path)?.status !== "?");
+    const stalePaths = paths.filter((path) => {
+        const status = currentByPath.get(path)?.status;
+        return status !== "?" && status !== "A";
+    });
     if (stalePaths.length > 0) {
         throw new Error(
             `Only unversioned files can be moved into Changes: ${stalePaths.join(", ")}`,

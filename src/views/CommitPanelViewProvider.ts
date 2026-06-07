@@ -198,7 +198,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "clearCommitDetail" });
     }
     /**
-     * Resolves the Changes webview, binds message handling, and starts an initial data refresh.
+     * Resolves the Changes webview, binds message handling, and replays cached file state.
      *
      * The webview is restricted to bundled `dist` resources, theme listeners are rebound for the
      * newly attached webview, and all inbound messages are routed through {@link handleMessage} so
@@ -237,8 +237,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.html = this.getHtml(webviewView.webview);
+        webviewView.onDidChangeVisibility(() => {
+            if (!webviewView.visible) return;
+            this.postWorkingTreeSnapshot();
+            this.refreshDataWithErrorHandling(true);
+        });
         this.updateViewCount(this.lastFileCount);
-        this.refreshDataWithErrorHandling();
     }
     /**
      * Refreshes working-tree/shelf data and then reloads embedded graph state.
@@ -332,11 +336,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                           await this.gitOps.getShelvedFiles(selectedShelfIndex),
                       )
                     : [];
-            this.folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
+            const folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
                 ...files,
                 ...shelfFiles,
             ]);
             if (refreshRequestId !== this.dataRefreshSeq) return;
+            this.folderIconsByName = folderIconsByName;
             this.files = files;
             this.stashes = stashes;
             this.selectedShelfIndex = selectedShelfIndex;
@@ -819,8 +824,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Runs a panel data refresh from listeners without leaking rejected promises into VS Code.
      */
-    private refreshDataWithErrorHandling(): void {
-        this.refreshData().catch((err) => {
+    private refreshDataWithErrorHandling(silent = false): void {
+        this.refreshData(silent).catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(message);
             this.postToWebview({ type: "error", message });

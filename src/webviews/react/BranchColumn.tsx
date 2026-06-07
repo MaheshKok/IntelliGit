@@ -356,6 +356,7 @@ export function BranchColumn({
                                             selectedBranchNames={selectedBranchNames}
                                             expandedFolders={expandedFolders}
                                             onSelectBranch={onSelectBranch}
+                                            onBranchClick={handleBranchRowClick}
                                             onToggleFolder={toggleFolder}
                                             onContextMenu={handleBranchContextMenu}
                                             filterNeedle={filterNeedle}

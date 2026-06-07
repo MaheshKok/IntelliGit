@@ -80,6 +80,7 @@ function makeService(): {
     const commitPanel = {
         setBranches: vi.fn(),
         refresh: vi.fn(async () => undefined),
+        refreshSilent: vi.fn(async () => undefined),
     } as unknown as CommitPanelViewProvider;
     const mergeConflicts = {
         refresh: vi.fn(async () => 0),
@@ -122,11 +123,12 @@ describe("RefreshService refresh scheduling", () => {
         scheduler.scheduleRefreshEvent("git-repository-state");
 
         await vi.advanceTimersByTimeAsync(300);
-        expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
+        expect(deps.commitPanel.refreshSilent).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(200);
         expect(deps.gitOps.getBranches).toHaveBeenCalledTimes(1);
-        expect(deps.commitPanel.refresh).toHaveBeenCalledTimes(1);
+        expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
 
         service.dispose();
     });
@@ -139,11 +141,12 @@ describe("RefreshService refresh scheduling", () => {
         scheduler.scheduleRefreshEvent("git-state");
 
         await vi.advanceTimersByTimeAsync(300);
-        expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
+        expect(deps.commitPanel.refreshSilent).not.toHaveBeenCalled();
 
         await vi.advanceTimersByTimeAsync(200);
         expect(deps.gitOps.getBranches).toHaveBeenCalledTimes(1);
-        expect(deps.commitPanel.refresh).toHaveBeenCalledTimes(1);
+        expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
 
         service.dispose();
     });
@@ -161,8 +164,26 @@ describe("RefreshService refresh scheduling", () => {
         await vi.advanceTimersByTimeAsync(300);
 
         expect(deps.gitOps.getBranches).not.toHaveBeenCalled();
-        expect(deps.commitPanel.refresh).toHaveBeenCalledTimes(1);
+        expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
 
+        service.dispose();
+    });
+
+    it("refreshes docked and undocked commit panels silently for implicit updates", async () => {
+        const { service, deps } = makeService();
+        const undocked = {
+            refresh: vi.fn(async () => undefined),
+            refreshSilent: vi.fn(async () => undefined),
+        };
+        deps.getUndocked = vi.fn(() => undocked as never);
+
+        await service.refreshCommitPanels();
+
+        expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
+        expect(undocked.refresh).not.toHaveBeenCalled();
+        expect(undocked.refreshSilent).toHaveBeenCalledTimes(1);
         service.dispose();
     });
 });

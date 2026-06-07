@@ -10,9 +10,24 @@ import { ContextMenu } from "../../src/webviews/react/shared/components/ContextM
 import { initReactDomTestEnvironment, mount, unmount } from "./utils/reactDomTestUtils";
 import { installWebviewI18n } from "./utils/webviewI18nTestUtils";
 
+const mockWebviewState = vi.hoisted(() => ({ current: undefined as unknown }));
+const mockSetWebviewState = vi.hoisted(() => vi.fn((state: unknown) => {
+    mockWebviewState.current = state;
+}));
+
+vi.mock("../../src/webviews/react/shared/vscodeApi", () => ({
+    getVsCodeApi: () => ({
+        getState: () => mockWebviewState.current,
+        setState: mockSetWebviewState,
+        postMessage: vi.fn(),
+    }),
+}));
+
 initReactDomTestEnvironment();
 
 beforeEach(() => {
+    mockWebviewState.current = undefined;
+    mockSetWebviewState.mockClear();
     installWebviewI18n();
 });
 
@@ -93,6 +108,24 @@ describe("BranchColumn integration", () => {
             ahead: 0,
             behind: 0,
         },
+        {
+            name: "origin/remote-alpha",
+            hash: "13579bd",
+            isRemote: true,
+            isCurrent: false,
+            remote: "origin",
+            ahead: 0,
+            behind: 0,
+        },
+        {
+            name: "origin/remote-beta",
+            hash: "2468ace",
+            isRemote: true,
+            isCurrent: false,
+            remote: "origin",
+            ahead: 0,
+            behind: 0,
+        },
     ];
 
     function renderBranchColumn() {
@@ -112,11 +145,23 @@ describe("BranchColumn integration", () => {
     }
 
     function branchRow(container: HTMLElement, text: string): HTMLElement {
-        const row = Array.from(container.querySelectorAll(".branch-row")).find((candidate) =>
-            candidate.textContent?.includes(text),
-        ) as HTMLElement | undefined;
+        const row = branchRows(container, text)[0];
         expect(row).toBeTruthy();
         return row;
+    }
+
+    function branchRows(container: HTMLElement, text: string): HTMLElement[] {
+        return Array.from(container.querySelectorAll(".branch-row")).filter((candidate) =>
+            candidate.textContent?.includes(text),
+        ) as HTMLElement[];
+    }
+
+    function textElement(container: HTMLElement, text: string): HTMLElement {
+        const element = Array.from(container.querySelectorAll<HTMLElement>("*")).find(
+            (candidate) => candidate.textContent?.trim() === text,
+        );
+        if (!element) throw new Error(`Missing element containing ${text}`);
+        return element;
     }
 
     function contextMenuItems(): HTMLElement[] {
@@ -216,6 +261,52 @@ describe("BranchColumn integration", () => {
             contextMenuItems()[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
         expect(onDeleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+        expect(onBranchAction).not.toHaveBeenCalled();
+
+        unmount(root, container);
+    });
+
+    it("supports command-click bulk delete selection for remote branch rows", () => {
+        mockWebviewState.current = {
+            branchColumn: {
+                branchFilter: "",
+                expandedSections: ["local", "remote"],
+                expandedFolders: ["remote-origin"],
+            },
+        };
+        const { root, container, onSelectBranch, onBranchAction, onDeleteBranches } =
+            renderBranchColumn();
+        const remoteAlpha = branchRow(container, "remote-alpha");
+        const remoteBeta = branchRow(container, "remote-beta");
+
+        act(() => {
+            remoteAlpha.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+            remoteBeta.dispatchEvent(new MouseEvent("click", { bubbles: true, metaKey: true }));
+        });
+        expect(onSelectBranch).not.toHaveBeenCalled();
+        expect(remoteAlpha.classList.contains("selected")).toBe(true);
+        expect(remoteBeta.classList.contains("selected")).toBe(true);
+
+        act(() => {
+            remoteBeta.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 120,
+                    clientY: 40,
+                }),
+            );
+        });
+        const labels = contextMenuItems().map((item) => item.textContent?.trim());
+        expect(labels).toEqual(["Delete Branches"]);
+
+        act(() => {
+            contextMenuItems()[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onDeleteBranches).toHaveBeenCalledWith([
+            "origin/remote-alpha",
+            "origin/remote-beta",
+        ]);
         expect(onBranchAction).not.toHaveBeenCalled();
 
         unmount(root, container);
@@ -330,11 +421,11 @@ describe("FileTree drag-to-track integration", () => {
         { path: "new-file.txt", status: "?", staged: false, additions: 0, deletions: 0 },
     ];
 
-    function renderFileTree(checkedPaths = new Set<string>()) {
+    function renderFileTree(checkedPaths = new Set<string>(), treeFiles = files) {
         const onTrackUnversionedFiles = vi.fn();
         const mounted = mount(
             <FileTree
-                files={files}
+                files={treeFiles}
                 groupByDir={false}
                 checkedPaths={checkedPaths}
                 onToggleFile={vi.fn()}
@@ -422,6 +513,19 @@ describe("FileTree drag-to-track integration", () => {
         dispatchDrag(textElement(container, "Changes"), "drop", transfer);
 
         expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["new-file.txt", "second.txt"]);
+        unmount(root, container);
+    });
+
+    it("keeps Changes as a drop target when only unversioned files exist", () => {
+        const { root, container, onTrackUnversionedFiles } = renderFileTree(new Set(), [
+            { path: "new-only.txt", status: "?", staged: false, additions: 0, deletions: 0 },
+        ]);
+        const transfer = createDragDataTransfer();
+
+        dispatchDrag(textElement(container, "new-only.txt"), "dragstart", transfer);
+        dispatchDrag(textElement(container, "Changes"), "drop", transfer);
+
+        expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["new-only.txt"]);
         unmount(root, container);
     });
 });

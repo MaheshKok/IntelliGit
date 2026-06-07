@@ -208,5 +208,5 @@
     "common.dockIntelliGit": "Прикрепить IntelliGit",
     "branch.head.label": "ЗАГОЛОВОК ({name})",
     "merge.overview.jumpToHunk": "Перейти к фрагменту #{ordinal}",
-    "branch.menu.deleteBranches": "Delete Branches"
+    "branch.menu.deleteBranches": "Удалить ветки"
 }

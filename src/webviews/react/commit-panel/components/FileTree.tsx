@@ -217,39 +217,35 @@ export function FileTree({
 
     return (
         <>
-            {tracked.length > 0 && (
-                <>
-                    <SectionHeader
-                        label={t("commitPanel.changes")}
-                        count={trackedUniqueCount}
-                        isOpen={changesOpen}
-                        isAllChecked={isAllChecked(tracked)}
-                        isSomeChecked={isSomeChecked(tracked)}
-                        onToggleOpen={() => setChangesOpen((o) => !o)}
-                        onToggleCheck={() => onToggleSection(tracked)}
-                        onDragOver={handleChangesDragOver}
-                        onDrop={handleChangesDrop}
-                    />
-                    {changesOpen && (
-                        <TreeEntries
-                            entries={trackedTree}
-                            depth={0}
-                            groupByDir={groupByDir}
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
-                            expandedDirs={expandedDirs}
-                            checkedPaths={checkedPaths}
-                            onToggleFile={onToggleFile}
-                            onToggleFolder={onToggleFolder}
-                            isAllChecked={isAllChecked}
-                            isSomeChecked={isSomeChecked}
-                            onToggleDir={toggleDir}
-                            onFileClick={onFileClick}
-                            onFileDragStart={handleFileDragStart}
-                        />
-                    )}
-                </>
+            <SectionHeader
+                label={t("commitPanel.changes")}
+                count={trackedUniqueCount}
+                isOpen={changesOpen}
+                isAllChecked={isAllChecked(tracked)}
+                isSomeChecked={isSomeChecked(tracked)}
+                onToggleOpen={() => setChangesOpen((o) => !o)}
+                onToggleCheck={() => onToggleSection(tracked)}
+                onDragOver={handleChangesDragOver}
+                onDrop={handleChangesDrop}
+            />
+            {tracked.length > 0 && changesOpen && (
+                <TreeEntries
+                    entries={trackedTree}
+                    depth={0}
+                    groupByDir={groupByDir}
+                    folderIcon={folderIcon}
+                    folderExpandedIcon={folderExpandedIcon}
+                    folderIconsByName={folderIconsByName}
+                    expandedDirs={expandedDirs}
+                    checkedPaths={checkedPaths}
+                    onToggleFile={onToggleFile}
+                    onToggleFolder={onToggleFolder}
+                    isAllChecked={isAllChecked}
+                    isSomeChecked={isSomeChecked}
+                    onToggleDir={toggleDir}
+                    onFileClick={onFileClick}
+                    onFileDragStart={handleFileDragStart}
+                />
             )}
             {unversioned.length > 0 && (
                 <>

@@ -194,5 +194,5 @@
     "common.dockIntelliGit": "IntelliGit andocken",
     "branch.head.label": "HEAD ({name})",
     "merge.overview.jumpToHunk": "Springe zu Abschnitt #{ordinal}",
-    "branch.menu.deleteBranches": "Delete Branches"
+    "branch.menu.deleteBranches": "Branches löschen"
 }

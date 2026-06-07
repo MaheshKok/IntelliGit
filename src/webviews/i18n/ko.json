@@ -187,5 +187,5 @@
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD ({name})",
     "merge.overview.jumpToHunk": "Hunk #{ordinal}로 이동",
-    "branch.menu.deleteBranches": "Delete Branches"
+    "branch.menu.deleteBranches": "브랜치 삭제"
 }

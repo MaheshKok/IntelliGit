@@ -335,7 +335,7 @@ git add -N -- <paths>
 ```
 
 This marks untracked files as intent-to-add, so `git status --porcelain=v1 -z`
-returns ` A <path>` and the existing `FileTree` grouping moves the file into
+returns `A <path>` and the existing `FileTree` grouping moves the file into
 `Changes` without staging file contents.
 
 #### UI changes

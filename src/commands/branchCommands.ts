@@ -218,7 +218,15 @@ async function assertBulkBranchesMerged(
 
 async function deleteBranchRef(executor: GitExecutor, branch: Branch): Promise<void> {
     if (branch.isRemote) {
-        await executor.run(["branch", "-d", "-r", branch.name]);
+        const target = resolveRemoteDeleteTarget(branch);
+        if (!target) {
+            throw new Error(
+                vscode.l10n.t("unable to determine remote target for '{branch}'", {
+                    branch: branch.name,
+                }),
+            );
+        }
+        await executor.run(["push", target.remote, "--delete", target.remoteBranch]);
         return;
     }
     await executor.run(["branch", "-d", branch.name]);
@@ -784,21 +792,33 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         try {
                             await deleteBranchRef(executor, branch);
                             deleted.push(branch.name);
+                            if (!branch.isRemote) {
+                                await showDeletedBranchActions(
+                                    branch,
+                                    getCurrentBranches(),
+                                    executor,
+                                );
+                            }
                         } catch (err) {
                             const msg = getErrorMessage(err);
                             if (deleted.length > 0) {
                                 await vscode.commands.executeCommand("intelligit.refresh");
                             }
-                            vscode.window.showErrorMessage(
-                                vscode.l10n.t(
-                                    "partially deleted {count} branch(es), but failed to delete {branch}: {message}",
-                                    {
-                                        count: deleted.length,
-                                        branch: branch.name,
-                                        message: msg,
-                                    },
-                                ),
-                            );
+                            const message =
+                                deleted.length > 0
+                                    ? vscode.l10n.t(
+                                          "partially deleted {count} branch(es), but failed to delete {branch}: {message}",
+                                          {
+                                              count: deleted.length,
+                                              branch: branch.name,
+                                              message: msg,
+                                          },
+                                      )
+                                    : vscode.l10n.t("failed to delete {branch}: {message}", {
+                                          branch: branch.name,
+                                          message: msg,
+                                      });
+                            vscode.window.showErrorMessage(message);
                             return;
                         }
                     }
