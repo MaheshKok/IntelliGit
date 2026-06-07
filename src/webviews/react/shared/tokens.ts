@@ -40,7 +40,7 @@ export const JETBRAINS_UI = {
     },
     size: {
         icon: 14,
-        rowHeight: 28,
+        rowHeight: 24,
         toolbarHeight: 32,
         splitter: 3,
         radius: 4,

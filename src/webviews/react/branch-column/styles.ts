@@ -101,11 +101,11 @@ export const ROW_STYLE: CSSProperties = {
     position: "relative",
     display: "flex",
     alignItems: "center",
-    padding: "2px 8px",
+    padding: "1px 8px",
     cursor: "pointer",
     whiteSpace: "nowrap",
     overflow: "hidden",
-    lineHeight: "22px",
+    lineHeight: "20px",
 };
 
 export const INDENT_GUIDE_STYLE: CSSProperties = {
