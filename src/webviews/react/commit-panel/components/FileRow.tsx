@@ -88,7 +88,6 @@ function FileRowInner({
                 overflow="hidden"
                 textOverflow="ellipsis"
                 whiteSpace="nowrap"
-                color="var(--intelligit-pycharm-foreground)"
                 textDecoration={file.status === "D" ? "line-through" : undefined}
             >
                 {fileName}
