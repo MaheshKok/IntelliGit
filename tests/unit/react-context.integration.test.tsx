@@ -444,20 +444,35 @@ describe("FileTree drag-to-track integration", () => {
 
     function createDragDataTransfer() {
         const values = new Map<string, string>();
+        let readable = true;
+        const types: string[] = [];
         return {
             effectAllowed: "",
             dropEffect: "",
-            setData: vi.fn((type: string, value: string) => values.set(type, value)),
-            getData: vi.fn((type: string) => values.get(type) ?? ""),
+            types,
+            setDragImage: vi.fn(),
+            setReadable: (nextReadable: boolean) => {
+                readable = nextReadable;
+            },
+            setData: vi.fn((type: string, value: string) => {
+                if (!types.includes(type)) types.push(type);
+                values.set(type, value);
+            }),
+            getData: vi.fn((type: string) => (readable ? (values.get(type) ?? "") : "")),
         };
     }
 
-    function dispatchDrag(target: Element, type: string, dataTransfer: ReturnType<typeof createDragDataTransfer>) {
+    function dispatchDrag(
+        target: Element,
+        type: string,
+        dataTransfer: ReturnType<typeof createDragDataTransfer>,
+    ) {
         const event = new Event(type, { bubbles: true, cancelable: true });
         Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
         act(() => {
             target.dispatchEvent(event);
         });
+        return event;
     }
 
     function textElement(container: HTMLElement, text: string): HTMLElement {
@@ -485,7 +500,86 @@ describe("FileTree drag-to-track integration", () => {
         unmount(root, container);
     });
 
-    it("drags all checked unversioned files when the pointer file is checked", () => {
+    function dispatchClick(
+        target: Element,
+        options: Pick<MouseEventInit, "metaKey" | "ctrlKey"> = {},
+    ) {
+        const event = new MouseEvent("click", { bubbles: true, cancelable: true, ...options });
+        act(() => {
+            target.dispatchEvent(event);
+        });
+        return event;
+    }
+
+    it("drags command-selected unversioned files with a count badge", () => {
+        const onTrackUnversionedFiles = vi.fn();
+        const { root, container } = mount(
+            <FileTree
+                files={[
+                    ...files,
+                    { path: "second.txt", status: "?", staged: false, additions: 0, deletions: 0 },
+                ]}
+                groupByDir={false}
+                checkedPaths={new Set()}
+                onToggleFile={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onToggleSection={vi.fn()}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={vi.fn()}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+                onTrackUnversionedFiles={onTrackUnversionedFiles}
+            />,
+        );
+
+        const transfer = createDragDataTransfer();
+        dispatchClick(textElement(container, "new-file.txt"), { metaKey: true });
+        dispatchClick(textElement(container, "second.txt"), { metaKey: true });
+        dispatchDrag(textElement(container, "new-file.txt"), "dragstart", transfer);
+        dispatchDrag(textElement(container, "Changes"), "drop", transfer);
+
+        expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["new-file.txt", "second.txt"]);
+        const [dragImage] = transfer.setDragImage.mock.calls[0] ?? [];
+        expect((dragImage as HTMLElement | undefined)?.textContent).toBe("2");
+        unmount(root, container);
+    });
+
+    it("drags control-selected unversioned files on Windows and Linux", () => {
+        const onTrackUnversionedFiles = vi.fn();
+        const { root, container } = mount(
+            <FileTree
+                files={[
+                    ...files,
+                    { path: "second.txt", status: "?", staged: false, additions: 0, deletions: 0 },
+                ]}
+                groupByDir={false}
+                checkedPaths={new Set()}
+                onToggleFile={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onToggleSection={vi.fn()}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={vi.fn()}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+                onTrackUnversionedFiles={onTrackUnversionedFiles}
+            />,
+        );
+
+        const transfer = createDragDataTransfer();
+        dispatchClick(textElement(container, "new-file.txt"), { ctrlKey: true });
+        dispatchClick(textElement(container, "second.txt"), { ctrlKey: true });
+        dispatchDrag(textElement(container, "second.txt"), "dragstart", transfer);
+        dispatchDrag(textElement(container, "Changes"), "drop", transfer);
+
+        expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["new-file.txt", "second.txt"]);
+        const [dragImage] = transfer.setDragImage.mock.calls[0] ?? [];
+        expect((dragImage as HTMLElement | undefined)?.textContent).toBe("2");
+        unmount(root, container);
+    });
+
+    it("does not use checked unversioned files as the drag selection", () => {
         const checkedPaths = new Set(["new-file.txt", "second.txt"]);
         const onTrackUnversionedFiles = vi.fn();
         const { root, container } = mount(
@@ -493,6 +587,7 @@ describe("FileTree drag-to-track integration", () => {
                 files={[
                     ...files,
                     { path: "second.txt", status: "?", staged: false, additions: 0, deletions: 0 },
+                    { path: "third.txt", status: "?", staged: false, additions: 0, deletions: 0 },
                 ]}
                 groupByDir={false}
                 checkedPaths={checkedPaths}
@@ -509,10 +604,28 @@ describe("FileTree drag-to-track integration", () => {
         );
 
         const transfer = createDragDataTransfer();
-        dispatchDrag(textElement(container, "new-file.txt"), "dragstart", transfer);
+        dispatchDrag(textElement(container, "third.txt"), "dragstart", transfer);
         dispatchDrag(textElement(container, "Changes"), "drop", transfer);
 
-        expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["new-file.txt", "second.txt"]);
+        expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["third.txt"]);
+        expect(transfer.setDragImage).not.toHaveBeenCalled();
+        unmount(root, container);
+    });
+
+    it("accepts dragover when Chromium hides custom drag data until drop", () => {
+        const { root, container, onTrackUnversionedFiles } = renderFileTree();
+        const changesHeader = textElement(container, "Changes");
+        const transfer = createDragDataTransfer();
+
+        dispatchDrag(textElement(container, "new-file.txt"), "dragstart", transfer);
+        transfer.setReadable(false);
+        const dragOver = dispatchDrag(changesHeader, "dragover", transfer);
+        transfer.setReadable(true);
+        dispatchDrag(changesHeader, "drop", transfer);
+
+        expect(dragOver.defaultPrevented).toBe(true);
+        expect(transfer.dropEffect).toBe("move");
+        expect(onTrackUnversionedFiles).toHaveBeenCalledWith(["new-file.txt"]);
         unmount(root, container);
     });
 

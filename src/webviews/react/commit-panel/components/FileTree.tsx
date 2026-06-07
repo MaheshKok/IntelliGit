@@ -11,6 +11,8 @@ import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../..
 import type { TreeEntry } from "../types";
 import { t } from "../../shared/i18n";
 
+const UNVERSIONED_DRAG_MIME = "application/vnd.intelligit.unversioned-files";
+
 interface Props {
     files: WorkingFile[];
     groupByDir: boolean;
@@ -57,10 +59,14 @@ export function FileTree({
     const [unversionedOpen, setUnversionedOpen] = useState(true);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
     const [isDragOverChanges, setIsDragOverChanges] = useState(false);
+    const [dragSelectedUnversionedPaths, setDragSelectedUnversionedPaths] = useState<Set<string>>(
+        () => new Set(),
+    );
     const lastExpandSignal = useRef(0);
     const lastCollapseSignal = useRef(0);
     const seenDirsRef = useRef<Set<string>>(new Set());
     const dragCounterRef = useRef(0);
+    const activeUnversionedDragPathsRef = useRef<string[]>([]);
 
     const tracked = useMemo(() => files.filter((f) => f.status !== "?"), [files]);
     const unversioned = useMemo(() => files.filter((f) => f.status === "?"), [files]);
@@ -80,27 +86,44 @@ export function FileTree({
     const getUnversionedDragPaths = useCallback(
         (file: WorkingFile): string[] => {
             if (file.status !== "?") return [];
-            if (!checkedPaths.has(file.path)) return [file.path];
-            const selectedUnversioned = Array.from(checkedPaths).filter((path) =>
+            const selectedUnversioned = Array.from(dragSelectedUnversionedPaths).filter((path) =>
                 unversionedPaths.has(path),
             );
-            return selectedUnversioned.length > 0 ? selectedUnversioned : [file.path];
+            if (selectedUnversioned.length === 0) return [file.path];
+            return selectedUnversioned.includes(file.path) ? selectedUnversioned : [file.path];
         },
-        [checkedPaths, unversionedPaths],
+        [dragSelectedUnversionedPaths, unversionedPaths],
+    );
+
+    const handleTreeFileClick = useCallback(
+        (event: React.MouseEvent<HTMLElement>, file: WorkingFile) => {
+            if (file.status === "?" && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                event.stopPropagation();
+                setDragSelectedUnversionedPaths((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(file.path)) next.delete(file.path);
+                    else next.add(file.path);
+                    return next;
+                });
+                return;
+            }
+            onFileClick(file.path);
+        },
+        [onFileClick],
     );
 
     const handleFileDragStart = useCallback(
         (event: React.DragEvent<HTMLElement>, file: WorkingFile) => {
             const paths = getUnversionedDragPaths(file);
             if (paths.length === 0) {
+                activeUnversionedDragPathsRef.current = [];
                 event.preventDefault();
                 return;
             }
+            activeUnversionedDragPathsRef.current = paths;
             event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData(
-                "application/vnd.intelligit.unversioned-files",
-                JSON.stringify(paths),
-            );
+            event.dataTransfer.setData(UNVERSIONED_DRAG_MIME, JSON.stringify(paths));
             event.dataTransfer.setData("text/plain", paths.join("\n"));
 
             // Show file count on the drag cursor.
@@ -117,53 +140,77 @@ export function FileTree({
         [getUnversionedDragPaths],
     );
 
+    const handleFileDragEnd = useCallback(() => {
+        activeUnversionedDragPathsRef.current = [];
+        dragCounterRef.current = 0;
+        setIsDragOverChanges(false);
+    }, []);
+
+    const normalizeDraggedUnversionedPaths = useCallback(
+        (paths: unknown[]): string[] =>
+            paths.filter(
+                (path): path is string => typeof path === "string" && unversionedPaths.has(path),
+            ),
+        [unversionedPaths],
+    );
+
     const readDraggedUnversionedPaths = useCallback(
         (dataTransfer: DataTransfer): string[] => {
-            const raw = dataTransfer.getData("application/vnd.intelligit.unversioned-files");
-            if (!raw) return [];
+            const raw = dataTransfer.getData(UNVERSIONED_DRAG_MIME);
+            if (!raw)
+                return normalizeDraggedUnversionedPaths(activeUnversionedDragPathsRef.current);
             try {
                 const parsed: unknown = JSON.parse(raw);
                 if (!Array.isArray(parsed)) return [];
-                return parsed.filter(
-                    (path): path is string =>
-                        typeof path === "string" && unversionedPaths.has(path),
-                );
+                return normalizeDraggedUnversionedPaths(parsed);
             } catch {
                 return [];
             }
         },
-        [unversionedPaths],
+        [normalizeDraggedUnversionedPaths],
+    );
+
+    const canAcceptUnversionedDrop = useCallback(
+        (dataTransfer: DataTransfer): boolean => {
+            if (
+                normalizeDraggedUnversionedPaths(activeUnversionedDragPathsRef.current).length > 0
+            ) {
+                return true;
+            }
+            return Array.from(dataTransfer.types).includes(UNVERSIONED_DRAG_MIME);
+        },
+        [normalizeDraggedUnversionedPaths],
     );
 
     const handleChangesDragEnter = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
-            if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
+            if (!canAcceptUnversionedDrop(event.dataTransfer)) return;
             event.preventDefault();
             dragCounterRef.current += 1;
             setIsDragOverChanges(true);
         },
-        [readDraggedUnversionedPaths],
+        [canAcceptUnversionedDrop],
     );
 
     const handleChangesDragOver = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
-            if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
+            if (!canAcceptUnversionedDrop(event.dataTransfer)) return;
             event.preventDefault();
             event.dataTransfer.dropEffect = "move";
         },
-        [readDraggedUnversionedPaths],
+        [canAcceptUnversionedDrop],
     );
 
     const handleChangesDragLeave = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
-            if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
+            if (!canAcceptUnversionedDrop(event.dataTransfer)) return;
             dragCounterRef.current -= 1;
             if (dragCounterRef.current <= 0) {
                 dragCounterRef.current = 0;
                 setIsDragOverChanges(false);
             }
         },
-        [readDraggedUnversionedPaths],
+        [canAcceptUnversionedDrop],
     );
 
     const handleChangesDrop = useCallback(
@@ -171,6 +218,7 @@ export function FileTree({
             const paths = readDraggedUnversionedPaths(event.dataTransfer);
             dragCounterRef.current = 0;
             setIsDragOverChanges(false);
+            activeUnversionedDragPathsRef.current = [];
             if (paths.length === 0) return;
             event.preventDefault();
             onTrackUnversionedFiles?.(paths);
@@ -207,6 +255,13 @@ export function FileTree({
         // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
         setExpandedDirs(new Set());
     }, [collapseAllSignal]);
+
+    React.useEffect(() => {
+        setDragSelectedUnversionedPaths((prev) => {
+            const next = new Set(Array.from(prev).filter((path) => unversionedPaths.has(path)));
+            return next.size === prev.size ? prev : next;
+        });
+    }, [unversionedPaths]);
 
     // Auto-expand new dirs when files come in and sections are open
     React.useEffect(() => {
@@ -269,9 +324,6 @@ export function FileTree({
                         isSomeChecked={isSomeChecked(tracked)}
                         onToggleOpen={() => setChangesOpen((o) => !o)}
                         onToggleCheck={() => onToggleSection(tracked)}
-                        onDragOver={handleChangesDragOver}
-                        onDragLeave={handleChangesDragLeave}
-                        onDrop={handleChangesDrop}
                         isDragOver={isDragOverChanges}
                     />
                     {changesOpen && (
@@ -284,13 +336,15 @@ export function FileTree({
                             folderIconsByName={folderIconsByName}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
+                            dragSelectedPaths={dragSelectedUnversionedPaths}
                             onToggleFile={onToggleFile}
                             onToggleFolder={onToggleFolder}
                             isAllChecked={isAllChecked}
                             isSomeChecked={isSomeChecked}
                             onToggleDir={toggleDir}
-                            onFileClick={onFileClick}
+                            onFileClick={handleTreeFileClick}
                             onFileDragStart={handleFileDragStart}
+                            onFileDragEnd={handleFileDragEnd}
                         />
                     )}
                 </Box>
@@ -316,13 +370,15 @@ export function FileTree({
                             folderIconsByName={folderIconsByName}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
+                            dragSelectedPaths={dragSelectedUnversionedPaths}
                             onToggleFile={onToggleFile}
                             onToggleFolder={onToggleFolder}
                             isAllChecked={isAllChecked}
                             isSomeChecked={isSomeChecked}
                             onToggleDir={toggleDir}
-                            onFileClick={onFileClick}
+                            onFileClick={handleTreeFileClick}
                             onFileDragStart={handleFileDragStart}
+                            onFileDragEnd={handleFileDragEnd}
                         />
                     )}
                 </>
@@ -340,13 +396,15 @@ interface TreeEntriesProps {
     folderIconsByName?: ThemeFolderIconMap;
     expandedDirs: Set<string>;
     checkedPaths: Set<string>;
+    dragSelectedPaths: Set<string>;
     onToggleFile: (path: string) => void;
     onToggleFolder: (files: WorkingFile[]) => void;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onToggleDir: (dirPath: string) => void;
-    onFileClick: (path: string) => void;
+    onFileClick: (event: React.MouseEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
+    onFileDragEnd?: () => void;
 }
 
 function TreeEntries({
@@ -358,6 +416,7 @@ function TreeEntries({
     folderIconsByName,
     expandedDirs,
     checkedPaths,
+    dragSelectedPaths,
     onToggleFile,
     onToggleFolder,
     isAllChecked,
@@ -365,6 +424,7 @@ function TreeEntries({
     onToggleDir,
     onFileClick,
     onFileDragStart,
+    onFileDragEnd,
 }: TreeEntriesProps): React.ReactElement {
     return (
         <>
@@ -376,11 +436,15 @@ function TreeEntries({
                             file={entry.file}
                             depth={depth}
                             isChecked={checkedPaths.has(entry.file.path)}
+                            isDragSelected={
+                                entry.file.status === "?" && dragSelectedPaths.has(entry.file.path)
+                            }
                             groupByDir={groupByDir}
                             onToggle={onToggleFile}
                             onClick={onFileClick}
                             draggable={entry.file.status === "?"}
                             onDragStart={onFileDragStart}
+                            onDragEnd={onFileDragEnd}
                         />
                     );
                 }
@@ -414,6 +478,7 @@ function TreeEntries({
                                 folderIconsByName={folderIconsByName}
                                 expandedDirs={expandedDirs}
                                 checkedPaths={checkedPaths}
+                                dragSelectedPaths={dragSelectedPaths}
                                 onToggleFile={onToggleFile}
                                 onToggleFolder={onToggleFolder}
                                 isAllChecked={isAllChecked}
@@ -421,6 +486,7 @@ function TreeEntries({
                                 onToggleDir={onToggleDir}
                                 onFileClick={onFileClick}
                                 onFileDragStart={onFileDragStart}
+                                onFileDragEnd={onFileDragEnd}
                             />
                         )}
                     </React.Fragment>
