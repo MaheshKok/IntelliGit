@@ -14,7 +14,7 @@ import type { IconThemeService } from "./shared";
 interface PanelFileActionDeps {
     gitOps: GitOps;
     getWorkspaceRoot: () => vscode.Uri;
-    refreshData: () => Promise<void>;
+    refreshData: (silent?: boolean) => Promise<void>;
     fireWorkingTreeChanged: () => void;
 }
 
@@ -77,6 +77,42 @@ export async function unstageFilesFromPanel(
  *
  * Remote selection, credential prompts, and upstream naming remain owned by the publish command;
  * this helper only bridges panel UI state back to the active repository view.
+ */
+/**
+ * Marks currently unversioned files as intent-to-add from a webview drop action.
+ *
+ * The current Git status is re-read after the drag payload arrives so stale webview state cannot
+ * move a file that has already become tracked, staged, deleted, or otherwise non-unversioned. The
+ * refresh is silent because the row transition is a direct result of the user's drop gesture and
+ * should not flash the global commit-panel refresh indicator.
+ */
+export async function trackUnversionedFilesFromPanel(
+    deps: PanelFileActionDeps,
+    pathsValue: unknown,
+): Promise<void> {
+    const paths = assertRepoPathArray(pathsValue, "paths");
+    if (paths.length === 0) return;
+
+    const currentFiles = await deps.gitOps.getStatus();
+    const currentByPath = new Map(currentFiles.map((file) => [file.path, file]));
+    const stalePaths = paths.filter((path) => currentByPath.get(path)?.status !== "?");
+    if (stalePaths.length > 0) {
+        throw new Error(
+            `Only unversioned files can be moved into Changes: ${stalePaths.join(", ")}`,
+        );
+    }
+
+    await deps.gitOps.intentToAddFiles(paths);
+    await deps.refreshData(true);
+    deps.fireWorkingTreeChanged();
+}
+
+/**
+ * Publishes the current branch from the commit panel and refreshes local working-tree state.
+ *
+ * The helper delegates the publish flow to the extension command so credential prompts and remote
+ * validation stay centralized, then performs a visible refresh because the branch/upstream state may
+ * have changed and notifies listeners that working-tree metadata should be re-read.
  */
 export async function publishBranchFromPanel(deps: PanelFileActionDeps): Promise<void> {
     await vscode.commands.executeCommand("intelligit.publishBranch");

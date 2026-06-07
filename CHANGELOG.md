@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-06-07
+
+### Added
+
+- Added bulk branch deletion from branch graph, repository tree, and undocked views with guarded current-branch rejection, merged-branch preflight checks, partial-failure reporting, and focused command/provider coverage.
+
+### Changed
+
+- Refreshed branch and file-state flows so branch actions, commit-file diff requests, and intent-to-add updates keep graph, panel, and repository views synchronized without unnecessary visible refresh indicators.
+
+### Tests
+
+- Added and updated regression coverage for branch bulk-delete command payloads, provider protocols, branch/file refresh wiring, commit panel intent-to-add silent refresh behavior, and GitOps intent-to-add execution.
+
 ## [0.9.6] - 2026-06-06
 
 ### Added

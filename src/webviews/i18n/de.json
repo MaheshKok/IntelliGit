@@ -193,5 +193,6 @@
     "common.dock": "Dock",
     "common.dockIntelliGit": "IntelliGit andocken",
     "branch.head.label": "HEAD ({name})",
-    "merge.overview.jumpToHunk": "Springe zu Abschnitt #{ordinal}"
+    "merge.overview.jumpToHunk": "Springe zu Abschnitt #{ordinal}",
+    "branch.menu.deleteBranches": "Delete Branches"
 }

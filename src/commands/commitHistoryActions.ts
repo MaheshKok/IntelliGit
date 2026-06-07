@@ -367,9 +367,10 @@ function openInteractiveRebaseTerminal(
     const terminal = vscode.window.createTerminal({
         name,
         cwd: ctx.repoRoot,
+        shellPath: "git",
+        shellArgs: ["rebase", "-i", `${ctx.validatedHash}^`],
     });
     terminal.show();
-    terminal.sendText(`git rebase -i "${ctx.validatedHash}^"`, true);
     vscode.window.showInformationMessage(successMessage);
 }
 

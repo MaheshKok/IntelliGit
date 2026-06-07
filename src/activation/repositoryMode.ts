@@ -135,6 +135,7 @@ export async function activateRepositoryMode(
     const clearSelection = (): void => {
         commitGraph.clearCommitDetail();
         sidebarGraph.clearCommitDetail();
+        commitPanel.clearCommitDetail();
         commitInfo.clear();
     };
 
@@ -306,6 +307,13 @@ export async function activateRepositoryMode(
                 if (!branch) return;
                 void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
             }),
+            undocked.onDeleteBranches?.((branchNames) => {
+                const branches = branchNames
+                    .map((name) => getCurrentBranches().find((branch) => branch.name === name))
+                    .filter((branch): branch is Branch => Boolean(branch));
+                if (branches.length === 0) return;
+                void vscode.commands.executeCommand("intelligit.deleteBranches", { branches });
+            }) ?? new vscode.Disposable(() => undefined),
             undocked.onCommitAction(async ({ action, hash }) => {
                 try {
                     await handleCommitContextAction({

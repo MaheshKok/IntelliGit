@@ -16,6 +16,8 @@ interface Props {
     isSomeChecked: boolean;
     onToggleOpen: () => void;
     onToggleCheck: () => void;
+    onDragOver?: React.DragEventHandler<HTMLDivElement>;
+    onDrop?: React.DragEventHandler<HTMLDivElement>;
 }
 
 /**
@@ -33,6 +35,8 @@ export function SectionHeader({
     isSomeChecked,
     onToggleOpen,
     onToggleCheck,
+    onDragOver,
+    onDrop,
 }: Props): React.ReactElement {
     return (
         <Flex
@@ -57,6 +61,8 @@ export function SectionHeader({
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleOpen();
             }}
+            onDragOver={onDragOver}
+            onDrop={onDrop}
         >
             <ChevronIcon expanded={isOpen} />
             <VscCheckbox

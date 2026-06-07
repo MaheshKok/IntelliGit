@@ -85,6 +85,12 @@ type GraphOutbound =
           branchName: string;
       }
     | {
+          /** Command requesting deletion of command/ctrl-selected branch rows. */
+          type: "deleteBranches";
+          /** Validated branch names from the latest graph branch snapshot. */
+          branchNames: string[];
+      }
+    | {
           /** Command requesting a commit context-menu action on the host side. */
           type: "commitAction";
           /** Validated against shared commit action values before Git action dispatch. */

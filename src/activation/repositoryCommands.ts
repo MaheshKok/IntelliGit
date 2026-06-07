@@ -307,8 +307,10 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
         deps.context.subscriptions.push(
             vscode.commands.registerCommand(cmd.id, (item: unknown) => {
                 const validated =
-                    item && typeof item === "object" && "branch" in item
-                        ? (item as { branch?: Branch })
+                    item &&
+                    typeof item === "object" &&
+                    ("branch" in item || "branches" in item || "branchNames" in item)
+                        ? (item as { branch?: Branch; branches?: Branch[]; branchNames?: string[] })
                         : { branch: undefined };
                 return cmd.handler(validated);
             }),

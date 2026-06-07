@@ -29,6 +29,16 @@ function separator(action: SeparatorAction): BranchMenuItem {
  * Current, local, and remote branches expose different actions; labels are
  * localized here while actionable item IDs stay aligned with the extension protocol.
  */
+/**
+ * Builds the context-menu model for command/ctrl-selected branch rows.
+ *
+ * Bulk actions are intentionally kept outside `BranchAction` so single-branch command
+ * validation cannot accidentally accept multi-branch payloads.
+ */
+export function getBulkBranchMenuItems(): MenuItem[] {
+    return [{ label: t("branch.menu.deleteBranches"), action: "deleteBranches" }];
+}
+
 export function getBranchMenuItems(branch: Branch, currentBranchName: string): BranchMenuItem[] {
     const current = quoted(currentBranchName);
     const selected = quoted(branch.name);

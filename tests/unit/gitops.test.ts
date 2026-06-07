@@ -626,6 +626,41 @@ describe("GitOps", () => {
             }
         });
 
+        it("marks unversioned paths intent-to-add with literal pathspec handling", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor) as GitOps & {
+                intentToAddFiles(paths: string[]): Promise<void>;
+            };
+
+            await ops.intentToAddFiles(["space name.txt", "--weird.txt", ":(glob)*"]);
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
+                "--literal-pathspecs",
+                "add",
+                "--intent-to-add",
+                "--",
+                "space name.txt",
+                "--weird.txt",
+                ":(glob)*",
+            ]);
+        });
+
+        it("moves unversioned files into the unstaged changes group without staging contents", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor) as GitOps & {
+                    intentToAddFiles(paths: string[]): Promise<void>;
+                };
+                await writeFile(path.join(repo, "new-file.txt"), "draft\n", "utf8");
+
+                await ops.intentToAddFiles(["new-file.txt"]);
+
+                expect(await status(repo)).toBe(" A new-file.txt\n");
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
+        });
+
         it("rolls back staged, unstaged, and untracked selected files", async () => {
             const repo = await createTempGitRepo();
             try {

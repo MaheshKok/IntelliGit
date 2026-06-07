@@ -236,6 +236,7 @@ function makeGitOpsMock() {
             { path: "src/a.ts", status: "M", staged: false, additions: 2, deletions: 1 },
         ]),
         stageFiles: vi.fn(async () => undefined),
+        intentToAddFiles: vi.fn(async () => undefined),
         unstageFiles: vi.fn(async () => undefined),
         commit: vi.fn(async () => "ok"),
         commitAndPush: vi.fn(async () => "ok"),
@@ -825,6 +826,60 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider emits validated bulk branch delete messages", async () => {
+        const { CommitGraphViewProvider } = await import("../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        const deleteBranches = vi.fn();
+
+        (provider as unknown as { onDeleteBranches(listener: (branchNames: string[]) => void): void }).onDeleteBranches(
+            deleteBranches,
+        );
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "feature-two"] });
+
+        expect(deleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider rejects invalid bulk branch delete payloads", async () => {
+        const { CommitGraphViewProvider } = await import("../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        const deleteBranches = vi.fn();
+
+        (provider as unknown as { onDeleteBranches(listener: (branchNames: string[]) => void): void }).onDeleteBranches(
+            deleteBranches,
+        );
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "../secret"] });
+        await webview.send({ type: "deleteBranches", branchNames: [] });
+
+        expect(deleteBranches).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Branch action error"));
+
+        provider.dispose();
+    });
+
     it("CommitInfoViewProvider rejects invalid open-file-diff payloads", async () => {
         const { CommitInfoViewProvider } = await import("../../src/views/CommitInfoViewProvider");
         const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {
@@ -872,22 +927,52 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider shows refreshing state during background refresh", async () => {
+    it("CommitPanelViewProvider tracks unversioned files with intent-to-add and a silent refresh", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const workingTreeChanged = vi.fn();
+        const disposable = provider.onDidChangeWorkingTree(workingTreeChanged);
+        gitOps.getStatus.mockResolvedValue([
+            { path: "new-file.txt", status: "?", staged: false, additions: 0, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        await webview.send({ type: "trackUnversionedFiles", paths: ["new-file.txt"] });
+
+        expect(gitOps.intentToAddFiles).toHaveBeenCalledWith(["new-file.txt"]);
+        expect(workingTreeChanged).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
+        expect(refreshingStates()).toEqual([]);
+        expect(executeCommand).not.toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.commitPanel.refreshing",
+            true,
+        );
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider rejects stale track-unversioned requests before intent-to-add", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "new-file.txt", status: "M", staged: false, additions: 1, deletions: 0 },
+        ]);
+
+        await webview.send({ type: "trackUnversionedFiles", paths: ["new-file.txt"] });
+
+        expect(gitOps.intentToAddFiles).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("unversioned"));
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider refreshSilent updates without showing refreshing state", async () => {
         const { provider } = await setupCommitPanelProvider();
         postMessageSpy.mockClear();
+        executeCommand.mockClear();
 
-        await provider.refresh();
+        await (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
 
         const messages = postMessageSpy.mock.calls.map(([message]) => message);
-        const refreshingStartIndex = messages.findIndex(
-            (message) =>
-                typeof message === "object" &&
-                message !== null &&
-                "type" in message &&
-                message.type === "refreshing" &&
-                "active" in message &&
-                message.active === true,
-        );
         const updateIndex = messages.findIndex(
             (message) =>
                 typeof message === "object" &&
@@ -895,19 +980,71 @@ describe("view providers integration", () => {
                 "type" in message &&
                 message.type === "update",
         );
-        const refreshingEndIndex = messages.findIndex(
-            (message) =>
-                typeof message === "object" &&
-                message !== null &&
-                "type" in message &&
-                message.type === "refreshing" &&
-                "active" in message &&
-                message.active === false,
-        );
 
-        expect(refreshingStartIndex).toBeGreaterThanOrEqual(0);
-        expect(updateIndex).toBeGreaterThan(refreshingStartIndex);
-        expect(refreshingEndIndex).toBeGreaterThan(updateIndex);
+        expect(updateIndex).toBeGreaterThanOrEqual(0);
+        expect(refreshingStates()).toEqual([]);
+        expect(executeCommand).not.toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.commitPanel.refreshing",
+            true,
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider replays the cached file snapshot when the webview becomes ready", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "later.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "ready" });
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "update"; files: Array<{ path: string }> } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "files" in message,
+            );
+        expect(updates[0]?.files.map((file) => file.path)).toEqual(["src/a.ts"]);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider ignores stale refresh results from older requests", async () => {
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        let resolveSlowStatus: (files: Array<{ path: string; status: "M"; staged: false; additions: number; deletions: number }>) => void = () => {};
+        const slowStatus = new Promise<Array<{ path: string; status: "M"; staged: false; additions: number; deletions: number }>>((resolve) => {
+            resolveSlowStatus = resolve;
+        });
+        gitOps.getStatus
+            .mockImplementationOnce(async () => slowStatus)
+            .mockResolvedValueOnce([
+                { path: "newer.ts", status: "M", staged: false, additions: 3, deletions: 0 },
+            ]);
+        postMessageSpy.mockClear();
+
+        const slowRefresh = (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+        const fastRefresh = (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+        resolveSlowStatus([
+            { path: "stale.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ]);
+        await Promise.all([slowRefresh, fastRefresh]);
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "update"; files: Array<{ path: string }> } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "files" in message,
+            );
+        expect(updates.at(-1)?.files.map((file) => file.path)).toEqual(["newer.ts"]);
         provider.dispose();
     });
 

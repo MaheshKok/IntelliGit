@@ -397,6 +397,10 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
+    const handleDeleteBranches = useCallback((branchNames: string[]) => {
+        vscode.postMessage({ type: "deleteBranches", branchNames });
+    }, []);
+
     const handleCommitAction = useCallback((action: CommitAction, hash: string) => {
         vscode.postMessage({ type: "commitAction", action, hash });
     }, []);
@@ -499,6 +503,7 @@ function App(): React.ReactElement {
                                 selectedBranch={selectedBranch}
                                 onSelectBranch={handleSelectBranch}
                                 onBranchAction={handleBranchAction}
+                                onDeleteBranches={handleDeleteBranches}
                                 folderIcon={branchFolderIcon}
                                 folderExpandedIcon={branchFolderExpandedIcon}
                                 folderIconsByName={branchFolderIconsByName}

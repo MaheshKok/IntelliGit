@@ -193,5 +193,6 @@
     "mergeSession.acceptYours": "Accept Yours",
     "mergeSession.acceptTheirs": "Accept Theirs",
     "mergeSession.merge": "Merge...",
-    "mergeSession.groupByDirectory": "Group files by directory"
+    "mergeSession.groupByDirectory": "Group files by directory",
+    "branch.menu.deleteBranches": "Delete Branches"
 }

@@ -24,6 +24,7 @@ interface Props {
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onFileClick: (path: string) => void;
+    onTrackUnversionedFiles?: (paths: string[]) => void;
     expandAllSignal: number;
     collapseAllSignal: number;
 }
@@ -48,6 +49,7 @@ export function FileTree({
     isAllChecked,
     isSomeChecked,
     onFileClick,
+    onTrackUnversionedFiles,
     expandAllSignal,
     collapseAllSignal,
 }: Props): React.ReactElement {
@@ -68,6 +70,76 @@ export function FileTree({
 
     const trackedTree = useFileTree(tracked, groupByDir);
     const unversionedTree = useFileTree(unversioned, groupByDir);
+    const unversionedPaths = useMemo(
+        () => new Set(unversioned.map((file) => file.path)),
+        [unversioned],
+    );
+
+    const getUnversionedDragPaths = useCallback(
+        (file: WorkingFile): string[] => {
+            if (file.status !== "?") return [];
+            if (!checkedPaths.has(file.path)) return [file.path];
+            const selectedUnversioned = Array.from(checkedPaths).filter((path) =>
+                unversionedPaths.has(path),
+            );
+            return selectedUnversioned.length > 0 ? selectedUnversioned : [file.path];
+        },
+        [checkedPaths, unversionedPaths],
+    );
+
+    const handleFileDragStart = useCallback(
+        (event: React.DragEvent<HTMLElement>, file: WorkingFile) => {
+            const paths = getUnversionedDragPaths(file);
+            if (paths.length === 0) {
+                event.preventDefault();
+                return;
+            }
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData(
+                "application/vnd.intelligit.unversioned-files",
+                JSON.stringify(paths),
+            );
+            event.dataTransfer.setData("text/plain", paths.join("\n"));
+        },
+        [getUnversionedDragPaths],
+    );
+
+    const readDraggedUnversionedPaths = useCallback(
+        (dataTransfer: DataTransfer): string[] => {
+            const raw = dataTransfer.getData("application/vnd.intelligit.unversioned-files");
+            if (!raw) return [];
+            try {
+                const parsed: unknown = JSON.parse(raw);
+                if (!Array.isArray(parsed)) return [];
+                return parsed.filter(
+                    (path): path is string =>
+                        typeof path === "string" && unversionedPaths.has(path),
+                );
+            } catch {
+                return [];
+            }
+        },
+        [unversionedPaths],
+    );
+
+    const handleChangesDragOver = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+        },
+        [readDraggedUnversionedPaths],
+    );
+
+    const handleChangesDrop = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            const paths = readDraggedUnversionedPaths(event.dataTransfer);
+            if (paths.length === 0) return;
+            event.preventDefault();
+            onTrackUnversionedFiles?.(paths);
+        },
+        [onTrackUnversionedFiles, readDraggedUnversionedPaths],
+    );
 
     // Respond to expand/collapse all signals
     React.useEffect(() => {
@@ -155,6 +227,8 @@ export function FileTree({
                         isSomeChecked={isSomeChecked(tracked)}
                         onToggleOpen={() => setChangesOpen((o) => !o)}
                         onToggleCheck={() => onToggleSection(tracked)}
+                        onDragOver={handleChangesDragOver}
+                        onDrop={handleChangesDrop}
                     />
                     {changesOpen && (
                         <TreeEntries
@@ -172,6 +246,7 @@ export function FileTree({
                             isSomeChecked={isSomeChecked}
                             onToggleDir={toggleDir}
                             onFileClick={onFileClick}
+                            onFileDragStart={handleFileDragStart}
                         />
                     )}
                 </>
@@ -203,6 +278,7 @@ export function FileTree({
                             isSomeChecked={isSomeChecked}
                             onToggleDir={toggleDir}
                             onFileClick={onFileClick}
+                            onFileDragStart={handleFileDragStart}
                         />
                     )}
                 </>
@@ -226,6 +302,7 @@ interface TreeEntriesProps {
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onToggleDir: (dirPath: string) => void;
     onFileClick: (path: string) => void;
+    onFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
 }
 
 function TreeEntries({
@@ -243,6 +320,7 @@ function TreeEntries({
     isSomeChecked,
     onToggleDir,
     onFileClick,
+    onFileDragStart,
 }: TreeEntriesProps): React.ReactElement {
     return (
         <>
@@ -257,6 +335,8 @@ function TreeEntries({
                             groupByDir={groupByDir}
                             onToggle={onToggleFile}
                             onClick={onFileClick}
+                            draggable={entry.file.status === "?"}
+                            onDragStart={onFileDragStart}
                         />
                     );
                 }
@@ -296,6 +376,7 @@ function TreeEntries({
                                 isSomeChecked={isSomeChecked}
                                 onToggleDir={onToggleDir}
                                 onFileClick={onFileClick}
+                                onFileDragStart={onFileDragStart}
                             />
                         )}
                     </React.Fragment>

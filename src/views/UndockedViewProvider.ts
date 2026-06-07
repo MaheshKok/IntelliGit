@@ -8,6 +8,7 @@ import { registerThemeChangeListeners, disposeAll } from "./shared/themeListener
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { assertValidBranchName } from "../utils/gitRefs";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
 import type { Branch, CommitDetail, StashEntry, ThemeFolderIconMap, WorkingFile } from "../types";
 import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
@@ -120,6 +121,9 @@ export class UndockedViewProvider {
         branchName: string;
     }>();
     readonly onBranchAction = this._onBranchAction.event;
+
+    private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
+    readonly onDeleteBranches = this._onDeleteBranches.event;
     private readonly _onCommitAction = new vscode.EventEmitter<{
         action: CommitAction;
         hash: string;
@@ -294,6 +298,7 @@ export class UndockedViewProvider {
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
         this._onBranchAction.dispose();
+        this._onDeleteBranches.dispose();
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
@@ -368,6 +373,9 @@ export class UndockedViewProvider {
                     action: msg.action,
                     branchName: assertString(msg.branchName, "branchName"),
                 });
+                break;
+            case "deleteBranches":
+                this._onDeleteBranches.fire(this.assertBranchNames(msg.branchNames, "branchNames"));
                 break;
             case "commitAction":
                 if (!isCommitAction(assertString(msg.action, "action"))) {
@@ -594,6 +602,28 @@ export class UndockedViewProvider {
      * The selected shelf is preserved when still present; otherwise the first shelf is selected.
      * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
      */
+    /**
+     * Validates bulk branch-delete names from the undocked webview before host dispatch.
+     *
+     * Each name must satisfy Git branch-ref rules so forged webview payloads cannot reach the
+     * command layer as unchecked branch identifiers.
+     */
+    private assertBranchNames(value: unknown, field: string): string[] {
+        if (!Array.isArray(value)) {
+            throw new Error(`Expected string array for '${field}'.`);
+        }
+        if (!value.every((item): item is string => typeof item === "string")) {
+            throw new Error(`Expected string array for '${field}'.`);
+        }
+        if (value.length === 0) {
+            throw new Error(`Expected at least one branch name for '${field}'.`);
+        }
+        for (const name of value) {
+            assertValidBranchName(name);
+        }
+        return value;
+    }
+
     private async refreshCommitPanelData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {

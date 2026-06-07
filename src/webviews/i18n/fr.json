@@ -200,5 +200,6 @@
     "common.dock": "Ancrer",
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD ({name})",
-    "merge.overview.jumpToHunk": "Passer au bloc n°{ordinal}"
+    "merge.overview.jumpToHunk": "Passer au bloc n°{ordinal}",
+    "branch.menu.deleteBranches": "Delete Branches"
 }

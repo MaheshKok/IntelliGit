@@ -18,6 +18,8 @@ interface Props {
     groupByDir: boolean;
     onToggle: (path: string) => void;
     onClick: (path: string) => void;
+    draggable?: boolean;
+    onDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
 }
 
 function FileRowInner({
@@ -27,6 +29,8 @@ function FileRowInner({
     groupByDir,
     onToggle,
     onClick,
+    draggable,
+    onDragStart,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = getLeafName(file.path);
@@ -55,6 +59,8 @@ function FileRowInner({
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onClick(file.path);
             }}
+            draggable={draggable}
+            onDragStart={(event) => onDragStart?.(event, file)}
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
