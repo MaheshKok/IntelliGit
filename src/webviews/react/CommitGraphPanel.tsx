@@ -299,6 +299,13 @@ export function CommitGraphPanel({
         [vscode],
     );
 
+    const handleDeleteBranches = useCallback(
+        (branchNames: string[]) => {
+            vscode.postMessage({ type: "deleteBranches", branchNames });
+        },
+        [vscode],
+    );
+
     const handleCommitAction = useCallback(
         (action: CommitAction, hash: string) => {
             vscode.postMessage({ type: "commitAction", action, hash });
@@ -331,6 +338,7 @@ export function CommitGraphPanel({
                         selectedBranch={selectedBranch}
                         onSelectBranch={handleSelectBranch}
                         onBranchAction={handleBranchAction}
+                        onDeleteBranches={handleDeleteBranches}
                         folderIcon={branchFolderIcon}
                         folderExpandedIcon={branchFolderExpandedIcon}
                         folderIconsByName={branchFolderIconsByName}

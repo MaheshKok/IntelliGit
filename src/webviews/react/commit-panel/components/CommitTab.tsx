@@ -143,6 +143,13 @@ export function CommitTab({
         [vscode],
     );
 
+    const handleTrackUnversionedFiles = useCallback(
+        (paths: string[]) => {
+            vscode.postMessage({ type: "trackUnversionedFiles", paths });
+        },
+        [vscode],
+    );
+
     return (
         <Flex ref={containerRef} direction="column" flex={1} overflow="hidden">
             <Toolbar
@@ -177,6 +184,7 @@ export function CommitTab({
                     isAllChecked={isAllChecked}
                     isSomeChecked={isSomeChecked}
                     onFileClick={handleFileClick}
+                    onTrackUnversionedFiles={handleTrackUnversionedFiles}
                     expandAllSignal={expandAllSignal}
                     collapseAllSignal={collapseAllSignal}
                 />

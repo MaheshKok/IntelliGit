@@ -6,7 +6,7 @@ import React, { useMemo, useState, useCallback, useEffect } from "react";
 import type { Branch, ThemeFolderIconMap, ThemeTreeIcon } from "../../types";
 import { isBranchAction, type BranchAction } from "../protocol/commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
-import { getBranchMenuItems } from "./branch-column/menu";
+import { getBranchMenuItems, getBulkBranchMenuItems } from "./branch-column/menu";
 import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";
 import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
@@ -31,6 +31,7 @@ interface Props {
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
     onBranchAction: (action: BranchAction, branchName: string) => void;
+    onDeleteBranches?: (branchNames: string[]) => void;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -106,6 +107,7 @@ export function BranchColumn({
     selectedBranch,
     onSelectBranch,
     onBranchAction,
+    onDeleteBranches,
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
@@ -127,9 +129,12 @@ export function BranchColumn({
         x: number;
         y: number;
         branch: Branch;
+        branchNames?: string[];
     } | null>(null);
 
     const filterNeedle = branchFilter.trim().toLowerCase();
+    const [selectedBranchNames, setSelectedBranchNames] = useState<Set<string>>(() => new Set());
+
     const actualCurrent = useMemo(() => branches.find((b) => b.isCurrent), [branches]);
 
     const filteredBranches = useMemo(() => {
@@ -161,27 +166,79 @@ export function BranchColumn({
         [setExpandedFolders],
     );
 
-    const handleBranchContextMenu = useCallback((event: React.MouseEvent, branch: Branch) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const row = event.currentTarget as HTMLElement;
-        const { anchorX, anchorY } = computeAnchorPosition(row, event.clientX + 2);
-        setContextMenu({ x: anchorX, y: anchorY, branch });
-    }, []);
+    const handleBranchRowClick = useCallback(
+        (event: React.MouseEvent, branchName: string): void => {
+            if (event.metaKey || event.ctrlKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSelectedBranchNames((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(branchName)) {
+                        next.delete(branchName);
+                    } else {
+                        next.add(branchName);
+                    }
+                    return next;
+                });
+                return;
+            }
 
-    const openBranchContextMenuFromRow = useCallback((row: HTMLElement, branch: Branch): void => {
-        const rowRect = row.getBoundingClientRect();
-        const { anchorX, anchorY } = computeAnchorPosition(row, rowRect.left + 22);
-        setContextMenu({ x: anchorX, y: anchorY, branch });
-    }, []);
+            setSelectedBranchNames(new Set());
+            onSelectBranch(branchName);
+        },
+        [onSelectBranch],
+    );
+
+    const getBulkBranchNames = useCallback(
+        (branch: Branch): string[] | undefined => {
+            if (!selectedBranchNames.has(branch.name) || selectedBranchNames.size < 2)
+                return undefined;
+            return Array.from(selectedBranchNames);
+        },
+        [selectedBranchNames],
+    );
+
+    const handleBranchContextMenu = useCallback(
+        (event: React.MouseEvent, branch: Branch) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const row = event.currentTarget as HTMLElement;
+            const { anchorX, anchorY } = computeAnchorPosition(row, event.clientX + 2);
+            setContextMenu({
+                x: anchorX,
+                y: anchorY,
+                branch,
+                branchNames: getBulkBranchNames(branch),
+            });
+        },
+        [getBulkBranchNames],
+    );
+
+    const openBranchContextMenuFromRow = useCallback(
+        (row: HTMLElement, branch: Branch): void => {
+            const rowRect = row.getBoundingClientRect();
+            const { anchorX, anchorY } = computeAnchorPosition(row, rowRect.left + 22);
+            setContextMenu({
+                x: anchorX,
+                y: anchorY,
+                branch,
+                branchNames: getBulkBranchNames(branch),
+            });
+        },
+        [getBulkBranchNames],
+    );
 
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
+            if (action === "deleteBranches" && contextMenu.branchNames) {
+                onDeleteBranches?.(contextMenu.branchNames);
+                return;
+            }
             if (!isBranchAction(action)) return;
             onBranchAction(action, contextMenu.branch.name);
         },
-        [contextMenu, onBranchAction],
+        [contextMenu, onBranchAction, onDeleteBranches],
     );
 
     const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -210,11 +267,15 @@ export function BranchColumn({
                         className={`branch-row${selectedBranch === null ? " selected" : ""}`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => onSelectBranch(null)}
+                        onClick={() => {
+                            setSelectedBranchNames(new Set());
+                            onSelectBranch(null);
+                        }}
                         onContextMenu={(event) => handleBranchContextMenu(event, current)}
                         onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                                 if (event.key === " ") event.preventDefault();
+                                setSelectedBranchNames(new Set());
                                 onSelectBranch(null);
                                 return;
                             }
@@ -249,8 +310,10 @@ export function BranchColumn({
                             node={node}
                             depth={1}
                             selectedBranch={selectedBranch}
+                            selectedBranchNames={selectedBranchNames}
                             expandedFolders={expandedFolders}
                             onSelectBranch={onSelectBranch}
+                            onBranchClick={handleBranchRowClick}
                             onToggleFolder={toggleFolder}
                             onContextMenu={handleBranchContextMenu}
                             filterNeedle={filterNeedle}
@@ -290,8 +353,10 @@ export function BranchColumn({
                                             node={node}
                                             depth={2}
                                             selectedBranch={selectedBranch}
+                                            selectedBranchNames={selectedBranchNames}
                                             expandedFolders={expandedFolders}
                                             onSelectBranch={onSelectBranch}
+                                            onBranchClick={handleBranchRowClick}
                                             onToggleFolder={toggleFolder}
                                             onContextMenu={handleBranchContextMenu}
                                             filterNeedle={filterNeedle}
@@ -315,7 +380,11 @@ export function BranchColumn({
                 <ContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    items={getBranchMenuItems(contextMenu.branch, actualCurrent?.name ?? "HEAD")}
+                    items={
+                        contextMenu.branchNames
+                            ? getBulkBranchMenuItems()
+                            : getBranchMenuItems(contextMenu.branch, actualCurrent?.name ?? "HEAD")
+                    }
                     minWidth={310}
                     onSelect={handleContextMenuAction}
                     onClose={closeContextMenu}

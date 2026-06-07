@@ -1,3 +1,12 @@
+/**
+ * JetBrains New UI design tokens used as fallback values when VS Code theme
+ * variables are unavailable.
+ *
+ * Color entries use `var(--vscode-*, <fallback>)` so the webview adapts to the
+ * active VS Code theme. Hardcoded fallbacks match PyCharm 2023+ default dark
+ * theme values. Size and graph tokens provide consistent spacing and hit targets
+ * across all IntelliGit webview panels.
+ */
 export const JETBRAINS_UI = {
     color: {
         panel: "var(--vscode-sideBar-background, #2f3848)",
@@ -31,7 +40,7 @@ export const JETBRAINS_UI = {
     },
     size: {
         icon: 14,
-        rowHeight: 28,
+        rowHeight: 24,
         toolbarHeight: 32,
         splitter: 3,
         radius: 4,
@@ -50,6 +59,13 @@ export const JETBRAINS_UI = {
     },
 } as const;
 
+/**
+ * Graph lane colors assigned round-robin to concurrent branches in the commit graph.
+ *
+ * The palette is ordered for visual contrast so adjacent lanes remain distinguishable
+ * even when many branches are active. Colors are hardcoded because VS Code does not
+ * provide graph-lane theming variables.
+ */
 export const GRAPH_LANE_COLORS = [
     "#7bcf6f",
     "#5da8ff",
@@ -63,6 +79,13 @@ export const GRAPH_LANE_COLORS = [
     "#d0b35a",
 ];
 
+/**
+ * Maps Git porcelain status codes to VS Code git-decoration theme colors.
+ *
+ * Each entry uses a VS Code theme variable with a JetBrains-matching fallback.
+ * Callers look up single-character codes (`M`, `A`, `D`, `R`, `U`, `?`, `C`, `T`)
+ * to color file status badges and tree icons consistently with the editor theme.
+ */
 export const GIT_STATUS_COLORS: Record<string, string> = {
     M: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
     A: "var(--vscode-gitDecoration-addedResourceForeground, #73c991)",
@@ -74,6 +97,12 @@ export const GIT_STATUS_COLORS: Record<string, string> = {
     T: "var(--vscode-gitDecoration-modifiedResourceForeground, #d19a66)",
 };
 
+/**
+ * Human-readable labels for Git working-tree status codes.
+ *
+ * Used in tooltips and aria-labels where a single-character code is not
+ * descriptive enough for screen-reader or hover context.
+ */
 export const GIT_STATUS_LABELS: Record<string, string> = {
     M: "Modified",
     A: "Added",
@@ -85,6 +114,13 @@ export const GIT_STATUS_LABELS: Record<string, string> = {
     T: "Type Changed",
 };
 
+/**
+ * File extension to badge mapping used in the file tree and commit detail panes.
+ *
+ * Each entry provides a short label (1–2 characters) and a background color.
+ * `fg` is optional and defaults to white when omitted. Callers look up the
+ * file extension (lowercase, no dot) to render a compact file-type badge.
+ */
 export const FILE_TYPE_BADGES: Record<string, { label: string; bg: string; fg?: string }> = {
     ts: { label: "TS", bg: "#3178c6" },
     tsx: { label: "TX", bg: "#3178c6" },
@@ -109,6 +145,12 @@ export const FILE_TYPE_BADGES: Record<string, { label: string; bg: string; fg?: 
     env: { label: "EN", bg: "#ecd53f", fg: "#323330" },
 };
 
+/**
+ * Background and foreground colors for commit ref badges (HEAD, tags, remote/local branches).
+ *
+ * Mapped through `JETBRAINS_UI` tokens so badge colors stay consistent with the
+ * branch column and commit graph palette.
+ */
 export const REF_BADGE_COLORS = {
     head: { bg: JETBRAINS_UI.color.head, fg: "#fff" },
     tag: { bg: JETBRAINS_UI.color.tag, fg: "#fff" },

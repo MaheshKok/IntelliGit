@@ -46,6 +46,12 @@ export type OutboundMessage =
           paths: string[];
       }
     | {
+          /** Command marking selected unversioned paths as intent-to-add. */
+          type: "trackUnversionedFiles";
+          /** Repository-relative unversioned paths from `WorkingFile.path`; host revalidates status. */
+          paths: string[];
+      }
+    | {
           /** Command staging selected paths and then committing, optionally pushing. */
           type: "commitSelected";
           /** Repository-relative paths to stage before commit; empty is valid only for amend. */

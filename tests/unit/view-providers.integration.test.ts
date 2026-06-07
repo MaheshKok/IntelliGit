@@ -159,6 +159,7 @@ vi.mock("../../src/utils/fileOps", async () => {
 function createWebviewView() {
     let messageHandler: MessageHandler | undefined;
     let disposeHandler: (() => void) | undefined;
+    let visibilityHandler: (() => void) | undefined;
 
     const webview = {
         options: {},
@@ -177,8 +178,13 @@ function createWebviewView() {
 
     const view: Record<string, unknown> = {
         webview,
+        visible: true,
         badge: undefined as { tooltip: string; value: number } | undefined,
         description: undefined as string | undefined,
+        onDidChangeVisibility: vi.fn((cb: () => void) => {
+            visibilityHandler = cb;
+            return { dispose: vi.fn() };
+        }),
         onDidDispose: vi.fn((cb: () => void) => {
             disposeHandler = cb;
             return { dispose: vi.fn() };
@@ -191,6 +197,10 @@ function createWebviewView() {
             if (messageHandler) {
                 await messageHandler(msg);
             }
+        },
+        setVisible: (visible: boolean) => {
+            view.visible = visible;
+            visibilityHandler?.();
         },
         dispose: () => disposeHandler?.(),
     };
@@ -236,6 +246,7 @@ function makeGitOpsMock() {
             { path: "src/a.ts", status: "M", staged: false, additions: 2, deletions: 1 },
         ]),
         stageFiles: vi.fn(async () => undefined),
+        intentToAddFiles: vi.fn(async () => undefined),
         unstageFiles: vi.fn(async () => undefined),
         commit: vi.fn(async () => "ok"),
         commitAndPush: vi.fn(async () => "ok"),
@@ -262,6 +273,12 @@ async function flushVisibleRefresh<T>(promise: Promise<T>): Promise<T> {
 async function flushInitialVisibleRefresh(): Promise<void> {
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(1_000);
+}
+
+async function flushMicrotasks(): Promise<void> {
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
 }
 
 function refreshingStates(): boolean[] {
@@ -825,6 +842,60 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider emits validated bulk branch delete messages", async () => {
+        const { CommitGraphViewProvider } = await import("../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        const deleteBranches = vi.fn();
+
+        (provider as unknown as { onDeleteBranches(listener: (branchNames: string[]) => void): void }).onDeleteBranches(
+            deleteBranches,
+        );
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "feature-two"] });
+
+        expect(deleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider rejects invalid bulk branch delete payloads", async () => {
+        const { CommitGraphViewProvider } = await import("../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        const deleteBranches = vi.fn();
+
+        (provider as unknown as { onDeleteBranches(listener: (branchNames: string[]) => void): void }).onDeleteBranches(
+            deleteBranches,
+        );
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "../secret"] });
+        await webview.send({ type: "deleteBranches", branchNames: [] });
+
+        expect(deleteBranches).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Branch action error"));
+
+        provider.dispose();
+    });
+
     it("CommitInfoViewProvider rejects invalid open-file-diff payloads", async () => {
         const { CommitInfoViewProvider } = await import("../../src/views/CommitInfoViewProvider");
         const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {
@@ -860,6 +931,28 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider resolveWebviewView replays no Git data until ready or visible", async () => {
+        const { CommitPanelViewProvider } = await import("../../src/views/CommitPanelViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+        );
+        const webview = createWebviewView();
+
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(postMessageSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider handles staging and unstaging", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         expect(gitOps.getStatus).toHaveBeenCalled();
@@ -872,22 +965,119 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider shows refreshing state during background refresh", async () => {
+    it("CommitPanelViewProvider tracks unversioned files with intent-to-add and a silent refresh", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const workingTreeChanged = vi.fn();
+        const disposable = provider.onDidChangeWorkingTree(workingTreeChanged);
+        gitOps.getStatus.mockResolvedValue([
+            { path: "new-file.txt", status: "?", staged: false, additions: 0, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        await webview.send({ type: "trackUnversionedFiles", paths: ["new-file.txt"] });
+
+        expect(gitOps.intentToAddFiles).toHaveBeenCalledWith(["new-file.txt"]);
+        expect(workingTreeChanged).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
+        expect(refreshingStates()).toEqual([]);
+        expect(executeCommand).not.toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.commitPanel.refreshing",
+            true,
+        );
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider accepts already intent-to-add files from stale drop checks", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "new-file.txt", status: "A", staged: false, additions: 0, deletions: 0 },
+        ]);
+
+        await webview.send({ type: "trackUnversionedFiles", paths: ["new-file.txt"] });
+
+        expect(gitOps.intentToAddFiles).toHaveBeenCalledWith(["new-file.txt"]);
+        expect(showErrorMessage).not.toHaveBeenCalledWith(expect.stringContaining("unversioned"));
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider rejects stale track-unversioned requests before intent-to-add", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "new-file.txt", status: "M", staged: false, additions: 1, deletions: 0 },
+        ]);
+
+        await webview.send({ type: "trackUnversionedFiles", paths: ["new-file.txt"] });
+
+        expect(gitOps.intentToAddFiles).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("unversioned"));
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider silently refreshes when a resolved view becomes visible", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "visible.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        gitOps.getStatus.mockClear();
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        webview.setVisible(false);
+        await flushMicrotasks();
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+
+        webview.setVisible(true);
+        for (let i = 0; i < 10; i += 1) {
+            await flushMicrotasks();
+            const hasVisibleUpdate = postMessageSpy.mock.calls.some(([message]) => {
+                if (
+                    typeof message !== "object" ||
+                    message === null ||
+                    !("type" in message) ||
+                    message.type !== "update" ||
+                    !("files" in message) ||
+                    !Array.isArray(message.files)
+                ) {
+                    return false;
+                }
+                return message.files.some(
+                    (file) =>
+                        typeof file === "object" &&
+                        file !== null &&
+                        "path" in file &&
+                        file.path === "visible.ts",
+                );
+            });
+            if (hasVisibleUpdate) break;
+        }
+
+        expect(gitOps.getStatus).toHaveBeenCalled();
+        expect(refreshingStates()).toEqual([]);
+        expect(executeCommand).not.toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.commitPanel.refreshing",
+            true,
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                files: expect.arrayContaining([expect.objectContaining({ path: "visible.ts" })]),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider refreshSilent updates without showing refreshing state", async () => {
         const { provider } = await setupCommitPanelProvider();
         postMessageSpy.mockClear();
+        executeCommand.mockClear();
 
-        await provider.refresh();
+        await (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
 
         const messages = postMessageSpy.mock.calls.map(([message]) => message);
-        const refreshingStartIndex = messages.findIndex(
-            (message) =>
-                typeof message === "object" &&
-                message !== null &&
-                "type" in message &&
-                message.type === "refreshing" &&
-                "active" in message &&
-                message.active === true,
-        );
         const updateIndex = messages.findIndex(
             (message) =>
                 typeof message === "object" &&
@@ -895,19 +1085,71 @@ describe("view providers integration", () => {
                 "type" in message &&
                 message.type === "update",
         );
-        const refreshingEndIndex = messages.findIndex(
-            (message) =>
-                typeof message === "object" &&
-                message !== null &&
-                "type" in message &&
-                message.type === "refreshing" &&
-                "active" in message &&
-                message.active === false,
-        );
 
-        expect(refreshingStartIndex).toBeGreaterThanOrEqual(0);
-        expect(updateIndex).toBeGreaterThan(refreshingStartIndex);
-        expect(refreshingEndIndex).toBeGreaterThan(updateIndex);
+        expect(updateIndex).toBeGreaterThanOrEqual(0);
+        expect(refreshingStates()).toEqual([]);
+        expect(executeCommand).not.toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.commitPanel.refreshing",
+            true,
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider replays the cached file snapshot when the webview becomes ready", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockResolvedValue([
+            { path: "later.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "ready" });
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "update"; files: Array<{ path: string }> } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "files" in message,
+            );
+        expect(updates[0]?.files.map((file) => file.path)).toEqual(["src/a.ts"]);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider ignores stale refresh results from older requests", async () => {
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        let resolveSlowStatus: (files: Array<{ path: string; status: "M"; staged: false; additions: number; deletions: number }>) => void = () => {};
+        const slowStatus = new Promise<Array<{ path: string; status: "M"; staged: false; additions: number; deletions: number }>>((resolve) => {
+            resolveSlowStatus = resolve;
+        });
+        gitOps.getStatus
+            .mockImplementationOnce(async () => slowStatus)
+            .mockResolvedValueOnce([
+                { path: "newer.ts", status: "M", staged: false, additions: 3, deletions: 0 },
+            ]);
+        postMessageSpy.mockClear();
+
+        const slowRefresh = (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+        const fastRefresh = (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+        resolveSlowStatus([
+            { path: "stale.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ]);
+        await Promise.all([slowRefresh, fastRefresh]);
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "update"; files: Array<{ path: string }> } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "files" in message,
+            );
+        expect(updates.at(-1)?.files.map((file) => file.path)).toEqual(["newer.ts"]);
         provider.dispose();
     });
 
@@ -1186,7 +1428,7 @@ describe("view providers integration", () => {
                 {} as unknown as object,
                 {} as unknown as object,
             );
-            await flushInitialVisibleRefresh();
+            await webview.send({ type: "ready" });
 
             const view = (provider as unknown as { view: Record<string, unknown> }).view;
             expect(view.description).toBe("2");
@@ -1376,6 +1618,117 @@ describe("view providers integration", () => {
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(showErrorMessage).toHaveBeenCalledWith("No workspace folder is open.");
 
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages only checked files when some are unchecked", async () => {
+        // Scenario: 4 changed files, 2 unversioned files — only 2 changed files checked.
+        // Unchecked files must not be staged or committed.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commit.mockClear();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: selective",
+            amend: false,
+            push: false,
+            paths: ["src/changed1.ts", "src/changed2.ts"],
+        });
+
+        // Only the 2 checked paths staged — no extra paths leaked.
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith([
+            "src/changed1.ts",
+            "src/changed2.ts",
+        ]);
+        expect(gitOps.commit).toHaveBeenCalledTimes(1);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: selective", false);
+        expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages checked changed + unversioned files together", async () => {
+        // Scenario: 1 changed file + 1 unversioned file, both checked.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commit.mockClear();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: mixed",
+            amend: false,
+            push: false,
+            paths: ["src/changed.ts", "src/new-unversioned.ts"],
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith([
+            "src/changed.ts",
+            "src/new-unversioned.ts",
+        ]);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: mixed", false);
+        expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages only selected subset and pushes when requested", async () => {
+        // Scenario: 6 files total, 2 checked, push=true.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commitAndPush.mockClear();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: subset push",
+            amend: false,
+            push: true,
+            paths: ["src/a.ts", "src/b.ts"],
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
+        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: subset push", false);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Committed and pushed successfully.",
+        );
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages all checked files from large mixed set", async () => {
+        // Scenario: 10 changed + 3 unversioned files, 5 checked across both groups.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commit.mockClear();
+
+        const checkedPaths = [
+            "src/a.ts",
+            "src/b.ts",
+            "docs/readme.md",
+            "newfile.txt",
+            "scripts/deploy.sh",
+        ];
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: large subset",
+            amend: false,
+            push: false,
+            paths: checkedPaths,
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(checkedPaths);
+        // The staged paths array must match exactly — no extra paths from the
+        // 8 unchecked files must appear.
+        const stagedCall = gitOps.stageFiles.mock.calls[0] as [string[]];
+        expect(stagedCall[0]).toHaveLength(checkedPaths.length);
+        expect(stagedCall[0].sort()).toEqual([...checkedPaths].sort());
+        expect(gitOps.commit).toHaveBeenCalledTimes(1);
         provider.dispose();
     });
 });

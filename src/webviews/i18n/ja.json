@@ -186,5 +186,6 @@
     "common.dock": "ドック",
     "common.dockIntelliGit": "ドック IntelliGit",
     "branch.head.label": "HEAD ({name})",
-    "merge.overview.jumpToHunk": "チャンク#{ordinal}にジャンプ"
+    "merge.overview.jumpToHunk": "チャンク#{ordinal}にジャンプ",
+    "branch.menu.deleteBranches": "ブランチを削除"
 }

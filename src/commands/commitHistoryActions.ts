@@ -354,10 +354,11 @@ async function amendHeadCommitMessage(ctx: CommitActionContext): Promise<void> {
 }
 
 /**
- * Opens a repository-scoped integrated terminal and sends the interactive rebase command.
+ * Opens a repository-scoped integrated terminal for an interactive rebase session.
  *
- * The command text is handed to the user-controlled terminal session; IntelliGit does not observe
- * completion or refresh views after the external rebase finishes.
+ * The terminal starts with the configured `shellPath` and `shellArgs`; IntelliGit does not send
+ * rebase text, observe completion, or refresh views after the user-controlled session finishes.
+ * The rebase command must be run by the user in that terminal.
  */
 function openInteractiveRebaseTerminal(
     ctx: CommitActionContext,
@@ -367,9 +368,10 @@ function openInteractiveRebaseTerminal(
     const terminal = vscode.window.createTerminal({
         name,
         cwd: ctx.repoRoot,
+        shellPath: "git",
+        shellArgs: ["rebase", "-i", `${ctx.validatedHash}^`],
     });
     terminal.show();
-    terminal.sendText(`git rebase -i "${ctx.validatedHash}^"`, true);
     vscode.window.showInformationMessage(successMessage);
 }
 

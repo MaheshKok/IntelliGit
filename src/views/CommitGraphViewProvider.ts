@@ -17,6 +17,7 @@ import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
 
 /**
@@ -58,6 +59,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         branchName: string;
     }>();
     readonly onBranchAction = this._onBranchAction.event;
+
+    private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
+    readonly onDeleteBranches = this._onDeleteBranches.event;
 
     private readonly _onCommitAction = new vscode.EventEmitter<{
         action: CommitAction;
@@ -171,6 +175,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                             branchName: this.assertString(msg.branchName, "branchName"),
                         });
                         break;
+                    case "deleteBranches":
+                        this._onDeleteBranches.fire(
+                            this.assertBranchNames(msg.branchNames, "branchNames"),
+                        );
+                        break;
                     case "commitAction":
                         if (!isCommitAction(this.assertString(msg.action, "action"))) {
                             throw new Error("Invalid commit action received from webview.");
@@ -191,9 +200,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 }
             } catch (err) {
                 const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(
-                    vscode.l10n.t("Commit graph error: {message}", { message }),
-                );
+                const label =
+                    msg.type === "branchAction" || msg.type === "deleteBranches"
+                        ? "Branch action error: {message}"
+                        : "Commit graph error: {message}";
+                vscode.window.showErrorMessage(vscode.l10n.t(label, { message }));
                 this.postToWebview({ type: "error", message });
             }
         });
@@ -389,6 +400,26 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Validates branch names received from bulk webview actions before command dispatch.
+     *
+     * Each name is checked with Git's branch ref rules so malicious webview payloads cannot
+     * smuggle path traversal, options, or non-branch strings into repository commands.
+     */
+    private assertBranchNames(value: unknown, field: string): string[] {
+        if (!Array.isArray(value)) {
+            throw new Error(`Expected string array for '${field}'.`);
+        }
+        const names = value.map((item, index) => this.assertString(item, `${field}[${index}]`));
+        if (names.length === 0) {
+            throw new Error(`Expected at least one branch name for '${field}'.`);
+        }
+        for (const name of names) {
+            assertValidBranchName(name);
+        }
+        return names;
+    }
+
+    /**
      * Validates a scalar webview field before it is used by Git or VS Code commands.
      */
     private assertString(value: unknown, field: string): string {
@@ -472,6 +503,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onCommitSelected.dispose();
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
+        this._onDeleteBranches.dispose();
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
     }

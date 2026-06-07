@@ -15,18 +15,26 @@ interface Props {
     file: WorkingFile;
     depth: number;
     isChecked: boolean;
+    isDragSelected?: boolean;
     groupByDir: boolean;
     onToggle: (path: string) => void;
-    onClick: (path: string) => void;
+    onClick: (event: React.MouseEvent<HTMLElement>, file: WorkingFile) => void;
+    draggable?: boolean;
+    onDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
+    onDragEnd?: () => void;
 }
 
 function FileRowInner({
     file,
     depth,
     isChecked,
+    isDragSelected = false,
     groupByDir,
     onToggle,
     onClick,
+    draggable,
+    onDragStart,
+    onDragEnd,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = getLeafName(file.path);
@@ -44,8 +52,18 @@ function FileRowInner({
             fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
-            color="var(--intelligit-pycharm-foreground)"
-            _hover={{ bg: "rgba(255,255,255,0.05)" }}
+            color={
+                isDragSelected
+                    ? "var(--intelligit-pycharm-selected-foreground)"
+                    : "var(--intelligit-pycharm-foreground)"
+            }
+            bg={isDragSelected ? "var(--intelligit-pycharm-selected)" : undefined}
+            _hover={{
+                bg: isDragSelected
+                    ? "var(--intelligit-pycharm-selected)"
+                    : "rgba(255,255,255,0.05)",
+            }}
+            aria-selected={isDragSelected}
             data-vscode-context={JSON.stringify({
                 webviewSection: "file",
                 filePath: file.path,
@@ -53,8 +71,11 @@ function FileRowInner({
             })}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
-                onClick(file.path);
+                onClick(e, file);
             }}
+            draggable={draggable}
+            onDragStart={(event) => onDragStart?.(event, file)}
+            onDragEnd={onDragEnd}
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
@@ -67,7 +88,6 @@ function FileRowInner({
                 overflow="hidden"
                 textOverflow="ellipsis"
                 whiteSpace="nowrap"
-                color="var(--intelligit-pycharm-foreground)"
                 textDecoration={file.status === "D" ? "line-through" : undefined}
             >
                 {fileName}

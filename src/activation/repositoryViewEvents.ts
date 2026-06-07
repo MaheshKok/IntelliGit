@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
-import type { CommitAction } from "../webviews/protocol/commitGraphTypes";
+import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { openCommitFileDiff } from "../services/diffService";
 import { RefreshService } from "../views/RefreshService";
@@ -148,13 +148,36 @@ export function registerRepositoryViewEvents(
         action,
         branchName,
     }: {
-        action: string;
+        action: BranchAction;
         branchName: string;
     }): void => {
         const branch = getCurrentBranches().find((b) => b.name === branchName);
         if (!branch) return;
-        const item: { branch: Branch } = { branch };
-        void vscode.commands.executeCommand(`intelligit.${action}`, item);
+        void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
+    };
+
+    /**
+     * Forwards bulk branch deletion through the dedicated command payload.
+     *
+     * Names are resolved against the latest trusted branch list so stale or forged webview
+     * names are rejected before the command performs Git operations.
+     */
+    const forwardDeleteBranches = (branchNames: string[]): void => {
+        const requestedNames = Array.from(new Set(branchNames));
+        const selected = requestedNames
+            .map((name) => getCurrentBranches().find((branch) => branch.name === name))
+            .filter((branch): branch is Branch => Boolean(branch));
+        if (selected.length !== requestedNames.length) {
+            const found = new Set(selected.map((branch) => branch.name));
+            const missing = requestedNames.filter((name) => !found.has(name));
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Cannot delete missing branch(es): {branches}", {
+                    branches: missing.join(", "),
+                }),
+            );
+            return;
+        }
+        void vscode.commands.executeCommand("intelligit.deleteBranches", { branches: selected });
     };
 
     /**
@@ -193,6 +216,10 @@ export function registerRepositoryViewEvents(
         commitGraph.onBranchAction(forwardBranchAction),
         sidebarGraph.onBranchAction(forwardBranchAction),
         commitPanel.onBranchAction(forwardBranchAction),
+        commitGraph.onDeleteBranches?.(forwardDeleteBranches) ??
+            new vscode.Disposable(() => undefined),
+        sidebarGraph.onDeleteBranches?.(forwardDeleteBranches) ??
+            new vscode.Disposable(() => undefined),
         commitGraph.onCommitAction(runCommitAction),
         sidebarGraph.onCommitAction(runCommitAction),
         commitPanel.onCommitAction(runCommitAction),

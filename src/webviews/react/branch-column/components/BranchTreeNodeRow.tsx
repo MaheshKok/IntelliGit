@@ -32,8 +32,10 @@ interface Props {
     node: TreeNode;
     depth: number;
     selectedBranch: string | null;
+    selectedBranchNames?: Set<string>;
     expandedFolders: Set<string>;
     onSelectBranch: (name: string | null) => void;
+    onBranchClick?: (event: React.MouseEvent, branchName: string) => void;
     onToggleFolder: (key: string) => void;
     onContextMenu: (event: React.MouseEvent, branch: Branch) => void;
     filterNeedle: string;
@@ -160,12 +162,27 @@ function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | 
     );
 }
 
+/**
+ * Recursive tree row renderer for the branch column.
+ *
+ * Folder nodes render as collapsible sections with chevron toggles and indent
+ * guide lines. Branch nodes show the appropriate icon (current-branch tag,
+ * star for main/master, or generic git-branch), highlighted search-match text,
+ * and an ahead/behind tracking badge with a hover tooltip.
+ *
+ * Multi-select is supported through `selectedBranchNames`; when `onBranchClick`
+ * is provided, single-select delegation is skipped in favor of the caller's
+ * click handler. Keyboard activation uses Enter/Space with Space default-prevented
+ * to avoid scroll-on-activate in webview panels.
+ */
 export function BranchTreeNodeRow({
     node,
     depth,
     selectedBranch,
+    selectedBranchNames = new Set<string>(),
     expandedFolders,
     onSelectBranch,
+    onBranchClick,
     onToggleFolder,
     onContextMenu,
     filterNeedle,
@@ -228,8 +245,10 @@ export function BranchTreeNodeRow({
                             node={child}
                             depth={depth + 1}
                             selectedBranch={selectedBranch}
+                            selectedBranchNames={selectedBranchNames}
                             expandedFolders={expandedFolders}
                             onSelectBranch={onSelectBranch}
+                            onBranchClick={onBranchClick}
                             onToggleFolder={onToggleFolder}
                             onContextMenu={onContextMenu}
                             filterNeedle={filterNeedle}
@@ -246,9 +265,15 @@ export function BranchTreeNodeRow({
     const isCurrent = node.branch?.isCurrent;
     const shortName = node.branch?.name.replace(/^.*\//, "") ?? "";
     const isMainLike = !!node.branch && (shortName === "main" || shortName === "master");
-    const isSelected = selectedBranch === node.fullName;
-    const handleSelectBranch = (): void => {
+    const isSelected =
+        selectedBranch === node.fullName ||
+        (node.fullName ? selectedBranchNames.has(node.fullName) : false);
+    const handleSelectBranch = (event: React.MouseEvent): void => {
         if (!node.fullName) return;
+        if (onBranchClick) {
+            onBranchClick(event, node.fullName);
+            return;
+        }
         onSelectBranch(node.fullName);
     };
 
@@ -256,7 +281,9 @@ export function BranchTreeNodeRow({
         <div
             className={`branch-row${isSelected ? " selected" : ""}`}
             onClick={handleSelectBranch}
-            onKeyDown={(event) => handleActivateKey(event, handleSelectBranch)}
+            onKeyDown={(event) =>
+                handleActivateKey(event, () => onSelectBranch(node.fullName ?? null))
+            }
             onContextMenu={(event) => {
                 if (node.branch) onContextMenu(event, node.branch);
             }}

@@ -207,5 +207,6 @@
     "common.dock": "Dok",
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD ({name})",
-    "merge.overview.jumpToHunk": "Przejdź do fragmentu #{ordinal}"
+    "merge.overview.jumpToHunk": "Przejdź do fragmentu #{ordinal}",
+    "branch.menu.deleteBranches": "Usuń gałęzie"
 }

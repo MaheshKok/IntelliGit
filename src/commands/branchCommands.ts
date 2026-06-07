@@ -152,6 +152,87 @@ function validateTrackedRemote(tracked: { remote: string; remoteBranch: string }
 }
 
 /**
+ * Extracts the trusted branch list from the bulk-delete command payload.
+ *
+ * The command is callable from webviews, tests, and command palette plumbing, so it treats
+ * the payload as untrusted until the array shape, branch names, and current-branch invariants
+ * are checked by the command handler.
+ */
+function assertBranchListPayload(payload: unknown): Branch[] {
+    const rawBranches = Array.isArray(payload)
+        ? payload
+        : ((payload as { branches?: unknown; branchNames?: unknown } | undefined)?.branches ??
+          (payload as { branchNames?: unknown } | undefined)?.branchNames);
+    if (!Array.isArray(rawBranches)) return [];
+    return rawBranches
+        .map((branch): Branch | undefined => {
+            if (typeof branch === "string") {
+                return {
+                    name: branch,
+                    hash: "",
+                    isRemote: false,
+                    isCurrent: false,
+                    ahead: 0,
+                    behind: 0,
+                };
+            }
+            if (!branch || typeof branch !== "object") return undefined;
+            return typeof (branch as Branch).name === "string" ? (branch as Branch) : undefined;
+        })
+        .filter((branch): branch is Branch => Boolean(branch));
+}
+
+/** Removes duplicate branch rows while preserving the user's selection order. */
+function uniqueBranchesByName(branches: Branch[]): Branch[] {
+    const seen = new Set<string>();
+    const unique: Branch[] = [];
+    for (const branch of branches) {
+        if (seen.has(branch.name)) continue;
+        seen.add(branch.name);
+        unique.push(branch);
+    }
+    return unique;
+}
+
+/**
+ * Checks merge safety for every local branch before bulk deletion mutates refs.
+ *
+ * Git's `branch -d` also enforces this, but preflighting the whole selection avoids deleting
+ * earlier branches before discovering a later branch is unmerged.
+ */
+async function assertBulkBranchesMerged(
+    executor: GitExecutor,
+    branches: Branch[],
+): Promise<string[]> {
+    const unmerged: string[] = [];
+    for (const branch of branches) {
+        if (branch.isRemote) continue;
+        try {
+            await executor.run(["merge-base", "--is-ancestor", branch.name, "HEAD"]);
+        } catch {
+            unmerged.push(branch.name);
+        }
+    }
+    return unmerged;
+}
+
+async function deleteBranchRef(executor: GitExecutor, branch: Branch): Promise<void> {
+    if (branch.isRemote) {
+        const target = resolveRemoteDeleteTarget(branch);
+        if (!target) {
+            throw new Error(
+                vscode.l10n.t("unable to determine remote target for '{branch}'", {
+                    branch: branch.name,
+                }),
+            );
+        }
+        await executor.run(["push", target.remote, "--delete", target.remoteBranch]);
+        return;
+    }
+    await executor.run(["branch", "-d", branch.name]);
+}
+
+/**
  * Creates the branch tree command handlers registered by repository activation.
  *
  * The returned entries wire `intelligit.checkout`, `intelligit.newBranchFrom`,
@@ -664,6 +745,89 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         }
                         return;
                     }
+                    const msg = getErrorMessage(err);
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t("Delete failed: {message}", { message: msg }),
+                    );
+                }
+            },
+        },
+        {
+            id: "intelligit.deleteBranches",
+            handler: async (payload) => {
+                const branches = uniqueBranchesByName(assertBranchListPayload(payload));
+                if (branches.length === 0) return;
+
+                try {
+                    for (const branch of branches) {
+                        assertValidBranchName(branch.name);
+                    }
+
+                    const currentName = getCurrentBranchName();
+                    const current = branches.find(
+                        (branch) =>
+                            !branch.isRemote && (branch.isCurrent || branch.name === currentName),
+                    );
+                    if (current) {
+                        vscode.window.showWarningMessage(
+                            vscode.l10n.t("Cannot delete the current branch: {branch}", {
+                                branch: current.name,
+                            }),
+                        );
+                        return;
+                    }
+
+                    const unmerged = await assertBulkBranchesMerged(executor, branches);
+                    if (unmerged.length > 0) {
+                        vscode.window.showErrorMessage(
+                            vscode.l10n.t("Cannot delete unmerged branches: {branches}", {
+                                branches: unmerged.join(", "),
+                            }),
+                        );
+                        return;
+                    }
+
+                    const deleted: string[] = [];
+                    for (const branch of branches) {
+                        try {
+                            await deleteBranchRef(executor, branch);
+                            deleted.push(branch.name);
+                            if (!branch.isRemote) {
+                                void showDeletedBranchActions(
+                                    branch,
+                                    getCurrentBranches(),
+                                    executor,
+                                );
+                            }
+                        } catch (err) {
+                            const msg = getErrorMessage(err);
+                            if (deleted.length > 0) {
+                                await vscode.commands.executeCommand("intelligit.refresh");
+                            }
+                            const message =
+                                deleted.length > 0
+                                    ? vscode.l10n.t(
+                                          "partially deleted {count} branch(es), but failed to delete {branch}: {message}",
+                                          {
+                                              count: deleted.length,
+                                              branch: branch.name,
+                                              message: msg,
+                                          },
+                                      )
+                                    : vscode.l10n.t("failed to delete {branch}: {message}", {
+                                          branch: branch.name,
+                                          message: msg,
+                                      });
+                            vscode.window.showErrorMessage(message);
+                            return;
+                        }
+                    }
+
+                    await vscode.commands.executeCommand("intelligit.refresh");
+                    vscode.window.showInformationMessage(
+                        vscode.l10n.t("Deleted {count} branch(es).", { count: deleted.length }),
+                    );
+                } catch (err) {
                     const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(
                         vscode.l10n.t("Delete failed: {message}", { message: msg }),

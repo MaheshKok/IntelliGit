@@ -381,6 +381,17 @@ export class GitOps {
         if (pathsToStage.length === 0) return;
         await this.executor.run(withLiteralPathspecs(["add", "--", ...pathsToStage]));
     }
+    /**
+     * Marks unversioned literal paths as intent-to-add without staging their content.
+     *
+     * Git reports these files as unstaged additions (` A`) so the commit panel can move them
+     * from Unversioned Files into Changes while preserving the user's ability to review or stage
+     * their contents explicitly.
+     */
+    async intentToAddFiles(paths: string[]): Promise<void> {
+        if (paths.length === 0) return;
+        await this.executor.run(withLiteralPathspecs(["add", "--intent-to-add", "--", ...paths]));
+    }
     /** Returns the subset of selected paths that should still be passed to `git add`. */
     private async excludeAlreadyStagedDeletedPaths(paths: string[]): Promise<string[]> {
         const status = await this.executor.run(

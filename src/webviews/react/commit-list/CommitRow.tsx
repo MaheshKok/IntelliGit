@@ -430,4 +430,16 @@ function areEqual(prev: Props, next: Props): boolean {
     );
 }
 
+/**
+ * Memoized commit list row with graph lane indicator, ref badges, and a hover tooltip.
+ *
+ * Unpushed commits show a colored left border matching their graph lane. The
+ * message cell renders branch-count and tag-ref badges inline, and a portal-based
+ * tooltip on hover/pointer-move with the full message plus branch and tag ref
+ * breakdown. Merge commits are rendered with muted colors for visual distinction.
+ *
+ * The memo comparator (`areEqual`) checks commit identity, selection, unpushed
+ * status, lane color, graph width, and callback referential stability to skip
+ * re-renders when only sibling rows change.
+ */
 export const CommitRow = React.memo(CommitRowInner, areEqual);

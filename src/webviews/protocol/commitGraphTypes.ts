@@ -117,6 +117,12 @@ export type CommitGraphOutbound =
           branchName: string;
       }
     | {
+          /** Command requesting deletion of command/ctrl-selected branch rows. */
+          type: "deleteBranches";
+          /** Validated branch names from the latest branch list before command dispatch. */
+          branchNames: string[];
+      }
+    | {
           /** Command requesting a commit context-menu action on the host side. */
           type: "commitAction";
           /** Validated against `COMMIT_ACTION_VALUES` before Git action dispatch. */

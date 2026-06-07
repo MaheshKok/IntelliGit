@@ -16,6 +16,10 @@ interface Props {
     isSomeChecked: boolean;
     onToggleOpen: () => void;
     onToggleCheck: () => void;
+    onDragOver?: React.DragEventHandler<HTMLDivElement>;
+    onDragLeave?: React.DragEventHandler<HTMLDivElement>;
+    onDrop?: React.DragEventHandler<HTMLDivElement>;
+    isDragOver?: boolean;
 }
 
 /**
@@ -33,6 +37,10 @@ export function SectionHeader({
     isSomeChecked,
     onToggleOpen,
     onToggleCheck,
+    onDragOver,
+    onDragLeave,
+    onDrop,
+    isDragOver = false,
 }: Props): React.ReactElement {
     return (
         <Flex
@@ -51,12 +59,21 @@ export function SectionHeader({
             lineHeight="22px"
             position="relative"
             color="var(--intelligit-pycharm-foreground)"
-            bg="var(--intelligit-pycharm-selected)"
+            bg={
+                isDragOver
+                    ? "var(--intelligit-pycharm-focus-border, var(--intelligit-pycharm-blue))"
+                    : "var(--intelligit-pycharm-selected)"
+            }
+            outline={isDragOver ? "2px solid var(--intelligit-pycharm-blue)" : "none"}
+            outlineOffset="-1px"
             _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleOpen();
             }}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
         >
             <ChevronIcon expanded={isOpen} />
             <VscCheckbox

@@ -186,5 +186,6 @@
     "common.dock": "停靠",
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD（{name}）",
-    "merge.overview.jumpToHunk": "跳到編號為 #{ordinal} 的區塊"
+    "merge.overview.jumpToHunk": "跳到編號為 #{ordinal} 的區塊",
+    "branch.menu.deleteBranches": "刪除分支"
 }

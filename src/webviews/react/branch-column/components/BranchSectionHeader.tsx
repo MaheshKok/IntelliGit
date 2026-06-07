@@ -9,6 +9,13 @@ interface Props {
     leadingIcon?: React.ReactNode;
 }
 
+/**
+ * Keyboard-accessible collapsible section header for branch groups.
+ *
+ * Toggles expansion on click, Enter, or Space. Uses `aria-expanded` and
+ * `role="button"` so screen readers announce the current collapsed state.
+ * Space is `preventDefault`-ed to avoid scroll-on-activate in webview panels.
+ */
 export function BranchSectionHeader({
     label,
     expanded,

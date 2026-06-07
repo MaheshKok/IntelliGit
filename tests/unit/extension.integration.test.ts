@@ -246,6 +246,7 @@ class MockCommitGraphViewProvider {
     private commitSelectedEmitter = new MockEventEmitter<string>();
     private branchFilterEmitter = new MockEventEmitter<string | null>();
     private branchActionEmitter = new MockEventEmitter<{ action: string; branchName: string }>();
+    private deleteBranchesEmitter = new MockEventEmitter<string[]>();
     private commitActionEmitter = new MockEventEmitter<{
         action: string;
         hash: string;
@@ -270,6 +271,7 @@ class MockCommitGraphViewProvider {
     onCommitSelected = this.commitSelectedEmitter.event;
     onBranchFilterChanged = this.branchFilterEmitter.event;
     onBranchAction = this.branchActionEmitter.event;
+    onDeleteBranches = this.deleteBranchesEmitter.event;
     onCommitAction = this.commitActionEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     setBranches = vi.fn();
@@ -288,6 +290,9 @@ class MockCommitGraphViewProvider {
     }
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
+    }
+    emitDeleteBranches(branchNames: string[]): void {
+        this.deleteBranchesEmitter.fire(branchNames);
     }
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
@@ -336,6 +341,9 @@ class MockCommitPanelViewProvider {
     onCommitAction = this.commitActionEmitter.event;
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     refresh = vi.fn(async () => {
+        await commitPanelRefreshHook?.(this);
+    });
+    refreshSilent = vi.fn(async () => {
         await commitPanelRefreshHook?.(this);
     });
     setRepositoryRootUri = vi.fn();
@@ -402,6 +410,7 @@ class MockUndockedViewProvider {
     setCommitDetail = vi.fn();
     open = vi.fn(async () => undefined);
     refresh = vi.fn(async () => undefined);
+    refreshSilent = vi.fn(async () => undefined);
     reveal = vi.fn();
     dispose = vi.fn(() => {
         this.disposeEmitter.fire(undefined);
@@ -754,6 +763,11 @@ describe("extension integration", () => {
         latestUndockedProvider = undefined;
         commitPanelRefreshHook = undefined;
 
+        showInformationMessage.mockImplementation(async () => undefined);
+        showErrorMessage.mockImplementation(async () => undefined);
+        showWarningMessage.mockImplementation(
+            async (_msg?: string, _opts?: unknown, ...items: string[]) => items[0],
+        );
         executorRun.mockImplementation(defaultExecutorRunImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
         gitOpsState.getBranches.mockResolvedValue([
@@ -1165,6 +1179,264 @@ describe("extension integration", () => {
         expect(deleteFileWithFallback).toHaveBeenCalled();
     });
 
+    async function activateExtensionForCommandTests(): Promise<void> {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+    }
+
+    function requireCommand(id: string): CommandHandler {
+        const command = registeredCommands.get(id);
+        if (!command) throw new Error(`Missing command registration: ${id}`);
+        return command;
+    }
+
+    it("bulk branch delete rejects the current branch before mutating any branch", async () => {
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [
+                { name: "main", isRemote: false, isCurrent: true },
+                { name: "feature-local", isRemote: false, isCurrent: false },
+            ],
+        });
+
+        expect(executorRun).not.toHaveBeenCalledWith(
+            expect.arrayContaining(["branch", "-d", "feature-local"]),
+        );
+        expect(showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("current branch"));
+    });
+
+    it("rejects stale branch names from graph bulk delete without deleting a subset", async () => {
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        latestCommitGraphProvider!.emitDeleteBranches(["feature-local", "missing-branch"]);
+        await waitForAsync();
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Cannot delete missing branch(es): missing-branch"),
+        );
+        expect(executorRun).not.toHaveBeenCalledWith(
+            expect.arrayContaining(["branch", "-d", "feature-local"]),
+        );
+    });
+
+    it("bulk branch delete deletes branches sequentially, offers local delete actions, and refreshes once", async () => {
+        gitOpsState.getBranches.mockResolvedValue([
+            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-local",
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "feature-two",
+                hash: "b2c3d4e5",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-two",
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature-local",
+                hash: "a1b2c3d4",
+                isRemote: true,
+                isCurrent: false,
+                remote: "origin",
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature-two",
+                hash: "b2c3d4e5",
+                isRemote: true,
+                isCurrent: false,
+                remote: "origin",
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+        latestCommitPanelProvider?.refresh.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [
+                { name: "feature-local", isRemote: false, isCurrent: false },
+                { name: "feature-two", isRemote: false, isCurrent: false },
+            ],
+        });
+
+        const deleteCalls = executorRun.mock.calls
+            .map(([args]) => args)
+            .filter((args) => args[0] === "branch" && args[1] === "-d")
+            .map((args) => args.slice(0, 3));
+        expect(deleteCalls).toEqual([
+            ["branch", "-d", "feature-local"],
+            ["branch", "-d", "feature-two"],
+        ]);
+        const deletedToasts = showInformationMessage.mock.calls
+            .filter(([message]) => typeof message === "string" && message.startsWith("Deleted:"))
+            .map(([message, ...actions]) => [message, ...actions]);
+        expect(deletedToasts).toEqual([
+            ["Deleted: feature-local", "Restore", "Delete Tracked Branch"],
+            ["Deleted: feature-two", "Restore", "Delete Tracked Branch"],
+        ]);
+        expect(latestCommitPanelProvider?.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("bulk branch delete runs push-delete for remote branch rows", async () => {
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [
+                {
+                    name: "origin/feature-remote",
+                    isRemote: true,
+                    isCurrent: false,
+                    remote: "origin",
+                },
+            ],
+        });
+
+        expect(executorRun).toHaveBeenCalledWith([
+            "push",
+            "origin",
+            "--delete",
+            "feature-remote",
+        ]);
+        expect(executorRun).not.toHaveBeenCalledWith([
+            "branch",
+            "-d",
+            "-r",
+            "origin/feature-remote",
+        ]);
+    });
+
+    it("bulk branch delete supports the tracked-remote delete action for local branches", async () => {
+        gitOpsState.getBranches.mockResolvedValue([
+            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                upstream: "origin/feature-local",
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature-local",
+                hash: "a1b2c3d4",
+                isRemote: true,
+                isCurrent: false,
+                remote: "origin",
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        showInformationMessage.mockImplementation(async (message?: string) => {
+            if (typeof message === "string" && message.startsWith("Deleted: feature-local")) {
+                return "Delete Tracked Branch";
+            }
+            return undefined;
+        });
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [
+                {
+                    name: "feature-local",
+                    hash: "a1b2c3d4",
+                    isRemote: false,
+                    isCurrent: false,
+                    upstream: "origin/feature-local",
+                },
+            ],
+        });
+
+        expect(executorRun).toHaveBeenCalledWith(["branch", "-d", "feature-local"]);
+        expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-local"]);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Deleted: feature-local",
+            "Restore",
+            "Delete Tracked Branch",
+        );
+    });
+
+    it("bulk branch delete reports partial failures after earlier deletions succeed", async () => {
+        gitOpsState.getBranches.mockResolvedValue([
+            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            { name: "feature-local", hash: "a1b2c3d4", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+            { name: "feature-fails", hash: "b2c3d4e5", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+        ]);
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "branch" && args[1] === "-d" && args[2] === "feature-fails") {
+                throw new Error("cannot delete feature-fails");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+        gitOpsState.getBranches.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [
+                { name: "feature-local", isRemote: false, isCurrent: false },
+                { name: "feature-fails", isRemote: false, isCurrent: false },
+            ],
+        });
+
+        expect(executorRun).toHaveBeenCalledWith(expect.arrayContaining(["branch", "-d", "feature-local"]));
+        expect(gitOpsState.getBranches).toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("partially deleted"));
+    });
+
+    it("bulk branch delete reports a direct failure when the first delete fails", async () => {
+        gitOpsState.getBranches.mockResolvedValue([
+            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            {
+                name: "feature-fails",
+                hash: "b2c3d4e5",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "branch" && args[1] === "-d" && args[2] === "feature-fails") {
+                throw new Error("cannot delete feature-fails");
+            }
+            return defaultExecutorRunImpl(args);
+        });
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [{ name: "feature-fails", isRemote: false, isCurrent: false }],
+        });
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("failed to delete feature-fails"),
+        );
+        expect(showErrorMessage).not.toHaveBeenCalledWith(
+            expect.stringContaining("partially deleted 0"),
+        );
+    });
+
     it("does not open the undocked editor tab on activation when undockableWindow is enabled", async () => {
         configurationValues.set("undockableWindow", true);
         const { activate } = await import("../../src/extension");
@@ -1223,41 +1495,53 @@ describe("extension integration", () => {
             const undocked = latestUndockedProvider;
             expect(undocked).toBeDefined();
             latestCommitPanelProvider!.refresh.mockClear();
+            latestCommitPanelProvider!.refreshSilent.mockClear();
             undocked!.refresh.mockClear();
+            undocked!.refreshSilent.mockClear();
 
             latestCommitPanelProvider!.emitWorkingTreeChanged();
             await waitForAsync();
 
-            expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+            expect(undocked!.refresh).not.toHaveBeenCalled();
+            expect(undocked!.refreshSilent).toHaveBeenCalledTimes(1);
             expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
 
             undocked!.refresh.mockClear();
+            undocked!.refreshSilent.mockClear();
 
             undocked!.emitWorkingTreeChanged();
             await waitForAsync();
 
-            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
             expect(latestCommitGraphProvider!.refresh).toHaveBeenCalledTimes(1);
 
             latestCommitPanelProvider!.refresh.mockClear();
+            latestCommitPanelProvider!.refreshSilent.mockClear();
             latestCommitGraphProvider!.refresh.mockClear();
 
             textDocListeners[0]?.();
             vi.advanceTimersByTime(300);
             await waitForAsync();
 
-            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
-            expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
+            expect(undocked!.refresh).not.toHaveBeenCalled();
+            expect(undocked!.refreshSilent).toHaveBeenCalledTimes(1);
 
             latestCommitPanelProvider!.refresh.mockClear();
+            latestCommitPanelProvider!.refreshSilent.mockClear();
             undocked!.refresh.mockClear();
+            undocked!.refreshSilent.mockClear();
 
             fsWatchCallbacks[0]?.("change", "index");
             vi.advanceTimersByTime(300);
             await waitForAsync();
 
-            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
-            expect(undocked!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
+            expect(undocked!.refresh).not.toHaveBeenCalled();
+            expect(undocked!.refreshSilent).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
@@ -1280,17 +1564,20 @@ describe("extension integration", () => {
             expect(gitRepositoryStateListeners).toHaveLength(1);
 
             latestCommitPanelProvider!.refresh.mockClear();
+            latestCommitPanelProvider!.refreshSilent.mockClear();
 
             gitRepositoryStateListeners[0]();
             vi.advanceTimersByTime(299);
             await Promise.resolve();
 
             expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refreshSilent).not.toHaveBeenCalled();
 
             vi.advanceTimersByTime(1);
             await waitForAsync();
 
-            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalledTimes(1);
+            expect(latestCommitPanelProvider!.refresh).not.toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
         } finally {
             vi.useRealTimers();
         }
@@ -1318,6 +1605,7 @@ describe("extension integration", () => {
         expect(registerWebviewViewProvider).toHaveBeenCalledWith(
             "intelligit.commitPanel",
             expect.any(MockCommitPanelViewProvider),
+            { webviewOptions: { retainContextWhenHidden: true } },
         );
         expect(registeredCommands.has("intelligit.fileRollback")).toBe(true);
         expect(workspaceState?.update).not.toHaveBeenCalledWith(
@@ -2260,7 +2548,7 @@ describe("extension integration", () => {
             vi.advanceTimersByTime(1200);
             await waitForAsync();
 
-            expect(latestCommitPanelProvider!.refresh).toHaveBeenCalled();
+            expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalled();
             expect(latestCommitGraphProvider!.refresh).toHaveBeenCalled();
             deactivate();
         } finally {
@@ -2440,6 +2728,58 @@ describe("extension integration", () => {
             "Interactive Rebase from Here is available only for unpushed commits.",
         );
         expect(createTerminal).toHaveBeenCalled();
+    });
+
+    it("clears docked commit panel details during explicit repository refresh", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await waitForAsync();
+
+        if (!latestCommitPanelProvider) throw new Error("Expected commit panel provider");
+        latestCommitPanelProvider.clearCommitDetail.mockClear();
+
+        const refresh = registeredCommands.get("intelligit.refresh");
+        if (!refresh) throw new Error("Missing intelligit.refresh command");
+        await refresh();
+
+        expect(latestCommitPanelProvider.clearCommitDetail).toHaveBeenCalledTimes(1);
+    });
+
+    it("opens interactive rebase terminals with git shell arguments instead of sent shell text", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+        const terminal = { show: vi.fn(), sendText: vi.fn() };
+        createTerminal.mockReturnValueOnce(terminal);
+
+        await activate(context);
+        await waitForAsync();
+
+        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
+        gitOpsState.getUnpushedCommitHashes.mockResolvedValueOnce(["a1b2c3d4"]);
+        latestCommitGraphProvider.emitCommitAction({
+            action: "interactiveRebaseFromHere",
+            hash: "a1b2c3d4",
+        });
+        await waitForAsync();
+
+        expect(createTerminal).toHaveBeenCalledWith(
+            expect.objectContaining({
+                name: expect.any(String),
+                cwd: "/repo",
+                shellPath: "git",
+                shellArgs: ["rebase", "-i", "a1b2c3d4^"],
+            }),
+        );
+        expect(terminal.show).toHaveBeenCalledTimes(1);
+        expect(terminal.sendText).not.toHaveBeenCalled();
     });
 
     it("rejects invalid file context command paths before Git operations", async () => {

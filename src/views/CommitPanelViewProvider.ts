@@ -42,6 +42,7 @@ import {
     showHistoryFromPanel,
     showShelfDiffFromPanel,
     stageFilesFromPanel,
+    trackUnversionedFilesFromPanel,
     unstageFilesFromPanel,
 } from "./panelFileActions";
 const MIN_VISIBLE_REFRESH_MS = 600;
@@ -67,10 +68,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private readonly iconTheme: IconThemeService;
     // Embedded commit graph state
     private currentBranch: string | null = null;
+    private currentBranchHasUpstreamCache = false;
     private filterText = "";
     private offset = 0;
     private loadingMore = false;
     private requestSeq = 0;
+    private dataRefreshSeq = 0;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
@@ -129,6 +132,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.stashes = [];
         this.shelfFiles = [];
         this.currentBranch = null;
+        this.currentBranchHasUpstreamCache = false;
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -137,6 +141,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.branchFolderIconsByName = {};
         // Bump request sequences so in-flight async responses from the old repo are ignored.
         this.requestSeq += 1;
+        this.dataRefreshSeq += 1;
         this.commitDetailSeq += 1;
         this.updateViewCount(0);
         this.postToWebview({
@@ -194,7 +199,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "clearCommitDetail" });
     }
     /**
-     * Resolves the Changes webview, binds message handling, and starts an initial data refresh.
+     * Resolves the Changes webview, binds message handling, and replays cached file state.
      *
      * The webview is restricted to bundled `dist` resources, theme listeners are rebound for the
      * newly attached webview, and all inbound messages are routed through {@link handleMessage} so
@@ -233,8 +238,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         });
         webviewView.webview.html = this.getHtml(webviewView.webview);
+        webviewView.onDidChangeVisibility(() => {
+            if (!webviewView.visible) return;
+            this.postWorkingTreeSnapshot();
+            this.refreshDataWithErrorHandling(true);
+        });
         this.updateViewCount(this.lastFileCount);
-        this.refreshDataWithErrorHandling();
     }
     /**
      * Refreshes working-tree/shelf data and then reloads embedded graph state.
@@ -242,6 +251,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     async refresh(): Promise<void> {
         await this.refreshData(false);
         await this.refreshGraphData();
+    }
+    /** Refreshes working-tree data without showing webview or context-key spinner state. */
+    async refreshSilent(): Promise<void> {
+        await this.refreshData(true);
     }
     /**
      * Runs a visible refresh for explicit user requests in the Changes view.
@@ -259,6 +272,31 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         );
     }
     /**
+     * Posts the cached working-tree snapshot without performing Git I/O.
+     *
+     * This is used when a newly-ready webview reconnects so it can render the most recent file list
+     * immediately, before the follow-up silent refresh reconciles any changes that happened while
+     * the webview was hidden or loading.
+     */
+    private postWorkingTreeSnapshot(
+        currentBranchHasUpstream = this.currentBranchHasUpstreamCache,
+    ): void {
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
+        this.postToWebview({
+            type: "update",
+            files: this.files,
+            stashes: this.stashes,
+            selectedShelfIndex: this.selectedShelfIndex,
+            shelfFiles: this.shelfFiles,
+            folderIcon: folderIcons.folderIcon,
+            folderExpandedIcon: folderIcons.folderExpandedIcon,
+            folderIconsByName: this.folderIconsByName,
+            iconFonts,
+            currentBranchHasUpstream,
+        });
+    }
+
+    /**
      * Reloads working-tree files, shelves, selected shelf contents, and upstream state.
      *
      * Non-silent refreshes set both a webview `refreshing` message and a VS Code context key, then
@@ -267,6 +305,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     private async refreshData(silent = false): Promise<void> {
         const refreshStartedAt = Date.now();
+        const refreshRequestId = ++this.dataRefreshSeq;
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         if (!silent) {
             void Promise.resolve(
@@ -298,14 +337,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                           await this.gitOps.getShelvedFiles(selectedShelfIndex),
                       )
                     : [];
-            this.folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
+            const folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
                 ...files,
                 ...shelfFiles,
             ]);
+            if (refreshRequestId !== this.dataRefreshSeq) return;
+            this.folderIconsByName = folderIconsByName;
             this.files = files;
             this.stashes = stashes;
             this.selectedShelfIndex = selectedShelfIndex;
             this.shelfFiles = shelfFiles;
+            this.currentBranchHasUpstreamCache = currentBranchHasUpstream;
             const uniquePaths = new Set(files.map((f) => f.path));
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
@@ -464,12 +506,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const fileActionDeps = {
             gitOps: this.gitOps,
             getWorkspaceRoot: () => this.getWorkspaceRoot(),
-            refreshData: () => this.refreshData(),
+            refreshData: (silent = false) => this.refreshData(silent),
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
         };
         switch (msg.type) {
             case "ready":
-                await this.refreshData();
+                this.postWorkingTreeSnapshot();
+                await this.refreshSilent();
                 await this.refreshGraphData();
                 this.postToWebview({
                     type: "restoreCommitDraft",
@@ -539,6 +582,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "unstageFiles":
                 await unstageFilesFromPanel(fileActionDeps, msg.paths);
+                break;
+            case "trackUnversionedFiles":
+                await trackUnversionedFilesFromPanel(fileActionDeps, msg.paths);
                 break;
             case "commitSelected": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
@@ -779,8 +825,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Runs a panel data refresh from listeners without leaking rejected promises into VS Code.
      */
-    private refreshDataWithErrorHandling(): void {
-        this.refreshData().catch((err) => {
+    private refreshDataWithErrorHandling(silent = false): void {
+        this.refreshData(silent).catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(message);
             this.postToWebview({ type: "error", message });
