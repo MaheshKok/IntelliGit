@@ -793,7 +793,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                             await deleteBranchRef(executor, branch);
                             deleted.push(branch.name);
                             if (!branch.isRemote) {
-                                await showDeletedBranchActions(
+                                void showDeletedBranchActions(
                                     branch,
                                     getCurrentBranches(),
                                     executor,
