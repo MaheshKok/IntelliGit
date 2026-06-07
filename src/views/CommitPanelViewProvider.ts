@@ -132,6 +132,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.stashes = [];
         this.shelfFiles = [];
         this.currentBranch = null;
+        this.currentBranchHasUpstreamCache = false;
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
