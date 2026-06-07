@@ -1620,4 +1620,115 @@ describe("view providers integration", () => {
 
         provider.dispose();
     });
+
+    it("commitSelectedFromPanel stages only checked files when some are unchecked", async () => {
+        // Scenario: 4 changed files, 2 unversioned files — only 2 changed files checked.
+        // Unchecked files must not be staged or committed.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commit.mockClear();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: selective",
+            amend: false,
+            push: false,
+            paths: ["src/changed1.ts", "src/changed2.ts"],
+        });
+
+        // Only the 2 checked paths staged — no extra paths leaked.
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith([
+            "src/changed1.ts",
+            "src/changed2.ts",
+        ]);
+        expect(gitOps.commit).toHaveBeenCalledTimes(1);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: selective", false);
+        expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages checked changed + unversioned files together", async () => {
+        // Scenario: 1 changed file + 1 unversioned file, both checked.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commit.mockClear();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: mixed",
+            amend: false,
+            push: false,
+            paths: ["src/changed.ts", "src/new-unversioned.ts"],
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith([
+            "src/changed.ts",
+            "src/new-unversioned.ts",
+        ]);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: mixed", false);
+        expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages only selected subset and pushes when requested", async () => {
+        // Scenario: 6 files total, 2 checked, push=true.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commitAndPush.mockClear();
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: subset push",
+            amend: false,
+            push: true,
+            paths: ["src/a.ts", "src/b.ts"],
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
+        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: subset push", false);
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            "Committed and pushed successfully.",
+        );
+        provider.dispose();
+    });
+
+    it("commitSelectedFromPanel stages all checked files from large mixed set", async () => {
+        // Scenario: 10 changed + 3 unversioned files, 5 checked across both groups.
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+
+        gitOps.stageFiles.mockClear();
+        gitOps.commit.mockClear();
+
+        const checkedPaths = [
+            "src/a.ts",
+            "src/b.ts",
+            "docs/readme.md",
+            "newfile.txt",
+            "scripts/deploy.sh",
+        ];
+
+        await webview.send({
+            type: "commitSelected",
+            message: "feat: large subset",
+            amend: false,
+            push: false,
+            paths: checkedPaths,
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(checkedPaths);
+        // The staged paths array must match exactly — no extra paths from the
+        // 8 unchecked files must appear.
+        const stagedCall = gitOps.stageFiles.mock.calls[0] as [string[]];
+        expect(stagedCall[0]).toHaveLength(checkedPaths.length);
+        expect(stagedCall[0].sort()).toEqual([...checkedPaths].sort());
+        expect(gitOps.commit).toHaveBeenCalledTimes(1);
+        provider.dispose();
+    });
 });
