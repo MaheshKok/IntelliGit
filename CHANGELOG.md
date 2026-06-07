@@ -169,7 +169,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added VS Code manifest localization via `package.nls.*.json`, including command titles, view titles, configuration labels, configuration descriptions, and enum labels.
 - Added extension-host localization via `l10n/bundle.l10n.*.json` for notifications, prompts, progress messages, quick-pick labels, validation errors, Git operation messages, merge-conflict actions, clone/publish/setup flows, and activity-bar badge tooltips.
 - Added webview localization via `src/webviews/i18n/*.json` for the commit panel, commit graph, branch menus, changed-file UI, commit detail panel, merge editor, conflict session, onboarding, toolbar labels, empty states, status labels, and context menus.
-- Added a single translation review CSV at `docs/localization_translation_review.csv` as the source of truth for all manifest, host, and webview translations.
+- Added a single translation review CSV at `docs/localization/localization_translation_review.csv` as the source of truth for all manifest, host, and webview translations.
 - Added CSV import and validation tooling so reviewed translations can be imported back into generated catalogs instead of editing every locale JSON file by hand.
 - Added localization tests that verify required locale coverage, catalog synchronization, placeholder preservation, plural-category shape, manifest entries, host bundles, and webview bundles.
 - Added a hardcoded-string audit for user-facing source code so new English UI strings are caught when they are not routed through `vscode.l10n.t(...)` or webview `t(...)`.

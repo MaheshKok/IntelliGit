@@ -132,7 +132,9 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         this.requestSeq += 1;
         this.detail = undefined;
         this.folderIconsByName = {};
-        this.postToWebview({ type: "clear" });
+        if (this.ready) {
+            this.postToWebview({ type: "clear" });
+        }
     }
 
     /**

@@ -377,10 +377,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!validateBranchArg(name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                 if (tracked && !validateTrackedRemote(tracked)) return;
-                const currentBranchName = await getCheckedOutBranchName(
-                    executor,
-                    getCurrentBranches(),
-                );
+                const currentBranchName = getCurrentBranchName();
                 const isSelectedBranchCurrent = branch.isCurrent || currentBranchName === name;
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
                 let mergeAttempted = false;
