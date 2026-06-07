@@ -17,25 +17,49 @@ import {
     isValidRemoteName,
 } from "../utils/gitRefs";
 
+/**
+ * Re-exports branch-name validation for command modules that already depend on service helpers.
+ */
 export { isValidBranchName } from "../utils/gitRefs";
 
+/**
+ * Result from a merge-commit mainline picker.
+ *
+ * `parentNumber` is one-based to match Git's `-m` argument and is present only
+ * when the user selected a parent. Callers should treat `cancelled` as a no-op,
+ * not as an error.
+ */
 export interface MainlineParentPickResult {
     kind: "notMerge" | "cancelled" | "selected";
     parentNumber?: number;
 }
 
+/**
+ * Checks whether a value is a plausible abbreviated or full Git object hash.
+ *
+ * The check is intentionally syntactic and accepts 7-40 hexadecimal characters;
+ * it does not prove the object exists in the active repository.
+ */
 export function isValidGitHash(value: string): boolean {
     return /^[0-9a-fA-F]{7,40}$/.test(value);
 }
 
 /**
- * Validate a tag name against git check-ref-format rules.
- * Pure JS implementation — does not spawn a subprocess.
+ * Validates a tag name with the same pure TypeScript ref rules used for branch names.
+ *
+ * This avoids spawning Git from UI validators while preserving the same safety
+ * expectations as branch creation and checkout prompts.
  */
 export function isValidTagName(value: string): boolean {
     return isValidBranchNameValue(value);
 }
 
+/**
+ * Compares commit hashes with abbreviation support while avoiding full-hash prefix collisions.
+ *
+ * When both values are full 40-character hashes they must be exactly equal;
+ * otherwise either value may be the prefix selected by a UI list or Git command.
+ */
 export function isHashMatch(a: string, b: string): boolean {
     // Use exact equality when both are full-length hashes to avoid
     // prefix collision on large repos.
@@ -43,10 +67,23 @@ export function isHashMatch(a: string, b: string): boolean {
     return a.startsWith(b) || b.startsWith(a);
 }
 
+/**
+ * Strips the remote prefix from a slash-separated remote branch name.
+ *
+ * Callers should validate the resulting branch name before passing it to Git;
+ * this helper only handles the display and tracking-name transformation.
+ */
 export function getLocalNameFromRemote(remoteBranchName: string): string {
     return remoteBranchName.split("/").slice(1).join("/");
 }
 
+/**
+ * Resolves the current checked-out branch name with a cached-branch fallback.
+ *
+ * A detached HEAD, invalid ref name, or failed `rev-parse` returns `null` rather
+ * than showing UI. Command handlers decide whether that means cancellation,
+ * disabled actions, or a user-facing error.
+ */
 export async function getCheckedOutBranchName(
     executor: GitExecutor,
     currentBranches: Branch[],
@@ -61,6 +98,13 @@ export async function getCheckedOutBranchName(
     return fallback && isValidBranchNameValue(fallback) ? fallback : null;
 }
 
+/**
+ * Determines the remote and remote-branch pair tracked by a local branch.
+ *
+ * Upstream metadata is preferred, then explicit branch metadata, then a single
+ * unambiguous remote-branch suffix match. Invalid or ambiguous refs return
+ * `null` so callers do not push, delete, or restore the wrong remote branch.
+ */
 export function resolveTrackedRemoteBranch(
     branch: Branch,
     currentBranches: Branch[],
@@ -96,6 +140,12 @@ export function resolveTrackedRemoteBranch(
     return null;
 }
 
+/**
+ * Parses a remote branch tree item into the target used by `git push --delete`.
+ *
+ * Only remote branches with a valid remote name and branch path are accepted;
+ * local branches and malformed remote refs return `null` for safe UI handling.
+ */
 export function resolveRemoteDeleteTarget(
     branch: Branch,
 ): { remote: string; remoteBranch: string } | null {
@@ -110,6 +160,13 @@ export function resolveRemoteDeleteTarget(
     return { remote, remoteBranch };
 }
 
+/**
+ * Finds the remote that should receive a branch push or fallback operation.
+ *
+ * Branch metadata wins when valid; otherwise the first configured Git remote is
+ * used. Git failures are swallowed and reported as `null` because callers show
+ * workflow-specific messages or prompt for alternate actions.
+ */
 export async function resolveRemoteName(
     branch: Branch,
     executor: GitExecutor,
@@ -127,6 +184,13 @@ export async function resolveRemoteName(
     }
 }
 
+/**
+ * Reads the parent commit hashes for a commit using `git rev-list --parents`.
+ *
+ * The returned array excludes the commit itself and preserves Git's parent
+ * ordering for merge mainline prompts. Callers must validate untrusted hashes
+ * before invoking this helper.
+ */
 export async function getCommitParentHashes(
     hash: string,
     executor: GitExecutor,
@@ -136,10 +200,22 @@ export async function getCommitParentHashes(
     return parts.slice(1);
 }
 
+/**
+ * Reports whether a commit has multiple parents in the active repository.
+ *
+ * This propagates Git failures so history commands can block unsafe rebase or
+ * edit workflows before they mutate commits.
+ */
 export async function isMergeCommitHash(hash: string, executor: GitExecutor): Promise<boolean> {
     return (await getCommitParentHashes(hash, executor)).length > 1;
 }
 
+/**
+ * Checks whether a commit appears in IntelliGit's unpushed commit list.
+ *
+ * Hash comparisons allow abbreviated UI hashes while protecting exact full-hash
+ * comparisons from prefix collisions.
+ */
 export async function isCommitUnpushed(hash: string, gitOps: GitOps): Promise<boolean> {
     const unpushed = await gitOps.getUnpushedCommitHashes();
     return unpushed.some((h) => isHashMatch(h, hash));
@@ -153,6 +229,12 @@ const REBASE_PUSH_REJECTION_PATTERNS = [
     "updates were rejected because",
 ];
 
+/**
+ * Detects push rejections that are safe to offer as a pull-rebase-then-push retry.
+ *
+ * This is a conservative string classifier for common Git non-fast-forward
+ * messages, not a general transport error parser.
+ */
 export function isRebaseablePushRejection(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase();
     const isRejectedPush =
@@ -165,6 +247,13 @@ export function isRebaseablePushRejection(error: unknown): boolean {
     );
 }
 
+/**
+ * Prompts the user to rebase after a non-fast-forward push rejection and retries the push.
+ *
+ * The workflow mutates repository state by running `pull --rebase` and then the
+ * caller-provided push retry inside a progress notification. Rebase and retry
+ * failures are shown to the user and return `false` instead of propagating.
+ */
 export async function promptRebaseAfterPushRejection(
     error: unknown,
     gitOps: GitOps,
@@ -202,12 +291,25 @@ export async function promptRebaseAfterPushRejection(
     return true;
 }
 
+/**
+ * Counts how many commits would be affected by undoing from the selected commit to `HEAD`.
+ *
+ * A non-positive or unparsable Git result falls back to `1` so confirmation
+ * prompts remain conservative instead of silently showing zero affected commits.
+ */
 export async function getUndoCommitCount(hash: string, executor: GitExecutor): Promise<number> {
     const raw = (await executor.run(["rev-list", "--count", `${hash}^..HEAD`])).trim();
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
+/**
+ * Prompts for the one-based mainline parent Git expects for merge-commit operations.
+ *
+ * Non-merge commits return `notMerge` without UI, and prompt cancellation returns
+ * `cancelled`. Callers should not mutate history or file patches after a
+ * cancelled result.
+ */
 export async function pickMainlineParent(
     hash: string,
     actionLabel: string,
@@ -241,6 +343,13 @@ export async function pickMainlineParent(
     return { kind: "selected", parentNumber: pick.parentNumber };
 }
 
+/**
+ * Checks out a local branch or creates a tracking local branch for a remote branch selection.
+ *
+ * Branch names are validated before Git receives them. This mutates the working
+ * tree and index through `git checkout`, and Git failures propagate for command
+ * handlers to display with their own action context.
+ */
 export async function checkoutBranch(
     branch: Branch,
     currentBranches: Branch[],
@@ -266,6 +375,14 @@ export async function checkoutBranch(
     return localName;
 }
 
+/**
+ * Builds the binary patch for a single file as changed by a commit.
+ *
+ * The commit hash and repository-relative file path are validated before Git is
+ * invoked. Merge commits prompt for the mainline parent and return `null` when
+ * cancelled; successful calls use `--literal-pathspecs` and `--` so file names
+ * are treated as data rather than Git pathspec expressions.
+ */
 export async function buildCommitFilePatch(
     commitHash: string,
     filePath: string,
@@ -301,6 +418,13 @@ export async function buildCommitFilePatch(
     ]);
 }
 
+/**
+ * Checks whether a local branch has already been merged into the current delete target.
+ *
+ * The target is the current branch when known or `HEAD` otherwise. Invalid names
+ * throw before Git runs, while a failed ancestor check returns `merged: false`
+ * so delete prompts can warn instead of assuming safety.
+ */
 export async function getLocalBranchMergeStatusForDelete(
     branchName: string,
     currentBranchName: string | null,
@@ -319,6 +443,13 @@ export async function getLocalBranchMergeStatusForDelete(
     }
 }
 
+/**
+ * Shows restore and tracked-branch cleanup actions for a branch marked as deleted.
+ *
+ * Restore creates a local branch at the recorded commit hash. Deleting a tracked
+ * branch prompts modally and runs `git push --delete`. All Git failures are
+ * displayed to the user, and successful mutations request an IntelliGit refresh.
+ */
 export async function showDeletedBranchActions(
     branch: Branch,
     currentBranches: Branch[],

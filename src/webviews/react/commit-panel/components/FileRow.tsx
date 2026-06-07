@@ -96,4 +96,10 @@ function FileRowInner({
     );
 }
 
+/**
+ * Memoized file row for working-tree entries.
+ *
+ * The row opens diffs when clicked, leaves checkbox changes to the selection
+ * hook, and shows parent directories only when directory grouping is disabled.
+ */
 export const FileRow = React.memo(FileRowInner);

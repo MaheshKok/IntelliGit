@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const repoRoot = path.resolve(__dirname, "..");
-const csvPath = path.join(repoRoot, "docs/localization_translation_review.csv");
+const csvPath = path.join(repoRoot, "docs/localization/localization_translation_review.csv");
 
 const locales = ["de", "es", "fr", "ja", "ko", "pl", "pt-br", "pt-pt", "ru", "zh-cn", "zh-tw"];
 
@@ -333,7 +333,7 @@ function translateMissing() {
         throw new Error(
             [
                 "Automatic machine translation is not configured for this repository.",
-                "Fill the missing required translation cells in docs/localization_translation_review.csv with an approved translation source, then run the import/validation pipeline.",
+                "Fill the missing required translation cells in docs/localization/localization_translation_review.csv with an approved translation source, then run the import/validation pipeline.",
                 "Missing required translations:",
                 ...shown.map(
                     (item) =>

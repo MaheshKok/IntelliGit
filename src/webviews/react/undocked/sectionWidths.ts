@@ -4,8 +4,10 @@ const SECTION_COUNT = 4;
 const TOTAL_DIVIDER_WIDTH = 3 * DIVIDER_WIDTH;
 const SECTION_WIDTH_KEYS = ["branchWidth", "graphWidth", "infoWidth", "commitPanelWidth"] as const;
 
+/** Minimum preferred width for each undocked section before proportional shrinking. */
 export const MIN_SECTION_WIDTH = 220;
 
+/** Widths for the four resizable undocked sections, excluding divider pixels. */
 export interface SectionWidths {
     branchWidth: number;
     graphWidth: number;
@@ -13,11 +15,13 @@ export interface SectionWidths {
     commitPanelWidth: number;
 }
 
+/** Keys that may participate in a paired undocked divider drag. */
 export type SectionWidthKey = (typeof SECTION_WIDTH_KEYS)[number];
 
-// Compute equal initial widths for all four sections from the viewport.
-// Sections: Commit | Branches | Graph | Changes (Info)
-// Three dividers (4px each) sit between the four sections.
+/**
+ * Computes equal initial widths for commit panel, branches, graph, and changed
+ * files after subtracting divider pixels from the viewport or supplied total.
+ */
 export function computeEqualSectionWidths(totalWidth?: number): SectionWidths {
     if (typeof window === "undefined") {
         return fallbackSectionWidths();
@@ -56,6 +60,10 @@ function sumWidths(widths: SectionWidths): number {
     return SECTION_WIDTH_KEYS.reduce((total, key) => total + widths[key], 0);
 }
 
+/**
+ * Parses persisted section widths, accepting legacy states that predate a
+ * separate graph width by falling back to the info width.
+ */
 export function migrateSectionWidths(value: unknown): SectionWidths | undefined {
     if (!value || typeof value !== "object") return undefined;
     const record = value as Record<string, unknown>;
@@ -84,6 +92,10 @@ export function migrateSectionWidths(value: unknown): SectionWidths | undefined 
     };
 }
 
+/**
+ * Scales section widths to the available viewport while preserving proportions
+ * and enforcing the largest possible per-section minimum.
+ */
 export function normalizeSectionWidths(widths: SectionWidths, totalWidth?: number): SectionWidths {
     const available = getAvailableSectionWidth(totalWidth);
     if (available <= 0) return computeEqualSectionWidths(totalWidth);
@@ -120,6 +132,7 @@ export function normalizeSectionWidths(widths: SectionWidths, totalWidth?: numbe
     return normalized;
 }
 
+/** Compares section widths with a sub-pixel tolerance to avoid resize loops. */
 export function sectionWidthsAreClose(a: SectionWidths, b: SectionWidths): boolean {
     return SECTION_WIDTH_KEYS.every((key) => Math.abs(a[key] - b[key]) < 0.5);
 }

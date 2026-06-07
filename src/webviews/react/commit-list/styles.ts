@@ -78,6 +78,7 @@ export const BRANCH_SCOPE_STYLE: CSSProperties = {
     flexShrink: 0,
 };
 
+/** Creates a header row offset that keeps text columns aligned after the graph lanes. */
 export function headerRowStyle(graphWidth: number): CSSProperties {
     return {
         display: "flex",
@@ -99,6 +100,7 @@ export const SCROLL_VIEWPORT_STYLE: CSSProperties = {
     overflow: "auto",
 };
 
+/** Sizes the virtualized commit-list content to the total number of fixed-height rows. */
 export function contentContainerStyle(rowCount: number): CSSProperties {
     return {
         position: "relative",

@@ -1492,6 +1492,52 @@ describe("extension integration", () => {
         expect(executorRun).not.toHaveBeenCalledWith(["pull", "--ff-only", "origin", "main"]);
     });
 
+    it("uses the current-branch merge path when cached branch metadata misses the current flag", async () => {
+        const { activate } = await import("../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+
+        await registeredCommands.get("intelligit.updateBranch")?.({
+            branch: {
+                name: "main",
+                isRemote: false,
+                isCurrent: false,
+                remote: "origin",
+            },
+        });
+
+        expect(executorRun).toHaveBeenCalledWith([
+            "fetch",
+            "origin",
+            "--recurse-submodules=no",
+            "--progress",
+            "--prune",
+        ]);
+        expect(executorRun).toHaveBeenCalledWith([
+            "-c",
+            "credential.helper=",
+            "-c",
+            "core.quotepath=false",
+            "-c",
+            "log.showSignature=false",
+            "merge",
+            "origin/main",
+            "--no-stat",
+            "-v",
+        ]);
+        expect(executorRun).not.toHaveBeenCalledWith([
+            "fetch",
+            "origin",
+            "main:main",
+            "--recurse-submodules=no",
+            "--progress",
+            "--prune",
+        ]);
+    });
+
     it("shows a concise professional update error for fast-forward divergence output", async () => {
         const divergentError = [
             "From github.com:MaheshKok/IntelliGit",
@@ -1508,7 +1554,11 @@ describe("extension integration", () => {
             "fatal: Not possible to fast-forward, aborting.",
         ].join("\n");
         executorRun.mockImplementation(async (args: string[]) => {
-            if (args[0] === "fetch" && args[1] === "origin" && args[2] === "main:main") {
+            if (
+                args[0] === "fetch" &&
+                args[1] === "origin" &&
+                args[2] === "feature-remote:feature-remote"
+            ) {
                 throw new Error(divergentError);
             }
             return defaultExecutorRunImpl(args);
@@ -1522,7 +1572,12 @@ describe("extension integration", () => {
         await activate(context);
 
         await registeredCommands.get("intelligit.updateBranch")?.({
-            branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" },
+            branch: {
+                name: "feature-remote",
+                isRemote: false,
+                isCurrent: false,
+                remote: "origin",
+            },
         });
 
         expect(showErrorMessage).toHaveBeenCalledWith(
@@ -1699,22 +1754,27 @@ describe("extension integration", () => {
         await activate(context);
 
         await registeredCommands.get("intelligit.updateBranch")?.({
-            branch: { name: "main", isRemote: false, isCurrent: false, remote: "origin" },
+            branch: {
+                name: "feature-remote",
+                isRemote: false,
+                isCurrent: false,
+                remote: "origin",
+            },
         });
 
         expect(executorRun).toHaveBeenCalledWith([
             "fetch",
             "origin",
-            "main:main",
+            "feature-remote:feature-remote",
             "--recurse-submodules=no",
             "--progress",
             "--prune",
         ]);
-        expect(executorRun).not.toHaveBeenCalledWith(["checkout", "main"]);
+        expect(executorRun).not.toHaveBeenCalledWith(["checkout", "feature-remote"]);
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
                 location: 15,
-                title: expect.stringContaining("Updating main"),
+                title: expect.stringContaining("Updating feature-remote"),
             }),
             expect.any(Function),
         );

@@ -7,6 +7,12 @@ import { t } from "../shared/i18n";
 type SeparatorAction = `sep-${string}`;
 type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
 
+/**
+ * Builds the commit-row context menu for history actions.
+ *
+ * Edit/rebase-style mutations are disabled for pushed commits and merge commits,
+ * while reset/copy actions remain available according to their own command rules.
+ */
 export function getCommitMenuItems(
     commit: Commit,
     isUnpushed: boolean,

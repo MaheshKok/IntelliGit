@@ -6,22 +6,30 @@ import type { MergeConflictFile } from "../../../types";
 import type { InboundMessage, OutboundMessage } from "../../protocol/mergeConflictSessionTypes";
 import "./merge-conflicts-session.css";
 
+/** Acquires the typed VS Code API for merge-conflict session commands. */
 function getVsCodeApi() {
     return getSharedVsCodeApi<OutboundMessage, unknown>();
 }
 
+/** Returns the display directory for a conflicted path, using `.` at repo root. */
 function directoryName(filePath: string): string {
     const idx = filePath.lastIndexOf("/");
     if (idx <= 0) return ".";
     return filePath.slice(0, idx);
 }
 
+/** Returns the basename portion used in the conflict-session table row. */
 function fileName(filePath: string): string {
     const idx = filePath.lastIndexOf("/");
     if (idx < 0) return filePath;
     return filePath.slice(idx + 1);
 }
 
+/**
+ * Renders the merge-conflict session dashboard, maps extension session data into
+ * selectable rows, posts file-scoped accept/open commands, and sends session-level
+ * refresh/close commands.
+ */
 function App() {
     const [sourceBranch, setSourceBranch] = useState(t("mergeSession.defaultSource"));
     const [targetBranch, setTargetBranch] = useState(t("mergeSession.defaultTarget"));

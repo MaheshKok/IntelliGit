@@ -44,6 +44,14 @@ interface PersistedColumnWidths {
     infoWidth: number;
     commitPanelWidth: number;
 }
+
+/**
+ * Reads persisted undocked column widths while tolerating older payload shapes.
+ *
+ * Older workspaces may not contain `graphWidth`; in that case the previous `infoWidth` value is
+ * used as a compatible fallback. Non-finite or incomplete payloads are rejected so stale memento
+ * data cannot push invalid layout sizes into the webview.
+ */
 function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | undefined {
     if (!value || typeof value !== "object") return undefined;
     const saved = value as Record<string, unknown>;
@@ -69,6 +77,15 @@ function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | u
         commitPanelWidth,
     };
 }
+
+/**
+ * Owns the undocked IntelliGit webview panel that combines graph, commit info, and Changes UI.
+ *
+ * The provider mirrors sidebar commit graph and commit-panel behavior for one active repository,
+ * including pagination, branch filters, commit details, shelves, drafts, and persisted column
+ * widths. Webview messages are validated before Git operations or file actions run, and all
+ * script/resources are loaded from the extension `dist` directory.
+ */
 export class UndockedViewProvider {
     public static readonly viewType = "intelligit.undocked";
     private panel?: vscode.WebviewPanel;
@@ -123,6 +140,12 @@ export class UndockedViewProvider {
     readonly onDidDispose = this._onDidDispose.event;
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
     private static readonly COLUMN_WIDTHS_KEY = "intelligit.undockedColumnWidths";
+    /**
+     * Creates the retained undocked panel controller for one active repository.
+     *
+     * The repository URI scopes file actions, commit drafts, and refresh assumptions, while the
+     * optional memento stores layout and draft state that outlives individual webview panels.
+     */
     constructor(
         private readonly extensionUri: vscode.Uri,
         gitOps: GitOps,
@@ -133,10 +156,19 @@ export class UndockedViewProvider {
         this.repoRootUri = repoRootUri;
         this.iconTheme = new IconThemeService(this.extensionUri);
     }
+    /**
+     * Updates the panel title fragment used when the active repository label changes.
+     */
     setRepositoryLabel(label: string): void {
         this.repositoryLabel = label;
         if (this.panel) this.panel.title = `IntelliGit — ${label}`;
     }
+    /**
+     * Switches the undocked panel to a new active repository and clears repository-scoped caches.
+     *
+     * The panel keeps its VS Code window alive, but graph, working-tree, shelf, and detail caches
+     * are reset so subsequent refreshes cannot display rows from the previous repository.
+     */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
         this.files = [];
@@ -153,6 +185,9 @@ export class UndockedViewProvider {
         this.offset = 0;
         this.loadingMore = false;
     }
+    /**
+     * Replaces the graph branch cache and posts decorated branch metadata when a panel exists.
+     */
     setBranches(branches: Branch[]): void {
         this.branches = branches;
         this.sendBranches().catch((err) => {
@@ -162,6 +197,12 @@ export class UndockedViewProvider {
             );
         });
     }
+    /**
+     * Caches the selected commit detail and decorates it with icon metadata asynchronously.
+     *
+     * A sequence token prevents slower decoration work from overwriting a newer selected commit or
+     * a clear operation.
+     */
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
@@ -175,23 +216,42 @@ export class UndockedViewProvider {
             );
         });
     }
+    /**
+     * Clears the selected commit detail and invalidates pending decoration requests.
+     */
     clearCommitDetail(): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.postToWebview({ type: "clearCommitDetail" });
     }
+    /**
+     * Refreshes graph branches/commits and commit-panel data for the current repository.
+     */
     async refresh(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();
         await this.refreshCommitPanelData(false);
     }
+    /**
+     * Reveals the retained panel when it exists and otherwise leaves state untouched.
+     *
+     * Callers can use this for optional focus commands without accidentally creating a new webview
+     * or resurrecting a disposed panel.
+     */
     reveal(): void {
         if (this.panel) {
             this.panel.reveal();
         }
     }
+    /**
+     * Creates or reveals the retained undocked webview panel.
+     *
+     * A new panel attaches icon-theme resources, registers theme/configuration listeners, and
+     * installs the unified message bridge. Reopening an existing panel only reveals it so webview
+     * state retained by VS Code is preserved.
+     */
     open(): void {
         if (this.panel) {
             this.panel.reveal();
@@ -226,6 +286,9 @@ export class UndockedViewProvider {
             }
         });
     }
+    /**
+     * Disposes the undocked panel, theme listeners, icon resolver, and all host event emitters.
+     */
     dispose(): void {
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
@@ -240,6 +303,13 @@ export class UndockedViewProvider {
         this.panel?.dispose();
     }
     // --- Message handling --------------------------------------------------
+    /**
+     * Dispatches the unified graph, commit-panel, layout, and dock messages from the webview.
+     *
+     * Readiness restores layout settings before expensive Git refreshes so persisted widths are not
+     * overwritten by default webview measurements. Path arrays, shelf indexes, commit hashes, and
+     * branch action names are validated before any Git or VS Code command boundary is crossed.
+     */
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
         const actionDeps = {
             gitOps: this.gitOps,
@@ -439,6 +509,9 @@ export class UndockedViewProvider {
         }
     }
     // --- Graph data fetching ------------------------------------------------
+    /**
+     * Loads the first graph page and ignores stale results from superseded requests.
+     */
     private async loadInitial(): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
@@ -473,6 +546,9 @@ export class UndockedViewProvider {
             this.postToWebview({ type: "loadError", message });
         }
     }
+    /**
+     * Appends the next graph page while preventing duplicate pagination against one offset.
+     */
     private async loadMore(): Promise<void> {
         if (this.loadingMore) return;
         this.loadingMore = true;
@@ -512,6 +588,12 @@ export class UndockedViewProvider {
         await this.loadInitial();
     }
     // --- Commit panel data fetching -----------------------------------------
+    /**
+     * Reloads working-tree files, shelves, selected shelf contents, and upstream status.
+     *
+     * The selected shelf is preserved when still present; otherwise the first shelf is selected.
+     * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
+     */
     private async refreshCommitPanelData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
@@ -563,6 +645,9 @@ export class UndockedViewProvider {
         }
     }
     // --- Branch sending -----------------------------------------------------
+    /**
+     * Sends cached branches with folder icons derived from branch path segments.
+     */
     private async sendBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
@@ -581,6 +666,9 @@ export class UndockedViewProvider {
         return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
     // --- Commit detail ------------------------------------------------------
+    /**
+     * Posts cached commit detail state, or an explicit clear message when no commit is selected.
+     */
     private postCommitDetailState(): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (this.selectedCommitDetail) {
@@ -596,6 +684,9 @@ export class UndockedViewProvider {
         }
         this.postToWebview({ type: "clearCommitDetail" });
     }
+    /**
+     * Decorates commit detail rows and stores them only if the request is still current.
+     */
     private async decorateAndStoreCommitDetail(
         detail: CommitDetail,
         requestId: number,
@@ -607,6 +698,9 @@ export class UndockedViewProvider {
         this.postCommitDetailState();
     }
     // --- HTML generation ----------------------------------------------------
+    /**
+     * Builds the undocked shell HTML with webview-scoped script and resource URIs.
+     */
     private getHtml(webview: vscode.Webview): string {
         return buildWebviewShellHtml({
             extensionUri: this.extensionUri,
@@ -617,12 +711,18 @@ export class UndockedViewProvider {
         });
     }
     // --- Commit draft persistence -------------------------------------------
+    /**
+     * Builds the repository-scoped workspace-state key for the undocked commit draft.
+     */
     private getCommitDraftStorageKey(): string {
         return `${UndockedViewProvider.COMMIT_DRAFT_KEY_PREFIX}${this.repoRootUri.fsPath}`;
     }
     private getStoredCommitDraft(): string {
         return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
     }
+    /**
+     * Sends validated persisted column widths before the webview performs layout writes.
+     */
     private sendPersistedColumnWidths(): void {
         const saved = migratePersistedColumnWidths(
             this.workspaceState?.get(UndockedViewProvider.COLUMN_WIDTHS_KEY),
@@ -643,12 +743,18 @@ export class UndockedViewProvider {
             });
         }
     }
+    /**
+     * Posts layout settings that depend on IntelliGit and VS Code workbench configuration.
+     */
     private sendSettings(): void {
         this.postToWebview({
             type: "settings",
             commitWindowPosition: this.resolveCommitWindowPosition(),
         });
     }
+    /**
+     * Resolves the commit-panel side, falling back to the VS Code sidebar location for `auto`.
+     */
     private resolveCommitWindowPosition(): "left" | "right" {
         const config = vscode.workspace.getConfiguration();
         const rawPosition = config.get<string>("intelligit.commitWindowPosition") ?? "auto";
@@ -656,6 +762,9 @@ export class UndockedViewProvider {
         return config.get<string>("workbench.sideBar.location") === "right" ? "right" : "left";
     }
     // --- Theme change listeners ---------------------------------------------
+    /**
+     * Refreshes theme data from listeners without leaking rejected promises into VS Code callbacks.
+     */
     private refreshThemeDataWithErrorHandling(): void {
         this.refreshThemeData().catch((err) => {
             const message = getErrorMessage(err);
@@ -665,6 +774,9 @@ export class UndockedViewProvider {
             this.postToWebview({ type: "error", message });
         });
     }
+    /**
+     * Reloads icon theme metadata and re-sends branch/detail decoration to the webview.
+     */
     private async refreshThemeData(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();

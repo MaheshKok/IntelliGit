@@ -44,6 +44,13 @@ type RemotePlan = { kind: "existing"; remoteName: string } | { kind: "create"; r
 // Public entry point
 // ---------------------------------------------------------------------------
 
+/**
+ * Publishes the current branch to an existing remote or a newly created provider repository.
+ *
+ * The flow prompts before creating provider resources, stores provider tokens in SecretStorage,
+ * pushes with upstream tracking through GitOps, and reports recoverable provider/Git failures to
+ * the user instead of throwing them past the command handler.
+ */
 export async function runPublishBranchFlow(
     gitOps: GitOps,
     branchName: string,

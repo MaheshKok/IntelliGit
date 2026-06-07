@@ -3,17 +3,26 @@
 
 import type { MergeEditorData, MergeSegment, ConflictSegment, HunkResolution } from "./types";
 
+/**
+ * Reducer state for the merge editor, keeping immutable conflict input separate
+ * from local hunk-resolution choices and load errors.
+ */
 export interface State {
     data: MergeEditorData | null;
     error: string | null;
     resolutions: Record<number, HunkResolution>;
 }
 
+/** Message-shaped reducer actions emitted by the merge editor app shell. */
 export type Action =
     | { type: "SET_DATA"; data: MergeEditorData }
     | { type: "SET_ERROR"; message: string }
     | { type: "RESOLVE_HUNK"; id: number; resolution: HunkResolution };
 
+/**
+ * Applies merge-editor state transitions, resetting hunk resolutions whenever
+ * fresh conflict data arrives from the extension.
+ */
 export function reducer(state: State, action: Action): State {
     switch (action.type) {
         case "SET_DATA":
@@ -30,6 +39,10 @@ export function reducer(state: State, action: Action): State {
     }
 }
 
+/**
+ * Resolves the lines displayed in the result pane for one conflict segment,
+ * including auto-resolution defaults for one-sided changes.
+ */
 export function getResultLines(
     segment: ConflictSegment,
     resolution: HunkResolution | undefined,
@@ -51,6 +64,10 @@ export function getResultLines(
     }
 }
 
+/**
+ * Builds the final file content from common segments and chosen hunk resolutions
+ * while preserving the source file's EOL and trailing-newline contract.
+ */
 export function buildResultContent(
     data: MergeEditorData,
     resolutions: Record<number, HunkResolution>,
@@ -70,6 +87,7 @@ export function buildResultContent(
     return data.hasTrailingNewline ? joined + eol : joined;
 }
 
+/** Returns whether every true conflict has an explicit resolution choice. */
 export function allResolved(
     segments: MergeSegment[],
     resolutions: Record<number, HunkResolution>,
@@ -82,11 +100,13 @@ export function allResolved(
     );
 }
 
+/** Counts only hunks where both sides changed the same base region. */
 export function trueConflictCount(segments: MergeSegment[]): number {
     return segments.filter((seg) => seg.type === "conflict" && seg.changeKind === "conflict")
         .length;
 }
 
+/** Counts true conflicts that already have a selected hunk resolution. */
 export function resolvedTrueConflictCount(
     segments: MergeSegment[],
     resolutions: Record<number, HunkResolution>,
@@ -99,6 +119,7 @@ export function resolvedTrueConflictCount(
     ).length;
 }
 
+/** Counts merge-editor hunks that contribute changes to the requested side pane. */
 export function paneChangeCount(segments: MergeSegment[], side: "ours" | "theirs"): number {
     return segments.filter((seg) => {
         if (seg.type !== "conflict") return false;

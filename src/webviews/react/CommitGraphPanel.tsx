@@ -34,10 +34,15 @@ interface Props {
     sendReady?: boolean;
 }
 
+/** Builds persisted webview-state keys without adding a leading separator. */
 function stateKey(prefix: string, key: string): string {
     return prefix ? `${prefix}.${key}` : key;
 }
 
+/**
+ * Creates a column-resize mouse handler that clamps a single panel width and
+ * cleans global drag listeners when the drag completes or the component unmounts.
+ */
 function useColumnDrag(
     width: number,
     setWidth: React.Dispatch<React.SetStateAction<number>>,
@@ -97,6 +102,10 @@ function useColumnDrag(
     );
 }
 
+/**
+ * Coordinates the full commit graph webview: branch filtering, virtualized
+ * commit history, detail pane updates, extension messages, and persisted column widths.
+ */
 export function CommitGraphPanel({
     vscode,
     stateKeyPrefix = "",

@@ -6,16 +6,33 @@ import { assertRepoRelativePath } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
 import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
 
+/**
+ * Branch labels shown in the merge-conflict session panel header.
+ *
+ * Empty or whitespace-only values are ignored so reopening an existing panel cannot erase the
+ * last meaningful source/target labels while a merge operation is still active.
+ */
 interface MergeConflictSessionLabels {
     sourceBranch?: string;
     targetBranch?: string;
 }
 
+/**
+ * Host-side actions invoked by validated merge-conflict webview messages.
+ */
 interface MergeConflictSessionCallbacks {
     onOpenMergeConflict: (filePath: string) => Promise<void>;
     onConflictStateChanged: () => Promise<void>;
 }
 
+/**
+ * Owns the singleton merge-conflict session webview panel.
+ *
+ * The panel lists detailed conflict files for the active repository and accepts only readiness,
+ * refresh, open-merge, accept-side, and close messages. File paths from the webview are optional
+ * user input until validated, and side-accepting commands always refresh conflict state before
+ * optionally closing the panel after all conflicts are resolved.
+ */
 export class MergeConflictSessionPanel {
     private static currentPanel: MergeConflictSessionPanel | undefined;
 
@@ -24,6 +41,9 @@ export class MergeConflictSessionPanel {
     private sourceBranch = "incoming branch";
     private targetBranch = "current branch";
 
+    /**
+     * Binds panel HTML, message handling, and disposal tracking for a newly created panel.
+     */
     private constructor(
         panel: vscode.WebviewPanel,
         private readonly extensionUri: vscode.Uri,
@@ -61,6 +81,12 @@ export class MergeConflictSessionPanel {
         });
     }
 
+    /**
+     * Opens or reveals the singleton conflict session panel for the active repository.
+     *
+     * Reusing an existing panel updates branch labels and callbacks, then refreshes its session
+     * data without closing it even if the latest conflict list is empty.
+     */
     static async open(
         extensionUri: vscode.Uri,
         gitOps: GitOps,
@@ -98,17 +124,26 @@ export class MergeConflictSessionPanel {
         await instance.postSessionData({ closeWhenResolved: false });
     }
 
+    /**
+     * Refreshes the open conflict session and closes it when all conflicts have been resolved.
+     */
     static async refreshIfOpen(): Promise<void> {
         const existing = MergeConflictSessionPanel.currentPanel;
         if (!existing || existing.disposed) return;
         await existing.postSessionData({ closeWhenResolved: true });
     }
 
+    /**
+     * Reports whether the singleton panel is still alive for command enablement checks.
+     */
     static isOpen(): boolean {
         const panel = MergeConflictSessionPanel.currentPanel;
         return !!panel && !panel.disposed;
     }
 
+    /**
+     * Applies non-empty branch labels while preserving previous fallback labels.
+     */
     private updateLabels(labels: MergeConflictSessionLabels): void {
         const source = labels.sourceBranch?.trim();
         const target = labels.targetBranch?.trim();
@@ -116,10 +151,19 @@ export class MergeConflictSessionPanel {
         this.targetBranch = target || this.targetBranch;
     }
 
+    /**
+     * Replaces host callbacks when an existing panel is reused for a new activation context.
+     */
     private updateCallbacks(callbacks: MergeConflictSessionCallbacks): void {
         this.callbacks = callbacks;
     }
 
+    /**
+     * Validates and handles messages from the conflict session webview.
+     *
+     * Unknown message types are ignored. Empty or missing file paths are treated as no-ops, while
+     * accept-side operations additionally validate repository-relative paths before invoking Git.
+     */
     private async handleMessage(raw: unknown): Promise<void> {
         const msg = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
         const type = typeof msg.type === "string" ? msg.type : "";
@@ -176,6 +220,9 @@ export class MergeConflictSessionPanel {
         }
     }
 
+    /**
+     * Extracts a non-empty file path from webview input without treating absence as an error.
+     */
     private getFilePath(value: unknown): string | null {
         if (typeof value !== "string") return null;
         return value.trim().length > 0 ? value : null;
@@ -185,6 +232,12 @@ export class MergeConflictSessionPanel {
         return !this.disposed;
     }
 
+    /**
+     * Posts the latest conflict file details and optionally closes when the list becomes empty.
+     *
+     * Liveness checks bracket Git reads and postMessage calls because the user may close the panel
+     * while a refresh or accept-side operation is awaiting asynchronous work.
+     */
     private async postSessionData(options: { closeWhenResolved: boolean }): Promise<void> {
         if (!this.isAlive()) return;
         const files = await this.gitOps.getConflictFilesDetailed();
@@ -207,6 +260,9 @@ export class MergeConflictSessionPanel {
         await this.panel.webview.postMessage({ type: "setSessionData", data });
     }
 
+    /**
+     * Builds the conflict session shell with script and style resources scoped to the webview.
+     */
     private getHtml(webview: vscode.Webview): string {
         return buildWebviewShellHtml({
             extensionUri: this.extensionUri,

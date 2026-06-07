@@ -2,6 +2,7 @@
 
 import React from "react";
 
+/** Right-pointing arrow used for accepting the left-side change into the result pane. */
 export function IconArrowRight(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -10,6 +11,7 @@ export function IconArrowRight(): React.ReactElement {
     );
 }
 
+/** Left-pointing arrow used for accepting the right-side change into the result pane. */
 export function IconArrowLeft(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -18,6 +20,7 @@ export function IconArrowLeft(): React.ReactElement {
     );
 }
 
+/** Up chevron used by previous-conflict navigation controls. */
 export function IconChevronUp(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -26,6 +29,7 @@ export function IconChevronUp(): React.ReactElement {
     );
 }
 
+/** Down chevron used by next-conflict and dropdown controls. */
 export function IconChevronDown(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -34,6 +38,7 @@ export function IconChevronDown(): React.ReactElement {
     );
 }
 
+/** Close glyph used for drop/discard hunk actions. */
 export function IconClose(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -45,6 +50,7 @@ export function IconClose(): React.ReactElement {
     );
 }
 
+/** Spark glyph used for the apply-non-conflicting-changes action. */
 export function IconSpark(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -56,6 +62,7 @@ export function IconSpark(): React.ReactElement {
     );
 }
 
+/** Eye glyph used by word-highlight visibility controls. */
 export function IconEye(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -67,6 +74,7 @@ export function IconEye(): React.ReactElement {
     );
 }
 
+/** Filter glyph used by ignore-mode controls. */
 export function IconFilter(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -75,6 +83,7 @@ export function IconFilter(): React.ReactElement {
     );
 }
 
+/** Lock glyph marking read-only source panes. */
 export function IconLock(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -86,6 +95,7 @@ export function IconLock(): React.ReactElement {
     );
 }
 
+/** Warning glyph used for unresolved-conflict status badges. */
 export function IconWarning(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -97,6 +107,7 @@ export function IconWarning(): React.ReactElement {
     );
 }
 
+/** Check glyph used for resolved-conflict status badges. */
 export function IconCheck(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -105,6 +116,7 @@ export function IconCheck(): React.ReactElement {
     );
 }
 
+/** Split-arrows glyph used for accepting both sides of a true conflict. */
 export function IconSplitBoth(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
@@ -116,6 +128,7 @@ export function IconSplitBoth(): React.ReactElement {
     );
 }
 
+/** Small neutral status dot used for muted merge hunk states. */
 export function IconDot(): React.ReactElement {
     return (
         <svg viewBox="0 0 16 16" width="8" height="8" aria-hidden="true">

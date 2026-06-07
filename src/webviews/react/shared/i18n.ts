@@ -10,6 +10,13 @@ interface IntelligitI18nPayload {
 
 type InterpolationArgs = Record<string, string | number | boolean>;
 
+/**
+ * Resolves a localized webview string from the injected catalog payload.
+ *
+ * Lookup prefers the active locale, falls back to the fallback catalog, applies
+ * plural category selection when the catalog value is pluralized, and leaves
+ * unknown `{placeholder}` tokens intact if no interpolation value is provided.
+ */
 export function t(key: string, args: InterpolationArgs = {}): string {
     const payload = getPayload();
     const value = payload?.catalog[key] ?? payload?.fallbackCatalog[key];

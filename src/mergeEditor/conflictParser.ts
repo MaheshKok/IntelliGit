@@ -2,6 +2,10 @@
 // for display in a 3-way merge editor. Uses a simple line-based diff to
 // identify common regions and conflict hunks.
 
+/**
+ * A contiguous span that both sides resolve to the same content.
+ * The merge editor renders these lines once because they do not need user choice.
+ */
 export interface CommonSegment {
     type: "common";
     lines: string[];
@@ -9,6 +13,10 @@ export interface CommonSegment {
 
 type ConflictChangeKind = "conflict" | "ours-only" | "theirs-only";
 
+/**
+ * A divergent span produced by comparing ours and theirs against the shared base.
+ * `changeKind` records whether both sides changed or only one side diverged from base.
+ */
 export interface ConflictSegment {
     type: "conflict";
     id: number;
@@ -18,8 +26,15 @@ export interface ConflictSegment {
     baseLines: string[];
 }
 
+/**
+ * Ordered line-based segment stream consumed by the React merge editor.
+ */
 export type MergeSegment = CommonSegment | ConflictSegment;
 
+/**
+ * Serialized merge-editor payload for one file and the labels used for each side.
+ * End-of-line metadata lets the save path preserve the original file shape when possible.
+ */
 export interface MergeEditorData {
     filePath: string;
     segments: MergeSegment[];
@@ -30,15 +45,16 @@ export interface MergeEditorData {
     diffOptions?: MergeDiffOptions;
 }
 
+/**
+ * Options that alter line comparison without mutating the original displayed lines.
+ */
 export interface MergeDiffOptions {
     ignoreWhitespace?: boolean;
 }
 
 /**
- * Parse three file versions into merge segments by comparing each side
- * against the base version. Regions where both sides match the base (or
- * each other) are "common"; regions where either side diverges are
- * "conflict".
+ * Parse three file versions into merge segments by comparing each side against the base version.
+ * Equal side output becomes a common segment; any side divergence is emitted as a conflict segment.
  */
 export function parseConflictVersions(
     base: string,

@@ -1,3 +1,10 @@
+/**
+ * Git branch metadata shared by extension-host services and webview branch renderers.
+ *
+ * The branch name is the display/action name accepted by Git commands. Remote-only
+ * branches set `isRemote` and may omit `remote` when the upstream cannot be parsed
+ * from Git's branch listing output.
+ */
 export interface Branch {
     name: string;
     hash: string;
@@ -9,6 +16,13 @@ export interface Branch {
     behind: number;
 }
 
+/**
+ * Resolved icon payload that can be rendered inside VS Code webviews.
+ *
+ * A URI points to a webview-safe image resource, while glyph metadata mirrors icon
+ * fonts from the active file icon theme. Consumers should prefer `uri` when present
+ * and fall back to glyph rendering only when image data is unavailable.
+ */
 export interface ThemeTreeIcon {
     uri?: string;
     glyph?: string;
@@ -24,8 +38,17 @@ interface ThemeNamedFolderIcon {
     expanded?: ThemeTreeIcon;
 }
 
+/**
+ * Maps file-icon-theme folder names to their collapsed and expanded webview icons.
+ */
 export type ThemeFolderIconMap = Record<string, ThemeNamedFolderIcon>;
 
+/**
+ * Font-face descriptor extracted from the active file icon theme for webview use.
+ *
+ * The extension host resolves the source path before sending it across the webview
+ * boundary so React code can inject CSS without touching local filesystem paths.
+ */
 export interface ThemeIconFont {
     fontFamily: string;
     src: string;
@@ -34,6 +57,12 @@ export interface ThemeIconFont {
     style?: string;
 }
 
+/**
+ * Compact commit row used by graph, history, and branch-aware webview lists.
+ *
+ * `hash` remains the stable action identifier; `shortHash` and `refs` are display
+ * metadata parsed from Git output and should not be used as unique keys.
+ */
 export interface Commit {
     hash: string;
     shortHash: string;
@@ -45,6 +74,12 @@ export interface Commit {
     refs: string[];
 }
 
+/**
+ * Per-file change summary for a committed revision.
+ *
+ * Status codes follow Git numstat/name-status semantics and may include rename or
+ * copy entries where `path` is the post-change display path.
+ */
 export interface CommitFile {
     path: string;
     status: "A" | "M" | "D" | "R" | "C" | "T";
@@ -53,6 +88,12 @@ export interface CommitFile {
     icon?: ThemeTreeIcon;
 }
 
+/**
+ * Full commit detail payload sent to panes that render metadata and changed files.
+ *
+ * The file list is already normalized for webview display; consumers should request
+ * fresh details by `hash` rather than mutating this payload when a repository changes.
+ */
 export interface CommitDetail {
     hash: string;
     shortHash: string;
@@ -66,6 +107,13 @@ export interface CommitDetail {
     files: CommitFile[];
 }
 
+/**
+ * Working-tree file state shared between the extension host and commit panel.
+ *
+ * Paths are repository-relative action identifiers. `staged` describes whether the
+ * entry came from the index side of Git status, not whether every change for that
+ * path is staged.
+ */
 export interface WorkingFile {
     path: string;
     status: "M" | "A" | "D" | "U" | "?" | "R" | "C";
@@ -82,6 +130,12 @@ export interface AmendBranchCommitSummary {
     date: string;
 }
 
+/**
+ * Stash entry metadata parsed from Git's stash list for panel display and actions.
+ *
+ * The numeric `index` maps to the current `stash@{n}` position, so consumers must
+ * refresh before acting if the stash stack may have changed.
+ */
 export interface StashEntry {
     index: number;
     message: string;
@@ -91,6 +145,12 @@ export interface StashEntry {
 
 type MergeConflictSideState = "Modified" | "Added" | "Deleted";
 
+/**
+ * Conflict entry shown in the merge-conflict session UI.
+ *
+ * `path` is repository-relative, `code` is the Git status pair, and the side states
+ * describe how ours/theirs changed the file so the UI can label accept actions.
+ */
 export interface MergeConflictFile {
     path: string;
     code: string;

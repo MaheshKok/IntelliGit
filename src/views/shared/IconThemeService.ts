@@ -9,6 +9,13 @@ import type {
 import { FileIconThemeResolver, type ThemeFolderIcons } from "../../utils/fileIconTheme";
 import { registerThemeChangeListeners, disposeAll } from "./themeListeners";
 
+/**
+ * Owns file-icon-theme resolution and cached icon metadata for a single attached webview.
+ *
+ * View providers attach their current webview during resolution. The service then expands webview
+ * resource roots for theme assets, caches folder icons/fonts, marks caches dirty on theme changes,
+ * and releases per-webview listeners when the owning view is disposed.
+ */
 export class IconThemeService implements vscode.Disposable {
     private webview?: vscode.Webview;
     private iconResolver?: FileIconThemeResolver;
@@ -20,8 +27,20 @@ export class IconThemeService implements vscode.Disposable {
     private iconThemeDisposables: vscode.Disposable[] = [];
     private disposed = false;
 
+    /**
+     * Creates an inert icon-theme cache scoped to the extension installation.
+     *
+     * Theme resources cannot be resolved until a VS Code webview is attached because URI rewriting
+     * and CSP resource roots are webview-specific.
+     */
     constructor(private readonly extensionUri: vscode.Uri) {}
 
+    /**
+     * Rebinds the service to the currently resolved VS Code webview.
+     *
+     * Any previous resolver and theme listeners are disposed first so a restored or replaced view
+     * cannot keep stale resource roots, then cached theme data is marked dirty for reinitialization.
+     */
     attachWebview(webview: vscode.Webview): void {
         this.disposeResolver();
         this.disposeIconThemeDisposables();
@@ -34,14 +53,32 @@ export class IconThemeService implements vscode.Disposable {
         this.registerIconThemeListeners();
     }
 
+    /**
+     * Returns the last initialized folder icon pair without triggering I/O.
+     *
+     * Callers that require fresh theme data should await {@link initIconThemeData} before reading
+     * this snapshot; before initialization the fallback is an empty icon set.
+     */
     getFolderIcons(): ThemeFolderIcons {
         return this.folderIcons;
     }
 
+    /**
+     * Returns cached icon font declarations for webview messages.
+     *
+     * The array reflects the last successful theme initialization and remains empty when no webview
+     * resolver is attached or the active icon theme does not provide custom fonts.
+     */
     getIconFonts(): ThemeIconFont[] {
         return this.iconFonts;
     }
 
+    /**
+     * Returns a single snapshot of cached folder icons and icon fonts for posting to a webview.
+     *
+     * This helper avoids reading the two caches at different times, but it still does not refresh
+     * dirty data; providers call {@link initIconThemeData} before emitting theme-sensitive payloads.
+     */
     getThemeData(): { folderIcons: ThemeFolderIcons; iconFonts: ThemeIconFont[] } {
         return {
             folderIcons: this.folderIcons,
@@ -49,6 +86,13 @@ export class IconThemeService implements vscode.Disposable {
         };
     }
 
+    /**
+     * Initializes or refreshes icon-theme data for the attached webview.
+     *
+     * The method is a no-op until a webview resolver exists. When the theme resource root changes,
+     * it merges the extension `dist` root and theme root into `localResourceRoots` so generated icon
+     * and font URIs remain loadable under the webview CSP.
+     */
     async initIconThemeData(): Promise<void> {
         if (!this.iconResolver || !this.webview) return;
         if (!this.iconThemeDirty && this.iconThemeInitialized) return;
@@ -84,17 +128,35 @@ export class IconThemeService implements vscode.Disposable {
         this.iconThemeInitialized = true;
     }
 
+    /**
+     * Decorates commit-detail file rows with the current file icon theme when available.
+     *
+     * If a provider calls this before webview attachment, the original detail is returned unchanged
+     * so cached commit state can still be posted later without failing the view lifecycle.
+     */
     async decorateCommitDetail(detail: CommitDetail): Promise<CommitDetail> {
         if (!this.iconResolver) return detail;
         const files = await this.iconResolver.decorateCommitFiles(detail.files);
         return { ...detail, files };
     }
 
+    /**
+     * Decorates working-tree rows with file icons while preserving no-webview fallback behavior.
+     *
+     * Returning the original array when no resolver is attached lets refreshes run during early
+     * activation or disposal races without blocking repository state updates.
+     */
     async decorateWorkingFiles(files: WorkingFile[]): Promise<WorkingFile[]> {
         if (!this.iconResolver) return files;
         return this.iconResolver.decorateWorkingFiles(files);
     }
 
+    /**
+     * Decorates commit details and derives folder icon metadata in one theme-initialized pass.
+     *
+     * Providers remain responsible for sequence checks before storing the result because icon-theme
+     * work can finish after a newer commit selection has replaced the original detail.
+     */
     async decorateCommitDetailWithFolderIcons(detail: CommitDetail): Promise<{
         detail: CommitDetail;
         folderIconsByName: ThemeFolderIconMap;
@@ -108,16 +170,34 @@ export class IconThemeService implements vscode.Disposable {
         };
     }
 
+    /**
+     * Resolves folder icons for the parent directories present in commit-detail file rows.
+     *
+     * Theme data is initialized first so callers receive a map suitable for immediate webview
+     * posting, with the empty map as the fallback when no resolver is attached.
+     */
     async getFolderIconsByCommitFiles(files: CommitDetail["files"]): Promise<ThemeFolderIconMap> {
         await this.initIconThemeData();
         return this.getFolderIconsByPaths(files.map((file) => file.path));
     }
 
+    /**
+     * Resolves folder icons for the parent directories present in working-tree rows.
+     *
+     * Paths are treated as repository-relative display paths, not filesystem paths, so literal Git
+     * output is split only on `/` for icon-name extraction.
+     */
     async getFolderIconsByWorkingFiles(files: WorkingFile[]): Promise<ThemeFolderIconMap> {
         await this.initIconThemeData();
         return this.getFolderIconsByPaths(files.map((file) => file.path));
     }
 
+    /**
+     * Resolves folder icons for slash-separated branch name segments.
+     *
+     * Remote branch names drop their remote prefix before segment extraction, and leaf branch names
+     * are ignored so only folder-like prefixes such as `feature/` request theme folder icons.
+     */
     async getFolderIconsByBranches(branches: Branch[]): Promise<ThemeFolderIconMap> {
         await this.initIconThemeData();
         const names: string[] = [];
@@ -146,12 +226,24 @@ export class IconThemeService implements vscode.Disposable {
         return this.getFolderIconsByNames(names);
     }
 
+    /**
+     * Resolves theme folder icons for already extracted folder names.
+     *
+     * Duplicate handling and icon fallback behavior live in the resolver; this boundary guarantees
+     * theme initialization and returns an empty map when no webview resolver is available.
+     */
     async getFolderIconsByNames(names: string[]): Promise<ThemeFolderIconMap> {
         await this.initIconThemeData();
         if (!this.iconResolver) return {};
         return this.iconResolver.getFolderIconsByName(names);
     }
 
+    /**
+     * Idempotently releases webview-specific icon resources and marks cached data stale.
+     *
+     * Providers may call dispose on view disposal and replacement paths; the next attachment will
+     * create a fresh resolver and re-expand resource roots for that webview.
+     */
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;

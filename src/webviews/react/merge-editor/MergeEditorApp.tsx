@@ -46,12 +46,18 @@ const EMPTY_SEGMENTS: MergeSegment[] = [];
 
 // --- VS Code API ---
 
+/** Acquires the typed VS Code API for the interactive three-way merge editor. */
 function getVsCodeApi() {
     return getSharedVsCodeApi<OutboundMessage, unknown>();
 }
 
 // --- App ---
 
+/**
+ * Hosts the three-way merge editor, translating conflict data into synchronized
+ * pane rows, local hunk resolutions, overview markers, keyboard navigation, and
+ * extension apply/ignore-mode commands.
+ */
 function App() {
     const [state, dispatch] = useReducer(reducer, { data: null, error: null, resolutions: {} });
     const [showDetails, setShowDetails] = useState(false);

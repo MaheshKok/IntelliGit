@@ -13,6 +13,12 @@ import {
 } from "../services/gitHelpers";
 import type { CommitActionContext } from "./commitActionContext";
 
+/**
+ * Copies the commit graph action's validated revision to the VS Code clipboard.
+ *
+ * This action shows a success notification, does not refresh views, and intentionally performs no
+ * Git mutation. Clipboard API failures are not caught here and propagate to the command runner.
+ */
 export async function copyRevision(ctx: CommitActionContext): Promise<void> {
     await vscode.env.clipboard.writeText(ctx.validatedHash);
     vscode.window.showInformationMessage(
@@ -20,6 +26,13 @@ export async function copyRevision(ctx: CommitActionContext): Promise<void> {
     );
 }
 
+/**
+ * Creates a one-commit patch file for the selected revision through a VS Code save dialog.
+ *
+ * The default target lives under the repository root, but the user-selected URI may point elsewhere.
+ * Git history and the working tree are not modified; write or `format-patch` failures are caught and
+ * shown as VS Code error messages without refreshing IntelliGit views.
+ */
 export async function createPatch(ctx: CommitActionContext): Promise<void> {
     const defaultUri = vscode.Uri.file(path.join(ctx.repoRoot, `${ctx.short}.patch`));
     const targetUri = await vscode.window.showSaveDialog({
@@ -48,6 +61,13 @@ export async function createPatch(ctx: CommitActionContext): Promise<void> {
     }
 }
 
+/**
+ * Cherry-picks the selected commit into the currently checked-out branch after confirmation.
+ *
+ * Merge commits prompt for a mainline parent before running Git. A confirmed cherry-pick can update
+ * HEAD, the index, and the working tree; failures are shown to the user and the views are refreshed
+ * after the Git attempt completes.
+ */
 export async function cherryPick(ctx: CommitActionContext): Promise<void> {
     const cherryPickLabel = vscode.l10n.t("Cherry-pick");
     const confirm = await vscode.window.showWarningMessage(
@@ -80,6 +100,12 @@ export async function cherryPick(ctx: CommitActionContext): Promise<void> {
     }
 }
 
+/**
+ * Checks out the selected commit into detached HEAD state after a modal confirmation.
+ *
+ * The command can replace the current checkout, index, and working tree contents. Git failures are
+ * shown as VS Code errors, and IntelliGit views refresh after the confirmed checkout attempt.
+ */
 export async function checkoutRevision(ctx: CommitActionContext): Promise<void> {
     const checkoutLabel = vscode.l10n.t("Checkout");
     const confirm = await vscode.window.showWarningMessage(
@@ -103,6 +129,13 @@ export async function checkoutRevision(ctx: CommitActionContext): Promise<void> 
     }
 }
 
+/**
+ * Hard-resets the current branch, index, and working tree to the selected commit.
+ *
+ * The modal prompt is the guard for the destructive working-tree/index mutation. Errors are caught
+ * and shown to the user, and the views refresh after a confirmed reset attempt regardless of Git
+ * success.
+ */
 export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void> {
     const resetLabel = vscode.l10n.t("Reset");
     const confirm = await vscode.window.showWarningMessage(
@@ -127,6 +160,13 @@ export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void
     }
 }
 
+/**
+ * Reverts the selected commit with Git's default no-edit message flow after confirmation.
+ *
+ * Merge commits prompt for a mainline parent. The operation creates a new revert commit or leaves
+ * conflict state in the index/working tree; failures are shown in VS Code and views refresh after
+ * the Git attempt.
+ */
 export async function revertCommit(ctx: CommitActionContext): Promise<void> {
     const revertLabel = vscode.l10n.t("Revert");
     const confirm = await vscode.window.showWarningMessage(
@@ -154,6 +194,14 @@ export async function revertCommit(ctx: CommitActionContext): Promise<void> {
     }
 }
 
+/**
+ * Pushes commits through the selected unpushed commit to the current branch's remote branch.
+ *
+ * The handler requires the selected commit to be unpushed and reachable from `HEAD`. When no upstream
+ * exists it asks to set one, then pushes `<validatedHash>:refs/heads/<remoteBranch>` and refreshes
+ * views after the push attempt. Local working tree and index state are not modified, but `push -u`
+ * can update branch upstream configuration and the remote branch history.
+ */
 export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
     if (!(await isCommitUnpushed(ctx.validatedHash, ctx.gitOps))) {
         vscode.window.showErrorMessage(
@@ -275,6 +323,13 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
     }
 }
 
+/**
+ * Creates a local branch ref at the selected commit after prompting for a valid branch name.
+ *
+ * The action does not check out the new branch or change the working tree. Validation and Git
+ * failures are surfaced through VS Code messages, and views refresh after the branch creation
+ * attempt.
+ */
 export async function newBranch(ctx: CommitActionContext): Promise<void> {
     const branchName = await vscode.window.showInputBox({
         prompt: vscode.l10n.t("New branch from {short}", { short: ctx.short }),
@@ -308,6 +363,12 @@ export async function newBranch(ctx: CommitActionContext): Promise<void> {
     }
 }
 
+/**
+ * Creates a local tag ref at the selected commit after prompting for a valid tag name.
+ *
+ * The action mutates only local refs, shows validation or Git failures through VS Code UI, and
+ * refreshes IntelliGit views after the tag creation attempt.
+ */
 export async function newTag(ctx: CommitActionContext): Promise<void> {
     const tagName = await vscode.window.showInputBox({
         prompt: vscode.l10n.t("New tag at {short}", { short: ctx.short }),

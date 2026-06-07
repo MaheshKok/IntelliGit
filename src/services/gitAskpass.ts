@@ -4,13 +4,32 @@ import * as os from "os";
 import * as path from "path";
 import { getErrorMessage } from "../utils/errors";
 
+/**
+ * Credentials passed to Git through a temporary askpass script instead of command-line URLs.
+ *
+ * Callers must provide short-lived provider credentials where possible. The
+ * values are exposed only to the spawned Git process environment and are never
+ * interpolated into remote URLs or user-visible messages by this service.
+ */
 export interface GitAskpassAuth {
+    /** Username Git should receive when it asks for HTTPS credentials. */
     username: string;
+    /** Secret token or password returned only from the generated askpass script. */
     token: string;
 }
 
 type GitAskpassEnv = Record<string, string> & { askpassDir: string };
 
+/**
+ * Runs a Git command with non-interactive HTTPS credentials supplied by askpass.
+ *
+ * The temporary script directory is removed in a `finally` block after Git exits.
+ * Git failures are propagated with stderr/stdout detail so UI services can show
+ * provider-specific errors without this helper deciding how to notify users.
+ *
+ * @param cwd - Absolute or process-relative working directory for the Git process.
+ * @param args - Argument vector passed to `git`; do not include credentials in these values.
+ */
 export async function runGitCommandWithAskpass(
     cwd: string,
     args: string[],
@@ -24,6 +43,13 @@ export async function runGitCommandWithAskpass(
     }
 }
 
+/**
+ * Creates the platform-specific askpass script and environment for a single Git invocation.
+ *
+ * On any write or permission failure the partially created directory is removed
+ * before the original error is rethrown, preventing stale credential scripts in
+ * the system temp directory.
+ */
 async function createAskpassEnv(auth: GitAskpassAuth): Promise<GitAskpassEnv> {
     const askpassDir = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-askpass-"));
     const isWindows = process.platform === "win32";
@@ -67,6 +93,12 @@ async function createAskpassEnv(auth: GitAskpassAuth): Promise<GitAskpassEnv> {
     };
 }
 
+/**
+ * Spawns `git` with inherited process environment plus askpass overrides.
+ *
+ * Terminal prompting is disabled by the caller-provided environment, so rejected
+ * credentials fail fast and return the concise Git error output to the caller.
+ */
 function runGitCommand(cwd: string, args: string[], env: Record<string, string>): Promise<void> {
     return new Promise((resolve, reject) => {
         execFile(

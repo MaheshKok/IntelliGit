@@ -38,6 +38,10 @@ export function isValidBranchName(value: string): boolean {
     return true;
 }
 
+/**
+ * Return a branch name after validating it, or throw with a caller-specific label.
+ * Use this at command and service boundaries before passing user input to git argv.
+ */
 export function assertValidBranchName(value: string, label: string = "branch name"): string {
     if (!isValidBranchName(value)) {
         throw new Error(`Invalid ${label}: ${value}`);
@@ -45,6 +49,10 @@ export function assertValidBranchName(value: string, label: string = "branch nam
     return value;
 }
 
+/**
+ * Validate a git remote name using the stricter subset IntelliGit accepts for CLI arguments.
+ * The helper rejects traversal/control characters and allows only simple name characters.
+ */
 export function isValidRemoteName(value: string): boolean {
     if (!value || value.length > 255) return false;
     if (value.startsWith("-") || value.startsWith(".") || value.endsWith(".")) return false;
@@ -53,6 +61,10 @@ export function isValidRemoteName(value: string): boolean {
     return /^[A-Za-z0-9._-]+$/.test(value);
 }
 
+/**
+ * Return a remote name after validation, or throw with a caller-specific label.
+ * Use this before composing fetch, pull, push, or publish commands from user-visible remotes.
+ */
 export function assertValidRemoteName(value: string, label: string = "remote name"): string {
     if (!isValidRemoteName(value)) {
         throw new Error(`Invalid ${label}: ${value}`);

@@ -1,3 +1,9 @@
+/**
+ * Webview settings injected by the extension before React applications render.
+ *
+ * Consumers must tolerate missing or partially shaped settings because tests,
+ * story-like harnesses, and older webview payloads can omit the global object.
+ */
 export interface IntelligitSettings {
     hoverDelay: number;
     tooltipsEnabled: boolean;
@@ -5,6 +11,12 @@ export interface IntelligitSettings {
     commitWindowPosition: "left" | "right";
 }
 
+/**
+ * Reads IntelliGit webview settings from `window.intelligitSettings` with safe defaults.
+ *
+ * The helper performs defensive runtime checks instead of trusting the injected
+ * global so malformed settings cannot break rendering.
+ */
 export const getSettings = (): IntelligitSettings => {
     const defaultSettings: IntelligitSettings = {
         hoverDelay: 300,

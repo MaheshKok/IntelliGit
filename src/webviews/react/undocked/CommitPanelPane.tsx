@@ -24,6 +24,10 @@ interface CommitPanelPaneProps {
     onToggleGroupBy: () => void;
 }
 
+/**
+ * Embeds the shared commit/shelf tab UI inside the undocked layout while routing
+ * all selection, amend, commit, and grouping callbacks back to the app shell.
+ */
 export function CommitPanelPane({
     width,
     cpState,

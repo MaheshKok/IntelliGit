@@ -28,6 +28,13 @@ const CONTEXT_MENU_STYLE_RULES = `
     }
 `;
 
+/**
+ * Menu item contract consumed by shared JetBrains-style context menus.
+ *
+ * `action` is the stable command identifier returned through `onSelect`, while
+ * `label`, `icon`, `hint`, and `submenu` are display-only metadata. Separator rows
+ * ignore action handling and are rendered as visual dividers.
+ */
 export interface MenuItem {
     label: string;
     action: string;

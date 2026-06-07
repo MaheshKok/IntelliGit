@@ -28,6 +28,13 @@ const sharedTabStyles = {
     _hover: { opacity: 0.9, bg: "rgba(255,255,255,0.02)" },
 } as const;
 
+/**
+ * Hosts the Commit and Shelf tab panels with VS Code sidebar styling.
+ *
+ * Callers provide already-wired panel content, allowing the tab shell to stay
+ * presentation-only while still reflecting the current stash count in the shelf
+ * label.
+ */
 export function TabBar({ stashCount, commitContent, shelfContent }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: t("commit.tab.commit"), content: commitContent },

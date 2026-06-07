@@ -6,11 +6,20 @@ const OUTPUT_CHANNEL_NAME = "IntelliGit";
 
 type VsCodeApi = typeof import("vscode");
 type OutputChannelLike = { appendLine: (value: string) => void };
+
+/** Options that let Git operation helpers mirror logged warnings into VS Code UI. */
 export type GitOpsWarningOptions = { userWarningMessage?: string };
 
 let cachedVsCodeApi: VsCodeApi | null | undefined;
 let outputChannel: OutputChannelLike | undefined;
 
+/**
+ * Lazily resolves the VS Code extension-host API when Git helpers run inside VS Code.
+ *
+ * Tests and non-extension environments cannot import `vscode`; those callers receive
+ * `null`, and the result is cached so repeated warning paths do not repeatedly probe
+ * the module loader.
+ */
 export function getVsCodeApi(): VsCodeApi | null {
     if (cachedVsCodeApi !== undefined) return cachedVsCodeApi;
     try {
@@ -21,6 +30,12 @@ export function getVsCodeApi(): VsCodeApi | null {
     return cachedVsCodeApi;
 }
 
+/**
+ * Returns the shared IntelliGit output channel, falling back to `console.warn` in tests.
+ *
+ * The fallback keeps Git operation warnings visible without requiring callers to mock
+ * the VS Code module when exercising parser and operation-support code outside the host.
+ */
 function getOutputChannel(): OutputChannelLike {
     if (outputChannel) return outputChannel;
     const vscode = getVsCodeApi();
@@ -30,6 +45,13 @@ function getOutputChannel(): OutputChannelLike {
     return outputChannel;
 }
 
+/**
+ * Logs a sanitized Git operation warning and optionally shows a user-facing warning.
+ *
+ * The original error message is written to the IntelliGit output channel for support
+ * diagnostics; stack traces are sanitized before logging. UI warnings are best-effort
+ * and only shown when the VS Code API is available.
+ */
 export function logGitOpsWarning(
     context: string,
     err: unknown,
@@ -49,6 +71,7 @@ export function logGitOpsWarning(
     }
 }
 
+/** Returns the localized warning shown when commit-level numstat cannot be read. */
 export function commitStatsUnavailableMessage(): string {
     const vscode = getVsCodeApi();
     return vscode
@@ -56,6 +79,7 @@ export function commitStatsUnavailableMessage(): string {
         : "Some commit change stats may be unavailable.";
 }
 
+/** Returns the localized warning shown when unstaged working-tree stats are unavailable. */
 export function unstagedStatsUnavailableMessage(): string {
     const vscode = getVsCodeApi();
     return vscode
@@ -63,6 +87,7 @@ export function unstagedStatsUnavailableMessage(): string {
         : "Some unstaged change stats may be unavailable.";
 }
 
+/** Returns the localized warning shown when staged working-tree stats are unavailable. */
 export function stagedStatsUnavailableMessage(): string {
     const vscode = getVsCodeApi();
     return vscode
@@ -70,12 +95,26 @@ export function stagedStatsUnavailableMessage(): string {
         : "Some staged change stats may be unavailable.";
 }
 
+/**
+ * Validates a stash index before it is interpolated into a `stash@{n}` ref.
+ *
+ * @throws When the index is not a non-negative integer.
+ */
 export function assertStashIndex(index: number): void {
     if (!Number.isInteger(index) || index < 0) {
         throw new Error(`Invalid stash index: ${index}`);
     }
 }
 
+/**
+ * Converts user- or webview-provided input into a safe repository-relative Git path.
+ *
+ * Absolute paths, control characters, empty/root selections, and `..` traversal are
+ * rejected before the value is embedded in `git show <ref>:<path>` syntax. Backslashes
+ * are normalized to Git's slash-separated path form after validation.
+ *
+ * @throws When the path cannot be represented as a non-root repository-relative path.
+ */
 export function assertRepoRelativeGitPath(filePath: string): string {
     const trimmed = filePath.trim();
     if (

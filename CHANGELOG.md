@@ -5,6 +5,41 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6] - 2026-06-06
+
+### Added
+
+- Added the TSDoc rollout baseline audit under `docs/tsdocs` with source counts, exported-symbol estimates, documentation block counts, boundary-heavy areas, plugin status, validation script availability, and confirmed phase order.
+- Added the IntelliGit TSDoc standard under `docs/tsdocs`, including the standard block template, tag guidance, examples for the major extension areas, and the rule against type repetition.
+- Added `eslint-plugin-jsdoc` and `eslint-plugin-tsdoc` with TSDoc syntax validation for extension TypeScript and React webview TypeScript/TSX files, without enabling global required-documentation enforcement.
+- Added scoped TSDoc ratchet scaffolding and pilot locked globs for Git executor, shared domain types, shared React menu contracts, and commit graph canvas hook documentation.
+- Documented Git operation contracts across status parsing, log/history loading, branch/remotes, staging, rollback, stash, and conflict helpers, then locked `src/git/**/*.ts` into the TSDoc ratchet.
+- Documented webview protocol contracts for commit graph, commit info, commit panel, merge-conflict session, and undocked messages, then locked `src/webviews/protocol/**/*.ts` into the TSDoc ratchet.
+- Documented service contracts for clone, publish, diff, askpass, Git helpers, JetBrains merge integration, and repository discovery workflows, then locked `src/services/**/*.ts` into the TSDoc ratchet.
+- Documented extension activation lifecycle, repository/no-repository startup modes, command registration wiring, view-event forwarding, and disposable ownership, then locked `src/extension.ts` and `src/activation/**/*.ts` into the TSDoc ratchet.
+- Documented command handler contracts for branch, commit context, basic commit actions, and history mutations, then locked `src/commands/**/*.ts` into the TSDoc ratchet.
+- Documented view provider contracts for commit graph/info/panel, merge-conflict panels, onboarding, undocked views, refresh behavior, message validation, and webview HTML, then locked `src/views/**/*.ts` into the TSDoc ratchet.
+- Documented utility, merge conflict parser, and webview i18n support contracts, then locked `src/utils/**/*.ts`, `src/mergeEditor/**/*.ts`, and `src/webviews/i18n/**/*.ts` into the TSDoc ratchet.
+- Documented React shared settings, localization, VS Code API, file-tree, branch-column, and commit-list model contracts, then locked `src/webviews/react/shared/**/*.{ts,tsx}`, `src/webviews/react/branch-column/**/*.{ts,tsx}`, and `src/webviews/react/commit-list/**/*.{ts,tsx}` into the TSDoc ratchet.
+- Documented commit panel React commit, shelf, file-tree selection, message bridge, and PyCharm-style UI helper contracts, then locked `src/webviews/react/commit-panel/**/*.{ts,tsx}` into the TSDoc ratchet.
+- Documented remaining React app, graph, commit-info, merge-conflict session, merge-editor, and undocked layout contracts, then expanded the React TSDoc ratchet to `src/webviews/react/**/*.{ts,tsx}`.
+- Closed the source documentation ratchet by replacing the piecemeal extension globs with full `src/**/*.ts` coverage while keeping the separate React TS/TSX ratchet and its presentational-component guard.
+- Added long-term TSDoc governance guidance with contributor/reviewer checklists, good/bad comment examples, and stale-documentation maintenance commands.
+
+### Changed
+
+- Linked the TSDoc standard and rollout baseline from the README development documentation.
+- Expanded README development documentation with TSDoc contributor and reviewer expectations.
+
+### Fixed
+
+- Pointed the localization CSV tooling, tests, and workflow documentation at `docs/localization/localization_translation_review.csv` so validation uses the current reviewed-translation source path.
+- Updated existing comments that mentioned Git upstream refs, credential-bearing URLs, and placeholder examples so they pass TSDoc syntax validation without changing runtime behavior.
+
+### Verification
+
+- Verified the documentation baseline, TSDoc standard placement, release metadata, documentation syntax linting, scoped ratchet pilot enforcement, Git contract ratchet enforcement, protocol contract ratchet enforcement, service contract ratchet enforcement, activation-flow contract ratchet enforcement, command handler contract ratchet enforcement, view-provider contract ratchet enforcement, utility and merge-editor contract ratchet enforcement, commit panel React contract ratchet enforcement, remaining React app contract ratchet enforcement, closed source documentation ratchet enforcement, long-term documentation governance guidance, localization path correction, and repository validation gates for the TSDoc rollout phases.
+
 ## [0.9.5] - 2026-06-06
 
 ### Fixed
@@ -13,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep the real-Git pathspec magic regression test portable by skipping the invalid filename scenario on Windows.
 - Strengthen repository discovery coverage for workspace Git root resolution.
 - Exclude local GitNexus code-intelligence metadata from packaged VSIX artifacts.
+- Use the checked-out branch name when updating the selected branch, so stale cached branch metadata still takes the current-branch fetch-then-merge path.
 
 ### Security
 
@@ -21,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verification
 
 - Added regression coverage for whitespace-only conflict session paths being ignored without surfacing an error, and preserved coverage for trailing-space conflict filenames.
+- Added regression coverage for stale current-branch metadata using the checked-out branch update path.
 - Verified platform-safe pathspec behavior, repository discovery resolver expectations, security-doc path cleanup, full project validation, and release package generation.
 
 ## [0.9.4] - 2026-06-04
@@ -132,7 +169,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added VS Code manifest localization via `package.nls.*.json`, including command titles, view titles, configuration labels, configuration descriptions, and enum labels.
 - Added extension-host localization via `l10n/bundle.l10n.*.json` for notifications, prompts, progress messages, quick-pick labels, validation errors, Git operation messages, merge-conflict actions, clone/publish/setup flows, and activity-bar badge tooltips.
 - Added webview localization via `src/webviews/i18n/*.json` for the commit panel, commit graph, branch menus, changed-file UI, commit detail panel, merge editor, conflict session, onboarding, toolbar labels, empty states, status labels, and context menus.
-- Added a single translation review CSV at `docs/localization_translation_review.csv` as the source of truth for all manifest, host, and webview translations.
+- Added a single translation review CSV at `docs/localization/localization_translation_review.csv` as the source of truth for all manifest, host, and webview translations.
 - Added CSV import and validation tooling so reviewed translations can be imported back into generated catalogs instead of editing every locale JSON file by hand.
 - Added localization tests that verify required locale coverage, catalog synchronization, placeholder preservation, plural-category shape, manifest entries, host bundles, and webview bundles.
 - Added a hardcoded-string audit for user-facing source code so new English UI strings are caught when they are not routed through `vscode.l10n.t(...)` or webview `t(...)`.

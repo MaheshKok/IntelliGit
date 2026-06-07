@@ -12,6 +12,14 @@ interface Args {
     graphWidth: number;
 }
 
+/**
+ * Draws the commit graph lanes for the visible portion of a virtualized commit list.
+ *
+ * The hook owns canvas sizing, scroll/resize/theme listeners, and high-DPI scaling.
+ * It intentionally renders only an overscanned viewport slice, so callers must keep
+ * the canvas absolutely positioned over the full row list and provide stable graph
+ * rows whenever commit ordering changes.
+ */
 export function useCommitGraphCanvas({ canvasRef, viewportRef, rows, graphWidth }: Args): void {
     useEffect(() => {
         const canvas = canvasRef.current;

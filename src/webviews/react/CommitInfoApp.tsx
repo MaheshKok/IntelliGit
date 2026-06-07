@@ -10,6 +10,10 @@ import { ThemeIconFontFaces } from "./shared/components";
 
 const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
 
+/**
+ * Hosts the standalone commit-info webview and mirrors extension-owned commit
+ * detail, file-icon theme data, and clear messages into local React state.
+ */
 function App(): React.ReactElement {
     const [detail, setDetail] = useState<CommitDetail | null>(null);
     const [folderIcon, setFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);

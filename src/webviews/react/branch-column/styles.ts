@@ -178,6 +178,7 @@ export const BRANCH_HIGHLIGHT_STYLE: CSSProperties = {
     padding: "0 1px",
 };
 
+/** Rotates the shared chevron glyph without changing its base icon metrics. */
 export function getChevronIconStyle(expanded: boolean): CSSProperties {
     return {
         ...BASE_ICON_STYLE,

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { MIN_SECTION_WIDTH, type SectionWidthKey, type SectionWidths } from "./sectionWidths";
 
+/**
+ * Creates a divider-drag handler that redistributes width between two adjacent
+ * undocked sections while keeping their combined width stable.
+ */
 export function useColumnPairDrag(
     widths: SectionWidths,
     setWidths: (widths: SectionWidths) => void,

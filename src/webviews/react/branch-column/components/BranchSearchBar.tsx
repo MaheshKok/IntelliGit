@@ -3,6 +3,7 @@ import { ClearIcon, SearchIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import { SEARCH_CLEAR_BUTTON_STYLE, SEARCH_CONTAINER_STYLE, SEARCH_INPUT_STYLE } from "../styles";
 
+/** Controlled branch-search state and callbacks owned by the branch column. */
 export interface Props {
     value: string;
     onChange: (value: string) => void;

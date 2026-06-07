@@ -43,6 +43,13 @@ interface Props {
     onToggleGroupBy: () => void;
 }
 
+/**
+ * Renders the working-tree commit workflow and sends toolbar actions to the host.
+ *
+ * The tab owns local refresh feedback, expand/collapse signals, file-row diff
+ * requests, shelf/rollback commands, and the draggable commit-message area while
+ * delegating checked-path state to the root commit-panel app.
+ */
 export function CommitTab({
     files,
     folderIcon,

@@ -1,6 +1,12 @@
 import type { Branch } from "../../../types";
 import type { RemoteGroup, TreeNode } from "./types";
 
+/**
+ * Builds a slash-delimited prefix tree for branch names.
+ *
+ * The optional mapper can strip a remote prefix or otherwise change only the
+ * displayed path; leaf nodes still retain the original branch name for commands.
+ */
 export function buildPrefixTree(
     branches: Branch[],
     nameMapper?: (b: Branch) => string,
@@ -36,6 +42,12 @@ export function buildPrefixTree(
     return root;
 }
 
+/**
+ * Groups remote branches by remote name and builds display trees without remote prefixes.
+ *
+ * The resulting map preserves first-seen remote ordering, which keeps branch
+ * column sections stable across refreshes when Git returns branches consistently.
+ */
 export function buildRemoteGroups(remotes: Branch[]): Map<string, RemoteGroup> {
     const groups = new Map<string, RemoteGroup>();
     for (const branch of remotes) {

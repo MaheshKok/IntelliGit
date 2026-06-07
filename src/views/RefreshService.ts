@@ -13,6 +13,13 @@ import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
 import type { UndockedViewProvider } from "./UndockedViewProvider";
 
+/**
+ * View and Git dependencies coordinated by refresh events for one active repository.
+ *
+ * The service assumes all providers in this bundle already point at the same repository root;
+ * callers must replace or recreate the service when the active repository changes so cached view
+ * state and file watchers do not cross repository boundaries.
+ */
 export interface RefreshServiceDeps {
     gitOps: GitOps;
     commitGraph: CommitGraphViewProvider;
@@ -50,6 +57,13 @@ type RefreshEventType =
     | "git-refs"
     | "git-repository-state";
 
+/**
+ * Coordinates debounced UI refreshes and repository watchers for one active Git root.
+ *
+ * The service owns timers, `.git` filesystem watchers, VS Code Git API listeners, and conflict
+ * badge/context updates. It assumes all injected providers already target the same repository;
+ * dispose and recreate it when the active root changes so cached refresh events cannot cross roots.
+ */
 export class RefreshService implements vscode.Disposable {
     private static readonly lightRefreshSuppressionAfterFullMs = 800;
 
@@ -332,7 +346,12 @@ export class RefreshService implements vscode.Disposable {
     }
 }
 
-/** Normalize paths for repository identity comparisons across platforms. */
+/**
+ * Normalizes paths for repository identity comparisons across platforms.
+ *
+ * VS Code Git API repository roots and the extension's selected root can differ in spelling or
+ * case on Windows, so refresh listener registration compares resolved normalized identities.
+ */
 function normalizedPath(value: string): string {
     const normalized = path.resolve(value);
     return process.platform === "win32" ? normalized.toLowerCase() : normalized;

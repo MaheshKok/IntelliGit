@@ -96,4 +96,10 @@ function FolderRowInner({
     );
 }
 
+/**
+ * Memoized folder row for grouped working-tree entries.
+ *
+ * Expansion and checkbox callbacks stay separate so opening a directory does not
+ * change selection, while the checkbox can toggle all descendant file paths.
+ */
 export const FolderRow = React.memo(FolderRowInner);

@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
 
+/**
+ * Lowercase lookup tables built from installed VS Code language contributions.
+ * File icon resolution uses these maps as a fallback after explicit filenames and extensions.
+ */
 export interface LanguageAssociations {
     byExtension: Map<string, string>;
     byFilename: Map<string, string>;
@@ -17,6 +21,10 @@ interface LanguagePackageJson {
     };
 }
 
+/**
+ * Collect language identifiers from active VS Code extensions without activating new extensions.
+ * Invalid or partial package contributions are ignored so icon decoration can continue safely.
+ */
 export function createLanguageAssociations(): LanguageAssociations {
     const associations: LanguageAssociations = {
         byExtension: new Map<string, string>(),

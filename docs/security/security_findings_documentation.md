@@ -377,7 +377,7 @@ The scan created conflicts in both `foo` and a trailing-space path. Simulating t
 
 ### Issue
 
-The localization workflow documents importing `docs/localization_translation_review.csv` into Google Sheets. The CSV writer quotes fields for CSV syntax, but it does not neutralize formula-leading cells such as `=`, `+`, `-`, or `@`.
+The localization workflow documents importing `docs/localization/localization_translation_review.csv` into Google Sheets. The CSV writer quotes fields for CSV syntax, but it does not neutralize formula-leading cells such as `=`, `+`, `-`, or `@`.
 
 ### Validated Impact
 
@@ -387,7 +387,7 @@ The formatter probe showed values such as `-2+3` and `@cmd` are emitted unchange
 
 1. Attacker influences a localization/catalog value.
 2. Value begins with a spreadsheet formula prefix.
-3. `scripts/localization-csv.js` writes it to `docs/localization_translation_review.csv`.
+3. `scripts/localization-csv.js` writes it to `docs/localization/localization_translation_review.csv`.
 4. Reviewer imports or opens the CSV in a spreadsheet as documented.
 5. Spreadsheet evaluates the formula.
 

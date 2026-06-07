@@ -50,6 +50,11 @@ interface IconThemeContribution {
     id: string;
     path: string;
 }
+
+/**
+ * Resolved folder icon pair from the active VS Code file icon theme.
+ * Missing values mean the theme has no matching folder glyph or asset for that state.
+ */
 export interface ThemeFolderIcons {
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
@@ -284,6 +289,10 @@ function getFolderNameLookupKeys(name: string): string[] {
     }
     return Array.from(keys);
 }
+/**
+ * Resolves VS Code file icon theme contributions into webview-safe icon and font payloads.
+ * The resolver caches parsed theme files and language associations until extension metadata changes.
+ */
 export class FileIconThemeResolver {
     private languageCache:
         | {
@@ -300,6 +309,11 @@ export class FileIconThemeResolver {
           }
         | undefined;
     private readonly extensionsChangeDisposable: vscode.Disposable | undefined;
+
+    /**
+     * Create a resolver bound to one webview so file URIs can be converted to webview URIs.
+     * The resolver listens for extension changes when the VS Code API exposes that event.
+     */
     constructor(private readonly webview: vscode.Webview) {
         try {
             const extensionsApi = (
@@ -538,6 +552,10 @@ export class FileIconThemeResolver {
         const fallbackIconId = isExpanded ? (theme.folderExpanded ?? theme.folder) : theme.folder;
         return this.resolveIcon(fallbackIconId, themeId, theme);
     }
+    /**
+     * Decorate path-bearing records with file icons from the active icon theme.
+     * The original records are copied; if no theme can be resolved, the input array is returned.
+     */
     async decoratePathItems<T extends { path: string; icon?: ThemeTreeIcon }>(
         files: T[],
     ): Promise<T[]> {
@@ -548,12 +566,24 @@ export class FileIconThemeResolver {
             icon: this.resolveFileIconForPath(file.path, resolved.themeId, resolved.parsed),
         }));
     }
+    /**
+     * Decorate working-tree files with icons using the same path matching as VS Code explorer themes.
+     */
     async decorateWorkingFiles(files: WorkingFile[]): Promise<WorkingFile[]> {
         return this.decoratePathItems(files);
     }
+
+    /**
+     * Decorate commit file entries with icons while preserving all commit metadata fields.
+     */
     async decorateCommitFiles(files: CommitFile[]): Promise<CommitFile[]> {
         return this.decoratePathItems(files);
     }
+
+    /**
+     * Resolve generic collapsed and expanded folder icons for the active file icon theme.
+     * Returns an empty object when no compatible theme contribution is available.
+     */
     async getFolderIcons(): Promise<ThemeFolderIcons> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return {};
@@ -566,6 +596,10 @@ export class FileIconThemeResolver {
             ),
         };
     }
+    /**
+     * Resolve named folder icons for normalized folder labels used by tree payloads.
+     * Duplicate, blank, or whitespace-only names are ignored before resolving theme entries.
+     */
     async getFolderIconsByName(folderNames: string[]): Promise<ThemeFolderIconMap> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return {};
@@ -591,6 +625,10 @@ export class FileIconThemeResolver {
         }
         return byName;
     }
+    /**
+     * Return webview-safe `@font-face` payloads for icon-font based theme definitions.
+     * Font sources are converted through the resolver's webview before being sent to React.
+     */
     async getThemeFonts(): Promise<ThemeIconFont[]> {
         const resolved = await this.getParsedTheme();
         if (!resolved) return [];
@@ -609,11 +647,18 @@ export class FileIconThemeResolver {
         }
         return fonts;
     }
+    /**
+     * Return the extension root URI that owns the active icon theme for webview local resource roots.
+     * `null` means no theme contribution could be resolved for the current workbench setting.
+     */
     getThemeResourceRootUri(): vscode.Uri | null {
         const contribution = this.resolveThemeContribution();
         if (!contribution) return null;
         return createFileUri(contribution.extensionPath);
     }
+    /**
+     * Release VS Code extension-change subscriptions owned by this resolver instance.
+     */
     dispose(): void {
         this.extensionsChangeDisposable?.dispose();
     }

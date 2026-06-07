@@ -42,6 +42,12 @@ interface ShelfSelectionDeps extends PanelFileActionDeps {
     }) => void;
 }
 
+/**
+ * Stages repository-relative paths requested by a commit-panel webview.
+ *
+ * Path validation happens inside this boundary before Git sees the list; a successful stage refreshes
+ * panel state and notifies listeners that the working tree changed.
+ */
 export async function stageFilesFromPanel(
     deps: PanelFileActionDeps,
     pathsValue: unknown,
@@ -51,6 +57,12 @@ export async function stageFilesFromPanel(
     deps.fireWorkingTreeChanged();
 }
 
+/**
+ * Unstages repository-relative paths requested by a commit-panel webview.
+ *
+ * The same validation path as staging is used so untrusted webview arrays cannot address paths
+ * outside the active repository before Git index state is refreshed.
+ */
 export async function unstageFilesFromPanel(
     deps: PanelFileActionDeps,
     pathsValue: unknown,
@@ -60,12 +72,24 @@ export async function unstageFilesFromPanel(
     deps.fireWorkingTreeChanged();
 }
 
+/**
+ * Delegates branch publishing to the extension command and refreshes panel state afterward.
+ *
+ * Remote selection, credential prompts, and upstream naming remain owned by the publish command;
+ * this helper only bridges panel UI state back to the active repository view.
+ */
 export async function publishBranchFromPanel(deps: PanelFileActionDeps): Promise<void> {
     await vscode.commands.executeCommand("intelligit.publishBranch");
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
 
+/**
+ * Opens VS Code's Git change view for a validated repository-relative file path.
+ *
+ * The active repository root is supplied by the owning provider; path validation prevents a webview
+ * payload from constructing editor URIs outside that root.
+ */
 export async function showDiffFromPanel(
     deps: PanelFileActionDeps,
     pathValue: unknown,
@@ -75,6 +99,12 @@ export async function showDiffFromPanel(
     await vscode.commands.executeCommand("git.openChange", uri);
 }
 
+/**
+ * Opens an untitled diff document for one file inside a shelved change.
+ *
+ * The shelf index must be finite and the path repository-relative. Empty patch content is converted
+ * into a visible fallback message so the panel action always produces understandable editor output.
+ */
 export async function showShelfDiffFromPanel(
     deps: Pick<PanelFileActionDeps, "gitOps">,
     indexValue: unknown,
@@ -90,6 +120,12 @@ export async function showShelfDiffFromPanel(
     await vscode.window.showTextDocument(doc, { preview: true });
 }
 
+/**
+ * Opens a validated repository file in the editor without mutating Git state.
+ *
+ * The workspace root comes from the active provider, making this action safe for both docked and
+ * undocked panels as long as their repository root assumptions stay in sync.
+ */
 export async function openFileFromPanel(
     deps: PanelFileActionDeps,
     pathValue: unknown,
@@ -99,6 +135,12 @@ export async function openFileFromPanel(
     await vscode.window.showTextDocument(uri);
 }
 
+/**
+ * Confirms and deletes a repository-relative file selected from the commit panel.
+ *
+ * Deletion uses the shared Git/filesystem fallback helper, then refreshes and emits change events
+ * only when a file was actually removed.
+ */
 export async function deleteFileFromPanel(
     deps: PanelFileActionDeps,
     pathValue: unknown,
@@ -118,6 +160,12 @@ export async function deleteFileFromPanel(
     deps.fireWorkingTreeChanged();
 }
 
+/**
+ * Opens a read-only history document for a validated repository-relative file path.
+ *
+ * History content comes from Git and is shown as a preview editor; an empty Git result becomes a
+ * stable fallback message instead of an empty buffer.
+ */
 export async function showHistoryFromPanel(
     deps: PanelFileActionDeps,
     pathValue: unknown,
@@ -131,6 +179,12 @@ export async function showHistoryFromPanel(
     await vscode.window.showTextDocument(doc, { preview: true });
 }
 
+/**
+ * Loads a shelf selection, decorates its files, and posts a full panel update.
+ *
+ * Selecting a shelf does not mutate the repository. It refreshes provider-held shelf state and
+ * includes current branch upstream status so push-related UI stays consistent with working files.
+ */
 export async function selectShelfFromPanel(
     deps: ShelfSelectionDeps,
     indexValue: unknown,

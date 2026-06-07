@@ -35,6 +35,13 @@ function withFolderMetadata(folder: GenericTreeFolder<WorkingFile>): TreeNode {
     };
 }
 
+/**
+ * Builds the commit-panel file tree for the current grouping mode.
+ *
+ * Flat mode preserves one leaf per working-tree file. Directory mode delegates
+ * path grouping to the shared file-tree helper, then adds `descendantFiles` to
+ * folder nodes so folder-level selection can operate on stable file paths.
+ */
 export function useFileTree(files: WorkingFile[], groupByDir: boolean): TreeEntry[] {
     return useMemo(() => {
         if (!groupByDir) {
@@ -44,5 +51,5 @@ export function useFileTree(files: WorkingFile[], groupByDir: boolean): TreeEntr
     }, [files, groupByDir]);
 }
 
-/** Collect all directory paths in a tree. */
+/** Collects directory paths from a grouped tree for expand-all and collapse-all state. */
 export { collectDirPaths as collectAllDirPaths } from "../../shared/fileTree";

@@ -1,6 +1,12 @@
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { getLeafName } from "./path";
 
+/**
+ * Resolves the best folder icon for a tree row.
+ *
+ * Named folder icons are matched by the lower-cased path leaf first, then the
+ * expanded/default theme icons are used as fallbacks without mutating the icon maps.
+ */
 export function resolveFolderIcon(
     nameOrPath: string,
     isExpanded: boolean,

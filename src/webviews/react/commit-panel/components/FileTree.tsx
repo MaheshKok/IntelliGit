@@ -28,6 +28,13 @@ interface Props {
     collapseAllSignal: number;
 }
 
+/**
+ * Renders tracked and unversioned working-tree files with optional directory grouping.
+ *
+ * The tree owns only UI expansion state. Selection and diff requests are routed
+ * through callbacks so the parent can keep checked paths stable across refreshes
+ * and send host messages for file opens.
+ */
 export function FileTree({
     files,
     groupByDir,

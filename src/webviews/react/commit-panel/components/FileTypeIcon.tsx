@@ -13,4 +13,7 @@ function FileTypeIconInner({ status, icon }: Props): React.ReactElement {
     return <TreeFileIcon status={status} icon={icon} />;
 }
 
+/**
+ * Memoized bridge from commit-panel file rows to the shared theme-aware file icon.
+ */
 export const FileTypeIcon = React.memo(FileTypeIconInner);

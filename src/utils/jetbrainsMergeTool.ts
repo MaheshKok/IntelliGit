@@ -3,6 +3,10 @@ import * as path from "path";
 import { spawn } from "child_process";
 import { constants as fsConstants, promises as fsp } from "fs";
 
+/**
+ * Inputs required to launch a JetBrains IDE three-way merge session for one conflicted file.
+ * Paths are already validated by callers; file contents are written to temporary side files.
+ */
 export interface JetBrainsMergeToolLaunchInput {
     binaryPath: string;
     repoRootFsPath: string;
@@ -13,6 +17,10 @@ export interface JetBrainsMergeToolLaunchInput {
     theirsContent: string;
 }
 
+/**
+ * Process completion details returned after the external JetBrains merge tool exits.
+ * Non-zero exits with stderr are surfaced as thrown errors before this result is produced.
+ */
 export interface JetBrainsMergeToolLaunchResult {
     exitCode: number | null;
     signal: NodeJS.Signals | null;
@@ -380,11 +388,19 @@ async function detectWindowsJetBrainsExecutableCandidates(): Promise<DetectedJet
     return Array.from(unique.values()).sort(rankCandidates);
 }
 
+/**
+ * Return the highest-ranked installed JetBrains merge tool candidate for the current platform.
+ * Detection scans known app locations and returns `null` when no supported IDE is found.
+ */
 export async function detectInstalledJetBrainsMergeToolPath(): Promise<string | null> {
     const candidates = await detectInstalledJetBrainsMergeToolCandidates();
     return candidates[0] ?? null;
 }
 
+/**
+ * Return installed JetBrains merge launch paths ordered by product preference and recency.
+ * Detection failures are intentionally swallowed so command enablement can fall back cleanly.
+ */
 export async function detectInstalledJetBrainsMergeToolCandidates(): Promise<string[]> {
     try {
         if (process.platform === "darwin") {
@@ -401,6 +417,10 @@ export async function detectInstalledJetBrainsMergeToolCandidates(): Promise<str
     }
 }
 
+/**
+ * Resolve a configured JetBrains merge path into an executable binary path.
+ * macOS `.app` bundles are inspected for their launcher; other platforms require an absolute path.
+ */
 export async function resolveJetBrainsMergeBinaryPath(binaryPath: string): Promise<string> {
     const trimmed = binaryPath.trim();
     if (!trimmed) throw new Error("JetBrains merge tool path is empty.");
@@ -433,6 +453,10 @@ function buildTempFileNames(relativeFilePath: string): {
     };
 }
 
+/**
+ * Detect a complete Git conflict-marker block with a linear scan over file text.
+ * The scan requires `<<<<<<<`, `=======`, and `>>>>>>>` in order and avoids regex backtracking.
+ */
 export function containsConflictMarkers(text: string): boolean {
     let state: "none" | "ours" | "theirs" = "none";
 
@@ -454,6 +478,10 @@ export function containsConflictMarkers(text: string): boolean {
     return false;
 }
 
+/**
+ * Write base/ours/theirs snapshots to temporary files and launch the JetBrains merge command.
+ * Temporary files are always removed after the process closes or fails to start.
+ */
 export async function launchJetBrainsMergeTool(
     input: JetBrainsMergeToolLaunchInput,
 ): Promise<JetBrainsMergeToolLaunchResult> {

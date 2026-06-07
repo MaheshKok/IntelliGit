@@ -5,6 +5,14 @@ import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { OnboardingViewProvider } from "../views/OnboardingViewProvider";
 import { initializeRepository, NO_REPOSITORY_MESSAGE } from "./common";
 
+/**
+ * Registers command handlers that are available before a workspace folder exists.
+ *
+ * Clone, open-folder, and initialize actions remain usable from the onboarding UI.
+ * Repository-only command IDs receive placeholder handlers so Command Palette and
+ * view actions never invoke an unregistered command in no-workspace activation.
+ * The extension context owns all returned disposables.
+ */
 function registerOnboardingCommands(context: vscode.ExtensionContext): void {
     const showUnavailableMessage = (): void => {
         vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
@@ -27,6 +35,13 @@ function registerOnboardingCommands(context: vscode.ExtensionContext): void {
     );
 }
 
+/**
+ * Registers onboarding webview providers for activation without workspace folders.
+ *
+ * The providers only render guidance and do not require Git services or repository
+ * state. Their registration disposables are owned by `context.subscriptions` for
+ * normal VS Code shutdown.
+ */
 function registerNoWorkspaceViews(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
@@ -57,6 +72,13 @@ function registerNoWorkspaceViews(context: vscode.ExtensionContext): void {
     );
 }
 
+/**
+ * Activates the no-workspace startup mode selected by `activate`.
+ *
+ * This path runs when VS Code has no workspace folders. It registers onboarding
+ * commands and views only; repository discovery is deferred until the user opens
+ * or initializes a folder.
+ */
 export function activateNoWorkspaceMode(context: vscode.ExtensionContext): void {
     registerOnboardingCommands(context);
     registerNoWorkspaceViews(context);

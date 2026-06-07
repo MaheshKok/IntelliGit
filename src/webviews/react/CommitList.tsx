@@ -33,6 +33,10 @@ import {
 const MIN_PREFIX_LENGTH = 7;
 const MAX_GRAPH_WIDTH = JETBRAINS_UI.graph.maxWidth;
 
+/**
+ * Allows cherry-pick actions when the graph is scoped to a non-current branch,
+ * or when the current branch is unavailable and the extension must decide.
+ */
 export function canCherryPickFromBranchScope(
     selectedBranch: string | null,
     currentBranchName?: string | null,
@@ -59,6 +63,10 @@ interface Props {
     headerLabel?: string;
 }
 
+/**
+ * Renders a virtualized commit list with an aligned canvas lane graph, optional
+ * search chrome, branch-scope context actions, and incremental load-more support.
+ */
 export function CommitList({
     commits,
     selectedHash,

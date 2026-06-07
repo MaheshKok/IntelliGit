@@ -2,9 +2,11 @@ import js from "@eslint/js";
 import globals from "globals";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import jsdoc from "eslint-plugin-jsdoc";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 import sonarjs from "eslint-plugin-sonarjs";
+import tsdoc from "eslint-plugin-tsdoc";
 import tseslint from "typescript-eslint";
 import { defineConfig } from "eslint/config";
 
@@ -12,6 +14,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EXTENSION_TS_FILES = ["src/**/*.ts"];
 const WEBVIEW_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
+// Extension-host and shared TypeScript sources are fully ratcheted. The
+// locked block below ignores React because React uses JSX-aware parser settings
+// and a narrower selector that documents hooks/types without forcing every
+// presentational component.
+const TSDOC_LOCKED_EXTENSION_FILES = ["src/**/*.ts"];
+const TSDOC_LOCKED_REACT_FILES = ["src/webviews/react/**/*.{ts,tsx}"];
 const SCRIPT_FILES = ["scripts/**/*.js"];
 const TYPED_TS_FILES = ["src/**/*.ts", "src/webviews/react/**/*.{ts,tsx}"];
 
@@ -32,6 +40,71 @@ const typeAwareSafetyRules = {
     "@typescript-eslint/no-unsafe-member-access": "error",
     "@typescript-eslint/no-unsafe-return": "error",
     "@typescript-eslint/require-await": "error",
+};
+
+const tsdocSyntaxRules = {
+    "tsdoc/syntax": "error",
+};
+
+const jsdocTypeScriptSettings = {
+    jsdoc: {
+        mode: "typescript",
+    },
+};
+
+const jsdocContractRules = {
+    "jsdoc/check-param-names": "error",
+    "jsdoc/check-tag-names": "off",
+    "jsdoc/no-types": "error",
+    "jsdoc/require-description": "error",
+    "jsdoc/require-param": "off",
+    "jsdoc/require-returns": "off",
+};
+
+const requireExportDocsRules = {
+    "jsdoc/require-jsdoc": [
+        "error",
+        {
+            publicOnly: {
+                esm: true,
+                cjs: false,
+                window: false,
+            },
+            require: {
+                ClassDeclaration: true,
+                FunctionDeclaration: true,
+                MethodDefinition: true,
+            },
+            contexts: [
+                "ExportNamedDeclaration > TSInterfaceDeclaration",
+                "ExportNamedDeclaration > TSTypeAliasDeclaration",
+                "ExportNamedDeclaration > TSEnumDeclaration",
+                "ExportNamedDeclaration > VariableDeclaration",
+            ],
+        },
+    ],
+};
+
+const requireReactExportDocsRules = {
+    "jsdoc/require-jsdoc": [
+        "error",
+        {
+            require: {
+                ArrowFunctionExpression: false,
+                ClassDeclaration: false,
+                ClassExpression: false,
+                FunctionDeclaration: false,
+                FunctionExpression: false,
+                MethodDefinition: false,
+            },
+            contexts: [
+                "ExportNamedDeclaration > TSInterfaceDeclaration",
+                "ExportNamedDeclaration > TSTypeAliasDeclaration",
+                "ExportNamedDeclaration > TSEnumDeclaration",
+                "ExportNamedDeclaration > FunctionDeclaration[id.name=/^use[A-Z]/]",
+            ],
+        },
+    ],
 };
 
 const sonarRules = {
@@ -80,12 +153,25 @@ export default defineConfig([
             globals: globals.node,
         },
         plugins: {
+            jsdoc,
             sonarjs,
+            tsdoc,
         },
+        settings: jsdocTypeScriptSettings,
         rules: {
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
             ...typeAwareSafetyRules,
+            ...tsdocSyntaxRules,
             ...sonarRules,
+        },
+    },
+    {
+        files: TSDOC_LOCKED_EXTENSION_FILES,
+        ignores: ["src/webviews/react/**"],
+        settings: jsdocTypeScriptSettings,
+        rules: {
+            ...jsdocContractRules,
+            ...requireExportDocsRules,
         },
     },
     {
@@ -101,11 +187,14 @@ export default defineConfig([
             globals: globals.browser,
         },
         plugins: {
+            jsdoc,
             react,
             "react-hooks": reactHooks,
             sonarjs,
+            tsdoc,
         },
         settings: {
+            ...jsdocTypeScriptSettings,
             react: {
                 version: "18.2.0",
             },
@@ -118,6 +207,7 @@ export default defineConfig([
             "react-hooks/exhaustive-deps": "warn",
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
             ...typeAwareSafetyRules,
+            ...tsdocSyntaxRules,
             ...sonarRules,
             "@typescript-eslint/no-misused-promises": [
                 "error",
@@ -127,6 +217,19 @@ export default defineConfig([
                     },
                 },
             ],
+        },
+    },
+    {
+        files: TSDOC_LOCKED_REACT_FILES,
+        settings: {
+            ...jsdocTypeScriptSettings,
+            react: {
+                version: "18.2.0",
+            },
+        },
+        rules: {
+            ...jsdocContractRules,
+            ...requireReactExportDocsRules,
         },
     },
 ]);
