@@ -56,9 +56,11 @@ export function FileTree({
     const [changesOpen, setChangesOpen] = useState(true);
     const [unversionedOpen, setUnversionedOpen] = useState(true);
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
+    const [isDragOverChanges, setIsDragOverChanges] = useState(false);
     const lastExpandSignal = useRef(0);
     const lastCollapseSignal = useRef(0);
     const seenDirsRef = useRef<Set<string>>(new Set());
+    const dragCounterRef = useRef(0);
 
     const tracked = useMemo(() => files.filter((f) => f.status !== "?"), [files]);
     const unversioned = useMemo(() => files.filter((f) => f.status === "?"), [files]);
@@ -100,6 +102,17 @@ export function FileTree({
                 JSON.stringify(paths),
             );
             event.dataTransfer.setData("text/plain", paths.join("\n"));
+
+            // Show file count on the drag cursor.
+            if (paths.length > 1 && typeof event.dataTransfer.setDragImage === "function") {
+                const badge = document.createElement("div");
+                badge.textContent = String(paths.length);
+                badge.style.cssText =
+                    "position:absolute;left:-9999px;background:var(--intelligit-pycharm-blue,#3b82f6);color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 5px;line-height:1";
+                document.body.appendChild(badge);
+                event.dataTransfer.setDragImage(badge, 0, 0);
+                requestAnimationFrame(() => badge.remove());
+            }
         },
         [getUnversionedDragPaths],
     );
@@ -122,6 +135,16 @@ export function FileTree({
         [unversionedPaths],
     );
 
+    const handleChangesDragEnter = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
+            event.preventDefault();
+            dragCounterRef.current += 1;
+            setIsDragOverChanges(true);
+        },
+        [readDraggedUnversionedPaths],
+    );
+
     const handleChangesDragOver = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
             if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
@@ -131,9 +154,23 @@ export function FileTree({
         [readDraggedUnversionedPaths],
     );
 
+    const handleChangesDragLeave = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            if (readDraggedUnversionedPaths(event.dataTransfer).length === 0) return;
+            dragCounterRef.current -= 1;
+            if (dragCounterRef.current <= 0) {
+                dragCounterRef.current = 0;
+                setIsDragOverChanges(false);
+            }
+        },
+        [readDraggedUnversionedPaths],
+    );
+
     const handleChangesDrop = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
             const paths = readDraggedUnversionedPaths(event.dataTransfer);
+            dragCounterRef.current = 0;
+            setIsDragOverChanges(false);
             if (paths.length === 0) return;
             event.preventDefault();
             onTrackUnversionedFiles?.(paths);
@@ -217,35 +254,46 @@ export function FileTree({
 
     return (
         <>
-            <SectionHeader
-                label={t("commitPanel.changes")}
-                count={trackedUniqueCount}
-                isOpen={changesOpen}
-                isAllChecked={isAllChecked(tracked)}
-                isSomeChecked={isSomeChecked(tracked)}
-                onToggleOpen={() => setChangesOpen((o) => !o)}
-                onToggleCheck={() => onToggleSection(tracked)}
-                onDragOver={handleChangesDragOver}
-                onDrop={handleChangesDrop}
-            />
-            {tracked.length > 0 && changesOpen && (
-                <TreeEntries
-                    entries={trackedTree}
-                    depth={0}
-                    groupByDir={groupByDir}
-                    folderIcon={folderIcon}
-                    folderExpandedIcon={folderExpandedIcon}
-                    folderIconsByName={folderIconsByName}
-                    expandedDirs={expandedDirs}
-                    checkedPaths={checkedPaths}
-                    onToggleFile={onToggleFile}
-                    onToggleFolder={onToggleFolder}
-                    isAllChecked={isAllChecked}
-                    isSomeChecked={isSomeChecked}
-                    onToggleDir={toggleDir}
-                    onFileClick={onFileClick}
-                    onFileDragStart={handleFileDragStart}
-                />
+            {(tracked.length > 0 || unversioned.length > 0) && (
+                <Box
+                    onDragEnter={handleChangesDragEnter}
+                    onDragOver={handleChangesDragOver}
+                    onDragLeave={handleChangesDragLeave}
+                    onDrop={handleChangesDrop}
+                >
+                    <SectionHeader
+                        label={t("commitPanel.changes")}
+                        count={trackedUniqueCount}
+                        isOpen={changesOpen}
+                        isAllChecked={isAllChecked(tracked)}
+                        isSomeChecked={isSomeChecked(tracked)}
+                        onToggleOpen={() => setChangesOpen((o) => !o)}
+                        onToggleCheck={() => onToggleSection(tracked)}
+                        onDragOver={handleChangesDragOver}
+                        onDragLeave={handleChangesDragLeave}
+                        onDrop={handleChangesDrop}
+                        isDragOver={isDragOverChanges}
+                    />
+                    {changesOpen && (
+                        <TreeEntries
+                            entries={trackedTree}
+                            depth={0}
+                            groupByDir={groupByDir}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
+                            expandedDirs={expandedDirs}
+                            checkedPaths={checkedPaths}
+                            onToggleFile={onToggleFile}
+                            onToggleFolder={onToggleFolder}
+                            isAllChecked={isAllChecked}
+                            isSomeChecked={isSomeChecked}
+                            onToggleDir={toggleDir}
+                            onFileClick={onFileClick}
+                            onFileDragStart={handleFileDragStart}
+                        />
+                    )}
+                </Box>
             )}
             {unversioned.length > 0 && (
                 <>
