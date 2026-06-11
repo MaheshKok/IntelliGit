@@ -188,7 +188,6 @@ Ignored local/generated tool caches excluded from tracked product-code coverage:
 - `.agents/`
 - `.claude-flow/`
 - `.gitnexus/`
-- `.repowise/`
 - `.serena/`
 - `.mcp.json`
 
