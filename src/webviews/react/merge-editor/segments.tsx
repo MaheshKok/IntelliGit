@@ -67,12 +67,16 @@ function renderSyntaxHighlightedNodes(line: string, keyPrefix: string): React.Re
     return nodes;
 }
 
-function HighlightedLine({ line }: { line: string }): React.ReactElement {
+const HighlightedLine = React.memo(function HighlightedLine({
+    line,
+}: {
+    line: string;
+}): React.ReactElement {
     if (!line) return <>{`\u00A0`}</>;
     return <>{renderSyntaxHighlightedNodes(line, "line")}</>;
-}
+});
 
-function WordDiffLine({
+const WordDiffLine = React.memo(function WordDiffLine({
     line,
     compareLine,
 }: {
@@ -115,7 +119,7 @@ function WordDiffLine({
     }
 
     return <>{nodes}</>;
-}
+});
 
 // --- Line numbers ---
 
@@ -149,67 +153,112 @@ function padLines(lines: string[], count: number): string[] {
     return padded;
 }
 
-function LineNumbers({ primary, secondary }: LineNumberSpec) {
-    const rowCount = Math.max(primary.length, secondary?.length ?? 0);
-    const hasSecondary = Boolean(secondary);
+function lineNumberValuesEqual(a: LineNumberValue[], b: LineNumberValue[]): boolean {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
 
+function lineNumberSpecEqual(a: LineNumberSpec, b: LineNumberSpec): boolean {
+    if (a === b) return true;
+    if (!lineNumberValuesEqual(a.primary, b.primary)) return false;
+    if (a.secondary === b.secondary) return true;
+    if (!a.secondary || !b.secondary) return false;
+    return lineNumberValuesEqual(a.secondary, b.secondary);
+}
+
+/**
+ * Value-compares the three pane line-number specs so memoized segments skip
+ * re-rendering when an unrelated hunk resolution rebuilds equal number arrays.
+ */
+function paneLineNumbersEqual(a: SegmentPaneLineNumbers, b: SegmentPaneLineNumbers): boolean {
     return (
-        <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
-            {Array.from({ length: rowCount }, (_, i) => (
-                <div key={i} className="line-number-row">
-                    {hasSecondary ? (
-                        <div className="line-number line-number-secondary">
-                            {secondary?.[i] ?? ""}
-                        </div>
-                    ) : null}
-                    <div className="line-number line-number-primary">{primary[i] ?? ""}</div>
-                </div>
-            ))}
-        </div>
+        lineNumberSpecEqual(a.left, b.left) &&
+        lineNumberSpecEqual(a.middle, b.middle) &&
+        lineNumberSpecEqual(a.right, b.right)
     );
 }
 
+const LineNumbers = React.memo(
+    function LineNumbers({ primary, secondary }: LineNumberSpec) {
+        const rowCount = Math.max(primary.length, secondary?.length ?? 0);
+        const hasSecondary = Boolean(secondary);
+
+        return (
+            <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
+                {Array.from({ length: rowCount }, (_, i) => (
+                    <div key={i} className="line-number-row">
+                        {hasSecondary ? (
+                            <div className="line-number line-number-secondary">
+                                {secondary?.[i] ?? ""}
+                            </div>
+                        ) : null}
+                        <div className="line-number line-number-primary">{primary[i] ?? ""}</div>
+                    </div>
+                ))}
+            </div>
+        );
+    },
+    (prev, next) => lineNumberSpecEqual(prev, next),
+);
+
 // --- Code block ---
 
-function CodeBlock({
-    lines,
-    lineCount,
-    lineNumbers,
-    className,
-    wordHighlight,
-    compareLines,
-}: {
+interface CodeBlockProps {
     lines: string[];
     lineCount: number;
     lineNumbers: LineNumberSpec;
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
-}) {
-    const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
-    const paddedCompare = useMemo(() => {
-        if (!compareLines) return undefined;
-        const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
-        return padLines(alignedCompare, lineCount);
-    }, [compareLines, lineCount, lines]);
-
-    return (
-        <div className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}>
-            <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
-            <div className="code-lines">
-                {padded.map((line, i) => (
-                    <div key={i} className="code-line">
-                        {wordHighlight && paddedCompare ? (
-                            <WordDiffLine line={line} compareLine={paddedCompare[i]} />
-                        ) : (
-                            <HighlightedLine line={line} />
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
 }
+
+const CodeBlock = React.memo(
+    function CodeBlock({
+        lines,
+        lineCount,
+        lineNumbers,
+        className,
+        wordHighlight,
+        compareLines,
+    }: CodeBlockProps) {
+        const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
+        const paddedCompare = useMemo(() => {
+            if (!compareLines) return undefined;
+            const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
+            return padLines(alignedCompare, lineCount);
+        }, [compareLines, lineCount, lines]);
+
+        return (
+            <div
+                className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
+            >
+                <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+                <div className="code-lines">
+                    {padded.map((line, i) => (
+                        <div key={i} className="code-line">
+                            {wordHighlight && paddedCompare ? (
+                                <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                            ) : (
+                                <HighlightedLine line={line} />
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    },
+    (prev, next) =>
+        prev.lines === next.lines &&
+        prev.lineCount === next.lineCount &&
+        prev.className === next.className &&
+        prev.wordHighlight === next.wordHighlight &&
+        prev.compareLines === next.compareLines &&
+        lineNumberSpecEqual(prev.lineNumbers, next.lineNumbers),
+);
 
 // --- Editable result block ---
 
@@ -346,50 +395,73 @@ function getHunkKindLabel(segment: ConflictSegment): string {
 
 // --- Section components ---
 
+/** Editor row height in pixels, matched to the .code-line CSS line-height. */
+const LINE_HEIGHT_PX = 20;
+/** Estimated hunk-header plus margin overhead used for offscreen size hints. */
+const CONFLICT_CHROME_PX = 30;
+
 /**
- * Renders unchanged lines across all three panes while preserving aligned line
- * numbers and optional word highlighting.
+ * Size hint that lets `content-visibility: auto` skip layout of offscreen
+ * segments while keeping the scrollbar geometry stable for large files.
  */
-export function CommonSection({
-    segment,
-    lineCount,
-    lineNumbers,
-    highlightWords,
-}: {
+function intrinsicSizeStyle(lineCount: number, chromePx = 0): React.CSSProperties {
+    return { containIntrinsicSize: `auto ${lineCount * LINE_HEIGHT_PX + chromePx}px` };
+}
+
+interface CommonSectionProps {
     segment: CommonSegment;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
     highlightWords: boolean;
-}) {
-    return (
-        <div className="segment segment-common">
-            <div className="column column-left">
-                <CodeBlock
-                    lines={segment.lines}
-                    lineCount={lineCount}
-                    lineNumbers={lineNumbers.left}
-                    wordHighlight={highlightWords}
-                />
-            </div>
-            <div className="column column-middle result-column">
-                <CodeBlock
-                    lines={segment.lines}
-                    lineCount={lineCount}
-                    lineNumbers={lineNumbers.middle}
-                    wordHighlight={highlightWords}
-                />
-            </div>
-            <div className="column column-right">
-                <CodeBlock
-                    lines={segment.lines}
-                    lineCount={lineCount}
-                    lineNumbers={lineNumbers.right}
-                    wordHighlight={highlightWords}
-                />
-            </div>
-        </div>
-    );
 }
+
+/**
+ * Renders unchanged lines across all three panes while preserving aligned line
+ * numbers and optional word highlighting. Memoized with value-compared line
+ * numbers so resolving one hunk does not re-render every other segment.
+ */
+export const CommonSection = React.memo(
+    function CommonSection({
+        segment,
+        lineCount,
+        lineNumbers,
+        highlightWords,
+    }: CommonSectionProps) {
+        return (
+            <div className="segment segment-common" style={intrinsicSizeStyle(lineCount)}>
+                <div className="column column-left">
+                    <CodeBlock
+                        lines={segment.lines}
+                        lineCount={lineCount}
+                        lineNumbers={lineNumbers.left}
+                        wordHighlight={highlightWords}
+                    />
+                </div>
+                <div className="column column-middle result-column">
+                    <CodeBlock
+                        lines={segment.lines}
+                        lineCount={lineCount}
+                        lineNumbers={lineNumbers.middle}
+                        wordHighlight={highlightWords}
+                    />
+                </div>
+                <div className="column column-right">
+                    <CodeBlock
+                        lines={segment.lines}
+                        lineCount={lineCount}
+                        lineNumbers={lineNumbers.right}
+                        wordHighlight={highlightWords}
+                    />
+                </div>
+            </div>
+        );
+    },
+    (prev, next) =>
+        prev.segment === next.segment &&
+        prev.lineCount === next.lineCount &&
+        prev.highlightWords === next.highlightWords &&
+        paneLineNumbersEqual(prev.lineNumbers, next.lineNumbers),
+);
 
 /**
  * Props that connect one conflict hunk to result-line computation, keyboard
@@ -405,7 +477,7 @@ export interface ConflictSectionProps {
     onResolve: (id: number, resolution: HunkResolution) => void;
     onEditResult: (id: number, lines: string[]) => void;
     onSelect: (id: number) => void;
-    setSectionRef: (el: HTMLDivElement | null) => void;
+    onSectionRef: (id: number, el: HTMLDivElement | null) => void;
     isActive: boolean;
     showDetails: boolean;
     highlightWords: boolean;
@@ -415,9 +487,11 @@ export interface ConflictSectionProps {
 
 /**
  * Renders one merge-editor hunk with ours/result/theirs columns, resolution
- * controls, status badges, and per-pane word-diff highlighting.
+ * controls, status badges, and per-pane word-diff highlighting. Memoized with
+ * value-compared line numbers so resolving or editing one hunk re-renders only
+ * the affected segments in large files.
  */
-export function ConflictSection({
+export const ConflictSection = React.memo(function ConflictSection({
     segment,
     resolution,
     editedLines,
@@ -426,7 +500,7 @@ export function ConflictSection({
     onResolve,
     onEditResult,
     onSelect,
-    setSectionRef,
+    onSectionRef,
     isActive,
     showDetails,
     highlightWords,
@@ -443,6 +517,10 @@ export function ConflictSection({
     const isNone = !isEdited && resolution === "none";
     const isResolved = segment.changeKind !== "conflict" || resolution !== undefined || isEdited;
     const kindLabel = getHunkKindLabel(segment);
+    const setSectionRef = useCallback(
+        (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
+        [onSectionRef, segment.id],
+    );
     const resultCompareLines =
         resolution === "ours"
             ? segment.theirsLines
@@ -453,6 +531,7 @@ export function ConflictSection({
     return (
         <div
             ref={setSectionRef}
+            style={intrinsicSizeStyle(lineCount, CONFLICT_CHROME_PX)}
             className={[
                 "segment",
                 "segment-conflict",
@@ -609,6 +688,32 @@ export function ConflictSection({
                 </div>
             </div>
         </div>
+    );
+}, conflictSectionPropsEqual);
+
+/**
+ * Value-compares conflict-section props so a resolution or edit on one hunk
+ * only re-renders segments whose computed line numbers actually shifted.
+ */
+function conflictSectionPropsEqual(
+    prev: ConflictSectionProps,
+    next: ConflictSectionProps,
+): boolean {
+    return (
+        prev.segment === next.segment &&
+        prev.resolution === next.resolution &&
+        prev.editedLines === next.editedLines &&
+        prev.lineCount === next.lineCount &&
+        prev.onResolve === next.onResolve &&
+        prev.onEditResult === next.onEditResult &&
+        prev.onSelect === next.onSelect &&
+        prev.onSectionRef === next.onSectionRef &&
+        prev.isActive === next.isActive &&
+        prev.showDetails === next.showDetails &&
+        prev.highlightWords === next.highlightWords &&
+        prev.conflictOrdinal === next.conflictOrdinal &&
+        prev.trueConflictOrdinal === next.trueConflictOrdinal &&
+        paneLineNumbersEqual(prev.lineNumbers, next.lineNumbers)
     );
 }
 

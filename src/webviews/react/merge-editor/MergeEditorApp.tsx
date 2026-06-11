@@ -216,6 +216,10 @@ function App() {
         dispatch({ type: "EDIT_HUNK_RESULT", id, lines });
     }, []);
 
+    const registerConflictSectionRef = useCallback((id: number, el: HTMLDivElement | null) => {
+        conflictSectionRefs.current[id] = el;
+    }, []);
+
     const handleApply = useCallback(() => {
         if (!state.data) return;
         const content = buildResultContent(state.data, state.resolutions, state.edits);
@@ -596,9 +600,7 @@ function App() {
                                     onResolve={handleResolve}
                                     onEditResult={handleEditResult}
                                     onSelect={setActiveConflictId}
-                                    setSectionRef={(el) => {
-                                        conflictSectionRefs.current[segment.id] = el;
-                                    }}
+                                    onSectionRef={registerConflictSectionRef}
                                     isActive={activeConflictId === segment.id}
                                     showDetails={showDetails}
                                     highlightWords={highlightWords}

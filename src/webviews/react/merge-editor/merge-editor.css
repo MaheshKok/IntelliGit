@@ -363,6 +363,10 @@
 
 .segment {
     display: flex;
+    /* Browser-level virtualization: offscreen segments skip rendering work
+       while the inline contain-intrinsic-size keeps scrollbar geometry stable
+       for very large conflict files. */
+    content-visibility: auto;
 }
 .column {
     flex: 1;
