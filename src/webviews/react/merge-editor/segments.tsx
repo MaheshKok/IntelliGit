@@ -1,9 +1,10 @@
 // Merge editor segment rendering components.
 // CommonSection renders unchanged code lines across all three panes.
-// ConflictSection renders conflict hunks with per-hunk resolution controls.
+// ConflictSection renders conflict hunks with per-hunk resolution controls
+// and an editable result block for manual fix-ups.
 // OverviewRail provides a minimap of conflict locations for quick navigation.
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import type { CommonSegment, ConflictSegment, HunkResolution } from "./types";
 import {
     IconArrowRight,
@@ -20,7 +21,7 @@ import {
     tokenizeWordDiff,
     alignCompareLinesForWordDiff,
 } from "./wordDiff";
-import { getResultLines } from "./mergeState";
+import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import { t } from "../shared/i18n";
 
 // --- Syntax highlighting ---
@@ -210,6 +211,97 @@ function CodeBlock({
     );
 }
 
+// --- Editable result block ---
+
+/**
+ * Result-pane block that supports IntelliJ-style manual editing.
+ *
+ * Display mode renders the highlighted result; double-click switches to a
+ * textarea seeded with the current result text. Blur commits the draft through
+ * `onCommit` (no-op when the text is unchanged), and Escape cancels without
+ * committing. Committed edits mark the hunk resolved upstream.
+ */
+function EditableResultBlock({
+    lines,
+    lineCount,
+    lineNumbers,
+    className,
+    wordHighlight,
+    compareLines,
+    onCommit,
+}: {
+    lines: string[];
+    lineCount: number;
+    lineNumbers: LineNumberSpec;
+    className?: string;
+    wordHighlight?: boolean;
+    compareLines?: string[];
+    onCommit: (lines: string[]) => void;
+}) {
+    const [draft, setDraft] = useState<string | null>(null);
+    const isEditing = draft !== null;
+
+    const startEditing = useCallback(() => {
+        setDraft(lines.join("\n"));
+    }, [lines]);
+
+    const commitDraft = useCallback(() => {
+        if (draft === null) return;
+        setDraft(null);
+        const edited = splitEditedText(draft);
+        const unchanged = edited.length === lines.length && edited.every((l, i) => l === lines[i]);
+        if (!unchanged) onCommit(edited);
+    }, [draft, lines, onCommit]);
+
+    const cancelDraft = useCallback(() => {
+        setDraft(null);
+    }, []);
+
+    if (!isEditing) {
+        return (
+            <div
+                className="result-editable"
+                onDoubleClick={startEditing}
+                title={t("merge.result.editHint")}
+            >
+                <CodeBlock
+                    lines={lines}
+                    lineCount={lineCount}
+                    lineNumbers={lineNumbers}
+                    className={className}
+                    wordHighlight={wordHighlight}
+                    compareLines={compareLines}
+                />
+            </div>
+        );
+    }
+
+    const rowCount = Math.max(draft.split("\n").length, lineCount, 1);
+    return (
+        <div className={`code-block ${className ?? ""} editing`}>
+            <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+            <textarea
+                className="result-edit-textarea"
+                aria-label={t("merge.result.editingAria")}
+                value={draft}
+                rows={rowCount}
+                autoFocus
+                spellCheck={false}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={commitDraft}
+                onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        cancelDraft();
+                    }
+                }}
+                onClick={(event) => event.stopPropagation()}
+            />
+        </div>
+    );
+}
+
 // --- Hunk helpers ---
 
 /** Line-number specifications for the left, result, and right merge panes. */
@@ -222,10 +314,12 @@ export interface SegmentPaneLineNumbers {
 function getHunkStatus(
     segment: ConflictSegment,
     resolution: HunkResolution | undefined,
+    isEdited: boolean,
 ): {
     label: string;
     tone: "warn" | "ok" | "muted";
 } {
+    if (isEdited) return { label: t("merge.status.edited"), tone: "ok" };
     if (segment.changeKind === "ours-only") {
         return resolution === "none"
             ? { label: t("merge.status.droppedLeftOnly"), tone: "muted" }
@@ -299,14 +393,17 @@ export function CommonSection({
 
 /**
  * Props that connect one conflict hunk to result-line computation, keyboard
- * navigation, active-state styling, and hunk-resolution callbacks.
+ * navigation, active-state styling, hunk-resolution callbacks, and manual
+ * result editing. `editedLines` overrides the side-resolution result when set.
  */
 export interface ConflictSectionProps {
     segment: ConflictSegment;
     resolution: HunkResolution | undefined;
+    editedLines: string[] | undefined;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
     onResolve: (id: number, resolution: HunkResolution) => void;
+    onEditResult: (id: number, lines: string[]) => void;
     onSelect: (id: number) => void;
     setSectionRef: (el: HTMLDivElement | null) => void;
     isActive: boolean;
@@ -323,9 +420,11 @@ export interface ConflictSectionProps {
 export function ConflictSection({
     segment,
     resolution,
+    editedLines,
     lineCount,
     lineNumbers,
     onResolve,
+    onEditResult,
     onSelect,
     setSectionRef,
     isActive,
@@ -334,14 +433,15 @@ export function ConflictSection({
     conflictOrdinal,
     trueConflictOrdinal,
 }: ConflictSectionProps) {
-    const resultLines = getResultLines(segment, resolution);
-    const status = getHunkStatus(segment, resolution);
+    const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
+    const isEdited = editedLines !== undefined;
+    const status = getHunkStatus(segment, resolution, isEdited);
 
-    const isOurs = resolution === "ours";
-    const isTheirs = resolution === "theirs";
-    const isBoth = resolution === "both";
-    const isNone = resolution === "none";
-    const isResolved = segment.changeKind !== "conflict" || resolution !== undefined;
+    const isOurs = !isEdited && resolution === "ours";
+    const isTheirs = !isEdited && resolution === "theirs";
+    const isBoth = !isEdited && resolution === "both";
+    const isNone = !isEdited && resolution === "none";
+    const isResolved = segment.changeKind !== "conflict" || resolution !== undefined || isEdited;
     const kindLabel = getHunkKindLabel(segment);
     const resultCompareLines =
         resolution === "ours"
@@ -465,13 +565,14 @@ export function ConflictSection({
                 </div>
 
                 <div className="column column-middle conflict-column result-column">
-                    <CodeBlock
+                    <EditableResultBlock
                         lines={resultLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.middle}
-                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"}`}
+                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""}`}
                         wordHighlight={highlightWords}
                         compareLines={resultCompareLines}
+                        onCommit={(lines) => onEditResult(segment.id, lines)}
                     />
                 </div>
 

@@ -25,7 +25,7 @@ import {
 } from "./icons";
 import {
     reducer,
-    getResultLines,
+    getEffectiveResultLines,
     buildResultContent,
     allResolved,
     trueConflictCount,
@@ -59,7 +59,12 @@ function getVsCodeApi() {
  * extension apply/ignore-mode commands.
  */
 function App() {
-    const [state, dispatch] = useReducer(reducer, { data: null, error: null, resolutions: {} });
+    const [state, dispatch] = useReducer(reducer, {
+        data: null,
+        error: null,
+        resolutions: {},
+        edits: {},
+    });
     const [showDetails, setShowDetails] = useState(false);
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
@@ -105,7 +110,11 @@ function App() {
                 theirsCursor += commonLen;
                 resultCursor += commonLen;
             } else {
-                const resultLines = getResultLines(segment, state.resolutions[segment.id]);
+                const resultLines = getEffectiveResultLines(
+                    segment,
+                    state.resolutions[segment.id],
+                    state.edits[segment.id],
+                );
                 const oursLen = segment.oursLines.length;
                 const theirsLen = segment.theirsLines.length;
                 const baseLen = segment.baseLines.length;
@@ -156,7 +165,7 @@ function App() {
                 trueConflictOrdinal: computedTrueConflictOrdinal,
             };
         });
-    }, [segments, state.resolutions]);
+    }, [segments, state.resolutions, state.edits]);
 
     const conflictSegments = useMemo(
         () => segments.filter((seg): seg is ConflictSegment => seg.type === "conflict"),
@@ -190,22 +199,28 @@ function App() {
             if (trueConflictIds.length === 0) return null;
             if (prev !== null && trueConflictIds.includes(prev)) return prev;
             const firstUnresolved = trueConflicts.find(
-                (seg) => state.resolutions[seg.id] === undefined,
+                (seg) =>
+                    state.resolutions[seg.id] === undefined && state.edits[seg.id] === undefined,
             );
             return firstUnresolved?.id ?? trueConflictIds[0];
         });
-    }, [trueConflictIds, trueConflicts, state.resolutions]);
+    }, [trueConflictIds, trueConflicts, state.resolutions, state.edits]);
 
     const handleResolve = useCallback((id: number, resolution: HunkResolution) => {
         setActiveConflictId(id);
         dispatch({ type: "RESOLVE_HUNK", id, resolution });
     }, []);
 
+    const handleEditResult = useCallback((id: number, lines: string[]) => {
+        setActiveConflictId(id);
+        dispatch({ type: "EDIT_HUNK_RESULT", id, lines });
+    }, []);
+
     const handleApply = useCallback(() => {
         if (!state.data) return;
-        const content = buildResultContent(state.data, state.resolutions);
+        const content = buildResultContent(state.data, state.resolutions, state.edits);
         getVsCodeApi().postMessage({ type: "applyResolution", content });
-    }, [state.data, state.resolutions]);
+    }, [state.data, state.resolutions, state.edits]);
 
     const handleAcceptAllYours = useCallback(() => {
         if (!state.data) return;
@@ -295,14 +310,14 @@ function App() {
                 moveActiveConflict(1);
             } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
                 if (!state.data) return;
-                if (!allResolved(state.data.segments, state.resolutions)) return;
+                if (!allResolved(state.data.segments, state.resolutions, state.edits)) return;
                 event.preventDefault();
                 handleApply();
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [handleApply, moveActiveConflict, state.data, state.resolutions]);
+    }, [handleApply, moveActiveConflict, state.data, state.resolutions, state.edits]);
 
     if (state.error) {
         return (
@@ -320,9 +335,9 @@ function App() {
     }
 
     const total = trueConflictCount(segments);
-    const resolved = resolvedTrueConflictCount(segments, state.resolutions);
+    const resolved = resolvedTrueConflictCount(segments, state.resolutions, state.edits);
     const unresolved = total - resolved;
-    const canApply = allResolved(segments, state.resolutions);
+    const canApply = allResolved(segments, state.resolutions, state.edits);
     const changeCount = conflictSegments.length;
     const oursChanges = paneChangeCount(segments, "ours");
     const theirsChanges = paneChangeCount(segments, "theirs");
@@ -347,11 +362,14 @@ function App() {
             changeKind: item.segment.changeKind,
             resolved:
                 item.segment.changeKind !== "conflict" ||
-                state.resolutions[item.segment.id] !== undefined,
+                state.resolutions[item.segment.id] !== undefined ||
+                state.edits[item.segment.id] !== undefined,
         }));
 
     const unresolvedTrueConflictIds = trueConflicts
-        .filter((seg) => state.resolutions[seg.id] === undefined)
+        .filter(
+            (seg) => state.resolutions[seg.id] === undefined && state.edits[seg.id] === undefined,
+        )
         .map((seg) => seg.id);
     const nextUnresolvedId = (() => {
         if (unresolvedTrueConflictIds.length === 0) return null;
@@ -572,9 +590,11 @@ function App() {
                                     key={index}
                                     segment={segment}
                                     resolution={state.resolutions[segment.id]}
+                                    editedLines={state.edits[segment.id]}
                                     lineCount={lineCount}
                                     lineNumbers={lineNumbers}
                                     onResolve={handleResolve}
+                                    onEditResult={handleEditResult}
                                     onSelect={setActiveConflictId}
                                     setSectionRef={(el) => {
                                         conflictSectionRefs.current[segment.id] = el;

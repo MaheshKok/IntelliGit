@@ -174,4 +174,202 @@ describe("MergeEditorApp", () => {
             content: "shared();\nours();\n",
         });
     });
+
+    it("edits the result pane manually and applies the edited content", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+        expect(document.body.textContent).toContain("1 unresolved");
+
+        // Enter edit mode by double-clicking the editable result block.
+        const editable = document.querySelector(".result-editable");
+        if (!editable) throw new Error("Expected an editable result block");
+        act(() => {
+            editable.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        });
+        await flush();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(".result-edit-textarea");
+        if (!textarea) throw new Error("Expected the result edit textarea to appear");
+        expect(textarea.value).toBe("base();");
+
+        // Type a manual fix-up, then blur to commit the edit.
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+        )?.set;
+        act(() => {
+            valueSetter?.call(textarea, "merged_by_hand();");
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        act(() => {
+            textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        });
+        await flush();
+
+        // The manual edit resolves the conflict and shows the Edited status.
+        expect(document.body.textContent).toContain("Edited");
+        expect(document.body.textContent).toContain("0 unresolved");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\nmerged_by_hand();\n",
+        });
+    });
+
+    it("cancels an in-progress edit with Escape without resolving the hunk", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        const editable = document.querySelector(".result-editable");
+        if (!editable) throw new Error("Expected an editable result block");
+        act(() => {
+            editable.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        });
+        await flush();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(".result-edit-textarea");
+        if (!textarea) throw new Error("Expected the result edit textarea to appear");
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+        )?.set;
+        act(() => {
+            valueSetter?.call(textarea, "discarded();");
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        act(() => {
+            textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        });
+        await flush();
+
+        // The draft was discarded: hunk stays unresolved and Apply stays disabled.
+        expect(document.querySelector(".result-edit-textarea")).toBeNull();
+        expect(document.body.textContent).toContain("1 unresolved");
+        expect(document.body.textContent).not.toContain("discarded();");
+        expect(vscode.postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "applyResolution" }),
+        );
+    });
+
+    it("clears a manual edit when a side resolution is chosen afterwards", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        const editable = document.querySelector(".result-editable");
+        if (!editable) throw new Error("Expected an editable result block");
+        act(() => {
+            editable.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+        });
+        await flush();
+
+        const textarea = document.querySelector<HTMLTextAreaElement>(".result-edit-textarea");
+        if (!textarea) throw new Error("Expected the result edit textarea to appear");
+        const valueSetter = Object.getOwnPropertyDescriptor(
+            HTMLTextAreaElement.prototype,
+            "value",
+        )?.set;
+        act(() => {
+            valueSetter?.call(textarea, "temporary();");
+            textarea.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        act(() => {
+            textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+        });
+        await flush();
+        expect(document.body.textContent).toContain("Edited");
+
+        // Choosing a side afterwards replaces the manual edit.
+        clickButton("Right");
+        await flush();
+        expect(document.body.textContent).not.toContain("Edited");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "theirs();\n",
+        });
+    });
 });
