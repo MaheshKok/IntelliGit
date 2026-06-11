@@ -43,13 +43,14 @@ export function getJetBrainsMergeToolPath(): string {
 }
 
 /**
- * Reads whether merge conflict commands should prefer JetBrains over VS Code's built-in editor.
+ * Reads whether merge conflict commands should prefer JetBrains over IntelliGit's native editor.
  *
- * Missing workspace configuration defaults to `true` so existing IntelliGit
- * workflows keep attempting the external merge tool unless the user opts out.
+ * Missing workspace configuration defaults to `false` so conflicts open in
+ * IntelliGit's native three-way merge editor unless the user opts into the
+ * external JetBrains tool.
  */
 export function getPreferExternalMergeTool(): boolean {
-    return getIntelliGitConfig()?.get<boolean>("jetbrainsMergeTool.preferExternal", true) ?? true;
+    return getIntelliGitConfig()?.get<boolean>("jetbrainsMergeTool.preferExternal", false) ?? false;
 }
 
 function getDefaultJetBrainsMergeToolPath(): string {

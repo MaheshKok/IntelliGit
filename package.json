@@ -481,7 +481,7 @@
                 },
                 "intelligit.jetbrainsMergeTool.preferExternal": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "markdownDescription": "%configuration.jetbrainsMergeTool.preferExternal.markdownDescription%"
                 },
                 "intelligit.tooltips.enabled": {

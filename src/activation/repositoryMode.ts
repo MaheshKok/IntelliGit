@@ -17,6 +17,7 @@ import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { MergeConflictSessionPanel } from "../views/MergeConflictSessionPanel";
 import { MergeConflictsTreeProvider } from "../views/MergeConflictsTreeProvider";
+import { MergeEditorPanel } from "../views/MergeEditorPanel";
 import { RefreshService } from "../views/RefreshService";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
 import {
@@ -191,21 +192,29 @@ export async function activateRepositoryMode(
     };
 
     /**
-     * Opens VS Code's built-in merge editor for a repository-relative conflict file.
+     * Opens IntelliGit's native three-way merge editor for a repository-relative conflict file.
      *
-     * The path is validated before constructing the file URI. If the Git extension
-     * command is unavailable or fails, the file opens normally and the user sees a
-     * warning instead of a hard failure.
+     * The path is validated before the panel opens. If the native editor fails to
+     * open, the file opens normally and the user sees a warning instead of a hard
+     * failure, so the conflict stays reachable.
      */
     const openBuiltInMergeEditorForFile = async (filePath: string): Promise<void> => {
         const fileUri = vscode.Uri.file(path.join(repoRoot, assertRepoRelativePath(filePath)));
         try {
-            await vscode.commands.executeCommand("git.openMergeEditor", fileUri);
+            await MergeEditorPanel.open({
+                extensionUri: context.extensionUri,
+                gitOps,
+                getRepoRoot,
+                filePath,
+                onConflictStateChanged: async () => {
+                    await refreshService.refreshConflictUi();
+                },
+            });
         } catch (error) {
             const message = getErrorMessage(error);
             vscode.window.showWarningMessage(
                 vscode.l10n.t(
-                    "VS Code merge editor command failed ({message}). Opening the file instead.",
+                    "IntelliGit merge editor failed ({message}). Opening the file instead.",
                     { message },
                 ),
             );

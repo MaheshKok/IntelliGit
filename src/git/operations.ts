@@ -766,6 +766,53 @@ export class GitOps {
         ]);
         return { base, ours, theirs };
     }
+    /**
+     * Resolves display labels for the two sides of an in-progress merge-like operation.
+     *
+     * "Ours" is the current branch name with a short-SHA fallback for detached HEAD.
+     * "Theirs" prefers the first merge-like head that exists (MERGE_HEAD, REBASE_HEAD,
+     * CHERRY_PICK_HEAD) resolved to a local branch name when possible, falling back to
+     * a short SHA. Resolution failures degrade to generic side labels so the merge
+     * editor can still open while Git state is unusual.
+     */
+    async getMergeSideLabels(): Promise<{ ours: string; theirs: string }> {
+        const ours = await this.resolveRefLabel("HEAD");
+        const theirs =
+            (await this.resolveRefLabel("MERGE_HEAD")) ??
+            (await this.resolveRefLabel("REBASE_HEAD")) ??
+            (await this.resolveRefLabel("CHERRY_PICK_HEAD"));
+        return { ours: ours ?? "Yours", theirs: theirs ?? "Theirs" };
+    }
+    /** Resolves a ref to a branch name or short SHA, returning null when the ref is absent. */
+    private async resolveRefLabel(ref: string): Promise<string | null> {
+        try {
+            if (ref === "HEAD") {
+                const symbolic = (
+                    await this.executor.run(["rev-parse", "--abbrev-ref", "HEAD"])
+                ).trim();
+                if (symbolic && symbolic !== "HEAD") return symbolic;
+            } else {
+                const named = (
+                    await this.executor.run(["name-rev", "--name-only", "--refs=refs/heads/*", ref])
+                ).trim();
+                // name-rev emits "undefined" for unnamed commits and suffixes like
+                // "branch~2" when the ref is not exactly a branch tip; both are
+                // worse labels than a short SHA.
+                if (
+                    named &&
+                    named !== "undefined" &&
+                    !named.includes("~") &&
+                    !named.includes("^")
+                ) {
+                    return named;
+                }
+            }
+            const short = (await this.executor.run(["rev-parse", "--short", ref])).trim();
+            return short || null;
+        } catch {
+            return null;
+        }
+    }
     /** Stages one literal repository path, typically after conflict-side resolution. */
     async stageFile(filePath: string): Promise<void> {
         await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));

@@ -82,6 +82,27 @@ function splitLines(text: string): string[] {
     return normalized === "" ? [] : normalized.split(/\r?\n/);
 }
 
+/**
+ * Detects the end-of-line style and trailing-newline contract for merge output.
+ *
+ * The first non-empty version wins so the merged result mirrors the dominant
+ * input file shape. Empty inputs default to LF with a trailing newline, which
+ * matches POSIX text-file conventions for newly written files.
+ */
+export function detectEolMetadata(...versions: string[]): {
+    eol: "\n" | "\r\n";
+    hasTrailingNewline: boolean;
+} {
+    const source = versions.find((text) => text.length > 0);
+    if (source === undefined) {
+        return { eol: "\n", hasTrailingNewline: true };
+    }
+    return {
+        eol: source.includes("\r\n") ? "\r\n" : "\n",
+        hasTrailingNewline: source.endsWith("\n"),
+    };
+}
+
 // --- Simple LCS-based diff ---
 
 interface EditRange {

@@ -42,7 +42,7 @@
     "command.initializeRepository": "Initialize Repository",
     "command.publishBranch": "Publish Branch",
     "configuration.jetbrainsMergeTool.path.markdownDescription": "JetBrains IDE binary path/command (`pycharm`, `idea`, `webstorm`) or a macOS `.app` bundle path. IntelliGit auto-resolves `.app` bundles to the executable inside `Contents/MacOS`.",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Prefer the external JetBrains merge tool when opening merge conflicts. Falls back to VS Code's internal merge editor if no JetBrains path is configured or launch fails.",
+    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Prefer the external JetBrains merge tool when opening merge conflicts. When disabled (default), conflicts open in IntelliGit's native three-way merge editor. Falls back to the native editor if no JetBrains path is configured or launch fails.",
     "configuration.tooltips.enabled.markdownDescription": "Enable or disable tooltips inside the IntelliGit window (Commit Graph, Branch Column, etc.).",
     "configuration.undockableWindow.markdownDescription": "Open IntelliGit as a unified editor tab when Show Git Log is invoked, enabling native VS Code undocking to a second monitor.",
     "configuration.icons.enum.color": "Use IntelliGit's colored icons (default).",
