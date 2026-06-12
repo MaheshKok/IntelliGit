@@ -137,6 +137,7 @@
     "merge.footer.useFileOurs": "'Ours' 파일 사용",
     "merge.footer.useFileTheirs": "그들의 파일을 사용하세요",
     "merge.footer.hint": "`N`/`P` 키로 충돌을 해결하고, `Ctrl/Cmd+Enter` 키로 적용합니다.",
+    "merge.header.autoResolved": "{count}개 자동 해결됨",
     "merge.footer.apply": "({resolved}/{total})을 적용합니다.",
     "merge.kind.leftOnly": "왼쪽만",
     "merge.kind.rightOnly": "오른쪽만",
@@ -187,5 +188,8 @@
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD ({name})",
     "merge.overview.jumpToHunk": "Hunk #{ordinal}로 이동",
-    "branch.menu.deleteBranches": "브랜치 삭제"
+    "branch.menu.deleteBranches": "브랜치 삭제",
+    "merge.status.edited": "Edited",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }

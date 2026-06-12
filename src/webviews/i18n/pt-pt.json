@@ -149,6 +149,7 @@
     "merge.footer.useFileOurs": "Use o File Ours",
     "merge.footer.useFileTheirs": "Utilizar Ficheiro 'Theirs'",
     "merge.footer.hint": "`N`/`P` resolve conflitos • `Ctrl/Cmd+Enter` aplica",
+    "merge.header.autoResolved": "{count} resolvidos automaticamente",
     "merge.footer.apply": "Aplicar ({resolved}/{total})",
     "merge.kind.leftOnly": "Apenas esquerda",
     "merge.kind.rightOnly": "Apenas direita",
@@ -201,5 +202,8 @@
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD ({name})",
     "merge.overview.jumpToHunk": "Ir para o bloco #{ordinal}",
-    "branch.menu.deleteBranches": "Eliminar ramos"
+    "branch.menu.deleteBranches": "Eliminar ramos",
+    "merge.status.edited": "Edited",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }
