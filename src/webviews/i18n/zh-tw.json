@@ -190,6 +190,7 @@
     "merge.overview.jumpToHunk": "跳到編號為 #{ordinal} 的區塊",
     "branch.menu.deleteBranches": "刪除分支",
     "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "已自動解決",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block"
 }

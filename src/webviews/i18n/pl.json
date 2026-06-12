@@ -211,6 +211,7 @@
     "merge.overview.jumpToHunk": "Przejdź do fragmentu #{ordinal}",
     "branch.menu.deleteBranches": "Usuń gałęzie",
     "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Rozwiązano automatycznie",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block"
 }

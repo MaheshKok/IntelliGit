@@ -68,8 +68,22 @@ function removeKey(edits: Record<number, string[]>, id: number): Record<number, 
 }
 
 /**
+ * Returns whether a segment is a conflict that still needs a human decision.
+ * One-sided hunks and token-level auto-merged hunks resolve themselves, so
+ * only dual-sided hunks without an auto-merge count as true conflicts.
+ */
+export function isTrueConflict(segment: MergeSegment): segment is ConflictSegment {
+    return (
+        segment.type === "conflict" &&
+        segment.changeKind === "conflict" &&
+        segment.autoResolvedLines === undefined
+    );
+}
+
+/**
  * Resolves the lines displayed in the result pane for one conflict segment,
- * including auto-resolution defaults for one-sided changes.
+ * including auto-resolution defaults for one-sided changes and token-level
+ * auto-merged hunks.
  */
 export function getResultLines(
     segment: ConflictSegment,
@@ -88,6 +102,8 @@ export function getResultLines(
             // Non-conflicting changes auto-resolve to the changed side
             if (segment.changeKind === "ours-only") return segment.oursLines;
             if (segment.changeKind === "theirs-only") return segment.theirsLines;
+            // Token-level merged hunks default to the composed result
+            if (segment.autoResolvedLines !== undefined) return segment.autoResolvedLines;
             return segment.baseLines;
     }
 }
@@ -150,17 +166,15 @@ export function allResolved(
 ): boolean {
     return segments.every(
         (seg) =>
-            seg.type === "common" ||
-            seg.changeKind !== "conflict" ||
+            !isTrueConflict(seg) ||
             resolutions[seg.id] !== undefined ||
             edits[seg.id] !== undefined,
     );
 }
 
-/** Counts only hunks where both sides changed the same base region. */
+/** Counts only hunks that still need a human decision (no auto-merge). */
 export function trueConflictCount(segments: MergeSegment[]): number {
-    return segments.filter((seg) => seg.type === "conflict" && seg.changeKind === "conflict")
-        .length;
+    return segments.filter(isTrueConflict).length;
 }
 
 /** Counts true conflicts resolved by a side choice or a manual result edit. */
@@ -171,8 +185,7 @@ export function resolvedTrueConflictCount(
 ): number {
     return segments.filter(
         (seg) =>
-            seg.type === "conflict" &&
-            seg.changeKind === "conflict" &&
+            isTrueConflict(seg) &&
             (resolutions[seg.id] !== undefined || edits[seg.id] !== undefined),
     ).length;
 }

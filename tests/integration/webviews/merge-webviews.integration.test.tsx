@@ -694,4 +694,108 @@ describe("MergeEditorApp", () => {
         ).map((el) => el.textContent?.trim());
         expect(theirsNumbers).toEqual(["", "1", "2"]);
     });
+
+    it("treats auto-merged hunks as resolved and applies the merged lines", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["head();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["const total = step;"],
+                        theirsLines: ["const count = stride;"],
+                        baseLines: ["const count = step;"],
+                        autoResolvedLines: ["const total = stride;"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // No human decision is pending: the auto-merge counts as resolved.
+        expect(document.body.textContent).toContain("0 unresolved");
+        expect(document.body.textContent).toContain("1 auto-resolved");
+        expect(document.body.textContent).toContain("Auto-resolved");
+        expect(document.querySelector('[data-conflict-id="0"]')?.className).toContain(
+            "auto-merged",
+        );
+
+        // The result block previews the composed merge of both edits.
+        const resultBlock = document.querySelector(".conflict-result");
+        expect(resultBlock?.textContent).toContain("const total = stride;");
+
+        // Apply is unlocked without any clicks and writes the merged line.
+        clickButton("Apply (0/0)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "head();\nconst total = stride;\n",
+        });
+    });
+
+    it("lets the user override an auto-merge with an explicit side choice", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["const total = step;"],
+                        theirsLines: ["const count = stride;"],
+                        baseLines: ["const count = step;"],
+                        autoResolvedLines: ["const total = stride;"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        clickButton("Left");
+        await flush();
+
+        // The explicit choice replaces the auto-merge in result and badge.
+        expect(document.querySelector(".conflict-result")?.textContent).toContain(
+            "const total = step;",
+        );
+        expect(document.body.textContent).not.toContain("Auto-resolved");
+        expect(document.querySelector('[data-conflict-id="0"]')?.className).not.toContain(
+            "auto-merged",
+        );
+
+        clickButton("Apply (0/0)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "const total = step;\n",
+        });
+    });
 });

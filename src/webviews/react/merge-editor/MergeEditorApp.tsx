@@ -31,6 +31,7 @@ import {
     trueConflictCount,
     resolvedTrueConflictCount,
     paneChangeCount,
+    isTrueConflict,
 } from "./mergeState";
 import {
     buildLineNumberValues,
@@ -180,7 +181,7 @@ function App() {
             if (segment.type === "conflict") {
                 conflictOrdinal += 1;
                 computedConflictOrdinal = conflictOrdinal;
-                if (segment.changeKind === "conflict") {
+                if (isTrueConflict(segment)) {
                     trueConflictOrdinal += 1;
                     computedTrueConflictOrdinal = trueConflictOrdinal;
                 }
@@ -204,7 +205,7 @@ function App() {
         [segments],
     );
     const trueConflicts = useMemo(
-        () => conflictSegments.filter((seg) => seg.changeKind === "conflict"),
+        () => conflictSegments.filter(isTrueConflict),
         [conflictSegments],
     );
     const trueConflictIds = useMemo(() => trueConflicts.map((seg) => seg.id), [trueConflicts]);
@@ -464,7 +465,7 @@ function App() {
             heightPct: Math.min(Math.max((item.lineCount / totalVisualLines) * 100, 1), 30),
             changeKind: item.segment.changeKind,
             resolved:
-                item.segment.changeKind !== "conflict" ||
+                !isTrueConflict(item.segment) ||
                 state.resolutions[item.segment.id] !== undefined ||
                 state.edits[item.segment.id] !== undefined,
         }));

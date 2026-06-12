@@ -174,6 +174,7 @@
     "merge.status.useBoth": "Use both",
     "merge.status.removeBlock": "Remove block",
     "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Auto-resolved",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
     "merge.overview.label": "Conflict overview",

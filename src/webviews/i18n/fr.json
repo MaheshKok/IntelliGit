@@ -204,6 +204,7 @@
     "merge.overview.jumpToHunk": "Passer au bloc n°{ordinal}",
     "branch.menu.deleteBranches": "Supprimer les branches",
     "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Résolu automatiquement",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block"
 }

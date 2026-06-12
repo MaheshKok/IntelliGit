@@ -20,7 +20,7 @@ import {
     buildWordDiffMask,
     tokenizeWordDiff,
     alignCompareLinesForWordDiff,
-} from "./wordDiff";
+} from "../../../mergeEditor/wordDiff";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import type { AlignedHunkRows } from "./rowAlignment";
 import { t } from "../shared/i18n";
@@ -435,7 +435,14 @@ function getHunkStatus(
             : { label: t("merge.status.rightOnly"), tone: "muted" };
     }
 
-    if (resolution === undefined) return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
+    if (resolution === undefined) {
+        // Token-level merged hunks default to the composed result; surface that
+        // instead of "Unresolved" so the user knows no action is required.
+        if (segment.autoResolvedLines !== undefined) {
+            return { label: t("merge.status.autoResolved"), tone: "ok" };
+        }
+        return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
+    }
     if (resolution === "ours") return { label: t("merge.status.useLeft"), tone: "ok" };
     if (resolution === "theirs") return { label: t("merge.status.useRight"), tone: "ok" };
     if (resolution === "both") return { label: t("merge.status.useBoth"), tone: "ok" };
@@ -576,7 +583,13 @@ export const ConflictSection = React.memo(function ConflictSection({
     const isTheirs = !isEdited && resolution === "theirs";
     const isBoth = !isEdited && resolution === "both";
     const isNone = !isEdited && resolution === "none";
-    const isResolved = segment.changeKind !== "conflict" || resolution !== undefined || isEdited;
+    const isAutoMerged =
+        segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
+    const isResolved =
+        segment.changeKind !== "conflict" ||
+        segment.autoResolvedLines !== undefined ||
+        resolution !== undefined ||
+        isEdited;
     const kindLabel = getHunkKindLabel(segment);
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
@@ -598,6 +611,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 "segment-conflict",
                 `change-${segment.changeKind}`,
                 isResolved ? "resolved" : "unresolved",
+                isAutoMerged ? "auto-merged" : "",
                 isActive ? "active" : "",
             ]
                 .filter(Boolean)

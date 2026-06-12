@@ -11,6 +11,7 @@ import {
     resolvedTrueConflictCount,
     paneChangeCount,
     splitEditedText,
+    isTrueConflict,
 } from "../../../src/webviews/react/merge-editor/mergeState";
 import type {
     MergeEditorData,
@@ -293,5 +294,83 @@ describe("paneChangeCount", () => {
             makeConflict({ changeKind: "theirs-only" }),
         ];
         expect(paneChangeCount(segments, "theirs")).toBe(2);
+    });
+});
+
+describe("isTrueConflict", () => {
+    it("returns true for a dual-sided conflict without an auto-merge", () => {
+        expect(isTrueConflict(makeConflict())).toBe(true);
+    });
+
+    it("returns false for common segments", () => {
+        const common: MergeSegment = { type: "common", lines: ["a"] };
+        expect(isTrueConflict(common)).toBe(false);
+    });
+
+    it("returns false for one-sided hunks regardless of auto-merge", () => {
+        expect(isTrueConflict(makeConflict({ changeKind: "ours-only" }))).toBe(false);
+        expect(isTrueConflict(makeConflict({ changeKind: "theirs-only" }))).toBe(false);
+    });
+
+    it("returns false when the hunk carries token-level auto-merged lines", () => {
+        expect(isTrueConflict(makeConflict({ autoResolvedLines: ["merged"] }))).toBe(false);
+    });
+
+    it("treats an empty auto-merge result as auto-resolved (block deletion)", () => {
+        expect(isTrueConflict(makeConflict({ autoResolvedLines: [] }))).toBe(false);
+    });
+});
+
+describe("auto-merged hunks", () => {
+    const autoMerged = makeConflict({
+        id: 1,
+        baseLines: ["const count = step;"],
+        oursLines: ["const total = step;"],
+        theirsLines: ["const count = stride;"],
+        autoResolvedLines: ["const total = stride;"],
+    });
+
+    it("getResultLines defaults to the auto-merged composition", () => {
+        expect(getResultLines(autoMerged, undefined)).toEqual(["const total = stride;"]);
+    });
+
+    it("explicit side choices override the auto-merge", () => {
+        expect(getResultLines(autoMerged, "ours")).toEqual(["const total = step;"]);
+        expect(getResultLines(autoMerged, "theirs")).toEqual(["const count = stride;"]);
+        expect(getResultLines(autoMerged, "none")).toEqual([]);
+    });
+
+    it("manual edits override the auto-merge", () => {
+        expect(getEffectiveResultLines(autoMerged, undefined, ["typed"])).toEqual(["typed"]);
+    });
+
+    it("allResolved holds with zero user input when every conflict auto-merges", () => {
+        expect(allResolved([autoMerged], {})).toBe(true);
+    });
+
+    it("allResolved still fails when a true conflict remains", () => {
+        expect(allResolved([autoMerged, makeConflict({ id: 2 })], {})).toBe(false);
+    });
+
+    it("trueConflictCount excludes auto-merged hunks", () => {
+        expect(trueConflictCount([autoMerged, makeConflict({ id: 2 })])).toBe(1);
+    });
+
+    it("resolvedTrueConflictCount ignores auto-merged hunks even when overridden", () => {
+        expect(resolvedTrueConflictCount([autoMerged], { 1: "ours" })).toBe(0);
+    });
+
+    it("buildResultContent writes the auto-merged lines without a resolution", () => {
+        const data = makeData([
+            { type: "common", lines: ["head();"] },
+            autoMerged,
+            { type: "common", lines: ["tail();"] },
+        ]);
+        expect(buildResultContent(data, {})).toBe("head();\nconst total = stride;\ntail();\n");
+    });
+
+    it("buildResultContent prefers an explicit override to the auto-merge", () => {
+        const data = makeData([autoMerged]);
+        expect(buildResultContent(data, { 1: "ours" })).toBe("const total = step;\n");
     });
 });

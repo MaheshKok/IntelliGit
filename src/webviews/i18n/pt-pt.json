@@ -204,6 +204,7 @@
     "merge.overview.jumpToHunk": "Ir para o bloco #{ordinal}",
     "branch.menu.deleteBranches": "Eliminar ramos",
     "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Resolvido automaticamente",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block"
 }

@@ -2,6 +2,8 @@
 // for display in a 3-way merge editor. Uses a simple line-based diff to
 // identify common regions and conflict hunks.
 
+import { tryAutoMergeLines } from "./autoMerge";
+
 /**
  * A contiguous span that both sides resolve to the same content.
  * The merge editor renders these lines once because they do not need user choice.
@@ -24,6 +26,13 @@ export interface ConflictSegment {
     oursLines: string[];
     theirsLines: string[];
     baseLines: string[];
+    /**
+     * Merged result lines when both sides' token-level edits compose without
+     * touching the same base region (IntelliJ-style "magic resolve"). Present
+     * only on `changeKind === "conflict"` hunks; such hunks default to this
+     * merged result, do not block Apply, and remain user-overridable.
+     */
+    autoResolvedLines?: string[];
 }
 
 /**
@@ -371,13 +380,24 @@ function appendResolvedSegment(
         return conflictId;
     }
 
+    const changeKind = getConflictChangeKind(resolution.hasOursEdit, resolution.hasTheirsEdit);
+    const autoResolvedLines =
+        changeKind === "conflict"
+            ? (tryAutoMergeLines(
+                  resolution.baseLines,
+                  resolution.oursLines,
+                  resolution.theirsLines,
+              ) ?? undefined)
+            : undefined;
+
     segments.push({
         type: "conflict",
         id: conflictId,
-        changeKind: getConflictChangeKind(resolution.hasOursEdit, resolution.hasTheirsEdit),
+        changeKind,
         oursLines: resolution.oursLines,
         theirsLines: resolution.theirsLines,
         baseLines: resolution.baseLines,
+        ...(autoResolvedLines !== undefined ? { autoResolvedLines } : {}),
     });
     return conflictId + 1;
 }

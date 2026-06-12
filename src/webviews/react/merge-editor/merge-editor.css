@@ -473,6 +473,10 @@
         inset 0 0 0 1px rgba(78, 161, 255, 0.18),
         0 0 0 1px rgba(78, 161, 255, 0.08);
 }
+.segment-conflict.auto-merged {
+    border-top-color: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%, transparent);
+}
 .hunk-header {
     display: flex;
     align-items: center;

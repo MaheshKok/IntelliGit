@@ -8,7 +8,7 @@ import {
     tokenSimilarityRatio,
     alignCompareLinesForWordDiff,
     buildWordDiffMask,
-} from "../../../src/webviews/react/merge-editor/wordDiff";
+} from "../../../src/mergeEditor/wordDiff";
 
 describe("tokenizeWordDiff", () => {
     it("returns empty array for empty string", () => {

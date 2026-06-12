@@ -190,6 +190,7 @@
     "merge.overview.jumpToHunk": "チャンク#{ordinal}にジャンプ",
     "branch.menu.deleteBranches": "ブランチを削除",
     "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "自動解決済み",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block"
 }

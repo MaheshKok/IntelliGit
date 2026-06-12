@@ -3,7 +3,10 @@
 // lines occupy the same row index and gaps become explicit null spacer rows,
 // matching how IntelliJ keeps its side panes vertically locked together.
 
-import { computeLineAlignmentActions, MAX_LINE_ALIGNMENT_CELLS } from "./wordDiff";
+import {
+    computeLineAlignmentActions,
+    MAX_LINE_ALIGNMENT_CELLS,
+} from "../../../mergeEditor/wordDiff";
 
 /**
  * Row layout for one conflict hunk. `ours` and `theirs` always have

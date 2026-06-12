@@ -1,7 +1,7 @@
 // Vitest configuration for unit testing the extension. Excludes VS Code API
 // calls which require the Extension Development Host for integration tests.
 
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
     test: {
@@ -17,10 +17,10 @@ export default defineConfig({
             // change improves coverage, raise the corresponding value in the
             // same commit so future edits cannot silently lower the baseline.
             thresholds: {
-                lines: 86.08,
-                functions: 81.19,
-                branches: 78.27,
-                statements: 86.08,
+                lines: 88.72,
+                functions: 83.63,
+                branches: 80.21,
+                statements: 88.72,
             },
         },
     },
