@@ -37,9 +37,11 @@ import {
     CommonSection,
     ConflictSection,
     OverviewRail,
+    buildAlignedLineNumberValues,
     type SegmentPaneLineNumbers,
     type OverviewMarker,
 } from "./segments";
+import { alignConflictRows, type AlignedHunkRows } from "./rowAlignment";
 import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
@@ -73,6 +75,21 @@ function App() {
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
+    // Row alignments depend only on the hunk contents, never on resolutions or
+    // edits, so they are computed once per data load and shared by reference.
+    const hunkAlignments = useMemo(() => {
+        const alignments = new Map<number, AlignedHunkRows>();
+        for (const segment of segments) {
+            if (segment.type === "conflict") {
+                alignments.set(
+                    segment.id,
+                    alignConflictRows(segment.oursLines, segment.theirsLines),
+                );
+            }
+        }
+        return alignments;
+    }, [segments]);
+
     const renderedSegments = useMemo(() => {
         let visualLineCursor = 1;
         let oursCursor = 1;
@@ -86,6 +103,7 @@ function App() {
             let lineCount: number;
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
+            let alignment: AlignedHunkRows | undefined;
 
             if (segment.type === "common") {
                 const commonLen = segment.lines.length;
@@ -119,12 +137,19 @@ function App() {
                 const theirsLen = segment.theirsLines.length;
                 const baseLen = segment.baseLines.length;
                 const resultLen = resultLines.length;
+                alignment = hunkAlignments.get(segment.id);
 
-                lineCount = Math.max(oursLen, resultLen, theirsLen, 1);
+                lineCount = Math.max(alignment?.rowCount ?? 0, resultLen, 1);
                 startLine = visualLineCursor;
                 lineNumbers = {
                     left: {
-                        primary: buildLineNumberValues(oursCursor, oursLen, lineCount),
+                        primary: alignment
+                            ? buildAlignedLineNumberValues(
+                                  oursCursor,
+                                  alignment.oursLineIndex,
+                                  lineCount,
+                              )
+                            : buildLineNumberValues(oursCursor, oursLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     middle: {
@@ -132,7 +157,13 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     right: {
-                        primary: buildLineNumberValues(theirsCursor, theirsLen, lineCount),
+                        primary: alignment
+                            ? buildAlignedLineNumberValues(
+                                  theirsCursor,
+                                  alignment.theirsLineIndex,
+                                  lineCount,
+                              )
+                            : buildLineNumberValues(theirsCursor, theirsLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                 };
@@ -161,11 +192,12 @@ function App() {
                 startLine,
                 lineCount,
                 lineNumbers,
+                alignment,
                 conflictOrdinal: computedConflictOrdinal,
                 trueConflictOrdinal: computedTrueConflictOrdinal,
             };
         });
-    }, [segments, state.resolutions, state.edits]);
+    }, [segments, state.resolutions, state.edits, hunkAlignments]);
 
     const conflictSegments = useMemo(
         () => segments.filter((seg): seg is ConflictSegment => seg.type === "conflict"),
@@ -654,6 +686,7 @@ function App() {
                             index,
                             lineCount,
                             lineNumbers,
+                            alignment,
                             conflictOrdinal,
                             trueConflictOrdinal,
                         }) =>
@@ -673,6 +706,7 @@ function App() {
                                     editedLines={state.edits[segment.id]}
                                     lineCount={lineCount}
                                     lineNumbers={lineNumbers}
+                                    alignment={alignment}
                                     onResolve={handleResolve}
                                     onEditResult={handleEditResult}
                                     onSelect={setActiveConflictId}

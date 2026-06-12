@@ -22,6 +22,7 @@ import {
     alignCompareLinesForWordDiff,
 } from "./wordDiff";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
+import type { AlignedHunkRows } from "./rowAlignment";
 import { t } from "../shared/i18n";
 
 // --- Syntax highlighting ---
@@ -147,6 +148,24 @@ export function buildLineNumberValues(
     return values;
 }
 
+/**
+ * Builds displayed line numbers from an intra-hunk row alignment: rows mapped
+ * to a source line get sequential numbers while spacer rows (null entries)
+ * render blank, so numbering skips alignment gaps instead of counting them.
+ */
+export function buildAlignedLineNumberValues(
+    startAt: number,
+    lineIndex: Array<number | null>,
+    rowCount: number,
+): LineNumberValue[] {
+    const values: LineNumberValue[] = [];
+    for (let i = 0; i < rowCount; i++) {
+        const sourceIndex = i < lineIndex.length ? lineIndex[i] : null;
+        values.push(sourceIndex === null ? null : startAt + sourceIndex);
+    }
+    return values;
+}
+
 function padLines(lines: string[], count: number): string[] {
     const padded = [...lines];
     while (padded.length < count) padded.push("");
@@ -214,6 +233,25 @@ interface CodeBlockProps {
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
+    /**
+     * Pre-aligned rows for this pane where `null` marks an intra-hunk spacer
+     * row. When present these take precedence over `lines` for layout, so
+     * similar lines sit on the same row as the opposite pane.
+     */
+    alignedRows?: Array<string | null>;
+    /**
+     * Opposite-pane rows on the same row grid as `alignedRows`. Row `i`
+     * compares directly against `compareRows[i]`, replacing the heuristic
+     * compare-line alignment used for unaligned blocks.
+     */
+    compareRows?: Array<string | null>;
+}
+
+/** Pads an aligned row array with trailing spacer rows up to `count`. */
+function padAlignedRows(rows: Array<string | null>, count: number): Array<string | null> {
+    const padded = [...rows];
+    while (padded.length < count) padded.push(null);
+    return padded;
 }
 
 const CodeBlock = React.memo(
@@ -224,13 +262,22 @@ const CodeBlock = React.memo(
         className,
         wordHighlight,
         compareLines,
+        alignedRows,
+        compareRows,
     }: CodeBlockProps) {
-        const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
+        const padded = useMemo<Array<string | null>>(
+            () =>
+                alignedRows ? padAlignedRows(alignedRows, lineCount) : padLines(lines, lineCount),
+            [alignedRows, lines, lineCount],
+        );
         const paddedCompare = useMemo(() => {
+            if (alignedRows && compareRows) {
+                return padAlignedRows(compareRows, lineCount).map((row) => row ?? "");
+            }
             if (!compareLines) return undefined;
             const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
             return padLines(alignedCompare, lineCount);
-        }, [compareLines, lineCount, lines]);
+        }, [alignedRows, compareRows, compareLines, lineCount, lines]);
 
         return (
             <div
@@ -238,15 +285,21 @@ const CodeBlock = React.memo(
             >
                 <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
                 <div className="code-lines">
-                    {padded.map((line, i) => (
-                        <div key={i} className="code-line">
-                            {wordHighlight && paddedCompare ? (
-                                <WordDiffLine line={line} compareLine={paddedCompare[i]} />
-                            ) : (
-                                <HighlightedLine line={line} />
-                            )}
-                        </div>
-                    ))}
+                    {padded.map((line, i) =>
+                        line === null ? (
+                            <div key={i} className="code-line spacer-line">
+                                {" "}
+                            </div>
+                        ) : (
+                            <div key={i} className="code-line">
+                                {wordHighlight && paddedCompare ? (
+                                    <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                                ) : (
+                                    <HighlightedLine line={line} />
+                                )}
+                            </div>
+                        ),
+                    )}
                 </div>
             </div>
         );
@@ -257,6 +310,8 @@ const CodeBlock = React.memo(
         prev.className === next.className &&
         prev.wordHighlight === next.wordHighlight &&
         prev.compareLines === next.compareLines &&
+        prev.alignedRows === next.alignedRows &&
+        prev.compareRows === next.compareRows &&
         lineNumberSpecEqual(prev.lineNumbers, next.lineNumbers),
 );
 
@@ -474,6 +529,11 @@ export interface ConflictSectionProps {
     editedLines: string[] | undefined;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
+    /**
+     * Intra-hunk row alignment shared by the ours and theirs panes. Optional
+     * so callers without alignment data fall back to top-aligned columns.
+     */
+    alignment?: AlignedHunkRows;
     onResolve: (id: number, resolution: HunkResolution) => void;
     onEditResult: (id: number, lines: string[]) => void;
     onSelect: (id: number) => void;
@@ -497,6 +557,7 @@ export const ConflictSection = React.memo(function ConflictSection({
     editedLines,
     lineCount,
     lineNumbers,
+    alignment,
     onResolve,
     onEditResult,
     onSelect,
@@ -621,6 +682,8 @@ export const ConflictSection = React.memo(function ConflictSection({
                         className="conflict-ours"
                         wordHighlight={highlightWords}
                         compareLines={segment.theirsLines}
+                        alignedRows={alignment?.ours}
+                        compareRows={alignment?.theirs}
                     />
                     <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -684,6 +747,8 @@ export const ConflictSection = React.memo(function ConflictSection({
                         className="conflict-theirs"
                         wordHighlight={highlightWords}
                         compareLines={segment.oursLines}
+                        alignedRows={alignment?.theirs}
+                        compareRows={alignment?.ours}
                     />
                 </div>
             </div>
@@ -704,6 +769,7 @@ function conflictSectionPropsEqual(
         prev.resolution === next.resolution &&
         prev.editedLines === next.editedLines &&
         prev.lineCount === next.lineCount &&
+        prev.alignment === next.alignment &&
         prev.onResolve === next.onResolve &&
         prev.onEditResult === next.onEditResult &&
         prev.onSelect === next.onSelect &&

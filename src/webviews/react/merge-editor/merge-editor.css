@@ -435,6 +435,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* Intra-hunk spacer rows: hatched like IntelliJ's alignment gaps so users can
+   tell "nothing here" apart from an actual empty source line. */
+.code-line.spacer-line {
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 4px,
+        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 4px,
+        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 5px
+    );
+}
 .segment-common .code-line {
     color: color-mix(in srgb, var(--vscode-editor-foreground) 90%, transparent);
 }

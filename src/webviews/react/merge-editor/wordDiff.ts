@@ -16,7 +16,106 @@ export function normalizeLineForWordDiff(line: string): string {
     return line.replace(/\s+/g, " ").trim();
 }
 
-type AlignmentTraceAction = "pair" | "skipA" | "skipB";
+/** One step of a line-alignment path: pair both cursors, or skip one side. */
+export type AlignmentTraceAction = "pair" | "skipA" | "skipB";
+
+/** Gap penalty shared by every line-alignment consumer. */
+const LINE_ALIGNMENT_GAP_PENALTY = -0.8;
+
+/**
+ * Upper bound on dynamic-programming cells for line alignment. Hunks above
+ * this size fall back to cheaper strategies to keep the webview responsive.
+ */
+export const MAX_LINE_ALIGNMENT_CELLS = 50_000;
+
+/**
+ * Computes the full Needleman-Wunsch alignment path between two line arrays
+ * using token-similarity pair scores. The returned action list always walks
+ * both inputs to exhaustion, so consumers can derive padded row layouts or
+ * compare-line mappings from the same path.
+ */
+export function computeLineAlignmentActions(
+    lines: string[],
+    compareLines: string[],
+): AlignmentTraceAction[] {
+    const m = lines.length;
+    const n = compareLines.length;
+    const gapPenalty = LINE_ALIGNMENT_GAP_PENALTY;
+    const pairScoreCache = new Map<string, number>();
+    const scorePair = (i: number, j: number): number => {
+        const key = `${i}:${j}`;
+        const cached = pairScoreCache.get(key);
+        if (cached !== undefined) return cached;
+
+        const a = lines[i];
+        const b = compareLines[j];
+        let score: number;
+        if (a === b) {
+            score = 4;
+        } else {
+            const sim = tokenSimilarityRatio(a, b);
+            if (normalizeLineForWordDiff(a) === normalizeLineForWordDiff(b)) score = 3.5;
+            else if (sim >= 0.78) score = 2.4 + sim;
+            else if (sim >= 0.52) score = 1 + sim;
+            else if (sim >= 0.34) score = 0.2 + sim * 0.4;
+            else score = -1.6;
+        }
+
+        pairScoreCache.set(key, score);
+        return score;
+    };
+
+    const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
+    const trace: AlignmentTraceAction[][] = Array.from({ length: m + 1 }, () =>
+        Array<AlignmentTraceAction>(n + 1).fill("pair"),
+    );
+
+    for (let i = m - 1; i >= 0; i--) {
+        dp[i][n] = dp[i + 1][n] + gapPenalty;
+        trace[i][n] = "skipA";
+    }
+    for (let j = n - 1; j >= 0; j--) {
+        dp[m][j] = dp[m][j + 1] + gapPenalty;
+        trace[m][j] = "skipB";
+    }
+
+    for (let i = m - 1; i >= 0; i--) {
+        for (let j = n - 1; j >= 0; j--) {
+            const pair = dp[i + 1][j + 1] + scorePair(i, j);
+            const skipA = dp[i + 1][j] + gapPenalty;
+            const skipB = dp[i][j + 1] + gapPenalty;
+
+            if (pair >= skipA && pair >= skipB) {
+                dp[i][j] = pair;
+                trace[i][j] = "pair";
+            } else if (skipA >= skipB) {
+                dp[i][j] = skipA;
+                trace[i][j] = "skipA";
+            } else {
+                dp[i][j] = skipB;
+                trace[i][j] = "skipB";
+            }
+        }
+    }
+
+    const actions: AlignmentTraceAction[] = [];
+    let walkI = 0;
+    let walkJ = 0;
+    while (walkI < m || walkJ < n) {
+        const action: AlignmentTraceAction =
+            walkI < m && walkJ < n ? trace[walkI][walkJ] : walkI < m ? "skipA" : "skipB";
+        actions.push(action);
+        if (action === "pair") {
+            walkI++;
+            walkJ++;
+        } else if (action === "skipA") {
+            walkI++;
+        } else {
+            walkJ++;
+        }
+    }
+    return actions;
+}
 
 /**
  * Finds token pairs shared by two token streams using LCS, with a greedy
@@ -97,74 +196,15 @@ export function alignCompareLinesForWordDiff(lines: string[], compareLines: stri
     const n = compareLines.length;
 
     // Guard against unbounded O(m*n) DP allocation for very large diffs.
-    const MAX_ALIGN_CELLS = 50_000;
-    if (m * n > MAX_ALIGN_CELLS) {
+    if (m * n > MAX_LINE_ALIGNMENT_CELLS) {
         return lines.map((_, i) => (i < compareLines.length ? compareLines[i] : ""));
     }
 
-    const gapPenalty = -0.8;
-    const pairScoreCache = new Map<string, number>();
-    const scorePair = (i: number, j: number): number => {
-        const key = `${i}:${j}`;
-        const cached = pairScoreCache.get(key);
-        if (cached !== undefined) return cached;
-
-        const a = lines[i];
-        const b = compareLines[j];
-        let score: number;
-        if (a === b) {
-            score = 4;
-        } else {
-            const sim = tokenSimilarityRatio(a, b);
-            if (normalizeLineForWordDiff(a) === normalizeLineForWordDiff(b)) score = 3.5;
-            else if (sim >= 0.78) score = 2.4 + sim;
-            else if (sim >= 0.52) score = 1 + sim;
-            else if (sim >= 0.34) score = 0.2 + sim * 0.4;
-            else score = -1.6;
-        }
-
-        pairScoreCache.set(key, score);
-        return score;
-    };
-
-    const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
-    const trace: AlignmentTraceAction[][] = Array.from({ length: m + 1 }, () =>
-        Array<AlignmentTraceAction>(n + 1).fill("pair"),
-    );
-
-    for (let i = m - 1; i >= 0; i--) {
-        dp[i][n] = dp[i + 1][n] + gapPenalty;
-        trace[i][n] = "skipA";
-    }
-    for (let j = n - 1; j >= 0; j--) {
-        dp[m][j] = dp[m][j + 1] + gapPenalty;
-        trace[m][j] = "skipB";
-    }
-
-    for (let i = m - 1; i >= 0; i--) {
-        for (let j = n - 1; j >= 0; j--) {
-            const pair = dp[i + 1][j + 1] + scorePair(i, j);
-            const skipA = dp[i + 1][j] + gapPenalty;
-            const skipB = dp[i][j + 1] + gapPenalty;
-
-            if (pair >= skipA && pair >= skipB) {
-                dp[i][j] = pair;
-                trace[i][j] = "pair";
-            } else if (skipA >= skipB) {
-                dp[i][j] = skipA;
-                trace[i][j] = "skipA";
-            } else {
-                dp[i][j] = skipB;
-                trace[i][j] = "skipB";
-            }
-        }
-    }
-
+    const actions = computeLineAlignmentActions(lines, compareLines);
     const aligned = new Array<string>(m).fill("");
     let i = 0;
     let j = 0;
-    while (i < m && j < n) {
-        const action = trace[i][j];
+    for (const action of actions) {
         if (action === "pair") {
             // Only pair lines for word-diff if they are at least moderately similar.
             aligned[i] =
@@ -177,10 +217,6 @@ export function alignCompareLinesForWordDiff(lines: string[], compareLines: stri
         } else {
             j++;
         }
-    }
-    while (i < m) {
-        aligned[i] = "";
-        i++;
     }
 
     return aligned;
