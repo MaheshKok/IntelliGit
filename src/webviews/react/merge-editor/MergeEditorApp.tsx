@@ -299,20 +299,78 @@ function App() {
         [activeConflictId, jumpToConflict, trueConflictIds],
     );
 
+    const resolveActiveFromKeyboard = useCallback(
+        (resolution: HunkResolution) => {
+            if (!state.data) return;
+            const targetId =
+                activeConflictId !== null
+                    ? activeConflictId
+                    : trueConflicts.find(
+                          (seg) =>
+                              state.resolutions[seg.id] === undefined &&
+                              state.edits[seg.id] === undefined,
+                      )?.id;
+            if (targetId === undefined) return;
+            const segment = state.data.segments.find(
+                (seg): seg is ConflictSegment => seg.type === "conflict" && seg.id === targetId,
+            );
+            if (!segment) return;
+            // "Both" only makes sense when both sides changed the same region.
+            if (resolution === "both" && segment.changeKind !== "conflict") return;
+            handleResolve(targetId, resolution);
+            // IntelliJ-style: move on to the next unresolved conflict after applying.
+            const targetIndex = trueConflicts.findIndex((seg) => seg.id === targetId);
+            const ordered = [
+                ...trueConflicts.slice(targetIndex + 1),
+                ...trueConflicts.slice(0, Math.max(targetIndex, 0)),
+            ];
+            const next = ordered.find(
+                (seg) =>
+                    seg.id !== targetId &&
+                    state.resolutions[seg.id] === undefined &&
+                    state.edits[seg.id] === undefined,
+            );
+            if (next) jumpToConflict(next.id);
+        },
+        [
+            activeConflictId,
+            handleResolve,
+            jumpToConflict,
+            state.data,
+            state.edits,
+            state.resolutions,
+            trueConflicts,
+        ],
+    );
+
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             const target = event.target as HTMLElement | null;
             const tag = target?.tagName;
             if (tag === "INPUT" || tag === "TEXTAREA") return;
             const normalizedKey = event.key.toLowerCase();
+            const hasCommandModifier = event.ctrlKey || event.metaKey;
+            const plainKey = !hasCommandModifier && !event.altKey;
 
-            if (normalizedKey === "p" || (event.shiftKey && event.key === "F7")) {
+            if ((normalizedKey === "p" && plainKey) || (event.shiftKey && event.key === "F7")) {
                 event.preventDefault();
                 moveActiveConflict(-1);
-            } else if (normalizedKey === "n" || event.key === "F7") {
+            } else if ((normalizedKey === "n" && plainKey) || event.key === "F7") {
                 event.preventDefault();
                 moveActiveConflict(1);
-            } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            } else if (hasCommandModifier && event.key === "ArrowLeft") {
+                event.preventDefault();
+                resolveActiveFromKeyboard("ours");
+            } else if (hasCommandModifier && event.key === "ArrowRight") {
+                event.preventDefault();
+                resolveActiveFromKeyboard("theirs");
+            } else if (normalizedKey === "b" && plainKey) {
+                event.preventDefault();
+                resolveActiveFromKeyboard("both");
+            } else if (normalizedKey === "x" && plainKey) {
+                event.preventDefault();
+                resolveActiveFromKeyboard("none");
+            } else if (hasCommandModifier && event.key === "Enter") {
                 if (!state.data) return;
                 if (!allResolved(state.data.segments, state.resolutions, state.edits)) return;
                 event.preventDefault();
@@ -321,7 +379,14 @@ function App() {
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [handleApply, moveActiveConflict, state.data, state.resolutions, state.edits]);
+    }, [
+        handleApply,
+        moveActiveConflict,
+        resolveActiveFromKeyboard,
+        state.data,
+        state.resolutions,
+        state.edits,
+    ]);
 
     if (state.error) {
         return (
@@ -343,6 +408,8 @@ function App() {
     const unresolved = total - resolved;
     const canApply = allResolved(segments, state.resolutions, state.edits);
     const changeCount = conflictSegments.length;
+    // One-sided hunks auto-resolve to the changed side, so they never block Apply.
+    const autoResolvedCount = changeCount - total;
     const oursChanges = paneChangeCount(segments, "ours");
     const theirsChanges = paneChangeCount(segments, "theirs");
     const currentConflictIndex =
@@ -397,7 +464,11 @@ function App() {
         >
             <div className="merge-toolbar">
                 <div className="toolbar-left">
-                    <button className="toolbar-btn subtle" onClick={handleApplyNonConflicting}>
+                    <button
+                        className="toolbar-btn subtle"
+                        onClick={handleApplyNonConflicting}
+                        disabled={autoResolvedCount === 0}
+                    >
                         <span className="toolbar-icon">
                             <IconSpark />
                         </span>
@@ -520,6 +591,11 @@ function App() {
                     <span className="merge-stat-pill">
                         {t("merge.count.changes", { count: changeCount })}
                     </span>
+                    {autoResolvedCount > 0 ? (
+                        <span className="merge-stat-pill ok">
+                            {t("merge.header.autoResolved", { count: autoResolvedCount })}
+                        </span>
+                    ) : null}
                     <span className={`merge-stat-pill ${unresolved > 0 ? "warn" : "ok"}`}>
                         {t("merge.count.conflicts", { count: unresolved })}
                     </span>
