@@ -22,50 +22,28 @@ import {
     alignCompareLinesForWordDiff,
 } from "../../../mergeEditor/wordDiff";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
+import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
 import type { AlignedHunkRows } from "./rowAlignment";
 import { t } from "../shared/i18n";
 
 // --- Syntax highlighting ---
 
-const TOKEN_REGEX =
-    /("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)|\b(import|from|const|let|var|class|interface|type|function|return|if|else|for|while|switch|case|break|continue|new|export|default|private|public|protected|readonly|static|async|await)\b|\b(true|false|null|undefined)\b|\b\d+(\.\d+)?\b/g;
+const TOKEN_CLASS: Record<SyntaxTokenKind, string | undefined> = {
+    plain: undefined,
+    comment: "tok-comment",
+    string: "tok-string",
+    keyword: "tok-keyword",
+    constant: "tok-constant",
+    number: "tok-number",
+};
 
 function renderSyntaxHighlightedNodes(line: string, keyPrefix: string): React.ReactNode[] {
     if (!line) return [<React.Fragment key={`${keyPrefix}-nbsp`}>{`\u00A0`}</React.Fragment>];
-    if (line.trimStart().startsWith("//")) {
-        return [
-            <span key={`${keyPrefix}-comment`} className="tok-comment">
-                {line}
-            </span>,
-        ];
-    }
-
-    const nodes: React.ReactNode[] = [];
-    let last = 0;
-    let idx = 0;
-
-    for (const match of line.matchAll(TOKEN_REGEX)) {
-        const start = match.index ?? 0;
-        if (start > last) {
-            nodes.push(<span key={`${keyPrefix}-txt-${idx++}`}>{line.slice(last, start)}</span>);
-        }
-        const token = match[0];
-        let className: string;
-        if (match[1]) className = "tok-string";
-        else if (match[5]) className = "tok-keyword";
-        else if (match[6]) className = "tok-constant";
-        else className = "tok-number";
-        nodes.push(
-            <span key={`${keyPrefix}-tok-${idx++}`} className={className}>
-                {token}
-            </span>,
-        );
-        last = start + token.length;
-    }
-    if (last < line.length) {
-        nodes.push(<span key={`${keyPrefix}-txt-${idx}`}>{line.slice(last)}</span>);
-    }
-    return nodes;
+    return tokenizeSyntaxLine(line).map((token, i) => (
+        <span key={`${keyPrefix}-${i}`} className={TOKEN_CLASS[token.kind]}>
+            {token.text}
+        </span>
+    ));
 }
 
 const HighlightedLine = React.memo(function HighlightedLine({

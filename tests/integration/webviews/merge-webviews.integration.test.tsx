@@ -798,4 +798,57 @@ describe("MergeEditorApp", () => {
             content: "const total = step;\n",
         });
     });
+
+    it("renders theme-colored syntax tokens in all three panes", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ['const greeting = "hi"; // welcome 42'] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["return 1;"],
+                        theirsLines: ["return 2;"],
+                        baseLines: ["return 0;"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // The common line renders in left, result, and right panes; each pane
+        // must classify the keyword, string, comment, and number tokens.
+        const keywordSpans = Array.from(document.querySelectorAll(".tok-keyword"));
+        expect(keywordSpans.filter((el) => el.textContent === "const").length).toBe(3);
+
+        const stringSpans = Array.from(document.querySelectorAll(".tok-string"));
+        expect(stringSpans.filter((el) => el.textContent === '"hi"').length).toBe(3);
+
+        // Trailing comments after code are highlighted, and the number inside
+        // the comment stays part of the comment token.
+        const commentSpans = Array.from(document.querySelectorAll(".tok-comment"));
+        expect(commentSpans.filter((el) => el.textContent === "// welcome 42").length).toBe(3);
+
+        // Conflict pane lines are highlighted too (keyword + number per pane).
+        const conflictPanes = document.querySelectorAll('[data-conflict-id="0"] .code-block');
+        for (const pane of Array.from(conflictPanes)) {
+            expect(pane.querySelector(".tok-keyword")?.textContent).toBe("return");
+            expect(pane.querySelector(".tok-number")).not.toBeNull();
+        }
+    });
 });
