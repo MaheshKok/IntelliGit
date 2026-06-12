@@ -638,4 +638,60 @@ describe("MergeEditorApp", () => {
         await flush();
         expect(document.querySelector('[data-conflict-id="1"]')?.className).toContain("active");
     });
+
+    it("aligns shared hunk lines across panes with spacer rows", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["added_a();", "shared();"],
+                        theirsLines: ["shared();", "added_b();"],
+                        baseLines: ["shared();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        const oursRows = Array.from(
+            document.querySelectorAll(".conflict-ours .code-lines .code-line"),
+        );
+        const theirsRows = Array.from(
+            document.querySelectorAll(".conflict-theirs .code-lines .code-line"),
+        );
+
+        // Both panes render the same 3-row grid: the shared line pairs up and
+        // each one-sided addition pushes a spacer into the opposite pane.
+        expect(oursRows).toHaveLength(3);
+        expect(theirsRows).toHaveLength(3);
+        expect(oursRows[0].textContent).toContain("added_a();");
+        expect(oursRows[1].textContent).toContain("shared();");
+        expect(oursRows[2].className).toContain("spacer-line");
+        expect(theirsRows[0].className).toContain("spacer-line");
+        expect(theirsRows[1].textContent).toContain("shared();");
+        expect(theirsRows[2].textContent).toContain("added_b();");
+
+        // Line numbers skip spacer rows instead of counting them.
+        const theirsNumbers = Array.from(
+            document.querySelectorAll(".conflict-theirs .line-number-primary"),
+        ).map((el) => el.textContent?.trim());
+        expect(theirsNumbers).toEqual(["", "1", "2"]);
+    });
 });
