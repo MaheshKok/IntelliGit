@@ -7,9 +7,17 @@ on:
     pull_request:
         branches:
             - main
+    workflow_dispatch:
+        inputs:
+            force_publish:
+                description: "Publish the current package.json version even if it is unchanged from the previous commit (use to recover a deploy that GitHub skipped)."
+                type: boolean
+                default: false
 
+# Keyed by event so a manual workflow_dispatch on main cannot cancel an
+# in-flight push-triggered release run (they target the same ref).
 concurrency:
-    group: build-release-${{ github.ref }}
+    group: build-release-${{ github.event_name }}-${{ github.ref }}
     cancel-in-progress: true
 
 permissions:
@@ -88,10 +96,33 @@ jobs:
                   name: extension-vsix
                   path: "*.vsix"
 
+    # Blocks a PR from carrying a CI-skip token into main via squash merge.
+    # GitHub creates zero workflow runs for a push whose commit message contains
+    # such a token, so a skipped deploy cannot be detected after the fact -- it
+    # must be prevented before merge. This job ONLY protects the repo when it is
+    # marked as a required status check on the main branch ruleset AND direct
+    # pushes to main are disallowed (both configured on ruleset 12862467).
+    guard-no-skip-ci:
+        runs-on: ubuntu-latest
+        if: github.event_name == 'pull_request'
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Reject CI-skip directives in PR commits and metadata
+              env:
+                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+                  PR_TITLE: ${{ github.event.pull_request.title }}
+                  PR_BODY: ${{ github.event.pull_request.body }}
+              run: node scripts/check-no-skip-ci.js
+
     release:
         needs: build
         runs-on: ubuntu-latest
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         permissions:
             contents: write
 
@@ -103,9 +134,25 @@ jobs:
 
             - name: Check if version changed
               id: version-check
+              env:
+                  FORCE_PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.force_publish == true }}
               run: |
                   CURRENT_VERSION=$(node -p "require('./package.json').version")
                   echo "Current version: $CURRENT_VERSION"
+
+                  # force_publish is a recovery lever for when GitHub silently
+                  # skipped a push-to-main deploy (e.g. a CI-skip token reached
+                  # the merge commit). It only bypasses the version-change gate;
+                  # the publish-status guard (check-extension-publish-status.js)
+                  # still prevents re-publishing an already-live version, so a
+                  # forced re-run of the same version is safe. workflow_dispatch
+                  # itself requires repo write access, which gates who can use it.
+                  if [ "$FORCE_PUBLISH" = "true" ]; then
+                    echo "Force publish requested via workflow_dispatch; bypassing version comparison."
+                    echo "version_changed=true" >> $GITHUB_OUTPUT
+                    echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+                    exit 0
+                  fi
 
                   if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
                     git checkout HEAD~1 -- package.json
