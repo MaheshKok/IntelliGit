@@ -37,6 +37,17 @@ function normalizeFontWeight(weight: string | undefined): string {
     return ALLOWED_FONT_WEIGHTS.has(normalized) ? normalized : "normal";
 }
 
+/**
+ * Injects `@font-face` CSS rules for theme-provided icon fonts into the webview.
+ *
+ * Font families, sources, weights, and styles are validated and escaped before
+ * generating CSS to prevent injection via malformed theme metadata. Unknown font
+ * styles or weights fall back to `normal`. Entries missing required fields are
+ * silently skipped.
+ *
+ * @remarks The component renders a `<style>` element with inline CSS; it returns
+ * `null` when the font list is empty or yields no valid rules.
+ */
 export function ThemeIconFontFaces({
     fonts,
 }: {

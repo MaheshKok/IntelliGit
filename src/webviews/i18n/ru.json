@@ -155,6 +155,7 @@
     "merge.footer.useFileOurs": "Используйте наш файл",
     "merge.footer.useFileTheirs": "Используйте их файлы.",
     "merge.footer.hint": "`N`/`P` для навигации по конфликтам • `Ctrl/Cmd+Enter` для применения",
+    "merge.header.autoResolved": "{count} разрешено автоматически",
     "merge.footer.apply": "Применить ({resolved}/{total})",
     "merge.kind.leftOnly": "Только слева",
     "merge.kind.rightOnly": "Только право",
@@ -208,5 +209,9 @@
     "common.dockIntelliGit": "Прикрепить IntelliGit",
     "branch.head.label": "ЗАГОЛОВОК ({name})",
     "merge.overview.jumpToHunk": "Перейти к фрагменту #{ordinal}",
-    "branch.menu.deleteBranches": "Удалить ветки"
+    "branch.menu.deleteBranches": "Удалить ветки",
+    "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Разрешено автоматически",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }

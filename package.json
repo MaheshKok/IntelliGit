@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -481,7 +481,7 @@
                 },
                 "intelligit.jetbrainsMergeTool.preferExternal": {
                     "type": "boolean",
-                    "default": true,
+                    "default": false,
                     "markdownDescription": "%configuration.jetbrainsMergeTool.preferExternal.markdownDescription%"
                 },
                 "intelligit.tooltips.enabled": {

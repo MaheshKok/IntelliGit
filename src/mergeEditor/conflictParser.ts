@@ -2,6 +2,8 @@
 // for display in a 3-way merge editor. Uses a simple line-based diff to
 // identify common regions and conflict hunks.
 
+import { tryAutoMergeLines } from "./autoMerge";
+
 /**
  * A contiguous span that both sides resolve to the same content.
  * The merge editor renders these lines once because they do not need user choice.
@@ -24,6 +26,13 @@ export interface ConflictSegment {
     oursLines: string[];
     theirsLines: string[];
     baseLines: string[];
+    /**
+     * Merged result lines when both sides' token-level edits compose without
+     * touching the same base region (IntelliJ-style "magic resolve"). Present
+     * only on `changeKind === "conflict"` hunks; such hunks default to this
+     * merged result, do not block Apply, and remain user-overridable.
+     */
+    autoResolvedLines?: string[];
 }
 
 /**
@@ -80,6 +89,27 @@ function splitLines(text: string): string[] {
     if (normalized.endsWith("\r\n")) normalized = normalized.slice(0, -2);
     else if (normalized.endsWith("\n")) normalized = normalized.slice(0, -1);
     return normalized === "" ? [] : normalized.split(/\r?\n/);
+}
+
+/**
+ * Detects the end-of-line style and trailing-newline contract for merge output.
+ *
+ * The first non-empty version wins so the merged result mirrors the dominant
+ * input file shape. Empty inputs default to LF with a trailing newline, which
+ * matches POSIX text-file conventions for newly written files.
+ */
+export function detectEolMetadata(...versions: string[]): {
+    eol: "\n" | "\r\n";
+    hasTrailingNewline: boolean;
+} {
+    const source = versions.find((text) => text.length > 0);
+    if (source === undefined) {
+        return { eol: "\n", hasTrailingNewline: true };
+    }
+    return {
+        eol: source.includes("\r\n") ? "\r\n" : "\n",
+        hasTrailingNewline: source.endsWith("\n"),
+    };
 }
 
 // --- Simple LCS-based diff ---
@@ -350,13 +380,24 @@ function appendResolvedSegment(
         return conflictId;
     }
 
+    const changeKind = getConflictChangeKind(resolution.hasOursEdit, resolution.hasTheirsEdit);
+    const autoResolvedLines =
+        changeKind === "conflict"
+            ? (tryAutoMergeLines(
+                  resolution.baseLines,
+                  resolution.oursLines,
+                  resolution.theirsLines,
+              ) ?? undefined)
+            : undefined;
+
     segments.push({
         type: "conflict",
         id: conflictId,
-        changeKind: getConflictChangeKind(resolution.hasOursEdit, resolution.hasTheirsEdit),
+        changeKind,
         oursLines: resolution.oursLines,
         theirsLines: resolution.theirsLines,
         baseLines: resolution.baseLines,
+        ...(autoResolvedLines !== undefined ? { autoResolvedLines } : {}),
     });
     return conflictId + 1;
 }

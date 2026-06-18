@@ -363,6 +363,10 @@
 
 .segment {
     display: flex;
+    /* Browser-level virtualization: offscreen segments skip rendering work
+       while the inline contain-intrinsic-size keeps scrollbar geometry stable
+       for very large conflict files. */
+    content-visibility: auto;
 }
 .column {
     flex: 1;
@@ -431,6 +435,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* Intra-hunk spacer rows: hatched like IntelliJ's alignment gaps so users can
+   tell "nothing here" apart from an actual empty source line. */
+.code-line.spacer-line {
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 4px,
+        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 4px,
+        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 5px
+    );
+}
 .segment-common .code-line {
     color: color-mix(in srgb, var(--vscode-editor-foreground) 90%, transparent);
 }
@@ -457,6 +472,10 @@
     box-shadow:
         inset 0 0 0 1px rgba(78, 161, 255, 0.18),
         0 0 0 1px rgba(78, 161, 255, 0.08);
+}
+.segment-conflict.auto-merged {
+    border-top-color: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%, transparent);
 }
 .hunk-header {
     display: flex;
@@ -664,6 +683,35 @@
 }
 .conflict-result.resolved .code-lines::before {
     background: var(--merge-result-resolved-bg);
+}
+
+.result-editable {
+    cursor: text;
+}
+.result-editable:hover .code-lines {
+    box-shadow: inset 0 0 0 1px rgba(78, 161, 255, 0.25);
+}
+.code-block.editing {
+    background: color-mix(in srgb, var(--vscode-editor-background) 88%, #4ea1ff 12%);
+}
+.result-edit-textarea {
+    width: 100%;
+    min-height: 20px;
+    padding: 0 10px;
+    border: none;
+    outline: 1px solid rgba(78, 161, 255, 0.55);
+    outline-offset: -1px;
+    resize: vertical;
+    background: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 12px);
+    line-height: 20px;
+    white-space: pre;
+    overflow-x: auto;
+}
+.conflict-result.edited .code-lines::before {
+    background: color-mix(in srgb, var(--merge-result-resolved-bg) 70%, #4ea1ff 30%);
 }
 
 .conflict-ours .code-line,

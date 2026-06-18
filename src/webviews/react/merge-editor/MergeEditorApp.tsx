@@ -25,21 +25,24 @@ import {
 } from "./icons";
 import {
     reducer,
-    getResultLines,
+    getEffectiveResultLines,
     buildResultContent,
     allResolved,
     trueConflictCount,
     resolvedTrueConflictCount,
     paneChangeCount,
+    isTrueConflict,
 } from "./mergeState";
 import {
     buildLineNumberValues,
     CommonSection,
     ConflictSection,
     OverviewRail,
+    buildAlignedLineNumberValues,
     type SegmentPaneLineNumbers,
     type OverviewMarker,
 } from "./segments";
+import { alignConflictRows, type AlignedHunkRows } from "./rowAlignment";
 import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
@@ -59,7 +62,12 @@ function getVsCodeApi() {
  * extension apply/ignore-mode commands.
  */
 function App() {
-    const [state, dispatch] = useReducer(reducer, { data: null, error: null, resolutions: {} });
+    const [state, dispatch] = useReducer(reducer, {
+        data: null,
+        error: null,
+        resolutions: {},
+        edits: {},
+    });
     const [showDetails, setShowDetails] = useState(false);
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
@@ -67,6 +75,21 @@ function App() {
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+    // Row alignments depend only on the hunk contents, never on resolutions or
+    // edits, so they are computed once per data load and shared by reference.
+    const hunkAlignments = useMemo(() => {
+        const alignments = new Map<number, AlignedHunkRows>();
+        for (const segment of segments) {
+            if (segment.type === "conflict") {
+                alignments.set(
+                    segment.id,
+                    alignConflictRows(segment.oursLines, segment.theirsLines),
+                );
+            }
+        }
+        return alignments;
+    }, [segments]);
 
     const renderedSegments = useMemo(() => {
         let visualLineCursor = 1;
@@ -81,6 +104,7 @@ function App() {
             let lineCount: number;
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
+            let alignment: AlignedHunkRows | undefined;
 
             if (segment.type === "common") {
                 const commonLen = segment.lines.length;
@@ -105,17 +129,28 @@ function App() {
                 theirsCursor += commonLen;
                 resultCursor += commonLen;
             } else {
-                const resultLines = getResultLines(segment, state.resolutions[segment.id]);
+                const resultLines = getEffectiveResultLines(
+                    segment,
+                    state.resolutions[segment.id],
+                    state.edits[segment.id],
+                );
                 const oursLen = segment.oursLines.length;
                 const theirsLen = segment.theirsLines.length;
                 const baseLen = segment.baseLines.length;
                 const resultLen = resultLines.length;
+                alignment = hunkAlignments.get(segment.id);
 
-                lineCount = Math.max(oursLen, resultLen, theirsLen, 1);
+                lineCount = Math.max(alignment?.rowCount ?? 0, resultLen, 1);
                 startLine = visualLineCursor;
                 lineNumbers = {
                     left: {
-                        primary: buildLineNumberValues(oursCursor, oursLen, lineCount),
+                        primary: alignment
+                            ? buildAlignedLineNumberValues(
+                                  oursCursor,
+                                  alignment.oursLineIndex,
+                                  lineCount,
+                              )
+                            : buildLineNumberValues(oursCursor, oursLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     middle: {
@@ -123,7 +158,13 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     right: {
-                        primary: buildLineNumberValues(theirsCursor, theirsLen, lineCount),
+                        primary: alignment
+                            ? buildAlignedLineNumberValues(
+                                  theirsCursor,
+                                  alignment.theirsLineIndex,
+                                  lineCount,
+                              )
+                            : buildLineNumberValues(theirsCursor, theirsLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                 };
@@ -140,7 +181,7 @@ function App() {
             if (segment.type === "conflict") {
                 conflictOrdinal += 1;
                 computedConflictOrdinal = conflictOrdinal;
-                if (segment.changeKind === "conflict") {
+                if (isTrueConflict(segment)) {
                     trueConflictOrdinal += 1;
                     computedTrueConflictOrdinal = trueConflictOrdinal;
                 }
@@ -152,18 +193,19 @@ function App() {
                 startLine,
                 lineCount,
                 lineNumbers,
+                alignment,
                 conflictOrdinal: computedConflictOrdinal,
                 trueConflictOrdinal: computedTrueConflictOrdinal,
             };
         });
-    }, [segments, state.resolutions]);
+    }, [segments, state.resolutions, state.edits, hunkAlignments]);
 
     const conflictSegments = useMemo(
         () => segments.filter((seg): seg is ConflictSegment => seg.type === "conflict"),
         [segments],
     );
     const trueConflicts = useMemo(
-        () => conflictSegments.filter((seg) => seg.changeKind === "conflict"),
+        () => conflictSegments.filter(isTrueConflict),
         [conflictSegments],
     );
     const trueConflictIds = useMemo(() => trueConflicts.map((seg) => seg.id), [trueConflicts]);
@@ -190,22 +232,32 @@ function App() {
             if (trueConflictIds.length === 0) return null;
             if (prev !== null && trueConflictIds.includes(prev)) return prev;
             const firstUnresolved = trueConflicts.find(
-                (seg) => state.resolutions[seg.id] === undefined,
+                (seg) =>
+                    state.resolutions[seg.id] === undefined && state.edits[seg.id] === undefined,
             );
             return firstUnresolved?.id ?? trueConflictIds[0];
         });
-    }, [trueConflictIds, trueConflicts, state.resolutions]);
+    }, [trueConflictIds, trueConflicts, state.resolutions, state.edits]);
 
     const handleResolve = useCallback((id: number, resolution: HunkResolution) => {
         setActiveConflictId(id);
         dispatch({ type: "RESOLVE_HUNK", id, resolution });
     }, []);
 
+    const handleEditResult = useCallback((id: number, lines: string[]) => {
+        setActiveConflictId(id);
+        dispatch({ type: "EDIT_HUNK_RESULT", id, lines });
+    }, []);
+
+    const registerConflictSectionRef = useCallback((id: number, el: HTMLDivElement | null) => {
+        conflictSectionRefs.current[id] = el;
+    }, []);
+
     const handleApply = useCallback(() => {
         if (!state.data) return;
-        const content = buildResultContent(state.data, state.resolutions);
+        const content = buildResultContent(state.data, state.resolutions, state.edits);
         getVsCodeApi().postMessage({ type: "applyResolution", content });
-    }, [state.data, state.resolutions]);
+    }, [state.data, state.resolutions, state.edits]);
 
     const handleAcceptAllYours = useCallback(() => {
         if (!state.data) return;
@@ -280,29 +332,94 @@ function App() {
         [activeConflictId, jumpToConflict, trueConflictIds],
     );
 
+    const resolveActiveFromKeyboard = useCallback(
+        (resolution: HunkResolution) => {
+            if (!state.data) return;
+            const targetId =
+                activeConflictId !== null
+                    ? activeConflictId
+                    : trueConflicts.find(
+                          (seg) =>
+                              state.resolutions[seg.id] === undefined &&
+                              state.edits[seg.id] === undefined,
+                      )?.id;
+            if (targetId === undefined) return;
+            const segment = state.data.segments.find(
+                (seg): seg is ConflictSegment => seg.type === "conflict" && seg.id === targetId,
+            );
+            if (!segment) return;
+            // "Both" only makes sense when both sides changed the same region.
+            if (resolution === "both" && segment.changeKind !== "conflict") return;
+            handleResolve(targetId, resolution);
+            // IntelliJ-style: move on to the next unresolved conflict after applying.
+            const targetIndex = trueConflicts.findIndex((seg) => seg.id === targetId);
+            const ordered = [
+                ...trueConflicts.slice(targetIndex + 1),
+                ...trueConflicts.slice(0, Math.max(targetIndex, 0)),
+            ];
+            const next = ordered.find(
+                (seg) =>
+                    seg.id !== targetId &&
+                    state.resolutions[seg.id] === undefined &&
+                    state.edits[seg.id] === undefined,
+            );
+            if (next) jumpToConflict(next.id);
+        },
+        [
+            activeConflictId,
+            handleResolve,
+            jumpToConflict,
+            state.data,
+            state.edits,
+            state.resolutions,
+            trueConflicts,
+        ],
+    );
+
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
             const target = event.target as HTMLElement | null;
             const tag = target?.tagName;
             if (tag === "INPUT" || tag === "TEXTAREA") return;
             const normalizedKey = event.key.toLowerCase();
+            const hasCommandModifier = event.ctrlKey || event.metaKey;
+            const plainKey = !hasCommandModifier && !event.altKey;
 
-            if (normalizedKey === "p" || (event.shiftKey && event.key === "F7")) {
+            if ((normalizedKey === "p" && plainKey) || (event.shiftKey && event.key === "F7")) {
                 event.preventDefault();
                 moveActiveConflict(-1);
-            } else if (normalizedKey === "n" || event.key === "F7") {
+            } else if ((normalizedKey === "n" && plainKey) || event.key === "F7") {
                 event.preventDefault();
                 moveActiveConflict(1);
-            } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            } else if (hasCommandModifier && event.key === "ArrowLeft") {
+                event.preventDefault();
+                resolveActiveFromKeyboard("ours");
+            } else if (hasCommandModifier && event.key === "ArrowRight") {
+                event.preventDefault();
+                resolveActiveFromKeyboard("theirs");
+            } else if (normalizedKey === "b" && plainKey) {
+                event.preventDefault();
+                resolveActiveFromKeyboard("both");
+            } else if (normalizedKey === "x" && plainKey) {
+                event.preventDefault();
+                resolveActiveFromKeyboard("none");
+            } else if (hasCommandModifier && event.key === "Enter") {
                 if (!state.data) return;
-                if (!allResolved(state.data.segments, state.resolutions)) return;
+                if (!allResolved(state.data.segments, state.resolutions, state.edits)) return;
                 event.preventDefault();
                 handleApply();
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [handleApply, moveActiveConflict, state.data, state.resolutions]);
+    }, [
+        handleApply,
+        moveActiveConflict,
+        resolveActiveFromKeyboard,
+        state.data,
+        state.resolutions,
+        state.edits,
+    ]);
 
     if (state.error) {
         return (
@@ -320,10 +437,12 @@ function App() {
     }
 
     const total = trueConflictCount(segments);
-    const resolved = resolvedTrueConflictCount(segments, state.resolutions);
+    const resolved = resolvedTrueConflictCount(segments, state.resolutions, state.edits);
     const unresolved = total - resolved;
-    const canApply = allResolved(segments, state.resolutions);
+    const canApply = allResolved(segments, state.resolutions, state.edits);
     const changeCount = conflictSegments.length;
+    // One-sided hunks auto-resolve to the changed side, so they never block Apply.
+    const autoResolvedCount = changeCount - total;
     const oursChanges = paneChangeCount(segments, "ours");
     const theirsChanges = paneChangeCount(segments, "theirs");
     const currentConflictIndex =
@@ -346,12 +465,15 @@ function App() {
             heightPct: Math.min(Math.max((item.lineCount / totalVisualLines) * 100, 1), 30),
             changeKind: item.segment.changeKind,
             resolved:
-                item.segment.changeKind !== "conflict" ||
-                state.resolutions[item.segment.id] !== undefined,
+                !isTrueConflict(item.segment) ||
+                state.resolutions[item.segment.id] !== undefined ||
+                state.edits[item.segment.id] !== undefined,
         }));
 
     const unresolvedTrueConflictIds = trueConflicts
-        .filter((seg) => state.resolutions[seg.id] === undefined)
+        .filter(
+            (seg) => state.resolutions[seg.id] === undefined && state.edits[seg.id] === undefined,
+        )
         .map((seg) => seg.id);
     const nextUnresolvedId = (() => {
         if (unresolvedTrueConflictIds.length === 0) return null;
@@ -375,7 +497,11 @@ function App() {
         >
             <div className="merge-toolbar">
                 <div className="toolbar-left">
-                    <button className="toolbar-btn subtle" onClick={handleApplyNonConflicting}>
+                    <button
+                        className="toolbar-btn subtle"
+                        onClick={handleApplyNonConflicting}
+                        disabled={autoResolvedCount === 0}
+                    >
                         <span className="toolbar-icon">
                             <IconSpark />
                         </span>
@@ -498,6 +624,11 @@ function App() {
                     <span className="merge-stat-pill">
                         {t("merge.count.changes", { count: changeCount })}
                     </span>
+                    {autoResolvedCount > 0 ? (
+                        <span className="merge-stat-pill ok">
+                            {t("merge.header.autoResolved", { count: autoResolvedCount })}
+                        </span>
+                    ) : null}
                     <span className={`merge-stat-pill ${unresolved > 0 ? "warn" : "ok"}`}>
                         {t("merge.count.conflicts", { count: unresolved })}
                     </span>
@@ -556,6 +687,7 @@ function App() {
                             index,
                             lineCount,
                             lineNumbers,
+                            alignment,
                             conflictOrdinal,
                             trueConflictOrdinal,
                         }) =>
@@ -572,13 +704,14 @@ function App() {
                                     key={index}
                                     segment={segment}
                                     resolution={state.resolutions[segment.id]}
+                                    editedLines={state.edits[segment.id]}
                                     lineCount={lineCount}
                                     lineNumbers={lineNumbers}
+                                    alignment={alignment}
                                     onResolve={handleResolve}
+                                    onEditResult={handleEditResult}
                                     onSelect={setActiveConflictId}
-                                    setSectionRef={(el) => {
-                                        conflictSectionRefs.current[segment.id] = el;
-                                    }}
+                                    onSectionRef={registerConflictSectionRef}
                                     isActive={activeConflictId === segment.id}
                                     showDetails={showDetails}
                                     highlightWords={highlightWords}

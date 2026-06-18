@@ -149,6 +149,7 @@
     "merge.footer.useFileOurs": "Usar archivo 'Ours'",
     "merge.footer.useFileTheirs": "Usar archivo 'Theirs'",
     "merge.footer.hint": "`N`/`P` conflictos de navegación • `Ctrl/Cmd+Enter` aplicar",
+    "merge.header.autoResolved": "{count} resueltos automáticamente",
     "merge.footer.apply": "Aplicar ({resolved}/{total})",
     "merge.kind.leftOnly": "Solo izquierda",
     "merge.kind.rightOnly": "Solo derecha",
@@ -201,5 +202,9 @@
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "CABECERA ({name})",
     "merge.overview.jumpToHunk": "Saltar al trozo #{ordinal}",
-    "branch.menu.deleteBranches": "Eliminar ramas"
+    "branch.menu.deleteBranches": "Eliminar ramas",
+    "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Resuelto automáticamente",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }

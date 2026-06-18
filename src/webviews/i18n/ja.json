@@ -137,6 +137,7 @@
     "merge.footer.useFileOurs": "自分側のファイルを使用",
     "merge.footer.useFileTheirs": "相手側のファイルを使用",
     "merge.footer.hint": "`N`/`P`で競合をナビゲート • `Ctrl/Cmd+Enter`で適用",
+    "merge.header.autoResolved": "{count} 件自動解決",
     "merge.footer.apply": "適用（{resolved}/{total}）",
     "merge.kind.leftOnly": "左のみ",
     "merge.kind.rightOnly": "右のみ",
@@ -187,5 +188,9 @@
     "common.dockIntelliGit": "ドック IntelliGit",
     "branch.head.label": "HEAD ({name})",
     "merge.overview.jumpToHunk": "チャンク#{ordinal}にジャンプ",
-    "branch.menu.deleteBranches": "ブランチを削除"
+    "branch.menu.deleteBranches": "ブランチを削除",
+    "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "自動解決済み",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }

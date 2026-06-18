@@ -5,6 +5,37 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-06-17
+
+### Added
+
+- Added a native three-way merge editor that resolves conflicts directly inside VS Code without requiring an external JetBrains IDE, rendering base, ours, theirs, and an editable result pane in a single host panel.
+- Added an editable result pane with IntelliJ-style manual merge editing: accept either side or both, drop a hunk, or type directly into the merged output, with Apply gated until every true conflict is resolved.
+- Added token-level auto-resolution that composes non-overlapping intra-line edits from both sides, marking cleanly merged hunks as auto-resolved instead of requiring a manual decision while keeping them overridable.
+- Added intra-hunk row alignment that injects spacer rows so equal indexes line up across the three panes, keeping the base, ours, and theirs views height-synchronized.
+- Added keyboard-driven conflict resolution, an auto-resolved conflict count, and an overview gutter with per-conflict markers and navigation.
+- Added lightweight, theme-colored syntax highlighting for merge code blocks via a single-line tokenizer that classifies comments, strings, keywords, constants, and numbers using VS Code theme variables.
+- Added scroll synchronization, memoized render paths, and content-visibility virtualization so large conflicted files stay responsive.
+
+### Changed
+
+- Separated commit-panel drag selection from commit checkboxes and corrected Chromium drag-data handling so range selection no longer toggles staging.
+- Reduced branch list and commit graph row spacing for tighter IntelliJ-style density.
+- Reorganized the test suite into a domain-categorized directory hierarchy.
+
+### Fixed
+
+- Completed branch delete behavior and reset the cached current-branch upstream flag after branch operations so push-target resolution stays correct.
+- Removed a hardcoded filename color so selected and unselected file rows follow theme foreground colors.
+
+### Localized
+
+- Synchronized merge editor strings, including conflict status and the auto-resolved label, across all 12 supported locales and the localization CSV.
+
+### Tests
+
+- Added spec-derived coverage for the syntax tokenizer, token-level auto-merge, and the row-alignment flow with spacer rows and line-number skips, and raised the coverage ratchet in the same change.
+
 ## [0.10.0] - 2026-06-07
 
 ### Added

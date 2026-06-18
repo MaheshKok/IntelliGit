@@ -137,6 +137,7 @@
     "merge.footer.useFileOurs": "使用我们的文件",
     "merge.footer.useFileTheirs": "使用他们的文件",
     "merge.footer.hint": "`N`/`P` 解决冲突 • `Ctrl/Cmd+Enter` 应用",
+    "merge.header.autoResolved": "{count} 个自动解决",
     "merge.footer.apply": "应用（{resolved}/{total}）",
     "merge.kind.leftOnly": "仅左",
     "merge.kind.rightOnly": "仅右侧",
@@ -187,5 +188,9 @@
     "common.dockIntelliGit": "Dock IntelliGit",
     "branch.head.label": "HEAD（{name}）",
     "merge.overview.jumpToHunk": "跳转到编号为 #{ordinal} 的块",
-    "branch.menu.deleteBranches": "删除分支"
+    "branch.menu.deleteBranches": "删除分支",
+    "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "已自动解决",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }

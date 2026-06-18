@@ -59,7 +59,6 @@ Thumbs.db
 .claude-flow/**
 .agents/**
 .hermes/**
-.repowise/**
 .gitnexus/**
 .serena/**
 .mcp.json

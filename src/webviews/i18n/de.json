@@ -143,6 +143,7 @@
     "merge.footer.useFileOurs": "Verwenden Sie unsere Datei",
     "merge.footer.useFileTheirs": "Verwenden Sie ihre Datei",
     "merge.footer.hint": "Konflikte mit `N`/`P` umgehen • `Strg/Cmd+Eingabe` anwenden",
+    "merge.header.autoResolved": "{count} automatisch aufgelöst",
     "merge.footer.apply": "Anwenden ({resolved}/{total})",
     "merge.kind.leftOnly": "Nur links",
     "merge.kind.rightOnly": "Nur rechts",
@@ -194,5 +195,9 @@
     "common.dockIntelliGit": "IntelliGit andocken",
     "branch.head.label": "HEAD ({name})",
     "merge.overview.jumpToHunk": "Springe zu Abschnitt #{ordinal}",
-    "branch.menu.deleteBranches": "Branches löschen"
+    "branch.menu.deleteBranches": "Branches löschen",
+    "merge.status.edited": "Edited",
+    "merge.status.autoResolved": "Automatisch aufgelöst",
+    "merge.result.editHint": "Double-click to edit the result",
+    "merge.result.editingAria": "Edit merge result block"
 }

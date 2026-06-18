@@ -1,9 +1,10 @@
 // Merge editor segment rendering components.
 // CommonSection renders unchanged code lines across all three panes.
-// ConflictSection renders conflict hunks with per-hunk resolution controls.
+// ConflictSection renders conflict hunks with per-hunk resolution controls
+// and an editable result block for manual fix-ups.
 // OverviewRail provides a minimap of conflict locations for quick navigation.
 
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import type { CommonSegment, ConflictSegment, HunkResolution } from "./types";
 import {
     IconArrowRight,
@@ -19,59 +20,42 @@ import {
     buildWordDiffMask,
     tokenizeWordDiff,
     alignCompareLinesForWordDiff,
-} from "./wordDiff";
-import { getResultLines } from "./mergeState";
+} from "../../../mergeEditor/wordDiff";
+import { getEffectiveResultLines, splitEditedText } from "./mergeState";
+import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
+import type { AlignedHunkRows } from "./rowAlignment";
 import { t } from "../shared/i18n";
 
 // --- Syntax highlighting ---
 
-const TOKEN_REGEX =
-    /("([^"\\]|\\.)*"|'([^'\\]|\\.)*'|`([^`\\]|\\.)*`)|\b(import|from|const|let|var|class|interface|type|function|return|if|else|for|while|switch|case|break|continue|new|export|default|private|public|protected|readonly|static|async|await)\b|\b(true|false|null|undefined)\b|\b\d+(\.\d+)?\b/g;
+const TOKEN_CLASS: Record<SyntaxTokenKind, string | undefined> = {
+    plain: undefined,
+    comment: "tok-comment",
+    string: "tok-string",
+    keyword: "tok-keyword",
+    constant: "tok-constant",
+    number: "tok-number",
+};
 
 function renderSyntaxHighlightedNodes(line: string, keyPrefix: string): React.ReactNode[] {
     if (!line) return [<React.Fragment key={`${keyPrefix}-nbsp`}>{`\u00A0`}</React.Fragment>];
-    if (line.trimStart().startsWith("//")) {
-        return [
-            <span key={`${keyPrefix}-comment`} className="tok-comment">
-                {line}
-            </span>,
-        ];
-    }
-
-    const nodes: React.ReactNode[] = [];
-    let last = 0;
-    let idx = 0;
-
-    for (const match of line.matchAll(TOKEN_REGEX)) {
-        const start = match.index ?? 0;
-        if (start > last) {
-            nodes.push(<span key={`${keyPrefix}-txt-${idx++}`}>{line.slice(last, start)}</span>);
-        }
-        const token = match[0];
-        let className: string;
-        if (match[1]) className = "tok-string";
-        else if (match[5]) className = "tok-keyword";
-        else if (match[6]) className = "tok-constant";
-        else className = "tok-number";
-        nodes.push(
-            <span key={`${keyPrefix}-tok-${idx++}`} className={className}>
-                {token}
-            </span>,
-        );
-        last = start + token.length;
-    }
-    if (last < line.length) {
-        nodes.push(<span key={`${keyPrefix}-txt-${idx}`}>{line.slice(last)}</span>);
-    }
-    return nodes;
+    return tokenizeSyntaxLine(line).map((token, i) => (
+        <span key={`${keyPrefix}-${i}`} className={TOKEN_CLASS[token.kind]}>
+            {token.text}
+        </span>
+    ));
 }
 
-function HighlightedLine({ line }: { line: string }): React.ReactElement {
+const HighlightedLine = React.memo(function HighlightedLine({
+    line,
+}: {
+    line: string;
+}): React.ReactElement {
     if (!line) return <>{`\u00A0`}</>;
     return <>{renderSyntaxHighlightedNodes(line, "line")}</>;
-}
+});
 
-function WordDiffLine({
+const WordDiffLine = React.memo(function WordDiffLine({
     line,
     compareLine,
 }: {
@@ -114,7 +98,7 @@ function WordDiffLine({
     }
 
     return <>{nodes}</>;
-}
+});
 
 // --- Line numbers ---
 
@@ -142,41 +126,191 @@ export function buildLineNumberValues(
     return values;
 }
 
+/**
+ * Builds displayed line numbers from an intra-hunk row alignment: rows mapped
+ * to a source line get sequential numbers while spacer rows (null entries)
+ * render blank, so numbering skips alignment gaps instead of counting them.
+ */
+export function buildAlignedLineNumberValues(
+    startAt: number,
+    lineIndex: Array<number | null>,
+    rowCount: number,
+): LineNumberValue[] {
+    const values: LineNumberValue[] = [];
+    for (let i = 0; i < rowCount; i++) {
+        const sourceIndex = i < lineIndex.length ? lineIndex[i] : null;
+        values.push(sourceIndex === null ? null : startAt + sourceIndex);
+    }
+    return values;
+}
+
 function padLines(lines: string[], count: number): string[] {
     const padded = [...lines];
     while (padded.length < count) padded.push("");
     return padded;
 }
 
-function LineNumbers({ primary, secondary }: LineNumberSpec) {
-    const rowCount = Math.max(primary.length, secondary?.length ?? 0);
-    const hasSecondary = Boolean(secondary);
+function lineNumberValuesEqual(a: LineNumberValue[], b: LineNumberValue[]): boolean {
+    if (a === b) return true;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
 
+function lineNumberSpecEqual(a: LineNumberSpec, b: LineNumberSpec): boolean {
+    if (a === b) return true;
+    if (!lineNumberValuesEqual(a.primary, b.primary)) return false;
+    if (a.secondary === b.secondary) return true;
+    if (!a.secondary || !b.secondary) return false;
+    return lineNumberValuesEqual(a.secondary, b.secondary);
+}
+
+/**
+ * Value-compares the three pane line-number specs so memoized segments skip
+ * re-rendering when an unrelated hunk resolution rebuilds equal number arrays.
+ */
+function paneLineNumbersEqual(a: SegmentPaneLineNumbers, b: SegmentPaneLineNumbers): boolean {
     return (
-        <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
-            {Array.from({ length: rowCount }, (_, i) => (
-                <div key={i} className="line-number-row">
-                    {hasSecondary ? (
-                        <div className="line-number line-number-secondary">
-                            {secondary?.[i] ?? ""}
-                        </div>
-                    ) : null}
-                    <div className="line-number line-number-primary">{primary[i] ?? ""}</div>
-                </div>
-            ))}
-        </div>
+        lineNumberSpecEqual(a.left, b.left) &&
+        lineNumberSpecEqual(a.middle, b.middle) &&
+        lineNumberSpecEqual(a.right, b.right)
     );
 }
 
+const LineNumbers = React.memo(
+    function LineNumbers({ primary, secondary }: LineNumberSpec) {
+        const rowCount = Math.max(primary.length, secondary?.length ?? 0);
+        const hasSecondary = Boolean(secondary);
+
+        return (
+            <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
+                {Array.from({ length: rowCount }, (_, i) => (
+                    <div key={i} className="line-number-row">
+                        {hasSecondary ? (
+                            <div className="line-number line-number-secondary">
+                                {secondary?.[i] ?? ""}
+                            </div>
+                        ) : null}
+                        <div className="line-number line-number-primary">{primary[i] ?? ""}</div>
+                    </div>
+                ))}
+            </div>
+        );
+    },
+    (prev, next) => lineNumberSpecEqual(prev, next),
+);
+
 // --- Code block ---
 
-function CodeBlock({
+interface CodeBlockProps {
+    lines: string[];
+    lineCount: number;
+    lineNumbers: LineNumberSpec;
+    className?: string;
+    wordHighlight?: boolean;
+    compareLines?: string[];
+    /**
+     * Pre-aligned rows for this pane where `null` marks an intra-hunk spacer
+     * row. When present these take precedence over `lines` for layout, so
+     * similar lines sit on the same row as the opposite pane.
+     */
+    alignedRows?: Array<string | null>;
+    /**
+     * Opposite-pane rows on the same row grid as `alignedRows`. Row `i`
+     * compares directly against `compareRows[i]`, replacing the heuristic
+     * compare-line alignment used for unaligned blocks.
+     */
+    compareRows?: Array<string | null>;
+}
+
+/** Pads an aligned row array with trailing spacer rows up to `count`. */
+function padAlignedRows(rows: Array<string | null>, count: number): Array<string | null> {
+    const padded = [...rows];
+    while (padded.length < count) padded.push(null);
+    return padded;
+}
+
+const CodeBlock = React.memo(
+    function CodeBlock({
+        lines,
+        lineCount,
+        lineNumbers,
+        className,
+        wordHighlight,
+        compareLines,
+        alignedRows,
+        compareRows,
+    }: CodeBlockProps) {
+        const padded = useMemo<Array<string | null>>(
+            () =>
+                alignedRows ? padAlignedRows(alignedRows, lineCount) : padLines(lines, lineCount),
+            [alignedRows, lines, lineCount],
+        );
+        const paddedCompare = useMemo(() => {
+            if (alignedRows && compareRows) {
+                return padAlignedRows(compareRows, lineCount).map((row) => row ?? "");
+            }
+            if (!compareLines) return undefined;
+            const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
+            return padLines(alignedCompare, lineCount);
+        }, [alignedRows, compareRows, compareLines, lineCount, lines]);
+
+        return (
+            <div
+                className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
+            >
+                <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+                <div className="code-lines">
+                    {padded.map((line, i) =>
+                        line === null ? (
+                            <div key={i} className="code-line spacer-line">
+                                {" "}
+                            </div>
+                        ) : (
+                            <div key={i} className="code-line">
+                                {wordHighlight && paddedCompare ? (
+                                    <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                                ) : (
+                                    <HighlightedLine line={line} />
+                                )}
+                            </div>
+                        ),
+                    )}
+                </div>
+            </div>
+        );
+    },
+    (prev, next) =>
+        prev.lines === next.lines &&
+        prev.lineCount === next.lineCount &&
+        prev.className === next.className &&
+        prev.wordHighlight === next.wordHighlight &&
+        prev.compareLines === next.compareLines &&
+        prev.alignedRows === next.alignedRows &&
+        prev.compareRows === next.compareRows &&
+        lineNumberSpecEqual(prev.lineNumbers, next.lineNumbers),
+);
+
+// --- Editable result block ---
+
+/**
+ * Result-pane block that supports IntelliJ-style manual editing.
+ *
+ * Display mode renders the highlighted result; double-click switches to a
+ * textarea seeded with the current result text. Blur commits the draft through
+ * `onCommit` (no-op when the text is unchanged), and Escape cancels without
+ * committing. Committed edits mark the hunk resolved upstream.
+ */
+function EditableResultBlock({
     lines,
     lineCount,
     lineNumbers,
     className,
     wordHighlight,
     compareLines,
+    onCommit,
 }: {
     lines: string[];
     lineCount: number;
@@ -184,28 +318,68 @@ function CodeBlock({
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
+    onCommit: (lines: string[]) => void;
 }) {
-    const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
-    const paddedCompare = useMemo(() => {
-        if (!compareLines) return undefined;
-        const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
-        return padLines(alignedCompare, lineCount);
-    }, [compareLines, lineCount, lines]);
+    const [draft, setDraft] = useState<string | null>(null);
+    const isEditing = draft !== null;
 
-    return (
-        <div className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}>
-            <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
-            <div className="code-lines">
-                {padded.map((line, i) => (
-                    <div key={i} className="code-line">
-                        {wordHighlight && paddedCompare ? (
-                            <WordDiffLine line={line} compareLine={paddedCompare[i]} />
-                        ) : (
-                            <HighlightedLine line={line} />
-                        )}
-                    </div>
-                ))}
+    const startEditing = useCallback(() => {
+        setDraft(lines.join("\n"));
+    }, [lines]);
+
+    const commitDraft = useCallback(() => {
+        if (draft === null) return;
+        setDraft(null);
+        const edited = splitEditedText(draft);
+        const unchanged = edited.length === lines.length && edited.every((l, i) => l === lines[i]);
+        if (!unchanged) onCommit(edited);
+    }, [draft, lines, onCommit]);
+
+    const cancelDraft = useCallback(() => {
+        setDraft(null);
+    }, []);
+
+    if (!isEditing) {
+        return (
+            <div
+                className="result-editable"
+                onDoubleClick={startEditing}
+                title={t("merge.result.editHint")}
+            >
+                <CodeBlock
+                    lines={lines}
+                    lineCount={lineCount}
+                    lineNumbers={lineNumbers}
+                    className={className}
+                    wordHighlight={wordHighlight}
+                    compareLines={compareLines}
+                />
             </div>
+        );
+    }
+
+    const rowCount = Math.max(draft.split("\n").length, lineCount, 1);
+    return (
+        <div className={`code-block ${className ?? ""} editing`}>
+            <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+            <textarea
+                className="result-edit-textarea"
+                aria-label={t("merge.result.editingAria")}
+                value={draft}
+                rows={rowCount}
+                autoFocus
+                spellCheck={false}
+                onChange={(event) => setDraft(event.target.value)}
+                onBlur={commitDraft}
+                onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        cancelDraft();
+                    }
+                }}
+                onClick={(event) => event.stopPropagation()}
+            />
         </div>
     );
 }
@@ -222,10 +396,12 @@ export interface SegmentPaneLineNumbers {
 function getHunkStatus(
     segment: ConflictSegment,
     resolution: HunkResolution | undefined,
+    isEdited: boolean,
 ): {
     label: string;
     tone: "warn" | "ok" | "muted";
 } {
+    if (isEdited) return { label: t("merge.status.edited"), tone: "ok" };
     if (segment.changeKind === "ours-only") {
         return resolution === "none"
             ? { label: t("merge.status.droppedLeftOnly"), tone: "muted" }
@@ -237,7 +413,14 @@ function getHunkStatus(
             : { label: t("merge.status.rightOnly"), tone: "muted" };
     }
 
-    if (resolution === undefined) return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
+    if (resolution === undefined) {
+        // Token-level merged hunks default to the composed result; surface that
+        // instead of "Unresolved" so the user knows no action is required.
+        if (segment.autoResolvedLines !== undefined) {
+            return { label: t("merge.status.autoResolved"), tone: "ok" };
+        }
+        return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
+    }
     if (resolution === "ours") return { label: t("merge.status.useLeft"), tone: "ok" };
     if (resolution === "theirs") return { label: t("merge.status.useRight"), tone: "ok" };
     if (resolution === "both") return { label: t("merge.status.useBoth"), tone: "ok" };
@@ -252,63 +435,94 @@ function getHunkKindLabel(segment: ConflictSegment): string {
 
 // --- Section components ---
 
+/** Editor row height in pixels, matched to the .code-line CSS line-height. */
+const LINE_HEIGHT_PX = 20;
+/** Estimated hunk-header plus margin overhead used for offscreen size hints. */
+const CONFLICT_CHROME_PX = 30;
+
 /**
- * Renders unchanged lines across all three panes while preserving aligned line
- * numbers and optional word highlighting.
+ * Size hint that lets `content-visibility: auto` skip layout of offscreen
+ * segments while keeping the scrollbar geometry stable for large files.
  */
-export function CommonSection({
-    segment,
-    lineCount,
-    lineNumbers,
-    highlightWords,
-}: {
+function intrinsicSizeStyle(lineCount: number, chromePx = 0): React.CSSProperties {
+    return { containIntrinsicSize: `auto ${lineCount * LINE_HEIGHT_PX + chromePx}px` };
+}
+
+interface CommonSectionProps {
     segment: CommonSegment;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
     highlightWords: boolean;
-}) {
-    return (
-        <div className="segment segment-common">
-            <div className="column column-left">
-                <CodeBlock
-                    lines={segment.lines}
-                    lineCount={lineCount}
-                    lineNumbers={lineNumbers.left}
-                    wordHighlight={highlightWords}
-                />
-            </div>
-            <div className="column column-middle result-column">
-                <CodeBlock
-                    lines={segment.lines}
-                    lineCount={lineCount}
-                    lineNumbers={lineNumbers.middle}
-                    wordHighlight={highlightWords}
-                />
-            </div>
-            <div className="column column-right">
-                <CodeBlock
-                    lines={segment.lines}
-                    lineCount={lineCount}
-                    lineNumbers={lineNumbers.right}
-                    wordHighlight={highlightWords}
-                />
-            </div>
-        </div>
-    );
 }
 
 /**
+ * Renders unchanged lines across all three panes while preserving aligned line
+ * numbers and optional word highlighting. Memoized with value-compared line
+ * numbers so resolving one hunk does not re-render every other segment.
+ */
+export const CommonSection = React.memo(
+    function CommonSection({
+        segment,
+        lineCount,
+        lineNumbers,
+        highlightWords,
+    }: CommonSectionProps) {
+        return (
+            <div className="segment segment-common" style={intrinsicSizeStyle(lineCount)}>
+                <div className="column column-left">
+                    <CodeBlock
+                        lines={segment.lines}
+                        lineCount={lineCount}
+                        lineNumbers={lineNumbers.left}
+                        wordHighlight={highlightWords}
+                    />
+                </div>
+                <div className="column column-middle result-column">
+                    <CodeBlock
+                        lines={segment.lines}
+                        lineCount={lineCount}
+                        lineNumbers={lineNumbers.middle}
+                        wordHighlight={highlightWords}
+                    />
+                </div>
+                <div className="column column-right">
+                    <CodeBlock
+                        lines={segment.lines}
+                        lineCount={lineCount}
+                        lineNumbers={lineNumbers.right}
+                        wordHighlight={highlightWords}
+                    />
+                </div>
+            </div>
+        );
+    },
+    (prev, next) =>
+        prev.segment === next.segment &&
+        prev.lineCount === next.lineCount &&
+        prev.highlightWords === next.highlightWords &&
+        paneLineNumbersEqual(prev.lineNumbers, next.lineNumbers),
+);
+
+/**
  * Props that connect one conflict hunk to result-line computation, keyboard
- * navigation, active-state styling, and hunk-resolution callbacks.
+ * navigation, active-state styling, hunk-resolution callbacks, and manual
+ * result editing. `editedLines` overrides the side-resolution result when set.
  */
 export interface ConflictSectionProps {
     segment: ConflictSegment;
     resolution: HunkResolution | undefined;
+    editedLines: string[] | undefined;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
+    /**
+     * Intra-hunk row alignment shared by the ours and theirs panes. Optional
+     * so callers without alignment data fall back to top-aligned columns.
+     */
+    alignment?: AlignedHunkRows;
     onResolve: (id: number, resolution: HunkResolution) => void;
+    onEditResult: (id: number, lines: string[]) => void;
     onSelect: (id: number) => void;
-    setSectionRef: (el: HTMLDivElement | null) => void;
+    onSectionRef: (id: number, el: HTMLDivElement | null) => void;
     isActive: boolean;
     showDetails: boolean;
     highlightWords: boolean;
@@ -318,31 +532,47 @@ export interface ConflictSectionProps {
 
 /**
  * Renders one merge-editor hunk with ours/result/theirs columns, resolution
- * controls, status badges, and per-pane word-diff highlighting.
+ * controls, status badges, and per-pane word-diff highlighting. Memoized with
+ * value-compared line numbers so resolving or editing one hunk re-renders only
+ * the affected segments in large files.
  */
-export function ConflictSection({
+export const ConflictSection = React.memo(function ConflictSection({
     segment,
     resolution,
+    editedLines,
     lineCount,
     lineNumbers,
+    alignment,
     onResolve,
+    onEditResult,
     onSelect,
-    setSectionRef,
+    onSectionRef,
     isActive,
     showDetails,
     highlightWords,
     conflictOrdinal,
     trueConflictOrdinal,
 }: ConflictSectionProps) {
-    const resultLines = getResultLines(segment, resolution);
-    const status = getHunkStatus(segment, resolution);
+    const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
+    const isEdited = editedLines !== undefined;
+    const status = getHunkStatus(segment, resolution, isEdited);
 
-    const isOurs = resolution === "ours";
-    const isTheirs = resolution === "theirs";
-    const isBoth = resolution === "both";
-    const isNone = resolution === "none";
-    const isResolved = segment.changeKind !== "conflict" || resolution !== undefined;
+    const isOurs = !isEdited && resolution === "ours";
+    const isTheirs = !isEdited && resolution === "theirs";
+    const isBoth = !isEdited && resolution === "both";
+    const isNone = !isEdited && resolution === "none";
+    const isAutoMerged =
+        segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
+    const isResolved =
+        segment.changeKind !== "conflict" ||
+        segment.autoResolvedLines !== undefined ||
+        resolution !== undefined ||
+        isEdited;
     const kindLabel = getHunkKindLabel(segment);
+    const setSectionRef = useCallback(
+        (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
+        [onSectionRef, segment.id],
+    );
     const resultCompareLines =
         resolution === "ours"
             ? segment.theirsLines
@@ -353,11 +583,13 @@ export function ConflictSection({
     return (
         <div
             ref={setSectionRef}
+            style={intrinsicSizeStyle(lineCount, CONFLICT_CHROME_PX)}
             className={[
                 "segment",
                 "segment-conflict",
                 `change-${segment.changeKind}`,
                 isResolved ? "resolved" : "unresolved",
+                isAutoMerged ? "auto-merged" : "",
                 isActive ? "active" : "",
             ]
                 .filter(Boolean)
@@ -442,6 +674,8 @@ export function ConflictSection({
                         className="conflict-ours"
                         wordHighlight={highlightWords}
                         compareLines={segment.theirsLines}
+                        alignedRows={alignment?.ours}
+                        compareRows={alignment?.theirs}
                     />
                     <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -465,13 +699,14 @@ export function ConflictSection({
                 </div>
 
                 <div className="column column-middle conflict-column result-column">
-                    <CodeBlock
+                    <EditableResultBlock
                         lines={resultLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.middle}
-                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"}`}
+                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""}`}
                         wordHighlight={highlightWords}
                         compareLines={resultCompareLines}
+                        onCommit={(lines) => onEditResult(segment.id, lines)}
                     />
                 </div>
 
@@ -504,10 +739,39 @@ export function ConflictSection({
                         className="conflict-theirs"
                         wordHighlight={highlightWords}
                         compareLines={segment.oursLines}
+                        alignedRows={alignment?.theirs}
+                        compareRows={alignment?.ours}
                     />
                 </div>
             </div>
         </div>
+    );
+}, conflictSectionPropsEqual);
+
+/**
+ * Value-compares conflict-section props so a resolution or edit on one hunk
+ * only re-renders segments whose computed line numbers actually shifted.
+ */
+function conflictSectionPropsEqual(
+    prev: ConflictSectionProps,
+    next: ConflictSectionProps,
+): boolean {
+    return (
+        prev.segment === next.segment &&
+        prev.resolution === next.resolution &&
+        prev.editedLines === next.editedLines &&
+        prev.lineCount === next.lineCount &&
+        prev.alignment === next.alignment &&
+        prev.onResolve === next.onResolve &&
+        prev.onEditResult === next.onEditResult &&
+        prev.onSelect === next.onSelect &&
+        prev.onSectionRef === next.onSectionRef &&
+        prev.isActive === next.isActive &&
+        prev.showDetails === next.showDetails &&
+        prev.highlightWords === next.highlightWords &&
+        prev.conflictOrdinal === next.conflictOrdinal &&
+        prev.trueConflictOrdinal === next.trueConflictOrdinal &&
+        paneLineNumbersEqual(prev.lineNumbers, next.lineNumbers)
     );
 }
 
