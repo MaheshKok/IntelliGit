@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.2] - 2026-06-18
+
+### Fixed
+
+- Fixed the extension entering no-repository mode when the workspace folder opened in the IDE is a subdirectory of the git root (e.g. opening `/root/client/project2` when `.git` lives at `/root/client`). Commits were blocked in this configuration even though IntelliJ IDE handled it correctly.
+
+### CI
+
+- Added a `workflow_dispatch` trigger to the publish workflow so a deploy silently skipped by GitHub can be re-triggered manually without a version bump (requires repo write access; a `force_publish` input bypasses only the version-change gate while the double-publish guard remains active).
+- Added a `guard-no-skip-ci` required status check that scans every PR commit message, PR title, and PR body for CI-skip directives and blocks the merge, preventing a squash merge from carrying a skip token into main and suppressing the push-to-main deploy.
+
 ## [0.11.1] - 2026-06-18
 
 ### Added
