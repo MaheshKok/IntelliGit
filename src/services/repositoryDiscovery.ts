@@ -96,7 +96,16 @@ async function addResolvedRoot(
     const resolved = await resolveGitRoot(candidateRoot).catch(() => null);
     if (!resolved) return;
     const root = await normalizeRoot(resolved);
-    if (!workspaceRoots.some((workspaceRoot) => isWithin(workspaceRoot, root))) return;
+    // Accept when the git root is inside the workspace (the common monorepo case) OR
+    // when the workspace is inside the git root (e.g. user opened a project subdirectory
+    // while the .git lives one level above). Reject roots that are completely outside to
+    // prevent a .git symlink from pulling in an unrelated external repository.
+    if (
+        !workspaceRoots.some(
+            (workspaceRoot) => isWithin(workspaceRoot, root) || isWithin(root, workspaceRoot),
+        )
+    )
+        return;
     if (seen.has(root)) return;
     seen.set(root, { root, label: labelForRoot(root, workspaceRoots) });
 }
