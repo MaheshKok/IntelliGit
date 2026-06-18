@@ -78,6 +78,33 @@ describe("discoverGitRepositories", () => {
         expect(repos).toEqual([{ root: path.resolve(app), label: "app" }]);
     });
 
+    it("discovers a git root that is a parent of the workspace (workspace opened as subdirectory)", async () => {
+        // /tmp/root/ is the git root (.git lives there); user opens /tmp/root/project2
+        const root = await makeTempWorkspace();
+        const project2 = path.join(root, "project2");
+        await fs.mkdir(project2, { recursive: true });
+        await makeGitMarker(root);
+        // Resolver simulates `git rev-parse --show-toplevel` returning the parent git root
+        const resolveGitRoot = vi.fn(async (candidateRoot: string) => {
+            if (candidateRoot === project2) return root;
+            return null;
+        });
+
+        const repos = await discoverGitRepositories([project2], { resolveGitRoot });
+
+        expect(repos).toEqual([{ root: path.resolve(root), label: path.basename(root) }]);
+    });
+
+    it("discovers the git root when workspace equals git root (no regression)", async () => {
+        const workspace = await makeTempWorkspace();
+        await makeGitMarker(workspace);
+        const resolveGitRoot = resolverFor([workspace]);
+
+        const repos = await discoverGitRepositories([workspace], { resolveGitRoot });
+
+        expect(repos).toEqual([{ root: path.resolve(workspace), label: path.basename(workspace) }]);
+    });
+
     it("drops resolved git roots outside the workspace real path", async () => {
         const workspace = await makeTempWorkspace();
         const outside = await makeTempWorkspace();
