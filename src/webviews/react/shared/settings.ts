@@ -30,7 +30,12 @@ export const getSettings = (): IntelligitSettings => {
             const settingsObj = settings as Record<string, unknown>;
             return {
                 hoverDelay:
-                    typeof settingsObj.hoverDelay === "number" ? settingsObj.hoverDelay : 300,
+                    // Number.isFinite rejects NaN and +/-Infinity (all typeof
+                    // "number") and non-numbers without coercion, so a malformed
+                    // delay can never reach rendering and timer logic.
+                    Number.isFinite(settingsObj.hoverDelay)
+                        ? (settingsObj.hoverDelay as number)
+                        : 300,
                 tooltipsEnabled: settingsObj.tooltipsEnabled !== false,
                 iconStyle: settingsObj.iconStyle === "color" ? "color" : "standard",
                 commitWindowPosition:

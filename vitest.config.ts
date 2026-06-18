@@ -22,10 +22,10 @@ export default defineConfig({
             // gate, so validate any increase against a CI run, not just local,
             // and keep the margin when ratcheting up.
             thresholds: {
-                lines: 88.0,
+                lines: 88.5,
                 functions: 83.0,
-                branches: 80.0,
-                statements: 88.0,
+                branches: 80.5,
+                statements: 88.5,
             },
         },
     },
