@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.3] - 2026-06-20
+
+### Changed
+
+- Refreshed the README with clearer IntelliGit product positioning, grounded workflow copy, supported-language visibility, the project logo, marketplace links, setup guidance, and developer documentation links.
+
 ## [0.11.2] - 2026-06-18
 
 ### Fixed
@@ -152,7 +158,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Verification
 
 - Added clone-flow regression coverage for opening a cloned repository in the current window without calling the workspace-folder API.
-
 
 ## [0.9.2] - 2026-06-04
 
