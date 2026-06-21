@@ -192,5 +192,8 @@
     "merge.status.edited": "Edited",
     "merge.status.autoResolved": "已自動解決",
     "merge.result.editHint": "Double-click to edit the result",
-    "merge.result.editingAria": "Edit merge result block"
+    "merge.result.editingAria": "Edit merge result block",
+    "commit.checks.title": "GitHub 提交檢查",
+    "commit.checks.loading": "正在載入檢查...",
+    "commit.checks.none": "找不到檢查"
 }

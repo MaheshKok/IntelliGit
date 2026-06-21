@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Branch } from "../../../src/types";
+import type { Branch, CommitChecksSnapshot } from "../../../src/types";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { renderHighlightedLabel } from "../../../src/webviews/react/branch-column/highlight";
 import { BranchSearchBar } from "../../../src/webviews/react/branch-column/components/BranchSearchBar";
@@ -27,6 +27,7 @@ import { StatusBadge } from "../../../src/webviews/react/commit-panel/components
 import { TabBar } from "../../../src/webviews/react/commit-panel/components/TabBar";
 import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
 import { VscCheckbox } from "../../../src/webviews/react/commit-panel/components/VscCheckbox";
+import { CommitChecksButton } from "../../../src/webviews/react/commit-list/CommitChecksPopover";
 import { mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
@@ -175,6 +176,151 @@ describe("webview ui smoke", () => {
         expect(html).toContain('data-tree-icon="file"');
         expect(html).toContain("\uea60");
         expect(html).toContain("svg");
+    });
+
+    it("opens GitHub commit checks popover on click and closes on outside pointer", () => {
+        const onRequestChecks = vi.fn();
+        const onOpenCheckUrl = vi.fn();
+        const snapshot: CommitChecksSnapshot = {
+            hash: "abc1234",
+            state: "success",
+            summary: "All checks passed",
+            items: [
+                {
+                    name: "GitGuardian Security Checks",
+                    description: "No secrets detected",
+                    state: "success",
+                    source: "status",
+                    url: "https://example.test/security",
+                },
+                {
+                    name: "Code Review Skipped",
+                    description: "Review skipped",
+                    state: "skipped",
+                    source: "check-run",
+                },
+            ],
+        };
+
+        const mounted = mount(
+            <CommitChecksButton
+                hash="abc1234"
+                checks={snapshot}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+
+        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
+        const previousInnerHeight = window.innerHeight;
+        Object.defineProperty(window, "innerHeight", { configurable: true, value: 320 });
+        const rectSpy = vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+            bottom: 104,
+            height: 24,
+            left: 300,
+            right: 324,
+            top: 80,
+            width: 24,
+            x: 300,
+            y: 80,
+            toJSON: () => ({}),
+        } as DOMRect);
+        act(() => {
+            trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+        });
+        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+
+        act(() => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.body.textContent).toContain("GitHub Commit Checks");
+        expect(document.body.textContent).toContain("GitGuardian Security Checks");
+        expect(document.body.textContent).toContain("Code Review Skipped");
+        expect(document.body.textContent).not.toContain("All checks passed");
+        const panel = Array.from(document.body.querySelectorAll("div")).find(
+            (node): node is HTMLDivElement =>
+                node.style.position === "fixed" &&
+                (node.textContent?.includes("GitHub Commit Checks") ?? false),
+        );
+        expect(panel?.style.transform).toBe("translateY(-100%)");
+        expect(Number.parseFloat(panel?.style.top ?? "0")).toBeGreaterThanOrEqual(312);
+
+        const link = Array.from(document.querySelectorAll("button")).find(
+            (button) => button.textContent === "GitGuardian Security Checks",
+        );
+        act(() => {
+            link?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onRequestChecks).not.toHaveBeenCalled();
+        expect(onOpenCheckUrl).toHaveBeenCalledWith("https://example.test/security");
+
+        act(() => {
+            document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+        });
+        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+
+        act(() => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(document.body.textContent).toContain("GitHub Commit Checks");
+
+        act(() => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        rectSpy.mockRestore();
+        Object.defineProperty(window, "innerHeight", {
+            configurable: true,
+            value: previousInnerHeight,
+        });
+        unmount(mounted.root, mounted.container);
+
+        const emptyMounted = mount(
+            <CommitChecksButton
+                hash="empty123"
+                checks={{
+                    hash: "empty123",
+                    state: "none",
+                    summary: "No checks found",
+                    items: [],
+                }}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+        expect(emptyMounted.container.querySelector("button")).toBeNull();
+        unmount(emptyMounted.root, emptyMounted.container);
+
+        const unavailableMounted = mount(
+            <CommitChecksButton
+                hash="unavailable123"
+                checks={{
+                    hash: "unavailable123",
+                    state: "unavailable",
+                    summary: "GitHub checks unavailable",
+                    items: [],
+                    error: "No GitHub remote found.",
+                }}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+        expect(unavailableMounted.container.querySelector("button")).not.toBeNull();
+        unmount(unavailableMounted.root, unavailableMounted.container);
+
+        const pendingMounted = mount(
+            <CommitChecksButton
+                hash="pending123"
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+        const pendingIcon = pendingMounted.container.querySelector("svg") as SVGElement;
+        expect(pendingIcon.style.animation).toContain("intelligit-commit-check-spin");
+        unmount(pendingMounted.root, pendingMounted.container);
     });
 
     it("renders section/folder/shelf/toolbar/tab and commit area layouts", () => {

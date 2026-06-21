@@ -386,9 +386,10 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
-    it("CommitList triggers context action and load-more", () => {
+    it("CommitList triggers context action, load-more, and visible check requests", async () => {
         const onCommitAction = vi.fn();
         const onLoadMore = vi.fn();
+        const onRequestCommitChecks = vi.fn();
         const commits: Commit[] = [
             {
                 hash: "aa11bb22",
@@ -413,8 +414,13 @@ describe("low coverage components", () => {
                 onFilterText={vi.fn()}
                 onLoadMore={onLoadMore}
                 onCommitAction={onCommitAction}
+                commitChecks={new Map()}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={vi.fn()}
             />,
         );
+        await flush();
+        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
 
         const row = Array.from(container.querySelectorAll("div")).find(
             (el) =>

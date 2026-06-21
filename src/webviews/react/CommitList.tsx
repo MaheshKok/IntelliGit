@@ -3,7 +3,7 @@
 // Includes a text search filter bar. Branch filtering is handled by the sidebar.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Commit } from "../../types";
+import type { Commit, CommitChecksSnapshot } from "../../types";
 import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
@@ -17,6 +17,7 @@ import {
     AUTHOR_COL_WIDTH,
     BRANCH_SCOPE_STYLE,
     CANVAS_STYLE,
+    CHECKS_COL_WIDTH,
     contentContainerStyle,
     DATE_COL_WIDTH,
     FILTER_BAR_STYLE,
@@ -58,6 +59,9 @@ interface Props {
     onCommitAction: (action: CommitAction, hash: string) => void;
     onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;
     onCommitUnhover?: () => void;
+    commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
+    onRequestCommitChecks?: (hash: string) => void;
+    onOpenCommitCheckUrl?: (url: string) => void;
     showSearch?: boolean;
     showAuthorDate?: boolean;
     headerLabel?: string;
@@ -81,6 +85,9 @@ export function CommitList({
     onCommitAction,
     onCommitHover,
     onCommitUnhover,
+    commitChecks,
+    onRequestCommitChecks,
+    onOpenCommitCheckUrl,
     showSearch = true,
     showAuthorDate = true,
     headerLabel,
@@ -201,6 +208,13 @@ export function CommitList({
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
+    useEffect(() => {
+        if (!onRequestCommitChecks) return;
+        for (const commit of visibleCommits) {
+            if (!commitChecks?.has(commit.hash)) onRequestCommitChecks(commit.hash);
+        }
+    }, [commitChecks, onRequestCommitChecks, visibleCommits]);
+
     const branchScopeLabel = selectedBranch
         ? t("commit.scope.branch", { branch: selectedBranch })
         : t("commit.scope.allBranches");
@@ -253,6 +267,9 @@ export function CommitList({
                             >
                                 {t("commit.list.header.date")}
                             </span>
+                            {onRequestCommitChecks && onOpenCommitCheckUrl ? (
+                                <span style={{ width: CHECKS_COL_WIDTH, marginLeft: 4 }} />
+                            ) : null}
                         </>
                     )}
                 </div>
@@ -291,6 +308,9 @@ export function CommitList({
                                     onHover={onCommitHover}
                                     onUnhover={onCommitUnhover}
                                     showAuthorDate={showAuthorDate}
+                                    checks={commitChecks?.get(commit.hash)}
+                                    onRequestChecks={onRequestCommitChecks}
+                                    onOpenCheckUrl={onOpenCommitCheckUrl}
                                 />
                             );
                         })}

@@ -361,5 +361,15 @@
     "{title}: {detail}{hintText}": "{title}: {detail} {hintText}",
     "{count} changed file": "{count} 個檔案已變更",
     "{count} changed files": "{count} 個檔案已變更",
-    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "本機分支和遠端分支已產生分歧。請合併或變基已追蹤的遠端分支，然後再試一次。"
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "本機分支和遠端分支已產生分歧。請合併或變基已追蹤的遠端分支，然後再試一次。",
+    "All checks passed": "所有檢查皆已通過",
+    "Checks completed": "檢查已完成",
+    "Checks failed": "檢查失敗",
+    "Checks pending": "檢查待處理",
+    "Checks skipped": "檢查已略過",
+    "Commit status": "提交狀態",
+    "GitHub check": "GitHub 檢查",
+    "GitHub checks unavailable": "GitHub 檢查無法使用",
+    "No GitHub remote found.": "找不到 GitHub 遠端儲存庫。",
+    "No checks found": "找不到檢查"
 }

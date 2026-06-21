@@ -206,5 +206,8 @@
     "merge.status.edited": "Edited",
     "merge.status.autoResolved": "Resolvido automaticamente",
     "merge.result.editHint": "Double-click to edit the result",
-    "merge.result.editingAria": "Edit merge result block"
+    "merge.result.editingAria": "Edit merge result block",
+    "commit.checks.title": "Verificações de commits do GitHub",
+    "commit.checks.loading": "A carregar verificações...",
+    "commit.checks.none": "Nenhuma verificação encontrada"
 }

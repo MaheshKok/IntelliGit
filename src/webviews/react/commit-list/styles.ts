@@ -4,6 +4,7 @@ import { JETBRAINS_UI } from "../shared/tokens";
 
 export const AUTHOR_COL_WIDTH = 104;
 export const DATE_COL_WIDTH = 118;
+export const CHECKS_COL_WIDTH = 28;
 export const ROW_SIDE_PADDING = 8;
 
 export const ROOT_STYLE: CSSProperties = {

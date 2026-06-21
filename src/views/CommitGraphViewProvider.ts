@@ -4,7 +4,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
+import type { Branch, CommitChecksSnapshot, CommitDetail, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
     CommitAction,
@@ -19,6 +19,7 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
+import { getGithubCommitChecks } from "../services/githubCommitChecksService";
 
 /**
  * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
@@ -43,6 +44,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private branches: Branch[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
+    private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -196,6 +198,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                                 this.assertString(msg.filePath, "filePath"),
                             ),
                         });
+                        break;
+                    case "requestCommitChecks":
+                        await this.sendCommitChecks(this.assertGitHash(msg.hash, "hash"));
+                        break;
+                    case "openCommitCheckUrl":
+                        await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
                         break;
                 }
             } catch (err) {
@@ -397,6 +405,25 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private postToWebview(msg: CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);
+    }
+
+    private async sendCommitChecks(hash: string): Promise<void> {
+        const cached = this.commitChecksCache.get(hash);
+        if (cached) {
+            this.postToWebview({ type: "setCommitChecks", snapshot: cached });
+            return;
+        }
+        const snapshot = await getGithubCommitChecks(this.gitOps, hash);
+        this.commitChecksCache.set(hash, snapshot);
+        this.postToWebview({ type: "setCommitChecks", snapshot });
+    }
+
+    private async openExternalHttpUrl(rawUrl: string): Promise<void> {
+        const uri = vscode.Uri.parse(rawUrl);
+        if (uri.scheme !== "https" && uri.scheme !== "http") {
+            throw new Error("Unsupported commit check URL.");
+        }
+        await vscode.env.openExternal(uri);
     }
 
     /**

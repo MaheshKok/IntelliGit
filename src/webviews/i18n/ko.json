@@ -192,5 +192,8 @@
     "merge.status.edited": "Edited",
     "merge.status.autoResolved": "자동 해결됨",
     "merge.result.editHint": "Double-click to edit the result",
-    "merge.result.editingAria": "Edit merge result block"
+    "merge.result.editingAria": "Edit merge result block",
+    "commit.checks.title": "GitHub 커밋 검사",
+    "commit.checks.loading": "검사를 불러오는 중...",
+    "commit.checks.none": "검사를 찾을 수 없습니다"
 }

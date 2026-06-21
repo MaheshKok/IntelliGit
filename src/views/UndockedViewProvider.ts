@@ -10,9 +10,17 @@ import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
-import type { Branch, CommitDetail, StashEntry, ThemeFolderIconMap, WorkingFile } from "../types";
+import type {
+    Branch,
+    CommitChecksSnapshot,
+    CommitDetail,
+    StashEntry,
+    ThemeFolderIconMap,
+    WorkingFile,
+} from "../types";
 import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
+import { getGithubCommitChecks } from "../services/githubCommitChecksService";
 import {
     assertGitHash,
     assertNullableString,
@@ -103,6 +111,7 @@ export class UndockedViewProvider {
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
+    private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -185,6 +194,7 @@ export class UndockedViewProvider {
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
+        this.commitChecksCache.clear();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -401,6 +411,12 @@ export class UndockedViewProvider {
                     filePath: assertRepoRelativePath(assertString(msg.filePath, "filePath")),
                 });
                 break;
+            case "requestCommitChecks":
+                await this.sendCommitChecks(assertGitHash(msg.hash, "hash"));
+                break;
+            case "openCommitCheckUrl":
+                await this.openExternalHttpUrl(assertString(msg.url, "url"));
+                break;
             case "dock":
                 this._onDockRequested.fire();
                 break;
@@ -603,6 +619,25 @@ export class UndockedViewProvider {
     private async filterByText(text: string): Promise<void> {
         this.filterText = text;
         await this.loadInitial();
+    }
+
+    private async sendCommitChecks(hash: string): Promise<void> {
+        const cached = this.commitChecksCache.get(hash);
+        if (cached) {
+            this.postToWebview({ type: "setCommitChecks", snapshot: cached });
+            return;
+        }
+        const snapshot = await getGithubCommitChecks(this.gitOps, hash);
+        this.commitChecksCache.set(hash, snapshot);
+        this.postToWebview({ type: "setCommitChecks", snapshot });
+    }
+
+    private async openExternalHttpUrl(rawUrl: string): Promise<void> {
+        const uri = vscode.Uri.parse(rawUrl);
+        if (uri.scheme !== "https" && uri.scheme !== "http") {
+            throw new Error("Unsupported commit check URL.");
+        }
+        await vscode.env.openExternal(uri);
     }
     // --- Commit panel data fetching -----------------------------------------
     /**

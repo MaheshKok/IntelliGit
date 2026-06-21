@@ -213,5 +213,8 @@
     "merge.status.edited": "Edited",
     "merge.status.autoResolved": "Разрешено автоматически",
     "merge.result.editHint": "Double-click to edit the result",
-    "merge.result.editingAria": "Edit merge result block"
+    "merge.result.editingAria": "Edit merge result block",
+    "commit.checks.title": "Проверки коммитов GitHub",
+    "commit.checks.loading": "Загрузка проверок...",
+    "commit.checks.none": "Проверки не найдены"
 }

@@ -139,7 +139,7 @@ export function ContextMenu({
                 left: pos.left,
                 top: pos.top,
                 zIndex: 9999,
-                background: `var(--vscode-menu-background, ${JETBRAINS_UI.color.menuBackground})`,
+                background: JETBRAINS_UI.color.panel,
                 border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
                 borderRadius: 8,
                 padding: "4px 0",

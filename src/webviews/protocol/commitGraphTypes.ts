@@ -4,6 +4,7 @@
 import type {
     Branch,
     Commit,
+    CommitChecksSnapshot,
     CommitDetail,
     ThemeFolderIconMap,
     ThemeIconFont,
@@ -137,6 +138,18 @@ export type CommitGraphOutbound =
           commitHash: string;
           /** Repository-relative file path from Git diff output; host validates before use. */
           filePath: string;
+      }
+    | {
+          /** Request for GitHub check runs and commit statuses for one commit. */
+          type: "requestCommitChecks";
+          /** Full Git object ID from the rendered commit row. */
+          hash: string;
+      }
+    | {
+          /** Request to open a GitHub check/status target URL outside the webview. */
+          type: "openCommitCheckUrl";
+          /** HTTP(S) target URL returned by GitHub. */
+          url: string;
       };
 
 /**
@@ -208,4 +221,10 @@ export type CommitGraphInbound =
           type: "error";
           /** User-visible error text normalized by the host. */
           message: string;
+      }
+    | {
+          /** GitHub check/status data for one commit hash. */
+          type: "setCommitChecks";
+          /** Normalized snapshot keyed by `snapshot.hash`. */
+          snapshot: CommitChecksSnapshot;
       };

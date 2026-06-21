@@ -27,6 +27,7 @@ import { useColumnPairDrag } from "./undocked/useColumnPairDrag";
 import type {
     Branch,
     Commit,
+    CommitChecksSnapshot,
     CommitDetail,
     ThemeFolderIconMap,
     ThemeIconFont,
@@ -64,6 +65,9 @@ function App(): React.ReactElement {
     >(undefined);
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
+    const [commitChecks, setCommitChecks] = useState<Map<string, CommitChecksSnapshot | "loading">>(
+        new Map(),
+    );
     const loadingMore = useRef(false);
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -283,6 +287,14 @@ function App(): React.ReactElement {
                     setCommitFolderIconsByName(undefined);
                     return;
 
+                case "setCommitChecks":
+                    setCommitChecks((prev) => {
+                        const next = new Map(prev);
+                        next.set(data.snapshot.hash, data.snapshot);
+                        return next;
+                    });
+                    return;
+
                 case "loadError":
                     if (!loadingMore.current) setCommits([]);
                     loadingMore.current = false;
@@ -407,6 +419,24 @@ function App(): React.ReactElement {
 
     const handleOpenDiff = useCallback((commitHash: string, filePath: string) => {
         vscode.postMessage({ type: "openCommitFileDiff", commitHash, filePath });
+    }, []);
+
+    const handleRequestCommitChecks = useCallback(
+        (hash: string) => {
+            if (commitChecks.has(hash)) return;
+            setCommitChecks((prev) => {
+                if (prev.has(hash)) return prev;
+                const next = new Map(prev);
+                next.set(hash, "loading");
+                return next;
+            });
+            vscode.postMessage({ type: "requestCommitChecks", hash });
+        },
+        [commitChecks],
+    );
+
+    const handleOpenCommitCheckUrl = useCallback((url: string) => {
+        vscode.postMessage({ type: "openCommitCheckUrl", url });
     }, []);
 
     // --- Commit-panel callbacks ---
@@ -545,6 +575,9 @@ function App(): React.ReactElement {
                                     onFilterText={handleFilterText}
                                     onLoadMore={handleLoadMore}
                                     onCommitAction={handleCommitAction}
+                                    commitChecks={commitChecks}
+                                    onRequestCommitChecks={handleRequestCommitChecks}
+                                    onOpenCommitCheckUrl={handleOpenCommitCheckUrl}
                                 />
                             </div>
 

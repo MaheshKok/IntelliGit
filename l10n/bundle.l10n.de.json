@@ -361,5 +361,15 @@
   "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
   "{count} changed file": "{count} Datei geändert",
   "{count} changed files": "{count} geänderte Dateien",
-  "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "Die lokale und die Remote-Branch sind auseinandergegangen. Führen Sie einen Merge oder Rebase der verfolgten Remote-Branch durch, und versuchen Sie es erneut."
+  "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "Die lokale und die Remote-Branch sind auseinandergegangen. Führen Sie einen Merge oder Rebase der verfolgten Remote-Branch durch, und versuchen Sie es erneut.",
+  "All checks passed": "Alle Prüfungen bestanden",
+  "Checks completed": "Prüfungen abgeschlossen",
+  "Checks failed": "Prüfungen fehlgeschlagen",
+  "Checks pending": "Prüfungen ausstehend",
+  "Checks skipped": "Prüfungen übersprungen",
+  "Commit status": "Commit-Status",
+  "GitHub check": "GitHub-Prüfung",
+  "GitHub checks unavailable": "GitHub-Prüfungen nicht verfügbar",
+  "No GitHub remote found.": "Kein GitHub-Remote gefunden.",
+  "No checks found": "Keine Prüfungen gefunden"
 }

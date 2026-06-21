@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { CommitList } from "./CommitList";
-import type { Branch, Commit } from "../../types";
+import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
     CommitAction,
     CommitGraphOutbound,
@@ -36,6 +36,9 @@ export function NativeCommitGraph({
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
+    const [commitChecks, setCommitChecks] = useState<Map<string, CommitChecksSnapshot | "loading">>(
+        new Map(),
+    );
     const loadingMore = useRef(false);
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -85,6 +88,13 @@ export function NativeCommitGraph({
                     loadingMore.current = false;
                     setHasMore(false);
                     break;
+                case "setCommitChecks":
+                    setCommitChecks((prev) => {
+                        const next = new Map(prev);
+                        next.set(data.snapshot.hash, data.snapshot);
+                        return next;
+                    });
+                    break;
             }
         };
 
@@ -124,6 +134,27 @@ export function NativeCommitGraph({
         [vscode],
     );
 
+    const handleRequestCommitChecks = useCallback(
+        (hash: string) => {
+            if (commitChecks.has(hash)) return;
+            setCommitChecks((prev) => {
+                if (prev.has(hash)) return prev;
+                const next = new Map(prev);
+                next.set(hash, "loading");
+                return next;
+            });
+            vscode.postMessage({ type: "requestCommitChecks", hash });
+        },
+        [commitChecks, vscode],
+    );
+
+    const handleOpenCommitCheckUrl = useCallback(
+        (url: string) => {
+            vscode.postMessage({ type: "openCommitCheckUrl", url });
+        },
+        [vscode],
+    );
+
     return (
         <CommitList
             commits={commits}
@@ -137,6 +168,9 @@ export function NativeCommitGraph({
             onFilterText={handleFilterText}
             onLoadMore={handleLoadMore}
             onCommitAction={handleCommitAction}
+            commitChecks={commitChecks}
+            onRequestCommitChecks={handleRequestCommitChecks}
+            onOpenCommitCheckUrl={handleOpenCommitCheckUrl}
             showSearch={false}
             showAuthorDate={false}
             headerLabel="Graph"

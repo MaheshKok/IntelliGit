@@ -361,5 +361,15 @@
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count}개 파일 변경됨",
     "{count} changed files": "{count}개 파일 변경됨",
-    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "로컬 브랜치와 원격 브랜치가 갈라졌습니다. 추적 중인 원격 브랜치를 병합하거나 리베이스한 다음 다시 시도하세요."
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "로컬 브랜치와 원격 브랜치가 갈라졌습니다. 추적 중인 원격 브랜치를 병합하거나 리베이스한 다음 다시 시도하세요.",
+    "All checks passed": "모든 검사를 통과했습니다",
+    "Checks completed": "검사가 완료되었습니다",
+    "Checks failed": "검사가 실패했습니다",
+    "Checks pending": "검사 대기 중",
+    "Checks skipped": "검사를 건너뛰었습니다",
+    "Commit status": "커밋 상태",
+    "GitHub check": "GitHub 검사",
+    "GitHub checks unavailable": "GitHub 검사를 사용할 수 없습니다",
+    "No GitHub remote found.": "GitHub 원격 저장소를 찾을 수 없습니다.",
+    "No checks found": "검사를 찾을 수 없습니다"
 }
