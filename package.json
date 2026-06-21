@@ -49,6 +49,7 @@
         "onView:intelligit.sidebarGraph",
         "onView:intelligit.worktrees",
         "onCommand:intelligit.worktree.create",
+        "onCommand:intelligit.worktree.delete",
         "onCommand:intelligit.createWorktreeFromBranch",
         "onCommand:intelligit.cloneRepository",
         "onCommand:intelligit.openFolder",
@@ -196,6 +197,12 @@
                 "title": "%command.createWorktree%",
                 "category": "%intelligit%",
                 "icon": "$(add)"
+            },
+            {
+                "command": "intelligit.worktree.delete",
+                "title": "%command.deleteWorktree%",
+                "category": "%intelligit%",
+                "icon": "$(trash)"
             },
             {
                 "command": "intelligit.createWorktreeFromBranch",
@@ -422,6 +429,11 @@
                     "command": "intelligit.openMergeConflictInJetBrains",
                     "when": "view == intelligit.mergeConflicts && viewItem == intelligit.conflictFile",
                     "group": "navigation@2"
+                },
+                {
+                    "command": "intelligit.worktree.delete",
+                    "when": "view == intelligit.worktrees && viewItem =~ /deletable/",
+                    "group": "inline@1"
                 },
                 {
                     "command": "intelligit.conflictAcceptYours",

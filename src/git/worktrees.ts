@@ -81,6 +81,15 @@ export async function addWorktree(executor: GitExecutor, opts: AddWorktreeOption
     await executor.run(args);
 }
 
+/** Removes a Git worktree without deleting its branch. */
+export async function removeWorktree(
+    executor: GitExecutor,
+    worktreePath: string,
+    force: boolean,
+): Promise<void> {
+    await executor.run(["worktree", "remove", ...(force ? ["--force"] : []), worktreePath]);
+}
+
 function groupWorktreeRecords(porcelainZ: string): WorktreeRecord[] {
     const records: WorktreeRecord[] = [];
     let current: WorktreeRecord = {};

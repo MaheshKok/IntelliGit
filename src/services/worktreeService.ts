@@ -1,9 +1,11 @@
+import path from "node:path";
 import * as vscode from "vscode";
-import type { GitExecutor } from "../git/executor";
+import { GitExecutor } from "../git/executor";
 import {
     addWorktree,
     assertWorktreePathSafe,
     listWorktrees as readWorktrees,
+    removeWorktree as removeGitWorktree,
 } from "../git/worktrees";
 import type { Branch, GitWorktree } from "../types";
 import { getLocalNameFromRemote } from "./gitHelpers";
@@ -28,6 +30,8 @@ export class WorktreeService implements vscode.Disposable {
     constructor(
         private readonly executor: GitExecutor,
         private readonly getCurrentRoot: () => string,
+        private readonly createExecutor: (repoRoot: string) => GitExecutor = (repoRoot) =>
+            new GitExecutor(repoRoot),
     ) {}
 
     /** Return cached worktrees, loading them from Git on first use. */
@@ -104,6 +108,32 @@ export class WorktreeService implements vscode.Disposable {
             newBranch: opts.newBranch,
             base: opts.base,
         });
+        return this.refresh();
+    }
+
+    /** Remove a non-current, non-main worktree after dirty-state confirmation. */
+    async removeWorktree(worktreePath: string): Promise<GitWorktree[] | undefined> {
+        const worktrees = await this.listWorktrees();
+        const target = path.resolve(worktreePath);
+        const worktree = worktrees.find((candidate) => path.resolve(candidate.path) === target);
+        if (!worktree) throw new Error(vscode.l10n.t("Worktree not found."));
+        if (worktree.isMain) throw new Error(vscode.l10n.t("Cannot remove the main worktree."));
+        if (worktree.isCurrent)
+            throw new Error(vscode.l10n.t("Cannot remove the current worktree."));
+
+        const dirtyOutput = await this.createExecutor(worktree.path).run(["status", "--porcelain"]);
+        const force = dirtyOutput.trim().length > 0;
+        if (force) {
+            const confirm = vscode.l10n.t("Delete Worktree");
+            const picked = await vscode.window.showWarningMessage(
+                vscode.l10n.t("Worktree has uncommitted changes. Delete it anyway?"),
+                { modal: true },
+                confirm,
+            );
+            if (picked !== confirm) return undefined;
+        }
+
+        await removeGitWorktree(this.executor, worktree.path, force);
         return this.refresh();
     }
 

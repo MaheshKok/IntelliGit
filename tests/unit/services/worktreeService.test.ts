@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { GitExecutor } from "../../../src/git/executor";
 import { WorktreeService } from "../../../src/services/worktreeService";
 
+const showWarningMessage = vi.hoisted(() => vi.fn());
+
 vi.mock("vscode", () => {
     class EventEmitter<T> {
         private listeners: Array<(event: T) => void> = [];
@@ -16,7 +18,13 @@ vi.mock("vscode", () => {
             this.listeners = [];
         }
     }
-    return { EventEmitter };
+    return {
+        EventEmitter,
+        window: {
+            showWarningMessage,
+        },
+        l10n: { t: (message: string) => message },
+    };
 });
 
 function porcelain(branch: string): string {
@@ -43,6 +51,21 @@ function createExecutor(outputs: string[]): GitExecutor {
     return {
         run: vi.fn(async () => outputs.shift() ?? porcelain("fallback")),
     } as unknown as GitExecutor;
+}
+
+function createScopedExecutor(statusOutput: string): {
+    factory: (repoRoot: string) => GitExecutor;
+    runs: Array<{ repoRoot: string; run: ReturnType<typeof vi.fn> }>;
+} {
+    const runs: Array<{ repoRoot: string; run: ReturnType<typeof vi.fn> }> = [];
+    return {
+        runs,
+        factory: (repoRoot: string) => {
+            const run = vi.fn(async () => statusOutput);
+            runs.push({ repoRoot, run });
+            return { run } as unknown as GitExecutor;
+        },
+    };
 }
 
 describe("WorktreeService", () => {
@@ -170,6 +193,88 @@ describe("WorktreeService", () => {
             "list",
             "--porcelain",
             "-z",
+        ]);
+    });
+
+    it("rejects removing main, detached main, or current worktrees", async () => {
+        const executor = createExecutor([
+            porcelainRecords([
+                { path: "/repo", branch: "main" },
+                { path: "/worktrees/feature", branch: "feature/x" },
+            ]),
+            ["worktree /repo", "HEAD 1111111111111111111111111111111111111111", "detached", ""].join(
+                "\0",
+            ),
+            porcelainRecords([
+                { path: "/repo", branch: "main" },
+                { path: "/worktrees/current", branch: "feature/current" },
+            ]),
+        ]);
+        const service = new WorktreeService(executor, () => "/repo");
+
+        await expect(service.removeWorktree("/repo")).rejects.toThrow("main worktree");
+        await service.refresh();
+        await expect(service.removeWorktree("/repo")).rejects.toThrow("main worktree");
+        const currentLinked = new WorktreeService(executor, () => "/worktrees/current");
+        await expect(currentLinked.removeWorktree("/worktrees/current")).rejects.toThrow(
+            "current worktree",
+        );
+        await expect(service.removeWorktree("/missing")).rejects.toThrow("Worktree not found");
+    });
+
+    it("removes a clean worktree without force and leaves branches untouched", async () => {
+        const executor = createExecutor([
+            porcelainRecords([
+                { path: "/repo", branch: "main" },
+                { path: "/worktrees/feature", branch: "feature/x" },
+            ]),
+            "",
+            porcelain("main"),
+        ]);
+        const scoped = createScopedExecutor("");
+        const service = new WorktreeService(executor, () => "/repo", scoped.factory);
+
+        await service.removeWorktree("/worktrees/feature");
+
+        expect(scoped.runs).toHaveLength(1);
+        expect(scoped.runs[0]).toMatchObject({ repoRoot: "/worktrees/feature" });
+        expect(scoped.runs[0]?.run).toHaveBeenCalledWith(["status", "--porcelain"]);
+        expect(executor.run).toHaveBeenCalledWith([
+            "worktree",
+            "remove",
+            "/worktrees/feature",
+        ]);
+        expect(executor.run).not.toHaveBeenCalledWith(expect.arrayContaining(["branch"]));
+    });
+
+    it("requires explicit confirmation before force-removing a dirty worktree", async () => {
+        const executor = createExecutor([
+            porcelainRecords([
+                { path: "/repo", branch: "main" },
+                { path: "/worktrees/dirty", branch: "dirty" },
+            ]),
+            "",
+            porcelain("main"),
+        ]);
+        const scoped = createScopedExecutor(" M file.txt\n");
+        const service = new WorktreeService(executor, () => "/repo", scoped.factory);
+
+        showWarningMessage.mockResolvedValueOnce(undefined);
+        await expect(service.removeWorktree("/worktrees/dirty")).resolves.toBeUndefined();
+        expect(executor.run).not.toHaveBeenCalledWith([
+            "worktree",
+            "remove",
+            "--force",
+            "/worktrees/dirty",
+        ]);
+
+        showWarningMessage.mockResolvedValueOnce("Delete Worktree");
+        await service.removeWorktree("/worktrees/dirty");
+        expect(executor.run).toHaveBeenCalledWith([
+            "worktree",
+            "remove",
+            "--force",
+            "/worktrees/dirty",
         ]);
     });
 });

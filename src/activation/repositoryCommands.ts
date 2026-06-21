@@ -17,7 +17,7 @@ import {
 } from "../services/jetbrainsMergeService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { discoverGitRepositories } from "../services/repositoryDiscovery";
-import type { Branch } from "../types";
+import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
@@ -62,6 +62,12 @@ const isFilePathContext = (value: unknown): value is { filePath: string } => {
         typeof value === "object" &&
         "filePath" in value &&
         typeof value.filePath === "string"
+    );
+};
+
+const isWorktreeContext = (value: unknown): value is GitWorktree => {
+    return (
+        !!value && typeof value === "object" && "path" in value && typeof value.path === "string"
     );
 };
 
@@ -130,6 +136,23 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                 return;
             }
             await runPublishBranchFlow(gitOps, currentBranch.name, getRepoRoot(), context.secrets);
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.delete", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            try {
+                const removed = await deps.worktreeService.removeWorktree(ctx.path);
+                if (!removed) return;
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Deleted worktree {path}", { path: ctx.path }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Delete worktree failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
         }),
         vscode.commands.registerCommand("intelligit.selectRepository", async () => {
             const repositories = await discoverGitRepositories(workspaceRoots());

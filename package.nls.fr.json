@@ -53,5 +53,6 @@
     "configuration.commitWindowPosition.markdownDescription": "Position du panneau de commit dans la fenêtre IntelliGit non ancrée/à onglets. `auto` (par défaut) suit la propriété `workbench.sideBar.location` de VS Code ; `left` et `right` forcent un positionnement latéral.",
     "view.fileCountBadge": "Fichiers modifiés",
     "view.worktrees": "Worktrees",
-    "command.createWorktree": "Create Worktree..."
+    "command.createWorktree": "Create Worktree...",
+    "command.deleteWorktree": "Delete Worktree"
 }

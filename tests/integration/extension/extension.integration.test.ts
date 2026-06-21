@@ -1097,6 +1097,20 @@ describe("extension integration", () => {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: mockDisposables,
         } as unknown as MockExtensionContext;
+        const worktreeListOutput = [
+            "worktree /repo",
+            "HEAD feed1234",
+            "branch refs/heads/main",
+            "",
+            "worktree /repo-feature",
+            "HEAD a1b2c3d4",
+            "branch refs/heads/feature-worktree",
+            "",
+        ].join("\0");
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "worktree" && args[1] === "list") return worktreeListOutput;
+            return defaultExecutorRunImpl(args);
+        });
 
         await activate(context);
 
@@ -1104,6 +1118,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
         expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.delete")).toBe(true);
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
@@ -1172,6 +1187,21 @@ describe("extension integration", () => {
             { fsPath: "/repo-feature", path: "/repo-feature" },
             { forceNewWindow: false, forceReuseWindow: true },
         );
+        executorRun.mockClear();
+        showInformationMessage.mockClear();
+        await getCommand("intelligit.worktree.delete")({
+            path: "/repo-feature",
+            branch: "feature-worktree",
+            head: "a1b2c3d4",
+            state: "linked",
+            isMain: false,
+            isCurrent: false,
+            isLocked: false,
+            isPrunable: false,
+        });
+        expect(executorRun).toHaveBeenCalledWith(["status", "--porcelain"]);
+        expect(executorRun).toHaveBeenCalledWith(["worktree", "remove", "/repo-feature"]);
+        expect(showInformationMessage).toHaveBeenCalledWith("Deleted worktree /repo-feature");
         await getCommand("intelligit.newBranchFrom")({
             branch: { name: "feature-local", isRemote: false },
         });

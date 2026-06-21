@@ -96,6 +96,8 @@ describe("WorktreesTreeProvider", () => {
         expect(detachedItem.contextValue).toContain("detached");
         expect(detachedItem.contextValue).toContain("locked");
         expect(detachedItem.contextValue).toContain("prunable");
+        expect(detachedItem.contextValue).toContain("deletable");
+        expect(currentItem.contextValue).not.toContain("deletable");
     });
 
     it("refreshes through the service", async () => {

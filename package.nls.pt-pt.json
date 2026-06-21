@@ -53,5 +53,6 @@
     "configuration.commitWindowPosition.markdownDescription": "Posição do painel de commits dentro da janela do IntelliGit desencaixada/em abas. `auto` (padrão) segue a posição de `workbench.sideBar.location` do VS Code; `left` e `right` forçam uma posição lateral.",
     "view.fileCountBadge": "Arquivos alterados",
     "view.worktrees": "Árvores de trabalho",
-    "command.createWorktree": "Create Worktree..."
+    "command.createWorktree": "Create Worktree...",
+    "command.deleteWorktree": "Delete Worktree"
 }

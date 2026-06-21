@@ -10,6 +10,7 @@ import {
     assertWorktreePathSafe,
     listWorktrees,
     parseWorktreeList,
+    removeWorktree,
 } from "../../../src/git/worktrees";
 
 const execFileAsync = promisify(execFile);
@@ -316,6 +317,23 @@ describe("addWorktree", () => {
             "--detach",
             "/wt/detached",
             "abc1234",
+        ]);
+    });
+});
+
+describe("removeWorktree", () => {
+    it("runs the correct argv for clean and forced removals", async () => {
+        const executor = createMockExecutor("");
+
+        await removeWorktree(executor, "/wt/clean", false);
+        await removeWorktree(executor, "/wt/dirty", true);
+
+        expect(executor.run).toHaveBeenNthCalledWith(1, ["worktree", "remove", "/wt/clean"]);
+        expect(executor.run).toHaveBeenNthCalledWith(2, [
+            "worktree",
+            "remove",
+            "--force",
+            "/wt/dirty",
         ]);
     });
 });

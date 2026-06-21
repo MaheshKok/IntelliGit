@@ -53,5 +53,6 @@
     "configuration.commitWindowPosition.markdownDescription": "Положение панели фиксации в открепленном/вложенном окне IntelliGit. Параметр `auto` (по умолчанию) соответствует параметру `workbench.sideBar.location` в VS Code; `left` и `right` принудительно определяют сторону.",
     "view.fileCountBadge": "Измененные файлы",
     "view.worktrees": "Рабочие деревья",
-    "command.createWorktree": "Create Worktree..."
+    "command.createWorktree": "Create Worktree...",
+    "command.deleteWorktree": "Delete Worktree"
 }

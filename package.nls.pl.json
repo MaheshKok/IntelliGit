@@ -53,5 +53,6 @@
     "configuration.commitWindowPosition.markdownDescription": "Pozycja panelu zatwierdzania w niezadokowanym/zaznaczonym na karcie oknie IntelliGit. `auto` (domyślne) następuje po `workbench.sideBar.location` programu VS Code; `left` i `right` wymuszają stronę.",
     "view.fileCountBadge": "Zmienione pliki",
     "view.worktrees": "Drzewa robocze",
-    "command.createWorktree": "Create Worktree..."
+    "command.createWorktree": "Create Worktree...",
+    "command.deleteWorktree": "Delete Worktree"
 }
