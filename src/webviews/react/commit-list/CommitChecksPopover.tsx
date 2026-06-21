@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { FiCheckCircle, FiClock, FiMinusCircle } from "react-icons/fi";
+import { FiCheckCircle, FiLoader, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
@@ -18,6 +18,12 @@ interface Props {
 
 const PANEL_WIDTH = 600;
 const PANEL_MAX_HEIGHT = 360;
+const SPINNER_STYLE_ID = "intelligit-commit-check-spinner";
+const SPINNER_STYLE_RULES = `
+@keyframes intelligit-commit-check-spin {
+    to { transform: rotate(360deg); }
+}
+`;
 
 /** Renders the commit-row GitHub checks icon and its floating result popover. */
 export function CommitChecksButton({
@@ -34,7 +40,16 @@ export function CommitChecksButton({
         placement: "above" | "below";
     } | null>(null);
 
-    const state = checks === "loading" ? "pending" : checks?.state;
+    React.useInsertionEffect(() => {
+        if (typeof document === "undefined") return;
+        if (document.getElementById(SPINNER_STYLE_ID)) return;
+        const style = document.createElement("style");
+        style.id = SPINNER_STYLE_ID;
+        style.textContent = SPINNER_STYLE_RULES;
+        document.head.appendChild(style);
+    }, []);
+
+    const state = checks && checks !== "loading" ? checks.state : "pending";
     const buttonLabel = t("commit.checks.title");
     const buttonTitle = checks && checks !== "loading" ? checks.summary : buttonLabel;
 
@@ -183,7 +198,16 @@ function StateIcon({ state }: { state?: CommitCheckState }): React.ReactElement 
         return <IoIosCloseCircleOutline size={18} aria-hidden="true" style={style} />;
     }
     if (state === "pending") {
-        return <FiClock size={16} aria-hidden="true" style={style} />;
+        return (
+            <FiLoader
+                size={16}
+                aria-hidden="true"
+                style={{
+                    ...style,
+                    animation: "intelligit-commit-check-spin 1s linear infinite",
+                }}
+            />
+        );
     }
     if (state === "skipped" || state === "cancelled" || state === "neutral") {
         return <FiMinusCircle size={16} aria-hidden="true" style={style} />;

@@ -293,6 +293,17 @@ describe("webview ui smoke", () => {
         );
         expect(emptyMounted.container.querySelector("button")).toBeNull();
         unmount(emptyMounted.root, emptyMounted.container);
+
+        const pendingMounted = mount(
+            <CommitChecksButton
+                hash="pending123"
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+        const pendingIcon = pendingMounted.container.querySelector("svg") as SVGElement;
+        expect(pendingIcon.style.animation).toContain("intelligit-commit-check-spin");
+        unmount(pendingMounted.root, pendingMounted.container);
     });
 
     it("renders section/folder/shelf/toolbar/tab and commit area layouts", () => {
