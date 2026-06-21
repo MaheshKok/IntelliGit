@@ -530,6 +530,14 @@
                     "default": false,
                     "markdownDescription": "%configuration.undockableWindow.markdownDescription%"
                 },
+                "intelligit.worktree.includeFiles": {
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "type": "string"
+                    },
+                    "markdownDescription": "%configuration.worktree.includeFiles.markdownDescription%"
+                },
                 "intelligit.icons": {
                     "type": "string",
                     "enum": [

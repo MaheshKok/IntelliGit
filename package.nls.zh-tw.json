@@ -54,5 +54,6 @@
     "view.fileCountBadge": "已更改的文件",
     "view.worktrees": "工作樹",
     "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree"
+    "command.deleteWorktree": "Delete Worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`."
 }

@@ -54,5 +54,6 @@
     "view.fileCountBadge": "변경된 파일",
     "view.worktrees": "워크트리",
     "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree"
+    "command.deleteWorktree": "Delete Worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`."
 }

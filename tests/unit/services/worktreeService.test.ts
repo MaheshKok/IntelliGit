@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GitExecutor } from "../../../src/git/executor";
 import { WorktreeService } from "../../../src/services/worktreeService";
 
 const showWarningMessage = vi.hoisted(() => vi.fn());
+const includeFiles = vi.hoisted(() => ({ value: [] as string[] }));
+const tempRoots: string[] = [];
 
 vi.mock("vscode", () => {
     class EventEmitter<T> {
@@ -24,6 +29,12 @@ vi.mock("vscode", () => {
             showWarningMessage,
         },
         l10n: { t: (message: string) => message },
+        workspace: {
+            getConfiguration: () => ({
+                get: <T>(_key: string, defaultValue: T) =>
+                    (includeFiles.value.length > 0 ? includeFiles.value : defaultValue) as T,
+            }),
+        },
     };
 });
 
@@ -69,6 +80,13 @@ function createScopedExecutor(statusOutput: string): {
 }
 
 describe("WorktreeService", () => {
+    afterEach(async () => {
+        includeFiles.value = [];
+        await Promise.all(
+            tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+        );
+    });
+
     it("caches worktree lists until refresh repulls and emits", async () => {
         const executor = createExecutor([porcelain("main"), porcelain("feature/x")]);
         const service = new WorktreeService(executor, () => "/repo");
@@ -193,6 +211,55 @@ describe("WorktreeService", () => {
             "list",
             "--porcelain",
             "-z",
+        ]);
+    });
+
+    it("copies configured include files into a new worktree and skips missing entries", async () => {
+        const root = await mkdtemp(path.join(tmpdir(), "intelligit-include-"));
+        tempRoots.push(root);
+        const sourceRoot = path.join(root, "source");
+        const worktreeRoot = path.join(root, "feature");
+        await mkdir(path.join(sourceRoot, ".vscode"), { recursive: true });
+        await writeFile(path.join(sourceRoot, ".env"), "TOKEN=1\n", "utf8");
+        await writeFile(path.join(sourceRoot, ".vscode", "settings.json"), "{\"x\":true}\n", "utf8");
+        includeFiles.value = [".env", ".vscode/settings.json", "missing.local"];
+        const executor = createExecutor([porcelain("main"), porcelain("feature/x")]);
+        const service = new WorktreeService(executor, () => sourceRoot);
+
+        await service.createWorktree({
+            path: worktreeRoot,
+            branch: { name: "feature/x", hash: "b2", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+        });
+
+        await expect(readFile(path.join(worktreeRoot, ".env"), "utf8")).resolves.toBe("TOKEN=1\n");
+        await expect(
+            readFile(path.join(worktreeRoot, ".vscode", "settings.json"), "utf8"),
+        ).resolves.toBe("{\"x\":true}\n");
+    });
+
+    it("rejects unsafe include-file paths before adding a worktree", async () => {
+        const executor = createExecutor([porcelain("main")]);
+        includeFiles.value = ["../secret.env"];
+        const service = new WorktreeService(executor, () => "/repo");
+
+        await expect(
+            service.createWorktree({
+                path: "/worktrees/feature",
+                branch: {
+                    name: "feature/x",
+                    hash: "b2",
+                    isRemote: false,
+                    isCurrent: false,
+                    ahead: 0,
+                    behind: 0,
+                },
+            }),
+        ).rejects.toThrow("include file path");
+        expect(executor.run).not.toHaveBeenCalledWith([
+            "worktree",
+            "add",
+            "/worktrees/feature",
+            "feature/x",
         ]);
     });
 

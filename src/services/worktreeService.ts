@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
@@ -18,6 +19,11 @@ export interface CreateWorktreeOptions {
     newBranch?: string;
     base?: string;
     detach?: boolean;
+}
+
+interface IncludedWorktreeFile {
+    source: string;
+    target: string;
 }
 
 /** Read-only worktree cache for the active repository root. */
@@ -76,8 +82,10 @@ export class WorktreeService implements vscode.Disposable {
     /** Create a worktree after validating path and branch inputs. */
     async createWorktree(opts: CreateWorktreeOptions): Promise<GitWorktree[]> {
         const existing = await this.listWorktrees();
-        assertWorktreePathSafe(opts.path, this.getCurrentRoot(), existing);
+        const repoRoot = this.getCurrentRoot();
+        assertWorktreePathSafe(opts.path, repoRoot, existing);
         if (opts.newBranch) assertValidBranchName(opts.newBranch, "new branch name");
+        const includeFiles = getIncludedWorktreeFiles(repoRoot, opts.path);
 
         if (opts.detach) {
             await addWorktree(this.executor, {
@@ -85,6 +93,7 @@ export class WorktreeService implements vscode.Disposable {
                 base: opts.base ?? opts.branch?.hash ?? opts.branch?.name ?? "HEAD",
                 detach: true,
             });
+            await copyIncludedWorktreeFiles(includeFiles);
             return this.refresh();
         }
 
@@ -98,6 +107,7 @@ export class WorktreeService implements vscode.Disposable {
                 base: opts.branch.name,
             });
             await this.executor.run(["branch", `--set-upstream-to=${opts.branch.name}`, localName]);
+            await copyIncludedWorktreeFiles(includeFiles);
             return this.refresh();
         }
 
@@ -108,6 +118,7 @@ export class WorktreeService implements vscode.Disposable {
             newBranch: opts.newBranch,
             base: opts.base,
         });
+        await copyIncludedWorktreeFiles(includeFiles);
         return this.refresh();
     }
 
@@ -141,4 +152,60 @@ export class WorktreeService implements vscode.Disposable {
     dispose(): void {
         this._onDidChangeWorktrees.dispose();
     }
+}
+
+function getIncludedWorktreeFiles(repoRoot: string, worktreeRoot: string): IncludedWorktreeFile[] {
+    const entries = vscode.workspace
+        .getConfiguration("intelligit")
+        .get<string[]>("worktree.includeFiles", []);
+    return entries.map((entry) => resolveIncludedWorktreeFile(entry, repoRoot, worktreeRoot));
+}
+
+function resolveIncludedWorktreeFile(
+    entry: string,
+    repoRoot: string,
+    worktreeRoot: string,
+): IncludedWorktreeFile {
+    if (!entry || path.isAbsolute(entry) || entry.includes("\0")) {
+        throw new Error(`Invalid worktree include file path: ${entry}`);
+    }
+    const relativePath = path.normalize(entry);
+    if (relativePath === "." || relativePath.split(path.sep).some((segment) => segment === "..")) {
+        throw new Error(`Invalid worktree include file path: ${entry}`);
+    }
+
+    const sourceRoot = path.resolve(repoRoot);
+    const targetRoot = path.resolve(worktreeRoot);
+    const source = path.resolve(sourceRoot, relativePath);
+    const target = path.resolve(targetRoot, relativePath);
+    if (!isSameOrChildPath(source, sourceRoot) || !isSameOrChildPath(target, targetRoot)) {
+        throw new Error(`Invalid worktree include file path: ${entry}`);
+    }
+    return { source, target };
+}
+
+async function copyIncludedWorktreeFiles(files: IncludedWorktreeFile[]): Promise<void> {
+    for (const file of files) {
+        try {
+            await fs.mkdir(path.dirname(file.target), { recursive: true });
+            await fs.cp(file.source, file.target, { recursive: true, force: true });
+        } catch (err) {
+            if (isMissingPathError(err)) continue;
+            throw err;
+        }
+    }
+}
+
+function isSameOrChildPath(candidate: string, root: string): boolean {
+    const relative = path.relative(root, candidate);
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isMissingPathError(err: unknown): boolean {
+    return (
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code?: unknown }).code === "ENOENT"
+    );
 }
