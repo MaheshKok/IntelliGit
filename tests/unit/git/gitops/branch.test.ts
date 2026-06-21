@@ -80,6 +80,22 @@ describe("GitOps", () => {
             ]);
         });
 
+        it("reads a remote URL for host-side provider metadata", async () => {
+            const executor = createMockExecutor({
+                "remote get-url origin": "https://github.com/user/repo.git\n",
+            });
+            const ops = new GitOps(executor);
+
+            await expect(ops.getRemoteUrl("origin")).resolves.toBe(
+                "https://github.com/user/repo.git",
+            );
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
+                "remote",
+                "get-url",
+                "origin",
+            ]);
+        });
+
         it("constructs publish push with upstream command", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);

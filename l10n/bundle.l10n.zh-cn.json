@@ -361,5 +361,15 @@
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} 个文件已更改",
     "{count} changed files": "{count} 个文件已更改",
-    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "本地分支和远程分支已产生分歧。请合并或变基已跟踪的远程分支，然后重试。"
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "本地分支和远程分支已产生分歧。请合并或变基已跟踪的远程分支，然后重试。",
+    "All checks passed": "All checks passed",
+    "Checks completed": "Checks completed",
+    "Checks failed": "Checks failed",
+    "Checks pending": "Checks pending",
+    "Checks skipped": "Checks skipped",
+    "Commit status": "Commit status",
+    "GitHub check": "GitHub check",
+    "GitHub checks unavailable": "GitHub checks unavailable",
+    "No GitHub remote found.": "No GitHub remote found.",
+    "No checks found": "No checks found"
 }

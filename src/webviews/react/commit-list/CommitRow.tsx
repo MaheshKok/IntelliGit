@@ -9,6 +9,7 @@ import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 import { getSettings } from "../shared/settings";
 import { t } from "../shared/i18n";
+import { CommitChecksButton, type CommitChecksValue } from "./CommitChecksPopover";
 
 interface Props {
     commit: Commit;
@@ -21,6 +22,9 @@ interface Props {
     onHover?: (commit: Commit, event: React.MouseEvent) => void;
     onUnhover?: () => void;
     showAuthorDate?: boolean;
+    checks?: CommitChecksValue;
+    onRequestChecks?: (hash: string) => void;
+    onOpenCheckUrl?: (url: string) => void;
 }
 
 function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: string } {
@@ -347,6 +351,9 @@ function CommitRowInner({
     onHover,
     onUnhover,
     showAuthorDate = true,
+    checks,
+    onRequestChecks,
+    onOpenCheckUrl,
 }: Props): React.ReactElement {
     const isMergeCommit = commit.parentHashes.length > 1;
 
@@ -408,6 +415,15 @@ function CommitRowInner({
                     </span>
                 </>
             )}
+
+            {onRequestChecks && onOpenCheckUrl ? (
+                <CommitChecksButton
+                    hash={commit.hash}
+                    checks={checks}
+                    onRequestChecks={onRequestChecks}
+                    onOpenCheckUrl={onOpenCheckUrl}
+                />
+            ) : null}
         </div>
     );
 }
@@ -425,6 +441,9 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.laneColor === next.laneColor &&
         prev.graphWidth === next.graphWidth &&
         prev.showAuthorDate === next.showAuthorDate &&
+        prev.checks === next.checks &&
+        prev.onRequestChecks === next.onRequestChecks &&
+        prev.onOpenCheckUrl === next.onOpenCheckUrl &&
         prev.onSelect === next.onSelect &&
         prev.onContextMenu === next.onContextMenu
     );

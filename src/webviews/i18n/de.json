@@ -199,5 +199,8 @@
     "merge.status.edited": "Edited",
     "merge.status.autoResolved": "Automatisch aufgelöst",
     "merge.result.editHint": "Double-click to edit the result",
-    "merge.result.editingAria": "Edit merge result block"
+    "merge.result.editingAria": "Edit merge result block",
+    "commit.checks.title": "GitHub Commit Checks",
+    "commit.checks.loading": "Loading checks...",
+    "commit.checks.none": "No checks found"
 }

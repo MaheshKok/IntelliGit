@@ -110,6 +110,18 @@ export class GitOps {
             return [];
         }
     }
+
+    /** Reads a validated remote URL so host services can inspect provider metadata. */
+    async getRemoteUrl(remote: string): Promise<string | null> {
+        assertValidRemoteName(remote);
+        try {
+            const out = await this.executor.run(["remote", "get-url", remote]);
+            return out.trim() || null;
+        } catch {
+            return null;
+        }
+    }
+
     /** Checks whether a validated local branch resolves to a distinct upstream tracking ref. */
     async branchHasUpstream(branch: string): Promise<boolean> {
         try {

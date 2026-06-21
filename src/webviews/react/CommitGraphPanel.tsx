@@ -4,6 +4,7 @@ import { CommitList } from "./CommitList";
 import type {
     Branch,
     Commit,
+    CommitChecksSnapshot,
     CommitDetail,
     ThemeFolderIconMap,
     ThemeIconFont,
@@ -118,6 +119,9 @@ export function CommitGraphPanel({
     const [hasMore, setHasMore] = useState(false);
     const [filterText, setFilterText] = useState("");
     const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
+    const [commitChecks, setCommitChecks] = useState<Map<string, CommitChecksSnapshot | "loading">>(
+        new Map(),
+    );
     const [branchFolderIcon, setBranchFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
     const [branchFolderExpandedIcon, setBranchFolderExpandedIcon] = useState<
         ThemeTreeIcon | undefined
@@ -227,6 +231,13 @@ export function CommitGraphPanel({
                     setCommitFolderExpandedIcon(undefined);
                     setCommitFolderIconsByName(undefined);
                     break;
+                case "setCommitChecks":
+                    setCommitChecks((prev) => {
+                        const next = new Map(prev);
+                        next.set(data.snapshot.hash, data.snapshot);
+                        return next;
+                    });
+                    break;
                 case "loadError":
                     if (!loadingMore.current) {
                         setCommits([]);
@@ -320,6 +331,26 @@ export function CommitGraphPanel({
         [vscode],
     );
 
+    const handleRequestCommitChecks = useCallback(
+        (hash: string) => {
+            setCommitChecks((prev) => {
+                if (prev.has(hash)) return prev;
+                const next = new Map(prev);
+                next.set(hash, "loading");
+                return next;
+            });
+            vscode.postMessage({ type: "requestCommitChecks", hash });
+        },
+        [vscode],
+    );
+
+    const handleOpenCommitCheckUrl = useCallback(
+        (url: string) => {
+            vscode.postMessage({ type: "openCommitCheckUrl", url });
+        },
+        [vscode],
+    );
+
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
@@ -370,6 +401,9 @@ export function CommitGraphPanel({
                             onFilterText={handleFilterText}
                             onLoadMore={handleLoadMore}
                             onCommitAction={handleCommitAction}
+                            commitChecks={commitChecks}
+                            onRequestCommitChecks={handleRequestCommitChecks}
+                            onOpenCommitCheckUrl={handleOpenCommitCheckUrl}
                         />
                     </div>
                     <div

@@ -107,6 +107,18 @@ type GraphOutbound =
           filePath: string;
       }
     | {
+          /** Request for GitHub check runs and commit statuses for one commit. */
+          type: "requestCommitChecks";
+          /** Full Git object ID from the rendered commit row. */
+          hash: string;
+      }
+    | {
+          /** Request to open a GitHub check/status target URL outside the webview. */
+          type: "openCommitCheckUrl";
+          /** HTTP(S) target URL returned by GitHub. */
+          url: string;
+      }
+    | {
           /** Command requesting the controller to return IntelliGit to docked views. */
           type: "dock";
       };

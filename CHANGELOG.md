@@ -5,6 +5,26 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-06-21
+
+### Added
+
+- Added GitHub commit checks to commit graph rows, fetching Checks API runs and legacy commit statuses for visible commits and showing the result in a JetBrains-style popover.
+
+### Changed
+
+- Limited the commit checks popover to CI/CD-style signals such as build, release, guard, security, test, lint, deploy, and workflow checks, excluding review-bot rows such as CodeRabbit and code review statuses.
+- Matched commit-check and context-menu popover surfaces to the IntelliGit panel background and centralized commit-check status icons through `react-icons`.
+
+### Fixed
+
+- Kept commit-check popovers inside the viewport so the header remains visible when opened near panel edges.
+- Hid the commit-check indicator when GitHub returns no CI/CD checks for a commit.
+
+### Tests
+
+- Added service and webview regression coverage for GitHub check normalization, CI/CD filtering, click-open/outside-close behavior, viewport clamping, empty-check hiding, and visible-commit check requests.
+
 ## [0.11.4] - 2026-06-21
 
 ### Changed

@@ -361,5 +361,15 @@
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} файл изменён",
     "{count} changed files": "{count} файлов изменено",
-    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "Локальная и удалённая ветки разошлись. Выполните merge или rebase отслеживаемой удалённой ветки, затем повторите попытку."
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "Локальная и удалённая ветки разошлись. Выполните merge или rebase отслеживаемой удалённой ветки, затем повторите попытку.",
+    "All checks passed": "All checks passed",
+    "Checks completed": "Checks completed",
+    "Checks failed": "Checks failed",
+    "Checks pending": "Checks pending",
+    "Checks skipped": "Checks skipped",
+    "Commit status": "Commit status",
+    "GitHub check": "GitHub check",
+    "GitHub checks unavailable": "GitHub checks unavailable",
+    "No GitHub remote found.": "No GitHub remote found.",
+    "No checks found": "No checks found"
 }

@@ -74,6 +74,38 @@ export interface Commit {
     refs: string[];
 }
 
+/** Normalized GitHub check/status state rendered by commit graph rows. */
+export type CommitCheckState =
+    | "success"
+    | "failure"
+    | "pending"
+    | "skipped"
+    | "neutral"
+    | "cancelled"
+    | "timed_out"
+    | "action_required"
+    | "unknown"
+    | "none"
+    | "unavailable";
+
+/** One GitHub Checks API or commit-status row shown inside the commit-checks popover. */
+export interface CommitCheckItem {
+    name: string;
+    description: string;
+    state: CommitCheckState;
+    source: "check-run" | "status";
+    url?: string;
+}
+
+/** Host-normalized check/status snapshot for one commit hash. */
+export interface CommitChecksSnapshot {
+    hash: string;
+    state: CommitCheckState;
+    summary: string;
+    items: CommitCheckItem[];
+    error?: string;
+}
+
 /**
  * Per-file change summary for a committed revision.
  *

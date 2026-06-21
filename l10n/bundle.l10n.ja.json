@@ -361,5 +361,15 @@
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}",
     "{count} changed file": "{count} 個のファイルが変更されました",
     "{count} changed files": "{count} 個のファイルが変更されました",
-    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "ローカル ブランチとリモート ブランチが分岐しています。追跡中のリモート ブランチをマージまたはリベースしてから、もう一度お試しください。"
+    "The local and remote branches have diverged. Merge or rebase the tracked remote branch, then try again.": "ローカル ブランチとリモート ブランチが分岐しています。追跡中のリモート ブランチをマージまたはリベースしてから、もう一度お試しください。",
+    "All checks passed": "All checks passed",
+    "Checks completed": "Checks completed",
+    "Checks failed": "Checks failed",
+    "Checks pending": "Checks pending",
+    "Checks skipped": "Checks skipped",
+    "Commit status": "Commit status",
+    "GitHub check": "GitHub check",
+    "GitHub checks unavailable": "GitHub checks unavailable",
+    "No GitHub remote found.": "No GitHub remote found.",
+    "No checks found": "No checks found"
 }
