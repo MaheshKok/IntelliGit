@@ -214,7 +214,7 @@
     "merge.status.autoResolved": "Разрешено автоматически",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "GitHub Commit Checks",
-    "commit.checks.loading": "Loading checks...",
-    "commit.checks.none": "No checks found"
+    "commit.checks.title": "Проверки коммитов GitHub",
+    "commit.checks.loading": "Загрузка проверок...",
+    "commit.checks.none": "Проверки не найдены"
 }

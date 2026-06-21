@@ -246,6 +246,7 @@ function aggregateState(items: CommitCheckItem[]): CommitCheckState {
     if (states.every((state) => ["skipped", "neutral", "cancelled"].includes(state))) {
         return "skipped";
     }
+    if (states.includes("unknown")) return "unknown";
     return "success";
 }
 

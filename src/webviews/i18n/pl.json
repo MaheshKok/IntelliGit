@@ -214,7 +214,7 @@
     "merge.status.autoResolved": "Rozwiązano automatycznie",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "GitHub Commit Checks",
-    "commit.checks.loading": "Loading checks...",
-    "commit.checks.none": "No checks found"
+    "commit.checks.title": "Sprawdzenia commitów GitHub",
+    "commit.checks.loading": "Ładowanie sprawdzeń...",
+    "commit.checks.none": "Nie znaleziono sprawdzeń"
 }

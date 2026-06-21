@@ -333,6 +333,7 @@ export function CommitGraphPanel({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
+            if (commitChecks.has(hash)) return;
             setCommitChecks((prev) => {
                 if (prev.has(hash)) return prev;
                 const next = new Map(prev);
@@ -341,7 +342,7 @@ export function CommitGraphPanel({
             });
             vscode.postMessage({ type: "requestCommitChecks", hash });
         },
-        [vscode],
+        [commitChecks, vscode],
     );
 
     const handleOpenCommitCheckUrl = useCallback(

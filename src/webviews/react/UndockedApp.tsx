@@ -421,15 +421,19 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "openCommitFileDiff", commitHash, filePath });
     }, []);
 
-    const handleRequestCommitChecks = useCallback((hash: string) => {
-        setCommitChecks((prev) => {
-            if (prev.has(hash)) return prev;
-            const next = new Map(prev);
-            next.set(hash, "loading");
-            return next;
-        });
-        vscode.postMessage({ type: "requestCommitChecks", hash });
-    }, []);
+    const handleRequestCommitChecks = useCallback(
+        (hash: string) => {
+            if (commitChecks.has(hash)) return;
+            setCommitChecks((prev) => {
+                if (prev.has(hash)) return prev;
+                const next = new Map(prev);
+                next.set(hash, "loading");
+                return next;
+            });
+            vscode.postMessage({ type: "requestCommitChecks", hash });
+        },
+        [commitChecks],
+    );
 
     const handleOpenCommitCheckUrl = useCallback((url: string) => {
         vscode.postMessage({ type: "openCommitCheckUrl", url });

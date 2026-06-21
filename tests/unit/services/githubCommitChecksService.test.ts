@@ -129,6 +129,25 @@ describe("githubCommitChecksService", () => {
         expect(snapshot.items[1].state).toBe("success");
     });
 
+    it("does not aggregate unknown check-run conclusions as success", () => {
+        const snapshot = normalizeGithubChecks(
+            "abc1234",
+            {
+                check_runs: [
+                    {
+                        name: "CI / deploy",
+                        status: "completed",
+                        conclusion: "unexpected",
+                    },
+                ],
+            },
+            [],
+        );
+
+        expect(snapshot.state).toBe("unknown");
+        expect(snapshot.state).not.toBe("success");
+    });
+
     it("summarizes mixed successful and skipped CI checks", () => {
         const snapshot = normalizeGithubChecks(
             "abc1234",

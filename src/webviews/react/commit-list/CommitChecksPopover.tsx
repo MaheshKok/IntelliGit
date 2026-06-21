@@ -100,7 +100,9 @@ export function CommitChecksButton({
         };
     }, [position]);
 
-    if (checks && checks !== "loading" && checks.items.length === 0) return null;
+    if (checks && checks !== "loading" && checks.state === "none" && checks.items.length === 0) {
+        return null;
+    }
 
     return (
         <>

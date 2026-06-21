@@ -294,6 +294,23 @@ describe("webview ui smoke", () => {
         expect(emptyMounted.container.querySelector("button")).toBeNull();
         unmount(emptyMounted.root, emptyMounted.container);
 
+        const unavailableMounted = mount(
+            <CommitChecksButton
+                hash="unavailable123"
+                checks={{
+                    hash: "unavailable123",
+                    state: "unavailable",
+                    summary: "GitHub checks unavailable",
+                    items: [],
+                    error: "No GitHub remote found.",
+                }}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+        expect(unavailableMounted.container.querySelector("button")).not.toBeNull();
+        unmount(unavailableMounted.root, unavailableMounted.container);
+
         const pendingMounted = mount(
             <CommitChecksButton
                 hash="pending123"
