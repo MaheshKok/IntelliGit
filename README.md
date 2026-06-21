@@ -1,20 +1,42 @@
 # IntelliGit
 
-JetBrains-style Git for VS Code.
-
 <p align="center">
-  <strong>Languages:</strong> English | German | Spanish | French | Japanese | Korean | Polish | Portuguese (Brazil) | Portuguese (Portugal) | Russian | Simplified Chinese | Traditional Chinese
+  <a href="package.nls.json">🇬🇧 English</a> •
+  <a href="package.nls.de.json">🇩🇪 Deutsch</a> •
+  <a href="package.nls.es.json">🇪🇸 Español</a> •
+  <a href="package.nls.fr.json">🇫🇷 Français</a> •
+  <a href="package.nls.ja.json">🇯🇵 日本語</a> •
+  <a href="package.nls.ko.json">🇰🇷 한국어</a> •
+  <a href="package.nls.pl.json">🇵🇱 Polski</a> •
+  <a href="package.nls.pt-br.json">🇧🇷 Português</a> •
+  <a href="package.nls.pt-pt.json">🇵🇹 Português</a> •
+  <a href="package.nls.ru.json">🇷🇺 Русский</a> •
+  <a href="package.nls.zh-cn.json">🇨🇳 简体中文</a> •
+  <a href="package.nls.zh-tw.json">🇹🇼 繁體中文</a>
 </p>
 
 <p align="center">
   <img src="media/intelligit-icon.png" alt="IntelliGit logo" width="96" />
 </p>
 
+<p align="center">
+  <strong>JetBrains-style Git for VS Code.</strong><br />
+  A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who miss JetBrains Git inside VS Code.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
+  <a href="package.json"><img alt="Package version" src="https://img.shields.io/github/package-json/v/MaheshKok/IntelliGit?label=version&color=2ea043" /></a>
+  <a href="package.json"><img alt="VS Code 1.96+" src="https://img.shields.io/badge/VS%20Code-1.96%2B-007ACC.svg" /></a>
+</p>
+
+<p align="center">
+  <img src="image.png" alt="IntelliGit commit panel and graph" />
+</p>
+
 IntelliGit is for developers who like VS Code, but miss the Git workflow from IntelliJ IDEA and PyCharm: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
 
 It does not try to replace Git. It gives the daily Git work a better cockpit.
-
-![IntelliGit commit panel and graph](image.png)
 
 ## Why IntelliGit Exists
 

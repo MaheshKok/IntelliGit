@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.4] - 2026-06-21
+
+### Changed
+
+- Updated the README header to use linked flag-language entries, the IntelliGit logo, tagline, badge row, and an auto-populated version badge sourced from `package.json`.
+
 ## [0.11.3] - 2026-06-20
 
 ### Changed
