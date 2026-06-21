@@ -271,7 +271,7 @@ const titleStyle: React.CSSProperties = {
     fontSize: 13,
     fontWeight: 700,
     background: JETBRAINS_UI.color.panel,
-    color: JETBRAINS_UI.color.muted,
+    color: "var(--vscode-textLink-foreground, #4ea1ff)",
 };
 
 const bodyStyle: React.CSSProperties = {
