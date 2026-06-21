@@ -409,7 +409,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private async sendCommitChecks(hash: string): Promise<void> {
         const cached = this.commitChecksCache.get(hash);
-        if (cached) {
+        if (cached && cached.state !== "pending") {
             this.postToWebview({ type: "setCommitChecks", snapshot: cached });
             return;
         }

@@ -333,9 +333,11 @@ export function CommitGraphPanel({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            if (commitChecks.has(hash)) return;
+            const cached = commitChecks.get(hash);
+            if (cached && (cached === "loading" || cached.state !== "pending")) return;
             setCommitChecks((prev) => {
-                if (prev.has(hash)) return prev;
+                const latest = prev.get(hash);
+                if (latest && (latest === "loading" || latest.state !== "pending")) return prev;
                 const next = new Map(prev);
                 next.set(hash, "loading");
                 return next;
