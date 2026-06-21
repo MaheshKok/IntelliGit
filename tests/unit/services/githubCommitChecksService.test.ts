@@ -129,6 +129,64 @@ describe("githubCommitChecksService", () => {
         expect(snapshot.items[1].state).toBe("success");
     });
 
+    it("summarizes mixed successful and skipped CI checks", () => {
+        const snapshot = normalizeGithubChecks(
+            "abc1234",
+            {
+                check_runs: [
+                    {
+                        name: "CI - Build & Release / build",
+                        status: "completed",
+                        conclusion: "success",
+                    },
+                    {
+                        name: "CI - Build & Release / release",
+                        status: "completed",
+                        conclusion: "skipped",
+                        output: { title: "Release skipped" },
+                    },
+                ],
+            },
+            [],
+        );
+
+        expect(snapshot.state).toBe("success");
+        expect(snapshot.summary).toBe("Release skipped");
+        expect(snapshot.items.map((item) => item.state)).toEqual(["success", "skipped"]);
+    });
+
+    it("normalizes pending and failed CI states", () => {
+        const snapshot = normalizeGithubChecks(
+            "abc1234",
+            {
+                check_runs: [
+                    {
+                        name: "CI / deploy",
+                        status: "queued",
+                        output: { title: "Queued" },
+                    },
+                ],
+            },
+            {
+                statuses: [
+                    {
+                        context: "lint",
+                        state: "error",
+                        description: "lint failed",
+                    },
+                    {
+                        context: "workflow",
+                        state: "pending",
+                    },
+                ],
+            },
+        );
+
+        expect(snapshot.state).toBe("failure");
+        expect(snapshot.summary).toBe("Checks failed");
+        expect(snapshot.items.map((item) => item.state)).toEqual(["pending", "failure", "pending"]);
+    });
+
     it("fetches checks for the first GitHub remote and prompts auth on request", async () => {
         mockGithubJson({ check_runs: [] }, []);
         const gitOps = makeGitOps({
@@ -147,6 +205,19 @@ describe("githubCommitChecksService", () => {
         expect(mocks.httpsGet.mock.calls[1][0]).toContain(
             "/repos/owner/repo/commits/abc1234/statuses",
         );
+    });
+
+    it("returns unavailable when GitHub auth fails", async () => {
+        mocks.getSession.mockRejectedValue(new Error("login cancelled"));
+
+        const snapshot = await getGithubCommitChecks(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            "abc1234",
+        );
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toBe("GitHub authentication failed: login cancelled");
+        expect(mocks.httpsGet).not.toHaveBeenCalled();
     });
 
     it("returns unavailable when no GitHub remote exists", async () => {
