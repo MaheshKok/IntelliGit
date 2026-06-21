@@ -268,6 +268,16 @@ describe("webview ui smoke", () => {
         expect(document.body.textContent).toContain("GitHub Commit Checks");
 
         act(() => {
+            window.dispatchEvent(new Event("blur"));
+        });
+        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+
+        act(() => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(document.body.textContent).toContain("GitHub Commit Checks");
+
+        act(() => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
         expect(document.body.textContent).not.toContain("GitHub Commit Checks");

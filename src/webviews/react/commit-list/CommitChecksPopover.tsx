@@ -92,11 +92,14 @@ export function CommitChecksButton({
         const closeOnEscape = (event: KeyboardEvent): void => {
             if (event.key === "Escape") setPosition(null);
         };
+        const closeOnWindowBlur = (): void => setPosition(null);
         document.addEventListener("pointerdown", closeOnOutsidePointer);
         document.addEventListener("keydown", closeOnEscape);
+        window.addEventListener("blur", closeOnWindowBlur);
         return () => {
             document.removeEventListener("pointerdown", closeOnOutsidePointer);
             document.removeEventListener("keydown", closeOnEscape);
+            window.removeEventListener("blur", closeOnWindowBlur);
         };
     }, [position]);
 
