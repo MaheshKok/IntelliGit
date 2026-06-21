@@ -28,6 +28,17 @@ function porcelain(branch: string): string {
     ].join("\0");
 }
 
+function porcelainRecords(records: Array<{ path: string; branch: string }>): string {
+    return records
+        .flatMap((record, index) => [
+            `worktree ${record.path}`,
+            `HEAD ${String(index + 1).repeat(40).slice(0, 40)}`,
+            `branch refs/heads/${record.branch}`,
+            "",
+        ])
+        .join("\0");
+}
+
 function createExecutor(outputs: string[]): GitExecutor {
     return {
         run: vi.fn(async () => outputs.shift() ?? porcelain("fallback")),
@@ -48,5 +59,74 @@ describe("WorktreeService", () => {
         await expect(service.refresh()).resolves.toMatchObject([{ branch: "feature/x" }]);
         expect(executor.run).toHaveBeenCalledTimes(2);
         expect(listener).toHaveBeenCalledWith([expect.objectContaining({ branch: "feature/x" })]);
+    });
+
+    it("decorates matching local branches without mutating the source list", async () => {
+        const executor = createExecutor([
+            porcelainRecords([
+                { path: "/repo", branch: "main" },
+                { path: "/repo-feature", branch: "feature/x" },
+            ]),
+        ]);
+        const service = new WorktreeService(executor, () => "/repo");
+        const branches = [
+            {
+                name: "main",
+                hash: "a1",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "feature/x",
+                hash: "b2",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature/x",
+                hash: "b2",
+                isRemote: true,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "unused",
+                hash: "c3",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+
+        await service.refresh();
+        const decorated = service.decorateBranches(branches);
+
+        expect(decorated).not.toBe(branches);
+        expect(decorated[0]).toMatchObject({
+            isCheckedOutInWorktree: true,
+            isCurrentWorktree: true,
+            worktreePath: "/repo",
+        });
+        expect(decorated[1]).toMatchObject({
+            isCheckedOutInWorktree: true,
+            isCurrentWorktree: false,
+            worktreePath: "/repo-feature",
+        });
+        expect(decorated[2]).toMatchObject({
+            isCheckedOutInWorktree: false,
+            isCurrentWorktree: false,
+        });
+        expect(decorated[3]).toMatchObject({
+            isCheckedOutInWorktree: false,
+            isCurrentWorktree: false,
+        });
+        expect(branches[0]).not.toHaveProperty("isCheckedOutInWorktree");
+        expect(branches[1]).not.toHaveProperty("worktreePath");
     });
 });

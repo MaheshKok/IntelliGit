@@ -135,7 +135,13 @@ export class RefreshService implements vscode.Disposable {
         if (this.fullTimer) clearTimeout(this.fullTimer);
         this.fullTimer = setTimeout(() => {
             void (async () => {
-                const branches = await this.deps.gitOps.getBranches();
+                const rawBranches = await this.deps.gitOps.getBranches();
+                try {
+                    await this.deps.worktrees?.refresh();
+                } catch (err) {
+                    console.error("[IntelliGit] Worktrees refresh failed:", err);
+                }
+                const branches = this.deps.worktrees?.decorateBranches(rawBranches) ?? rawBranches;
                 const commitGraphs = [
                     this.deps.commitGraph,
                     ...(this.deps.additionalCommitGraphs ?? []),
@@ -147,10 +153,7 @@ export class RefreshService implements vscode.Disposable {
                 this.deps.commitPanel.setBranches(branches);
                 const undocked = this.deps.getUndocked?.();
                 undocked?.setBranches(branches);
-                await Promise.all([
-                    ...commitGraphs.map((graph) => graph.refresh()),
-                    this.deps.worktrees?.refresh() ?? Promise.resolve(),
-                ]);
+                await Promise.all(commitGraphs.map((graph) => graph.refresh()));
                 await this.refreshCommitPanels();
                 await this.refreshMergeConflicts();
             })().catch((err) => {

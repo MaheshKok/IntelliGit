@@ -1095,6 +1095,7 @@ describe("extension integration", () => {
         await activate(context);
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
+        expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
@@ -1115,6 +1116,38 @@ describe("extension integration", () => {
         await getCommand("intelligit.checkout")({
             branch: { name: "feature-local", isRemote: false },
         });
+        executeCommandFallback.mockClear();
+        executorRun.mockClear();
+        await getCommand("intelligit.openWorktree")({
+            branch: {
+                name: "feature-worktree",
+                isRemote: false,
+                worktreePath: "/repo-feature",
+            },
+        });
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "vscode.openFolder",
+            { fsPath: "/repo-feature", path: "/repo-feature" },
+            { forceNewWindow: false, forceReuseWindow: true },
+        );
+
+        executeCommandFallback.mockClear();
+        executorRun.mockClear();
+        await getCommand("intelligit.checkout")({
+            branch: {
+                name: "feature-worktree",
+                isRemote: false,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            },
+        });
+        expect(executorRun).not.toHaveBeenCalledWith(["checkout", "feature-worktree"]);
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "vscode.openFolder",
+            { fsPath: "/repo-feature", path: "/repo-feature" },
+            { forceNewWindow: false, forceReuseWindow: true },
+        );
         await getCommand("intelligit.newBranchFrom")({
             branch: { name: "feature-local", isRemote: false },
         });

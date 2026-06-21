@@ -195,5 +195,8 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "GitHub コミット チェック",
     "commit.checks.loading": "チェックを読み込んでいます...",
-    "commit.checks.none": "チェックが見つかりません"
+    "commit.checks.none": "チェックが見つかりません",
+    "branch.worktreeBadge.current": "この worktree でチェックアウト済み",
+    "branch.worktreeBadge.other": "別の worktree でチェックアウト済み",
+    "branch.menu.openWorktree": "Worktree を開く"
 }

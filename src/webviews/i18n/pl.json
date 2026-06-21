@@ -216,5 +216,8 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "Sprawdzenia commitów GitHub",
     "commit.checks.loading": "Ładowanie sprawdzeń...",
-    "commit.checks.none": "Nie znaleziono sprawdzeń"
+    "commit.checks.none": "Nie znaleziono sprawdzeń",
+    "branch.worktreeBadge.current": "Wyewidencjonowano w tym worktree",
+    "branch.worktreeBadge.other": "Wyewidencjonowano w innym worktree",
+    "branch.menu.openWorktree": "Otwórz worktree"
 }

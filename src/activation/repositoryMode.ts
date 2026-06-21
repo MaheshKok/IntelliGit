@@ -155,11 +155,17 @@ export async function activateRepositoryMode(
      * the caller; background initial refreshes attach their own logging handlers.
      */
     const refreshActiveRepository = async (): Promise<void> => {
-        currentBranches = await gitOps.getBranches();
+        const branches = await gitOps.getBranches();
+        try {
+            await worktrees.refresh();
+        } catch (err) {
+            console.error("Worktrees refresh failed:", err);
+        }
+        currentBranches = worktreeService.decorateBranches(branches);
         commitGraph.setBranches(currentBranches);
         sidebarGraph.setBranches(currentBranches);
         commitPanel.setBranches(currentBranches);
-        await Promise.all([commitGraph.refresh(), sidebarGraph.refresh(), worktrees.refresh()]);
+        await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
         await commitPanel.refresh();
         if (undocked) {
             undocked.setBranches(currentBranches);
@@ -562,8 +568,14 @@ export async function activateRepositoryMode(
         openBuiltInMergeEditorForFile,
     });
 
-    currentBranches = await gitOps.getBranches();
+    try {
+        await worktrees.refresh();
+    } catch (err) {
+        console.error("Initial worktrees refresh failed:", err);
+    }
+    currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
     commitGraph.setBranches(currentBranches);
+    sidebarGraph.setBranches(currentBranches);
     commitPanel.setBranches(currentBranches);
 
     commitPanel.refreshSilent().catch((err) => {
@@ -571,9 +583,6 @@ export async function activateRepositoryMode(
     });
     refreshService.refreshMergeConflicts().catch((err) => {
         console.error("Initial merge conflicts refresh failed:", err);
-    });
-    worktrees.refresh().catch((err) => {
-        console.error("Initial worktrees refresh failed:", err);
     });
     refreshService.registerFileWatchers();
 

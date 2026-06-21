@@ -371,5 +371,8 @@
     "GitHub check": "GitHub 檢查",
     "GitHub checks unavailable": "GitHub 檢查無法使用",
     "No GitHub remote found.": "找不到 GitHub 遠端儲存庫。",
-    "No checks found": "找不到檢查"
+    "No checks found": "找不到檢查",
+    "Keep this VS Code window open": "保持此 VS Code 視窗開啟",
+    "Open worktree for {branch}": "開啟 {branch} 的 worktree",
+    "Reuse this VS Code window": "重複使用此 VS Code 視窗"
 }

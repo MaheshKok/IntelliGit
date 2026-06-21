@@ -371,5 +371,8 @@
   "GitHub check": "GitHub-Prüfung",
   "GitHub checks unavailable": "GitHub-Prüfungen nicht verfügbar",
   "No GitHub remote found.": "Kein GitHub-Remote gefunden.",
-  "No checks found": "Keine Prüfungen gefunden"
+  "No checks found": "Keine Prüfungen gefunden",
+  "Keep this VS Code window open": "Dieses VS Code-Fenster geöffnet lassen",
+  "Open worktree for {branch}": "Worktree für {branch} öffnen",
+  "Reuse this VS Code window": "Dieses VS Code-Fenster wiederverwenden"
 }

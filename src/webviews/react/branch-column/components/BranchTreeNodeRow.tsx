@@ -13,6 +13,7 @@ import {
 import { JETBRAINS_UI } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils";
 import { getSettings } from "../../shared/settings";
+import { t } from "../../shared/i18n";
 import {
     BRANCH_TREE_GUIDE_BASE,
     BRANCH_TREE_INDENT_BASE,
@@ -23,6 +24,7 @@ import {
     TRACKING_BADGE_STYLE,
     TRACKING_PULL_STYLE,
     TRACKING_PUSH_STYLE,
+    WORKTREE_BADGE_STYLE,
 } from "../styles";
 import type { TreeNode } from "../types";
 
@@ -142,6 +144,14 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
             )}
         </span>
     );
+}
+
+function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | null {
+    if (!branch.isCheckedOutInWorktree) return null;
+    const label = branch.isCurrentWorktree
+        ? t("branch.worktreeBadge.current")
+        : t("branch.worktreeBadge.other");
+    return <span aria-label={label} title={label} style={WORKTREE_BADGE_STYLE} />;
 }
 
 function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | null {
@@ -301,6 +311,7 @@ export function BranchTreeNodeRow({
                 <GitBranchIcon color={JETBRAINS_UI.color.branch} />
             )}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
+            {node.branch && <WorktreeBadge branch={node.branch} />}
             {node.branch && <TrackingBadge branch={node.branch} />}
         </div>
     );

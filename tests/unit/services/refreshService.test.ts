@@ -151,6 +151,34 @@ describe("RefreshService refresh scheduling", () => {
         service.dispose();
     });
 
+    it("decorates full-refresh branches before storing provider state", async () => {
+        const { service, scheduler, deps } = makeService();
+        const rawBranches = [makeBranch()];
+        const decoratedBranches = [
+            {
+                ...rawBranches[0],
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: true,
+                worktreePath: "/tmp/intelligit-refresh-test",
+            },
+        ];
+        deps.gitOps.getBranches = vi.fn(async () => rawBranches) as never;
+        deps.worktrees = {
+            refresh: vi.fn(async () => []),
+            decorateBranches: vi.fn(() => decoratedBranches),
+        } as never;
+
+        scheduler.scheduleRefreshEvent("git-refs");
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(deps.worktrees.refresh).toHaveBeenCalledTimes(1);
+        expect(deps.worktrees.decorateBranches).toHaveBeenCalledWith(rawBranches);
+        expect(deps.onBranchesUpdated).toHaveBeenCalledWith(decoratedBranches);
+        expect(deps.commitGraph.setBranches).toHaveBeenCalledWith(decoratedBranches);
+        expect(deps.commitPanel.setBranches).toHaveBeenCalledWith(decoratedBranches);
+        service.dispose();
+    });
+
     it("allows light refresh events after the full-refresh suppression window expires", async () => {
         const { service, scheduler, deps } = makeService();
 

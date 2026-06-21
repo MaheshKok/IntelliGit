@@ -47,6 +47,13 @@ export function getBulkBranchMenuItems(): MenuItem[] {
 export function getBranchMenuItems(branch: Branch, currentBranchName: string): BranchMenuItem[] {
     const current = quoted(currentBranchName);
     const selected = quoted(branch.name);
+    const openWorktreeItems: BranchMenuItem[] =
+        branch.isCheckedOutInWorktree && !branch.isCurrentWorktree && branch.worktreePath
+            ? [
+                  { label: t("branch.menu.openWorktree"), action: "openWorktree" },
+                  separator("sep-worktree-1"),
+              ]
+            : [];
 
     if (branch.isCurrent) {
         return [
@@ -60,6 +67,7 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
     }
 
     const nonCurrentBase: BranchMenuItem[] = [
+        ...openWorktreeItems,
         { label: t("branch.menu.checkout"), action: "checkout" },
         { label: t("branch.menu.newBranchFrom", { branch: selected }), action: "newBranchFrom" },
         {

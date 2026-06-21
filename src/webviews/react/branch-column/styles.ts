@@ -153,6 +153,17 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
     flexShrink: 0,
 };
 
+export const WORKTREE_BADGE_STYLE: CSSProperties = {
+    width: 8,
+    height: 8,
+    marginLeft: 6,
+    borderRadius: 2,
+    border: "1px solid var(--vscode-charts-blue, #3794ff)",
+    background: "var(--vscode-gitDecoration-modifiedResourceForeground, #3794ff)",
+    boxSizing: "border-box",
+    flexShrink: 0,
+};
+
 export const TRACKING_PUSH_STYLE: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",

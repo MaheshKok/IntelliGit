@@ -119,9 +119,14 @@ describe("webview ui smoke", () => {
             ],
         };
         const leafNode = {
-            label: "main",
-            fullName: "origin/main",
-            branch: branch({ name: "origin/main", isCurrent: true }),
+            label: "feature",
+            fullName: "feature",
+            branch: branch({
+                name: "feature",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
             children: [],
         };
 
@@ -148,7 +153,7 @@ describe("webview ui smoke", () => {
             <BranchTreeNodeRow
                 node={leafNode}
                 depth={1}
-                selectedBranch={"origin/main"}
+                selectedBranch={"feature"}
                 expandedFolders={new Set()}
                 onSelectBranch={onSelectBranch}
                 onToggleFolder={onToggleFolder}
@@ -157,7 +162,8 @@ describe("webview ui smoke", () => {
                 prefix="root"
             />,
         );
-        expect(leafHtml).toContain("main");
+        expect(leafHtml).toContain("feature");
+        expect(leafHtml).toContain("Checked out in another worktree");
     });
 
     it("renders commit panel primitives", () => {

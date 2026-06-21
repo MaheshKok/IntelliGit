@@ -136,6 +136,68 @@ describe("getLocalNameFromRemote", () => {
 });
 
 describe("checkoutBranch", () => {
+    it("checks out local branches normally", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+
+        await expect(
+            checkoutBranch(makeBranch({ name: "feature/x" }), [], executor),
+        ).resolves.toEqual({
+            kind: "checkedOut",
+            branch: "feature/x",
+        });
+
+        expect(executor.run).toHaveBeenCalledWith(["checkout", "feature/x"]);
+    });
+
+    it("returns an open-worktree signal instead of checking out a branch from another worktree", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+
+        await expect(
+            checkoutBranch(
+                makeBranch({
+                    name: "feature/x",
+                    isCheckedOutInWorktree: true,
+                    isCurrentWorktree: false,
+                    worktreePath: "/repo-feature",
+                }),
+                [],
+                executor,
+            ),
+        ).resolves.toEqual({
+            kind: "openWorktree",
+            branch: "feature/x",
+            path: "/repo-feature",
+        });
+
+        expect(executor.run).not.toHaveBeenCalled();
+    });
+
+    it("returns an open-worktree signal for remote branches with an existing local checkout elsewhere", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+        const currentBranches = [
+            makeBranch({
+                name: "feature/x",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
+        ];
+
+        await expect(
+            checkoutBranch(
+                makeBranch({ name: "origin/feature/x", isRemote: true }),
+                currentBranches,
+                executor,
+            ),
+        ).resolves.toEqual({
+            kind: "openWorktree",
+            branch: "feature/x",
+            path: "/repo-feature",
+        });
+
+        expect(executor.run).not.toHaveBeenCalled();
+    });
+
     it("rejects option-like local branch names before invoking git", async () => {
         const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
 

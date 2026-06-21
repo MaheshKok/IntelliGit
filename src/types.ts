@@ -10,6 +10,12 @@ export interface Branch {
     hash: string;
     isRemote: boolean;
     isCurrent: boolean;
+    /** True when Git reports this local branch as checked out in any worktree. */
+    isCheckedOutInWorktree?: boolean;
+    /** Absolute worktree path for the matching checked-out local branch. */
+    worktreePath?: string;
+    /** True when the matching checked-out worktree is the active repository root. */
+    isCurrentWorktree?: boolean;
     upstream?: string;
     remote?: string;
     ahead: number;

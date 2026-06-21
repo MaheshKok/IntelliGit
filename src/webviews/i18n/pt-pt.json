@@ -209,5 +209,8 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "Verificações de commits do GitHub",
     "commit.checks.loading": "A carregar verificações...",
-    "commit.checks.none": "Nenhuma verificação encontrada"
+    "commit.checks.none": "Nenhuma verificação encontrada",
+    "branch.worktreeBadge.current": "Checkout efetuado neste worktree",
+    "branch.worktreeBadge.other": "Checkout efetuado noutro worktree",
+    "branch.menu.openWorktree": "Abrir worktree"
 }

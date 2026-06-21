@@ -371,5 +371,8 @@
     "GitHub check": "GitHub チェック",
     "GitHub checks unavailable": "GitHub チェックを利用できません",
     "No GitHub remote found.": "GitHub リモートが見つかりません。",
-    "No checks found": "チェックが見つかりません"
+    "No checks found": "チェックが見つかりません",
+    "Keep this VS Code window open": "この VS Code ウィンドウを開いたままにする",
+    "Open worktree for {branch}": "{branch} の worktree を開く",
+    "Reuse this VS Code window": "この VS Code ウィンドウを再利用"
 }

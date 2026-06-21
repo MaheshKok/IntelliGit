@@ -64,6 +64,33 @@ function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }
     return `${tracked.remote}/${tracked.remoteBranch}`;
 }
 
+/** Prompts for the target VS Code window before opening an existing worktree folder. */
+async function promptAndOpenWorktree(branchName: string, worktreePath: string): Promise<void> {
+    const picked = await vscode.window.showQuickPick(
+        [
+            {
+                label: vscode.l10n.t("Open in Current Window"),
+                description: vscode.l10n.t("Reuse this VS Code window"),
+                forceNewWindow: false,
+            },
+            {
+                label: vscode.l10n.t("Open in New Window"),
+                description: vscode.l10n.t("Keep this VS Code window open"),
+                forceNewWindow: true,
+            },
+        ],
+        {
+            placeHolder: vscode.l10n.t("Open worktree for {branch}", { branch: branchName }),
+        },
+    );
+    if (!picked) return;
+
+    await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(worktreePath), {
+        forceNewWindow: picked.forceNewWindow,
+        forceReuseWindow: !picked.forceNewWindow,
+    });
+}
+
 /**
  * Builds the merge invocation used by the PyCharm-style Update Branch action.
  *
@@ -287,14 +314,26 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
 
     return [
         {
+            id: "intelligit.openWorktree",
+            handler: async (item) => {
+                const branch = item.branch;
+                if (!branch?.worktreePath) return;
+                await promptAndOpenWorktree(branch.name, branch.worktreePath);
+            },
+        },
+        {
             id: "intelligit.checkout",
             handler: async (item) => {
                 const branch = item.branch;
                 if (!branch) return;
                 try {
-                    const checkedOut = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    const result = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    if (result.kind === "openWorktree") {
+                        await promptAndOpenWorktree(result.branch, result.path);
+                        return;
+                    }
                     vscode.window.showInformationMessage(
-                        vscode.l10n.t("Checked out {branch}", { branch: checkedOut }),
+                        vscode.l10n.t("Checked out {branch}", { branch: result.branch }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
@@ -351,7 +390,12 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 }
                 if (!validateBranchArg(onto, "current branch name")) return;
                 try {
-                    const checkedOut = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    const result = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    if (result.kind === "openWorktree") {
+                        await promptAndOpenWorktree(result.branch, result.path);
+                        return;
+                    }
+                    const checkedOut = result.branch;
                     if (checkedOut === onto) {
                         vscode.window.showInformationMessage(
                             vscode.l10n.t("{branch} is already the current branch.", {

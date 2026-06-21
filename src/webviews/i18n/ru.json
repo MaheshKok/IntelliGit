@@ -216,5 +216,8 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "Проверки коммитов GitHub",
     "commit.checks.loading": "Загрузка проверок...",
-    "commit.checks.none": "Проверки не найдены"
+    "commit.checks.none": "Проверки не найдены",
+    "branch.worktreeBadge.current": "Извлечено в этом worktree",
+    "branch.worktreeBadge.other": "Извлечено в другом worktree",
+    "branch.menu.openWorktree": "Открыть worktree"
 }

@@ -63,6 +63,35 @@ describe("branch menu", () => {
         expect(actions).not.toContain("renameBranch");
     });
 
+    it("shows Open Worktree only for branches checked out in another worktree", () => {
+        const checkedOutElsewhere = getBranchMenuItems(
+            makeBranch({
+                name: "feature/worktree",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
+            "main",
+        )
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+        const checkedOutHere = getBranchMenuItems(
+            makeBranch({
+                name: "main",
+                isCurrent: true,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: true,
+                worktreePath: "/repo",
+            }),
+            "main",
+        )
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+
+        expect(checkedOutElsewhere[0]).toBe("openWorktree");
+        expect(checkedOutHere).not.toContain("openWorktree");
+    });
+
     it("trims long branch names in menu labels", () => {
         const veryLong = "feature/super-long-branch-name-that-should-be-trimmed-in-menu";
         const items = getBranchMenuItems(makeBranch({ name: veryLong }), "main");

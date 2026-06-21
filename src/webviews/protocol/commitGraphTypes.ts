@@ -19,6 +19,7 @@ import type {
  * aligned with the branch menu producer and registered VS Code command IDs.
  */
 export const BRANCH_ACTION_VALUES = [
+    "openWorktree",
     "checkout",
     "newBranchFrom",
     "checkoutAndRebase",

@@ -195,5 +195,8 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "GitHub 提交检查",
     "commit.checks.loading": "正在加载检查...",
-    "commit.checks.none": "未找到检查"
+    "commit.checks.none": "未找到检查",
+    "branch.worktreeBadge.current": "已在此 worktree 中检出",
+    "branch.worktreeBadge.other": "已在另一个 worktree 中检出",
+    "branch.menu.openWorktree": "打开 worktree"
 }
