@@ -51,5 +51,6 @@
     "configuration.commitWindowPosition.enum.left": "將提交面板放置在未停靠/已新增標籤頁的視窗的左側。",
     "configuration.commitWindowPosition.enum.right": "將提交面板放置在未停靠/已新增標籤頁的視窗的右側。",
     "configuration.commitWindowPosition.markdownDescription": "在未停靠/標籤頁化的 IntelliGit 視窗中，提交面板的位置。 `auto`（預設值）遵循 VS Code 的 `workbench.sideBar.location`；`left` 和 `right` 強制設定在左側。",
-    "view.fileCountBadge": "已更改的文件"
+    "view.fileCountBadge": "已更改的文件",
+    "view.worktrees": "工作樹"
 }

@@ -51,5 +51,6 @@
     "configuration.commitWindowPosition.enum.left": "Coloque o painel de confirmação no lado esquerdo da janela desencaixada/com abas.",
     "configuration.commitWindowPosition.enum.right": "Coloque o painel de confirmação no lado direito da janela desencaixada/com abas.",
     "configuration.commitWindowPosition.markdownDescription": "Posição do painel de commits dentro da janela do IntelliGit desencaixada/em abas. `auto` (padrão) segue a posição de `workbench.sideBar.location` do VS Code; `left` e `right` forçam uma posição lateral.",
-    "view.fileCountBadge": "Arquivos alterados"
+    "view.fileCountBadge": "Arquivos alterados",
+    "view.worktrees": "Árvores de trabalho"
 }

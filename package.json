@@ -47,6 +47,7 @@
         "onWebviewPanel:intelligit.undocked",
         "onView:intelligit.commitGraph",
         "onView:intelligit.sidebarGraph",
+        "onView:intelligit.worktrees",
         "onCommand:intelligit.cloneRepository",
         "onCommand:intelligit.openFolder",
         "onCommand:intelligit.initializeRepository",
@@ -82,6 +83,11 @@
                     "id": "intelligit.sidebarGraph",
                     "name": "%view.graph%",
                     "type": "webview"
+                },
+                {
+                    "id": "intelligit.worktrees",
+                    "name": "%view.worktrees%",
+                    "type": "tree"
                 },
                 {
                     "id": "intelligit.mergeConflicts",

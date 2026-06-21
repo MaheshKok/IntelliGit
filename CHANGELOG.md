@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added Phase 0 Git worktree support with typed worktree metadata, a `git worktree list --porcelain -z` parser, and focused parser/integration coverage.
+- Added Phase 1 read-only Worktrees view in the IntelliGit sidebar with cached worktree refreshes, localized view title, and native tree-provider coverage.
 
 ## [0.12.1] - 2026-06-21
 

@@ -12,6 +12,7 @@ import { CommitGraphViewProvider } from "./CommitGraphViewProvider";
 import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
 import type { UndockedViewProvider } from "./UndockedViewProvider";
+import type { WorktreeService } from "../services/worktreeService";
 
 /**
  * View and Git dependencies coordinated by refresh events for one active repository.
@@ -27,6 +28,7 @@ export interface RefreshServiceDeps {
     commitPanel: CommitPanelViewProvider;
     mergeConflicts: MergeConflictsTreeProvider;
     mergeConflictsView: vscode.TreeView<unknown>;
+    worktrees?: WorktreeService;
     onBranchesUpdated: (branches: Branch[]) => void;
     getUndocked?: () => UndockedViewProvider | undefined;
 }
@@ -145,7 +147,10 @@ export class RefreshService implements vscode.Disposable {
                 this.deps.commitPanel.setBranches(branches);
                 const undocked = this.deps.getUndocked?.();
                 undocked?.setBranches(branches);
-                await Promise.all(commitGraphs.map((graph) => graph.refresh()));
+                await Promise.all([
+                    ...commitGraphs.map((graph) => graph.refresh()),
+                    this.deps.worktrees?.refresh() ?? Promise.resolve(),
+                ]);
                 await this.refreshCommitPanels();
                 await this.refreshMergeConflicts();
             })().catch((err) => {

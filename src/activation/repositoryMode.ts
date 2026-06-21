@@ -6,6 +6,7 @@ import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { WorktreeService } from "../services/worktreeService";
 import {
     getJetBrainsMergeToolPath,
     getPreferExternalMergeTool,
@@ -20,6 +21,7 @@ import { MergeConflictsTreeProvider } from "../views/MergeConflictsTreeProvider"
 import { MergeEditorPanel } from "../views/MergeEditorPanel";
 import { RefreshService } from "../views/RefreshService";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
+import { WorktreesTreeProvider } from "../views/WorktreesTreeProvider";
 import {
     type RepositoryViewProviders,
     SELECTED_REPOSITORY_KEY,
@@ -77,6 +79,8 @@ export async function activateRepositoryMode(
         context.workspaceState,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
+    const worktreeService = new WorktreeService(executor, () => repoRoot);
+    const worktrees = new WorktreesTreeProvider(worktreeService);
 
     commitGraph.setRepositoryLabel(activeRepository.label);
     sidebarGraph.setRepositoryLabel(activeRepository.label);
@@ -84,6 +88,9 @@ export async function activateRepositoryMode(
 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
         treeDataProvider: mergeConflicts,
+    });
+    const worktreesView = vscode.window.createTreeView(WorktreesTreeProvider.viewType, {
+        treeDataProvider: worktrees,
     });
     const fileCountBadgeView = createFileCountBadgeView();
     const updateFileCountBadge = (count: number): void => {
@@ -118,6 +125,7 @@ export async function activateRepositoryMode(
                 commitPanel,
                 mergeConflicts,
                 mergeConflictsView,
+                worktrees: worktreeService,
                 onBranchesUpdated: (branches) => {
                     currentBranches = branches;
                 },
@@ -151,7 +159,7 @@ export async function activateRepositoryMode(
         commitGraph.setBranches(currentBranches);
         sidebarGraph.setBranches(currentBranches);
         commitPanel.setBranches(currentBranches);
-        await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
+        await Promise.all([commitGraph.refresh(), sidebarGraph.refresh(), worktrees.refresh()]);
         await commitPanel.refresh();
         if (undocked) {
             undocked.setBranches(currentBranches);
@@ -474,6 +482,7 @@ export async function activateRepositoryMode(
 
     context.subscriptions.push(
         mergeConflictsView,
+        worktreesView,
         commitPanel.onDidChangeWorkingTree(() => {
             undocked?.refreshSilent().catch((err) => {
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);
@@ -563,6 +572,9 @@ export async function activateRepositoryMode(
     refreshService.refreshMergeConflicts().catch((err) => {
         console.error("Initial merge conflicts refresh failed:", err);
     });
+    worktrees.refresh().catch((err) => {
+        console.error("Initial worktrees refresh failed:", err);
+    });
     refreshService.registerFileWatchers();
 
     context.subscriptions.push(
@@ -572,6 +584,8 @@ export async function activateRepositoryMode(
         commitInfo,
         commitPanel,
         mergeConflicts,
+        worktreeService,
+        worktrees,
         fileCountBadgeView,
     );
 
