@@ -16,7 +16,8 @@ interface Props {
     onOpenCheckUrl: (url: string) => void;
 }
 
-const PANEL_WIDTH = 600;
+const PANEL_MAX_WIDTH = 420;
+const PANEL_TEXT_MAX_WIDTH = 340;
 const PANEL_MAX_HEIGHT = 360;
 const SPINNER_STYLE_ID = "intelligit-commit-check-spinner";
 const SPINNER_STYLE_RULES = `
@@ -59,7 +60,7 @@ export function CommitChecksButton({
         const rect = button.getBoundingClientRect();
         const placement =
             rect.bottom + PANEL_MAX_HEIGHT + 10 < window.innerHeight ? "below" : "above";
-        const panelWidth = Math.min(PANEL_WIDTH, window.innerWidth - 16);
+        const panelWidth = Math.min(PANEL_MAX_WIDTH, window.innerWidth - 16);
         const panelHeight = Math.min(PANEL_MAX_HEIGHT, Math.max(0, window.innerHeight - 16));
         setPosition({
             left: Math.min(
@@ -92,11 +93,14 @@ export function CommitChecksButton({
         const closeOnEscape = (event: KeyboardEvent): void => {
             if (event.key === "Escape") setPosition(null);
         };
+        const closeOnWindowBlur = (): void => setPosition(null);
         document.addEventListener("pointerdown", closeOnOutsidePointer);
         document.addEventListener("keydown", closeOnEscape);
+        window.addEventListener("blur", closeOnWindowBlur);
         return () => {
             document.removeEventListener("pointerdown", closeOnOutsidePointer);
             document.removeEventListener("keydown", closeOnEscape);
+            window.removeEventListener("blur", closeOnWindowBlur);
         };
     }, [position]);
 
@@ -253,8 +257,8 @@ const buttonStyle: React.CSSProperties = {
 
 const panelStyle: React.CSSProperties = {
     position: "fixed",
-    width: PANEL_WIDTH,
-    maxWidth: "calc(100vw - 16px)",
+    width: "max-content",
+    maxWidth: `min(${PANEL_MAX_WIDTH}px, calc(100vw - 16px))`,
     maxHeight: `min(${PANEL_MAX_HEIGHT}px, calc(100vh - 16px))`,
     overflow: "hidden",
     background: JETBRAINS_UI.color.panel,
@@ -270,8 +274,8 @@ const titleStyle: React.CSSProperties = {
     textAlign: "center",
     fontSize: 13,
     fontWeight: 700,
-    background: JETBRAINS_UI.color.panel,
-    color: JETBRAINS_UI.color.muted,
+    background: "var(--vscode-textLink-foreground)",
+    color: "var(--vscode-button-foreground)",
 };
 
 const bodyStyle: React.CSSProperties = {
@@ -279,6 +283,9 @@ const bodyStyle: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
     gap: 11,
+    boxSizing: "border-box",
+    width: "max-content",
+    maxWidth: "100%",
     maxHeight: 250,
     overflow: "auto",
 };
@@ -294,6 +301,8 @@ const rowTextStyle: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
     gap: 2,
+    width: "max-content",
+    maxWidth: PANEL_TEXT_MAX_WIDTH,
 };
 
 const linkButtonStyle: React.CSSProperties = {
@@ -304,17 +313,23 @@ const linkButtonStyle: React.CSSProperties = {
     textAlign: "left",
     fontSize: 13,
     cursor: "pointer",
+    maxWidth: "100%",
+    overflowWrap: "anywhere",
 };
 
 const nameStyle: React.CSSProperties = {
     color: "var(--vscode-textLink-foreground, #4ea1ff)",
     fontSize: 13,
+    maxWidth: "100%",
+    overflowWrap: "anywhere",
 };
 
 const descriptionStyle: React.CSSProperties = {
     color: JETBRAINS_UI.color.muted,
     fontSize: 12,
     lineHeight: "16px",
+    maxWidth: "100%",
+    overflowWrap: "anywhere",
 };
 
 const emptyStyle: React.CSSProperties = {

@@ -33,6 +33,7 @@ import {
 
 const MIN_PREFIX_LENGTH = 7;
 const MAX_GRAPH_WIDTH = JETBRAINS_UI.graph.maxWidth;
+const PENDING_CHECK_REFRESH_MS = 15_000;
 
 /**
  * Allows cherry-pick actions when the graph is scoped to a non-current branch,
@@ -210,9 +211,20 @@ export function CommitList({
     );
     useEffect(() => {
         if (!onRequestCommitChecks) return;
+        const pendingHashes: string[] = [];
         for (const commit of visibleCommits) {
-            if (!commitChecks?.has(commit.hash)) onRequestCommitChecks(commit.hash);
+            const checks = commitChecks?.get(commit.hash);
+            if (!checks) {
+                onRequestCommitChecks(commit.hash);
+            } else if (checks !== "loading" && checks.state === "pending") {
+                pendingHashes.push(commit.hash);
+            }
         }
+        if (pendingHashes.length === 0) return;
+        const timer = window.setTimeout(() => {
+            for (const hash of pendingHashes) onRequestCommitChecks(hash);
+        }, PENDING_CHECK_REFRESH_MS);
+        return () => window.clearTimeout(timer);
     }, [commitChecks, onRequestCommitChecks, visibleCommits]);
 
     const branchScopeLabel = selectedBranch

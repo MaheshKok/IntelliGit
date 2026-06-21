@@ -134,6 +134,7 @@ const vscodeMock = {
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
+const getGithubCommitChecks = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/views/webviewHtml", () => ({
@@ -155,6 +156,9 @@ vi.mock("../../../src/utils/fileOps", async () => {
         deleteFileWithFallback,
     };
 });
+vi.mock("../../../src/services/githubCommitChecksService", () => ({
+    getGithubCommitChecks,
+}));
 
 function createWebviewView() {
     let messageHandler: MessageHandler | undefined;
@@ -321,6 +325,12 @@ describe("view providers integration", () => {
         vi.clearAllMocks();
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
+        getGithubCommitChecks.mockImplementation(async (_gitOps: unknown, hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
     });
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {
@@ -795,6 +805,44 @@ describe("view providers integration", () => {
         await provider.refresh();
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Git log error"));
 
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider refetches cached pending commit checks", async () => {
+        const { CommitGraphViewProvider } = await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        getGithubCommitChecks
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "pending",
+                summary: "Checks pending",
+                items: [],
+            })
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            });
+
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+
+        expect(getGithubCommitChecks).toHaveBeenCalledTimes(2);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setCommitChecks",
+            snapshot: expect.objectContaining({ state: "success" }),
+        });
         provider.dispose();
     });
 

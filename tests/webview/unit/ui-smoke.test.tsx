@@ -245,7 +245,12 @@ describe("webview ui smoke", () => {
                 (node.textContent?.includes("GitHub Commit Checks") ?? false),
         );
         expect(panel?.style.transform).toBe("translateY(-100%)");
+        expect(panel?.style.width).toBe("max-content");
         expect(Number.parseFloat(panel?.style.top ?? "0")).toBeGreaterThanOrEqual(312);
+        const description = Array.from(document.querySelectorAll("span")).find(
+            (node) => node.textContent === "No secrets detected",
+        );
+        expect(description?.style.overflowWrap).toBe("anywhere");
 
         const link = Array.from(document.querySelectorAll("button")).find(
             (button) => button.textContent === "GitGuardian Security Checks",
@@ -259,6 +264,16 @@ describe("webview ui smoke", () => {
 
         act(() => {
             document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+        });
+        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+
+        act(() => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(document.body.textContent).toContain("GitHub Commit Checks");
+
+        act(() => {
+            window.dispatchEvent(new Event("blur"));
         });
         expect(document.body.textContent).not.toContain("GitHub Commit Checks");
 

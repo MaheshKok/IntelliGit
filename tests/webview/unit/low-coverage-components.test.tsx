@@ -2,7 +2,7 @@
 
 import React, { act, useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Branch, Commit } from "../../../src/types";
+import type { Branch, Commit, CommitChecksSnapshot } from "../../../src/types";
 import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../../src/webviews/react/CommitList";
 import { CommitRow } from "../../../src/webviews/react/commit-list/CommitRow";
@@ -457,5 +457,53 @@ describe("low coverage components", () => {
         expect(onLoadMore).toHaveBeenCalled();
 
         unmount(root, container);
+    });
+
+    it("CommitList retries visible pending check snapshots", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const commit: Commit = {
+            hash: "aa11bb22",
+            shortHash: "aa11bb22",
+            message: "feat: pending checks",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: ["p1"],
+            refs: [],
+        };
+        const pending: CommitChecksSnapshot = {
+            hash: "aa11bb22",
+            state: "pending",
+            summary: "Checks pending",
+            items: [],
+        };
+        const { root, container } = mount(
+            <CommitList
+                commits={[commit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set()}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map([["aa11bb22", pending]])}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={vi.fn()}
+            />,
+        );
+        await flush();
+        expect(onRequestCommitChecks).not.toHaveBeenCalled();
+
+        act(() => {
+            vi.runOnlyPendingTimers();
+        });
+
+        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        unmount(root, container);
+        vi.useRealTimers();
     });
 });
