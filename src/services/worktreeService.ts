@@ -6,7 +6,12 @@ import {
     addWorktree,
     assertWorktreePathSafe,
     listWorktrees as readWorktrees,
+    lockWorktree as lockGitWorktree,
+    moveWorktree as moveGitWorktree,
+    pruneWorktrees as pruneGitWorktrees,
+    repairWorktrees as repairGitWorktrees,
     removeWorktree as removeGitWorktree,
+    unlockWorktree as unlockGitWorktree,
 } from "../git/worktrees";
 import type { Branch, GitWorktree } from "../types";
 import { getLocalNameFromRemote } from "./gitHelpers";
@@ -145,6 +150,38 @@ export class WorktreeService implements vscode.Disposable {
         }
 
         await removeGitWorktree(this.executor, worktree.path, force);
+        return this.refresh();
+    }
+
+    /** Lock a worktree and refresh cached worktree state. */
+    async lockWorktree(worktreePath: string, reason?: string): Promise<GitWorktree[]> {
+        await lockGitWorktree(this.executor, worktreePath, reason);
+        return this.refresh();
+    }
+
+    /** Unlock a worktree and refresh cached worktree state. */
+    async unlockWorktree(worktreePath: string): Promise<GitWorktree[]> {
+        await unlockGitWorktree(this.executor, worktreePath);
+        return this.refresh();
+    }
+
+    /** Move a worktree after validating the destination path against known worktrees. */
+    async moveWorktree(worktreePath: string, newPath: string): Promise<GitWorktree[]> {
+        const existing = await this.listWorktrees();
+        assertWorktreePathSafe(newPath, this.getCurrentRoot(), existing);
+        await moveGitWorktree(this.executor, worktreePath, newPath);
+        return this.refresh();
+    }
+
+    /** Prune stale worktree records and refresh cached worktree state. */
+    async pruneWorktrees(): Promise<GitWorktree[]> {
+        await pruneGitWorktrees(this.executor);
+        return this.refresh();
+    }
+
+    /** Repair worktree records and refresh cached worktree state. */
+    async repairWorktrees(): Promise<GitWorktree[]> {
+        await repairGitWorktrees(this.executor);
         return this.refresh();
     }
 

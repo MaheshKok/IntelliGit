@@ -1119,6 +1119,11 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.delete")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.lock")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.unlock")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.move")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.prune")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.repair")).toBe(true);
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);

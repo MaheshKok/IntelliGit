@@ -71,6 +71,7 @@ function getContextValue(worktree: GitWorktree): string {
         "intelligit.worktree",
         worktree.state,
         !worktree.isMain && !worktree.isCurrent ? "deletable" : undefined,
+        !worktree.isMain && !worktree.isCurrent && !worktree.isLocked ? "lockable" : undefined,
         worktree.isCurrent ? "current" : undefined,
         worktree.isLocked ? "locked" : undefined,
         worktree.isPrunable ? "prunable" : undefined,

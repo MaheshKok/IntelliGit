@@ -154,6 +154,93 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                 );
             }
         }),
+        vscode.commands.registerCommand("intelligit.worktree.lock", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            const reason = await vscode.window.showInputBox({
+                prompt: vscode.l10n.t("Lock reason (optional)"),
+            });
+            if (reason === undefined) return;
+            try {
+                await deps.worktreeService.lockWorktree(ctx.path, reason.trim() || undefined);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Locked worktree {path}", { path: ctx.path }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.unlock", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            try {
+                await deps.worktreeService.unlockWorktree(ctx.path);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Unlocked worktree {path}", { path: ctx.path }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.move", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            const picked = await vscode.window.showOpenDialog({
+                title: vscode.l10n.t("Select New Worktree Location"),
+                openLabel: vscode.l10n.t("Move Worktree"),
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+            });
+            const newPath = picked?.[0]?.fsPath;
+            if (!newPath) return;
+            try {
+                await deps.worktreeService.moveWorktree(ctx.path, newPath);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Moved worktree {path}", { path: newPath }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.prune", async () => {
+            try {
+                await deps.worktreeService.pruneWorktrees();
+                vscode.window.showInformationMessage(vscode.l10n.t("Pruned worktrees."));
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.repair", async () => {
+            try {
+                await deps.worktreeService.repairWorktrees();
+                vscode.window.showInformationMessage(vscode.l10n.t("Repaired worktrees."));
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
         vscode.commands.registerCommand("intelligit.selectRepository", async () => {
             const repositories = await discoverGitRepositories(workspaceRoots());
             setRepositories(repositories);

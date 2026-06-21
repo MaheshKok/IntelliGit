@@ -344,4 +344,55 @@ describe("WorktreeService", () => {
             "/worktrees/dirty",
         ]);
     });
+
+    it("runs advanced worktree operations and refreshes after each one", async () => {
+        const executor = createExecutor([
+            porcelain("main"),
+            porcelain("main"),
+            porcelain("main"),
+            porcelain("main"),
+            porcelain("main"),
+        ]);
+        const service = new WorktreeService(executor, () => "/repo");
+
+        await service.lockWorktree("/worktrees/feature", "hold");
+        await service.unlockWorktree("/worktrees/feature");
+        await service.pruneWorktrees();
+        await service.repairWorktrees();
+
+        expect(executor.run).toHaveBeenCalledWith([
+            "worktree",
+            "lock",
+            "--reason",
+            "hold",
+            "/worktrees/feature",
+        ]);
+        expect(executor.run).toHaveBeenCalledWith(["worktree", "unlock", "/worktrees/feature"]);
+        expect(executor.run).toHaveBeenCalledWith(["worktree", "prune"]);
+        expect(executor.run).toHaveBeenCalledWith(["worktree", "repair"]);
+    });
+
+    it("validates move destinations before running git worktree move", async () => {
+        const root = await mkdtemp(path.join(tmpdir(), "intelligit-move-"));
+        tempRoots.push(root);
+        const repo = path.join(root, "repo");
+        await mkdir(repo);
+        const executor = createExecutor([
+            porcelainRecords([
+                { path: repo, branch: "main" },
+                { path: path.join(root, "feature"), branch: "feature/x" },
+            ]),
+        ]);
+        const service = new WorktreeService(executor, () => repo);
+
+        await expect(
+            service.moveWorktree(path.join(root, "feature"), path.join(repo, "nested")),
+        ).rejects.toThrow("inside the current repository");
+        expect(executor.run).not.toHaveBeenCalledWith([
+            "worktree",
+            "move",
+            path.join(root, "feature"),
+            path.join(repo, "nested"),
+        ]);
+    });
 });

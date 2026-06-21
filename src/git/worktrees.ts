@@ -90,6 +90,39 @@ export async function removeWorktree(
     await executor.run(["worktree", "remove", ...(force ? ["--force"] : []), worktreePath]);
 }
 
+/** Locks a worktree, optionally recording Git's lock reason. */
+export async function lockWorktree(
+    executor: GitExecutor,
+    worktreePath: string,
+    reason?: string,
+): Promise<void> {
+    await executor.run(["worktree", "lock", ...(reason ? ["--reason", reason] : []), worktreePath]);
+}
+
+/** Unlocks a previously locked worktree. */
+export async function unlockWorktree(executor: GitExecutor, worktreePath: string): Promise<void> {
+    await executor.run(["worktree", "unlock", worktreePath]);
+}
+
+/** Moves a worktree to a prevalidated destination path. */
+export async function moveWorktree(
+    executor: GitExecutor,
+    worktreePath: string,
+    newPath: string,
+): Promise<void> {
+    await executor.run(["worktree", "move", worktreePath, newPath]);
+}
+
+/** Prunes stale worktree administrative records. */
+export async function pruneWorktrees(executor: GitExecutor): Promise<void> {
+    await executor.run(["worktree", "prune"]);
+}
+
+/** Repairs worktree administrative metadata. */
+export async function repairWorktrees(executor: GitExecutor): Promise<void> {
+    await executor.run(["worktree", "repair"]);
+}
+
 function groupWorktreeRecords(porcelainZ: string): WorktreeRecord[] {
     const records: WorktreeRecord[] = [];
     let current: WorktreeRecord = {};

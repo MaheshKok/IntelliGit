@@ -55,5 +55,10 @@
     "view.worktrees": "Рабочие деревья",
     "command.createWorktree": "Create Worktree...",
     "command.deleteWorktree": "Delete Worktree",
-    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`."
+    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",
+    "command.lockWorktree": "Lock Worktree",
+    "command.unlockWorktree": "Unlock Worktree",
+    "command.moveWorktree": "Move Worktree...",
+    "command.pruneWorktrees": "Prune Worktrees",
+    "command.repairWorktrees": "Repair Worktrees"
 }

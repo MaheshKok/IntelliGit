@@ -97,6 +97,16 @@ describe("WorktreesTreeProvider", () => {
         expect(detachedItem.contextValue).toContain("locked");
         expect(detachedItem.contextValue).toContain("prunable");
         expect(detachedItem.contextValue).toContain("deletable");
+        expect(detachedItem.contextValue).not.toContain("lockable");
+        expect(
+            provider.getTreeItem({
+                ...detachedWorktree,
+                isLocked: false,
+                lockedReason: undefined,
+                isPrunable: false,
+                prunableReason: undefined,
+            }).contextValue,
+        ).toContain("lockable");
         expect(currentItem.contextValue).not.toContain("deletable");
     });
 

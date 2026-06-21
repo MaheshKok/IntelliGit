@@ -50,6 +50,11 @@
         "onView:intelligit.worktrees",
         "onCommand:intelligit.worktree.create",
         "onCommand:intelligit.worktree.delete",
+        "onCommand:intelligit.worktree.lock",
+        "onCommand:intelligit.worktree.unlock",
+        "onCommand:intelligit.worktree.move",
+        "onCommand:intelligit.worktree.prune",
+        "onCommand:intelligit.worktree.repair",
         "onCommand:intelligit.createWorktreeFromBranch",
         "onCommand:intelligit.cloneRepository",
         "onCommand:intelligit.openFolder",
@@ -203,6 +208,36 @@
                 "title": "%command.deleteWorktree%",
                 "category": "%intelligit%",
                 "icon": "$(trash)"
+            },
+            {
+                "command": "intelligit.worktree.lock",
+                "title": "%command.lockWorktree%",
+                "category": "%intelligit%",
+                "icon": "$(lock)"
+            },
+            {
+                "command": "intelligit.worktree.unlock",
+                "title": "%command.unlockWorktree%",
+                "category": "%intelligit%",
+                "icon": "$(unlock)"
+            },
+            {
+                "command": "intelligit.worktree.move",
+                "title": "%command.moveWorktree%",
+                "category": "%intelligit%",
+                "icon": "$(move)"
+            },
+            {
+                "command": "intelligit.worktree.prune",
+                "title": "%command.pruneWorktrees%",
+                "category": "%intelligit%",
+                "icon": "$(clear-all)"
+            },
+            {
+                "command": "intelligit.worktree.repair",
+                "title": "%command.repairWorktrees%",
+                "category": "%intelligit%",
+                "icon": "$(tools)"
             },
             {
                 "command": "intelligit.createWorktreeFromBranch",
@@ -399,6 +434,16 @@
                     "group": "navigation@1"
                 },
                 {
+                    "command": "intelligit.worktree.prune",
+                    "when": "view == intelligit.worktrees",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "intelligit.worktree.repair",
+                    "when": "view == intelligit.worktrees",
+                    "group": "navigation@3"
+                },
+                {
                     "command": "intelligit.mergeConflictsRefresh",
                     "when": "view == intelligit.mergeConflicts",
                     "group": "navigation"
@@ -434,6 +479,21 @@
                     "command": "intelligit.worktree.delete",
                     "when": "view == intelligit.worktrees && viewItem =~ /deletable/",
                     "group": "inline@1"
+                },
+                {
+                    "command": "intelligit.worktree.lock",
+                    "when": "view == intelligit.worktrees && viewItem =~ /lockable/",
+                    "group": "inline@2"
+                },
+                {
+                    "command": "intelligit.worktree.unlock",
+                    "when": "view == intelligit.worktrees && viewItem =~ /locked/",
+                    "group": "inline@3"
+                },
+                {
+                    "command": "intelligit.worktree.move",
+                    "when": "view == intelligit.worktrees && viewItem =~ /deletable/",
+                    "group": "navigation@1"
                 },
                 {
                     "command": "intelligit.conflictAcceptYours",

@@ -388,5 +388,14 @@
     "Delete worktree failed: {message}": "Delete worktree failed: {message}",
     "Deleted worktree {path}": "Deleted worktree {path}",
     "Worktree has uncommitted changes. Delete it anyway?": "Worktree has uncommitted changes. Delete it anyway?",
-    "Worktree not found.": "Worktree not found."
+    "Worktree not found.": "Worktree not found.",
+    "Lock reason (optional)": "Lock reason (optional)",
+    "Locked worktree {path}": "Locked worktree {path}",
+    "Move Worktree": "Move Worktree",
+    "Moved worktree {path}": "Moved worktree {path}",
+    "Pruned worktrees.": "Pruned worktrees.",
+    "Repaired worktrees.": "Repaired worktrees.",
+    "Select New Worktree Location": "Select New Worktree Location",
+    "Unlocked worktree {path}": "Unlocked worktree {path}",
+    "Worktree operation failed: {message}": "Worktree operation failed: {message}"
 }

@@ -9,8 +9,13 @@ import {
     addWorktree,
     assertWorktreePathSafe,
     listWorktrees,
+    lockWorktree,
+    moveWorktree,
     parseWorktreeList,
+    pruneWorktrees,
+    repairWorktrees,
     removeWorktree,
+    unlockWorktree,
 } from "../../../src/git/worktrees";
 
 const execFileAsync = promisify(execFile);
@@ -335,5 +340,36 @@ describe("removeWorktree", () => {
             "--force",
             "/wt/dirty",
         ]);
+    });
+});
+
+describe("advanced worktree operations", () => {
+    it("runs lock, unlock, move, prune, and repair argv", async () => {
+        const executor = createMockExecutor("");
+
+        await lockWorktree(executor, "/wt/feature");
+        await lockWorktree(executor, "/wt/release", "deploy freeze");
+        await unlockWorktree(executor, "/wt/feature");
+        await moveWorktree(executor, "/wt/feature", "/wt/moved");
+        await pruneWorktrees(executor);
+        await repairWorktrees(executor);
+
+        expect(executor.run).toHaveBeenNthCalledWith(1, ["worktree", "lock", "/wt/feature"]);
+        expect(executor.run).toHaveBeenNthCalledWith(2, [
+            "worktree",
+            "lock",
+            "--reason",
+            "deploy freeze",
+            "/wt/release",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(3, ["worktree", "unlock", "/wt/feature"]);
+        expect(executor.run).toHaveBeenNthCalledWith(4, [
+            "worktree",
+            "move",
+            "/wt/feature",
+            "/wt/moved",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(5, ["worktree", "prune"]);
+        expect(executor.run).toHaveBeenNthCalledWith(6, ["worktree", "repair"]);
     });
 });
