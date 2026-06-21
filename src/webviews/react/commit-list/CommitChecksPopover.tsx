@@ -270,8 +270,8 @@ const titleStyle: React.CSSProperties = {
     textAlign: "center",
     fontSize: 13,
     fontWeight: 700,
-    background: JETBRAINS_UI.color.panel,
-    color: "var(--vscode-textLink-foreground, #4ea1ff)",
+    background: "var(--vscode-textLink-foreground)",
+    color: "var(--vscode-button-foreground)",
 };
 
 const bodyStyle: React.CSSProperties = {
