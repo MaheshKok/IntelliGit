@@ -129,4 +129,47 @@ describe("WorktreeService", () => {
         expect(branches[0]).not.toHaveProperty("isCheckedOutInWorktree");
         expect(branches[1]).not.toHaveProperty("worktreePath");
     });
+
+    it("creates a remote-branch worktree and sets upstream explicitly", async () => {
+        const executor = createExecutor([porcelain("main"), porcelain("feature/x")]);
+        const service = new WorktreeService(executor, () => "/repo");
+
+        await service.createWorktree({
+            path: "/worktrees/feature-x",
+            branch: {
+                name: "origin/feature/x",
+                hash: "b2",
+                isRemote: true,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        });
+
+        expect(executor.run).toHaveBeenNthCalledWith(1, [
+            "worktree",
+            "list",
+            "--porcelain",
+            "-z",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(2, [
+            "worktree",
+            "add",
+            "-b",
+            "feature/x",
+            "/worktrees/feature-x",
+            "origin/feature/x",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(3, [
+            "branch",
+            "--set-upstream-to=origin/feature/x",
+            "feature/x",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(4, [
+            "worktree",
+            "list",
+            "--porcelain",
+            "-z",
+        ]);
+    });
 });

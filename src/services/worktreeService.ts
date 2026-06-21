@@ -1,7 +1,22 @@
 import * as vscode from "vscode";
 import type { GitExecutor } from "../git/executor";
-import { listWorktrees as readWorktrees } from "../git/worktrees";
+import {
+    addWorktree,
+    assertWorktreePathSafe,
+    listWorktrees as readWorktrees,
+} from "../git/worktrees";
 import type { Branch, GitWorktree } from "../types";
+import { getLocalNameFromRemote } from "./gitHelpers";
+import { assertValidBranchName } from "../utils/gitRefs";
+
+/** User-confirmed worktree creation request after UI prompting. */
+export interface CreateWorktreeOptions {
+    path: string;
+    branch?: Branch;
+    newBranch?: string;
+    base?: string;
+    detach?: boolean;
+}
 
 /** Read-only worktree cache for the active repository root. */
 export class WorktreeService implements vscode.Disposable {
@@ -52,6 +67,44 @@ export class WorktreeService implements vscode.Disposable {
                 isCurrentWorktree: worktree?.isCurrent ?? false,
             };
         });
+    }
+
+    /** Create a worktree after validating path and branch inputs. */
+    async createWorktree(opts: CreateWorktreeOptions): Promise<GitWorktree[]> {
+        const existing = await this.listWorktrees();
+        assertWorktreePathSafe(opts.path, this.getCurrentRoot(), existing);
+        if (opts.newBranch) assertValidBranchName(opts.newBranch, "new branch name");
+
+        if (opts.detach) {
+            await addWorktree(this.executor, {
+                path: opts.path,
+                base: opts.base ?? opts.branch?.hash ?? opts.branch?.name ?? "HEAD",
+                detach: true,
+            });
+            return this.refresh();
+        }
+
+        if (opts.branch?.isRemote) {
+            assertValidBranchName(opts.branch.name, "remote branch name");
+            const localName = opts.newBranch ?? getLocalNameFromRemote(opts.branch.name);
+            assertValidBranchName(localName, "local branch name");
+            await addWorktree(this.executor, {
+                path: opts.path,
+                newBranch: localName,
+                base: opts.branch.name,
+            });
+            await this.executor.run(["branch", `--set-upstream-to=${opts.branch.name}`, localName]);
+            return this.refresh();
+        }
+
+        if (opts.branch) assertValidBranchName(opts.branch.name);
+        await addWorktree(this.executor, {
+            path: opts.path,
+            branch: opts.branch?.name,
+            newBranch: opts.newBranch,
+            base: opts.base,
+        });
+        return this.refresh();
     }
 
     /** Release the change emitter owned by this cache. */

@@ -20,6 +20,7 @@ import type {
  */
 export const BRANCH_ACTION_VALUES = [
     "openWorktree",
+    "createWorktreeFromBranch",
     "checkout",
     "newBranchFrom",
     "checkoutAndRebase",

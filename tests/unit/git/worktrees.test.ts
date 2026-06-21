@@ -1,11 +1,16 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GitExecutor } from "../../../src/git/executor";
-import { listWorktrees, parseWorktreeList } from "../../../src/git/worktrees";
+import {
+    addWorktree,
+    assertWorktreePathSafe,
+    listWorktrees,
+    parseWorktreeList,
+} from "../../../src/git/worktrees";
 
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
@@ -226,5 +231,91 @@ describe("listWorktrees", () => {
             state: "linked",
             isMain: false,
         });
+    });
+});
+
+describe("assertWorktreePathSafe", () => {
+    it("rejects paths inside the repository or an existing worktree", async () => {
+        const root = await realpath(await mkdtemp(path.join(tmpdir(), "intelligit-safe-")));
+        tempRoots.push(root);
+        const repo = path.join(root, "repo");
+        const linked = path.join(root, "linked");
+        await mkdir(path.join(repo, "src"), { recursive: true });
+        await mkdir(linked);
+
+        expect(() =>
+            assertWorktreePathSafe(path.join(repo, "src", "nested"), repo, []),
+        ).toThrow("inside the current repository");
+        expect(() =>
+            assertWorktreePathSafe(path.join(linked, "child"), repo, [
+                {
+                    path: linked,
+                    head: null,
+                    branch: "feature/x",
+                    state: "linked",
+                    isMain: false,
+                    isCurrent: false,
+                    isLocked: false,
+                    isPrunable: false,
+                },
+            ]),
+        ).toThrow("inside an existing worktree");
+    });
+
+    it("rejects non-empty directories and symlinks resolving inside the repository", async () => {
+        const root = await realpath(await mkdtemp(path.join(tmpdir(), "intelligit-safe-")));
+        tempRoots.push(root);
+        const repo = path.join(root, "repo");
+        const occupied = path.join(root, "occupied");
+        const link = path.join(root, "repo-link");
+        await mkdir(repo);
+        await mkdir(occupied);
+        await writeFile(path.join(occupied, "file.txt"), "x", "utf8");
+        await symlink(repo, link);
+
+        expect(() => assertWorktreePathSafe(occupied, repo, [])).toThrow("not empty");
+        expect(() => assertWorktreePathSafe(link, repo, [])).toThrow(
+            "inside the current repository",
+        );
+    });
+});
+
+describe("addWorktree", () => {
+    it("runs the correct argv for existing, new, and detached worktrees", async () => {
+        const executor = createMockExecutor("");
+
+        await addWorktree(executor, { path: "/wt/existing", branch: "feature/x" });
+        await addWorktree(executor, {
+            path: "/wt/new",
+            newBranch: "feature/new",
+            base: "origin/feature/new",
+        });
+        await addWorktree(executor, {
+            path: "/wt/detached",
+            base: "abc1234",
+            detach: true,
+        });
+
+        expect(executor.run).toHaveBeenNthCalledWith(1, [
+            "worktree",
+            "add",
+            "/wt/existing",
+            "feature/x",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(2, [
+            "worktree",
+            "add",
+            "-b",
+            "feature/new",
+            "/wt/new",
+            "origin/feature/new",
+        ]);
+        expect(executor.run).toHaveBeenNthCalledWith(3, [
+            "worktree",
+            "add",
+            "--detach",
+            "/wt/detached",
+            "abc1234",
+        ]);
     });
 });

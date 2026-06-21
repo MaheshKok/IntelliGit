@@ -4,6 +4,7 @@ import { createBranchCommands } from "../commands/branchCommands";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { runPublishBranchFlow } from "../services/publishService";
+import type { WorktreeService } from "../services/worktreeService";
 import {
     applySelectedCommitFileChange,
     compareCommitInfoFileWithLocal,
@@ -33,6 +34,7 @@ interface RepositoryCommandsDeps {
     context: vscode.ExtensionContext;
     executor: GitExecutor;
     gitOps: GitOps;
+    worktreeService: WorktreeService;
     getRepoRoot: () => string;
     setRepositories: (repositories: DiscoveredRepository[]) => void;
     getCurrentBranches: () => Branch[];
@@ -299,6 +301,7 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
         gitOps: deps.gitOps,
         getCurrentBranchName: deps.getCurrentBranchName,
         getCurrentBranches: deps.getCurrentBranches,
+        createWorktree: (opts) => deps.worktreeService.createWorktree(opts).then(() => undefined),
         openConflictSession: deps.openConflictSession,
         refreshConflictUi: () => deps.refreshService().refreshConflictUi(),
     });

@@ -212,5 +212,6 @@
     "commit.checks.none": "No se encontraron comprobaciones",
     "branch.worktreeBadge.current": "Con checkout en este worktree",
     "branch.worktreeBadge.other": "Con checkout en otro worktree",
-    "branch.menu.openWorktree": "Abrir worktree"
+    "branch.menu.openWorktree": "Abrir worktree",
+    "branch.menu.createWorktree": "Create Worktree..."
 }

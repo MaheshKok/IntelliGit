@@ -374,5 +374,12 @@
   "No checks found": "Keine Prüfungen gefunden",
   "Keep this VS Code window open": "Dieses VS Code-Fenster geöffnet lassen",
   "Open worktree for {branch}": "Worktree für {branch} öffnen",
-  "Reuse this VS Code window": "Dieses VS Code-Fenster wiederverwenden"
+  "Reuse this VS Code window": "Dieses VS Code-Fenster wiederverwenden",
+  "Branch name for worktree": "Branch name for worktree",
+  "Create Worktree": "Create Worktree",
+  "Create worktree failed: {message}": "Create worktree failed: {message}",
+  "Created worktree at {path}": "Created worktree at {path}",
+  "Invalid worktree folder name.": "Invalid worktree folder name.",
+  "Select Worktree Parent Folder": "Select Worktree Parent Folder",
+  "Worktree folder name": "Worktree folder name"
 }

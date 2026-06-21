@@ -54,6 +54,12 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
                   separator("sep-worktree-1"),
               ]
             : [];
+    const createWorktreeItems: BranchMenuItem[] = !branch.isCheckedOutInWorktree
+        ? [
+              { label: t("branch.menu.createWorktree"), action: "createWorktreeFromBranch" },
+              separator("sep-worktree-create-1"),
+          ]
+        : [];
 
     if (branch.isCurrent) {
         return [
@@ -68,6 +74,7 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
 
     const nonCurrentBase: BranchMenuItem[] = [
         ...openWorktreeItems,
+        ...createWorktreeItems,
         { label: t("branch.menu.checkout"), action: "checkout" },
         { label: t("branch.menu.newBranchFrom", { branch: selected }), action: "newBranchFrom" },
         {

@@ -23,6 +23,7 @@ const showInputBox = vi.fn(async (opts?: { prompt?: string; value?: string }) =>
     return "input";
 });
 const showSaveDialog = vi.fn(async () => ({ fsPath: "/tmp/patch.diff", path: "/tmp/patch.diff" }));
+const showOpenDialog = vi.fn(async () => [{ fsPath: "/tmp", path: "/tmp" }]);
 const showQuickPick = vi.fn(async (items: unknown[]) => items[0]);
 const showTextDocument = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg: unknown) => arg);
@@ -426,13 +427,17 @@ class MockUndockedViewProvider {
     }
 }
 
-vi.mock("fs", () => ({
-    watch: vi.fn((...args: unknown[]) => {
-        const callback = args[args.length - 1];
-        if (typeof callback === "function") fsWatchCallbacks.push(callback);
-        return { close: vi.fn() };
-    }),
-}));
+vi.mock("fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("fs")>();
+    return {
+        ...actual,
+        watch: vi.fn((...args: unknown[]) => {
+            const callback = args[args.length - 1];
+            if (typeof callback === "function") fsWatchCallbacks.push(callback);
+            return { close: vi.fn() };
+        }),
+    };
+});
 
 vi.mock("vscode", () => ({
     Disposable: MockDisposable,
@@ -516,6 +521,7 @@ vi.mock("vscode", () => ({
         showWarningMessage,
         showInputBox,
         showSaveDialog,
+        showOpenDialog,
         showQuickPick,
         showTextDocument,
         createTerminal,
@@ -1096,6 +1102,8 @@ describe("extension integration", () => {
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
         expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
+        expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
@@ -1116,6 +1124,22 @@ describe("extension integration", () => {
         await getCommand("intelligit.checkout")({
             branch: { name: "feature-local", isRemote: false },
         });
+        executorRun.mockClear();
+        const worktreeParent = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-worktree-"));
+        showOpenDialog.mockResolvedValueOnce([{ fsPath: worktreeParent, path: worktreeParent }]);
+        showInputBox.mockResolvedValueOnce("feature-created").mockResolvedValueOnce("feature-local");
+        showErrorMessage.mockClear();
+        await getCommand("intelligit.createWorktreeFromBranch")({
+            branch: { name: "feature-local", isRemote: false },
+        });
+        expect(showErrorMessage).not.toHaveBeenCalled();
+        expect(executorRun).toHaveBeenCalledWith([
+            "worktree",
+            "add",
+            path.join(worktreeParent, "feature-created"),
+            "feature-local",
+        ]);
+        await fs.rm(worktreeParent, { recursive: true, force: true });
         executeCommandFallback.mockClear();
         executorRun.mockClear();
         await getCommand("intelligit.openWorktree")({

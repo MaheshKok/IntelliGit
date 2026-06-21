@@ -374,5 +374,12 @@
     "No checks found": "找不到檢查",
     "Keep this VS Code window open": "保持此 VS Code 視窗開啟",
     "Open worktree for {branch}": "開啟 {branch} 的 worktree",
-    "Reuse this VS Code window": "重複使用此 VS Code 視窗"
+    "Reuse this VS Code window": "重複使用此 VS Code 視窗",
+    "Branch name for worktree": "Branch name for worktree",
+    "Create Worktree": "Create Worktree",
+    "Create worktree failed: {message}": "Create worktree failed: {message}",
+    "Created worktree at {path}": "Created worktree at {path}",
+    "Invalid worktree folder name.": "Invalid worktree folder name.",
+    "Select Worktree Parent Folder": "Select Worktree Parent Folder",
+    "Worktree folder name": "Worktree folder name"
 }

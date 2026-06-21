@@ -2,15 +2,18 @@
 // Each handler corresponds to a right-click action on a branch
 // in the branch column: checkout, rebase, merge, push, delete, etc.
 
+import path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps, UpstreamPushDeclinedError } from "../git/operations";
 import type { Branch } from "../types";
+import type { CreateWorktreeOptions } from "../services/worktreeService";
 import { getErrorMessage, isBranchNotFullyMergedError } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
 import {
     checkoutBranch,
     getCheckedOutBranchName,
+    getLocalNameFromRemote,
     getLocalBranchMergeStatusForDelete,
     isValidBranchName,
     promptRebaseAfterPushRejection,
@@ -33,6 +36,7 @@ export interface BranchCommandDeps {
     gitOps: GitOps;
     getCurrentBranchName: () => string | undefined;
     getCurrentBranches: () => Branch[];
+    createWorktree: (opts: CreateWorktreeOptions) => Promise<void>;
     openConflictSession: (labels?: {
         sourceBranch?: string;
         targetBranch?: string;
@@ -62,6 +66,63 @@ const PYCHARM_MERGE_CONFIG_ARGS = [
 
 function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }): string {
     return `${tracked.remote}/${tracked.remoteBranch}`;
+}
+
+function getWorktreeDefaults(
+    branch: Branch,
+    forceNewBranch: boolean,
+): { folder: string; branch: string } {
+    const baseBranch = branch.isRemote ? getLocalNameFromRemote(branch.name) : branch.name;
+    const defaultBranch = forceNewBranch ? `${baseBranch}-worktree` : baseBranch;
+    return { folder: defaultBranch.replace(/^.*\//, "") || "worktree", branch: defaultBranch };
+}
+
+function isPlainFolderName(value: string): boolean {
+    return (
+        value.trim().length > 0 &&
+        !path.isAbsolute(value) &&
+        !value.includes("/") &&
+        !value.includes("\\")
+    );
+}
+
+async function promptCreateWorktreeOptions(
+    branch: Branch,
+    forceNewBranch = false,
+): Promise<CreateWorktreeOptions | undefined> {
+    const parent = await vscode.window.showOpenDialog({
+        title: vscode.l10n.t("Select Worktree Parent Folder"),
+        openLabel: vscode.l10n.t("Create Worktree"),
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+    });
+    const parentFolder = parent?.[0]?.fsPath;
+    if (!parentFolder) return undefined;
+
+    const defaults = getWorktreeDefaults(branch, forceNewBranch);
+    const folderName = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Worktree folder name"),
+        value: defaults.folder,
+    });
+    if (!folderName) return undefined;
+    if (!isPlainFolderName(folderName)) {
+        vscode.window.showErrorMessage(vscode.l10n.t("Invalid worktree folder name."));
+        return undefined;
+    }
+
+    const branchName = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Branch name for worktree"),
+        value: defaults.branch,
+    });
+    if (!branchName) return undefined;
+
+    const selectedBranchName = branch.isRemote ? getLocalNameFromRemote(branch.name) : branch.name;
+    return {
+        path: path.join(parentFolder, folderName),
+        branch,
+        ...(branchName === selectedBranchName ? {} : { newBranch: branchName }),
+    };
 }
 
 /** Prompts for the target VS Code window before opening an existing worktree folder. */
@@ -280,6 +341,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         gitOps,
         getCurrentBranchName,
         getCurrentBranches,
+        createWorktree,
         openConflictSession,
         refreshConflictUi,
     } = deps;
@@ -312,6 +374,24 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         }
     };
 
+    const runCreateWorktree = async (branch: Branch, forceNewBranch = false): Promise<void> => {
+        const opts = await promptCreateWorktreeOptions(branch, forceNewBranch);
+        if (!opts) return;
+        try {
+            await createWorktree(opts);
+            vscode.window.showInformationMessage(
+                vscode.l10n.t("Created worktree at {path}", { path: opts.path }),
+            );
+            await vscode.commands.executeCommand("intelligit.refresh");
+        } catch (err) {
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Create worktree failed: {message}", {
+                    message: getErrorMessage(err),
+                }),
+            );
+        }
+    };
+
     return [
         {
             id: "intelligit.openWorktree",
@@ -319,6 +399,27 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 if (!branch?.worktreePath) return;
                 await promptAndOpenWorktree(branch.name, branch.worktreePath);
+            },
+        },
+        {
+            id: "intelligit.createWorktreeFromBranch",
+            handler: async (item) => {
+                if (!item.branch) return;
+                await runCreateWorktree(item.branch);
+            },
+        },
+        {
+            id: "intelligit.worktree.create",
+            handler: async () => {
+                const currentBranchName = getCurrentBranchName();
+                const branch = getCurrentBranches().find(
+                    (candidate) => candidate.name === currentBranchName,
+                );
+                if (!branch) {
+                    vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
+                    return;
+                }
+                await runCreateWorktree(branch, true);
             },
         },
         {

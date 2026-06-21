@@ -92,6 +92,26 @@ describe("branch menu", () => {
         expect(checkedOutHere).not.toContain("openWorktree");
     });
 
+    it("shows Create Worktree only for branches not already checked out in a worktree", () => {
+        const freeBranch = getBranchMenuItems(makeBranch({ name: "feature/free" }), "main")
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+        const checkedOutElsewhere = getBranchMenuItems(
+            makeBranch({
+                name: "feature/worktree",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
+            "main",
+        )
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+
+        expect(freeBranch).toContain("createWorktreeFromBranch");
+        expect(checkedOutElsewhere).not.toContain("createWorktreeFromBranch");
+    });
+
     it("trims long branch names in menu labels", () => {
         const veryLong = "feature/super-long-branch-name-that-should-be-trimmed-in-menu";
         const items = getBranchMenuItems(makeBranch({ name: veryLong }), "main");

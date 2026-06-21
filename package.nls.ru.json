@@ -52,5 +52,6 @@
     "configuration.commitWindowPosition.enum.right": "Разместите панель подтверждения изменений в правой части открепленного/открытого окна.",
     "configuration.commitWindowPosition.markdownDescription": "Положение панели фиксации в открепленном/вложенном окне IntelliGit. Параметр `auto` (по умолчанию) соответствует параметру `workbench.sideBar.location` в VS Code; `left` и `right` принудительно определяют сторону.",
     "view.fileCountBadge": "Измененные файлы",
-    "view.worktrees": "Рабочие деревья"
+    "view.worktrees": "Рабочие деревья",
+    "command.createWorktree": "Create Worktree..."
 }

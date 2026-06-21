@@ -205,5 +205,6 @@
     "commit.checks.none": "Keine Prüfungen gefunden",
     "branch.worktreeBadge.current": "In diesem Worktree ausgecheckt",
     "branch.worktreeBadge.other": "In einem anderen Worktree ausgecheckt",
-    "branch.menu.openWorktree": "Worktree öffnen"
+    "branch.menu.openWorktree": "Worktree öffnen",
+    "branch.menu.createWorktree": "Create Worktree..."
 }

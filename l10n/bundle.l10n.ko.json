@@ -374,5 +374,12 @@
     "No checks found": "검사를 찾을 수 없습니다",
     "Keep this VS Code window open": "이 VS Code 창을 열어 둠",
     "Open worktree for {branch}": "{branch}의 worktree 열기",
-    "Reuse this VS Code window": "이 VS Code 창 재사용"
+    "Reuse this VS Code window": "이 VS Code 창 재사용",
+    "Branch name for worktree": "Branch name for worktree",
+    "Create Worktree": "Create Worktree",
+    "Create worktree failed: {message}": "Create worktree failed: {message}",
+    "Created worktree at {path}": "Created worktree at {path}",
+    "Invalid worktree folder name.": "Invalid worktree folder name.",
+    "Select Worktree Parent Folder": "Select Worktree Parent Folder",
+    "Worktree folder name": "Worktree folder name"
 }

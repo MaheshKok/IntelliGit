@@ -88,6 +88,7 @@
     "branch.menu.push": "Push...",
     "branch.menu.rename": "Rename...",
     "branch.menu.openWorktree": "Open Worktree",
+    "branch.menu.createWorktree": "Create Worktree...",
     "branch.menu.checkout": "Checkout",
     "branch.menu.checkoutAndRebase": "Checkout and Rebase onto {branch}",
     "branch.menu.rebaseOnto": "Rebase {current} onto {selected}",

@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import path from "node:path";
 import type { GitWorktree, WorktreeState } from "../types";
 import type { GitExecutor } from "./executor";
@@ -10,6 +11,15 @@ interface WorktreeRecord {
     detached?: boolean;
     locked?: string;
     prunable?: string;
+}
+
+/** Options mapped directly to `git worktree add` argv variants. */
+export interface AddWorktreeOptions {
+    path: string;
+    branch?: string;
+    newBranch?: string;
+    base?: string;
+    detach?: boolean;
 }
 
 /** Parses the NUL-delimited porcelain output from `git worktree list --porcelain -z`. */
@@ -28,6 +38,47 @@ export async function listWorktrees(
 ): Promise<GitWorktree[]> {
     const stdout = await executor.run(["worktree", "list", "--porcelain", "-z"]);
     return parseWorktreeList(stdout, currentRoot);
+}
+
+/** Rejects unsafe target paths before `git worktree add` can write to disk. */
+export function assertWorktreePathSafe(
+    targetPath: string,
+    repoRoot: string,
+    existing: GitWorktree[],
+): void {
+    const target = normalizePath(targetPath);
+    const targetCandidates = pathCandidates(target);
+    const repoCandidates = pathCandidates(repoRoot);
+    if (hasNestedPath(targetCandidates, repoCandidates)) {
+        throw new Error("Worktree path must not be inside the current repository.");
+    }
+
+    for (const worktree of existing) {
+        if (hasNestedPath(targetCandidates, pathCandidates(worktree.path))) {
+            throw new Error("Worktree path must not be inside an existing worktree.");
+        }
+    }
+
+    if (!fs.existsSync(target)) return;
+    const stat = fs.statSync(target);
+    if (!stat.isDirectory())
+        throw new Error("Worktree path already exists and is not a directory.");
+    if (fs.readdirSync(target).length > 0) {
+        throw new Error("Worktree path already exists and is not empty.");
+    }
+}
+
+/** Adds a Git worktree using argv-only Git execution. */
+export async function addWorktree(executor: GitExecutor, opts: AddWorktreeOptions): Promise<void> {
+    const args = ["worktree", "add"];
+    if (opts.detach) {
+        args.push("--detach", opts.path, opts.base ?? opts.branch ?? "HEAD");
+    } else if (opts.newBranch) {
+        args.push("-b", opts.newBranch, opts.path, opts.base ?? opts.branch ?? "HEAD");
+    } else {
+        args.push(opts.path, opts.branch ?? opts.base ?? "HEAD");
+    }
+    await executor.run(args);
 }
 
 function groupWorktreeRecords(porcelainZ: string): WorktreeRecord[] {
@@ -112,4 +163,24 @@ function stripHeadsPrefix(refname: string): string {
 
 function normalizePath(rawPath: string): string {
     return path.resolve(rawPath);
+}
+
+function pathCandidates(rawPath: string): string[] {
+    const normalized = normalizePath(rawPath);
+    const candidates = [normalized];
+    try {
+        candidates.push(fs.realpathSync.native(normalized));
+    } catch {
+        // Missing targets are compared by normalized absolute path only.
+    }
+    return Array.from(new Set(candidates));
+}
+
+function hasNestedPath(children: string[], parents: string[]): boolean {
+    return children.some((child) =>
+        parents.some((parent) => {
+            const relative = path.relative(parent, child);
+            return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+        }),
+    );
 }

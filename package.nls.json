@@ -21,6 +21,7 @@
     "command.push": "Push",
     "command.rename": "Rename...",
     "command.delete": "Delete",
+    "command.createWorktree": "Create Worktree...",
     "command.rollback": "Rollback",
     "command.jumpToSource": "Jump to Source",
     "command.shelveChanges": "Shelve Changes",

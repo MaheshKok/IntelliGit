@@ -219,5 +219,6 @@
     "commit.checks.none": "Проверки не найдены",
     "branch.worktreeBadge.current": "Извлечено в этом worktree",
     "branch.worktreeBadge.other": "Извлечено в другом worktree",
-    "branch.menu.openWorktree": "Открыть worktree"
+    "branch.menu.openWorktree": "Открыть worktree",
+    "branch.menu.createWorktree": "Create Worktree..."
 }

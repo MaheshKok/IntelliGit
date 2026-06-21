@@ -548,6 +548,7 @@ export async function activateRepositoryMode(
         context,
         executor,
         gitOps,
+        worktreeService,
         getRepoRoot,
         setRepositories: (nextRepositories) => {
             repositories = nextRepositories;

@@ -374,5 +374,12 @@
     "No checks found": "チェックが見つかりません",
     "Keep this VS Code window open": "この VS Code ウィンドウを開いたままにする",
     "Open worktree for {branch}": "{branch} の worktree を開く",
-    "Reuse this VS Code window": "この VS Code ウィンドウを再利用"
+    "Reuse this VS Code window": "この VS Code ウィンドウを再利用",
+    "Branch name for worktree": "Branch name for worktree",
+    "Create Worktree": "Create Worktree",
+    "Create worktree failed: {message}": "Create worktree failed: {message}",
+    "Created worktree at {path}": "Created worktree at {path}",
+    "Invalid worktree folder name.": "Invalid worktree folder name.",
+    "Select Worktree Parent Folder": "Select Worktree Parent Folder",
+    "Worktree folder name": "Worktree folder name"
 }

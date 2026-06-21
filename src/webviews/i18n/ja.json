@@ -198,5 +198,6 @@
     "commit.checks.none": "チェックが見つかりません",
     "branch.worktreeBadge.current": "この worktree でチェックアウト済み",
     "branch.worktreeBadge.other": "別の worktree でチェックアウト済み",
-    "branch.menu.openWorktree": "Worktree を開く"
+    "branch.menu.openWorktree": "Worktree を開く",
+    "branch.menu.createWorktree": "Create Worktree..."
 }
