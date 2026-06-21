@@ -16,6 +16,29 @@ export interface Branch {
     behind: number;
 }
 
+/** Lifecycle state of a Git worktree as reported by `git worktree list --porcelain`. */
+export type WorktreeState = "main" | "linked" | "bare" | "detached";
+
+/**
+ * One Git worktree parsed from `git worktree list --porcelain -z`.
+ *
+ * `path` is absolute. `branch` is the short branch name with the `refs/heads/`
+ * prefix stripped, or null when the worktree is detached or bare.
+ */
+export interface GitWorktree {
+    path: string;
+    head: string | null;
+    branch: string | null;
+    state: WorktreeState;
+    /** True for Git's first reported record, even when that worktree is detached. */
+    isMain: boolean;
+    isCurrent: boolean;
+    isLocked: boolean;
+    lockedReason?: string;
+    isPrunable: boolean;
+    prunableReason?: string;
+}
+
 /**
  * Resolved icon payload that can be rendered inside VS Code webviews.
  *
