@@ -21,6 +21,7 @@ import type {
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { ThemeIconFontFaces } from "./shared/components";
 import { JETBRAINS_UI } from "./shared/tokens";
 
@@ -344,11 +345,9 @@ export function CommitGraphPanel({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            const cached = commitChecks.get(hash);
-            if (cached && (cached === "loading" || cached.state !== "pending")) return;
+            if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
             setCommitChecks((prev) => {
-                const latest = prev.get(hash);
-                if (latest && (latest === "loading" || latest.state !== "pending")) return prev;
+                if (!shouldRequestCommitChecks(prev.get(hash))) return prev;
                 const next = new Map(prev);
                 next.set(hash, "loading");
                 return next;

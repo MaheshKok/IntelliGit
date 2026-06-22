@@ -118,6 +118,17 @@ export type CommitCheckState =
     | "none"
     | "unavailable";
 
+/**
+ * Whether a check state has not settled yet and is worth re-fetching.
+ *
+ * `"pending"` means CI is still running. `"none"` covers a just-pushed commit
+ * whose checks have not been registered by GitHub yet; it must be re-fetched so
+ * the status appears without a manual refresh. All other states are terminal.
+ */
+export function isPendingCheckState(state: CommitCheckState): boolean {
+    return state === "pending" || state === "none";
+}
+
 /** One GitHub Checks API or commit-status row shown inside the commit-checks popover. */
 export interface CommitCheckItem {
     name: string;

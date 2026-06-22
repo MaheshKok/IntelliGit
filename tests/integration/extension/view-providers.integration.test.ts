@@ -334,7 +334,8 @@ describe("view providers integration", () => {
     });
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {
-        const { OnboardingViewProvider } = await import("../../../src/views/OnboardingViewProvider");
+        const { OnboardingViewProvider } =
+            await import("../../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider(
             { fsPath: "/ext", path: "/ext" },
             "no-workspace",
@@ -353,7 +354,8 @@ describe("view providers integration", () => {
     });
 
     it("OnboardingViewProvider can hide empty-workspace actions for the graph view", async () => {
-        const { OnboardingViewProvider } = await import("../../../src/views/OnboardingViewProvider");
+        const { OnboardingViewProvider } =
+            await import("../../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider(
             { fsPath: "/ext", path: "/ext" },
             "no-workspace",
@@ -376,7 +378,8 @@ describe("view providers integration", () => {
     });
 
     it("OnboardingViewProvider can hide initialize action for the graph view", async () => {
-        const { OnboardingViewProvider } = await import("../../../src/views/OnboardingViewProvider");
+        const { OnboardingViewProvider } =
+            await import("../../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider(
             { fsPath: "/ext", path: "/ext" },
             "no-git-repo",
@@ -401,7 +404,8 @@ describe("view providers integration", () => {
     });
 
     it("OnboardingViewProvider renders only initialize for an uninitialized workspace", async () => {
-        const { OnboardingViewProvider } = await import("../../../src/views/OnboardingViewProvider");
+        const { OnboardingViewProvider } =
+            await import("../../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider(
             { fsPath: "/ext", path: "/ext" },
             "no-git-repo",
@@ -421,7 +425,8 @@ describe("view providers integration", () => {
     });
 
     it("OnboardingViewProvider uses nonce-based CSP for inline style and script blocks", async () => {
-        const { OnboardingViewProvider } = await import("../../../src/views/OnboardingViewProvider");
+        const { OnboardingViewProvider } =
+            await import("../../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider(
             { fsPath: "/ext", path: "/ext" },
             "no-git-repo",
@@ -445,7 +450,8 @@ describe("view providers integration", () => {
     });
 
     it("OnboardingViewProvider forwards button messages to extension commands", async () => {
-        const { OnboardingViewProvider } = await import("../../../src/views/OnboardingViewProvider");
+        const { OnboardingViewProvider } =
+            await import("../../../src/views/OnboardingViewProvider");
         const provider = new OnboardingViewProvider(
             { fsPath: "/ext", path: "/ext" },
             "no-git-repo",
@@ -469,7 +475,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitInfoViewProvider handles ready/set/clear lifecycle", async () => {
-        const { CommitInfoViewProvider } = await import("../../../src/views/CommitInfoViewProvider");
+        const { CommitInfoViewProvider } =
+            await import("../../../src/views/CommitInfoViewProvider");
         const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {
             fsPath: string;
             path: string;
@@ -706,7 +713,10 @@ describe("view providers integration", () => {
         expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
         expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: push", false);
         expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
-        expect(postMessageSpy).toHaveBeenCalledWith({ type: "lastCommitMessage", message: "last message" });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "lastCommitMessage",
+            message: "last message",
+        });
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "amendBranchCommits",
             commits: [
@@ -727,7 +737,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {
-        const { CommitGraphViewProvider } = await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -809,7 +820,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitGraphViewProvider refetches cached pending commit checks", async () => {
-        const { CommitGraphViewProvider } = await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -846,8 +858,48 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider refetches cached none (no checks yet) commit checks", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        getGithubCommitChecks
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "none",
+                summary: "No checks found",
+                items: [],
+            })
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "pending",
+                summary: "Checks pending",
+                items: [],
+            });
+
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+
+        expect(getGithubCommitChecks).toHaveBeenCalledTimes(2);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setCommitChecks",
+            snapshot: expect.objectContaining({ state: "pending" }),
+        });
+        provider.dispose();
+    });
+
     it("CommitGraphViewProvider rejects invalid webview command payloads", async () => {
-        const { CommitGraphViewProvider } = await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -891,7 +943,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitGraphViewProvider emits validated bulk branch delete messages", async () => {
-        const { CommitGraphViewProvider } = await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -900,9 +953,11 @@ describe("view providers integration", () => {
         const webview = createWebviewView();
         const deleteBranches = vi.fn();
 
-        (provider as unknown as { onDeleteBranches(listener: (branchNames: string[]) => void): void }).onDeleteBranches(
-            deleteBranches,
-        );
+        (
+            provider as unknown as {
+                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+            }
+        ).onDeleteBranches(deleteBranches);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
@@ -917,7 +972,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitGraphViewProvider rejects invalid bulk branch delete payloads", async () => {
-        const { CommitGraphViewProvider } = await import("../../../src/views/CommitGraphViewProvider");
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -926,9 +982,11 @@ describe("view providers integration", () => {
         const webview = createWebviewView();
         const deleteBranches = vi.fn();
 
-        (provider as unknown as { onDeleteBranches(listener: (branchNames: string[]) => void): void }).onDeleteBranches(
-            deleteBranches,
-        );
+        (
+            provider as unknown as {
+                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+            }
+        ).onDeleteBranches(deleteBranches);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
@@ -939,13 +997,16 @@ describe("view providers integration", () => {
         await webview.send({ type: "deleteBranches", branchNames: [] });
 
         expect(deleteBranches).not.toHaveBeenCalled();
-        expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Branch action error"));
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Branch action error"),
+        );
 
         provider.dispose();
     });
 
     it("CommitInfoViewProvider rejects invalid open-file-diff payloads", async () => {
-        const { CommitInfoViewProvider } = await import("../../../src/views/CommitInfoViewProvider");
+        const { CommitInfoViewProvider } =
+            await import("../../../src/views/CommitInfoViewProvider");
         const provider = new CommitInfoViewProvider({ fsPath: "/ext", path: "/ext" } as unknown as {
             fsPath: string;
             path: string;
@@ -980,7 +1041,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider resolveWebviewView replays no Git data until ready or visible", async () => {
-        const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitPanelViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -997,7 +1059,9 @@ describe("view providers integration", () => {
         );
 
         expect(gitOps.getStatus).not.toHaveBeenCalled();
-        expect(postMessageSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "update" }));
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update" }),
+        );
         provider.dispose();
     });
 
@@ -1169,8 +1233,24 @@ describe("view providers integration", () => {
 
     it("CommitPanelViewProvider ignores stale refresh results from older requests", async () => {
         const { provider, gitOps } = await setupCommitPanelProvider();
-        let resolveSlowStatus: (files: Array<{ path: string; status: "M"; staged: false; additions: number; deletions: number }>) => void = () => {};
-        const slowStatus = new Promise<Array<{ path: string; status: "M"; staged: false; additions: number; deletions: number }>>((resolve) => {
+        let resolveSlowStatus: (
+            files: Array<{
+                path: string;
+                status: "M";
+                staged: false;
+                additions: number;
+                deletions: number;
+            }>,
+        ) => void = () => {};
+        const slowStatus = new Promise<
+            Array<{
+                path: string;
+                status: "M";
+                staged: false;
+                additions: number;
+                deletions: number;
+            }>
+        >((resolve) => {
             resolveSlowStatus = resolve;
         });
         gitOps.getStatus
@@ -1180,8 +1260,12 @@ describe("view providers integration", () => {
             ]);
         postMessageSpy.mockClear();
 
-        const slowRefresh = (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
-        const fastRefresh = (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+        const slowRefresh = (
+            provider as typeof provider & { refreshSilent(): Promise<void> }
+        ).refreshSilent();
+        const fastRefresh = (
+            provider as typeof provider & { refreshSilent(): Promise<void> }
+        ).refreshSilent();
         resolveSlowStatus([
             { path: "stale.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]);
@@ -1327,7 +1411,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider restores and saves commit draft text per repo", async () => {
-        const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
         const draftStore = createMemento({ "commitDraft:/repo": "draft from storage" });
         const provider = new CommitPanelViewProvider(
@@ -1391,7 +1476,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider updates count badges and fires file count after commit", async () => {
-        const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
         const draftStore = createMemento();
         const provider = new CommitPanelViewProvider(
@@ -1434,7 +1520,8 @@ describe("view providers integration", () => {
 
     it("CommitPanelViewProvider dedupes status rows and updates file count after working-tree actions", async () => {
         vi.useFakeTimers();
-        const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
         gitOps.getStatus
             .mockResolvedValueOnce([
@@ -1648,7 +1735,8 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider guards workspace-dependent actions", async () => {
-        const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
         const provider = new CommitPanelViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -1687,10 +1775,7 @@ describe("view providers integration", () => {
 
         // Only the 2 checked paths staged — no extra paths leaked.
         expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
-        expect(gitOps.stageFiles).toHaveBeenCalledWith([
-            "src/changed1.ts",
-            "src/changed2.ts",
-        ]);
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/changed1.ts", "src/changed2.ts"]);
         expect(gitOps.commit).toHaveBeenCalledTimes(1);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: selective", false);
         expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
@@ -1740,9 +1825,7 @@ describe("view providers integration", () => {
         expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
         expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: subset push", false);
-        expect(showInformationMessage).toHaveBeenCalledWith(
-            "Committed and pushed successfully.",
-        );
+        expect(showInformationMessage).toHaveBeenCalledWith("Committed and pushed successfully.");
         provider.dispose();
     });
 

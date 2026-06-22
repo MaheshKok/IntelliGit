@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { CommitList } from "./CommitList";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
     CommitAction,
@@ -136,11 +137,9 @@ export function NativeCommitGraph({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            const cached = commitChecks.get(hash);
-            if (cached && (cached === "loading" || cached.state !== "pending")) return;
+            if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
             setCommitChecks((prev) => {
-                const latest = prev.get(hash);
-                if (latest && (latest === "loading" || latest.state !== "pending")) return prev;
+                if (!shouldRequestCommitChecks(prev.get(hash))) return prev;
                 const next = new Map(prev);
                 next.set(hash, "loading");
                 return next;
