@@ -47,7 +47,6 @@
         "onWebviewPanel:intelligit.undocked",
         "onView:intelligit.commitGraph",
         "onView:intelligit.sidebarGraph",
-        "onView:intelligit.worktrees",
         "onCommand:intelligit.worktree.create",
         "onCommand:intelligit.worktree.delete",
         "onCommand:intelligit.worktree.lock",
@@ -91,11 +90,6 @@
                     "id": "intelligit.sidebarGraph",
                     "name": "%view.graph%",
                     "type": "webview"
-                },
-                {
-                    "id": "intelligit.worktrees",
-                    "name": "%view.worktrees%",
-                    "type": "tree"
                 },
                 {
                     "id": "intelligit.mergeConflicts",
@@ -429,21 +423,6 @@
                     "group": "navigation"
                 },
                 {
-                    "command": "intelligit.worktree.create",
-                    "when": "view == intelligit.worktrees",
-                    "group": "navigation@1"
-                },
-                {
-                    "command": "intelligit.worktree.prune",
-                    "when": "view == intelligit.worktrees",
-                    "group": "navigation@2"
-                },
-                {
-                    "command": "intelligit.worktree.repair",
-                    "when": "view == intelligit.worktrees",
-                    "group": "navigation@3"
-                },
-                {
                     "command": "intelligit.mergeConflictsRefresh",
                     "when": "view == intelligit.mergeConflicts",
                     "group": "navigation"
@@ -474,26 +453,6 @@
                     "command": "intelligit.openMergeConflictInJetBrains",
                     "when": "view == intelligit.mergeConflicts && viewItem == intelligit.conflictFile",
                     "group": "navigation@2"
-                },
-                {
-                    "command": "intelligit.worktree.delete",
-                    "when": "view == intelligit.worktrees && viewItem =~ /deletable/",
-                    "group": "inline@1"
-                },
-                {
-                    "command": "intelligit.worktree.lock",
-                    "when": "view == intelligit.worktrees && viewItem =~ /lockable/",
-                    "group": "inline@2"
-                },
-                {
-                    "command": "intelligit.worktree.unlock",
-                    "when": "view == intelligit.worktrees && viewItem =~ /locked/",
-                    "group": "inline@3"
-                },
-                {
-                    "command": "intelligit.worktree.move",
-                    "when": "view == intelligit.worktrees && viewItem =~ /deletable/",
-                    "group": "navigation@1"
                 },
                 {
                     "command": "intelligit.conflictAcceptYours",

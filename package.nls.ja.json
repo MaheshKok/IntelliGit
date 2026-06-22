@@ -52,7 +52,6 @@
     "configuration.commitWindowPosition.enum.right": "コミットパネルを、ドッキング解除済み／タブ付きウィンドウの右側に配置します。",
     "configuration.commitWindowPosition.markdownDescription": "ドッキング解除/タブ付き IntelliGit ウィンドウ内でのコミット パネルの位置。`auto` (デフォルト) は VS Code の `workbench.sideBar.location` に従います。`left` と `right` は左右どちらかに強制的に配置します。",
     "view.fileCountBadge": "変更されたファイル",
-    "view.worktrees": "ワークツリー",
     "command.createWorktree": "ワークツリーを作成...",
     "command.deleteWorktree": "ワークツリーを削除",
     "configuration.worktree.includeFiles.markdownDescription": "現在のリポジトリから新しく作成される各ワークツリーにコピーする、`.env` や `.vscode/settings.json` などの相対パスの Git 無視ファイルまたはフォルダー。",

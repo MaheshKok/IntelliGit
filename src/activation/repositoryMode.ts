@@ -21,7 +21,6 @@ import { MergeConflictsTreeProvider } from "../views/MergeConflictsTreeProvider"
 import { MergeEditorPanel } from "../views/MergeEditorPanel";
 import { RefreshService } from "../views/RefreshService";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
-import { WorktreesTreeProvider } from "../views/WorktreesTreeProvider";
 import {
     type RepositoryViewProviders,
     SELECTED_REPOSITORY_KEY,
@@ -81,7 +80,6 @@ export async function activateRepositoryMode(
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
-    const worktrees = new WorktreesTreeProvider(worktreeService);
 
     commitGraph.setRepositoryLabel(activeRepository.label);
     sidebarGraph.setRepositoryLabel(activeRepository.label);
@@ -89,9 +87,6 @@ export async function activateRepositoryMode(
 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
         treeDataProvider: mergeConflicts,
-    });
-    const worktreesView = vscode.window.createTreeView(WorktreesTreeProvider.viewType, {
-        treeDataProvider: worktrees,
     });
     const fileCountBadgeView = createFileCountBadgeView();
     /** Keeps the native view badge in sync with the commit panel's working-tree count. */
@@ -520,7 +515,6 @@ export async function activateRepositoryMode(
 
     context.subscriptions.push(
         mergeConflictsView,
-        worktreesView,
         commitPanel.onDidChangeWorkingTree(() => {
             undocked?.refreshSilent().catch((err) => {
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);
@@ -628,7 +622,6 @@ export async function activateRepositoryMode(
         commitPanel,
         mergeConflicts,
         worktreeService,
-        worktrees,
         fileCountBadgeView,
     );
 

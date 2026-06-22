@@ -3,7 +3,6 @@
     "extension.description": "IntelliJ-style Git UI for VS Code with commit graph, commit details, shelf workflow, and file change explorer.",
     "view.commit": "Commit",
     "view.graph": "Graph",
-    "view.worktrees": "Worktrees",
     "view.mergeConflicts": "Merge Conflicts",
     "view.fileCountBadge": "Changed Files",
     "command.showGitLog": "Show Git Log",
