@@ -348,6 +348,7 @@ export type CheckoutBranchResult =
     | { kind: "checkedOut"; branch: string }
     | { kind: "openWorktree"; branch: string; path: string };
 
+/** Returns an open-folder checkout result when Git would reject checking out a branch already in a worktree. */
 function getOpenWorktreeCheckoutResult(branch: Branch): CheckoutBranchResult | undefined {
     if (!branch.isCheckedOutInWorktree || branch.isCurrentWorktree || !branch.worktreePath) {
         return undefined;

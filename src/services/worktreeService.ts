@@ -191,6 +191,7 @@ export class WorktreeService implements vscode.Disposable {
     }
 }
 
+/** Resolves configured include-file entries into source/target pairs before copying local-only files. */
 function getIncludedWorktreeFiles(repoRoot: string, worktreeRoot: string): IncludedWorktreeFile[] {
     const entries = vscode.workspace
         .getConfiguration("intelligit")
@@ -198,6 +199,7 @@ function getIncludedWorktreeFiles(repoRoot: string, worktreeRoot: string): Inclu
     return entries.map((entry) => resolveIncludedWorktreeFile(entry, repoRoot, worktreeRoot));
 }
 
+/** Rejects include-file entries that could escape either the source repo or target worktree. */
 function resolveIncludedWorktreeFile(
     entry: string,
     repoRoot: string,
@@ -221,6 +223,7 @@ function resolveIncludedWorktreeFile(
     return { source, target };
 }
 
+/** Copies optional local files into the new worktree while treating missing entries as opt-in gaps. */
 async function copyIncludedWorktreeFiles(files: IncludedWorktreeFile[]): Promise<void> {
     for (const file of files) {
         try {
@@ -233,11 +236,13 @@ async function copyIncludedWorktreeFiles(files: IncludedWorktreeFile[]): Promise
     }
 }
 
+/** Keeps path containment checks exact for both the root itself and descendants. */
 function isSameOrChildPath(candidate: string, root: string): boolean {
     const relative = path.relative(root, candidate);
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
+/** Identifies optional include-file misses without swallowing unrelated filesystem failures. */
 function isMissingPathError(err: unknown): boolean {
     return (
         typeof err === "object" &&

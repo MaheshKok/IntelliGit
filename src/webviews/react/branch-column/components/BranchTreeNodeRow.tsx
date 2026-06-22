@@ -146,6 +146,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     );
 }
 
+/** Shows worktree occupancy without adding another branch-row action target. */
 function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | null {
     if (!branch.isCheckedOutInWorktree) return null;
     const label = branch.isCurrentWorktree

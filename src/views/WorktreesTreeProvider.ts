@@ -60,12 +60,14 @@ export class WorktreesTreeProvider
     }
 }
 
+/** Chooses the most useful stable row label without exposing full paths in the primary column. */
 function getWorktreeLabel(worktree: GitWorktree): string {
     if (worktree.branch) return worktree.branch;
     if (worktree.head) return worktree.head.slice(0, 7);
     return path.basename(worktree.path) || worktree.path;
 }
 
+/** Encodes row capabilities for VS Code `when` clauses without re-checking state in package metadata. */
 function getContextValue(worktree: GitWorktree): string {
     return [
         "intelligit.worktree",
@@ -80,6 +82,7 @@ function getContextValue(worktree: GitWorktree): string {
         .join(" ");
 }
 
+/** Maps Git worktree state to VS Code theme icons while keeping current/locked/prunable visually distinct. */
 function getIcon(worktree: GitWorktree): vscode.ThemeIcon {
     if (worktree.isCurrent) {
         return new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));

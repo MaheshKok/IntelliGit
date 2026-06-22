@@ -123,6 +123,7 @@ export async function repairWorktrees(executor: GitExecutor): Promise<void> {
     await executor.run(["worktree", "repair"]);
 }
 
+/** Groups Git's NUL-delimited porcelain stream into records, with empty tokens ending a record. */
 function groupWorktreeRecords(porcelainZ: string): WorktreeRecord[] {
     const records: WorktreeRecord[] = [];
     let current: WorktreeRecord = {};
@@ -138,6 +139,7 @@ function groupWorktreeRecords(porcelainZ: string): WorktreeRecord[] {
     return records;
 }
 
+/** Applies one porcelain token to the current record and ignores unknown future Git fields. */
 function applyToken(record: WorktreeRecord, token: string): void {
     const separator = token.indexOf(" ");
     const key = separator === -1 ? token : token.slice(0, separator);
@@ -167,6 +169,7 @@ function applyToken(record: WorktreeRecord, token: string): void {
     }
 }
 
+/** Converts a parsed record into the extension model, preserving Git's first-record main-worktree contract. */
 function toGitWorktree(
     record: WorktreeRecord,
     index: number,
@@ -192,21 +195,25 @@ function toGitWorktree(
     };
 }
 
+/** Derives the stable UI state from porcelain flags, with bare and detached overriding main/linked. */
 function getWorktreeState(record: WorktreeRecord, isMain: boolean): WorktreeState {
     if (record.bare) return "bare";
     if (record.detached) return "detached";
     return isMain ? "main" : "linked";
 }
 
+/** Converts local branch refs from porcelain output into branch names shown in IntelliGit. */
 function stripHeadsPrefix(refname: string): string {
     const prefix = "refs/heads/";
     return refname.startsWith(prefix) ? refname.slice(prefix.length) : refname;
 }
 
+/** Resolves paths before equality checks so comparisons do not depend on the process cwd. */
 function normalizePath(rawPath: string): string {
     return path.resolve(rawPath);
 }
 
+/** Returns normalized and realpath variants so existing symlinked paths share one safety check. */
 function pathCandidates(rawPath: string): string[] {
     const normalized = normalizePath(rawPath);
     const candidates = [normalized];
@@ -218,6 +225,7 @@ function pathCandidates(rawPath: string): string[] {
     return Array.from(new Set(candidates));
 }
 
+/** Checks same-path and descendant relationships across normalized/realpath candidate sets. */
 function hasNestedPath(children: string[], parents: string[]): boolean {
     return children.some((child) =>
         parents.some((parent) => {

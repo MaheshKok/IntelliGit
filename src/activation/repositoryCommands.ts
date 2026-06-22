@@ -65,6 +65,7 @@ const isFilePathContext = (value: unknown): value is { filePath: string } => {
     );
 };
 
+/** Narrows VS Code tree-row payloads before destructive worktree commands can use the path. */
 const isWorktreeContext = (value: unknown): value is GitWorktree => {
     return (
         !!value && typeof value === "object" && "path" in value && typeof value.path === "string"

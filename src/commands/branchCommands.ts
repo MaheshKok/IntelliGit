@@ -68,6 +68,7 @@ function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }
     return `${tracked.remote}/${tracked.remoteBranch}`;
 }
 
+/** Builds safe prompt defaults from a branch name without letting remote prefixes leak into folder names. */
 function getWorktreeDefaults(
     branch: Branch,
     forceNewBranch: boolean,
@@ -77,6 +78,7 @@ function getWorktreeDefaults(
     return { folder: defaultBranch.replace(/^.*\//, "") || "worktree", branch: defaultBranch };
 }
 
+/** Accepts only one folder segment so the picker controls the parent directory boundary. */
 function isPlainFolderName(value: string): boolean {
     return (
         value.trim().length > 0 &&
@@ -86,6 +88,7 @@ function isPlainFolderName(value: string): boolean {
     );
 }
 
+/** Collects a user-confirmed worktree target and leaves path/branch validation to the service layer. */
 async function promptCreateWorktreeOptions(
     branch: Branch,
     forceNewBranch = false,
