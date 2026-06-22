@@ -47,6 +47,7 @@ interface Props {
     folderIconsByName?: ThemeFolderIconMap;
 }
 
+/** Renders ahead/behind status only when the branch has remote tracking movement. */
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
     const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
     const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,6 +70,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     }
     const tooltipText = tooltipParts.join(" and ");
 
+    /** Delays tooltip display using current settings while keeping pointer fallback positioning stable. */
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const { hoverDelay, tooltipsEnabled } = getSettings();
         if (!tooltipsEnabled) return;
@@ -91,6 +93,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
         }
     };
 
+    /** Cancels pending tooltip work before hiding so rapid pointer movement cannot resurrect it. */
     const hideTooltip = (): void => {
         if (timerRef.current) {
             clearTimeout(timerRef.current);
@@ -155,6 +158,7 @@ function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     return <span aria-label={label} title={label} style={WORKTREE_BADGE_STYLE} />;
 }
 
+/** Draws branch tree indentation guides without adding focusable elements to the row. */
 function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | null {
     if (depth <= 0) return null;
     return (
@@ -202,6 +206,7 @@ export function BranchTreeNodeRow({
     folderExpandedIcon,
     folderIconsByName,
 }: Props): React.ReactElement {
+    /** Normalizes Enter/Space keyboard activation for folder rows without page scrolling. */
     const handleActivateKey = (
         event: React.KeyboardEvent<HTMLDivElement>,
         action: () => void,
@@ -279,6 +284,7 @@ export function BranchTreeNodeRow({
     const isSelected =
         selectedBranch === node.fullName ||
         (node.fullName ? selectedBranchNames.has(node.fullName) : false);
+    /** Delegates branch selection to multi-select handlers when present, otherwise selects directly. */
     const handleSelectBranch = (event: React.MouseEvent): void => {
         if (!node.fullName) return;
         if (onBranchClick) {

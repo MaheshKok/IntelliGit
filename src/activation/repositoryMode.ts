@@ -93,6 +93,7 @@ export async function activateRepositoryMode(
         treeDataProvider: worktrees,
     });
     const fileCountBadgeView = createFileCountBadgeView();
+    /** Keeps the native view badge in sync with the commit panel's working-tree count. */
     const updateFileCountBadge = (count: number): void => {
         fileCountBadgeView.badge =
             count > 0
@@ -105,6 +106,7 @@ export async function activateRepositoryMode(
                   }
                 : undefined;
     };
+    /** Clears stale badge state before the first panel count event arrives. */
     const resetFileCountBadge = (): void => updateFileCountBadge(0);
     resetFileCountBadge();
     const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
@@ -135,12 +137,17 @@ export async function activateRepositoryMode(
         );
 
     let refreshService = createRefreshService(repoRoot);
+    /** Returns the currently active refresh coordinator after repository switches replace it. */
     const getRefreshService = (): RefreshService => refreshService;
+    /** Returns the repository root currently bound to command handlers. */
     const getRepoRoot = (): string => repoRoot;
+    /** Returns the latest decorated branch snapshot shared by host command handlers. */
     const getCurrentBranches = (): Branch[] => currentBranches;
+    /** Returns the active branch name from the latest refreshed branch snapshot. */
     const getCurrentBranchName = (): string | undefined =>
         currentBranches.find((b) => b.isCurrent)?.name;
 
+    /** Clears selected commit state from every visible IntelliGit surface at once. */
     const clearSelection = (): void => {
         commitGraph.clearCommitDetail();
         sidebarGraph.clearCommitDetail();

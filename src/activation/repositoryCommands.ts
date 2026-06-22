@@ -56,6 +56,7 @@ interface RepositoryCommandsDeps {
     openBuiltInMergeEditorForFile: (filePath: string) => Promise<void>;
 }
 
+/** Narrows command payloads from tree rows before file operations touch the repository. */
 const isFilePathContext = (value: unknown): value is { filePath: string } => {
     return (
         !!value &&
@@ -72,6 +73,7 @@ const isWorktreeContext = (value: unknown): value is GitWorktree => {
     );
 };
 
+/** Extracts merge-conflict file paths only from known VS Code command payload shapes. */
 const resolveConflictPath = (ctx: unknown): string | null =>
     isFilePathContext(ctx) ? ctx.filePath : null;
 
@@ -365,6 +367,7 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
     );
 }
 
+/** Applies one side of a merge conflict and refreshes conflict UI after Git mutates the file. */
 async function acceptConflictSide(
     ctx: unknown,
     side: "ours" | "theirs",

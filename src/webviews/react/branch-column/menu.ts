@@ -6,6 +6,7 @@ import { t } from "../shared/i18n";
 type SeparatorAction = `sep-${string}`;
 type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | SeparatorAction };
 
+/** Shortens branch names for menu labels while preserving the distinguishing suffix. */
 function trim(name: string, max = 40): string {
     if (name.length <= max) return name;
     // Keep output readable for tiny max values while never expanding beyond input length.
@@ -15,10 +16,12 @@ function trim(name: string, max = 40): string {
     return name.slice(0, startLen) + "..." + name.slice(-endLen);
 }
 
+/** Wraps compact branch labels in quotes for menu text that embeds another ref name. */
 function quoted(name: string): string {
     return `'${trim(name)}'`;
 }
 
+/** Creates typed separator rows that cannot collide with executable branch actions. */
 function separator(action: SeparatorAction): BranchMenuItem {
     return { label: "", action, separator: true };
 }

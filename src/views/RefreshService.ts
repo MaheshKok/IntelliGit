@@ -164,6 +164,7 @@ export class RefreshService implements vscode.Disposable {
 
     /** Register workspace, Git-directory, and VS Code Git API refresh listeners. */
     registerFileWatchers(): void {
+        /** Coalesces noisy workspace file events into the shared refresh debounce. */
         const handler = () => this.scheduleRefreshEvent("workspace-file");
 
         this.disposables.push(
@@ -236,6 +237,7 @@ export class RefreshService implements vscode.Disposable {
             if (process.platform === "linux") {
                 const pattern = new vscode.RelativePattern(vscode.Uri.file(refsPath), "**/*");
                 const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+                /** Coalesces Linux Git ref watcher events into the shared refresh debounce. */
                 const handler = () => this.scheduleRefreshEvent("git-refs");
                 this.disposables.push(
                     watcher.onDidChange(handler),

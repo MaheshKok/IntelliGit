@@ -64,6 +64,7 @@ const PYCHARM_MERGE_CONFIG_ARGS = [
     "log.showSignature=false",
 ];
 
+/** Rebuilds a tracked remote ref after upstream parsing has validated remote and branch parts. */
 function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }): string {
     return `${tracked.remote}/${tracked.remoteBranch}`;
 }
@@ -182,6 +183,7 @@ function formatUpdateFailureMessage(error: unknown): string {
     return compactGitErrorMessage(raw);
 }
 
+/** Detects Git's fast-forward refusal variants so update errors get a targeted user message. */
 function isFastForwardDivergenceMessage(message: string): boolean {
     const lower = message.toLowerCase();
     return (
@@ -191,6 +193,7 @@ function isFastForwardDivergenceMessage(message: string): boolean {
     );
 }
 
+/** Removes noisy Git hint/banner lines while preserving the actionable failure text. */
 function compactGitErrorMessage(message: string): string {
     const compact = message
         .replace(/\r\n/g, "\n")
@@ -307,6 +310,7 @@ async function assertBulkBranchesMerged(
     return unmerged;
 }
 
+/** Deletes either a local branch ref or its remote-tracking target without mixing the two paths. */
 async function deleteBranchRef(executor: GitExecutor, branch: Branch): Promise<void> {
     if (branch.isRemote) {
         const target = resolveRemoteDeleteTarget(branch);
@@ -377,6 +381,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         }
     };
 
+    /** Runs the prompt/service flow for branch-originated worktree creation commands. */
     const runCreateWorktree = async (branch: Branch, forceNewBranch = false): Promise<void> => {
         const opts = await promptCreateWorktreeOptions(branch, forceNewBranch);
         if (!opts) return;
@@ -673,6 +678,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 if (!validateBranchArg(branch.name)) return;
+                /** Pushes the selected branch through the right upstream or publish flow. */
                 const pushBranch = async (): Promise<void> => {
                     const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                     if (tracked) {
