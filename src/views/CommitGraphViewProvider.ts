@@ -4,14 +4,25 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch, CommitChecksSnapshot, CommitDetail, ThemeFolderIconMap } from "../types";
+import type {
+    Branch,
+    CommitChecksSnapshot,
+    CommitDetail,
+    GitWorktree,
+    ThemeFolderIconMap,
+} from "../types";
 import type {
     BranchAction,
     CommitAction,
     CommitGraphOutbound,
     CommitGraphInbound,
+    WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
-import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
+import {
+    isBranchAction,
+    isCommitAction,
+    isWorktreeAction,
+} from "../webviews/protocol/commitGraphTypes";
 import { getErrorMessage } from "../utils/errors";
 import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -43,6 +54,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private readonly PAGE_SIZE = 500;
 
     private branches: Branch[] = [];
+    private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
     private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
     private folderIconsByName: ThemeFolderIconMap = {};
@@ -64,6 +76,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
     private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
     readonly onDeleteBranches = this._onDeleteBranches.event;
+
+    private readonly _onWorktreeAction = new vscode.EventEmitter<{
+        action: WorktreeAction;
+        path: string;
+    }>();
+    readonly onWorktreeAction = this._onWorktreeAction.event;
 
     private readonly _onCommitAction = new vscode.EventEmitter<{
         action: CommitAction;
@@ -182,6 +200,15 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                             this.assertBranchNames(msg.branchNames, "branchNames"),
                         );
                         break;
+                    case "worktreeAction":
+                        if (!isWorktreeAction(this.assertString(msg.action, "action"))) {
+                            throw new Error("Invalid worktree action received from webview.");
+                        }
+                        this._onWorktreeAction.fire({
+                            action: msg.action,
+                            path: this.assertString(msg.path, "path"),
+                        });
+                        break;
                     case "commitAction":
                         if (!isCommitAction(this.assertString(msg.action, "action"))) {
                             throw new Error("Invalid commit action received from webview.");
@@ -209,7 +236,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             } catch (err) {
                 const message = getErrorMessage(err);
                 const label =
-                    msg.type === "branchAction" || msg.type === "deleteBranches"
+                    msg.type === "branchAction" ||
+                    msg.type === "deleteBranches" ||
+                    msg.type === "worktreeAction"
                         ? "Branch action error: {message}"
                         : "Commit graph error: {message}";
                 vscode.window.showErrorMessage(vscode.l10n.t(label, { message }));
@@ -224,8 +253,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * Folder-icon lookup is asynchronous and can fail independently of branch discovery, so
      * failures are reported without mutating the already cached branch array.
      */
-    setBranches(branches: Branch[]): void {
+    setBranches(branches: Branch[], worktrees: GitWorktree[] = []): void {
         this.branches = branches;
+        this.worktrees = worktrees;
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(
@@ -302,6 +332,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({
             type: "setBranches",
             branches: this.branches,
+            worktrees: this.worktrees,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
@@ -531,6 +562,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this._onBranchFilterChanged.dispose();
         this._onBranchAction.dispose();
         this._onDeleteBranches.dispose();
+        this._onWorktreeAction.dispose();
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
     }

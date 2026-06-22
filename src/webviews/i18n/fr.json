@@ -213,5 +213,10 @@
     "branch.worktreeBadge.current": "Extraite dans ce worktree",
     "branch.worktreeBadge.other": "Extraite dans un autre worktree",
     "branch.menu.openWorktree": "Ouvrir le worktree",
-    "branch.menu.createWorktree": "Créer un worktree..."
+    "branch.menu.createWorktree": "Créer un worktree...",
+    "branch.section.worktrees": "Worktrees",
+    "worktree.menu.delete": "Supprimer le worktree",
+    "worktree.menu.lock": "Verrouiller le worktree",
+    "worktree.menu.unlock": "Déverrouiller le worktree",
+    "worktree.menu.move": "Déplacer le worktree..."
 }

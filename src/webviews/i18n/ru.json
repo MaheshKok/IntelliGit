@@ -220,5 +220,10 @@
     "branch.worktreeBadge.current": "Извлечено в этом worktree",
     "branch.worktreeBadge.other": "Извлечено в другом worktree",
     "branch.menu.openWorktree": "Открыть worktree",
-    "branch.menu.createWorktree": "Создать worktree..."
+    "branch.menu.createWorktree": "Создать worktree...",
+    "branch.section.worktrees": "Рабочие деревья",
+    "worktree.menu.delete": "Удалить worktree",
+    "worktree.menu.lock": "Заблокировать worktree",
+    "worktree.menu.unlock": "Разблокировать worktree",
+    "worktree.menu.move": "Переместить worktree..."
 }

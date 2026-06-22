@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
-import type { Branch } from "../types";
+import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { WorktreeService } from "../services/worktreeService";
@@ -62,6 +62,7 @@ export async function activateRepositoryMode(
     const gitOps = new GitOps(executor);
 
     let currentBranches: Branch[] = [];
+    let currentWorktrees: GitWorktree[] = [];
     let undockedCommitDetailRequestSeq = 0;
     let repoRootUri = vscode.Uri.file(repoRoot);
     let undocked: UndockedViewProvider | undefined;
@@ -131,6 +132,9 @@ export async function activateRepositoryMode(
                 onBranchesUpdated: (branches) => {
                     currentBranches = branches;
                 },
+                onWorktreesUpdated: (worktrees) => {
+                    currentWorktrees = worktrees;
+                },
                 getUndocked: () => undocked,
             },
             root,
@@ -143,6 +147,8 @@ export async function activateRepositoryMode(
     const getRepoRoot = (): string => repoRoot;
     /** Returns the latest decorated branch snapshot shared by host command handlers. */
     const getCurrentBranches = (): Branch[] => currentBranches;
+    /** Returns the latest worktree snapshot shared by graph worktree-row handlers. */
+    const getCurrentWorktrees = (): GitWorktree[] => currentWorktrees;
     /** Returns the active branch name from the latest refreshed branch snapshot. */
     const getCurrentBranchName = (): string | undefined =>
         currentBranches.find((b) => b.isCurrent)?.name;
@@ -163,19 +169,21 @@ export async function activateRepositoryMode(
      */
     const refreshActiveRepository = async (): Promise<void> => {
         const branches = await gitOps.getBranches();
+        let refreshedWorktrees: GitWorktree[] = [];
         try {
-            await worktrees.refresh();
+            refreshedWorktrees = await worktreeService.refresh();
         } catch (err) {
             console.error("[IntelliGit] Worktrees refresh failed:", err);
         }
+        currentWorktrees = refreshedWorktrees;
         currentBranches = worktreeService.decorateBranches(branches);
-        commitGraph.setBranches(currentBranches);
-        sidebarGraph.setBranches(currentBranches);
+        commitGraph.setBranches(currentBranches, currentWorktrees);
+        sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
         await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
         await commitPanel.refresh();
         if (undocked) {
-            undocked.setBranches(currentBranches);
+            undocked.setBranches(currentBranches, currentWorktrees);
             await undocked.refresh();
         }
         await refreshService.refreshMergeConflicts();
@@ -338,6 +346,22 @@ export async function activateRepositoryMode(
                 if (!branch) return;
                 void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
             }),
+            undocked.onWorktreeAction?.(({ action, path: worktreePath }) => {
+                const worktree = currentWorktrees.find(
+                    (candidate) => candidate.path === worktreePath,
+                );
+                if (!worktree) return;
+                if (action === "open") {
+                    void vscode.commands.executeCommand("intelligit.openWorktree", {
+                        branch: {
+                            name: worktree.branch ?? worktree.path,
+                            worktreePath: worktree.path,
+                        },
+                    });
+                    return;
+                }
+                void vscode.commands.executeCommand(`intelligit.worktree.${action}`, worktree);
+            }) ?? new vscode.Disposable(() => undefined),
             undocked.onDeleteBranches?.((branchNames) => {
                 const requestedNames = Array.from(new Set(branchNames));
                 const branches = requestedNames
@@ -397,9 +421,9 @@ export async function activateRepositoryMode(
      */
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
-        currentBranches = await gitOps.getBranches();
+        currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
         if (!undocked) return;
-        undocked.setBranches(currentBranches);
+        undocked.setBranches(currentBranches, currentWorktrees);
         await undocked.refresh();
     };
 
@@ -547,6 +571,7 @@ export async function activateRepositoryMode(
             commitInfo,
             getRepoRoot,
             getCurrentBranches,
+            getCurrentWorktrees,
             refreshService: getRefreshService,
         },
         handleOpenCommitFileDiff,
@@ -578,13 +603,13 @@ export async function activateRepositoryMode(
     });
 
     try {
-        await worktrees.refresh();
+        currentWorktrees = await worktreeService.refresh();
     } catch (err) {
         console.error("Initial worktrees refresh failed:", err);
     }
     currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
-    commitGraph.setBranches(currentBranches);
-    sidebarGraph.setBranches(currentBranches);
+    commitGraph.setBranches(currentBranches, currentWorktrees);
+    sidebarGraph.setBranches(currentBranches, currentWorktrees);
     commitPanel.setBranches(currentBranches);
 
     commitPanel.refreshSilent().catch((err) => {

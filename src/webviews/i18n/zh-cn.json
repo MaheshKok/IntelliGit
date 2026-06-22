@@ -199,5 +199,10 @@
     "branch.worktreeBadge.current": "已在此 worktree 中检出",
     "branch.worktreeBadge.other": "已在另一个 worktree 中检出",
     "branch.menu.openWorktree": "打开 worktree",
-    "branch.menu.createWorktree": "创建 Worktree..."
+    "branch.menu.createWorktree": "创建 Worktree...",
+    "branch.section.worktrees": "工作树",
+    "worktree.menu.delete": "删除 Worktree",
+    "worktree.menu.lock": "锁定 Worktree",
+    "worktree.menu.unlock": "解锁 Worktree",
+    "worktree.menu.move": "移动 Worktree..."
 }

@@ -29,11 +29,12 @@ import type {
     Commit,
     CommitChecksSnapshot,
     CommitDetail,
+    GitWorktree,
     ThemeFolderIconMap,
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type { BranchAction, CommitAction } from "../protocol/commitGraphTypes";
+import type { BranchAction, CommitAction, WorktreeAction } from "../protocol/commitGraphTypes";
 import type { UnifiedInbound, UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
@@ -44,6 +45,7 @@ function App(): React.ReactElement {
     // --- Graph-side state ---
     const [commits, setCommits] = useState<Commit[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [worktrees, setWorktrees] = useState<GitWorktree[]>([]);
     const [selectedHash, setSelectedHash] = useState<string | null>(null);
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
@@ -262,6 +264,7 @@ function App(): React.ReactElement {
 
                 case "setBranches":
                     setBranches(data.branches);
+                    setWorktrees(data.worktrees ?? []);
                     setBranchFolderIcon(data.folderIcon);
                     setBranchFolderExpandedIcon(data.folderExpandedIcon);
                     setBranchFolderIconsByName(data.folderIconsByName);
@@ -413,6 +416,10 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "deleteBranches", branchNames });
     }, []);
 
+    const handleWorktreeAction = useCallback((action: WorktreeAction, path: string) => {
+        vscode.postMessage({ type: "worktreeAction", action, path });
+    }, []);
+
     const handleCommitAction = useCallback((action: CommitAction, hash: string) => {
         vscode.postMessage({ type: "commitAction", action, hash });
     }, []);
@@ -532,10 +539,12 @@ function App(): React.ReactElement {
                         >
                             <BranchColumn
                                 branches={branches}
+                                worktrees={worktrees}
                                 selectedBranch={selectedBranch}
                                 onSelectBranch={handleSelectBranch}
                                 onBranchAction={handleBranchAction}
                                 onDeleteBranches={handleDeleteBranches}
+                                onWorktreeAction={handleWorktreeAction}
                                 folderIcon={branchFolderIcon}
                                 folderExpandedIcon={branchFolderExpandedIcon}
                                 folderIconsByName={branchFolderIconsByName}

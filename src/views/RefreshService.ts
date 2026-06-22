@@ -7,7 +7,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch } from "../types";
+import type { Branch, GitWorktree } from "../types";
 import { CommitGraphViewProvider } from "./CommitGraphViewProvider";
 import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
@@ -30,6 +30,7 @@ export interface RefreshServiceDeps {
     mergeConflictsView: vscode.TreeView<unknown>;
     worktrees?: WorktreeService;
     onBranchesUpdated: (branches: Branch[]) => void;
+    onWorktreesUpdated?: (worktrees: GitWorktree[]) => void;
     getUndocked?: () => UndockedViewProvider | undefined;
 }
 
@@ -140,8 +141,9 @@ export class RefreshService implements vscode.Disposable {
         this.fullTimer = setTimeout(() => {
             void (async () => {
                 const rawBranches = await this.deps.gitOps.getBranches();
+                let worktrees: GitWorktree[] = [];
                 try {
-                    await this.deps.worktrees?.refresh();
+                    worktrees = (await this.deps.worktrees?.refresh()) ?? [];
                 } catch (err) {
                     console.error("[IntelliGit] Worktrees refresh failed:", err);
                 }
@@ -151,12 +153,13 @@ export class RefreshService implements vscode.Disposable {
                     ...(this.deps.additionalCommitGraphs ?? []),
                 ];
                 this.deps.onBranchesUpdated(branches);
+                this.deps.onWorktreesUpdated?.(worktrees);
                 for (const graph of commitGraphs) {
-                    graph.setBranches(branches);
+                    graph.setBranches(branches, worktrees);
                 }
                 this.deps.commitPanel.setBranches(branches);
                 const undocked = this.deps.getUndocked?.();
-                undocked?.setBranches(branches);
+                undocked?.setBranches(branches, worktrees);
                 await Promise.all(commitGraphs.map((graph) => graph.refresh()));
                 await this.refreshCommitPanels();
                 await this.refreshMergeConflicts();

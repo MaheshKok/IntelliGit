@@ -179,7 +179,7 @@ describe("RefreshService refresh scheduling", () => {
         expect(deps.worktrees.refresh).toHaveBeenCalledTimes(1);
         expect(deps.worktrees.decorateBranches).toHaveBeenCalledWith(rawBranches);
         expect(deps.onBranchesUpdated).toHaveBeenCalledWith(decoratedBranches);
-        expect(deps.commitGraph.setBranches).toHaveBeenCalledWith(decoratedBranches);
+        expect(deps.commitGraph.setBranches).toHaveBeenCalledWith(decoratedBranches, []);
         expect(deps.commitPanel.setBranches).toHaveBeenCalledWith(decoratedBranches);
         service.dispose();
     });

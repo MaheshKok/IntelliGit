@@ -9,16 +9,25 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
-import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
+import {
+    isBranchAction,
+    isCommitAction,
+    isWorktreeAction,
+} from "../webviews/protocol/commitGraphTypes";
 import type {
     Branch,
     CommitChecksSnapshot,
     CommitDetail,
+    GitWorktree,
     StashEntry,
     ThemeFolderIconMap,
     WorkingFile,
 } from "../types";
-import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
+import type {
+    BranchAction,
+    CommitAction,
+    WorktreeAction,
+} from "../webviews/protocol/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
 import { getGithubCommitChecks } from "../services/githubCommitChecksService";
 import {
@@ -110,6 +119,7 @@ export class UndockedViewProvider {
     private requestSeq = 0;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
+    private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
     private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
     private folderIconsByName: ThemeFolderIconMap = {};
@@ -133,6 +143,11 @@ export class UndockedViewProvider {
 
     private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
     readonly onDeleteBranches = this._onDeleteBranches.event;
+    private readonly _onWorktreeAction = new vscode.EventEmitter<{
+        action: WorktreeAction;
+        path: string;
+    }>();
+    readonly onWorktreeAction = this._onWorktreeAction.event;
     private readonly _onCommitAction = new vscode.EventEmitter<{
         action: CommitAction;
         hash: string;
@@ -189,6 +204,7 @@ export class UndockedViewProvider {
         this.selectedShelfIndex = null;
         this.shelfFiles = [];
         this.branches = [];
+        this.worktrees = [];
         this.currentBranch = null;
         this.lastFileCount = 0;
         this.selectedCommitDetail = null;
@@ -202,8 +218,9 @@ export class UndockedViewProvider {
     /**
      * Replaces the graph branch cache and posts decorated branch metadata when a panel exists.
      */
-    setBranches(branches: Branch[]): void {
+    setBranches(branches: Branch[], worktrees: GitWorktree[] = []): void {
         this.branches = branches;
+        this.worktrees = worktrees;
         this.sendBranches().catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(
@@ -318,6 +335,7 @@ export class UndockedViewProvider {
         this._onCommitSelected.dispose();
         this._onBranchAction.dispose();
         this._onDeleteBranches.dispose();
+        this._onWorktreeAction.dispose();
         this._onCommitAction.dispose();
         this._onOpenCommitFileDiff.dispose();
         this._onDidChangeFileCount.dispose();
@@ -395,6 +413,15 @@ export class UndockedViewProvider {
                 break;
             case "deleteBranches":
                 this._onDeleteBranches.fire(this.assertBranchNames(msg.branchNames, "branchNames"));
+                break;
+            case "worktreeAction":
+                if (!isWorktreeAction(assertString(msg.action, "action"))) {
+                    throw new Error("Invalid worktree action received from webview.");
+                }
+                this._onWorktreeAction.fire({
+                    action: msg.action,
+                    path: assertString(msg.path, "path"),
+                });
                 break;
             case "commitAction":
                 if (!isCommitAction(assertString(msg.action, "action"))) {
@@ -728,6 +755,7 @@ export class UndockedViewProvider {
         this.postToWebview({
             type: "setBranches",
             branches: this.branches,
+            worktrees: this.worktrees,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,

@@ -213,5 +213,10 @@
     "branch.worktreeBadge.current": "Checkout feito neste worktree",
     "branch.worktreeBadge.other": "Checkout feito em outro worktree",
     "branch.menu.openWorktree": "Abrir worktree",
-    "branch.menu.createWorktree": "Criar worktree..."
+    "branch.menu.createWorktree": "Criar worktree...",
+    "branch.section.worktrees": "Árvores de trabalho",
+    "worktree.menu.delete": "Excluir worktree",
+    "worktree.menu.lock": "Bloquear worktree",
+    "worktree.menu.unlock": "Desbloquear worktree",
+    "worktree.menu.move": "Mover worktree..."
 }

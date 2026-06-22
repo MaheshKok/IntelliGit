@@ -1,5 +1,5 @@
-import type { Branch } from "../../../types";
-import type { BranchAction } from "../../protocol/commitGraphTypes";
+import type { Branch, GitWorktree } from "../../../types";
+import type { BranchAction, WorktreeAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 
@@ -7,6 +7,8 @@ import { t } from "../shared/i18n";
 type SeparatorAction = `sep-${string}`;
 /** Branch menu entry type that allows separators without widening executable actions. */
 type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | SeparatorAction };
+/** Worktree menu entry type that allows separators without widening executable actions. */
+type WorktreeMenuItem = Omit<MenuItem, "action"> & { action: WorktreeAction | SeparatorAction };
 
 /** Shortens branch names for menu labels while preserving the distinguishing suffix. */
 function trim(name: string, max = 40): string {
@@ -28,6 +30,11 @@ function separator(action: SeparatorAction): BranchMenuItem {
     return { label: "", action, separator: true };
 }
 
+/** Creates typed separator rows for worktree context menus. */
+function worktreeSeparator(action: SeparatorAction): WorktreeMenuItem {
+    return { label: "", action, separator: true };
+}
+
 /**
  * Builds the context-menu model for command/ctrl-selected branch rows.
  *
@@ -38,6 +45,27 @@ function separator(action: SeparatorAction): BranchMenuItem {
  */
 export function getBulkBranchMenuItems(): MenuItem[] {
     return [{ label: t("branch.menu.deleteBranches"), action: "deleteBranches" }];
+}
+
+/** Builds the context-menu model for one worktree row using the native tree's capability rules. */
+export function getWorktreeMenuItems(worktree: GitWorktree): WorktreeMenuItem[] {
+    const items: WorktreeMenuItem[] = [{ label: t("branch.menu.openWorktree"), action: "open" }];
+    const canMutate = !worktree.isMain && !worktree.isCurrent;
+    if (canMutate || worktree.isLocked) {
+        items.push(worktreeSeparator("sep-worktree-open"));
+    }
+    if (canMutate) {
+        items.push({ label: t("worktree.menu.delete"), action: "delete" });
+    }
+    if (worktree.isLocked) {
+        items.push({ label: t("worktree.menu.unlock"), action: "unlock" });
+    } else if (canMutate) {
+        items.push({ label: t("worktree.menu.lock"), action: "lock" });
+    }
+    if (canMutate) {
+        items.push({ label: t("worktree.menu.move"), action: "move" });
+    }
+    return items;
 }
 
 /**

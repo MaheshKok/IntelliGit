@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added Phase 5 worktree include-file seeding so configured gitignored files such as `.env` or `.vscode/settings.json` can be copied into newly created worktrees.
 - Added Phase 6 advanced worktree operations for lock, unlock, move, prune, and repair with refreshed Worktrees view state.
 
+### Changed
+
+- Moved the Worktrees list into the branch column below Remote branches while preserving sidebar worktree actions for open, delete, lock/unlock, and move from the new context menu.
+
+### Tests
+
+- Added branch-column regression coverage for worktree ordering, row opening, and locked/unlocked worktree context-menu action parity.
+
 ## [0.12.1] - 2026-06-21
 
 ### Fixed

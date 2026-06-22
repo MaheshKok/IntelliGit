@@ -2,7 +2,7 @@
 
 import React, { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Branch, Commit, WorkingFile } from "../../../src/types";
+import type { Branch, Commit, GitWorktree, WorkingFile } from "../../../src/types";
 import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { FileTree } from "../../../src/webviews/react/commit-panel/components/FileTree";
 import { CommitList } from "../../../src/webviews/react/CommitList";
@@ -128,20 +128,23 @@ describe("BranchColumn integration", () => {
         },
     ];
 
-    function renderBranchColumn() {
+    function renderBranchColumn(options: { worktrees?: GitWorktree[] } = {}) {
         const onSelectBranch = vi.fn();
         const onBranchAction = vi.fn();
         const onDeleteBranches = vi.fn();
+        const onWorktreeAction = vi.fn();
         const mounted = mount(
             <BranchColumn
                 branches={branches}
+                worktrees={options.worktrees}
                 selectedBranch={null}
                 onSelectBranch={onSelectBranch}
                 onBranchAction={onBranchAction}
                 onDeleteBranches={onDeleteBranches}
+                onWorktreeAction={onWorktreeAction}
             />,
         );
-        return { ...mounted, onSelectBranch, onBranchAction, onDeleteBranches };
+        return { ...mounted, onSelectBranch, onBranchAction, onDeleteBranches, onWorktreeAction };
     }
 
     function branchRow(container: HTMLElement, text: string): HTMLElement {
@@ -308,6 +311,85 @@ describe("BranchColumn integration", () => {
             "origin/remote-beta",
         ]);
         expect(onBranchAction).not.toHaveBeenCalled();
+
+        unmount(root, container);
+    });
+
+    it("renders worktrees below remote branches and opens rows by path", () => {
+        const worktrees: GitWorktree[] = [
+            {
+                path: "/tmp/intelligit-feature",
+                head: "abc1234",
+                branch: "feature-one",
+                state: "linked",
+                isMain: false,
+                isCurrent: false,
+                isLocked: false,
+                isPrunable: false,
+            },
+            {
+                path: "/tmp/intelligit-locked",
+                head: "def5678",
+                branch: "locked-worktree",
+                state: "linked",
+                isMain: false,
+                isCurrent: false,
+                isLocked: true,
+                isPrunable: false,
+            },
+        ];
+        const { root, container, onWorktreeAction } = renderBranchColumn({ worktrees });
+        const text = container.textContent ?? "";
+        expect(text.indexOf("Remote")).toBeLessThan(text.indexOf("Worktrees"));
+
+        const row = container.querySelector(
+            '[data-worktree-path="/tmp/intelligit-feature"]',
+        ) as HTMLElement;
+        expect(row).toBeTruthy();
+        act(() => {
+            row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onWorktreeAction).toHaveBeenCalledWith("open", "/tmp/intelligit-feature");
+
+        act(() => {
+            row.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 120,
+                    clientY: 40,
+                }),
+            );
+        });
+        const labels = contextMenuItems().map((item) => item.textContent?.trim());
+        expect(labels).toEqual(["Open Worktree", "Delete Worktree", "Lock Worktree", "Move Worktree..."]);
+
+        const moveItem = contextMenuItems().find((item) => item.textContent?.includes("Move"));
+        act(() => {
+            moveItem?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onWorktreeAction).toHaveBeenCalledWith("move", "/tmp/intelligit-feature");
+
+        const lockedRow = container.querySelector(
+            '[data-worktree-path="/tmp/intelligit-locked"]',
+        ) as HTMLElement;
+        act(() => {
+            lockedRow.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 120,
+                    clientY: 40,
+                }),
+            );
+        });
+        const lockedLabels = contextMenuItems().map((item) => item.textContent?.trim());
+        expect(lockedLabels).toEqual([
+            "Open Worktree",
+            "Delete Worktree",
+            "Unlock Worktree",
+            "Move Worktree...",
+        ]);
 
         unmount(root, container);
     });

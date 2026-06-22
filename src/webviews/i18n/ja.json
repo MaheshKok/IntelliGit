@@ -199,5 +199,10 @@
     "branch.worktreeBadge.current": "この worktree でチェックアウト済み",
     "branch.worktreeBadge.other": "別の worktree でチェックアウト済み",
     "branch.menu.openWorktree": "Worktree を開く",
-    "branch.menu.createWorktree": "ワークツリーを作成..."
+    "branch.menu.createWorktree": "ワークツリーを作成...",
+    "branch.section.worktrees": "ワークツリー",
+    "worktree.menu.delete": "ワークツリーを削除",
+    "worktree.menu.lock": "ワークツリーをロック",
+    "worktree.menu.unlock": "ワークツリーのロックを解除",
+    "worktree.menu.move": "ワークツリーを移動..."
 }
