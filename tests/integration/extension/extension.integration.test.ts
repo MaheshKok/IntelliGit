@@ -4,6 +4,7 @@ import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
 
+/** Command callback shape captured by the VS Code command-registration mock. */
 type CommandHandler = (...args: unknown[]) => unknown;
 
 const registeredCommands = new Map<string, CommandHandler>();
@@ -23,6 +24,7 @@ const showInputBox = vi.fn(async (opts?: { prompt?: string; value?: string }) =>
     return "input";
 });
 const showSaveDialog = vi.fn(async () => ({ fsPath: "/tmp/patch.diff", path: "/tmp/patch.diff" }));
+const showOpenDialog = vi.fn(async () => [{ fsPath: "/tmp", path: "/tmp" }]);
 const showQuickPick = vi.fn(async (items: unknown[]) => items[0]);
 const showTextDocument = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg: unknown) => arg);
@@ -61,8 +63,10 @@ const configurationValues = new Map<string, unknown>();
 const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
     configurationValues.set(key, value);
 });
+/** Node `fs.watch` callback shape used by refresh-service integration mocks. */
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
+/** Minimal native tree-view shape needed for badge and description assertions. */
 type MockTreeView = {
     badge?: { value: number; tooltip?: string };
     description?: string;
@@ -70,6 +74,7 @@ type MockTreeView = {
 };
 const createdTreeViews = new Map<string, MockTreeView>();
 const initialTreeViewBadges = new Map<string, MockTreeView["badge"]>();
+/** Built-in Git extension repository subset used by activation refresh tests. */
 type MockGitRepository = {
     rootUri: { fsPath: string; path: string };
     onDidChangeState: ReturnType<typeof vi.fn>;
@@ -104,25 +109,30 @@ let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefin
     { uri: { fsPath: "/repo", path: "/repo" } },
 ];
 
+/** Disposable mock that runs a provided cleanup callback. */
 class MockDisposable {
     constructor(private readonly fn: () => void) {}
+    /** Runs the captured cleanup callback used by VS Code disposable mocks. */
     dispose(): void {
         this.fn();
     }
 }
 
+/** Synchronous event emitter mock matching VS Code's listener registration contract. */
 class MockEventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
     readonly event = (listener: (value: T) => void) => {
         this.listeners.push(listener);
         return { dispose: vi.fn() };
     };
+    /** Synchronously emits events so integration tests can assert immediate side effects. */
     fire(value: T): void {
         for (const listener of this.listeners) listener(value);
     }
     dispose = vi.fn();
 }
 
+/** Provides deterministic Git command output for extension activation command tests. */
 const defaultExecutorRunImpl = async (args: string[]) => {
     if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return "main";
     if (args[0] === "rev-parse" && args[1] === "HEAD") return "feed1234";
@@ -219,6 +229,7 @@ const gitOpsState = {
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
+/** Extension context subset used by activation integration tests. */
 type MockExtensionContext = {
     extensionUri: { fsPath: string; path: string };
     workspaceState?: {
@@ -236,10 +247,12 @@ let commitPanelRefreshHook:
     | ((provider: MockCommitPanelViewProvider) => void | Promise<void>)
     | undefined;
 
+/** Captures the most recently constructed undocked provider for cross-surface assertions. */
 function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void {
     latestUndockedProvider = provider;
 }
 
+/** Commit graph provider mock with event emitters exposed for host-command tests. */
 class MockCommitGraphViewProvider {
     static readonly viewType = "intelligit.commitGraph";
     static readonly sidebarViewType = "intelligit.sidebarGraph";
@@ -282,26 +295,33 @@ class MockCommitGraphViewProvider {
     setRepositoryLabel = vi.fn();
     dispose = vi.fn();
 
+    /** Emits commit selection from the mocked graph provider. */
     emitCommitSelected(hash: string): void {
         this.commitSelectedEmitter.fire(hash);
     }
+    /** Emits branch filter changes from the mocked graph provider. */
     emitBranchFilterChanged(value: string | null): void {
         this.branchFilterEmitter.fire(value);
     }
+    /** Emits branch-menu actions from the mocked graph provider. */
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
     }
+    /** Emits bulk branch deletion from the mocked graph provider. */
     emitDeleteBranches(branchNames: string[]): void {
         this.deleteBranchesEmitter.fire(branchNames);
     }
+    /** Emits commit-row actions from the mocked graph provider. */
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
+    /** Emits file-diff requests from the mocked graph provider. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
     }
 }
 
+/** Commit info provider mock for file-diff event plumbing. */
 class MockCommitInfoViewProvider {
     static readonly viewType = "intelligit.commitFiles";
     private openCommitFileDiffEmitter = new MockEventEmitter<{
@@ -314,6 +334,7 @@ class MockCommitInfoViewProvider {
     dispose = vi.fn();
 }
 
+/** Commit panel provider mock for selection, branch, file-count, and working-tree events. */
 class MockCommitPanelViewProvider {
     static readonly viewType = "intelligit.commitPanel";
     private fileCountEmitter = new MockEventEmitter<number>();
@@ -352,29 +373,37 @@ class MockCommitPanelViewProvider {
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
     dispose = vi.fn();
+    /** Emits changed-file counts from the mocked commit panel. */
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
     }
+    /** Emits working-tree changes from the mocked commit panel. */
     emitWorkingTreeChanged(): void {
         this.workingTreeEmitter.fire(undefined);
     }
+    /** Emits commit selection from the mocked commit panel. */
     emitCommitSelected(hash: string): void {
         this.commitSelectedEmitter.fire(hash);
     }
+    /** Emits branch filter changes from the mocked commit panel. */
     emitBranchFilterChanged(value: string | null): void {
         this.branchFilterEmitter.fire(value);
     }
+    /** Emits branch actions from the mocked commit panel. */
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
     }
+    /** Emits commit-row actions from the mocked commit panel. */
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
+    /** Emits file-diff requests from the mocked commit panel. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
     }
 }
 
+/** Undocked provider mock for dock/open/refresh integration coverage. */
 class MockUndockedViewProvider {
     static readonly viewType = "intelligit.undocked";
     private commitSelectedEmitter = new MockEventEmitter<string>();
@@ -415,24 +444,31 @@ class MockUndockedViewProvider {
     dispose = vi.fn(() => {
         this.disposeEmitter.fire(undefined);
     });
+    /** Emits working-tree changes from the mocked undocked provider. */
     emitWorkingTreeChanged(): void {
         this.workingTreeEmitter.fire(undefined);
     }
+    /** Emits changed-file counts from the mocked undocked provider. */
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
     }
+    /** Emits a request to dock the mocked undocked provider. */
     requestDock(): void {
         this.dockRequestedEmitter.fire(undefined);
     }
 }
 
-vi.mock("fs", () => ({
-    watch: vi.fn((...args: unknown[]) => {
-        const callback = args[args.length - 1];
-        if (typeof callback === "function") fsWatchCallbacks.push(callback);
-        return { close: vi.fn() };
-    }),
-}));
+vi.mock("fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("fs")>();
+    return {
+        ...actual,
+        watch: vi.fn((...args: unknown[]) => {
+            const callback = args[args.length - 1];
+            if (typeof callback === "function") fsWatchCallbacks.push(callback);
+            return { close: vi.fn() };
+        }),
+    };
+});
 
 vi.mock("vscode", () => ({
     Disposable: MockDisposable,
@@ -516,6 +552,7 @@ vi.mock("vscode", () => ({
         showWarningMessage,
         showInputBox,
         showSaveDialog,
+        showOpenDialog,
         showQuickPick,
         showTextDocument,
         createTerminal,
@@ -642,6 +679,7 @@ vi.mock("../../../src/utils/fileOps", async () => {
     };
 });
 
+/** Drains microtasks and mocked timers used by async extension activation handlers. */
 async function waitForAsync(): Promise<void> {
     const maxPasses = 8;
     for (let i = 0; i < maxPasses; i++) {
@@ -660,6 +698,7 @@ async function waitForAsync(): Promise<void> {
     await Promise.resolve();
 }
 
+/** Fake webview view plus send helper used to drive registered webview providers. */
 type FakeWebviewView = {
     view: {
         webview: {
@@ -676,6 +715,7 @@ type FakeWebviewView = {
     send: (message: unknown) => Promise<void>;
 };
 
+/** Creates a fake webview view with a capturable message handler. */
 function createFakeWebviewView(): FakeWebviewView {
     let messageHandler: ((message: unknown) => void | Promise<void>) | undefined;
     const webview = {
@@ -701,6 +741,7 @@ function createFakeWebviewView(): FakeWebviewView {
     };
 }
 
+/** Resolves and initializes a registered webview provider by view type. */
 function resolveRegisteredWebviewProvider(viewType: string): FakeWebviewView {
     const provider = registerWebviewViewProvider.mock.calls.find(([id]) => id === viewType)?.[1] as
         | {
@@ -719,10 +760,12 @@ function resolveRegisteredWebviewProvider(viewType: string): FakeWebviewView {
     return webview;
 }
 
+/** Extracts rendered button action IDs from static webview HTML. */
 function renderedButtonActions(html: string): string[] {
     return Array.from(html.matchAll(/<button[^>]+data-action="([^"]+)"/g)).map((match) => match[1]);
 }
 
+/** Provides a minimal in-memory workspace state implementation for activation tests. */
 function createWorkspaceState(
     initial: Record<string, unknown> = {},
 ): MockExtensionContext["workspaceState"] {
@@ -1091,10 +1134,33 @@ describe("extension integration", () => {
             extensionUri: { fsPath: "/ext", path: "/ext" },
             subscriptions: mockDisposables,
         } as unknown as MockExtensionContext;
+        const worktreeListOutput = [
+            "worktree /repo",
+            "HEAD feed1234",
+            "branch refs/heads/main",
+            "",
+            "worktree /repo-feature",
+            "HEAD a1b2c3d4",
+            "branch refs/heads/feature-worktree",
+            "",
+        ].join("\0");
+        executorRun.mockImplementation(async (args: string[]) => {
+            if (args[0] === "worktree" && args[1] === "list") return worktreeListOutput;
+            return defaultExecutorRunImpl(args);
+        });
 
         await activate(context);
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
+        expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
+        expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.delete")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.lock")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.unlock")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.move")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.prune")).toBe(true);
+        expect(registeredCommands.has("intelligit.worktree.repair")).toBe(true);
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
@@ -1102,6 +1168,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.conflictAcceptTheirs")).toBe(true);
         expect(registeredCommands.has("intelligit.openConflictSession")).toBe(true);
 
+        /** Fetches a registered command and fails the test with its command ID when missing. */
         function getCommand(id: string): CommandHandler {
             const cmd = registeredCommands.get(id);
             if (!cmd) throw new Error(`Missing command registration: ${id}`);
@@ -1115,6 +1182,69 @@ describe("extension integration", () => {
         await getCommand("intelligit.checkout")({
             branch: { name: "feature-local", isRemote: false },
         });
+        executorRun.mockClear();
+        const worktreeParent = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-worktree-"));
+        showOpenDialog.mockResolvedValueOnce([{ fsPath: worktreeParent, path: worktreeParent }]);
+        showInputBox.mockResolvedValueOnce("feature-created").mockResolvedValueOnce("feature-local");
+        showErrorMessage.mockClear();
+        await getCommand("intelligit.createWorktreeFromBranch")({
+            branch: { name: "feature-local", isRemote: false },
+        });
+        expect(showErrorMessage).not.toHaveBeenCalled();
+        expect(executorRun).toHaveBeenCalledWith([
+            "worktree",
+            "add",
+            path.join(worktreeParent, "feature-created"),
+            "feature-local",
+        ]);
+        await fs.rm(worktreeParent, { recursive: true, force: true });
+        executeCommandFallback.mockClear();
+        executorRun.mockClear();
+        await getCommand("intelligit.openWorktree")({
+            branch: {
+                name: "feature-worktree",
+                isRemote: false,
+                worktreePath: "/repo-feature",
+            },
+        });
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "vscode.openFolder",
+            { fsPath: "/repo-feature", path: "/repo-feature" },
+            { forceNewWindow: false, forceReuseWindow: true },
+        );
+
+        executeCommandFallback.mockClear();
+        executorRun.mockClear();
+        await getCommand("intelligit.checkout")({
+            branch: {
+                name: "feature-worktree",
+                isRemote: false,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            },
+        });
+        expect(executorRun).not.toHaveBeenCalledWith(["checkout", "feature-worktree"]);
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "vscode.openFolder",
+            { fsPath: "/repo-feature", path: "/repo-feature" },
+            { forceNewWindow: false, forceReuseWindow: true },
+        );
+        executorRun.mockClear();
+        showInformationMessage.mockClear();
+        await getCommand("intelligit.worktree.delete")({
+            path: "/repo-feature",
+            branch: "feature-worktree",
+            head: "a1b2c3d4",
+            state: "linked",
+            isMain: false,
+            isCurrent: false,
+            isLocked: false,
+            isPrunable: false,
+        });
+        expect(executorRun).toHaveBeenCalledWith(["status", "--porcelain"]);
+        expect(executorRun).toHaveBeenCalledWith(["worktree", "remove", "/repo-feature"]);
+        expect(showInformationMessage).toHaveBeenCalledWith("Deleted worktree /repo-feature");
         await getCommand("intelligit.newBranchFrom")({
             branch: { name: "feature-local", isRemote: false },
         });
@@ -1179,6 +1309,7 @@ describe("extension integration", () => {
         expect(deleteFileWithFallback).toHaveBeenCalled();
     });
 
+    /** Activates the extension with the shared mock context used by command-branch tests. */
     async function activateExtensionForCommandTests(): Promise<void> {
         const { activate } = await import("../../../src/extension");
         const context = {
@@ -1188,6 +1319,7 @@ describe("extension integration", () => {
         await activate(context);
     }
 
+    /** Fetches a registered command for focused command tests. */
     function requireCommand(id: string): CommandHandler {
         const command = registeredCommands.get(id);
         if (!command) throw new Error(`Missing command registration: ${id}`);
@@ -1946,6 +2078,7 @@ describe("extension integration", () => {
 
         const vscode = await import("vscode");
         const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        /** Webview panel subset captured from `createWebviewPanel` calls. */
         type CreatedPanel = {
             webview: {
                 onDidReceiveMessage: ReturnType<typeof vi.fn>;
@@ -2224,6 +2357,7 @@ describe("extension integration", () => {
 
         await activate(context);
 
+        /** Emits graph commit actions and drains async handlers for command assertions. */
         const emitCommitAction = async (payload: { action: string; hash: string }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
@@ -2629,6 +2763,7 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
+        /** Emits graph commit actions and drains async handlers for guarded action assertions. */
         const emitCommitAction = async (payload: { action: string; hash: string }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();

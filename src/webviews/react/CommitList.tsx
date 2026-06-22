@@ -9,6 +9,7 @@ import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitRow } from "./commit-list/CommitRow";
+import { MAX_NONE_REFRESH_ATTEMPTS } from "./commit-list/checksRefresh";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
@@ -101,6 +102,8 @@ export function CommitList({
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
     const isLoadingMoreRef = useRef(false);
+    // Per-commit budget for re-fetching a "no checks yet" snapshot after a push.
+    const noneCheckRetries = useRef<Map<string, number>>(new Map());
 
     const graphRows = useMemo(() => computeGraph(commits), [commits]);
     const maxCols = useMemo(
@@ -211,21 +214,39 @@ export function CommitList({
     );
     useEffect(() => {
         if (!onRequestCommitChecks) return;
-        const pendingHashes: string[] = [];
+        const retryHashes: string[] = [];
+        const noneHashes: string[] = [];
         for (const commit of visibleCommits) {
             const checks = commitChecks?.get(commit.hash);
             if (!checks) {
                 onRequestCommitChecks(commit.hash);
-            } else if (checks !== "loading" && checks.state === "pending") {
-                pendingHashes.push(commit.hash);
+                continue;
+            }
+            if (checks === "loading") continue;
+            if (checks.state === "pending") {
+                // CI is running; keep polling and drop any "no checks yet" budget.
+                noneCheckRetries.current.delete(commit.hash);
+                retryHashes.push(commit.hash);
+            } else if (checks.state === "none" && !isUnpushedCommit(commit.hash)) {
+                // A just-pushed commit reports no checks until GitHub registers CI;
+                // retry a bounded number of times so status appears without a manual refresh.
+                if ((noneCheckRetries.current.get(commit.hash) ?? 0) < MAX_NONE_REFRESH_ATTEMPTS) {
+                    retryHashes.push(commit.hash);
+                    noneHashes.push(commit.hash);
+                }
+            } else {
+                noneCheckRetries.current.delete(commit.hash);
             }
         }
-        if (pendingHashes.length === 0) return;
+        if (retryHashes.length === 0) return;
         const timer = window.setTimeout(() => {
-            for (const hash of pendingHashes) onRequestCommitChecks(hash);
+            for (const hash of noneHashes) {
+                noneCheckRetries.current.set(hash, (noneCheckRetries.current.get(hash) ?? 0) + 1);
+            }
+            for (const hash of retryHashes) onRequestCommitChecks(hash);
         }, PENDING_CHECK_REFRESH_MS);
         return () => window.clearTimeout(timer);
-    }, [commitChecks, onRequestCommitChecks, visibleCommits]);
+    }, [commitChecks, onRequestCommitChecks, visibleCommits, isUnpushedCommit]);
 
     const branchScopeLabel = selectedBranch
         ? t("commit.scope.branch", { branch: selectedBranch })

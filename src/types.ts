@@ -10,10 +10,39 @@ export interface Branch {
     hash: string;
     isRemote: boolean;
     isCurrent: boolean;
+    /** True when Git reports this local branch as checked out in any worktree. */
+    isCheckedOutInWorktree?: boolean;
+    /** Absolute worktree path for the matching checked-out local branch. */
+    worktreePath?: string;
+    /** True when the matching checked-out worktree is the active repository root. */
+    isCurrentWorktree?: boolean;
     upstream?: string;
     remote?: string;
     ahead: number;
     behind: number;
+}
+
+/** Lifecycle state of a Git worktree as reported by `git worktree list --porcelain`. */
+export type WorktreeState = "main" | "linked" | "bare" | "detached";
+
+/**
+ * One Git worktree parsed from `git worktree list --porcelain -z`.
+ *
+ * `path` is absolute. `branch` is the short branch name with the `refs/heads/`
+ * prefix stripped, or null when the worktree is detached or bare.
+ */
+export interface GitWorktree {
+    path: string;
+    head: string | null;
+    branch: string | null;
+    state: WorktreeState;
+    /** True for Git's first reported record, even when that worktree is detached. */
+    isMain: boolean;
+    isCurrent: boolean;
+    isLocked: boolean;
+    lockedReason?: string;
+    isPrunable: boolean;
+    prunableReason?: string;
 }
 
 /**
@@ -33,6 +62,7 @@ export interface ThemeTreeIcon {
     fontStyle?: string;
 }
 
+/** Theme icon pair used when a folder has distinct collapsed and expanded artwork. */
 interface ThemeNamedFolderIcon {
     collapsed?: ThemeTreeIcon;
     expanded?: ThemeTreeIcon;
@@ -87,6 +117,17 @@ export type CommitCheckState =
     | "unknown"
     | "none"
     | "unavailable";
+
+/**
+ * Whether a check state has not settled yet and is worth re-fetching.
+ *
+ * `"pending"` means CI is still running. `"none"` covers a just-pushed commit
+ * whose checks have not been registered by GitHub yet; it must be re-fetched so
+ * the status appears without a manual refresh. All other states are terminal.
+ */
+export function isPendingCheckState(state: CommitCheckState): boolean {
+    return state === "pending" || state === "none";
+}
 
 /** One GitHub Checks API or commit-status row shown inside the commit-checks popover. */
 export interface CommitCheckItem {
@@ -175,6 +216,7 @@ export interface StashEntry {
     hash: string;
 }
 
+/** File state labels provided for each side of a merge-conflict entry. */
 type MergeConflictSideState = "Modified" | "Added" | "Deleted";
 
 /**

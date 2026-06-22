@@ -1,8 +1,12 @@
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
-import type { Branch } from "../types";
-import type { BranchAction, CommitAction } from "../webviews/protocol/commitGraphTypes";
+import type { Branch, GitWorktree } from "../types";
+import type {
+    BranchAction,
+    CommitAction,
+    WorktreeAction,
+} from "../webviews/protocol/commitGraphTypes";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { openCommitFileDiff } from "../services/diffService";
 import { RefreshService } from "../views/RefreshService";
@@ -72,6 +76,7 @@ export interface RepositoryViewEventDeps {
     commitInfo: CommitInfoViewProvider;
     getRepoRoot: () => string;
     getCurrentBranches: () => Branch[];
+    getCurrentWorktrees: () => GitWorktree[];
     refreshService: () => RefreshService;
 }
 
@@ -102,6 +107,7 @@ export function registerRepositoryViewEvents(
         commitInfo,
         getRepoRoot,
         getCurrentBranches,
+        getCurrentWorktrees,
         refreshService,
     } = deps;
 
@@ -180,6 +186,28 @@ export function registerRepositoryViewEvents(
         void vscode.commands.executeCommand("intelligit.deleteBranches", { branches: selected });
     };
 
+    /** Forwards only worktree actions whose path came from the latest trusted host snapshot. */
+    const forwardWorktreeAction = ({
+        action,
+        path: worktreePath,
+    }: {
+        action: WorktreeAction;
+        path: string;
+    }): void => {
+        const worktree = getCurrentWorktrees().find((candidate) => candidate.path === worktreePath);
+        if (!worktree) return;
+        if (action === "open") {
+            void vscode.commands.executeCommand("intelligit.openWorktree", {
+                branch: {
+                    name: worktree.branch ?? worktree.path,
+                    worktreePath: worktree.path,
+                },
+            });
+            return;
+        }
+        void vscode.commands.executeCommand(`intelligit.worktree.${action}`, worktree);
+    };
+
     /**
      * Runs a view-originated commit action against the active repository state.
      *
@@ -219,6 +247,10 @@ export function registerRepositoryViewEvents(
         commitGraph.onDeleteBranches?.(forwardDeleteBranches) ??
             new vscode.Disposable(() => undefined),
         sidebarGraph.onDeleteBranches?.(forwardDeleteBranches) ??
+            new vscode.Disposable(() => undefined),
+        commitGraph.onWorktreeAction?.(forwardWorktreeAction) ??
+            new vscode.Disposable(() => undefined),
+        sidebarGraph.onWorktreeAction?.(forwardWorktreeAction) ??
             new vscode.Disposable(() => undefined),
         commitGraph.onCommitAction(runCommitAction),
         sidebarGraph.onCommitAction(runCommitAction),

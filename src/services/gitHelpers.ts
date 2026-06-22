@@ -343,6 +343,19 @@ export async function pickMainlineParent(
     return { kind: "selected", parentNumber: pick.parentNumber };
 }
 
+/** Result of resolving a branch checkout request against current worktree state. */
+export type CheckoutBranchResult =
+    | { kind: "checkedOut"; branch: string }
+    | { kind: "openWorktree"; branch: string; path: string };
+
+/** Returns an open-folder checkout result when Git would reject checking out a branch already in a worktree. */
+function getOpenWorktreeCheckoutResult(branch: Branch): CheckoutBranchResult | undefined {
+    if (!branch.isCheckedOutInWorktree || branch.isCurrentWorktree || !branch.worktreePath) {
+        return undefined;
+    }
+    return { kind: "openWorktree", branch: branch.name, path: branch.worktreePath };
+}
+
 /**
  * Checks out a local branch or creates a tracking local branch for a remote branch selection.
  *
@@ -354,11 +367,13 @@ export async function checkoutBranch(
     branch: Branch,
     currentBranches: Branch[],
     executor: GitExecutor,
-): Promise<string> {
+): Promise<CheckoutBranchResult> {
     if (!branch.isRemote) {
         assertValidBranchName(branch.name);
+        const openWorktreeResult = getOpenWorktreeCheckoutResult(branch);
+        if (openWorktreeResult) return openWorktreeResult;
         await executor.run(["checkout", branch.name]);
-        return branch.name;
+        return { kind: "checkedOut", branch: branch.name };
     }
 
     const localName = getLocalNameFromRemote(branch.name);
@@ -367,12 +382,14 @@ export async function checkoutBranch(
     const existingLocal = currentBranches.find((b) => !b.isRemote && b.name === localName);
     if (existingLocal) {
         assertValidBranchName(existingLocal.name);
+        const openWorktreeResult = getOpenWorktreeCheckoutResult(existingLocal);
+        if (openWorktreeResult) return openWorktreeResult;
         await executor.run(["checkout", existingLocal.name]);
-        return existingLocal.name;
+        return { kind: "checkedOut", branch: existingLocal.name };
     }
 
     await executor.run(["checkout", "--track", branch.name]);
-    return localName;
+    return { kind: "checkedOut", branch: localName };
 }
 
 /**

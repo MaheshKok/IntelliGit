@@ -7,11 +7,12 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch } from "../types";
+import type { Branch, GitWorktree } from "../types";
 import { CommitGraphViewProvider } from "./CommitGraphViewProvider";
 import { CommitPanelViewProvider } from "./CommitPanelViewProvider";
 import { MergeConflictsTreeProvider } from "./MergeConflictsTreeProvider";
 import type { UndockedViewProvider } from "./UndockedViewProvider";
+import type { WorktreeService } from "../services/worktreeService";
 
 /**
  * View and Git dependencies coordinated by refresh events for one active repository.
@@ -27,14 +28,18 @@ export interface RefreshServiceDeps {
     commitPanel: CommitPanelViewProvider;
     mergeConflicts: MergeConflictsTreeProvider;
     mergeConflictsView: vscode.TreeView<unknown>;
+    worktrees?: WorktreeService;
     onBranchesUpdated: (branches: Branch[]) => void;
+    onWorktreesUpdated?: (worktrees: GitWorktree[]) => void;
     getUndocked?: () => UndockedViewProvider | undefined;
 }
 
+/** Minimal VS Code Git extension API surface consumed by refresh wiring. */
 interface VsCodeGitExtension {
     getAPI(version: 1): VsCodeGitApi;
 }
 
+/** Repository events exposed by VS Code's built-in Git extension. */
 interface VsCodeGitApi {
     repositories: VsCodeGitRepository[];
     onDidOpenRepository?: (
@@ -45,11 +50,13 @@ interface VsCodeGitApi {
     ) => vscode.Disposable;
 }
 
+/** VS Code Git repository handle used for root matching and state-change events. */
 interface VsCodeGitRepository {
     rootUri: vscode.Uri;
     onDidChangeState?: (listener: () => unknown) => vscode.Disposable;
 }
 
+/** Debounced refresh source labels used to keep diagnostics and tests deterministic. */
 type RefreshEventType =
     | "workspace-file"
     | "git-index"
@@ -133,18 +140,26 @@ export class RefreshService implements vscode.Disposable {
         if (this.fullTimer) clearTimeout(this.fullTimer);
         this.fullTimer = setTimeout(() => {
             void (async () => {
-                const branches = await this.deps.gitOps.getBranches();
+                const rawBranches = await this.deps.gitOps.getBranches();
+                let worktrees: GitWorktree[] = [];
+                try {
+                    worktrees = (await this.deps.worktrees?.refresh()) ?? [];
+                } catch (err) {
+                    console.error("[IntelliGit] Worktrees refresh failed:", err);
+                }
+                const branches = this.deps.worktrees?.decorateBranches(rawBranches) ?? rawBranches;
                 const commitGraphs = [
                     this.deps.commitGraph,
                     ...(this.deps.additionalCommitGraphs ?? []),
                 ];
                 this.deps.onBranchesUpdated(branches);
+                this.deps.onWorktreesUpdated?.(worktrees);
                 for (const graph of commitGraphs) {
-                    graph.setBranches(branches);
+                    graph.setBranches(branches, worktrees);
                 }
                 this.deps.commitPanel.setBranches(branches);
                 const undocked = this.deps.getUndocked?.();
-                undocked?.setBranches(branches);
+                undocked?.setBranches(branches, worktrees);
                 await Promise.all(commitGraphs.map((graph) => graph.refresh()));
                 await this.refreshCommitPanels();
                 await this.refreshMergeConflicts();
@@ -156,6 +171,7 @@ export class RefreshService implements vscode.Disposable {
 
     /** Register workspace, Git-directory, and VS Code Git API refresh listeners. */
     registerFileWatchers(): void {
+        /** Coalesces noisy workspace file events into the shared refresh debounce. */
         const handler = () => this.scheduleRefreshEvent("workspace-file");
 
         this.disposables.push(
@@ -228,6 +244,7 @@ export class RefreshService implements vscode.Disposable {
             if (process.platform === "linux") {
                 const pattern = new vscode.RelativePattern(vscode.Uri.file(refsPath), "**/*");
                 const watcher = vscode.workspace.createFileSystemWatcher(pattern);
+                /** Coalesces Linux Git ref watcher events into the shared refresh debounce. */
                 const handler = () => this.scheduleRefreshEvent("git-refs");
                 this.disposables.push(
                     watcher.onDidChange(handler),

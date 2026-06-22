@@ -51,5 +51,13 @@
     "configuration.commitWindowPosition.enum.left": "Coloca el panel de confirmación en el lado izquierdo de la ventana desacoplada/con pestañas.",
     "configuration.commitWindowPosition.enum.right": "Coloca el panel de confirmación en el lado derecho de la ventana desacoplada/con pestañas.",
     "configuration.commitWindowPosition.markdownDescription": "Posición del panel de confirmación dentro de la ventana de IntelliGit desacoplada/con pestañas. `auto` (predeterminado) sigue la `workbench.sideBar.location` de VS Code; `left` y `right` fuerzan un lado.",
-    "view.fileCountBadge": "Archivos modificados"
+    "view.fileCountBadge": "Archivos modificados",
+    "command.createWorktree": "Crear worktree...",
+    "command.deleteWorktree": "Eliminar worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Archivos o carpetas relativos ignorados por Git que se copiarán del repositorio actual a cada worktree recién creado, como `.env` o `.vscode/settings.json`.",
+    "command.lockWorktree": "Bloquear worktree",
+    "command.unlockWorktree": "Desbloquear worktree",
+    "command.moveWorktree": "Mover worktree...",
+    "command.pruneWorktrees": "Depurar worktrees",
+    "command.repairWorktrees": "Reparar worktrees"
 }

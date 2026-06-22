@@ -195,5 +195,14 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "GitHub コミット チェック",
     "commit.checks.loading": "チェックを読み込んでいます...",
-    "commit.checks.none": "チェックが見つかりません"
+    "commit.checks.none": "チェックが見つかりません",
+    "branch.worktreeBadge.current": "この worktree でチェックアウト済み",
+    "branch.worktreeBadge.other": "別の worktree でチェックアウト済み",
+    "branch.menu.openWorktree": "Worktree を開く",
+    "branch.menu.createWorktree": "ワークツリーを作成...",
+    "branch.section.worktrees": "ワークツリー",
+    "worktree.menu.delete": "ワークツリーを削除",
+    "worktree.menu.lock": "ワークツリーをロック",
+    "worktree.menu.unlock": "ワークツリーのロックを解除",
+    "worktree.menu.move": "ワークツリーを移動..."
 }

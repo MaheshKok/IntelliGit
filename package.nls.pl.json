@@ -51,5 +51,13 @@
     "configuration.commitWindowPosition.enum.left": "Umieść panel zatwierdzania po lewej stronie oddokowanego/zaznaczonego karty okna.",
     "configuration.commitWindowPosition.enum.right": "Umieść panel zatwierdzania po prawej stronie oddokowanego/zaznaczonego karty okna.",
     "configuration.commitWindowPosition.markdownDescription": "Pozycja panelu zatwierdzania w niezadokowanym/zaznaczonym na karcie oknie IntelliGit. `auto` (domyślne) następuje po `workbench.sideBar.location` programu VS Code; `left` i `right` wymuszają stronę.",
-    "view.fileCountBadge": "Zmienione pliki"
+    "view.fileCountBadge": "Zmienione pliki",
+    "command.createWorktree": "Utwórz worktree...",
+    "command.deleteWorktree": "Usuń worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Względne pliki lub foldery ignorowane przez Git, które mają być kopiowane z bieżącego repozytorium do każdego nowo utworzonego worktree, takie jak `.env` lub `.vscode/settings.json`.",
+    "command.lockWorktree": "Zablokuj worktree",
+    "command.unlockWorktree": "Odblokuj worktree",
+    "command.moveWorktree": "Przenieś worktree...",
+    "command.pruneWorktrees": "Przytnij worktree",
+    "command.repairWorktrees": "Napraw worktree"
 }

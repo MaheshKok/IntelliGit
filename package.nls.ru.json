@@ -51,5 +51,13 @@
     "configuration.commitWindowPosition.enum.left": "Разместите панель подтверждения изменений в левой части открепленного/открытого окна.",
     "configuration.commitWindowPosition.enum.right": "Разместите панель подтверждения изменений в правой части открепленного/открытого окна.",
     "configuration.commitWindowPosition.markdownDescription": "Положение панели фиксации в открепленном/вложенном окне IntelliGit. Параметр `auto` (по умолчанию) соответствует параметру `workbench.sideBar.location` в VS Code; `left` и `right` принудительно определяют сторону.",
-    "view.fileCountBadge": "Измененные файлы"
+    "view.fileCountBadge": "Измененные файлы",
+    "command.createWorktree": "Создать worktree...",
+    "command.deleteWorktree": "Удалить worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Относительные файлы или папки, игнорируемые Git, которые нужно копировать из текущего репозитория в каждый вновь созданный worktree, например `.env` или `.vscode/settings.json`.",
+    "command.lockWorktree": "Заблокировать worktree",
+    "command.unlockWorktree": "Разблокировать worktree",
+    "command.moveWorktree": "Переместить worktree...",
+    "command.pruneWorktrees": "Очистить worktree",
+    "command.repairWorktrees": "Восстановить worktree"
 }

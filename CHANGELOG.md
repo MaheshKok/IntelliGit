@@ -5,6 +5,26 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-06-21
+
+### Added
+
+- Added Phase 0 Git worktree support with typed worktree metadata, a `git worktree list --porcelain -z` parser, and focused parser/integration coverage.
+- Added Phase 1 read-only Worktrees view in the IntelliGit sidebar with cached worktree refreshes, localized view title, and native tree-provider coverage.
+- Added Phase 2 branch worktree badges, Open Worktree branch action, and checkout guards that open an existing worktree instead of running a failing checkout.
+- Added Phase 3 worktree creation from branch actions with path safety checks, remote-branch upstream tracking, and a Worktrees view title command.
+- Added Phase 4 safe worktree deletion from the Worktrees view with main/current guards, dirty-worktree confirmation, and no branch deletion side effects.
+- Added Phase 5 worktree include-file seeding so configured gitignored files such as `.env` or `.vscode/settings.json` can be copied into newly created worktrees.
+- Added Phase 6 advanced worktree operations for lock, unlock, move, prune, and repair with refreshed Worktrees view state.
+
+### Changed
+
+- Moved the Worktrees list into the branch column below Remote branches while preserving sidebar worktree actions for open, delete, lock/unlock, and move from the new context menu.
+
+### Tests
+
+- Added branch-column regression coverage for worktree ordering, row opening, and locked/unlocked worktree context-menu action parity.
+
 ## [0.12.1] - 2026-06-21
 
 ### Fixed

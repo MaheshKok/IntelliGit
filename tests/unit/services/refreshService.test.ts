@@ -7,6 +7,7 @@ import type { CommitPanelViewProvider } from "../../../src/views/CommitPanelView
 import type { MergeConflictsTreeProvider } from "../../../src/views/MergeConflictsTreeProvider";
 
 vi.mock("vscode", () => {
+    /** Creates disposable mocks for VS Code watcher/listener registrations. */
     const disposable = () => ({ dispose: vi.fn() });
     const fileSystemWatcher = {
         onDidChange: vi.fn(() => disposable()),
@@ -45,6 +46,7 @@ vi.mock("vscode", () => {
     };
 });
 
+/** Refresh source labels used to reach the private scheduler in tests. */
 type RefreshEventType =
     | "workspace-file"
     | "git-index"
@@ -52,10 +54,12 @@ type RefreshEventType =
     | "git-refs"
     | "git-repository-state";
 
+/** Narrow test-only view of the refresh service scheduler method. */
 interface RefreshServiceSchedulerAccess {
     scheduleRefreshEvent(eventType: RefreshEventType): void;
 }
 
+/** Builds the current-branch fixture used by refresh propagation tests. */
 function makeBranch(): Branch {
     return {
         name: "main",
@@ -67,6 +71,7 @@ function makeBranch(): Branch {
     };
 }
 
+/** Creates a refresh service with mocked downstream providers and scheduler access. */
 function makeService(): {
     service: RefreshService;
     scheduler: RefreshServiceSchedulerAccess;
@@ -148,6 +153,34 @@ describe("RefreshService refresh scheduling", () => {
         expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
         expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
 
+        service.dispose();
+    });
+
+    it("decorates full-refresh branches before storing provider state", async () => {
+        const { service, scheduler, deps } = makeService();
+        const rawBranches = [makeBranch()];
+        const decoratedBranches = [
+            {
+                ...rawBranches[0],
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: true,
+                worktreePath: "/tmp/intelligit-refresh-test",
+            },
+        ];
+        deps.gitOps.getBranches = vi.fn(async () => rawBranches) as never;
+        deps.worktrees = {
+            refresh: vi.fn(async () => []),
+            decorateBranches: vi.fn(() => decoratedBranches),
+        } as never;
+
+        scheduler.scheduleRefreshEvent("git-refs");
+        await vi.advanceTimersByTimeAsync(500);
+
+        expect(deps.worktrees.refresh).toHaveBeenCalledTimes(1);
+        expect(deps.worktrees.decorateBranches).toHaveBeenCalledWith(rawBranches);
+        expect(deps.onBranchesUpdated).toHaveBeenCalledWith(decoratedBranches);
+        expect(deps.commitGraph.setBranches).toHaveBeenCalledWith(decoratedBranches, []);
+        expect(deps.commitPanel.setBranches).toHaveBeenCalledWith(decoratedBranches);
         service.dispose();
     });
 

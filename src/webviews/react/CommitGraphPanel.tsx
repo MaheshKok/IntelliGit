@@ -6,6 +6,7 @@ import type {
     Commit,
     CommitChecksSnapshot,
     CommitDetail,
+    GitWorktree,
     ThemeFolderIconMap,
     ThemeIconFont,
     ThemeTreeIcon,
@@ -15,10 +16,12 @@ import type {
     CommitAction,
     CommitGraphOutbound,
     CommitGraphInbound,
+    WorktreeAction,
 } from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { ThemeIconFontFaces } from "./shared/components";
 import { JETBRAINS_UI } from "./shared/tokens";
 
@@ -114,6 +117,7 @@ export function CommitGraphPanel({
 }: Props): React.ReactElement {
     const [commits, setCommits] = useState<Commit[]>([]);
     const [branches, setBranches] = useState<Branch[]>([]);
+    const [worktrees, setWorktrees] = useState<GitWorktree[]>([]);
     const [selectedHash, setSelectedHash] = useState<string | null>(null);
     const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(false);
@@ -210,6 +214,7 @@ export function CommitGraphPanel({
                     break;
                 case "setBranches":
                     setBranches(data.branches);
+                    setWorktrees(data.worktrees ?? []);
                     setBranchFolderIcon(data.folderIcon);
                     setBranchFolderExpandedIcon(data.folderExpandedIcon);
                     setBranchFolderIconsByName(data.folderIconsByName);
@@ -317,6 +322,13 @@ export function CommitGraphPanel({
         [vscode],
     );
 
+    const handleWorktreeAction = useCallback(
+        (action: WorktreeAction, path: string) => {
+            vscode.postMessage({ type: "worktreeAction", action, path });
+        },
+        [vscode],
+    );
+
     const handleCommitAction = useCallback(
         (action: CommitAction, hash: string) => {
             vscode.postMessage({ type: "commitAction", action, hash });
@@ -333,15 +345,18 @@ export function CommitGraphPanel({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            const cached = commitChecks.get(hash);
-            if (cached && (cached === "loading" || cached.state !== "pending")) return;
-            setCommitChecks((prev) => {
-                const latest = prev.get(hash);
-                if (latest && (latest === "loading" || latest.state !== "pending")) return prev;
-                const next = new Map(prev);
-                next.set(hash, "loading");
-                return next;
-            });
+            const current = commitChecks.get(hash);
+            if (!shouldRequestCommitChecks(current)) return;
+            // Only show the spinner on the first fetch. A background refresh of an
+            // already-displayed snapshot keeps the current badge so it does not flicker.
+            if (current === undefined) {
+                setCommitChecks((prev) => {
+                    if (prev.get(hash) !== undefined) return prev;
+                    const next = new Map(prev);
+                    next.set(hash, "loading");
+                    return next;
+                });
+            }
             vscode.postMessage({ type: "requestCommitChecks", hash });
         },
         [commitChecks, vscode],
@@ -369,10 +384,12 @@ export function CommitGraphPanel({
                 <div style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}>
                     <BranchColumn
                         branches={branches}
+                        worktrees={worktrees}
                         selectedBranch={selectedBranch}
                         onSelectBranch={handleSelectBranch}
                         onBranchAction={handleBranchAction}
                         onDeleteBranches={handleDeleteBranches}
+                        onWorktreeAction={handleWorktreeAction}
                         folderIcon={branchFolderIcon}
                         folderExpandedIcon={branchFolderExpandedIcon}
                         folderIconsByName={branchFolderIconsByName}

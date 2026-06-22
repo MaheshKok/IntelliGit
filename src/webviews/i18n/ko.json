@@ -195,5 +195,14 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "GitHub 커밋 검사",
     "commit.checks.loading": "검사를 불러오는 중...",
-    "commit.checks.none": "검사를 찾을 수 없습니다"
+    "commit.checks.none": "검사를 찾을 수 없습니다",
+    "branch.worktreeBadge.current": "이 worktree에서 체크아웃됨",
+    "branch.worktreeBadge.other": "다른 worktree에서 체크아웃됨",
+    "branch.menu.openWorktree": "Worktree 열기",
+    "branch.menu.createWorktree": "워크트리 만들기...",
+    "branch.section.worktrees": "워크트리",
+    "worktree.menu.delete": "워크트리 삭제",
+    "worktree.menu.lock": "워크트리 잠금",
+    "worktree.menu.unlock": "워크트리 잠금 해제",
+    "worktree.menu.move": "워크트리 이동..."
 }

@@ -4,6 +4,7 @@ import { createBranchCommands } from "../commands/branchCommands";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { runPublishBranchFlow } from "../services/publishService";
+import type { WorktreeService } from "../services/worktreeService";
 import {
     applySelectedCommitFileChange,
     compareCommitInfoFileWithLocal,
@@ -16,7 +17,7 @@ import {
 } from "../services/jetbrainsMergeService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { discoverGitRepositories } from "../services/repositoryDiscovery";
-import type { Branch } from "../types";
+import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { runWithNotificationProgress } from "../utils/notifications";
@@ -33,6 +34,7 @@ interface RepositoryCommandsDeps {
     context: vscode.ExtensionContext;
     executor: GitExecutor;
     gitOps: GitOps;
+    worktreeService: WorktreeService;
     getRepoRoot: () => string;
     setRepositories: (repositories: DiscoveredRepository[]) => void;
     getCurrentBranches: () => Branch[];
@@ -54,6 +56,7 @@ interface RepositoryCommandsDeps {
     openBuiltInMergeEditorForFile: (filePath: string) => Promise<void>;
 }
 
+/** Narrows command payloads from tree rows before file operations touch the repository. */
 const isFilePathContext = (value: unknown): value is { filePath: string } => {
     return (
         !!value &&
@@ -63,6 +66,14 @@ const isFilePathContext = (value: unknown): value is { filePath: string } => {
     );
 };
 
+/** Narrows VS Code tree-row payloads before destructive worktree commands can use the path. */
+const isWorktreeContext = (value: unknown): value is GitWorktree => {
+    return (
+        !!value && typeof value === "object" && "path" in value && typeof value.path === "string"
+    );
+};
+
+/** Extracts merge-conflict file paths only from known VS Code command payload shapes. */
 const resolveConflictPath = (ctx: unknown): string | null =>
     isFilePathContext(ctx) ? ctx.filePath : null;
 
@@ -128,6 +139,110 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                 return;
             }
             await runPublishBranchFlow(gitOps, currentBranch.name, getRepoRoot(), context.secrets);
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.delete", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            try {
+                const removed = await deps.worktreeService.removeWorktree(ctx.path);
+                if (!removed) return;
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Deleted worktree {path}", { path: ctx.path }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Delete worktree failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.lock", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            const reason = await vscode.window.showInputBox({
+                prompt: vscode.l10n.t("Lock reason (optional)"),
+            });
+            if (reason === undefined) return;
+            try {
+                await deps.worktreeService.lockWorktree(ctx.path, reason.trim() || undefined);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Locked worktree {path}", { path: ctx.path }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.unlock", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            try {
+                await deps.worktreeService.unlockWorktree(ctx.path);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Unlocked worktree {path}", { path: ctx.path }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.move", async (ctx: unknown) => {
+            if (!isWorktreeContext(ctx)) return;
+            const picked = await vscode.window.showOpenDialog({
+                title: vscode.l10n.t("Select New Worktree Location"),
+                openLabel: vscode.l10n.t("Move Worktree"),
+                canSelectFiles: false,
+                canSelectFolders: true,
+                canSelectMany: false,
+            });
+            const newPath = picked?.[0]?.fsPath;
+            if (!newPath) return;
+            try {
+                await deps.worktreeService.moveWorktree(ctx.path, newPath);
+                vscode.window.showInformationMessage(
+                    vscode.l10n.t("Moved worktree {path}", { path: newPath }),
+                );
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.prune", async () => {
+            try {
+                await deps.worktreeService.pruneWorktrees();
+                vscode.window.showInformationMessage(vscode.l10n.t("Pruned worktrees."));
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
+        }),
+        vscode.commands.registerCommand("intelligit.worktree.repair", async () => {
+            try {
+                await deps.worktreeService.repairWorktrees();
+                vscode.window.showInformationMessage(vscode.l10n.t("Repaired worktrees."));
+                await vscode.commands.executeCommand("intelligit.refresh");
+            } catch (err) {
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Worktree operation failed: {message}", {
+                        message: getErrorMessage(err),
+                    }),
+                );
+            }
         }),
         vscode.commands.registerCommand("intelligit.selectRepository", async () => {
             const repositories = await discoverGitRepositories(workspaceRoots());
@@ -252,6 +367,7 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
     );
 }
 
+/** Applies one side of a merge conflict and refreshes conflict UI after Git mutates the file. */
 async function acceptConflictSide(
     ctx: unknown,
     side: "ours" | "theirs",
@@ -299,6 +415,7 @@ function registerBranchCommands(deps: RepositoryCommandsDeps): void {
         gitOps: deps.gitOps,
         getCurrentBranchName: deps.getCurrentBranchName,
         getCurrentBranches: deps.getCurrentBranches,
+        createWorktree: (opts) => deps.worktreeService.createWorktree(opts).then(() => undefined),
         openConflictSession: deps.openConflictSession,
         refreshConflictUi: () => deps.refreshService().refreshConflictUi(),
     });

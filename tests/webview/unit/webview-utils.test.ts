@@ -15,6 +15,7 @@ import { canCherryPickFromBranchScope } from "../../../src/webviews/react/Commit
 import { getCommitMenuItems } from "../../../src/webviews/react/commit-list/commitMenu";
 import { buildFileTree, collectDirPaths, countFiles } from "../../../src/webviews/react/shared/fileTree";
 
+/** Builds a branch fixture for menu and branch-scope utility tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
     return {
         name: "main",
@@ -27,6 +28,7 @@ function makeBranch(overrides: Partial<Branch> = {}): Branch {
     };
 }
 
+/** Builds a commit fixture with a realistic parent/ref shape for menu tests. */
 function makeCommit(overrides: Partial<Commit> = {}): Commit {
     return {
         hash: "abcdef1234567890",
@@ -61,6 +63,55 @@ describe("branch menu", () => {
         expect(actions).toContain("deleteBranch");
         expect(actions).not.toContain("pushBranch");
         expect(actions).not.toContain("renameBranch");
+    });
+
+    it("shows Open Worktree only for branches checked out in another worktree", () => {
+        const checkedOutElsewhere = getBranchMenuItems(
+            makeBranch({
+                name: "feature/worktree",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
+            "main",
+        )
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+        const checkedOutHere = getBranchMenuItems(
+            makeBranch({
+                name: "main",
+                isCurrent: true,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: true,
+                worktreePath: "/repo",
+            }),
+            "main",
+        )
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+
+        expect(checkedOutElsewhere[0]).toBe("openWorktree");
+        expect(checkedOutHere).not.toContain("openWorktree");
+    });
+
+    it("shows Create Worktree only for branches not already checked out in a worktree", () => {
+        const freeBranch = getBranchMenuItems(makeBranch({ name: "feature/free" }), "main")
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+        const checkedOutElsewhere = getBranchMenuItems(
+            makeBranch({
+                name: "feature/worktree",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
+            "main",
+        )
+            .filter((item) => !item.separator)
+            .map((item) => item.action);
+
+        expect(freeBranch).toContain("createWorktreeFromBranch");
+        expect(checkedOutElsewhere).not.toContain("createWorktreeFromBranch");
     });
 
     it("trims long branch names in menu labels", () => {

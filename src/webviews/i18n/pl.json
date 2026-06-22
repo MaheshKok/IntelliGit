@@ -216,5 +216,14 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "Sprawdzenia commitów GitHub",
     "commit.checks.loading": "Ładowanie sprawdzeń...",
-    "commit.checks.none": "Nie znaleziono sprawdzeń"
+    "commit.checks.none": "Nie znaleziono sprawdzeń",
+    "branch.worktreeBadge.current": "Wyewidencjonowano w tym worktree",
+    "branch.worktreeBadge.other": "Wyewidencjonowano w innym worktree",
+    "branch.menu.openWorktree": "Otwórz worktree",
+    "branch.menu.createWorktree": "Utwórz worktree...",
+    "branch.section.worktrees": "Drzewa robocze",
+    "worktree.menu.delete": "Usuń worktree",
+    "worktree.menu.lock": "Zablokuj worktree",
+    "worktree.menu.unlock": "Odblokuj worktree",
+    "worktree.menu.move": "Przenieś worktree..."
 }

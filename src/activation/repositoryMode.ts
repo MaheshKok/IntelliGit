@@ -3,9 +3,10 @@ import * as vscode from "vscode";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
-import type { Branch } from "../types";
+import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { WorktreeService } from "../services/worktreeService";
 import {
     getJetBrainsMergeToolPath,
     getPreferExternalMergeTool,
@@ -60,6 +61,7 @@ export async function activateRepositoryMode(
     const gitOps = new GitOps(executor);
 
     let currentBranches: Branch[] = [];
+    let currentWorktrees: GitWorktree[] = [];
     let undockedCommitDetailRequestSeq = 0;
     let repoRootUri = vscode.Uri.file(repoRoot);
     let undocked: UndockedViewProvider | undefined;
@@ -77,6 +79,7 @@ export async function activateRepositoryMode(
         context.workspaceState,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
+    const worktreeService = new WorktreeService(executor, () => repoRoot);
 
     commitGraph.setRepositoryLabel(activeRepository.label);
     sidebarGraph.setRepositoryLabel(activeRepository.label);
@@ -86,6 +89,7 @@ export async function activateRepositoryMode(
         treeDataProvider: mergeConflicts,
     });
     const fileCountBadgeView = createFileCountBadgeView();
+    /** Keeps the native view badge in sync with the commit panel's working-tree count. */
     const updateFileCountBadge = (count: number): void => {
         fileCountBadgeView.badge =
             count > 0
@@ -98,6 +102,7 @@ export async function activateRepositoryMode(
                   }
                 : undefined;
     };
+    /** Clears stale badge state before the first panel count event arrives. */
     const resetFileCountBadge = (): void => updateFileCountBadge(0);
     resetFileCountBadge();
     const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
@@ -118,8 +123,12 @@ export async function activateRepositoryMode(
                 commitPanel,
                 mergeConflicts,
                 mergeConflictsView,
+                worktrees: worktreeService,
                 onBranchesUpdated: (branches) => {
                     currentBranches = branches;
+                },
+                onWorktreesUpdated: (worktrees) => {
+                    currentWorktrees = worktrees;
                 },
                 getUndocked: () => undocked,
             },
@@ -127,12 +136,19 @@ export async function activateRepositoryMode(
         );
 
     let refreshService = createRefreshService(repoRoot);
+    /** Returns the currently active refresh coordinator after repository switches replace it. */
     const getRefreshService = (): RefreshService => refreshService;
+    /** Returns the repository root currently bound to command handlers. */
     const getRepoRoot = (): string => repoRoot;
+    /** Returns the latest decorated branch snapshot shared by host command handlers. */
     const getCurrentBranches = (): Branch[] => currentBranches;
+    /** Returns the latest worktree snapshot shared by graph worktree-row handlers. */
+    const getCurrentWorktrees = (): GitWorktree[] => currentWorktrees;
+    /** Returns the active branch name from the latest refreshed branch snapshot. */
     const getCurrentBranchName = (): string | undefined =>
         currentBranches.find((b) => b.isCurrent)?.name;
 
+    /** Clears selected commit state from every visible IntelliGit surface at once. */
     const clearSelection = (): void => {
         commitGraph.clearCommitDetail();
         sidebarGraph.clearCommitDetail();
@@ -147,14 +163,22 @@ export async function activateRepositoryMode(
      * the caller; background initial refreshes attach their own logging handlers.
      */
     const refreshActiveRepository = async (): Promise<void> => {
-        currentBranches = await gitOps.getBranches();
-        commitGraph.setBranches(currentBranches);
-        sidebarGraph.setBranches(currentBranches);
+        const branches = await gitOps.getBranches();
+        let refreshedWorktrees: GitWorktree[] = [];
+        try {
+            refreshedWorktrees = await worktreeService.refresh();
+        } catch (err) {
+            console.error("[IntelliGit] Worktrees refresh failed:", err);
+        }
+        currentWorktrees = refreshedWorktrees;
+        currentBranches = worktreeService.decorateBranches(branches);
+        commitGraph.setBranches(currentBranches, currentWorktrees);
+        sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
         await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
         await commitPanel.refresh();
         if (undocked) {
-            undocked.setBranches(currentBranches);
+            undocked.setBranches(currentBranches, currentWorktrees);
             await undocked.refresh();
         }
         await refreshService.refreshMergeConflicts();
@@ -265,6 +289,7 @@ export async function activateRepositoryMode(
         });
     };
 
+    /** Target location for moving the unified IntelliGit webview out of the sidebar. */
     type UndockTarget = "editorTab" | "newWindow";
     const handleOpenCommitFileDiff = createOpenCommitFileDiffHandler({
         executor,
@@ -316,6 +341,22 @@ export async function activateRepositoryMode(
                 if (!branch) return;
                 void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
             }),
+            undocked.onWorktreeAction?.(({ action, path: worktreePath }) => {
+                const worktree = currentWorktrees.find(
+                    (candidate) => candidate.path === worktreePath,
+                );
+                if (!worktree) return;
+                if (action === "open") {
+                    void vscode.commands.executeCommand("intelligit.openWorktree", {
+                        branch: {
+                            name: worktree.branch ?? worktree.path,
+                            worktreePath: worktree.path,
+                        },
+                    });
+                    return;
+                }
+                void vscode.commands.executeCommand(`intelligit.worktree.${action}`, worktree);
+            }) ?? new vscode.Disposable(() => undefined),
             undocked.onDeleteBranches?.((branchNames) => {
                 const requestedNames = Array.from(new Set(branchNames));
                 const branches = requestedNames
@@ -375,9 +416,9 @@ export async function activateRepositoryMode(
      */
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
-        currentBranches = await gitOps.getBranches();
+        currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
         if (!undocked) return;
-        undocked.setBranches(currentBranches);
+        undocked.setBranches(currentBranches, currentWorktrees);
         await undocked.refresh();
     };
 
@@ -524,6 +565,7 @@ export async function activateRepositoryMode(
             commitInfo,
             getRepoRoot,
             getCurrentBranches,
+            getCurrentWorktrees,
             refreshService: getRefreshService,
         },
         handleOpenCommitFileDiff,
@@ -533,6 +575,7 @@ export async function activateRepositoryMode(
         context,
         executor,
         gitOps,
+        worktreeService,
         getRepoRoot,
         setRepositories: (nextRepositories) => {
             repositories = nextRepositories;
@@ -553,8 +596,14 @@ export async function activateRepositoryMode(
         openBuiltInMergeEditorForFile,
     });
 
-    currentBranches = await gitOps.getBranches();
-    commitGraph.setBranches(currentBranches);
+    try {
+        currentWorktrees = await worktreeService.refresh();
+    } catch (err) {
+        console.error("Initial worktrees refresh failed:", err);
+    }
+    currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
+    commitGraph.setBranches(currentBranches, currentWorktrees);
+    sidebarGraph.setBranches(currentBranches, currentWorktrees);
     commitPanel.setBranches(currentBranches);
 
     commitPanel.refreshSilent().catch((err) => {
@@ -572,6 +621,7 @@ export async function activateRepositoryMode(
         commitInfo,
         commitPanel,
         mergeConflicts,
+        worktreeService,
         fileCountBadgeView,
     );
 

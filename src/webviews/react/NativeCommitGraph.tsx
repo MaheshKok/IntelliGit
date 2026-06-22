@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { CommitList } from "./CommitList";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
     CommitAction,
@@ -136,15 +137,18 @@ export function NativeCommitGraph({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            const cached = commitChecks.get(hash);
-            if (cached && (cached === "loading" || cached.state !== "pending")) return;
-            setCommitChecks((prev) => {
-                const latest = prev.get(hash);
-                if (latest && (latest === "loading" || latest.state !== "pending")) return prev;
-                const next = new Map(prev);
-                next.set(hash, "loading");
-                return next;
-            });
+            const current = commitChecks.get(hash);
+            if (!shouldRequestCommitChecks(current)) return;
+            // Only show the spinner on the first fetch. A background refresh of an
+            // already-displayed snapshot keeps the current badge so it does not flicker.
+            if (current === undefined) {
+                setCommitChecks((prev) => {
+                    if (prev.get(hash) !== undefined) return prev;
+                    const next = new Map(prev);
+                    next.set(hash, "loading");
+                    return next;
+                });
+            }
             vscode.postMessage({ type: "requestCommitChecks", hash });
         },
         [commitChecks, vscode],

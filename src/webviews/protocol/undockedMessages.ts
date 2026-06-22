@@ -2,7 +2,7 @@
 // Combines message types from both the CommitGraph and CommitPanel
 // webviews into a single channel.
 
-import type { BranchAction, CommitAction } from "./commitGraphTypes";
+import type { BranchAction, CommitAction, WorktreeAction } from "./commitGraphTypes";
 import type {
     InboundMessage as CommitPanelInbound,
     OutboundMessage as CommitPanelOutbound,
@@ -89,6 +89,14 @@ type GraphOutbound =
           type: "deleteBranches";
           /** Validated branch names from the latest graph branch snapshot. */
           branchNames: string[];
+      }
+    | {
+          /** Command requesting a worktree row action on the host side. */
+          type: "worktreeAction";
+          /** Validated against shared worktree action values before command dispatch. */
+          action: WorktreeAction;
+          /** Absolute worktree path from the latest trusted host snapshot. */
+          path: string;
       }
     | {
           /** Command requesting a commit context-menu action on the host side. */

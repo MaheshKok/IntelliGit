@@ -13,6 +13,7 @@ import {
 import { JETBRAINS_UI } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils";
 import { getSettings } from "../../shared/settings";
+import { t } from "../../shared/i18n";
 import {
     BRANCH_TREE_GUIDE_BASE,
     BRANCH_TREE_INDENT_BASE,
@@ -23,11 +24,13 @@ import {
     TRACKING_BADGE_STYLE,
     TRACKING_PULL_STYLE,
     TRACKING_PUSH_STYLE,
+    WORKTREE_BADGE_STYLE,
 } from "../styles";
 import type { TreeNode } from "../types";
 
 const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
+/** Recursive branch-row inputs shared by folder rows and concrete branch rows. */
 interface Props {
     node: TreeNode;
     depth: number;
@@ -45,6 +48,7 @@ interface Props {
     folderIconsByName?: ThemeFolderIconMap;
 }
 
+/** Renders ahead/behind status only when the branch has remote tracking movement. */
 function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | null {
     const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
     const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,6 +71,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     }
     const tooltipText = tooltipParts.join(" and ");
 
+    /** Delays tooltip display using current settings while keeping pointer fallback positioning stable. */
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const { hoverDelay, tooltipsEnabled } = getSettings();
         if (!tooltipsEnabled) return;
@@ -89,6 +94,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
         }
     };
 
+    /** Cancels pending tooltip work before hiding so rapid pointer movement cannot resurrect it. */
     const hideTooltip = (): void => {
         if (timerRef.current) {
             clearTimeout(timerRef.current);
@@ -144,6 +150,16 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     );
 }
 
+/** Shows worktree occupancy without adding another branch-row action target. */
+function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | null {
+    if (!branch.isCheckedOutInWorktree) return null;
+    const label = branch.isCurrentWorktree
+        ? t("branch.worktreeBadge.current")
+        : t("branch.worktreeBadge.other");
+    return <span aria-label={label} title={label} style={WORKTREE_BADGE_STYLE} />;
+}
+
+/** Draws branch tree indentation guides without adding focusable elements to the row. */
 function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | null {
     if (depth <= 0) return null;
     return (
@@ -191,6 +207,7 @@ export function BranchTreeNodeRow({
     folderExpandedIcon,
     folderIconsByName,
 }: Props): React.ReactElement {
+    /** Normalizes Enter/Space keyboard activation for folder rows without page scrolling. */
     const handleActivateKey = (
         event: React.KeyboardEvent<HTMLDivElement>,
         action: () => void,
@@ -268,6 +285,7 @@ export function BranchTreeNodeRow({
     const isSelected =
         selectedBranch === node.fullName ||
         (node.fullName ? selectedBranchNames.has(node.fullName) : false);
+    /** Delegates branch selection to multi-select handlers when present, otherwise selects directly. */
     const handleSelectBranch = (event: React.MouseEvent): void => {
         if (!node.fullName) return;
         if (onBranchClick) {
@@ -301,6 +319,7 @@ export function BranchTreeNodeRow({
                 <GitBranchIcon color={JETBRAINS_UI.color.branch} />
             )}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
+            {node.branch && <WorktreeBadge branch={node.branch} />}
             {node.branch && <TrackingBadge branch={node.branch} />}
         </div>
     );

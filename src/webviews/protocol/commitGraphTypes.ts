@@ -6,6 +6,7 @@ import type {
     Commit,
     CommitChecksSnapshot,
     CommitDetail,
+    GitWorktree,
     ThemeFolderIconMap,
     ThemeIconFont,
     ThemeTreeIcon,
@@ -19,6 +20,8 @@ import type {
  * aligned with the branch menu producer and registered VS Code command IDs.
  */
 export const BRANCH_ACTION_VALUES = [
+    "openWorktree",
+    "createWorktreeFromBranch",
     "checkout",
     "newBranchFrom",
     "checkoutAndRebase",
@@ -54,11 +57,17 @@ export const COMMIT_ACTION_VALUES = [
     "newTag",
 ] as const;
 
+/** Worktree row action discriminants accepted from graph webviews. */
+const WORKTREE_ACTION_VALUES = ["open", "delete", "lock", "unlock", "move"] as const;
+
 /** Action value sent by branch context menus and accepted by host branch routing. */
 export type BranchAction = (typeof BRANCH_ACTION_VALUES)[number];
 
 /** Action value sent by commit context menus and accepted by host commit routing. */
 export type CommitAction = (typeof COMMIT_ACTION_VALUES)[number];
+
+/** Action value sent by worktree context menus and accepted by host worktree routing. */
+export type WorktreeAction = (typeof WORKTREE_ACTION_VALUES)[number];
 
 /**
  * Narrows untrusted branch action strings before they cross into VS Code command dispatch.
@@ -72,6 +81,11 @@ export function isBranchAction(value: string): value is BranchAction {
  */
 export function isCommitAction(value: string): value is CommitAction {
     return COMMIT_ACTION_VALUES.includes(value as CommitAction);
+}
+
+/** Narrows untrusted worktree action strings before VS Code command dispatch. */
+export function isWorktreeAction(value: string): value is WorktreeAction {
+    return WORKTREE_ACTION_VALUES.includes(value as WorktreeAction);
 }
 
 /**
@@ -122,6 +136,14 @@ export type CommitGraphOutbound =
           type: "deleteBranches";
           /** Validated branch names from the latest branch list before command dispatch. */
           branchNames: string[];
+      }
+    | {
+          /** Command requesting a worktree row action on the host side. */
+          type: "worktreeAction";
+          /** Validated against `WORKTREE_ACTION_VALUES` before command dispatch. */
+          action: WorktreeAction;
+          /** Absolute worktree path from the latest trusted host snapshot. */
+          path: string;
       }
     | {
           /** Command requesting a commit context-menu action on the host side. */
@@ -177,6 +199,8 @@ export type CommitGraphInbound =
           type: "setBranches";
           /** Branches parsed from `git branch -a`; names are display and action identifiers. */
           branches: Branch[];
+          /** Worktrees parsed from `git worktree list --porcelain -z` for branch navigation. */
+          worktrees?: GitWorktree[];
           /** Default collapsed folder icon for branch tree groups when the theme resolves one. */
           folderIcon?: ThemeTreeIcon;
           /** Default expanded folder icon for branch tree groups when the theme resolves one. */

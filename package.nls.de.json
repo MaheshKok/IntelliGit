@@ -51,5 +51,13 @@
     "configuration.commitWindowPosition.enum.left": "Platzieren Sie das Commit-Panel auf der linken Seite des nicht angedockten/mit Registerkarten versehenen Fensters.",
     "configuration.commitWindowPosition.enum.right": "Platzieren Sie das Commit-Panel auf der rechten Seite des nicht angedockten/mit Tabs versehenen Fensters.",
     "configuration.commitWindowPosition.markdownDescription": "Position des Commit-Panels im abgedockten/angezeigten IntelliGit-Fenster. `auto` (Standard) folgt der Einstellung `workbench.sideBar.location` von VS Code; `left` und `right` legen eine Seite fest.",
-    "view.fileCountBadge": "Geänderte Dateien"
+    "view.fileCountBadge": "Geänderte Dateien",
+    "command.createWorktree": "Worktree erstellen...",
+    "command.deleteWorktree": "Worktree löschen",
+    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignorierte Dateien oder Ordner, die aus dem aktuellen Repository in jeden neu erstellten Worktree kopiert werden, z. B. `.env` oder `.vscode/settings.json`.",
+    "command.lockWorktree": "Worktree sperren",
+    "command.unlockWorktree": "Worktree entsperren",
+    "command.moveWorktree": "Worktree verschieben...",
+    "command.pruneWorktrees": "Worktrees bereinigen",
+    "command.repairWorktrees": "Worktrees reparieren"
 }

@@ -2,15 +2,18 @@
 // Each handler corresponds to a right-click action on a branch
 // in the branch column: checkout, rebase, merge, push, delete, etc.
 
+import path from "node:path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps, UpstreamPushDeclinedError } from "../git/operations";
 import type { Branch } from "../types";
+import type { CreateWorktreeOptions } from "../services/worktreeService";
 import { getErrorMessage, isBranchNotFullyMergedError } from "../utils/errors";
 import { runWithNotificationProgress } from "../utils/notifications";
 import {
     checkoutBranch,
     getCheckedOutBranchName,
+    getLocalNameFromRemote,
     getLocalBranchMergeStatusForDelete,
     isValidBranchName,
     promptRebaseAfterPushRejection,
@@ -33,6 +36,7 @@ export interface BranchCommandDeps {
     gitOps: GitOps;
     getCurrentBranchName: () => string | undefined;
     getCurrentBranches: () => Branch[];
+    createWorktree: (opts: CreateWorktreeOptions) => Promise<void>;
     openConflictSession: (labels?: {
         sourceBranch?: string;
         targetBranch?: string;
@@ -60,8 +64,96 @@ const PYCHARM_MERGE_CONFIG_ARGS = [
     "log.showSignature=false",
 ];
 
+/** Rebuilds a tracked remote ref after upstream parsing has validated remote and branch parts. */
 function buildTrackedRemoteRef(tracked: { remote: string; remoteBranch: string }): string {
     return `${tracked.remote}/${tracked.remoteBranch}`;
+}
+
+/** Builds safe prompt defaults from a branch name without letting remote prefixes leak into folder names. */
+function getWorktreeDefaults(
+    branch: Branch,
+    forceNewBranch: boolean,
+): { folder: string; branch: string } {
+    const baseBranch = branch.isRemote ? getLocalNameFromRemote(branch.name) : branch.name;
+    const defaultBranch = forceNewBranch ? `${baseBranch}-worktree` : baseBranch;
+    return { folder: defaultBranch.replace(/^.*\//, "") || "worktree", branch: defaultBranch };
+}
+
+/** Accepts only one folder segment so the picker controls the parent directory boundary. */
+function isPlainFolderName(value: string): boolean {
+    return (
+        value.trim().length > 0 &&
+        !path.isAbsolute(value) &&
+        !value.includes("/") &&
+        !value.includes("\\")
+    );
+}
+
+/** Collects a user-confirmed worktree target and leaves path/branch validation to the service layer. */
+async function promptCreateWorktreeOptions(
+    branch: Branch,
+    forceNewBranch = false,
+): Promise<CreateWorktreeOptions | undefined> {
+    const parent = await vscode.window.showOpenDialog({
+        title: vscode.l10n.t("Select Worktree Parent Folder"),
+        openLabel: vscode.l10n.t("Create Worktree"),
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+    });
+    const parentFolder = parent?.[0]?.fsPath;
+    if (!parentFolder) return undefined;
+
+    const defaults = getWorktreeDefaults(branch, forceNewBranch);
+    const folderName = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Worktree folder name"),
+        value: defaults.folder,
+    });
+    if (!folderName) return undefined;
+    if (!isPlainFolderName(folderName)) {
+        vscode.window.showErrorMessage(vscode.l10n.t("Invalid worktree folder name."));
+        return undefined;
+    }
+
+    const branchName = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Branch name for worktree"),
+        value: defaults.branch,
+    });
+    if (!branchName) return undefined;
+
+    const selectedBranchName = branch.isRemote ? getLocalNameFromRemote(branch.name) : branch.name;
+    return {
+        path: path.join(parentFolder, folderName),
+        branch,
+        ...(branchName === selectedBranchName ? {} : { newBranch: branchName }),
+    };
+}
+
+/** Prompts for the target VS Code window before opening an existing worktree folder. */
+async function promptAndOpenWorktree(branchName: string, worktreePath: string): Promise<void> {
+    const picked = await vscode.window.showQuickPick(
+        [
+            {
+                label: vscode.l10n.t("Open in Current Window"),
+                description: vscode.l10n.t("Reuse this VS Code window"),
+                forceNewWindow: false,
+            },
+            {
+                label: vscode.l10n.t("Open in New Window"),
+                description: vscode.l10n.t("Keep this VS Code window open"),
+                forceNewWindow: true,
+            },
+        ],
+        {
+            placeHolder: vscode.l10n.t("Open worktree for {branch}", { branch: branchName }),
+        },
+    );
+    if (!picked) return;
+
+    await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(worktreePath), {
+        forceNewWindow: picked.forceNewWindow,
+        forceReuseWindow: !picked.forceNewWindow,
+    });
 }
 
 /**
@@ -91,6 +183,7 @@ function formatUpdateFailureMessage(error: unknown): string {
     return compactGitErrorMessage(raw);
 }
 
+/** Detects Git's fast-forward refusal variants so update errors get a targeted user message. */
 function isFastForwardDivergenceMessage(message: string): boolean {
     const lower = message.toLowerCase();
     return (
@@ -100,6 +193,7 @@ function isFastForwardDivergenceMessage(message: string): boolean {
     );
 }
 
+/** Removes noisy Git hint/banner lines while preserving the actionable failure text. */
 function compactGitErrorMessage(message: string): string {
     const compact = message
         .replace(/\r\n/g, "\n")
@@ -216,6 +310,7 @@ async function assertBulkBranchesMerged(
     return unmerged;
 }
 
+/** Deletes either a local branch ref or its remote-tracking target without mixing the two paths. */
 async function deleteBranchRef(executor: GitExecutor, branch: Branch): Promise<void> {
     if (branch.isRemote) {
         const target = resolveRemoteDeleteTarget(branch);
@@ -253,6 +348,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         gitOps,
         getCurrentBranchName,
         getCurrentBranches,
+        createWorktree,
         openConflictSession,
         refreshConflictUi,
     } = deps;
@@ -285,16 +381,68 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         }
     };
 
+    /** Runs the prompt/service flow for branch-originated worktree creation commands. */
+    const runCreateWorktree = async (branch: Branch, forceNewBranch = false): Promise<void> => {
+        const opts = await promptCreateWorktreeOptions(branch, forceNewBranch);
+        if (!opts) return;
+        try {
+            await createWorktree(opts);
+            vscode.window.showInformationMessage(
+                vscode.l10n.t("Created worktree at {path}", { path: opts.path }),
+            );
+            await vscode.commands.executeCommand("intelligit.refresh");
+        } catch (err) {
+            vscode.window.showErrorMessage(
+                vscode.l10n.t("Create worktree failed: {message}", {
+                    message: getErrorMessage(err),
+                }),
+            );
+        }
+    };
+
     return [
+        {
+            id: "intelligit.openWorktree",
+            handler: async (item) => {
+                const branch = item.branch;
+                if (!branch?.worktreePath) return;
+                await promptAndOpenWorktree(branch.name, branch.worktreePath);
+            },
+        },
+        {
+            id: "intelligit.createWorktreeFromBranch",
+            handler: async (item) => {
+                if (!item.branch) return;
+                await runCreateWorktree(item.branch);
+            },
+        },
+        {
+            id: "intelligit.worktree.create",
+            handler: async () => {
+                const currentBranchName = getCurrentBranchName();
+                const branch = getCurrentBranches().find(
+                    (candidate) => candidate.name === currentBranchName,
+                );
+                if (!branch) {
+                    vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
+                    return;
+                }
+                await runCreateWorktree(branch, true);
+            },
+        },
         {
             id: "intelligit.checkout",
             handler: async (item) => {
                 const branch = item.branch;
                 if (!branch) return;
                 try {
-                    const checkedOut = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    const result = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    if (result.kind === "openWorktree") {
+                        await promptAndOpenWorktree(result.branch, result.path);
+                        return;
+                    }
                     vscode.window.showInformationMessage(
-                        vscode.l10n.t("Checked out {branch}", { branch: checkedOut }),
+                        vscode.l10n.t("Checked out {branch}", { branch: result.branch }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
@@ -351,7 +499,12 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 }
                 if (!validateBranchArg(onto, "current branch name")) return;
                 try {
-                    const checkedOut = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    const result = await checkoutBranch(branch, getCurrentBranches(), executor);
+                    if (result.kind === "openWorktree") {
+                        await promptAndOpenWorktree(result.branch, result.path);
+                        return;
+                    }
+                    const checkedOut = result.branch;
                     if (checkedOut === onto) {
                         vscode.window.showInformationMessage(
                             vscode.l10n.t("{branch} is already the current branch.", {
@@ -525,6 +678,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 if (!validateBranchArg(branch.name)) return;
+                /** Pushes the selected branch through the right upstream or publish flow. */
                 const pushBranch = async (): Promise<void> => {
                     const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                     if (tracked) {

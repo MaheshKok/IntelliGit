@@ -1,11 +1,16 @@
-import type { Branch } from "../../../types";
-import type { BranchAction } from "../../protocol/commitGraphTypes";
+import type { Branch, GitWorktree } from "../../../types";
+import type { BranchAction, WorktreeAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 
+/** Sentinel action namespace for visual separators in branch context menus. */
 type SeparatorAction = `sep-${string}`;
+/** Branch menu entry type that allows separators without widening executable actions. */
 type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | SeparatorAction };
+/** Worktree menu entry type that allows separators without widening executable actions. */
+type WorktreeMenuItem = Omit<MenuItem, "action"> & { action: WorktreeAction | SeparatorAction };
 
+/** Shortens branch names for menu labels while preserving the distinguishing suffix. */
 function trim(name: string, max = 40): string {
     if (name.length <= max) return name;
     // Keep output readable for tiny max values while never expanding beyond input length.
@@ -15,11 +20,18 @@ function trim(name: string, max = 40): string {
     return name.slice(0, startLen) + "..." + name.slice(-endLen);
 }
 
+/** Wraps compact branch labels in quotes for menu text that embeds another ref name. */
 function quoted(name: string): string {
     return `'${trim(name)}'`;
 }
 
+/** Creates typed separator rows that cannot collide with executable branch actions. */
 function separator(action: SeparatorAction): BranchMenuItem {
+    return { label: "", action, separator: true };
+}
+
+/** Creates typed separator rows for worktree context menus. */
+function worktreeSeparator(action: SeparatorAction): WorktreeMenuItem {
     return { label: "", action, separator: true };
 }
 
@@ -35,6 +47,27 @@ export function getBulkBranchMenuItems(): MenuItem[] {
     return [{ label: t("branch.menu.deleteBranches"), action: "deleteBranches" }];
 }
 
+/** Builds the context-menu model for one worktree row using the native tree's capability rules. */
+export function getWorktreeMenuItems(worktree: GitWorktree): WorktreeMenuItem[] {
+    const items: WorktreeMenuItem[] = [{ label: t("branch.menu.openWorktree"), action: "open" }];
+    const canMutate = !worktree.isMain && !worktree.isCurrent;
+    if (canMutate || worktree.isLocked) {
+        items.push(worktreeSeparator("sep-worktree-open"));
+    }
+    if (canMutate) {
+        items.push({ label: t("worktree.menu.delete"), action: "delete" });
+    }
+    if (worktree.isLocked) {
+        items.push({ label: t("worktree.menu.unlock"), action: "unlock" });
+    } else if (canMutate) {
+        items.push({ label: t("worktree.menu.lock"), action: "lock" });
+    }
+    if (canMutate) {
+        items.push({ label: t("worktree.menu.move"), action: "move" });
+    }
+    return items;
+}
+
 /**
  * Builds the context-menu model for a single branch row.
  *
@@ -47,6 +80,19 @@ export function getBulkBranchMenuItems(): MenuItem[] {
 export function getBranchMenuItems(branch: Branch, currentBranchName: string): BranchMenuItem[] {
     const current = quoted(currentBranchName);
     const selected = quoted(branch.name);
+    const openWorktreeItems: BranchMenuItem[] =
+        branch.isCheckedOutInWorktree && !branch.isCurrentWorktree && branch.worktreePath
+            ? [
+                  { label: t("branch.menu.openWorktree"), action: "openWorktree" },
+                  separator("sep-worktree-1"),
+              ]
+            : [];
+    const createWorktreeItems: BranchMenuItem[] = !branch.isCheckedOutInWorktree
+        ? [
+              { label: t("branch.menu.createWorktree"), action: "createWorktreeFromBranch" },
+              separator("sep-worktree-create-1"),
+          ]
+        : [];
 
     if (branch.isCurrent) {
         return [
@@ -60,6 +106,8 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
     }
 
     const nonCurrentBase: BranchMenuItem[] = [
+        ...openWorktreeItems,
+        ...createWorktreeItems,
         { label: t("branch.menu.checkout"), action: "checkout" },
         { label: t("branch.menu.newBranchFrom", { branch: selected }), action: "newBranchFrom" },
         {

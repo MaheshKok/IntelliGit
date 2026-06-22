@@ -37,6 +37,7 @@ import type { Branch } from "../../../src/types";
 import type { GitOps } from "../../../src/git/operations";
 import type { GitExecutor } from "../../../src/git/executor";
 
+/** Builds a branch fixture with safe defaults for checkout helper tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
     return {
         name: "main",
@@ -136,6 +137,68 @@ describe("getLocalNameFromRemote", () => {
 });
 
 describe("checkoutBranch", () => {
+    it("checks out local branches normally", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+
+        await expect(
+            checkoutBranch(makeBranch({ name: "feature/x" }), [], executor),
+        ).resolves.toEqual({
+            kind: "checkedOut",
+            branch: "feature/x",
+        });
+
+        expect(executor.run).toHaveBeenCalledWith(["checkout", "feature/x"]);
+    });
+
+    it("returns an open-worktree signal instead of checking out a branch from another worktree", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+
+        await expect(
+            checkoutBranch(
+                makeBranch({
+                    name: "feature/x",
+                    isCheckedOutInWorktree: true,
+                    isCurrentWorktree: false,
+                    worktreePath: "/repo-feature",
+                }),
+                [],
+                executor,
+            ),
+        ).resolves.toEqual({
+            kind: "openWorktree",
+            branch: "feature/x",
+            path: "/repo-feature",
+        });
+
+        expect(executor.run).not.toHaveBeenCalled();
+    });
+
+    it("returns an open-worktree signal for remote branches with an existing local checkout elsewhere", async () => {
+        const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
+        const currentBranches = [
+            makeBranch({
+                name: "feature/x",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
+        ];
+
+        await expect(
+            checkoutBranch(
+                makeBranch({ name: "origin/feature/x", isRemote: true }),
+                currentBranches,
+                executor,
+            ),
+        ).resolves.toEqual({
+            kind: "openWorktree",
+            branch: "feature/x",
+            path: "/repo-feature",
+        });
+
+        expect(executor.run).not.toHaveBeenCalled();
+    });
+
     it("rejects option-like local branch names before invoking git", async () => {
         const executor = { run: vi.fn(async () => "") } as unknown as GitExecutor;
 
@@ -397,6 +460,7 @@ describe("buildCommitFilePatch", () => {
         if (process.platform === "win32") return;
 
         const repo = await mkdtemp(path.join(os.tmpdir(), "intelligit-patch-"));
+        /** Runs Git inside the temp repo used by the pathspec regression test. */
         const git = async (args: string[]): Promise<string> =>
             new Promise((resolve, reject) => {
                 execFile("git", args, { cwd: repo, encoding: "utf8" }, (error, stdout, stderr) => {

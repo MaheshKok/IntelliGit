@@ -31,10 +31,12 @@ import { CommitChecksButton } from "../../../src/webviews/react/commit-list/Comm
 import { mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
+/** Renders Chakra-wrapped UI into static markup for smoke assertions. */
 function renderUi(node: React.ReactElement): string {
     return renderToStaticMarkup(<ChakraProvider theme={theme}>{node}</ChakraProvider>);
 }
 
+/** Builds a branch fixture with defaults shared by branch-column smoke tests. */
 function branch(overrides: Partial<Branch> = {}): Branch {
     return {
         name: "main",
@@ -119,9 +121,14 @@ describe("webview ui smoke", () => {
             ],
         };
         const leafNode = {
-            label: "main",
-            fullName: "origin/main",
-            branch: branch({ name: "origin/main", isCurrent: true }),
+            label: "feature",
+            fullName: "feature",
+            branch: branch({
+                name: "feature",
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                worktreePath: "/repo-feature",
+            }),
             children: [],
         };
 
@@ -148,7 +155,7 @@ describe("webview ui smoke", () => {
             <BranchTreeNodeRow
                 node={leafNode}
                 depth={1}
-                selectedBranch={"origin/main"}
+                selectedBranch={"feature"}
                 expandedFolders={new Set()}
                 onSelectBranch={onSelectBranch}
                 onToggleFolder={onToggleFolder}
@@ -157,7 +164,8 @@ describe("webview ui smoke", () => {
                 prefix="root"
             />,
         );
-        expect(leafHtml).toContain("main");
+        expect(leafHtml).toContain("feature");
+        expect(leafHtml).toContain("Checked out in another worktree");
     });
 
     it("renders commit panel primitives", () => {
@@ -334,7 +342,9 @@ describe("webview ui smoke", () => {
             />,
         );
         const pendingIcon = pendingMounted.container.querySelector("svg") as SVGElement;
-        expect(pendingIcon.style.animation).toContain("intelligit-commit-check-spin");
+        const spinnerAnimation = pendingIcon.querySelector("animateTransform");
+        expect(spinnerAnimation?.getAttribute("type")).toBe("rotate");
+        expect(spinnerAnimation?.getAttribute("repeatCount")).toBe("indefinite");
         unmount(pendingMounted.root, pendingMounted.container);
     });
 

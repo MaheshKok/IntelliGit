@@ -202,5 +202,14 @@
     "merge.result.editingAria": "Edit merge result block",
     "commit.checks.title": "GitHub-Commit-Prüfungen",
     "commit.checks.loading": "Prüfungen werden geladen...",
-    "commit.checks.none": "Keine Prüfungen gefunden"
+    "commit.checks.none": "Keine Prüfungen gefunden",
+    "branch.worktreeBadge.current": "In diesem Worktree ausgecheckt",
+    "branch.worktreeBadge.other": "In einem anderen Worktree ausgecheckt",
+    "branch.menu.openWorktree": "Worktree öffnen",
+    "branch.menu.createWorktree": "Worktree erstellen...",
+    "branch.section.worktrees": "Worktrees",
+    "worktree.menu.delete": "Worktree löschen",
+    "worktree.menu.lock": "Worktree sperren",
+    "worktree.menu.unlock": "Worktree entsperren",
+    "worktree.menu.move": "Worktree verschieben..."
 }

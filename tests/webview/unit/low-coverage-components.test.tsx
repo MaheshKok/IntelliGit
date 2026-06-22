@@ -6,9 +6,15 @@ import type { Branch, Commit, CommitChecksSnapshot } from "../../../src/types";
 import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../../src/webviews/react/CommitList";
 import { CommitRow } from "../../../src/webviews/react/commit-list/CommitRow";
+import { MAX_NONE_REFRESH_ATTEMPTS } from "../../../src/webviews/react/commit-list/checksRefresh";
 import { useDragResize } from "../../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../../src/webviews/react/shared/components/ContextMenu";
-import { flush, initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
+import {
+    flush,
+    initReactDomTestEnvironment,
+    mount,
+    unmount,
+} from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
 const mockVscodeApi = vi.hoisted(() => ({
@@ -503,6 +509,123 @@ describe("low coverage components", () => {
         });
 
         expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        unmount(root, container);
+        vi.useRealTimers();
+    });
+
+    const noChecksCommit: Commit = {
+        hash: "aa11bb22",
+        shortHash: "aa11bb22",
+        message: "feat: pushed, checks not registered yet",
+        author: "Mahesh",
+        email: "m@example.com",
+        date: "2026-02-19T00:00:00Z",
+        parentHashes: ["p1"],
+        refs: [],
+    };
+    const noChecksSnapshot: CommitChecksSnapshot = {
+        hash: "aa11bb22",
+        state: "none",
+        summary: "No checks found",
+        items: [],
+    };
+
+    it("CommitList retries none-state checks for a pushed commit", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const { root, container } = mount(
+            <CommitList
+                commits={[noChecksCommit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set()}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map([["aa11bb22", noChecksSnapshot]])}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={vi.fn()}
+            />,
+        );
+        await flush();
+        expect(onRequestCommitChecks).not.toHaveBeenCalled();
+
+        act(() => {
+            vi.runOnlyPendingTimers();
+        });
+
+        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        unmount(root, container);
+        vi.useRealTimers();
+    });
+
+    it("CommitList does not retry none-state checks for an unpushed commit", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const { root, container } = mount(
+            <CommitList
+                commits={[noChecksCommit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set(["aa11bb22"])}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map([["aa11bb22", noChecksSnapshot]])}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={vi.fn()}
+            />,
+        );
+        await flush();
+        act(() => {
+            vi.runOnlyPendingTimers();
+        });
+
+        expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        unmount(root, container);
+        vi.useRealTimers();
+    });
+
+    it("CommitList stops retrying none-state checks after the retry budget", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const renderTree = () => (
+            <CommitList
+                commits={[noChecksCommit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set()}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map([["aa11bb22", noChecksSnapshot]])}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={vi.fn()}
+            />
+        );
+        const { root, container } = mount(renderTree());
+        // Each cycle fires one scheduled retry, then re-renders so the effect re-evaluates
+        // the budget. One extra cycle proves polling stops once the budget is exhausted.
+        for (let i = 0; i < MAX_NONE_REFRESH_ATTEMPTS + 1; i++) {
+            await flush();
+            act(() => {
+                vi.runOnlyPendingTimers();
+            });
+            act(() => {
+                root.render(renderTree());
+            });
+        }
+
+        expect(onRequestCommitChecks).toHaveBeenCalledTimes(MAX_NONE_REFRESH_ATTEMPTS);
         unmount(root, container);
         vi.useRealTimers();
     });
