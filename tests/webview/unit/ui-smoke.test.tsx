@@ -342,7 +342,9 @@ describe("webview ui smoke", () => {
             />,
         );
         const pendingIcon = pendingMounted.container.querySelector("svg") as SVGElement;
-        expect(pendingIcon.style.animation).toContain("intelligit-commit-check-spin");
+        const spinnerAnimation = pendingIcon.querySelector("animateTransform");
+        expect(spinnerAnimation?.getAttribute("type")).toBe("rotate");
+        expect(spinnerAnimation?.getAttribute("repeatCount")).toBe("indefinite");
         unmount(pendingMounted.root, pendingMounted.container);
     });
 

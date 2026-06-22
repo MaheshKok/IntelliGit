@@ -340,7 +340,11 @@ describe("BranchColumn integration", () => {
         ];
         const { root, container, onWorktreeAction } = renderBranchColumn({ worktrees });
         const text = container.textContent ?? "";
-        expect(text.indexOf("Remote")).toBeLessThan(text.indexOf("Worktrees"));
+        const remoteIndex = text.indexOf("Remote");
+        const worktreesIndex = text.indexOf("Worktrees");
+        expect(remoteIndex).toBeGreaterThanOrEqual(0);
+        expect(worktreesIndex).toBeGreaterThanOrEqual(0);
+        expect(remoteIndex).toBeLessThan(worktreesIndex);
 
         const row = container.querySelector(
             '[data-worktree-path="/tmp/intelligit-feature"]',
