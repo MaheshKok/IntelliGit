@@ -21,7 +21,7 @@ import type {
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { commitChecksSnapshotEqual, shouldRequestCommitChecks } from "./commit-list/checksRefresh";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { ThemeIconFontFaces } from "./shared/components";
 import { JETBRAINS_UI } from "./shared/tokens";
 
@@ -238,14 +238,6 @@ export function CommitGraphPanel({
                     break;
                 case "setCommitChecks":
                     setCommitChecks((prev) => {
-                        const existing = prev.get(data.snapshot.hash);
-                        if (
-                            existing &&
-                            existing !== "loading" &&
-                            commitChecksSnapshotEqual(existing, data.snapshot)
-                        ) {
-                            return prev;
-                        }
                         const next = new Map(prev);
                         next.set(data.snapshot.hash, data.snapshot);
                         return next;

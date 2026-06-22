@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { CommitList } from "./CommitList";
-import { commitChecksSnapshotEqual, shouldRequestCommitChecks } from "./commit-list/checksRefresh";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
     CommitAction,
@@ -91,14 +91,6 @@ export function NativeCommitGraph({
                     break;
                 case "setCommitChecks":
                     setCommitChecks((prev) => {
-                        const existing = prev.get(data.snapshot.hash);
-                        if (
-                            existing &&
-                            existing !== "loading" &&
-                            commitChecksSnapshotEqual(existing, data.snapshot)
-                        ) {
-                            return prev;
-                        }
                         const next = new Map(prev);
                         next.set(data.snapshot.hash, data.snapshot);
                         return next;
