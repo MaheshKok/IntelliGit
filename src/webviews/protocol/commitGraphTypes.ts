@@ -58,7 +58,7 @@ export const COMMIT_ACTION_VALUES = [
 ] as const;
 
 /** Worktree row action discriminants accepted from graph webviews. */
-export const WORKTREE_ACTION_VALUES = ["open", "delete", "lock", "unlock", "move"] as const;
+const WORKTREE_ACTION_VALUES = ["open", "delete", "lock", "unlock", "move"] as const;
 
 /** Action value sent by branch context menus and accepted by host branch routing. */
 export type BranchAction = (typeof BRANCH_ACTION_VALUES)[number];
