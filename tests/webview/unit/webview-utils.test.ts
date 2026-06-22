@@ -15,6 +15,7 @@ import { canCherryPickFromBranchScope } from "../../../src/webviews/react/Commit
 import { getCommitMenuItems } from "../../../src/webviews/react/commit-list/commitMenu";
 import { buildFileTree, collectDirPaths, countFiles } from "../../../src/webviews/react/shared/fileTree";
 
+/** Builds a branch fixture for menu and branch-scope utility tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
     return {
         name: "main",
@@ -27,6 +28,7 @@ function makeBranch(overrides: Partial<Branch> = {}): Branch {
     };
 }
 
+/** Builds a commit fixture with a realistic parent/ref shape for menu tests. */
 function makeCommit(overrides: Partial<Commit> = {}): Commit {
     return {
         hash: "abcdef1234567890",

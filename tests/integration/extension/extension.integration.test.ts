@@ -107,6 +107,7 @@ let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefin
 
 class MockDisposable {
     constructor(private readonly fn: () => void) {}
+    /** Runs the captured cleanup callback used by VS Code disposable mocks. */
     dispose(): void {
         this.fn();
     }
@@ -118,12 +119,14 @@ class MockEventEmitter<T> {
         this.listeners.push(listener);
         return { dispose: vi.fn() };
     };
+    /** Synchronously emits events so integration tests can assert immediate side effects. */
     fire(value: T): void {
         for (const listener of this.listeners) listener(value);
     }
     dispose = vi.fn();
 }
 
+/** Provides deterministic Git command output for extension activation command tests. */
 const defaultExecutorRunImpl = async (args: string[]) => {
     if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return "main";
     if (args[0] === "rev-parse" && args[1] === "HEAD") return "feed1234";
@@ -237,6 +240,7 @@ let commitPanelRefreshHook:
     | ((provider: MockCommitPanelViewProvider) => void | Promise<void>)
     | undefined;
 
+/** Captures the most recently constructed undocked provider for cross-surface assertions. */
 function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void {
     latestUndockedProvider = provider;
 }
@@ -283,21 +287,27 @@ class MockCommitGraphViewProvider {
     setRepositoryLabel = vi.fn();
     dispose = vi.fn();
 
+    /** Emits commit selection from the mocked graph provider. */
     emitCommitSelected(hash: string): void {
         this.commitSelectedEmitter.fire(hash);
     }
+    /** Emits branch filter changes from the mocked graph provider. */
     emitBranchFilterChanged(value: string | null): void {
         this.branchFilterEmitter.fire(value);
     }
+    /** Emits branch-menu actions from the mocked graph provider. */
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
     }
+    /** Emits bulk branch deletion from the mocked graph provider. */
     emitDeleteBranches(branchNames: string[]): void {
         this.deleteBranchesEmitter.fire(branchNames);
     }
+    /** Emits commit-row actions from the mocked graph provider. */
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
+    /** Emits file-diff requests from the mocked graph provider. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
     }
@@ -353,24 +363,31 @@ class MockCommitPanelViewProvider {
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
     dispose = vi.fn();
+    /** Emits changed-file counts from the mocked commit panel. */
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
     }
+    /** Emits working-tree changes from the mocked commit panel. */
     emitWorkingTreeChanged(): void {
         this.workingTreeEmitter.fire(undefined);
     }
+    /** Emits commit selection from the mocked commit panel. */
     emitCommitSelected(hash: string): void {
         this.commitSelectedEmitter.fire(hash);
     }
+    /** Emits branch filter changes from the mocked commit panel. */
     emitBranchFilterChanged(value: string | null): void {
         this.branchFilterEmitter.fire(value);
     }
+    /** Emits branch actions from the mocked commit panel. */
     emitBranchAction(payload: { action: string; branchName: string }): void {
         this.branchActionEmitter.fire(payload);
     }
+    /** Emits commit-row actions from the mocked commit panel. */
     emitCommitAction(payload: { action: string; hash: string }): void {
         this.commitActionEmitter.fire(payload);
     }
+    /** Emits file-diff requests from the mocked commit panel. */
     emitOpenCommitFileDiff(payload: { commitHash: string; filePath: string }): void {
         this.openCommitFileDiffEmitter.fire(payload);
     }
@@ -416,12 +433,15 @@ class MockUndockedViewProvider {
     dispose = vi.fn(() => {
         this.disposeEmitter.fire(undefined);
     });
+    /** Emits working-tree changes from the mocked undocked provider. */
     emitWorkingTreeChanged(): void {
         this.workingTreeEmitter.fire(undefined);
     }
+    /** Emits changed-file counts from the mocked undocked provider. */
     emitFileCount(count: number): void {
         this.fileCountEmitter.fire(count);
     }
+    /** Emits a request to dock the mocked undocked provider. */
     requestDock(): void {
         this.dockRequestedEmitter.fire(undefined);
     }
@@ -648,6 +668,7 @@ vi.mock("../../../src/utils/fileOps", async () => {
     };
 });
 
+/** Drains microtasks and mocked timers used by async extension activation handlers. */
 async function waitForAsync(): Promise<void> {
     const maxPasses = 8;
     for (let i = 0; i < maxPasses; i++) {
@@ -682,6 +703,7 @@ type FakeWebviewView = {
     send: (message: unknown) => Promise<void>;
 };
 
+/** Creates a fake webview view with a capturable message handler. */
 function createFakeWebviewView(): FakeWebviewView {
     let messageHandler: ((message: unknown) => void | Promise<void>) | undefined;
     const webview = {
@@ -707,6 +729,7 @@ function createFakeWebviewView(): FakeWebviewView {
     };
 }
 
+/** Resolves and initializes a registered webview provider by view type. */
 function resolveRegisteredWebviewProvider(viewType: string): FakeWebviewView {
     const provider = registerWebviewViewProvider.mock.calls.find(([id]) => id === viewType)?.[1] as
         | {
@@ -725,10 +748,12 @@ function resolveRegisteredWebviewProvider(viewType: string): FakeWebviewView {
     return webview;
 }
 
+/** Extracts rendered button action IDs from static webview HTML. */
 function renderedButtonActions(html: string): string[] {
     return Array.from(html.matchAll(/<button[^>]+data-action="([^"]+)"/g)).map((match) => match[1]);
 }
 
+/** Provides a minimal in-memory workspace state implementation for activation tests. */
 function createWorkspaceState(
     initial: Record<string, unknown> = {},
 ): MockExtensionContext["workspaceState"] {
@@ -1131,6 +1156,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.conflictAcceptTheirs")).toBe(true);
         expect(registeredCommands.has("intelligit.openConflictSession")).toBe(true);
 
+        /** Fetches a registered command and fails the test with its command ID when missing. */
         function getCommand(id: string): CommandHandler {
             const cmd = registeredCommands.get(id);
             if (!cmd) throw new Error(`Missing command registration: ${id}`);
@@ -1271,6 +1297,7 @@ describe("extension integration", () => {
         expect(deleteFileWithFallback).toHaveBeenCalled();
     });
 
+    /** Activates the extension with the shared mock context used by command-branch tests. */
     async function activateExtensionForCommandTests(): Promise<void> {
         const { activate } = await import("../../../src/extension");
         const context = {
@@ -1280,6 +1307,7 @@ describe("extension integration", () => {
         await activate(context);
     }
 
+    /** Fetches a registered command for focused command tests. */
     function requireCommand(id: string): CommandHandler {
         const command = registeredCommands.get(id);
         if (!command) throw new Error(`Missing command registration: ${id}`);
@@ -2316,6 +2344,7 @@ describe("extension integration", () => {
 
         await activate(context);
 
+        /** Emits graph commit actions and drains async handlers for command assertions. */
         const emitCommitAction = async (payload: { action: string; hash: string }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();
@@ -2721,6 +2750,7 @@ describe("extension integration", () => {
         } as unknown as MockExtensionContext;
         await activate(context);
 
+        /** Emits graph commit actions and drains async handlers for guarded action assertions. */
         const emitCommitAction = async (payload: { action: string; hash: string }) => {
             latestCommitGraphProvider!.emitCommitAction(payload);
             await waitForAsync();

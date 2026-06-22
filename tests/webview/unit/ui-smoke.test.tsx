@@ -31,10 +31,12 @@ import { CommitChecksButton } from "../../../src/webviews/react/commit-list/Comm
 import { mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
+/** Renders Chakra-wrapped UI into static markup for smoke assertions. */
 function renderUi(node: React.ReactElement): string {
     return renderToStaticMarkup(<ChakraProvider theme={theme}>{node}</ChakraProvider>);
 }
 
+/** Builds a branch fixture with defaults shared by branch-column smoke tests. */
 function branch(overrides: Partial<Branch> = {}): Branch {
     return {
         name: "main",

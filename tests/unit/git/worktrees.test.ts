@@ -21,14 +21,17 @@ import {
 const execFileAsync = promisify(execFile);
 const tempRoots: string[] = [];
 
+/** Encodes one worktree porcelain record using Git's NUL-delimited test format. */
 function porcelainRecord(tokens: string[]): string {
     return `${tokens.join("\0")}\0`;
 }
 
+/** Encodes multiple worktree records with the blank-token separator Git emits. */
 function porcelain(records: string[][]): string {
     return records.map(porcelainRecord).join("\0");
 }
 
+/** Creates a Git executor mock that always returns the provided porcelain output. */
 function createMockExecutor(stdout: string): GitExecutor {
     const run = vi.fn(async () => stdout);
     return { run } as unknown as GitExecutor;
@@ -37,17 +40,20 @@ function createMockExecutor(stdout: string): GitExecutor {
 class RealGitExecutor {
     constructor(private readonly cwd: string) {}
 
+    /** Runs real Git commands inside the temp repository for integration-style path checks. */
     async run(args: string[]): Promise<string> {
         const { stdout } = await execFileAsync("git", args, { cwd: this.cwd });
         return stdout;
     }
 }
 
+/** Runs real Git commands in a temp repo and returns stdout for setup assertions. */
 async function git(cwd: string, args: string[]): Promise<string> {
     const { stdout } = await execFileAsync("git", args, { cwd });
     return stdout;
 }
 
+/** Creates an isolated Git repository plus parent temp root for path-safety tests. */
 async function createTempGitRepo(): Promise<{ root: string; repo: string }> {
     const root = await realpath(await mkdtemp(path.join(tmpdir(), "intelligit-worktrees-")));
     tempRoots.push(root);

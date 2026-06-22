@@ -10,9 +10,11 @@ vi.mock("vscode", () => {
             this.listeners.push(listener);
             return { dispose: vi.fn() };
         };
+        /** Emits tree-provider change events synchronously for provider assertions. */
         fire(event: T): void {
             for (const listener of this.listeners) listener(event);
         }
+        /** Clears registered listeners between provider tests. */
         dispose(): void {
             this.listeners = [];
         }
@@ -71,6 +73,7 @@ const detachedWorktree: GitWorktree = {
     prunableReason: "gone",
 };
 
+/** Creates a minimal worktree service stub for native tree-provider tests. */
 function createService(worktrees: GitWorktree[]): WorktreeService {
     return {
         listWorktrees: vi.fn(async () => worktrees),

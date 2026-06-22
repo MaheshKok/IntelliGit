@@ -7,6 +7,7 @@ import type { CommitPanelViewProvider } from "../../../src/views/CommitPanelView
 import type { MergeConflictsTreeProvider } from "../../../src/views/MergeConflictsTreeProvider";
 
 vi.mock("vscode", () => {
+    /** Creates disposable mocks for VS Code watcher/listener registrations. */
     const disposable = () => ({ dispose: vi.fn() });
     const fileSystemWatcher = {
         onDidChange: vi.fn(() => disposable()),
@@ -56,6 +57,7 @@ interface RefreshServiceSchedulerAccess {
     scheduleRefreshEvent(eventType: RefreshEventType): void;
 }
 
+/** Builds the current-branch fixture used by refresh propagation tests. */
 function makeBranch(): Branch {
     return {
         name: "main",
@@ -67,6 +69,7 @@ function makeBranch(): Branch {
     };
 }
 
+/** Creates a refresh service with mocked downstream providers and scheduler access. */
 function makeService(): {
     service: RefreshService;
     scheduler: RefreshServiceSchedulerAccess;

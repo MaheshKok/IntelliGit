@@ -37,6 +37,7 @@ import type { Branch } from "../../../src/types";
 import type { GitOps } from "../../../src/git/operations";
 import type { GitExecutor } from "../../../src/git/executor";
 
+/** Builds a branch fixture with safe defaults for checkout helper tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
     return {
         name: "main",
@@ -459,6 +460,7 @@ describe("buildCommitFilePatch", () => {
         if (process.platform === "win32") return;
 
         const repo = await mkdtemp(path.join(os.tmpdir(), "intelligit-patch-"));
+        /** Runs Git inside the temp repo used by the pathspec regression test. */
         const git = async (args: string[]): Promise<string> =>
             new Promise((resolve, reject) => {
                 execFile("git", args, { cwd: repo, encoding: "utf8" }, (error, stdout, stderr) => {

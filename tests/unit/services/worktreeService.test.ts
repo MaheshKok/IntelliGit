@@ -16,9 +16,11 @@ vi.mock("vscode", () => {
             this.listeners.push(listener);
             return { dispose: vi.fn() };
         };
+        /** Emits service change events synchronously for cache refresh assertions. */
         fire(event: T): void {
             for (const listener of this.listeners) listener(event);
         }
+        /** Clears listeners between tests to match VS Code emitter disposal. */
         dispose(): void {
             this.listeners = [];
         }
@@ -38,6 +40,7 @@ vi.mock("vscode", () => {
     };
 });
 
+/** Builds a one-worktree porcelain fixture for service cache tests. */
 function porcelain(branch: string): string {
     return [
         "worktree /repo",
@@ -47,6 +50,7 @@ function porcelain(branch: string): string {
     ].join("\0");
 }
 
+/** Builds multi-worktree porcelain fixtures while keeping generated HEADs deterministic. */
 function porcelainRecords(records: Array<{ path: string; branch: string }>): string {
     return records
         .flatMap((record, index) => [
@@ -58,12 +62,14 @@ function porcelainRecords(records: Array<{ path: string; branch: string }>): str
         .join("\0");
 }
 
+/** Creates an executor mock that consumes queued Git stdout values in call order. */
 function createExecutor(outputs: string[]): GitExecutor {
     return {
         run: vi.fn(async () => outputs.shift() ?? porcelain("fallback")),
     } as unknown as GitExecutor;
 }
 
+/** Creates scoped executors so dirty-check tests can assert the worktree root used. */
 function createScopedExecutor(statusOutput: string): {
     factory: (repoRoot: string) => GitExecutor;
     runs: Array<{ repoRoot: string; run: ReturnType<typeof vi.fn> }>;
