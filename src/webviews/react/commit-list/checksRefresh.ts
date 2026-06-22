@@ -30,3 +30,28 @@ export function shouldRequestCommitChecks(
     if (cached === "loading") return false;
     return isPendingCheckState(cached.state);
 }
+
+/**
+ * Whether two commit-check snapshots are display-equivalent.
+ *
+ * Used to drop no-op refreshes: a background re-fetch that returns the same
+ * state, summary, error, and item rows should not replace the cached snapshot,
+ * so React skips the re-render and the badge does not flicker.
+ */
+export function commitChecksSnapshotEqual(
+    a: CommitChecksSnapshot,
+    b: CommitChecksSnapshot,
+): boolean {
+    if (a.state !== b.state || a.summary !== b.summary || a.error !== b.error) return false;
+    if (a.items.length !== b.items.length) return false;
+    return a.items.every((item, index) => {
+        const other = b.items[index];
+        return (
+            item.state === other.state &&
+            item.name === other.name &&
+            item.description === other.description &&
+            item.source === other.source &&
+            item.url === other.url
+        );
+    });
+}

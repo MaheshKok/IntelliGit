@@ -4,8 +4,15 @@
 // once it reaches a terminal state. Adversarial over every CommitCheckState.
 
 import { describe, expect, it } from "vitest";
-import { isPendingCheckState, type CommitCheckState, type CommitChecksSnapshot } from "../../../src/types";
-import { shouldRequestCommitChecks } from "../../../src/webviews/react/commit-list/checksRefresh";
+import {
+    isPendingCheckState,
+    type CommitCheckState,
+    type CommitChecksSnapshot,
+} from "../../../src/types";
+import {
+    commitChecksSnapshotEqual,
+    shouldRequestCommitChecks,
+} from "../../../src/webviews/react/commit-list/checksRefresh";
 
 const ALL_STATES: CommitCheckState[] = [
     "success",
@@ -61,5 +68,69 @@ describe("shouldRequestCommitChecks", () => {
         for (const state of terminal) {
             expect(shouldRequestCommitChecks(snapshot(state))).toBe(false);
         }
+    });
+});
+
+describe("commitChecksSnapshotEqual", () => {
+    function withItem(
+        overrides: Partial<CommitChecksSnapshot["items"][number]> = {},
+    ): CommitChecksSnapshot {
+        return {
+            hash: "abc1234",
+            state: "success",
+            summary: "1 passed",
+            items: [
+                {
+                    name: "build",
+                    description: "passed",
+                    state: "success",
+                    source: "check-run",
+                    url: "https://ci/build",
+                    ...overrides,
+                },
+            ],
+        };
+    }
+
+    it("treats identical snapshots as equal", () => {
+        expect(commitChecksSnapshotEqual(withItem(), withItem())).toBe(true);
+    });
+
+    it("treats two empty-item snapshots of the same state as equal", () => {
+        expect(commitChecksSnapshotEqual(snapshot("none"), snapshot("none"))).toBe(true);
+    });
+
+    it("differs when the aggregate state changes", () => {
+        const a = withItem();
+        const b = { ...withItem(), state: "failure" as const };
+        expect(commitChecksSnapshotEqual(a, b)).toBe(false);
+    });
+
+    it("differs when the summary changes", () => {
+        const a = withItem();
+        const b = { ...withItem(), summary: "1 failed" };
+        expect(commitChecksSnapshotEqual(a, b)).toBe(false);
+    });
+
+    it("differs when the error field changes", () => {
+        const a = withItem();
+        const b = { ...withItem(), error: "rate limited" };
+        expect(commitChecksSnapshotEqual(a, b)).toBe(false);
+    });
+
+    it("differs when the item count changes", () => {
+        const a = withItem();
+        const b: CommitChecksSnapshot = { ...withItem(), items: [] };
+        expect(commitChecksSnapshotEqual(a, b)).toBe(false);
+    });
+
+    it("differs when an item's state changes but order is preserved", () => {
+        expect(commitChecksSnapshotEqual(withItem(), withItem({ state: "pending" }))).toBe(false);
+    });
+
+    it("differs when an item's url changes", () => {
+        expect(commitChecksSnapshotEqual(withItem(), withItem({ url: "https://ci/other" }))).toBe(
+            false,
+        );
     });
 });

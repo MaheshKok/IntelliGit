@@ -1,6 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
-import { FiCheckCircle, FiLoader, FiMinusCircle } from "react-icons/fi";
+import { FiCheckCircle, FiMinusCircle } from "react-icons/fi";
 import { IoIosCloseCircleOutline } from "react-icons/io";
 import type { CommitChecksSnapshot, CommitCheckState } from "../../../types";
 import { t } from "../shared/i18n";
@@ -19,12 +19,6 @@ interface Props {
 const PANEL_MAX_WIDTH = 420;
 const PANEL_TEXT_MAX_WIDTH = 340;
 const PANEL_MAX_HEIGHT = 360;
-const SPINNER_STYLE_ID = "intelligit-commit-check-spinner";
-const SPINNER_STYLE_RULES = `
-@keyframes intelligit-commit-check-spin {
-    to { transform: rotate(360deg); }
-}
-`;
 
 /** Renders the commit-row GitHub checks icon and its floating result popover. */
 export function CommitChecksButton({
@@ -40,15 +34,6 @@ export function CommitChecksButton({
         top: number;
         placement: "above" | "below";
     } | null>(null);
-
-    React.useInsertionEffect(() => {
-        if (typeof document === "undefined") return;
-        if (document.getElementById(SPINNER_STYLE_ID)) return;
-        const style = document.createElement("style");
-        style.id = SPINNER_STYLE_ID;
-        style.textContent = SPINNER_STYLE_RULES;
-        document.head.appendChild(style);
-    }, []);
 
     const state = checks && checks !== "loading" ? checks.state : "pending";
     const buttonLabel = t("commit.checks.title");
@@ -204,15 +189,24 @@ function StateIcon({ state }: { state?: CommitCheckState }): React.ReactElement 
         return <IoIosCloseCircleOutline size={18} aria-hidden="true" style={style} />;
     }
     if (state === "pending") {
+        // svg-spinners:tadpole, inlined. Self-animating SMIL (no CSS keyframe),
+        // fill="currentColor" so it picks up the pending state color. The icon's
+        // built-in 0.75s spin is slowed to 1.3s.
         return (
-            <FiLoader
-                size={16}
-                aria-hidden="true"
-                style={{
-                    ...style,
-                    animation: "intelligit-commit-check-spin 1s linear infinite",
-                }}
-            />
+            <svg width={16} height={16} viewBox="0 0 24 24" aria-hidden="true" style={style}>
+                <path
+                    fill="currentColor"
+                    d="M12,23a9.63,9.63,0,0,1-8-9.5,9.51,9.51,0,0,1,6.79-9.1A1.66,1.66,0,0,0,12,2.81h0a1.67,1.67,0,0,0-1.94-1.64A11,11,0,0,0,12,23Z"
+                >
+                    <animateTransform
+                        attributeName="transform"
+                        type="rotate"
+                        dur="1.3s"
+                        repeatCount="indefinite"
+                        values="0 12 12;360 12 12"
+                    />
+                </path>
+            </svg>
         );
     }
     if (state === "skipped" || state === "cancelled" || state === "neutral") {

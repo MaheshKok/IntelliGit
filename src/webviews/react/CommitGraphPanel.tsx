@@ -21,7 +21,7 @@ import type {
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
+import { commitChecksSnapshotEqual, shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { ThemeIconFontFaces } from "./shared/components";
 import { JETBRAINS_UI } from "./shared/tokens";
 
@@ -238,6 +238,14 @@ export function CommitGraphPanel({
                     break;
                 case "setCommitChecks":
                     setCommitChecks((prev) => {
+                        const existing = prev.get(data.snapshot.hash);
+                        if (
+                            existing &&
+                            existing !== "loading" &&
+                            commitChecksSnapshotEqual(existing, data.snapshot)
+                        ) {
+                            return prev;
+                        }
                         const next = new Map(prev);
                         next.set(data.snapshot.hash, data.snapshot);
                         return next;
@@ -345,13 +353,18 @@ export function CommitGraphPanel({
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
-            setCommitChecks((prev) => {
-                if (!shouldRequestCommitChecks(prev.get(hash))) return prev;
-                const next = new Map(prev);
-                next.set(hash, "loading");
-                return next;
-            });
+            const current = commitChecks.get(hash);
+            if (!shouldRequestCommitChecks(current)) return;
+            // Only show the spinner on the first fetch. A background refresh of an
+            // already-displayed snapshot keeps the current badge so it does not flicker.
+            if (current === undefined) {
+                setCommitChecks((prev) => {
+                    if (prev.get(hash) !== undefined) return prev;
+                    const next = new Map(prev);
+                    next.set(hash, "loading");
+                    return next;
+                });
+            }
             vscode.postMessage({ type: "requestCommitChecks", hash });
         },
         [commitChecks, vscode],
