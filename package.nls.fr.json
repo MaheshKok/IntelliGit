@@ -53,12 +53,12 @@
     "configuration.commitWindowPosition.markdownDescription": "Position du panneau de commit dans la fenêtre IntelliGit non ancrée/à onglets. `auto` (par défaut) suit la propriété `workbench.sideBar.location` de VS Code ; `left` et `right` forcent un positionnement latéral.",
     "view.fileCountBadge": "Fichiers modifiés",
     "view.worktrees": "Worktrees",
-    "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree",
-    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",
-    "command.lockWorktree": "Lock Worktree",
-    "command.unlockWorktree": "Unlock Worktree",
-    "command.moveWorktree": "Move Worktree...",
-    "command.pruneWorktrees": "Prune Worktrees",
-    "command.repairWorktrees": "Repair Worktrees"
+    "command.createWorktree": "Créer un worktree...",
+    "command.deleteWorktree": "Supprimer le worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Fichiers ou dossiers relatifs ignorés par Git à copier depuis le dépôt actuel dans chaque nouveau worktree créé, comme `.env` ou `.vscode/settings.json`.",
+    "command.lockWorktree": "Verrouiller le worktree",
+    "command.unlockWorktree": "Déverrouiller le worktree",
+    "command.moveWorktree": "Déplacer le worktree...",
+    "command.pruneWorktrees": "Nettoyer les worktrees",
+    "command.repairWorktrees": "Réparer les worktrees"
 }

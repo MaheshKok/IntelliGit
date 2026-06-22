@@ -199,5 +199,5 @@
     "branch.worktreeBadge.current": "이 worktree에서 체크아웃됨",
     "branch.worktreeBadge.other": "다른 worktree에서 체크아웃됨",
     "branch.menu.openWorktree": "Worktree 열기",
-    "branch.menu.createWorktree": "Create Worktree..."
+    "branch.menu.createWorktree": "워크트리 만들기..."
 }

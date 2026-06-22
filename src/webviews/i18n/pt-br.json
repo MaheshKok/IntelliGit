@@ -213,5 +213,5 @@
     "branch.worktreeBadge.current": "Checkout feito neste worktree",
     "branch.worktreeBadge.other": "Checkout feito em outro worktree",
     "branch.menu.openWorktree": "Abrir worktree",
-    "branch.menu.createWorktree": "Create Worktree..."
+    "branch.menu.createWorktree": "Criar worktree..."
 }

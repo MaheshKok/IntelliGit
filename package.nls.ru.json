@@ -53,12 +53,12 @@
     "configuration.commitWindowPosition.markdownDescription": "Положение панели фиксации в открепленном/вложенном окне IntelliGit. Параметр `auto` (по умолчанию) соответствует параметру `workbench.sideBar.location` в VS Code; `left` и `right` принудительно определяют сторону.",
     "view.fileCountBadge": "Измененные файлы",
     "view.worktrees": "Рабочие деревья",
-    "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree",
-    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",
-    "command.lockWorktree": "Lock Worktree",
-    "command.unlockWorktree": "Unlock Worktree",
-    "command.moveWorktree": "Move Worktree...",
-    "command.pruneWorktrees": "Prune Worktrees",
-    "command.repairWorktrees": "Repair Worktrees"
+    "command.createWorktree": "Создать worktree...",
+    "command.deleteWorktree": "Удалить worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Относительные файлы или папки, игнорируемые Git, которые нужно копировать из текущего репозитория в каждый вновь созданный worktree, например `.env` или `.vscode/settings.json`.",
+    "command.lockWorktree": "Заблокировать worktree",
+    "command.unlockWorktree": "Разблокировать worktree",
+    "command.moveWorktree": "Переместить worktree...",
+    "command.pruneWorktrees": "Очистить worktree",
+    "command.repairWorktrees": "Восстановить worktree"
 }

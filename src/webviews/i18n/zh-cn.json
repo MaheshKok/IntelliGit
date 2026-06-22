@@ -199,5 +199,5 @@
     "branch.worktreeBadge.current": "已在此 worktree 中检出",
     "branch.worktreeBadge.other": "已在另一个 worktree 中检出",
     "branch.menu.openWorktree": "打开 worktree",
-    "branch.menu.createWorktree": "Create Worktree..."
+    "branch.menu.createWorktree": "创建 Worktree..."
 }

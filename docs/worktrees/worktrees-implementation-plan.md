@@ -111,7 +111,7 @@ Files:
 Implementation spec for `src/git/worktrees.ts`:
 - `export function parseWorktreeList(porcelainZ: string, currentRoot: string): GitWorktree[]`
   - Input is the raw stdout of `git worktree list --porcelain -z`.
-  - Framing: the `-z` output is a flat sequence of NUL-terminated attribute tokens; worktree records are separated by an empty token (a NUL immediately following a NUL). Split on `\0`, then group tokens into records, starting a new record at each empty token.
+  - Framing: the `-z` output is a flat sequence of NUL-terminated attribute tokens; worktree records are separated by an empty token (a NUL immediately following a NUL). Split on `\0`, then group tokens into records; a record starts at each empty token.
   - Per-record attributes (each token is either `key value` split on the first space, or a bare `key`):
     - `worktree <path>` -> `path` (absolute).
     - `HEAD <oid>` -> `head`; absent for a bare worktree -> `head = null`.

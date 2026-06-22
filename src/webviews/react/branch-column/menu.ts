@@ -3,7 +3,9 @@ import type { BranchAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
 
+/** Sentinel action namespace for visual separators in branch context menus. */
 type SeparatorAction = `sep-${string}`;
+/** Branch menu entry type that allows separators without widening executable actions. */
 type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | SeparatorAction };
 
 /** Shortens branch names for menu labels while preserving the distinguishing suffix. */

@@ -220,5 +220,5 @@
     "branch.worktreeBadge.current": "Wyewidencjonowano w tym worktree",
     "branch.worktreeBadge.other": "Wyewidencjonowano w innym worktree",
     "branch.menu.openWorktree": "Otwórz worktree",
-    "branch.menu.createWorktree": "Create Worktree..."
+    "branch.menu.createWorktree": "Utwórz worktree..."
 }

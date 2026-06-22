@@ -166,7 +166,7 @@ export async function activateRepositoryMode(
         try {
             await worktrees.refresh();
         } catch (err) {
-            console.error("Worktrees refresh failed:", err);
+            console.error("[IntelliGit] Worktrees refresh failed:", err);
         }
         currentBranches = worktreeService.decorateBranches(branches);
         commitGraph.setBranches(currentBranches);
@@ -286,6 +286,7 @@ export async function activateRepositoryMode(
         });
     };
 
+    /** Target location for moving the unified IntelliGit webview out of the sidebar. */
     type UndockTarget = "editorTab" | "newWindow";
     const handleOpenCommitFileDiff = createOpenCommitFileDiffHandler({
         executor,

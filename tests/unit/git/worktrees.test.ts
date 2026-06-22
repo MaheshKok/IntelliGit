@@ -37,6 +37,7 @@ function createMockExecutor(stdout: string): GitExecutor {
     return { run } as unknown as GitExecutor;
 }
 
+/** Real Git executor used when parser safety tests need repository-backed paths. */
 class RealGitExecutor {
     constructor(private readonly cwd: string) {}
 

@@ -220,5 +220,5 @@
     "branch.worktreeBadge.current": "Извлечено в этом worktree",
     "branch.worktreeBadge.other": "Извлечено в другом worktree",
     "branch.menu.openWorktree": "Открыть worktree",
-    "branch.menu.createWorktree": "Create Worktree..."
+    "branch.menu.createWorktree": "Создать worktree..."
 }

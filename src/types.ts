@@ -62,6 +62,7 @@ export interface ThemeTreeIcon {
     fontStyle?: string;
 }
 
+/** Theme icon pair used when a folder has distinct collapsed and expanded artwork. */
 interface ThemeNamedFolderIcon {
     collapsed?: ThemeTreeIcon;
     expanded?: ThemeTreeIcon;
@@ -204,6 +205,7 @@ export interface StashEntry {
     hash: string;
 }
 
+/** File state labels provided for each side of a merge-conflict entry. */
 type MergeConflictSideState = "Modified" | "Added" | "Deleted";
 
 /**

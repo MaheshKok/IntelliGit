@@ -4,6 +4,7 @@ import * as path from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../helpers/l10nTestHelper";
 
+/** Command callback shape captured by the VS Code command-registration mock. */
 type CommandHandler = (...args: unknown[]) => unknown;
 
 const registeredCommands = new Map<string, CommandHandler>();
@@ -62,8 +63,10 @@ const configurationValues = new Map<string, unknown>();
 const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
     configurationValues.set(key, value);
 });
+/** Node `fs.watch` callback shape used by refresh-service integration mocks. */
 type FsWatchCallback = (...args: unknown[]) => void;
 const fsWatchCallbacks: FsWatchCallback[] = [];
+/** Minimal native tree-view shape needed for badge and description assertions. */
 type MockTreeView = {
     badge?: { value: number; tooltip?: string };
     description?: string;
@@ -71,6 +74,7 @@ type MockTreeView = {
 };
 const createdTreeViews = new Map<string, MockTreeView>();
 const initialTreeViewBadges = new Map<string, MockTreeView["badge"]>();
+/** Built-in Git extension repository subset used by activation refresh tests. */
 type MockGitRepository = {
     rootUri: { fsPath: string; path: string };
     onDidChangeState: ReturnType<typeof vi.fn>;
@@ -105,6 +109,7 @@ let workspaceFolders: Array<{ uri: { fsPath: string; path: string } }> | undefin
     { uri: { fsPath: "/repo", path: "/repo" } },
 ];
 
+/** Disposable mock that runs a provided cleanup callback. */
 class MockDisposable {
     constructor(private readonly fn: () => void) {}
     /** Runs the captured cleanup callback used by VS Code disposable mocks. */
@@ -113,6 +118,7 @@ class MockDisposable {
     }
 }
 
+/** Synchronous event emitter mock matching VS Code's listener registration contract. */
 class MockEventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
     readonly event = (listener: (value: T) => void) => {
@@ -223,6 +229,7 @@ const gitOpsState = {
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
+/** Extension context subset used by activation integration tests. */
 type MockExtensionContext = {
     extensionUri: { fsPath: string; path: string };
     workspaceState?: {
@@ -245,6 +252,7 @@ function updateLatestUndockedProvider(provider: MockUndockedViewProvider): void 
     latestUndockedProvider = provider;
 }
 
+/** Commit graph provider mock with event emitters exposed for host-command tests. */
 class MockCommitGraphViewProvider {
     static readonly viewType = "intelligit.commitGraph";
     static readonly sidebarViewType = "intelligit.sidebarGraph";
@@ -313,6 +321,7 @@ class MockCommitGraphViewProvider {
     }
 }
 
+/** Commit info provider mock for file-diff event plumbing. */
 class MockCommitInfoViewProvider {
     static readonly viewType = "intelligit.commitFiles";
     private openCommitFileDiffEmitter = new MockEventEmitter<{
@@ -325,6 +334,7 @@ class MockCommitInfoViewProvider {
     dispose = vi.fn();
 }
 
+/** Commit panel provider mock for selection, branch, file-count, and working-tree events. */
 class MockCommitPanelViewProvider {
     static readonly viewType = "intelligit.commitPanel";
     private fileCountEmitter = new MockEventEmitter<number>();
@@ -393,6 +403,7 @@ class MockCommitPanelViewProvider {
     }
 }
 
+/** Undocked provider mock for dock/open/refresh integration coverage. */
 class MockUndockedViewProvider {
     static readonly viewType = "intelligit.undocked";
     private commitSelectedEmitter = new MockEventEmitter<string>();
@@ -687,6 +698,7 @@ async function waitForAsync(): Promise<void> {
     await Promise.resolve();
 }
 
+/** Fake webview view plus send helper used to drive registered webview providers. */
 type FakeWebviewView = {
     view: {
         webview: {
@@ -2066,6 +2078,7 @@ describe("extension integration", () => {
 
         const vscode = await import("vscode");
         const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        /** Webview panel subset captured from `createWebviewPanel` calls. */
         type CreatedPanel = {
             webview: {
                 onDidReceiveMessage: ReturnType<typeof vi.fn>;

@@ -53,12 +53,12 @@
     "configuration.commitWindowPosition.markdownDescription": "在未停靠/標籤頁化的 IntelliGit 視窗中，提交面板的位置。 `auto`（預設值）遵循 VS Code 的 `workbench.sideBar.location`；`left` 和 `right` 強制設定在左側。",
     "view.fileCountBadge": "已更改的文件",
     "view.worktrees": "工作樹",
-    "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree",
-    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",
-    "command.lockWorktree": "Lock Worktree",
-    "command.unlockWorktree": "Unlock Worktree",
-    "command.moveWorktree": "Move Worktree...",
-    "command.pruneWorktrees": "Prune Worktrees",
-    "command.repairWorktrees": "Repair Worktrees"
+    "command.createWorktree": "建立 Worktree...",
+    "command.deleteWorktree": "刪除 Worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "要從目前存放庫複製到每個新建 Worktree 的相對路徑 Git 忽略檔案或資料夾，例如 `.env` 或 `.vscode/settings.json`。",
+    "command.lockWorktree": "鎖定 Worktree",
+    "command.unlockWorktree": "解除鎖定 Worktree",
+    "command.moveWorktree": "移動 Worktree...",
+    "command.pruneWorktrees": "清理 Worktree",
+    "command.repairWorktrees": "修復 Worktree"
 }

@@ -33,10 +33,12 @@ export interface RefreshServiceDeps {
     getUndocked?: () => UndockedViewProvider | undefined;
 }
 
+/** Minimal VS Code Git extension API surface consumed by refresh wiring. */
 interface VsCodeGitExtension {
     getAPI(version: 1): VsCodeGitApi;
 }
 
+/** Repository events exposed by VS Code's built-in Git extension. */
 interface VsCodeGitApi {
     repositories: VsCodeGitRepository[];
     onDidOpenRepository?: (
@@ -47,11 +49,13 @@ interface VsCodeGitApi {
     ) => vscode.Disposable;
 }
 
+/** VS Code Git repository handle used for root matching and state-change events. */
 interface VsCodeGitRepository {
     rootUri: vscode.Uri;
     onDidChangeState?: (listener: () => unknown) => vscode.Disposable;
 }
 
+/** Debounced refresh source labels used to keep diagnostics and tests deterministic. */
 type RefreshEventType =
     | "workspace-file"
     | "git-index"

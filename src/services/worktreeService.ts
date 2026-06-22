@@ -26,6 +26,7 @@ export interface CreateWorktreeOptions {
     detach?: boolean;
 }
 
+/** Validated copy pair for one configured include-file entry. */
 interface IncludedWorktreeFile {
     source: string;
     target: string;

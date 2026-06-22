@@ -3,6 +3,7 @@ import path from "node:path";
 import type { GitWorktree, WorktreeState } from "../types";
 import type { GitExecutor } from "./executor";
 
+/** Intermediate shape for one raw `git worktree list --porcelain -z` record. */
 interface WorktreeRecord {
     path?: string;
     head?: string;

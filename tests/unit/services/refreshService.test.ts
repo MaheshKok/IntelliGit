@@ -46,6 +46,7 @@ vi.mock("vscode", () => {
     };
 });
 
+/** Refresh source labels used to reach the private scheduler in tests. */
 type RefreshEventType =
     | "workspace-file"
     | "git-index"
@@ -53,6 +54,7 @@ type RefreshEventType =
     | "git-refs"
     | "git-repository-state";
 
+/** Narrow test-only view of the refresh service scheduler method. */
 interface RefreshServiceSchedulerAccess {
     scheduleRefreshEvent(eventType: RefreshEventType): void;
 }

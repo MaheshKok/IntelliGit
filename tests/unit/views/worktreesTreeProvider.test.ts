@@ -4,6 +4,7 @@ import { WorktreesTreeProvider } from "../../../src/views/WorktreesTreeProvider"
 import type { WorktreeService } from "../../../src/services/worktreeService";
 
 vi.mock("vscode", () => {
+    /** EventEmitter mock used by WorktreesTreeProvider refresh assertions. */
     class EventEmitter<T> {
         private listeners: Array<(event: T) => void> = [];
         readonly event = (listener: (event: T) => void) => {
@@ -19,6 +20,7 @@ vi.mock("vscode", () => {
             this.listeners = [];
         }
     }
+    /** TreeItem mock with only fields the provider writes in tests. */
     class TreeItem {
         description?: string;
         tooltip?: string;
@@ -30,12 +32,14 @@ vi.mock("vscode", () => {
             public collapsibleState: number,
         ) {}
     }
+    /** ThemeIcon mock preserving icon ID and optional color for assertions. */
     class ThemeIcon {
         constructor(
             public id: string,
             public color?: unknown,
         ) {}
     }
+    /** ThemeColor mock preserving VS Code color IDs for assertions. */
     class ThemeColor {
         constructor(public id: string) {}
     }

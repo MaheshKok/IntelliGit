@@ -53,12 +53,12 @@
     "configuration.commitWindowPosition.markdownDescription": "ドッキング解除/タブ付き IntelliGit ウィンドウ内でのコミット パネルの位置。`auto` (デフォルト) は VS Code の `workbench.sideBar.location` に従います。`left` と `right` は左右どちらかに強制的に配置します。",
     "view.fileCountBadge": "変更されたファイル",
     "view.worktrees": "ワークツリー",
-    "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree",
-    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",
-    "command.lockWorktree": "Lock Worktree",
-    "command.unlockWorktree": "Unlock Worktree",
-    "command.moveWorktree": "Move Worktree...",
-    "command.pruneWorktrees": "Prune Worktrees",
-    "command.repairWorktrees": "Repair Worktrees"
+    "command.createWorktree": "ワークツリーを作成...",
+    "command.deleteWorktree": "ワークツリーを削除",
+    "configuration.worktree.includeFiles.markdownDescription": "現在のリポジトリから新しく作成される各ワークツリーにコピーする、`.env` や `.vscode/settings.json` などの相対パスの Git 無視ファイルまたはフォルダー。",
+    "command.lockWorktree": "ワークツリーをロック",
+    "command.unlockWorktree": "ワークツリーのロックを解除",
+    "command.moveWorktree": "ワークツリーを移動...",
+    "command.pruneWorktrees": "ワークツリーを整理",
+    "command.repairWorktrees": "ワークツリーを修復"
 }

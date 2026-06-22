@@ -53,12 +53,12 @@
     "configuration.commitWindowPosition.markdownDescription": "Posición del panel de confirmación dentro de la ventana de IntelliGit desacoplada/con pestañas. `auto` (predeterminado) sigue la `workbench.sideBar.location` de VS Code; `left` y `right` fuerzan un lado.",
     "view.fileCountBadge": "Archivos modificados",
     "view.worktrees": "Árboles de trabajo",
-    "command.createWorktree": "Create Worktree...",
-    "command.deleteWorktree": "Delete Worktree",
-    "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",
-    "command.lockWorktree": "Lock Worktree",
-    "command.unlockWorktree": "Unlock Worktree",
-    "command.moveWorktree": "Move Worktree...",
-    "command.pruneWorktrees": "Prune Worktrees",
-    "command.repairWorktrees": "Repair Worktrees"
+    "command.createWorktree": "Crear worktree...",
+    "command.deleteWorktree": "Eliminar worktree",
+    "configuration.worktree.includeFiles.markdownDescription": "Archivos o carpetas relativos ignorados por Git que se copiarán del repositorio actual a cada worktree recién creado, como `.env` o `.vscode/settings.json`.",
+    "command.lockWorktree": "Bloquear worktree",
+    "command.unlockWorktree": "Desbloquear worktree",
+    "command.moveWorktree": "Mover worktree...",
+    "command.pruneWorktrees": "Depurar worktrees",
+    "command.repairWorktrees": "Reparar worktrees"
 }

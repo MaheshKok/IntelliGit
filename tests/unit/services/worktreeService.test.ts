@@ -10,6 +10,7 @@ const includeFiles = vi.hoisted(() => ({ value: [] as string[] }));
 const tempRoots: string[] = [];
 
 vi.mock("vscode", () => {
+    /** EventEmitter mock used by WorktreeService cache-change assertions. */
     class EventEmitter<T> {
         private listeners: Array<(event: T) => void> = [];
         readonly event = (listener: (event: T) => void) => {

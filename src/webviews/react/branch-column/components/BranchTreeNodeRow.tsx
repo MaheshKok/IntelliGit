@@ -30,6 +30,7 @@ import type { TreeNode } from "../types";
 
 const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
+/** Recursive branch-row inputs shared by folder rows and concrete branch rows. */
 interface Props {
     node: TreeNode;
     depth: number;
