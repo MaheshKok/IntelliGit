@@ -450,7 +450,16 @@ export class GitOps {
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
     }
-    /** Fetches remote refs for the current repository without changing the working tree. */
+    /**
+     * Fetches remote refs for the current repository without changing local checkout state.
+     *
+     * The command updates remote-tracking refs under `.git/refs/remotes/*` without modifying
+     * the working tree, index, or local branches.
+     *
+     * @returns Git stdout from `git fetch`.
+     * @throws Propagates `GitExecutor` failures when no remote is configured, network or
+     * authentication fails, or Git exits with a non-zero status.
+     */
     async fetch(): Promise<string> {
         return this.executor.run(["fetch"]);
     }

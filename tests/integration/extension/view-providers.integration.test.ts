@@ -254,6 +254,7 @@ function makeGitOpsMock() {
                 behind: 0,
             },
         ]),
+        getRemotes: vi.fn(async () => ["origin"]),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },

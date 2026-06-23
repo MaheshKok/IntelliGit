@@ -70,6 +70,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     // Embedded commit graph state
     private currentBranch: string | null = null;
     private currentBranchHasUpstreamCache = false;
+    private hasRemotesCache = false;
     private currentBranchAheadCache = 0;
     private currentBranchBehindCache = 0;
     private filterText = "";
@@ -136,6 +137,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.shelfFiles = [];
         this.currentBranch = null;
         this.currentBranchHasUpstreamCache = false;
+        this.hasRemotesCache = false;
         this.currentBranchAheadCache = 0;
         this.currentBranchBehindCache = 0;
         this.filterText = "";
@@ -285,6 +287,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     private postWorkingTreeSnapshot(
         currentBranchHasUpstream = this.currentBranchHasUpstreamCache,
+        hasRemotes = this.hasRemotesCache,
     ): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
@@ -298,6 +301,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             folderIconsByName: this.folderIconsByName,
             iconFonts,
             currentBranchHasUpstream,
+            hasRemotes,
             currentBranchAhead: this.currentBranchAheadCache,
             currentBranchBehind: this.currentBranchBehindCache,
         });
@@ -355,6 +359,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.selectedShelfIndex = selectedShelfIndex;
             this.shelfFiles = shelfFiles;
             this.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
+            this.hasRemotesCache = currentBranchStatus.hasRemotes;
             this.currentBranchAheadCache = currentBranchStatus.ahead;
             this.currentBranchBehindCache = currentBranchStatus.behind;
             const uniquePaths = new Set(files.map((f) => f.path));
@@ -372,6 +377,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 folderIconsByName: this.folderIconsByName,
                 iconFonts,
                 currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+                hasRemotes: currentBranchStatus.hasRemotes,
                 currentBranchAhead: currentBranchStatus.ahead,
                 currentBranchBehind: currentBranchStatus.behind,
             });
@@ -840,17 +846,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
     /**
-     * Reads current-branch upstream and ahead/behind state for push-related UI decisions.
+     * Reads current-branch upstream, ahead/behind, and remote availability for toolbar state.
      */
     private async currentBranchStatus(): Promise<{
         hasUpstream: boolean;
+        hasRemotes: boolean;
         ahead: number;
         behind: number;
     }> {
-        const branches = await this.gitOps.getBranches();
+        const [branches, remotes] = await Promise.all([
+            this.gitOps.getBranches(),
+            this.gitOps.getRemotes(),
+        ]);
         const currentBranch = branches.find((branch) => branch.isCurrent);
         return {
             hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
+            hasRemotes: remotes.length > 0,
             ahead: currentBranch?.ahead ?? 0,
             behind: currentBranch?.behind ?? 0,
         };

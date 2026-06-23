@@ -318,6 +318,7 @@ function App(): React.ReactElement {
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
                         currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
+                        hasRemotes: data.hasRemotes,
                         currentBranchAhead: data.currentBranchAhead ?? 0,
                         currentBranchBehind: data.currentBranchBehind ?? 0,
                     });
@@ -465,7 +466,7 @@ function App(): React.ReactElement {
 
     const canCommit = cpState.isAmend || checkedPaths.size > 0;
     const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
-    const canFetch = cpState.currentBranchHasUpstream;
+    const canFetch = cpState.hasRemotes;
     const canPull = cpState.currentBranchHasUpstream && cpState.currentBranchBehind > 0;
     const canSync = canPull || canPush;
 

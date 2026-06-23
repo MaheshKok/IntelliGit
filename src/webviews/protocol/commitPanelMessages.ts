@@ -211,6 +211,8 @@ export type InboundMessage =
            * `true` so older payloads do not incorrectly switch the UI to Publish Branch.
            */
           currentBranchHasUpstream?: boolean;
+          /** Whether the repository has at least one configured remote for fetch operations. */
+          hasRemotes?: boolean;
           /** Number of commits the current branch is ahead of its upstream, when known. */
           currentBranchAhead?: number;
           /** Number of commits the current branch is behind its upstream, when known. */

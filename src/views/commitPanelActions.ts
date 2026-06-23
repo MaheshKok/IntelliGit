@@ -16,7 +16,12 @@ interface CommitPanelActionDeps {
     maybeOfferPublishBranch: () => Promise<void>;
 }
 
-/** Git operations available from the Changes toolbar. */
+/**
+ * Git operation identifiers accepted from the Changes toolbar.
+ *
+ * `fetch` updates remote-tracking refs, `pull` rebases the current branch onto its upstream,
+ * `push` sends local commits to the upstream, and `sync` runs pull-rebase followed by push.
+ */
 export type CommitPanelGitOperation = "fetch" | "pull" | "push" | "sync";
 
 /**
@@ -145,7 +150,20 @@ export async function commitAndPushFromPanel(
     deps.fireWorkingTreeChanged();
 }
 
-/** Runs a top-level Git operation requested from the Changes toolbar. */
+/**
+ * Runs a top-level Git operation requested from the Changes toolbar.
+ *
+ * The caller supplies `gitOps` for Git I/O, `refreshData` for the Changes snapshot,
+ * optional `refreshGraphData` for the embedded graph, and `fireWorkingTreeChanged` for
+ * extension listeners that react to repository updates. On success, the panel shows the
+ * operation-specific completion message, refreshes panel data, refreshes graph data when
+ * available, and fires the working-tree change event.
+ *
+ * `fetch` updates remote-tracking refs only, `pull` runs `pull --rebase`, `push` pushes the
+ * current branch, and `sync` always runs pull-rebase before push. Git failures are rethrown
+ * except rejected `push` or `sync` operations may prompt for a rebase retry through
+ * `promptRebaseAfterPushRejection`.
+ */
 export async function runGitOperationFromPanel(
     deps: Pick<
         CommitPanelActionDeps,

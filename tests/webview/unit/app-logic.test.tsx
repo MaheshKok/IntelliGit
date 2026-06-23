@@ -251,11 +251,12 @@ describe("app logic coverage", () => {
                     amendBranchHistoryLoaded: false,
                     iconFonts: [],
                     isRefreshing: false,
-                            error: null,
-                            currentBranchHasUpstream: true,
-                            currentBranchAhead: 1,
-                            currentBranchBehind: 0,
-                        },
+                    error: null,
+                    currentBranchHasUpstream: true,
+                    hasRemotes: true,
+                    currentBranchAhead: 1,
+                    currentBranchBehind: 0,
+                },
                 dispatch,
             ],
         }));
@@ -295,11 +296,7 @@ describe("app logic coverage", () => {
                         disabled={!props.canCommit}
                         onClick={() => props.onCommit()}
                     />
-                    <button
-                        id="fetch"
-                        disabled={!props.canFetch}
-                        onClick={() => props.onFetch()}
-                    />
+                    <button id="fetch" disabled={!props.canFetch} onClick={() => props.onFetch()} />
                     <button id="pull" disabled={!props.canPull} onClick={() => props.onPull()} />
                     <button id="push" disabled={!props.canPush} onClick={() => props.onPush()} />
                     <button id="sync" disabled={!props.canSync} onClick={() => props.onSync()} />
@@ -370,6 +367,85 @@ describe("app logic coverage", () => {
         expect(postMessage).not.toHaveBeenCalledWith({ type: "pull" });
         expect(postMessage).toHaveBeenCalledWith({ type: "push" });
         expect(postMessage).toHaveBeenCalledWith({ type: "sync" });
+    });
+
+    it("CommitPanelApp enables fetch when remotes exist without an upstream branch", async () => {
+        let captured:
+            | {
+                  canFetch: boolean;
+                  canPull: boolean;
+                  canPush: boolean;
+                  canSync: boolean;
+              }
+            | undefined;
+
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
+            useExtensionMessages: () => [
+                {
+                    files: [],
+                    stashes: [],
+                    shelfFiles: [],
+                    selectedShelfIndex: null,
+                    commitMessage: "",
+                    isAmend: false,
+                    amendBranchCommits: [],
+                    amendBranchHistoryLoaded: false,
+                    iconFonts: [],
+                    isRefreshing: false,
+                    error: null,
+                    currentBranchHasUpstream: false,
+                    hasRemotes: true,
+                    currentBranchAhead: 0,
+                    currentBranchBehind: 0,
+                },
+                vi.fn(),
+            ],
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles", () => ({
+            useCheckedFiles: () => ({
+                checkedPaths: new Set<string>(),
+                toggleFile: vi.fn(),
+                toggleFolder: vi.fn(),
+                toggleSection: vi.fn(),
+                isAllChecked: () => false,
+                isSomeChecked: () => false,
+            }),
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage: vi.fn(), getState: () => ({}), setState: vi.fn() }),
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
+            CommitTab: (props: {
+                canFetch: boolean;
+                canPull: boolean;
+                canPush: boolean;
+                canSync: boolean;
+            }) => {
+                captured = props;
+                return <div>CommitTab</div>;
+            },
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
+            ShelfTab: () => <div>Shelf</div>,
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
+            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+                <div>
+                    <div>{props.commitContent}</div>
+                    <div>{props.shelfContent}</div>
+                </div>
+            ),
+        }));
+
+        await import("../../../src/webviews/react/commit-panel/CommitPanelApp");
+        await flush();
+
+        expect(captured).toMatchObject({
+            canFetch: true,
+            canPull: false,
+            canPush: false,
+            canSync: false,
+        });
     });
 
     it("CommitPanelApp defaults groupByDir to true when getState returns undefined", async () => {

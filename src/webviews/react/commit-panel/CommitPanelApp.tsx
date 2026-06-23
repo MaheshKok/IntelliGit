@@ -62,7 +62,7 @@ function App(): React.ReactElement {
 
     const canCommit = state.isAmend || checkedPaths.size > 0;
     const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
-    const canFetch = state.currentBranchHasUpstream;
+    const canFetch = state.hasRemotes;
     const canPull = state.currentBranchHasUpstream && state.currentBranchBehind > 0;
     const canSync = canPull || canPush;
 
