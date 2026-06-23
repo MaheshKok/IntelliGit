@@ -69,9 +69,6 @@ export type CommitAction = (typeof COMMIT_ACTION_VALUES)[number];
 /** Action value sent by worktree context menus and accepted by host worktree routing. */
 export type WorktreeAction = (typeof WORKTREE_ACTION_VALUES)[number];
 
-/** Repository transport operation sent by graph sidebar controls. */
-export type GraphGitOperation = "fetch" | "pull" | "push" | "sync";
-
 /**
  * Narrows untrusted branch action strings before they cross into VS Code command dispatch.
  */
