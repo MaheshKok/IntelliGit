@@ -160,7 +160,6 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
-
     return (
         <CommitList
             commits={commits}

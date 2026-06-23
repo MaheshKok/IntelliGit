@@ -16,7 +16,6 @@ import type {
     CommitAction,
     CommitGraphOutbound,
     CommitGraphInbound,
-    GraphGitOperation,
     WorktreeAction,
 } from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
@@ -142,12 +141,6 @@ export function CommitGraphPanel({
         ThemeFolderIconMap | undefined
     >(undefined);
     const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
-    const [gitActionState, setGitActionState] = useState({
-        currentBranchHasUpstream: true,
-        hasRemotes: true,
-        currentBranchAhead: 0,
-        currentBranchBehind: 0,
-    });
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
             const state = vscode.getState();
@@ -222,13 +215,6 @@ export function CommitGraphPanel({
                 case "setBranches":
                     setBranches(data.branches);
                     setWorktrees(data.worktrees ?? []);
-                    setGitActionState((prev) => ({
-                        currentBranchHasUpstream:
-                            data.currentBranchHasUpstream ?? prev.currentBranchHasUpstream,
-                        hasRemotes: data.hasRemotes ?? prev.hasRemotes,
-                        currentBranchAhead: data.currentBranchAhead ?? prev.currentBranchAhead,
-                        currentBranchBehind: data.currentBranchBehind ?? prev.currentBranchBehind,
-                    }));
                     setBranchFolderIcon(data.folderIcon);
                     setBranchFolderExpandedIcon(data.folderExpandedIcon);
                     setBranchFolderIconsByName(data.folderIconsByName);
@@ -343,13 +329,6 @@ export function CommitGraphPanel({
         [vscode],
     );
 
-    const handleGitAction = useCallback(
-        (action: GraphGitOperation) => {
-            vscode.postMessage({ type: action });
-        },
-        [vscode],
-    );
-
     const handleCommitAction = useCallback(
         (action: CommitAction, hash: string) => {
             vscode.postMessage({ type: "commitAction", action, hash });
@@ -389,13 +368,6 @@ export function CommitGraphPanel({
         },
         [vscode],
     );
-    const canFetch = gitActionState.hasRemotes;
-    const canPull =
-        gitActionState.currentBranchHasUpstream && gitActionState.currentBranchBehind > 0;
-    const canPush =
-        gitActionState.currentBranchHasUpstream && gitActionState.currentBranchAhead > 0;
-    const canSync = canPull || canPush;
-
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
@@ -417,11 +389,6 @@ export function CommitGraphPanel({
                         onBranchAction={handleBranchAction}
                         onDeleteBranches={handleDeleteBranches}
                         onWorktreeAction={handleWorktreeAction}
-                        onGitAction={handleGitAction}
-                        canFetch={canFetch}
-                        canPull={canPull}
-                        canPush={canPush}
-                        canSync={canSync}
                         folderIcon={branchFolderIcon}
                         folderExpandedIcon={branchFolderExpandedIcon}
                         folderIconsByName={branchFolderIconsByName}

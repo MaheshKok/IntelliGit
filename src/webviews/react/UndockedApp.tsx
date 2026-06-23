@@ -34,12 +34,7 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type {
-    BranchAction,
-    CommitAction,
-    GraphGitOperation,
-    WorktreeAction,
-} from "../protocol/commitGraphTypes";
+import type { BranchAction, CommitAction, WorktreeAction } from "../protocol/commitGraphTypes";
 import type { UnifiedInbound, UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
@@ -471,9 +466,6 @@ function App(): React.ReactElement {
 
     const canCommit = cpState.isAmend || checkedPaths.size > 0;
     const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
-    const canFetch = cpState.hasRemotes;
-    const canPull = cpState.currentBranchHasUpstream && cpState.currentBranchBehind > 0;
-    const canSync = canPull || canPush;
 
     const handleCommit = useCallback(() => {
         const msg = cpState.commitMessage.trim();
@@ -486,10 +478,9 @@ function App(): React.ReactElement {
         });
     }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
 
-    const postGitOperation = useCallback((type: GraphGitOperation) => {
-        vscode.postMessage({ type });
+    const handlePush = useCallback(() => {
+        vscode.postMessage({ type: "push" });
     }, []);
-    const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -553,11 +544,6 @@ function App(): React.ReactElement {
                                 onBranchAction={handleBranchAction}
                                 onDeleteBranches={handleDeleteBranches}
                                 onWorktreeAction={handleWorktreeAction}
-                                onGitAction={postGitOperation}
-                                canFetch={canFetch}
-                                canPull={canPull}
-                                canPush={canPush}
-                                canSync={canSync}
                                 folderIcon={branchFolderIcon}
                                 folderExpandedIcon={branchFolderExpandedIcon}
                                 folderIconsByName={branchFolderIconsByName}

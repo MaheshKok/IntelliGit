@@ -2,10 +2,7 @@
 
 import React, { act } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-    BranchAction,
-    GraphGitOperation,
-} from "../../../src/webviews/protocol/commitGraphTypes";
+import type { BranchAction } from "../../../src/webviews/protocol/commitGraphTypes";
 
 function setupRoot(): void {
     document.body.innerHTML = "";
@@ -52,7 +49,6 @@ describe("app logic coverage", () => {
         type BranchColumnMockProps = {
             onSelectBranch: (branch: string | null) => void;
             onBranchAction: (action: BranchAction, branch: string) => void;
-            onGitAction?: (action: GraphGitOperation) => void;
         };
         type CommitListMockProps = {
             onSelectCommit: (hash: string) => void;
@@ -73,10 +69,6 @@ describe("app logic coverage", () => {
                         id="branch-action"
                         onClick={() => props.onBranchAction("checkout", "main")}
                     />
-                    <button id="git-fetch" onClick={() => props.onGitAction?.("fetch")} />
-                    <button id="git-pull" onClick={() => props.onGitAction?.("pull")} />
-                    <button id="git-push" onClick={() => props.onGitAction?.("push")} />
-                    <button id="git-sync" onClick={() => props.onGitAction?.("sync")} />
                 </div>
             ),
         }));
@@ -108,18 +100,6 @@ describe("app logic coverage", () => {
                 ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             document
                 .getElementById("branch-action")
-                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            document
-                .getElementById("git-fetch")
-                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            document
-                .getElementById("git-pull")
-                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            document
-                .getElementById("git-push")
-                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            document
-                .getElementById("git-sync")
                 ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             document
                 .getElementById("filter-short")
@@ -160,10 +140,6 @@ describe("app logic coverage", () => {
         expect(types).toContain("ready");
         expect(types).toContain("filterBranch");
         expect(types).toContain("branchAction");
-        expect(types).toContain("fetch");
-        expect(types).toContain("pull");
-        expect(types).toContain("push");
-        expect(types).toContain("sync");
         expect(types).toContain("commitAction");
         expect(types.filter((t) => t === "loadMore")).toHaveLength(1);
         expect(types).toContain("filterText");
@@ -370,60 +346,6 @@ describe("app logic coverage", () => {
             }),
         );
         expect(postMessage).toHaveBeenCalledWith({ type: "push" });
-    });
-
-    it("CommitGraphApp enables sidebar fetch when remotes exist without an upstream branch", async () => {
-        let captured:
-            | {
-                  canFetch: boolean;
-                  canPull: boolean;
-                  canPush: boolean;
-                  canSync: boolean;
-              }
-            | undefined;
-
-        vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
-            getVsCodeApi: () => ({ postMessage: vi.fn(), getState: () => ({}), setState: vi.fn() }),
-        }));
-        vi.doMock("../../../src/webviews/react/BranchColumn", () => ({
-            BranchColumn: (props: {
-                canFetch: boolean;
-                canPull: boolean;
-                canPush: boolean;
-                canSync: boolean;
-            }) => {
-                captured = props;
-                return <div>CommitTab</div>;
-            },
-        }));
-        vi.doMock("../../../src/webviews/react/CommitList", () => ({
-            CommitList: () => <div>CommitList</div>,
-        }));
-
-        await import("../../../src/webviews/react/CommitGraphApp");
-        await flush();
-        act(() => {
-            window.dispatchEvent(
-                new MessageEvent("message", {
-                    data: {
-                        type: "setBranches",
-                        branches: [],
-                        hasRemotes: true,
-                        currentBranchHasUpstream: false,
-                        currentBranchAhead: 0,
-                        currentBranchBehind: 0,
-                    },
-                }),
-            );
-        });
-        await flush();
-
-        expect(captured).toMatchObject({
-            canFetch: true,
-            canPull: false,
-            canPush: false,
-            canSync: false,
-        });
     });
 
     it("CommitPanelApp defaults groupByDir to true when getState returns undefined", async () => {

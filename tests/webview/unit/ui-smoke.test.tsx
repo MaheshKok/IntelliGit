@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch, CommitChecksSnapshot } from "../../../src/types";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { renderHighlightedLabel } from "../../../src/webviews/react/branch-column/highlight";
-import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { BranchSearchBar } from "../../../src/webviews/react/branch-column/components/BranchSearchBar";
 import { BranchSectionHeader } from "../../../src/webviews/react/branch-column/components/BranchSectionHeader";
 import { BranchTreeNodeRow } from "../../../src/webviews/react/branch-column/components/BranchTreeNodeRow";
@@ -413,27 +412,6 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Refresh");
         expect(html).not.toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
-
-        const branchColumnHtml = renderToStaticMarkup(
-            <BranchColumn
-                branches={[branch({ isCurrent: true })]}
-                selectedBranch={null}
-                onSelectBranch={noop}
-                onBranchAction={noop}
-                onGitAction={noop}
-                canFetch={true}
-                canPull={true}
-                canPush={true}
-                canSync={true}
-            />,
-        );
-        expect(branchColumnHtml).toContain("Fetch");
-        expect(branchColumnHtml).toContain("Pull");
-        expect(branchColumnHtml).toContain("Push");
-        expect(branchColumnHtml).toContain("Sync");
-        expect(branchColumnHtml.indexOf("Sync")).toBeLessThan(branchColumnHtml.indexOf("Fetch"));
-        expect(branchColumnHtml.indexOf("Fetch")).toBeLessThan(branchColumnHtml.indexOf("Pull"));
-        expect(branchColumnHtml.indexOf("Pull")).toBeLessThan(branchColumnHtml.indexOf("Push"));
 
         const disabledCommitHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>

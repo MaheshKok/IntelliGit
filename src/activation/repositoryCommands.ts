@@ -25,6 +25,10 @@ import {
     showTimedWarningMessage,
     showTimedInformationMessage,
 } from "../utils/notifications";
+import {
+    runGitOperationFromPanel,
+    type CommitPanelGitOperation,
+} from "../views/commitPanelActions";
 import type { RefreshService } from "../views/RefreshService";
 import { NO_REPOSITORY_MESSAGE, workspaceRoots } from "./common";
 
@@ -119,6 +123,16 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         dockIntelliGit,
         refreshService,
     } = deps;
+    const runGraphGitOperation = async (operation: CommitPanelGitOperation): Promise<void> => {
+        await runGitOperationFromPanel(
+            {
+                gitOps,
+                refreshData: refreshActiveRepository,
+                fireWorkingTreeChanged: () => undefined,
+            },
+            operation,
+        );
+    };
 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
@@ -128,6 +142,18 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                     await refreshActiveRepository();
                 },
             );
+        }),
+        vscode.commands.registerCommand("intelligit.graph.fetch", async () => {
+            await runGraphGitOperation("fetch");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.pull", async () => {
+            await runGraphGitOperation("pull");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.push", async () => {
+            await runGraphGitOperation("push");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.sync", async () => {
+            await runGraphGitOperation("sync");
         }),
         vscode.commands.registerCommand("intelligit.publishBranch", async () => {
             const hasCommits = await gitOps.hasAnyCommits();
