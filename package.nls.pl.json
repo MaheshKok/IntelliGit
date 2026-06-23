@@ -47,6 +47,7 @@
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Preferuj zewnętrzne narzędzie do scalania JetBrains podczas otwierania konfliktów scalania. Przechodzi do wewnętrznego edytora scalania VS Code, jeśli ścieżka JetBrains nie jest skonfigurowana lub uruchomienie się nie powiedzie.",
     "configuration.tooltips.enabled.markdownDescription": "Włącz lub wyłącz podpowiedzi w oknie IntelliGit (wykres zatwierdzenia, kolumna gałęzi itd.).",
     "configuration.undockableWindow.markdownDescription": "Otwórz IntelliGit jako ujednoliconą kartę edytora po wywołaniu opcji Pokaż dziennik Git, umożliwiając natywne oddokowanie VS Code do drugiego monitora.",
+    "configuration.undockableWindowButtonVisability.markdownDescription": "Pokazuje przycisk Odłącz na pasku tytułu widoku grafu IntelliGit. Wyłącz, aby ukryć przycisk, zachowując dostępność polecenia odłączania.",
     "configuration.icons.enum.color": "Użyj kolorowych ikon IntelliGit (domyślnie).",
     "configuration.icons.enum.standard": "Użyj monochromatycznego stylu ikon VS Code, spójnego z wbudowanymi panelami.",
     "configuration.icons.markdownDescription": "Styl ikony panelu zatwierdzeń IntelliGit. `standard` używa monochromatycznych ikon VS Code na pierwszym planie (domyślnie); `color` używa kolorowych ikon IntelliGit.",

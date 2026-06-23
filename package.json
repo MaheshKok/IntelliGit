@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.13.4",
+    "version": "0.13.5",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -473,7 +473,7 @@
                 },
                 {
                     "command": "intelligit.openUndocked",
-                    "when": "view == intelligit.commitGraph",
+                    "when": "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
                     "group": "navigation"
                 },
                 {
@@ -622,6 +622,11 @@
                     "type": "boolean",
                     "default": false,
                     "markdownDescription": "%configuration.undockableWindow.markdownDescription%"
+                },
+                "intelligit.undockableWindowButtonVisability": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "%configuration.undockableWindowButtonVisability.markdownDescription%"
                 },
                 "intelligit.worktree.includeFiles": {
                     "type": "array",

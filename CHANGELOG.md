@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.5] - 2026-06-23
+
+### Added
+
+- Added the `intelligit.undockableWindowButtonVisability` setting, defaulting to `true`, to let users hide the IntelliGit undock button from the graph view title.
+
+### Tests
+
+- Added manifest regression coverage for the undock button visibility setting and view-title condition.
+
 ## [0.13.4] - 2026-06-23
 
 ### Changed

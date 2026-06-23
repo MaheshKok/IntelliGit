@@ -47,6 +47,7 @@
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "병합 충돌을 열 때 외부 JetBrains 병합 도구를 우선적으로 사용합니다. JetBrains 경로가 구성되어 있지 않거나 실행에 실패할 경우 VS Code의 내부 병합 편집기를 사용합니다.",
     "configuration.tooltips.enabled.markdownDescription": "IntelliGit 창(커밋 그래프, 브랜치 열 등) 내의 툴팁을 활성화 또는 비활성화합니다.",
     "configuration.undockableWindow.markdownDescription": "Git 로그 표시를 실행하면 IntelliGit이 통합 편집기 탭으로 열리므로 VS Code를 두 번째 모니터에 기본적으로 도킹 해제할 수 있습니다.",
+    "configuration.undockableWindowButtonVisability.markdownDescription": "IntelliGit 그래프 보기 제목에 도킹 해제 버튼을 표시합니다. 이 옵션을 끄면 버튼은 숨기지만 도킹 해제 명령은 계속 사용할 수 있습니다.",
     "configuration.icons.enum.color": "IntelliGit의 색상 아이콘(기본값)을 사용합니다.",
     "configuration.icons.enum.standard": "VS Code의 내장 패널과 일관성 있는 단색 아이콘 스타일을 사용하세요.",
     "configuration.icons.markdownDescription": "IntelliGit 커밋 패널의 아이콘 스타일입니다. `standard`는 VS Code의 단색 아이콘 전경(기본값)을 사용하고, `color`는 IntelliGit의 컬러 아이콘을 사용합니다.",

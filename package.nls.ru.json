@@ -47,6 +47,7 @@
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "При открытии конфликтов слияния предпочтение отдается внешнему инструменту слияния JetBrains. В случае, если путь к JetBrains не указан или запуск не удается, используется встроенный редактор слияния VS Code.",
     "configuration.tooltips.enabled.markdownDescription": "Включение или отключение всплывающих подсказок в окне IntelliGit (график коммитов, столбец ветвей и т. д.).",
     "configuration.undockableWindow.markdownDescription": "При вызове функции «Показать журнал Git» IntelliGit открывается как единая вкладка редактора, что позволяет открепить VS Code на втором мониторе.",
+    "configuration.undockableWindowButtonVisability.markdownDescription": "Показывает кнопку «Открепить» в заголовке представления графа IntelliGit. Отключите, чтобы скрыть кнопку, сохранив доступной команду открепления.",
     "configuration.icons.enum.color": "Используйте цветные значки IntelliGit (по умолчанию).",
     "configuration.icons.enum.standard": "Используйте монохромный стиль иконок VS Code, соответствующий встроенным панелям.",
     "configuration.icons.markdownDescription": "Стиль значков для панели коммитов IntelliGit. `standard` использует монохромный фон значков VS Code (по умолчанию); `color` использует цветные значки IntelliGit.",

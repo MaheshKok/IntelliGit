@@ -47,6 +47,7 @@
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "マージの競合を開く際は、外部のJetBrainsマージツールを優先的に使用します。JetBrainsへのパスが設定されていない場合、または起動に失敗した場合は、VS Codeの内部マージエディターにフォールバックします。",
     "configuration.tooltips.enabled.markdownDescription": "IntelliGitウィンドウ内のツールチップ（コミットグラフ、ブランチ列など）を有効または無効にします。",
     "configuration.undockableWindow.markdownDescription": "「Gitログを表示」が呼び出されたときにIntelliGitを統合エディタータブとして開き、VS Codeのネイティブなセカンドモニターへのドッキング解除を可能にします。",
+    "configuration.undockableWindowButtonVisability.markdownDescription": "IntelliGit のグラフ ビューのタイトルに [ドッキング解除] ボタンを表示します。ボタンを非表示にしても、ドッキング解除コマンドは引き続き使用できます。",
     "configuration.icons.enum.color": "IntelliGitのカラーアイコンを使用する（デフォルト）。",
     "configuration.icons.enum.standard": "VS Codeのモノクロアイコンスタイルを使用し、組み込みパネルとの一貫性を保ちます。",
     "configuration.icons.markdownDescription": "IntelliGitコミットパネルのアイコンスタイル。`standard`はVS Codeのモノクロアイコン（デフォルト）を使用し、`color`はIntelliGitのカラーアイコンを使用します。",
