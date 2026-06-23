@@ -1,7 +1,7 @@
 // Entry point for the commit panel React webview. Wraps the app in
 // ChakraProvider with the VS Code theme and composes all panels.
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import theme from "./theme";
@@ -60,19 +60,20 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
-    const hasStagedFiles = useMemo(() => state.files.some((file) => file.staged), [state.files]);
-    const canCommit = state.isAmend || hasStagedFiles;
+    const canCommit = state.isAmend || checkedPaths.size > 0;
     const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
     const canPullOrSync = state.currentBranchHasUpstream;
 
     const handleCommit = useCallback(() => {
         const msg = state.commitMessage.trim();
         vscode.postMessage({
-            type: "commit",
+            type: "commitSelected",
             message: msg,
             amend: state.isAmend,
+            push: false,
+            paths: Array.from(checkedPaths),
         });
-    }, [vscode, state.commitMessage, state.isAmend]);
+    }, [vscode, state.commitMessage, state.isAmend, checkedPaths]);
 
     const postGitOperation = useCallback(
         (type: "fetch" | "pull" | "push" | "sync") => {

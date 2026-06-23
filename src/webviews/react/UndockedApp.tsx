@@ -463,22 +463,20 @@ function App(): React.ReactElement {
         }
     }, []);
 
-    const hasStagedFiles = useMemo(
-        () => cpState.files.some((file) => file.staged),
-        [cpState.files],
-    );
-    const canCommit = cpState.isAmend || hasStagedFiles;
+    const canCommit = cpState.isAmend || checkedPaths.size > 0;
     const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
     const canPullOrSync = cpState.currentBranchHasUpstream;
 
     const handleCommit = useCallback(() => {
         const msg = cpState.commitMessage.trim();
         vscode.postMessage({
-            type: "commit",
+            type: "commitSelected",
             message: msg,
             amend: cpState.isAmend,
+            push: false,
+            paths: Array.from(checkedPaths),
         });
-    }, [cpState.commitMessage, cpState.isAmend]);
+    }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
 
     const postGitOperation = useCallback((type: "fetch" | "pull" | "push" | "sync") => {
         vscode.postMessage({ type });

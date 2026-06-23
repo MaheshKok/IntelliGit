@@ -277,6 +277,7 @@ describe("app logic coverage", () => {
                 onMessageChange: (value: string) => void;
                 onAmendChange: (value: boolean) => void;
                 onCommit: () => void;
+                canCommit: boolean;
                 onFetch: () => void;
                 onPull: () => void;
                 onPush: () => void;
@@ -285,7 +286,11 @@ describe("app logic coverage", () => {
                 <div>
                     <button id="msg" onClick={() => props.onMessageChange("next message")} />
                     <button id="amend" onClick={() => props.onAmendChange(true)} />
-                    <button id="commit" onClick={() => props.onCommit()} />
+                    <button
+                        id="commit"
+                        disabled={!props.canCommit}
+                        onClick={() => props.onCommit()}
+                    />
                     <button id="fetch" onClick={() => props.onFetch()} />
                     <button id="pull" onClick={() => props.onPull()} />
                     <button id="push" onClick={() => props.onPush()} />
@@ -345,7 +350,13 @@ describe("app logic coverage", () => {
         expect(dispatch).toHaveBeenCalledWith({ type: "SET_AMEND", isAmend: true });
         expect(postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
         expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "commit", message: "feat: message", amend: false }),
+            expect.objectContaining({
+                type: "commitSelected",
+                message: "feat: message",
+                amend: false,
+                push: false,
+                paths: ["src/a.ts"],
+            }),
         );
         expect(postMessage).toHaveBeenCalledWith({ type: "fetch" });
         expect(postMessage).toHaveBeenCalledWith({ type: "pull" });
@@ -412,7 +423,7 @@ describe("app logic coverage", () => {
         expect(capturedGroupByDir).toBe(true);
     });
 
-    it("CommitPanelApp forwards empty commit attempts for extension-side validation", async () => {
+    it("CommitPanelApp disables commit when no files are checked", async () => {
         const postMessage = vi.fn();
 
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
@@ -455,9 +466,13 @@ describe("app logic coverage", () => {
             getVsCodeApi: () => ({ postMessage, getState: () => ({}), setState: vi.fn() }),
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
-            CommitTab: (props: { onCommit: () => void }) => (
+            CommitTab: (props: { onCommit: () => void; canCommit: boolean }) => (
                 <div>
-                    <button id="commit" onClick={() => props.onCommit()} />
+                    <button
+                        id="commit"
+                        disabled={!props.canCommit}
+                        onClick={() => props.onCommit()}
+                    />
                 </div>
             ),
         }));
@@ -482,12 +497,10 @@ describe("app logic coverage", () => {
                 ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "commit",
-                message: "",
-                amend: false,
-            }),
+        expect(document.getElementById("commit")?.hasAttribute("disabled")).toBe(true);
+        expect(postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "commit" }));
+        expect(postMessage).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "commitSelected" }),
         );
     });
 });
