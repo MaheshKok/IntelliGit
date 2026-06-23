@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.13.2",
+    "version": "0.13.3",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -139,25 +139,37 @@
                 "command": "intelligit.graph.sync",
                 "title": "%command.sync%",
                 "category": "%intelligit%",
-                "icon": "$(sync)"
+                "icon": {
+                    "light": "media/icons/git-sync-white.svg",
+                    "dark": "media/icons/git-sync-white.svg"
+                }
             },
             {
                 "command": "intelligit.graph.fetch",
                 "title": "%command.fetch%",
                 "category": "%intelligit%",
-                "icon": "$(cloud-download)"
+                "icon": {
+                    "light": "media/icons/git-fetch-white.svg",
+                    "dark": "media/icons/git-fetch-white.svg"
+                }
             },
             {
                 "command": "intelligit.graph.pull",
                 "title": "%command.pull%",
                 "category": "%intelligit%",
-                "icon": "$(arrow-down)"
+                "icon": {
+                    "light": "media/icons/git-pull-white.svg",
+                    "dark": "media/icons/git-pull-white.svg"
+                }
             },
             {
                 "command": "intelligit.graph.push",
                 "title": "%command.push%",
                 "category": "%intelligit%",
-                "icon": "$(cloud-upload)"
+                "icon": {
+                    "light": "media/icons/git-push-white.svg",
+                    "dark": "media/icons/git-push-white.svg"
+                }
             },
             {
                 "command": "intelligit.filterByBranch",
