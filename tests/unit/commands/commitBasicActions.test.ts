@@ -9,7 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-vi.mock("vscode", () => ({
+const vscodeMock = vi.hoisted(() => ({
     l10n: { t: (message: string) => message },
     Uri: { file: (fsPath: string) => ({ fsPath }) },
     env: { clipboard: { writeText: vi.fn() } },
@@ -23,10 +23,18 @@ vi.mock("vscode", () => ({
     },
 }));
 
+vi.mock("vscode", () => vscodeMock);
+
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: vi.fn(
         async (_title: string, task: () => Promise<void>): Promise<void> => task(),
     ),
+    showTimedInformationMessage: vi.fn((message: string) => {
+        vscodeMock.window.showInformationMessage(message);
+    }),
+    showTimedWarningMessage: vi.fn((message: string) => {
+        vscodeMock.window.showWarningMessage(message);
+    }),
 }));
 
 vi.mock("../../../src/services/gitHelpers", async (importOriginal) => {

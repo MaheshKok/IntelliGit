@@ -30,6 +30,7 @@ import {
     commitOnlyFromPanel,
     commitSelectedFromPanel,
     rollbackFromPanel,
+    runGitOperationFromPanel,
     shelfMutationFromPanel,
     shelveSaveFromPanel,
 } from "./commitPanelActions";
@@ -69,6 +70,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     // Embedded commit graph state
     private currentBranch: string | null = null;
     private currentBranchHasUpstreamCache = false;
+    private hasRemotesCache = false;
+    private currentBranchAheadCache = 0;
+    private currentBranchBehindCache = 0;
     private filterText = "";
     private offset = 0;
     private loadingMore = false;
@@ -133,6 +137,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.shelfFiles = [];
         this.currentBranch = null;
         this.currentBranchHasUpstreamCache = false;
+        this.hasRemotesCache = false;
+        this.currentBranchAheadCache = 0;
+        this.currentBranchBehindCache = 0;
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -280,6 +287,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     private postWorkingTreeSnapshot(
         currentBranchHasUpstream = this.currentBranchHasUpstreamCache,
+        hasRemotes = this.hasRemotesCache,
     ): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
@@ -293,6 +301,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             folderIconsByName: this.folderIconsByName,
             iconFonts,
             currentBranchHasUpstream,
+            hasRemotes,
+            currentBranchAhead: this.currentBranchAheadCache,
+            currentBranchBehind: this.currentBranchBehindCache,
         });
     }
 
@@ -320,7 +331,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
-            const currentBranchHasUpstream = await this.currentBranchHasUpstream();
+            const currentBranchStatus = await this.currentBranchStatus();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -347,7 +358,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.stashes = stashes;
             this.selectedShelfIndex = selectedShelfIndex;
             this.shelfFiles = shelfFiles;
-            this.currentBranchHasUpstreamCache = currentBranchHasUpstream;
+            this.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
+            this.hasRemotesCache = currentBranchStatus.hasRemotes;
+            this.currentBranchAheadCache = currentBranchStatus.ahead;
+            this.currentBranchBehindCache = currentBranchStatus.behind;
             const uniquePaths = new Set(files.map((f) => f.path));
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
@@ -362,7 +376,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: this.folderIconsByName,
                 iconFonts,
-                currentBranchHasUpstream,
+                currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+                hasRemotes: currentBranchStatus.hasRemotes,
+                currentBranchAhead: currentBranchStatus.ahead,
+                currentBranchBehind: currentBranchStatus.behind,
             });
         } finally {
             if (!silent) {
@@ -499,6 +516,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const actionDeps = {
             gitOps: this.gitOps,
             refreshData: () => this.refreshData(),
+            refreshGraphData: () => this.refreshGraphData(),
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
             postCommitted: () => this.postToWebview({ type: "committed" }),
             maybeOfferPublishBranch: () => this.maybeOfferPublishBranch(),
@@ -521,6 +539,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "refresh":
                 await this.refreshFromUserAction();
+                break;
+            case "fetch":
+                await runGitOperationFromPanel(actionDeps, "fetch");
+                break;
+            case "pull":
+                await runGitOperationFromPanel(actionDeps, "pull");
+                break;
+            case "push":
+                await runGitOperationFromPanel(actionDeps, "push");
+                break;
+            case "sync":
+                await runGitOperationFromPanel(actionDeps, "sync");
                 break;
             case "selectCommit":
                 this._onCommitSelected.fire(assertGitHash(msg.hash, "hash"));
@@ -653,7 +683,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         iconTheme: this.iconTheme,
                         getFiles: () => this.files,
                         getStashes: () => this.stashes,
-                        currentBranchHasUpstream: () => this.currentBranchHasUpstream(),
+                        currentBranchHasUpstream: async () =>
+                            (await this.currentBranchStatus()).hasUpstream,
                         setShelfState: (state) => {
                             this.selectedShelfIndex = state.selectedShelfIndex;
                             this.shelfFiles = state.shelfFiles;
@@ -815,12 +846,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
     /**
-     * Checks whether the active branch already has an upstream for push-related UI decisions.
+     * Reads current-branch upstream, ahead/behind, and remote availability for toolbar state.
      */
-    private async currentBranchHasUpstream(): Promise<boolean> {
-        const branches = await this.gitOps.getBranches();
+    private async currentBranchStatus(): Promise<{
+        hasUpstream: boolean;
+        hasRemotes: boolean;
+        ahead: number;
+        behind: number;
+    }> {
+        const [branches, remotes] = await Promise.all([
+            this.gitOps.getBranches(),
+            this.gitOps.getRemotes(),
+        ]);
         const currentBranch = branches.find((branch) => branch.isCurrent);
-        return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
+        return {
+            hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
+            hasRemotes: remotes.length > 0,
+            ahead: currentBranch?.ahead ?? 0,
+            behind: currentBranch?.behind ?? 0,
+        };
     }
     /**
      * Runs a panel data refresh from listeners without leaking rejected promises into VS Code.

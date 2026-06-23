@@ -53,6 +53,22 @@ vi.mock("vscode", () => ({
     },
 }));
 
+vi.mock("../../../src/utils/notifications", () => ({
+    runWithNotificationProgress: vi.fn(
+        async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+            mocks.withProgress(
+                {
+                    location: 15,
+                    title: `IntelliGit: ${_message}`,
+                    cancellable: false,
+                },
+                task,
+            ),
+    ),
+    showTimedInformationMessage: mocks.showInformationMessage,
+    showTimedWarningMessage: mocks.showWarningMessage,
+}));
+
 vi.mock("https", () => ({
     request: mocks.httpsRequest,
 }));

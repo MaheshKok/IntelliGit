@@ -397,5 +397,13 @@
     "Repaired worktrees.": "ワークツリーを修復しました。",
     "Select New Worktree Location": "新しいワークツリーの場所を選択",
     "Unlocked worktree {path}": "ワークツリー {path} のロックを解除しました",
-    "Worktree operation failed: {message}": "ワークツリー操作に失敗しました: {message}"
+    "Worktree operation failed: {message}": "ワークツリー操作に失敗しました: {message}",
+    "Fetching...": "フェッチしています...",
+    "Fetched successfully.": "フェッチが完了しました。",
+    "Pulling...": "プルしています...",
+    "Pulled successfully.": "プルが完了しました。",
+    "Pushing...": "プッシュしています...",
+    "Pushed successfully.": "プッシュが完了しました。",
+    "Syncing...": "同期しています...",
+    "Synced successfully.": "同期が完了しました。"
 }

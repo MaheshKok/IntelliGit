@@ -397,5 +397,13 @@
     "Repaired worktrees.": "已修復 Worktree。",
     "Select New Worktree Location": "選取新的 Worktree 位置",
     "Unlocked worktree {path}": "已解除鎖定 Worktree {path}",
-    "Worktree operation failed: {message}": "Worktree 操作失敗: {message}"
+    "Worktree operation failed: {message}": "Worktree 操作失敗: {message}",
+    "Fetching...": "正在擷取...",
+    "Fetched successfully.": "擷取成功。",
+    "Pulling...": "正在拉取...",
+    "Pulled successfully.": "拉取成功。",
+    "Pushing...": "正在推送...",
+    "Pushed successfully.": "推送成功。",
+    "Syncing...": "正在同步...",
+    "Synced successfully.": "同步成功。"
 }

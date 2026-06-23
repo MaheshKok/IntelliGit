@@ -1,9 +1,31 @@
 import * as vscode from "vscode";
 
 const PREFIX = "IntelliGit";
+const TRANSIENT_MESSAGE_MS = 5000;
 
 function withPrefix(message: string): string {
     return `${PREFIX}: ${message}`;
+}
+
+function showTimedMessage(message: string): void {
+    void vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: withPrefix(message),
+            cancellable: false,
+        },
+        () => new Promise<void>((resolve) => setTimeout(resolve, TRANSIENT_MESSAGE_MS)),
+    );
+}
+
+/** Shows a non-blocking information notification that auto-dismisses after five seconds. */
+export function showTimedInformationMessage(message: string): void {
+    showTimedMessage(message);
+}
+
+/** Shows a non-blocking warning notification that auto-dismisses after five seconds. */
+export function showTimedWarningMessage(message: string): void {
+    showTimedMessage(`$(warning) ${message}`);
 }
 
 /**

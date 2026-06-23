@@ -382,6 +382,14 @@ describe("webview ui smoke", () => {
                 <StashRow stash={stash} onApply={noop} onPop={noop} onDrop={noop} />
                 <Toolbar
                     onRefresh={noop}
+                    onFetch={noop}
+                    onPull={noop}
+                    onPush={noop}
+                    onSync={noop}
+                    canFetch={true}
+                    canPull={true}
+                    canPush={true}
+                    canSync={true}
                     onRollback={noop}
                     onToggleGroupBy={noop}
                     onShelve={noop}
@@ -395,8 +403,9 @@ describe("webview ui smoke", () => {
                     onMessageChange={noop}
                     onAmendChange={noop}
                     onCommit={noop}
-                    onCommitAndPush={noop}
-                    currentBranchHasUpstream={true}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
                 />
                 <TabBar
                     stashCount={2}
@@ -408,10 +417,18 @@ describe("webview ui smoke", () => {
 
         expect(html).toContain("Changes");
         expect(html).toContain("Apply");
-        expect(html).toContain("Commit and Push");
+        expect(html).toContain("Fetch");
+        expect(html).toContain("Pull");
+        expect(html).toContain("Push");
+        expect(html).toContain("Sync");
+        expect(html.indexOf("Refresh")).toBeLessThan(html.indexOf("Sync"));
+        expect(html.indexOf("Sync")).toBeLessThan(html.indexOf("Fetch"));
+        expect(html.indexOf("Fetch")).toBeLessThan(html.indexOf("Pull"));
+        expect(html.indexOf("Pull")).toBeLessThan(html.indexOf("Push"));
+        expect(html).not.toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
 
-        const unpublishedHtml = renderToStaticMarkup(
+        const disabledCommitHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>
                 <CommitArea
                     commitMessage=""
@@ -419,17 +436,26 @@ describe("webview ui smoke", () => {
                     onMessageChange={noop}
                     onAmendChange={noop}
                     onCommit={noop}
-                    onCommitAndPush={noop}
-                    currentBranchHasUpstream={false}
+                    onPush={noop}
+                    canCommit={false}
+                    canPush={false}
                 />
             </ChakraProvider>,
         );
-        expect(unpublishedHtml).toContain("Publish Branch");
+        expect(disabledCommitHtml).toContain("disabled");
 
         const refreshingToolbarHtml = renderUi(
             <Toolbar
                 isRefreshing={true}
                 onRefresh={noop}
+                onFetch={noop}
+                onPull={noop}
+                onPush={noop}
+                onSync={noop}
+                canFetch={true}
+                canPull={true}
+                canPush={false}
+                canSync={true}
                 onRollback={noop}
                 onToggleGroupBy={noop}
                 onShelve={noop}

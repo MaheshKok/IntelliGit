@@ -3,7 +3,7 @@ import { GitOps } from "../git/operations";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
-import { runWithNotificationProgress } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
 
 /**
@@ -243,9 +243,7 @@ export class MergeConflictSessionPanel {
         const files = await this.gitOps.getConflictFilesDetailed();
         if (!this.isAlive()) return;
         if (files.length === 0 && options.closeWhenResolved) {
-            vscode.window.showInformationMessage(
-                vscode.l10n.t("All merge conflicts are resolved."),
-            );
+            showTimedInformationMessage(vscode.l10n.t("All merge conflicts are resolved."));
             this.panel.dispose();
             return;
         }

@@ -60,31 +60,33 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
-    const stageCheckedAndCommit = useCallback(
-        (push: boolean) => {
-            const msg = state.commitMessage.trim();
-            vscode.postMessage({
-                type: "commitSelected",
-                paths: Array.from(checkedPaths),
-                message: msg,
-                amend: state.isAmend,
-                push,
-            });
-        },
-        [vscode, state.commitMessage, state.isAmend, checkedPaths],
-    );
+    const canCommit = state.isAmend || checkedPaths.size > 0;
+    const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
+    const canFetch = state.hasRemotes;
+    const canPull = state.currentBranchHasUpstream && state.currentBranchBehind > 0;
+    const canSync = canPull || canPush;
 
     const handleCommit = useCallback(() => {
-        stageCheckedAndCommit(false);
-    }, [stageCheckedAndCommit]);
+        const msg = state.commitMessage.trim();
+        vscode.postMessage({
+            type: "commitSelected",
+            message: msg,
+            amend: state.isAmend,
+            push: false,
+            paths: Array.from(checkedPaths),
+        });
+    }, [vscode, state.commitMessage, state.isAmend, checkedPaths]);
 
-    const handleCommitAndPush = useCallback(() => {
-        if (!state.currentBranchHasUpstream) {
-            vscode.postMessage({ type: "publishBranch" });
-            return;
-        }
-        stageCheckedAndCommit(true);
-    }, [stageCheckedAndCommit, state.currentBranchHasUpstream, vscode]);
+    const postGitOperation = useCallback(
+        (type: "fetch" | "pull" | "push" | "sync") => {
+            vscode.postMessage({ type });
+        },
+        [vscode],
+    );
+    const handleFetch = useCallback(() => postGitOperation("fetch"), [postGitOperation]);
+    const handlePull = useCallback(() => postGitOperation("pull"), [postGitOperation]);
+    const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
+    const handleSync = useCallback(() => postGitOperation("sync"), [postGitOperation]);
 
     return (
         <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
@@ -108,8 +110,15 @@ function App(): React.ReactElement {
                         onMessageChange={handleMessageChange}
                         onAmendChange={handleAmendChange}
                         onCommit={handleCommit}
-                        onCommitAndPush={handleCommitAndPush}
-                        currentBranchHasUpstream={state.currentBranchHasUpstream}
+                        canCommit={canCommit}
+                        onFetch={handleFetch}
+                        onPull={handlePull}
+                        onPush={handlePush}
+                        onSync={handleSync}
+                        canFetch={canFetch}
+                        canPull={canPull}
+                        canPush={canPush}
+                        canSync={canSync}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}

@@ -9,7 +9,7 @@ import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { getErrorMessage } from "../utils/errors";
-import { runWithNotificationProgress } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import {
     getCommitParentHashes,
     pickMainlineParent,
@@ -493,7 +493,7 @@ export async function applySelectedCommitFileChange(
         );
         if (patchText === null) return; // merge parent selection cancelled
         if (!patchText.trim()) {
-            vscode.window.showInformationMessage(
+            showTimedInformationMessage(
                 vscode.l10n.t("No file-level patch found for {path} in {short}.", {
                     path: fileCtx.filePath,
                     short,
@@ -506,7 +506,7 @@ export async function applySelectedCommitFileChange(
             await applyPatchTextToRepo(patchText, mode === "revert", executor);
         });
 
-        vscode.window.showInformationMessage(labels.successMessage(short, fileCtx.filePath));
+        showTimedInformationMessage(labels.successMessage(short, fileCtx.filePath));
     } catch (error) {
         const message = getErrorMessage(error);
         vscode.window.showErrorMessage(labels.errorMessage(message));

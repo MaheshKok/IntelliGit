@@ -1,5 +1,5 @@
 // Bottom area of the commit tab: amend checkbox, commit message textarea,
-// and commit/commit+push buttons.
+// and commit button.
 
 import React from "react";
 import { Flex, Box, Textarea, Button } from "@chakra-ui/react";
@@ -13,16 +13,16 @@ interface Props {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
-    onCommitAndPush: () => void;
-    currentBranchHasUpstream: boolean;
+    onPush: () => void;
+    canCommit: boolean;
+    canPush: boolean;
 }
 
 /**
- * Renders amend controls, the commit message editor, and commit action buttons.
+ * Renders amend controls, the commit message editor, and the commit action.
  *
  * The component does not talk to the extension host directly; callers decide how
- * message changes, amend toggles, commit, commit-and-push, and publish requests
- * are translated into outbound webview messages.
+ * message changes, amend toggles, and commit requests are translated into outbound webview messages.
  */
 export function CommitArea({
     commitMessage,
@@ -30,8 +30,9 @@ export function CommitArea({
     onMessageChange,
     onAmendChange,
     onCommit,
-    onCommitAndPush,
-    currentBranchHasUpstream,
+    onPush,
+    canCommit,
+    canPush,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     return (
@@ -85,23 +86,28 @@ export function CommitArea({
                     variant="primary"
                     size="sm"
                     onClick={onCommit}
+                    isDisabled={!canCommit}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
                 <Button
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
-                    onClick={onCommitAndPush}
+                    onClick={onPush}
+                    isDisabled={!canPush}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
+                    _disabled={{
+                        bg: "rgba(255,255,255,0.03)",
+                        color: "var(--vscode-disabledForeground)",
+                        borderColor: "rgba(176, 186, 205, 0.24)",
+                        cursor: "default",
+                        opacity: 0.62,
+                    }}
                 >
-                    {currentBranchHasUpstream
-                        ? isAmend
-                            ? t("commit.action.amendAndPush")
-                            : t("commit.action.commitAndPush")
-                        : t("commit.action.publishBranch")}
+                    {t("common.push")}
                 </Button>
             </Flex>
         </Flex>

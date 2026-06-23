@@ -701,7 +701,10 @@ export class UndockedViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
-            const currentBranchHasUpstream = await this.currentBranchHasUpstream();
+            const [currentBranchHasUpstream, hasRemotes] = await Promise.all([
+                this.currentBranchHasUpstream(),
+                this.hasRemotes(),
+            ]);
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -740,6 +743,7 @@ export class UndockedViewProvider {
                 folderIconsByName: cpFolderIconsByName,
                 iconFonts,
                 currentBranchHasUpstream,
+                hasRemotes,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -766,6 +770,10 @@ export class UndockedViewProvider {
         const branches = await this.gitOps.getBranches();
         const currentBranch = branches.find((branch) => branch.isCurrent);
         return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
+    }
+
+    private async hasRemotes(): Promise<boolean> {
+        return (await this.gitOps.getRemotes()).length > 0;
     }
     // --- Commit detail ------------------------------------------------------
     /**

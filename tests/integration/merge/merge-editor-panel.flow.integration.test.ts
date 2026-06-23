@@ -117,6 +117,15 @@ vi.mock("vscode", () => {
     };
 });
 
+vi.mock("../../../src/utils/notifications", () => ({
+    runWithNotificationProgress: vi.fn(
+        async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+            task({ report: vi.fn() }, { isCancellationRequested: false }),
+    ),
+    showTimedInformationMessage: mocks.showInformationMessage,
+    showTimedWarningMessage: mocks.showWarningMessage,
+}));
+
 import { GitExecutor } from "../../../src/git/executor";
 import { GitOps } from "../../../src/git/operations";
 import {

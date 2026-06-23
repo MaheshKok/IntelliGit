@@ -18,8 +18,15 @@ interface CommitPanelPaneProps {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
-    onCommitAndPush: () => void;
-    currentBranchHasUpstream: boolean;
+    canCommit: boolean;
+    onFetch: () => void;
+    onPull: () => void;
+    onPush: () => void;
+    onSync: () => void;
+    canFetch: boolean;
+    canPull: boolean;
+    canPush: boolean;
+    canSync: boolean;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -40,8 +47,15 @@ export function CommitPanelPane({
     onMessageChange,
     onAmendChange,
     onCommit,
-    onCommitAndPush,
-    currentBranchHasUpstream,
+    canCommit,
+    onFetch,
+    onPull,
+    onPush,
+    onSync,
+    canFetch,
+    canPull,
+    canPush,
+    canSync,
     groupByDir,
     onToggleGroupBy,
 }: CommitPanelPaneProps): React.ReactElement {
@@ -74,8 +88,15 @@ export function CommitPanelPane({
                             onMessageChange={onMessageChange}
                             onAmendChange={onAmendChange}
                             onCommit={onCommit}
-                            onCommitAndPush={onCommitAndPush}
-                            currentBranchHasUpstream={currentBranchHasUpstream}
+                            canCommit={canCommit}
+                            onFetch={onFetch}
+                            onPull={onPull}
+                            onPush={onPush}
+                            onSync={onSync}
+                            canFetch={canFetch}
+                            canPull={canPull}
+                            canPush={canPush}
+                            canSync={canSync}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}

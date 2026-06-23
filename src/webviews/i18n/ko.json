@@ -204,5 +204,9 @@
     "worktree.menu.delete": "워크트리 삭제",
     "worktree.menu.lock": "워크트리 잠금",
     "worktree.menu.unlock": "워크트리 잠금 해제",
-    "worktree.menu.move": "워크트리 이동..."
+    "worktree.menu.move": "워크트리 이동...",
+    "common.fetch": "가져오기",
+    "common.pull": "풀",
+    "common.push": "푸시",
+    "common.sync": "동기화"
 }

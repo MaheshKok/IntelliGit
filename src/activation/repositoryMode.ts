@@ -31,6 +31,7 @@ import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
 } from "./repositoryViewEvents";
+import { showTimedWarningMessage } from "../utils/notifications";
 
 /**
  * Activates IntelliGit's repository-backed mode for discovered Git roots.
@@ -236,7 +237,7 @@ export async function activateRepositoryMode(
             });
         } catch (error) {
             const message = getErrorMessage(error);
-            vscode.window.showWarningMessage(
+            showTimedWarningMessage(
                 vscode.l10n.t(
                     "IntelliGit merge editor failed ({message}). Opening the file instead.",
                     { message },
@@ -654,7 +655,7 @@ async function moveUndockedEditorToNewWindow(): Promise<void> {
         await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showWarningMessage(
+        showTimedWarningMessage(
             vscode.l10n.t("Unable to move IntelliGit to a new window automatically: {message}", {
                 message,
             }),

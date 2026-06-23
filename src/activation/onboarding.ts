@@ -4,6 +4,7 @@ import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { OnboardingViewProvider } from "../views/OnboardingViewProvider";
 import { initializeRepository, NO_REPOSITORY_MESSAGE } from "./common";
+import { showTimedInformationMessage } from "../utils/notifications";
 
 /**
  * Registers command handlers that are available before a workspace folder exists.
@@ -15,7 +16,7 @@ import { initializeRepository, NO_REPOSITORY_MESSAGE } from "./common";
  */
 function registerOnboardingCommands(context: vscode.ExtensionContext): void {
     const showUnavailableMessage = (): void => {
-        vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+        showTimedInformationMessage(NO_REPOSITORY_MESSAGE);
     };
 
     context.subscriptions.push(

@@ -137,6 +137,21 @@ const deleteFileWithFallback = vi.fn(async () => true);
 const getGithubCommitChecks = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/utils/notifications", () => ({
+    runWithNotificationProgress: vi.fn(
+        async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+            withProgress(
+                {
+                    location: 15,
+                    title: `IntelliGit: ${_message}`,
+                    cancellable: false,
+                },
+                task,
+            ),
+    ),
+    showTimedInformationMessage: showInformationMessage,
+    showTimedWarningMessage: showWarningMessage,
+}));
 vi.mock("../../../src/views/webviewHtml", () => ({
     buildWebviewShellHtml: vi.fn(() => "<html></html>"),
     escapeHtmlAttr: (value: string) =>
@@ -239,6 +254,7 @@ function makeGitOpsMock() {
                 behind: 0,
             },
         ]),
+        getRemotes: vi.fn(async () => ["origin"]),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },

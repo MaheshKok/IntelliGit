@@ -397,5 +397,13 @@
     "Repaired worktrees.": "워크트리를 복구했습니다.",
     "Select New Worktree Location": "새 워크트리 위치 선택",
     "Unlocked worktree {path}": "워크트리 {path} 잠금 해제",
-    "Worktree operation failed: {message}": "워크트리 작업 실패: {message}"
+    "Worktree operation failed: {message}": "워크트리 작업 실패: {message}",
+    "Fetching...": "가져오는 중...",
+    "Fetched successfully.": "가져오기가 완료되었습니다.",
+    "Pulling...": "풀 중...",
+    "Pulled successfully.": "풀이 완료되었습니다.",
+    "Pushing...": "푸시 중...",
+    "Pushed successfully.": "푸시가 완료되었습니다.",
+    "Syncing...": "동기화 중...",
+    "Synced successfully.": "동기화가 완료되었습니다."
 }

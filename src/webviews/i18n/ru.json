@@ -225,5 +225,9 @@
     "worktree.menu.delete": "Удалить worktree",
     "worktree.menu.lock": "Заблокировать worktree",
     "worktree.menu.unlock": "Разблокировать worktree",
-    "worktree.menu.move": "Переместить worktree..."
+    "worktree.menu.move": "Переместить worktree...",
+    "common.fetch": "Получить",
+    "common.pull": "Загрузить",
+    "common.push": "Отправить",
+    "common.sync": "Синхронизировать"
 }
