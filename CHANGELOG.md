@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.3] - 2026-06-23
+
+### Added
+
+- Added right-aligned Fetch, Pull, Push, and Sync actions to the Commit panel file toolbar while keeping the graph header actions available.
+
+### Tests
+
+- Added webview regression coverage for the Commit panel Git action buttons and outbound messages.
+
 ## [0.13.2] - 2026-06-23
 
 ### Changed
