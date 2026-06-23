@@ -19,6 +19,9 @@ interface CommitPanelPaneProps {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     canCommit: boolean;
+    onSync: () => void;
+    onFetch: () => void;
+    onPull: () => void;
     onPush: () => void;
     canPush: boolean;
     groupByDir: boolean;
@@ -42,6 +45,9 @@ export function CommitPanelPane({
     onAmendChange,
     onCommit,
     canCommit,
+    onSync,
+    onFetch,
+    onPull,
     onPush,
     canPush,
     groupByDir,
@@ -59,6 +65,10 @@ export function CommitPanelPane({
             <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
                 <TabBar
                     stashCount={cpState.stashes.length}
+                    onSync={onSync}
+                    onFetch={onFetch}
+                    onPull={onPull}
+                    onPush={onPush}
                     commitContent={
                         <CommitTab
                             files={cpState.files}

@@ -167,6 +167,15 @@ describe("CommitPanelApp integration", () => {
         });
         await flush();
 
+        const buttonLabels = Array.from(document.querySelectorAll("button")).map(
+            (button) => button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "",
+        );
+        const gitActionOrder = ["Commit", "Stash (1)", "Sync", "Fetch", "Pull", "Push"].map(
+            (label) => buttonLabels.indexOf(label),
+        );
+        expect(gitActionOrder.every((index) => index >= 0)).toBe(true);
+        expect(gitActionOrder).toEqual([...gitActionOrder].sort((a, b) => a - b));
+
         fireClick(document.querySelector('button[aria-label="Refresh"]'));
         fireClick(document.querySelector('button[aria-label="Rollback"]'));
         fireClick(document.querySelector('button[aria-label="Group by Directory"]'));

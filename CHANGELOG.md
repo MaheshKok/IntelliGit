@@ -5,6 +5,19 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.4] - 2026-06-23
+
+### Changed
+
+- Moved Fetch, Pull, Push, and Sync beside the Commit and Stash tabs while keeping the same actions available in the graph header.
+- Matched the graph-header Git action icons with the toolbar icon style and increased spacing between the tab-row Git actions.
+- Updated the Stash Apply and Pop buttons to use the same primary button style as Commit and Push.
+- Refreshed README copy to position IntelliGit as bringing together the best Git features from PyCharm, VS Code, and Visual Studio IDE.
+
+### Tests
+
+- Updated webview integration coverage for the Commit panel tab-row Git actions and outbound messages.
+
 ## [0.13.3] - 2026-06-23
 
 ### Added

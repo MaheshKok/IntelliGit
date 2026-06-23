@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <strong>JetBrains-style Git for VS Code.</strong><br />
-  A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who miss JetBrains Git inside VS Code.
+  <strong>The best Git features from PyCharm, VS Code, and Visual Studio IDE.</strong><br />
+  A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who want powerful IDE Git inside VS Code.
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
   <img src="image.png" alt="IntelliGit commit panel and graph" />
 </p>
 
-IntelliGit is for developers who like VS Code, but miss the Git workflow from IntelliJ IDEA and PyCharm: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
+IntelliGit brings the best Git workflow ideas from PyCharm, VS Code, and Visual Studio IDE into one VS Code extension: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
 
 It does not try to replace Git. It gives the daily Git work a better cockpit.
 
