@@ -95,10 +95,21 @@ export function Toolbar({
                 disabled={!canFetch}
             >
                 <path
-                    fill="currentColor"
-                    d="M7.5 2h1v6.1l2.15-2.15.7.7L8 10 4.65 6.65l.7-.7L7.5 8.1V2z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.3"
+                    d="M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11"
                 />
-                <path fill="currentColor" d="M3 12h10v1H3v-1z" />
+                <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.3"
+                    d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
+                />
             </ToolbarButton>
             <ToolbarButton
                 label={t("common.pull")}

@@ -93,7 +93,7 @@ export function CommitArea({
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
                 <Button
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     onClick={onPush}
                     isDisabled={!canPush}
