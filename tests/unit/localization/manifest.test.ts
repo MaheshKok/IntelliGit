@@ -10,7 +10,7 @@ type WebviewContextMenuItem = {
 
 type CommandContribution = {
     command?: string;
-    icon?: string;
+    icon?: string | { light: string; dark: string };
 };
 
 type ExtensionManifest = {
@@ -54,10 +54,10 @@ describe("extension manifest", () => {
         const titleMenu = manifest.contributes?.menus?.["view/title"] ?? [];
 
         const actions = [
-            ["intelligit.graph.sync", "navigation@1", "$(sync)"],
-            ["intelligit.graph.fetch", "navigation@2", "$(cloud-download)"],
-            ["intelligit.graph.pull", "navigation@3", "$(arrow-down)"],
-            ["intelligit.graph.push", "navigation@4", "$(cloud-upload)"],
+            ["intelligit.graph.sync", "navigation@1", "media/icons/git-sync-white.svg"],
+            ["intelligit.graph.fetch", "navigation@2", "media/icons/git-fetch-white.svg"],
+            ["intelligit.graph.pull", "navigation@3", "media/icons/git-pull-white.svg"],
+            ["intelligit.graph.push", "navigation@4", "media/icons/git-push-white.svg"],
         ] as const;
 
         for (const [command, group, icon] of actions) {
@@ -67,7 +67,7 @@ describe("extension manifest", () => {
 
             expect(item?.when).toBe("view == intelligit.sidebarGraph");
             expect(item?.group).toBe(group);
-            expect(commandContribution?.icon).toBe(icon);
+            expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
             expect(paletteItem?.when).toBe("false");
         }
     });
