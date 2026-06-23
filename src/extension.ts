@@ -46,7 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 /**
- * Provide VS Code's extension shutdown hook.
+ * Provides VS Code's extension shutdown hook.
  *
  * IntelliGit relies on disposables registered in `context.subscriptions`, so no
  * explicit teardown is required here.
