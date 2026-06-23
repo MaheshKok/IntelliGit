@@ -282,6 +282,10 @@ describe("app logic coverage", () => {
                 onPull: () => void;
                 onPush: () => void;
                 onSync: () => void;
+                canFetch: boolean;
+                canPull: boolean;
+                canPush: boolean;
+                canSync: boolean;
             }) => (
                 <div>
                     <button id="msg" onClick={() => props.onMessageChange("next message")} />
@@ -291,10 +295,14 @@ describe("app logic coverage", () => {
                         disabled={!props.canCommit}
                         onClick={() => props.onCommit()}
                     />
-                    <button id="fetch" onClick={() => props.onFetch()} />
-                    <button id="pull" onClick={() => props.onPull()} />
-                    <button id="push" onClick={() => props.onPush()} />
-                    <button id="sync" onClick={() => props.onSync()} />
+                    <button
+                        id="fetch"
+                        disabled={!props.canFetch}
+                        onClick={() => props.onFetch()}
+                    />
+                    <button id="pull" disabled={!props.canPull} onClick={() => props.onPull()} />
+                    <button id="push" disabled={!props.canPush} onClick={() => props.onPush()} />
+                    <button id="sync" disabled={!props.canSync} onClick={() => props.onSync()} />
                 </div>
             ),
         }));
@@ -359,7 +367,7 @@ describe("app logic coverage", () => {
             }),
         );
         expect(postMessage).toHaveBeenCalledWith({ type: "fetch" });
-        expect(postMessage).toHaveBeenCalledWith({ type: "pull" });
+        expect(postMessage).not.toHaveBeenCalledWith({ type: "pull" });
         expect(postMessage).toHaveBeenCalledWith({ type: "push" });
         expect(postMessage).toHaveBeenCalledWith({ type: "sync" });
     });

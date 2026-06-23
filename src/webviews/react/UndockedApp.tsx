@@ -465,7 +465,9 @@ function App(): React.ReactElement {
 
     const canCommit = cpState.isAmend || checkedPaths.size > 0;
     const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
-    const canPullOrSync = cpState.currentBranchHasUpstream;
+    const canFetch = cpState.currentBranchHasUpstream;
+    const canPull = cpState.currentBranchHasUpstream && cpState.currentBranchBehind > 0;
+    const canSync = canPull || canPush;
 
     const handleCommit = useCallback(() => {
         const msg = cpState.commitMessage.trim();
@@ -517,9 +519,10 @@ function App(): React.ReactElement {
                                 onPull={handlePull}
                                 onPush={handlePush}
                                 onSync={handleSync}
-                                canPull={canPullOrSync}
+                                canFetch={canFetch}
+                                canPull={canPull}
                                 canPush={canPush}
-                                canSync={canPullOrSync}
+                                canSync={canSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -666,9 +669,10 @@ function App(): React.ReactElement {
                                 onPull={handlePull}
                                 onPush={handlePush}
                                 onSync={handleSync}
-                                canPull={canPullOrSync}
+                                canFetch={canFetch}
+                                canPull={canPull}
                                 canPush={canPush}
-                                canSync={canPullOrSync}
+                                canSync={canSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

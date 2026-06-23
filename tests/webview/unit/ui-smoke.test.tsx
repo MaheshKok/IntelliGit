@@ -386,6 +386,7 @@ describe("webview ui smoke", () => {
                     onPull={noop}
                     onPush={noop}
                     onSync={noop}
+                    canFetch={true}
                     canPull={true}
                     canPush={true}
                     canSync={true}
@@ -402,7 +403,9 @@ describe("webview ui smoke", () => {
                     onMessageChange={noop}
                     onAmendChange={noop}
                     onCommit={noop}
+                    onPush={noop}
                     canCommit={true}
+                    canPush={true}
                 />
                 <TabBar
                     stashCount={2}
@@ -418,6 +421,10 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Pull");
         expect(html).toContain("Push");
         expect(html).toContain("Sync");
+        expect(html.indexOf("Refresh")).toBeLessThan(html.indexOf("Sync"));
+        expect(html.indexOf("Sync")).toBeLessThan(html.indexOf("Fetch"));
+        expect(html.indexOf("Fetch")).toBeLessThan(html.indexOf("Pull"));
+        expect(html.indexOf("Pull")).toBeLessThan(html.indexOf("Push"));
         expect(html).not.toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
 
@@ -429,7 +436,9 @@ describe("webview ui smoke", () => {
                     onMessageChange={noop}
                     onAmendChange={noop}
                     onCommit={noop}
+                    onPush={noop}
                     canCommit={false}
+                    canPush={false}
                 />
             </ChakraProvider>,
         );
@@ -443,6 +452,7 @@ describe("webview ui smoke", () => {
                 onPull={noop}
                 onPush={noop}
                 onSync={noop}
+                canFetch={true}
                 canPull={true}
                 canPush={false}
                 canSync={true}

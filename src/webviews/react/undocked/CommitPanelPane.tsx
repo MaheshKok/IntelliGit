@@ -23,6 +23,7 @@ interface CommitPanelPaneProps {
     onPull: () => void;
     onPush: () => void;
     onSync: () => void;
+    canFetch: boolean;
     canPull: boolean;
     canPush: boolean;
     canSync: boolean;
@@ -51,6 +52,7 @@ export function CommitPanelPane({
     onPull,
     onPush,
     onSync,
+    canFetch,
     canPull,
     canPush,
     canSync,
@@ -91,6 +93,7 @@ export function CommitPanelPane({
                             onPull={onPull}
                             onPush={onPush}
                             onSync={onSync}
+                            canFetch={canFetch}
                             canPull={canPull}
                             canPush={canPush}
                             canSync={canSync}

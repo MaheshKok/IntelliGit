@@ -42,6 +42,7 @@ interface Props {
     onPull: () => void;
     onPush: () => void;
     onSync: () => void;
+    canFetch: boolean;
     canPull: boolean;
     canPush: boolean;
     canSync: boolean;
@@ -80,6 +81,7 @@ export function CommitTab({
     onPull,
     onPush,
     onSync,
+    canFetch,
     canPull,
     canPush,
     canSync,
@@ -171,6 +173,7 @@ export function CommitTab({
                 onPull={onPull}
                 onPush={onPush}
                 onSync={onSync}
+                canFetch={canFetch}
                 canPull={canPull}
                 canPush={canPush}
                 canSync={canSync}
@@ -245,7 +248,9 @@ export function CommitTab({
                     onMessageChange={onMessageChange}
                     onAmendChange={onAmendChange}
                     onCommit={onCommit}
+                    onPush={onPush}
                     canCommit={canCommit}
+                    canPush={canPush}
                 />
             </Box>
         </Flex>

@@ -13,7 +13,9 @@ interface Props {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
+    onPush: () => void;
     canCommit: boolean;
+    canPush: boolean;
 }
 
 /**
@@ -28,7 +30,9 @@ export function CommitArea({
     onMessageChange,
     onAmendChange,
     onCommit,
+    onPush,
     canCommit,
+    canPush,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     return (
@@ -87,6 +91,23 @@ export function CommitArea({
                     fontFamily={SYSTEM_FONT_STACK}
                 >
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
+                </Button>
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={onPush}
+                    isDisabled={!canPush}
+                    fontSize="12px"
+                    fontFamily={SYSTEM_FONT_STACK}
+                    _disabled={{
+                        bg: "rgba(255,255,255,0.03)",
+                        color: "var(--vscode-disabledForeground)",
+                        borderColor: "rgba(176, 186, 205, 0.24)",
+                        cursor: "default",
+                        opacity: 0.62,
+                    }}
+                >
+                    {t("common.push")}
                 </Button>
             </Flex>
         </Flex>

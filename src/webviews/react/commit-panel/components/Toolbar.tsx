@@ -13,6 +13,7 @@ interface Props {
     onPull: () => void;
     onPush: () => void;
     onSync: () => void;
+    canFetch: boolean;
     canPull: boolean;
     canPush: boolean;
     canSync: boolean;
@@ -40,6 +41,7 @@ export function Toolbar({
     onPull,
     onPush,
     onSync,
+    canFetch,
     canPull,
     canPush,
     canSync,
@@ -75,7 +77,23 @@ export function Toolbar({
                     d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949a4.093 4.093 0 0 1-4.09 4.09 4.093 4.093 0 0 1-4.09-4.09 4.088 4.088 0 0 1 3.354-4.027v1.938l4.308-2.906L7.43.002v1.906a5.593 5.593 0 0 0-4.856 5.617A5.594 5.594 0 0 0 8.166 13.1a5.594 5.594 0 0 0 5.592-5.575c0-1.755-.461-2.381-1.307-3.416l1-.5z"
                 />
             </ToolbarButton>
-            <ToolbarButton label={t("common.fetch")} onClick={onFetch} color="#8fd5ff">
+            <ToolbarButton
+                label={t("common.sync")}
+                onClick={onSync}
+                color="#c8a2ff"
+                disabled={!canSync}
+            >
+                <path
+                    fill="currentColor"
+                    d="M12.2 3.8A5.2 5.2 0 0 0 3.1 6H2A6.2 6.2 0 0 1 12.9 3l1-1v3.5h-3.5l1.8-1.7zM3.8 12.2A5.2 5.2 0 0 0 12.9 10H14A6.2 6.2 0 0 1 3.1 13l-1 1v-3.5h3.5l-1.8 1.7z"
+                />
+            </ToolbarButton>
+            <ToolbarButton
+                label={t("common.fetch")}
+                onClick={onFetch}
+                color="#8fd5ff"
+                disabled={!canFetch}
+            >
                 <path
                     fill="currentColor"
                     d="M7.5 2h1v6.1l2.15-2.15.7.7L8 10 4.65 6.65l.7-.7L7.5 8.1V2z"
@@ -105,17 +123,6 @@ export function Toolbar({
                     d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
                 />
                 <path fill="currentColor" d="M3 13h10v1H3v-1z" />
-            </ToolbarButton>
-            <ToolbarButton
-                label={t("common.sync")}
-                onClick={onSync}
-                color="#c8a2ff"
-                disabled={!canSync}
-            >
-                <path
-                    fill="currentColor"
-                    d="M12.2 3.8A5.2 5.2 0 0 0 3.1 6H2A6.2 6.2 0 0 1 12.9 3l1-1v3.5h-3.5l1.8-1.7zM3.8 12.2A5.2 5.2 0 0 0 12.9 10H14A6.2 6.2 0 0 1 3.1 13l-1 1v-3.5h3.5l-1.8 1.7z"
-                />
             </ToolbarButton>
             <ToolbarButton label={t("common.rollback")} onClick={onRollback} color="#b8adff">
                 <path
@@ -171,8 +178,11 @@ function ToolbarButton({
     children: React.ReactNode;
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const resolvedColor =
-        iconStyle === "standard" ? "var(--vscode-icon-foreground)" : (color ?? undefined);
+    const resolvedColor = disabled
+        ? "var(--vscode-disabledForeground)"
+        : iconStyle === "standard"
+          ? "var(--vscode-icon-foreground)"
+          : (color ?? undefined);
     const svgStyle: React.CSSProperties = {
         ...(resolvedColor ? { color: resolvedColor } : {}),
         ...(spin
@@ -198,7 +208,12 @@ function ToolbarButton({
                 size="sm"
                 onClick={disabled ? undefined : onClick}
                 isDisabled={disabled}
-                _disabled={{ opacity: 1, cursor: "default" }}
+                _disabled={{
+                    bg: "rgba(255,255,255,0.03)",
+                    color: "var(--vscode-disabledForeground)",
+                    cursor: "default",
+                    opacity: 0.55,
+                }}
                 data-refreshing={spin ? "true" : undefined}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>

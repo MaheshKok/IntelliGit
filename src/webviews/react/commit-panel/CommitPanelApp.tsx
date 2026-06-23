@@ -62,7 +62,9 @@ function App(): React.ReactElement {
 
     const canCommit = state.isAmend || checkedPaths.size > 0;
     const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
-    const canPullOrSync = state.currentBranchHasUpstream;
+    const canFetch = state.currentBranchHasUpstream;
+    const canPull = state.currentBranchHasUpstream && state.currentBranchBehind > 0;
+    const canSync = canPull || canPush;
 
     const handleCommit = useCallback(() => {
         const msg = state.commitMessage.trim();
@@ -113,9 +115,10 @@ function App(): React.ReactElement {
                         onPull={handlePull}
                         onPush={handlePush}
                         onSync={handleSync}
-                        canPull={canPullOrSync}
+                        canFetch={canFetch}
+                        canPull={canPull}
                         canPush={canPush}
-                        canSync={canPullOrSync}
+                        canSync={canSync}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}
