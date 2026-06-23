@@ -1,4 +1,4 @@
-# IntelliGit
+<h1 align="center">IntelliGit</h1>
 
 <p align="center">
   <a href="package.nls.json">🇬🇧 English</a> •

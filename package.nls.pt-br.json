@@ -47,6 +47,7 @@
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Dê preferência à ferramenta de mesclagem externa da JetBrains ao abrir conflitos de mesclagem. Caso o caminho da JetBrains não esteja configurado ou a inicialização falhe, o editor de mesclagem interno do VS Code será utilizado.",
     "configuration.tooltips.enabled.markdownDescription": "Ative ou desative as dicas de ferramentas dentro da janela do IntelliGit (Gráfico de Commits, Coluna de Branches, etc.).",
     "configuration.undockableWindow.markdownDescription": "Abra o IntelliGit como uma aba unificada do editor quando a opção \"Mostrar Log do Git\" for acionada, permitindo o desencaixe nativo do VS Code para um segundo monitor.",
+    "configuration.undockableWindowButtonVisability.markdownDescription": "Mostra o botão Desencaixar na barra de título da visualização de gráfico do IntelliGit. Desative para ocultar o botão mantendo o comando de desencaixar disponível.",
     "configuration.icons.enum.color": "Use os ícones coloridos do IntelliGit (padrão).",
     "configuration.icons.enum.standard": "Use o estilo de ícones monocromáticos do VS Code, consistente com os painéis integrados.",
     "configuration.icons.markdownDescription": "Estilo de ícone para o painel de commits do IntelliGit. `standard` usa o ícone monocromático do VS Code (padrão); `color` usa os ícones coloridos do IntelliGit.",

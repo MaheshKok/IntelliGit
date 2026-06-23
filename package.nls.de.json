@@ -47,6 +47,7 @@
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Beim Öffnen von Merge-Konflikten wird bevorzugt das externe JetBrains-Merge-Tool verwendet. Falls kein JetBrains-Pfad konfiguriert ist oder der Start fehlschlägt, wird der interne Merge-Editor von VS Code verwendet.",
     "configuration.tooltips.enabled.markdownDescription": "Tooltips im IntelliGit-Fenster aktivieren oder deaktivieren (Commit-Diagramm, Branch-Spalte usw.).",
     "configuration.undockableWindow.markdownDescription": "IntelliGit wird als einheitlicher Editor-Tab geöffnet, wenn „Git-Protokoll anzeigen“ aufgerufen wird, wodurch das native Abdocken von VS Code auf einen zweiten Monitor ermöglicht wird.",
+    "configuration.undockableWindowButtonVisability.markdownDescription": "Zeigt die Schaltfläche „Abdocken“ in der Titelleiste der IntelliGit-Graphansicht an. Deaktivieren Sie dies, um die Schaltfläche auszublenden, während der Abdocken-Befehl verfügbar bleibt.",
     "configuration.icons.enum.color": "Verwenden Sie die farbigen Symbole von IntelliGit (Standardeinstellung).",
     "configuration.icons.enum.standard": "Verwenden Sie den monochromen Symbolstil von VS Code, der mit den integrierten Bedienfeldern übereinstimmt.",
     "configuration.icons.markdownDescription": "Symbolstil für das IntelliGit-Commit-Panel. `standard` verwendet den einfarbigen Vordergrund von VS Code (Standard); `color` verwendet die farbigen Symbole von IntelliGit.",

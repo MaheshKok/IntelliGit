@@ -21,6 +21,16 @@ type ExtensionManifest = {
             "webview/context"?: WebviewContextMenuItem[];
             "view/title"?: WebviewContextMenuItem[];
         };
+        configuration?: {
+            properties?: Record<
+                string,
+                {
+                    type?: string;
+                    default?: unknown;
+                    markdownDescription?: string;
+                }
+            >;
+        };
     };
 };
 
@@ -70,5 +80,26 @@ describe("extension manifest", () => {
             expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
             expect(paletteItem?.when).toBe("false");
         }
+    });
+
+    it("gates the undock view title button with a visible-by-default setting", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const titleMenu = manifest.contributes?.menus?.["view/title"] ?? [];
+        const setting =
+            manifest.contributes?.configuration?.properties?.[
+                "intelligit.undockableWindowButtonVisability"
+            ];
+        const undockButton = titleMenu.find((entry) => entry.command === "intelligit.openUndocked");
+
+        expect(setting?.type).toBe("boolean");
+        expect(setting?.default).toBe(true);
+        expect(setting?.markdownDescription).toBe(
+            "%configuration.undockableWindowButtonVisability.markdownDescription%",
+        );
+        expect(undockButton?.when).toBe(
+            "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
+        );
     });
 });
