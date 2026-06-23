@@ -119,18 +119,6 @@ export function CommitTab({
         vscode.postMessage({ type: "refresh" });
     }, [showRefreshFeedback, vscode]);
 
-    const handleSync = useCallback(() => {
-        vscode.postMessage({ type: "sync" });
-    }, [vscode]);
-
-    const handleFetch = useCallback(() => {
-        vscode.postMessage({ type: "fetch" });
-    }, [vscode]);
-
-    const handlePull = useCallback(() => {
-        vscode.postMessage({ type: "pull" });
-    }, [vscode]);
-
     const handleRollback = useCallback(() => {
         vscode.postMessage({ type: "rollback", paths: Array.from(checkedPaths) });
     }, [vscode, checkedPaths]);
@@ -175,10 +163,6 @@ export function CommitTab({
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
                 onCollapseAll={() => setCollapseAllSignal((s) => s + 1)}
-                onSync={handleSync}
-                onFetch={handleFetch}
-                onPull={handlePull}
-                onPush={onPush}
             />
 
             {isAmend ? (

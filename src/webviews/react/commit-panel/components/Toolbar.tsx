@@ -1,7 +1,7 @@
 // Toolbar with commit-view Git and file actions.
 
 import React from "react";
-import { Box, Flex, IconButton, Tooltip } from "@chakra-ui/react";
+import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
 import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
 import { t } from "../../shared/i18n";
@@ -15,10 +15,6 @@ interface Props {
     onShowDiff: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
-    onSync: () => void;
-    onFetch: () => void;
-    onPull: () => void;
-    onPush: () => void;
 }
 
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
@@ -39,10 +35,6 @@ export function Toolbar({
     onShowDiff,
     onExpandAll,
     onCollapseAll,
-    onSync,
-    onFetch,
-    onPull,
-    onPush,
 }: Props): React.ReactElement {
     return (
         <Flex
@@ -102,49 +94,6 @@ export function Toolbar({
             </ToolbarButton>
             <ToolbarButton label={t("common.collapseAll")} onClick={onCollapseAll} color="#f3b1cf">
                 <CollapseAllIconGlyph />
-            </ToolbarButton>
-            <Box flex="1" />
-            <ToolbarButton label={t("common.sync")} onClick={onSync} color="#c8a2ff">
-                <path
-                    fill="currentColor"
-                    d="M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z"
-                />
-            </ToolbarButton>
-            <ToolbarButton label={t("common.fetch")} onClick={onFetch} color="#8fd5ff">
-                <path
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.3"
-                    d="M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11"
-                />
-                <path
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.3"
-                    d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
-                />
-            </ToolbarButton>
-            <ToolbarButton label={t("common.pull")} onClick={onPull} color="#8fd5ff">
-                <path
-                    fill="currentColor"
-                    d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
-                />
-                <path fill="currentColor" d="M3 13h10v1H3v-1z" />
-            </ToolbarButton>
-            <ToolbarButton
-                label={t("common.push")}
-                onClick={onPush}
-                color="var(--vscode-gitDecoration-addedResourceForeground, #a6e3a1)"
-            >
-                <path
-                    fill="currentColor"
-                    d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
-                />
-                <path fill="currentColor" d="M3 13h10v1H3v-1z" />
             </ToolbarButton>
         </Flex>
     );

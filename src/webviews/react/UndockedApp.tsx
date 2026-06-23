@@ -482,6 +482,18 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "push" });
     }, []);
 
+    const handleSync = useCallback(() => {
+        vscode.postMessage({ type: "sync" });
+    }, []);
+
+    const handleFetch = useCallback(() => {
+        vscode.postMessage({ type: "fetch" });
+    }, []);
+
+    const handlePull = useCallback(() => {
+        vscode.postMessage({ type: "pull" });
+    }, []);
+
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
     }, []);
@@ -509,6 +521,9 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
+                                onSync={handleSync}
+                                onFetch={handleFetch}
+                                onPull={handlePull}
                                 onPush={handlePush}
                                 canPush={canPush}
                                 groupByDir={groupByDir}
@@ -653,6 +668,9 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
+                                onSync={handleSync}
+                                onFetch={handleFetch}
+                                onPull={handlePull}
                                 onPush={handlePush}
                                 canPush={canPush}
                                 groupByDir={groupByDir}

@@ -78,11 +78,27 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "push" });
     }, [vscode]);
 
+    const handleSync = useCallback(() => {
+        vscode.postMessage({ type: "sync" });
+    }, [vscode]);
+
+    const handleFetch = useCallback(() => {
+        vscode.postMessage({ type: "fetch" });
+    }, [vscode]);
+
+    const handlePull = useCallback(() => {
+        vscode.postMessage({ type: "pull" });
+    }, [vscode]);
+
     return (
         <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
             <ThemeIconFontFaces fonts={state.iconFonts} />
             <TabBar
                 stashCount={state.stashes.length}
+                onSync={handleSync}
+                onFetch={handleFetch}
+                onPull={handlePull}
+                onPush={handlePush}
                 commitContent={
                     <CommitTab
                         files={state.files}
