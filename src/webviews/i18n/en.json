@@ -1,6 +1,10 @@
 {
     "common.refresh": "Refresh",
     "common.refreshing": "Refreshing...",
+    "common.fetch": "Fetch",
+    "common.pull": "Pull",
+    "common.push": "Push",
+    "common.sync": "Sync",
     "common.rollback": "Rollback",
     "common.groupByDirectory": "Group by Directory",
     "common.shelveChanges": "Shelve Changes",

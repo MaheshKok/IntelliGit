@@ -218,5 +218,9 @@
     "worktree.menu.delete": "Excluir worktree",
     "worktree.menu.lock": "Bloquear worktree",
     "worktree.menu.unlock": "Desbloquear worktree",
-    "worktree.menu.move": "Mover worktree..."
+    "worktree.menu.move": "Mover worktree...",
+    "common.fetch": "Buscar",
+    "common.pull": "Puxar",
+    "common.push": "Enviar",
+    "common.sync": "Sincronizar"
 }

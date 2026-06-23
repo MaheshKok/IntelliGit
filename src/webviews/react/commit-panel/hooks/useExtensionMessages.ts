@@ -21,6 +21,8 @@ const initialState: CommitPanelState = {
     isRefreshing: false,
     error: null,
     currentBranchHasUpstream: true,
+    currentBranchAhead: 0,
+    currentBranchBehind: 0,
 };
 
 function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPanelState {
@@ -37,6 +39,8 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 currentBranchHasUpstream: action.currentBranchHasUpstream,
+                currentBranchAhead: action.currentBranchAhead,
+                currentBranchBehind: action.currentBranchBehind,
                 error: null,
             };
         case "SET_REFRESHING":
@@ -120,6 +124,8 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         folderIconsByName: msg.folderIconsByName,
                         iconFonts: msg.iconFonts,
                         currentBranchHasUpstream: msg.currentBranchHasUpstream ?? true,
+                        currentBranchAhead: msg.currentBranchAhead ?? 0,
+                        currentBranchBehind: msg.currentBranchBehind ?? 0,
                     });
                     break;
                 case "restoreCommitDraft":

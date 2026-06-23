@@ -397,5 +397,13 @@
     "Repaired worktrees.": "Worktree восстановлены.",
     "Select New Worktree Location": "Выберите новое расположение worktree",
     "Unlocked worktree {path}": "Worktree {path} разблокирован",
-    "Worktree operation failed: {message}": "Ошибка операции worktree: {message}"
+    "Worktree operation failed: {message}": "Ошибка операции worktree: {message}",
+    "Fetching...": "Получение...",
+    "Fetched successfully.": "Получение успешно завершено.",
+    "Pulling...": "Загрузка...",
+    "Pulled successfully.": "Загрузка успешно завершена.",
+    "Pushing...": "Отправка...",
+    "Pushed successfully.": "Отправка успешно завершена.",
+    "Syncing...": "Синхронизация...",
+    "Synced successfully.": "Синхронизация успешно завершена."
 }

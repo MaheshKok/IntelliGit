@@ -613,6 +613,22 @@ vi.mock("vscode", () => ({
     },
 }));
 
+vi.mock("../../../src/utils/notifications", () => ({
+    runWithNotificationProgress: vi.fn(
+        async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+            withProgress(
+                {
+                    location: 15,
+                    title: `IntelliGit: ${_message}`,
+                    cancellable: false,
+                },
+                task,
+            ),
+    ),
+    showTimedInformationMessage: showInformationMessage,
+    showTimedWarningMessage: showWarningMessage,
+}));
+
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
         repoRoot: string;

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { getErrorMessage } from "../utils/errors";
-import { runWithNotificationProgress } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import {
     getCommitParentHashes,
     getUndoCommitCount,
@@ -55,7 +55,7 @@ export async function undoCommit(ctx: CommitActionContext): Promise<void> {
     if (confirm !== undoLabel) return;
     try {
         await ctx.executor.run(["reset", "--soft", `${ctx.validatedHash}^`]);
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Undid {count} commit(s) up to {short}.", {
                 count: undoCount,
                 short: ctx.short,
@@ -227,7 +227,7 @@ export async function dropCommit(ctx: CommitActionContext): Promise<void> {
             ctx.validatedHash,
             "HEAD",
         ]);
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Dropped {short} from history.", { short: ctx.short }),
         );
     } catch (err) {
@@ -342,7 +342,7 @@ async function amendHeadCommitMessage(ctx: CommitActionContext): Promise<void> {
     if (!nextMessage) return;
     try {
         await ctx.executor.run(["commit", "--amend", "-m", nextMessage]);
-        vscode.window.showInformationMessage(vscode.l10n.t("Commit message updated."));
+        showTimedInformationMessage(vscode.l10n.t("Commit message updated."));
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(
@@ -372,7 +372,7 @@ function openInteractiveRebaseTerminal(
         shellArgs: ["rebase", "-i", `${ctx.validatedHash}^`],
     });
     terminal.show();
-    vscode.window.showInformationMessage(successMessage);
+    showTimedInformationMessage(successMessage);
 }
 
 /**
@@ -480,7 +480,7 @@ async function performSquash(
                 await ctx.executor.run(["commit", "-m", squashMessage]);
             },
         );
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Squashed {count} commits into one commit.", { count }),
         );
     } catch (err) {

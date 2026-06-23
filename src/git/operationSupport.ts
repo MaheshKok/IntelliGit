@@ -3,6 +3,7 @@ import { getErrorMessage, sanitizeErrorMessage } from "../utils/errors";
 declare const require: (id: string) => unknown;
 
 const OUTPUT_CHANNEL_NAME = "IntelliGit";
+const TRANSIENT_WARNING_MS = 5000;
 
 type VsCodeApi = typeof import("vscode");
 type OutputChannelLike = { appendLine: (value: string) => void };
@@ -45,6 +46,21 @@ function getOutputChannel(): OutputChannelLike {
     return outputChannel;
 }
 
+function withNotificationPrefix(message: string): string {
+    return `${OUTPUT_CHANNEL_NAME}: ${message}`;
+}
+
+function showTimedWarningMessage(vscode: VsCodeApi, message: string): void {
+    void vscode.window.withProgress(
+        {
+            location: vscode.ProgressLocation.Notification,
+            title: withNotificationPrefix(message),
+            cancellable: false,
+        },
+        () => new Promise<void>((resolve) => setTimeout(resolve, TRANSIENT_WARNING_MS)),
+    );
+}
+
 /**
  * Logs a sanitized Git operation warning and optionally shows a user-facing warning.
  *
@@ -66,7 +82,7 @@ export function logGitOpsWarning(
     if (options?.userWarningMessage) {
         const vscode = getVsCodeApi();
         if (vscode) {
-            void vscode.window.showWarningMessage(options.userWarningMessage);
+            showTimedWarningMessage(vscode, options.userWarningMessage);
         }
     }
 }

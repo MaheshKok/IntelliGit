@@ -28,6 +28,22 @@ export type OutboundMessage =
           type: "refresh";
       }
     | {
+          /** Command fetching remote refs without changing the current working tree. */
+          type: "fetch";
+      }
+    | {
+          /** Command pulling the current branch with rebase semantics. */
+          type: "pull";
+      }
+    | {
+          /** Command pushing the current branch to its upstream. */
+          type: "push";
+      }
+    | {
+          /** Command pulling the current branch and then pushing it. */
+          type: "sync";
+      }
+    | {
           /** Persistence event storing the commit message draft in workspace state. */
           type: "saveCommitDraft";
           /** Plain commit message text scoped by repository root; empty text clears storage. */
@@ -195,6 +211,10 @@ export type InboundMessage =
            * `true` so older payloads do not incorrectly switch the UI to Publish Branch.
            */
           currentBranchHasUpstream?: boolean;
+          /** Number of commits the current branch is ahead of its upstream, when known. */
+          currentBranchAhead?: number;
+          /** Number of commits the current branch is behind its upstream, when known. */
+          currentBranchBehind?: number;
       }
     | {
           /** State update restoring the repository-scoped commit draft from workspace state. */

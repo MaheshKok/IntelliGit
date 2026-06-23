@@ -1,7 +1,7 @@
 // Entry point for the commit panel React webview. Wraps the app in
 // ChakraProvider with the VS Code theme and composes all panels.
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import theme from "./theme";
@@ -60,31 +60,30 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
-    const stageCheckedAndCommit = useCallback(
-        (push: boolean) => {
-            const msg = state.commitMessage.trim();
-            vscode.postMessage({
-                type: "commitSelected",
-                paths: Array.from(checkedPaths),
-                message: msg,
-                amend: state.isAmend,
-                push,
-            });
-        },
-        [vscode, state.commitMessage, state.isAmend, checkedPaths],
-    );
+    const hasStagedFiles = useMemo(() => state.files.some((file) => file.staged), [state.files]);
+    const canCommit = state.isAmend || hasStagedFiles;
+    const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
+    const canPullOrSync = state.currentBranchHasUpstream;
 
     const handleCommit = useCallback(() => {
-        stageCheckedAndCommit(false);
-    }, [stageCheckedAndCommit]);
+        const msg = state.commitMessage.trim();
+        vscode.postMessage({
+            type: "commit",
+            message: msg,
+            amend: state.isAmend,
+        });
+    }, [vscode, state.commitMessage, state.isAmend]);
 
-    const handleCommitAndPush = useCallback(() => {
-        if (!state.currentBranchHasUpstream) {
-            vscode.postMessage({ type: "publishBranch" });
-            return;
-        }
-        stageCheckedAndCommit(true);
-    }, [stageCheckedAndCommit, state.currentBranchHasUpstream, vscode]);
+    const postGitOperation = useCallback(
+        (type: "fetch" | "pull" | "push" | "sync") => {
+            vscode.postMessage({ type });
+        },
+        [vscode],
+    );
+    const handleFetch = useCallback(() => postGitOperation("fetch"), [postGitOperation]);
+    const handlePull = useCallback(() => postGitOperation("pull"), [postGitOperation]);
+    const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
+    const handleSync = useCallback(() => postGitOperation("sync"), [postGitOperation]);
 
     return (
         <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
@@ -108,8 +107,14 @@ function App(): React.ReactElement {
                         onMessageChange={handleMessageChange}
                         onAmendChange={handleAmendChange}
                         onCommit={handleCommit}
-                        onCommitAndPush={handleCommitAndPush}
-                        currentBranchHasUpstream={state.currentBranchHasUpstream}
+                        canCommit={canCommit}
+                        onFetch={handleFetch}
+                        onPull={handlePull}
+                        onPush={handlePush}
+                        onSync={handleSync}
+                        canPull={canPullOrSync}
+                        canPush={canPush}
+                        canSync={canPullOrSync}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}

@@ -8,7 +8,7 @@ import { GitOps } from "../git/operations";
 import type { Branch } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { EMPTY_TREE_HASH } from "../utils/constants";
-import { runWithNotificationProgress } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import {
     assertValidBranchName,
@@ -279,7 +279,7 @@ export async function promptRebaseAfterPushRejection(
                 await retryPush();
             },
         );
-        vscode.window.showInformationMessage(vscode.l10n.t("Rebased and pushed current branch."));
+        showTimedInformationMessage(vscode.l10n.t("Rebased and pushed current branch."));
     } catch (rebaseError) {
         const message = getErrorMessage(rebaseError);
         vscode.window.showErrorMessage(
@@ -500,7 +500,7 @@ export async function showDeletedBranchActions(
         }
         try {
             await executor.run(["branch", branch.name, branch.hash]);
-            vscode.window.showInformationMessage(
+            showTimedInformationMessage(
                 vscode.l10n.t("Restored {branch}", { branch: branch.name }),
             );
             await vscode.commands.executeCommand("intelligit.refresh");
@@ -536,7 +536,7 @@ export async function showDeletedBranchActions(
                     await executor.run(["push", tracked.remote, "--delete", tracked.remoteBranch]);
                 },
             );
-            vscode.window.showInformationMessage(
+            showTimedInformationMessage(
                 vscode.l10n.t("Deleted tracked branch {remote}/{remoteBranch}", {
                     remote: tracked.remote,
                     remoteBranch: tracked.remoteBranch,

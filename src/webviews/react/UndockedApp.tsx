@@ -318,6 +318,8 @@ function App(): React.ReactElement {
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
                         currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
+                        currentBranchAhead: data.currentBranchAhead ?? 0,
+                        currentBranchBehind: data.currentBranchBehind ?? 0,
                     });
                     return;
 
@@ -461,28 +463,30 @@ function App(): React.ReactElement {
         }
     }, []);
 
-    const stageCheckedAndCommit = useCallback(
-        (push: boolean) => {
-            const msg = cpState.commitMessage.trim();
-            vscode.postMessage({
-                type: "commitSelected",
-                paths: Array.from(checkedPaths),
-                message: msg,
-                amend: cpState.isAmend,
-                push,
-            });
-        },
-        [cpState.commitMessage, cpState.isAmend, checkedPaths],
+    const hasStagedFiles = useMemo(
+        () => cpState.files.some((file) => file.staged),
+        [cpState.files],
     );
+    const canCommit = cpState.isAmend || hasStagedFiles;
+    const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
+    const canPullOrSync = cpState.currentBranchHasUpstream;
 
-    const handleCommit = useCallback(() => stageCheckedAndCommit(false), [stageCheckedAndCommit]);
-    const handleCommitAndPush = useCallback(() => {
-        if (!cpState.currentBranchHasUpstream) {
-            vscode.postMessage({ type: "publishBranch" });
-            return;
-        }
-        stageCheckedAndCommit(true);
-    }, [cpState.currentBranchHasUpstream, stageCheckedAndCommit]);
+    const handleCommit = useCallback(() => {
+        const msg = cpState.commitMessage.trim();
+        vscode.postMessage({
+            type: "commit",
+            message: msg,
+            amend: cpState.isAmend,
+        });
+    }, [cpState.commitMessage, cpState.isAmend]);
+
+    const postGitOperation = useCallback((type: "fetch" | "pull" | "push" | "sync") => {
+        vscode.postMessage({ type });
+    }, []);
+    const handleFetch = useCallback(() => postGitOperation("fetch"), [postGitOperation]);
+    const handlePull = useCallback(() => postGitOperation("pull"), [postGitOperation]);
+    const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
+    const handleSync = useCallback(() => postGitOperation("sync"), [postGitOperation]);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -510,8 +514,14 @@ function App(): React.ReactElement {
                                 onMessageChange={handleMessageChange}
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
-                                onCommitAndPush={handleCommitAndPush}
-                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
+                                canCommit={canCommit}
+                                onFetch={handleFetch}
+                                onPull={handlePull}
+                                onPush={handlePush}
+                                onSync={handleSync}
+                                canPull={canPullOrSync}
+                                canPush={canPush}
+                                canSync={canPullOrSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -653,8 +663,14 @@ function App(): React.ReactElement {
                                 onMessageChange={handleMessageChange}
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
-                                onCommitAndPush={handleCommitAndPush}
-                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
+                                canCommit={canCommit}
+                                onFetch={handleFetch}
+                                onPull={handlePull}
+                                onPush={handlePush}
+                                onSync={handleSync}
+                                canPull={canPullOrSync}
+                                canPush={canPush}
+                                canSync={canPullOrSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

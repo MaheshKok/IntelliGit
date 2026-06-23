@@ -37,8 +37,14 @@ interface Props {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
-    onCommitAndPush: () => void;
-    currentBranchHasUpstream: boolean;
+    canCommit: boolean;
+    onFetch: () => void;
+    onPull: () => void;
+    onPush: () => void;
+    onSync: () => void;
+    canPull: boolean;
+    canPush: boolean;
+    canSync: boolean;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -69,8 +75,14 @@ export function CommitTab({
     onMessageChange,
     onAmendChange,
     onCommit,
-    onCommitAndPush,
-    currentBranchHasUpstream,
+    canCommit,
+    onFetch,
+    onPull,
+    onPush,
+    onSync,
+    canPull,
+    canPush,
+    canSync,
     groupByDir,
     onToggleGroupBy,
 }: Props): React.ReactElement {
@@ -155,6 +167,13 @@ export function CommitTab({
             <Toolbar
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing || isRefreshFeedbackActive}
+                onFetch={onFetch}
+                onPull={onPull}
+                onPush={onPush}
+                onSync={onSync}
+                canPull={canPull}
+                canPush={canPush}
+                canSync={canSync}
                 onRollback={handleRollback}
                 onToggleGroupBy={onToggleGroupBy}
                 onShelve={handleShelve}
@@ -226,8 +245,7 @@ export function CommitTab({
                     onMessageChange={onMessageChange}
                     onAmendChange={onAmendChange}
                     onCommit={onCommit}
-                    onCommitAndPush={onCommitAndPush}
-                    currentBranchHasUpstream={currentBranchHasUpstream}
+                    canCommit={canCommit}
                 />
             </Box>
         </Flex>

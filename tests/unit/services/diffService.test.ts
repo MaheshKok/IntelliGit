@@ -81,6 +81,8 @@ vi.mock("../../../src/services/gitHelpers", async () => {
 
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: mocks.runWithNotificationProgress,
+    showTimedInformationMessage: mocks.showInformationMessage,
+    showTimedWarningMessage: mocks.showWarningMessage,
 }));
 
 import {

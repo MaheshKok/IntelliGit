@@ -10,6 +10,7 @@ import type {
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { assertNumber, assertRepoPathArray, assertString } from "./messageValidation";
 import type { IconThemeService } from "./shared";
+import { showTimedInformationMessage } from "../utils/notifications";
 
 interface PanelFileActionDeps {
     gitOps: GitOps;
@@ -194,7 +195,7 @@ export async function deleteFileFromPanel(
     if (confirm !== deleteAction) return;
     const deleted = await deleteFileWithFallback(deps.gitOps, deps.getWorkspaceRoot(), filePath);
     if (!deleted) return;
-    vscode.window.showInformationMessage(vscode.l10n.t("Deleted {path}", { path: filePath }));
+    showTimedInformationMessage(vscode.l10n.t("Deleted {path}", { path: filePath }));
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }

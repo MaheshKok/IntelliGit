@@ -14,6 +14,7 @@ import {
     SwitchableWebviewViewProvider,
     workspaceRoots,
 } from "./common";
+import { showTimedInformationMessage } from "../utils/notifications";
 
 /**
  * Hooks that let no-repository activation transition after a repository appears.
@@ -141,11 +142,11 @@ export function activateNoRepositoryMode(
         vscode.commands.registerCommand("intelligit.selectRepository", async () => {
             repositories = await discoverGitRepositories(workspaceRoots());
             if (repositories.length === 0) {
-                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+                showTimedInformationMessage(NO_REPOSITORY_MESSAGE);
                 return;
             }
             await activateDiscoveredRepositories(repositories);
-            vscode.window.showInformationMessage(vscode.l10n.t("Git repositories found."));
+            showTimedInformationMessage(vscode.l10n.t("Git repositories found."));
         }),
     );
     registerNoRepositoryDisposable(
@@ -180,7 +181,7 @@ export function activateNoRepositoryMode(
     ]) {
         registerNoRepositoryDisposable(
             vscode.commands.registerCommand(command, () => {
-                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+                showTimedInformationMessage(NO_REPOSITORY_MESSAGE);
             }),
         );
     }

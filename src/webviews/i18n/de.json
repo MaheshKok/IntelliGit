@@ -211,5 +211,9 @@
     "worktree.menu.delete": "Worktree löschen",
     "worktree.menu.lock": "Worktree sperren",
     "worktree.menu.unlock": "Worktree entsperren",
-    "worktree.menu.move": "Worktree verschieben..."
+    "worktree.menu.move": "Worktree verschieben...",
+    "common.fetch": "Abrufen",
+    "common.pull": "Pullen",
+    "common.push": "Pushen",
+    "common.sync": "Synchronisieren"
 }

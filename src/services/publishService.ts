@@ -4,6 +4,7 @@ import * as path from "path";
 import { GitOps } from "../git/operations";
 import { getErrorMessage } from "../utils/errors";
 import { runGitCommandWithAskpass } from "./gitAskpass";
+import { showTimedInformationMessage, showTimedWarningMessage } from "../utils/notifications";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,7 +77,7 @@ export async function runPublishBranchFlow(
                     await gitOps.pushWithUpstream(remotePlan.remoteName, branchName);
                 },
             );
-            vscode.window.showInformationMessage(
+            showTimedInformationMessage(
                 vscode.l10n.t('Branch "{branch}" published to {remote}.', {
                     branch: branchName,
                     remote: remotePlan.remoteName,
@@ -462,7 +463,7 @@ async function getGitLabToken(secrets?: vscode.SecretStorage): Promise<string | 
             try {
                 await secrets.store(GITLAB_TOKEN_KEY, input);
             } catch {
-                vscode.window.showWarningMessage(vscode.l10n.t("Could not save token securely."));
+                showTimedWarningMessage(vscode.l10n.t("Could not save token securely."));
             }
         }
     }

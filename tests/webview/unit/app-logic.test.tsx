@@ -251,9 +251,11 @@ describe("app logic coverage", () => {
                     amendBranchHistoryLoaded: false,
                     iconFonts: [],
                     isRefreshing: false,
-                    error: null,
-                    currentBranchHasUpstream: true,
-                },
+                            error: null,
+                            currentBranchHasUpstream: true,
+                            currentBranchAhead: 1,
+                            currentBranchBehind: 0,
+                        },
                 dispatch,
             ],
         }));
@@ -275,13 +277,19 @@ describe("app logic coverage", () => {
                 onMessageChange: (value: string) => void;
                 onAmendChange: (value: boolean) => void;
                 onCommit: () => void;
-                onCommitAndPush: () => void;
+                onFetch: () => void;
+                onPull: () => void;
+                onPush: () => void;
+                onSync: () => void;
             }) => (
                 <div>
                     <button id="msg" onClick={() => props.onMessageChange("next message")} />
                     <button id="amend" onClick={() => props.onAmendChange(true)} />
                     <button id="commit" onClick={() => props.onCommit()} />
-                    <button id="commit-push" onClick={() => props.onCommitAndPush()} />
+                    <button id="fetch" onClick={() => props.onFetch()} />
+                    <button id="pull" onClick={() => props.onPull()} />
+                    <button id="push" onClick={() => props.onPush()} />
+                    <button id="sync" onClick={() => props.onSync()} />
                 </div>
             ),
         }));
@@ -308,17 +316,26 @@ describe("app logic coverage", () => {
         const msg = document.getElementById("msg");
         const amend = document.getElementById("amend");
         const commit = document.getElementById("commit");
-        const commitPush = document.getElementById("commit-push");
+        const fetch = document.getElementById("fetch");
+        const pull = document.getElementById("pull");
+        const push = document.getElementById("push");
+        const sync = document.getElementById("sync");
         expect(msg).toBeTruthy();
         expect(amend).toBeTruthy();
         expect(commit).toBeTruthy();
-        expect(commitPush).toBeTruthy();
+        expect(fetch).toBeTruthy();
+        expect(pull).toBeTruthy();
+        expect(push).toBeTruthy();
+        expect(sync).toBeTruthy();
 
         act(() => {
             msg?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             amend?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             commit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            commitPush?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            fetch?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            pull?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            push?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            sync?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
         expect(dispatch).toHaveBeenCalledWith({
@@ -328,11 +345,12 @@ describe("app logic coverage", () => {
         expect(dispatch).toHaveBeenCalledWith({ type: "SET_AMEND", isAmend: true });
         expect(postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
         expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "commitSelected", push: false }),
+            expect.objectContaining({ type: "commit", message: "feat: message", amend: false }),
         );
-        expect(postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "commitSelected", push: true }),
-        );
+        expect(postMessage).toHaveBeenCalledWith({ type: "fetch" });
+        expect(postMessage).toHaveBeenCalledWith({ type: "pull" });
+        expect(postMessage).toHaveBeenCalledWith({ type: "push" });
+        expect(postMessage).toHaveBeenCalledWith({ type: "sync" });
     });
 
     it("CommitPanelApp defaults groupByDir to true when getState returns undefined", async () => {
@@ -466,11 +484,9 @@ describe("app logic coverage", () => {
 
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({
-                type: "commitSelected",
+                type: "commit",
                 message: "",
                 amend: false,
-                push: false,
-                paths: [],
             }),
         );
     });

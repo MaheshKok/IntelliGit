@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2026-06-23
+
+### Added
+
+- Added Fetch, Pull, Push, and Sync actions to the Commit view toolbar, with Push enabled only when the current branch has commits ahead of its upstream.
+
+### Changed
+
+- Replaced the Commit and Push button in the Commit area with toolbar Git operations and made the Commit button reflect staged-change readiness.
+- Changed non-error information and warning notifications to auto-dismiss after five seconds while keeping error messages permanent.
+
+### Fixed
+
+- Fixed Commit view Collapse All so it also collapses the top-level Changes and Unversioned Files sections.
+
 ## [0.13.0] - 2026-06-21
 
 ### Added

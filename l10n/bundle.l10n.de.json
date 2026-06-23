@@ -397,5 +397,13 @@
   "Repaired worktrees.": "Worktrees repariert.",
   "Select New Worktree Location": "Neuen Worktree-Speicherort auswählen",
   "Unlocked worktree {path}": "Worktree {path} entsperrt",
-  "Worktree operation failed: {message}": "Worktree-Vorgang fehlgeschlagen: {message}"
+  "Worktree operation failed: {message}": "Worktree-Vorgang fehlgeschlagen: {message}",
+  "Fetching...": "Abrufen...",
+  "Fetched successfully.": "Erfolgreich abgerufen.",
+  "Pulling...": "Pullen...",
+  "Pulled successfully.": "Pull erfolgreich.",
+  "Pushing...": "Pushen...",
+  "Pushed successfully.": "Push erfolgreich.",
+  "Syncing...": "Synchronisieren...",
+  "Synced successfully.": "Synchronisierung erfolgreich."
 }

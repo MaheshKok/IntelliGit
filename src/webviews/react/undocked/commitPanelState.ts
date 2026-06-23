@@ -27,6 +27,8 @@ export interface CommitPanelState {
     isRefreshing: boolean;
     error: string | null;
     currentBranchHasUpstream: boolean;
+    currentBranchAhead: number;
+    currentBranchBehind: number;
 }
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
@@ -42,6 +44,8 @@ export type CommitPanelAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
           currentBranchHasUpstream: boolean;
+          currentBranchAhead: number;
+          currentBranchBehind: number;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -69,6 +73,8 @@ export const initialCommitPanelState: CommitPanelState = {
     isRefreshing: false,
     error: null,
     currentBranchHasUpstream: true,
+    currentBranchAhead: 0,
+    currentBranchBehind: 0,
 };
 
 /**
@@ -92,6 +98,8 @@ export function commitPanelReducer(
                 folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 currentBranchHasUpstream: action.currentBranchHasUpstream,
+                currentBranchAhead: action.currentBranchAhead,
+                currentBranchBehind: action.currentBranchBehind,
                 error: null,
             };
         case "SET_REFRESHING":

@@ -450,6 +450,10 @@ export class GitOps {
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
     }
+    /** Fetches remote refs for the current repository without changing the working tree. */
+    async fetch(): Promise<string> {
+        return this.executor.run(["fetch"]);
+    }
     /** Verifies the push remote, creates or amends a commit, then pushes the current branch. */
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
         await this.assertPushRemoteReachable();
