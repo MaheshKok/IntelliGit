@@ -32,6 +32,7 @@ import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
 import { getGithubCommitChecks } from "../services/githubCommitChecksService";
+import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
  * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
@@ -233,6 +234,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
                         break;
+                    case "fetch":
+                    case "pull":
+                    case "push":
+                    case "sync":
+                        await this.runGitOperation(msg.type);
+                        break;
                 }
             } catch (err) {
                 const message = getErrorMessage(err);
@@ -329,6 +336,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      */
     private async sendBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+        const currentBranchStatus = await this.currentBranchStatus();
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -338,7 +346,38 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
+            currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+            hasRemotes: currentBranchStatus.hasRemotes,
+            currentBranchAhead: currentBranchStatus.ahead,
+            currentBranchBehind: currentBranchStatus.behind,
         });
+    }
+
+    private async runGitOperation(operation: CommitPanelGitOperation): Promise<void> {
+        await runGitOperationFromPanel(
+            {
+                gitOps: this.gitOps,
+                refreshData: () => this.refresh(),
+                fireWorkingTreeChanged: () => undefined,
+            },
+            operation,
+        );
+    }
+
+    private async currentBranchStatus(): Promise<{
+        hasUpstream: boolean;
+        hasRemotes: boolean;
+        ahead: number;
+        behind: number;
+    }> {
+        const remotes = await this.gitOps.getRemotes();
+        const currentBranch = this.branches.find((branch) => branch.isCurrent && !branch.isRemote);
+        return {
+            hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
+            hasRemotes: remotes.length > 0,
+            ahead: currentBranch?.ahead ?? 0,
+            behind: currentBranch?.behind ?? 0,
+        };
     }
 
     /**

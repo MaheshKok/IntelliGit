@@ -420,6 +420,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
+            currentBranchHasUpstream: this.currentBranchHasUpstreamCache,
+            hasRemotes: this.hasRemotesCache,
+            currentBranchAhead: this.currentBranchAheadCache,
+            currentBranchBehind: this.currentBranchBehindCache,
         });
     }
     /**

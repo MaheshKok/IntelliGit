@@ -8,6 +8,7 @@ import {
     isBranchAction,
     isWorktreeAction,
     type BranchAction,
+    type GraphGitOperation,
     type WorktreeAction,
 } from "../protocol/commitGraphTypes";
 import { ContextMenu } from "./shared/components/ContextMenu";
@@ -46,6 +47,11 @@ interface Props {
     onBranchAction: (action: BranchAction, branchName: string) => void;
     onDeleteBranches?: (branchNames: string[]) => void;
     onWorktreeAction?: (action: WorktreeAction, path: string) => void;
+    onGitAction?: (action: GraphGitOperation) => void;
+    canFetch?: boolean;
+    canPull?: boolean;
+    canPush?: boolean;
+    canSync?: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -62,6 +68,160 @@ interface CommitGraphViewState {
 }
 
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote", "worktrees"];
+const GIT_ACTION_ORDER: GraphGitOperation[] = ["sync", "fetch", "pull", "push"];
+const GIT_ACTION_CONFIG: Record<
+    GraphGitOperation,
+    { labelKey: string; color: string; icon: React.ReactNode }
+> = {
+    sync: {
+        labelKey: "common.sync",
+        color: "var(--vscode-charts-purple, #c8a2ff)",
+        icon: (
+            <path
+                fill="currentColor"
+                d="M12.2 3.8A5.2 5.2 0 0 0 3.1 6H2A6.2 6.2 0 0 1 12.9 3l1-1v3.5h-3.5l1.8-1.7zM3.8 12.2A5.2 5.2 0 0 0 12.9 10H14A6.2 6.2 0 0 1 3.1 13l-1 1v-3.5h3.5l-1.8 1.7z"
+            />
+        ),
+    },
+    fetch: {
+        labelKey: "common.fetch",
+        color: "var(--vscode-charts-blue, #8fd5ff)",
+        icon: (
+            <>
+                <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.3"
+                    d="M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11"
+                />
+                <path
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.3"
+                    d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
+                />
+            </>
+        ),
+    },
+    pull: {
+        labelKey: "common.pull",
+        color: "var(--vscode-charts-blue, #8fd5ff)",
+        icon: (
+            <>
+                <path
+                    fill="currentColor"
+                    d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
+                />
+                <path fill="currentColor" d="M3 13h10v1H3v-1z" />
+            </>
+        ),
+    },
+    push: {
+        labelKey: "common.push",
+        color: "var(--vscode-gitDecoration-addedResourceForeground, #a6e3a1)",
+        icon: (
+            <>
+                <path
+                    fill="currentColor"
+                    d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
+                />
+                <path fill="currentColor" d="M3 13h10v1H3v-1z" />
+            </>
+        ),
+    },
+};
+const GIT_ACTION_HEADER_STYLE: React.CSSProperties = {
+    minHeight: 30,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "3px 8px",
+    background: JETBRAINS_UI.color.toolbar,
+    borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
+    flexShrink: 0,
+};
+const GIT_ACTION_BUTTON_STYLE: React.CSSProperties = {
+    width: 24,
+    height: 24,
+    border: "1px solid transparent",
+    borderRadius: JETBRAINS_UI.size.radius,
+    background: "transparent",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    color: JETBRAINS_UI.color.foreground,
+    cursor: "pointer",
+};
+const GIT_ACTION_DISABLED_BUTTON_STYLE: React.CSSProperties = {
+    ...GIT_ACTION_BUTTON_STYLE,
+    background: "var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.04))",
+    color: JETBRAINS_UI.color.muted,
+    cursor: "default",
+    opacity: 0.55,
+};
+
+function isGitActionEnabled(
+    action: GraphGitOperation,
+    enabledByAction: Record<GraphGitOperation, boolean>,
+): boolean {
+    return enabledByAction[action];
+}
+
+/** Renders repository transport controls in the graph sidebar header. */
+function GitActionHeader({
+    onAction,
+    canFetch,
+    canPull,
+    canPush,
+    canSync,
+}: {
+    onAction: (action: GraphGitOperation) => void;
+    canFetch: boolean;
+    canPull: boolean;
+    canPush: boolean;
+    canSync: boolean;
+}): React.ReactElement {
+    const enabledByAction: Record<GraphGitOperation, boolean> = {
+        fetch: canFetch,
+        pull: canPull,
+        push: canPush,
+        sync: canSync,
+    };
+    return (
+        <div data-testid="branch-git-action-header" style={GIT_ACTION_HEADER_STYLE}>
+            {GIT_ACTION_ORDER.map((action) => {
+                const config = GIT_ACTION_CONFIG[action];
+                const label = t(config.labelKey);
+                const enabled = isGitActionEnabled(action, enabledByAction);
+                return (
+                    <button
+                        key={action}
+                        type="button"
+                        aria-label={label}
+                        title={label}
+                        disabled={!enabled}
+                        onClick={enabled ? () => onAction(action) : undefined}
+                        style={enabled ? GIT_ACTION_BUTTON_STYLE : GIT_ACTION_DISABLED_BUTTON_STYLE}
+                    >
+                        <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 16 16"
+                            style={{ color: enabled ? config.color : JETBRAINS_UI.color.muted }}
+                        >
+                            {config.icon}
+                        </svg>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 /** Returns a compact stable label for a worktree row. */
 function getWorktreeLabel(worktree: GitWorktree): string {
@@ -199,6 +359,11 @@ export function BranchColumn({
     onBranchAction,
     onDeleteBranches,
     onWorktreeAction,
+    onGitAction,
+    canFetch = false,
+    canPull = false,
+    canPush = false,
+    canSync = false,
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
@@ -389,6 +554,16 @@ export function BranchColumn({
     return (
         <div style={PANEL_STYLE}>
             <style>{BRANCH_ROW_CLASS_CSS}</style>
+
+            {onGitAction && (
+                <GitActionHeader
+                    onAction={onGitAction}
+                    canFetch={canFetch}
+                    canPull={canPull}
+                    canPush={canPush}
+                    canSync={canSync}
+                />
+            )}
 
             <BranchSearchBar
                 value={branchFilter}

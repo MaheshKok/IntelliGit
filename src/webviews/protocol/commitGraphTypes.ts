@@ -69,6 +69,9 @@ export type CommitAction = (typeof COMMIT_ACTION_VALUES)[number];
 /** Action value sent by worktree context menus and accepted by host worktree routing. */
 export type WorktreeAction = (typeof WORKTREE_ACTION_VALUES)[number];
 
+/** Repository transport operation sent by graph sidebar controls. */
+export type GraphGitOperation = "fetch" | "pull" | "push" | "sync";
+
 /**
  * Narrows untrusted branch action strings before they cross into VS Code command dispatch.
  */
@@ -172,6 +175,22 @@ export type CommitGraphOutbound =
           type: "openCommitCheckUrl";
           /** HTTP(S) target URL returned by GitHub. */
           url: string;
+      }
+    | {
+          /** Command fetching remote refs without changing the current working tree. */
+          type: "fetch";
+      }
+    | {
+          /** Command pulling the current branch with rebase semantics. */
+          type: "pull";
+      }
+    | {
+          /** Command pushing the current branch to its upstream. */
+          type: "push";
+      }
+    | {
+          /** Command pulling the current branch and then pushing it. */
+          type: "sync";
       };
 
 /**
@@ -209,6 +228,17 @@ export type CommitGraphInbound =
           folderIconsByName?: ThemeFolderIconMap;
           /** Webview-safe font-face payloads needed to render glyph-based theme icons. */
           iconFonts?: ThemeIconFont[];
+          /**
+           * Whether the current branch has an upstream; absent producers are treated as
+           * `true` so older payloads do not incorrectly disable remote Git actions.
+           */
+          currentBranchHasUpstream?: boolean;
+          /** Whether the repository has at least one configured remote for fetch operations. */
+          hasRemotes?: boolean;
+          /** Number of commits the current branch is ahead of its upstream, when known. */
+          currentBranchAhead?: number;
+          /** Number of commits the current branch is behind its upstream, when known. */
+          currentBranchBehind?: number;
       }
     | {
           /** State update echoing the branch filter that the host accepted. */

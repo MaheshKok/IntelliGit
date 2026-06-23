@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.2] - 2026-06-23
+
+### Changed
+
+- Moved Fetch, Pull, Push, and Sync from the Commit toolbar into the graph sidebar branch header so repository transport actions live with branch navigation.
+
+### Fixed
+
+- Wired graph/sidebar and undocked Git action handling through the existing Git operation flow so the moved actions run and refresh consistently across graph surfaces.
+- Sent current upstream, ahead/behind, and remote state with graph branch snapshots so sidebar Git action enablement stays accurate.
+
+### Tests
+
+- Updated webview regression coverage for sidebar Git action placement and enablement.
+
 ## [0.13.1] - 2026-06-23
 
 ### Added

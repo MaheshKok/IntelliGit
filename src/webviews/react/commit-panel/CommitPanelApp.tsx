@@ -62,9 +62,6 @@ function App(): React.ReactElement {
 
     const canCommit = state.isAmend || checkedPaths.size > 0;
     const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
-    const canFetch = state.hasRemotes;
-    const canPull = state.currentBranchHasUpstream && state.currentBranchBehind > 0;
-    const canSync = canPull || canPush;
 
     const handleCommit = useCallback(() => {
         const msg = state.commitMessage.trim();
@@ -77,16 +74,9 @@ function App(): React.ReactElement {
         });
     }, [vscode, state.commitMessage, state.isAmend, checkedPaths]);
 
-    const postGitOperation = useCallback(
-        (type: "fetch" | "pull" | "push" | "sync") => {
-            vscode.postMessage({ type });
-        },
-        [vscode],
-    );
-    const handleFetch = useCallback(() => postGitOperation("fetch"), [postGitOperation]);
-    const handlePull = useCallback(() => postGitOperation("pull"), [postGitOperation]);
-    const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
-    const handleSync = useCallback(() => postGitOperation("sync"), [postGitOperation]);
+    const handlePush = useCallback(() => {
+        vscode.postMessage({ type: "push" });
+    }, [vscode]);
 
     return (
         <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
@@ -111,14 +101,8 @@ function App(): React.ReactElement {
                         onAmendChange={handleAmendChange}
                         onCommit={handleCommit}
                         canCommit={canCommit}
-                        onFetch={handleFetch}
-                        onPull={handlePull}
                         onPush={handlePush}
-                        onSync={handleSync}
-                        canFetch={canFetch}
-                        canPull={canPull}
                         canPush={canPush}
-                        canSync={canSync}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}

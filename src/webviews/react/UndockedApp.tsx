@@ -34,7 +34,12 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type { BranchAction, CommitAction, WorktreeAction } from "../protocol/commitGraphTypes";
+import type {
+    BranchAction,
+    CommitAction,
+    GraphGitOperation,
+    WorktreeAction,
+} from "../protocol/commitGraphTypes";
 import type { UnifiedInbound, UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
@@ -481,13 +486,10 @@ function App(): React.ReactElement {
         });
     }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
 
-    const postGitOperation = useCallback((type: "fetch" | "pull" | "push" | "sync") => {
+    const postGitOperation = useCallback((type: GraphGitOperation) => {
         vscode.postMessage({ type });
     }, []);
-    const handleFetch = useCallback(() => postGitOperation("fetch"), [postGitOperation]);
-    const handlePull = useCallback(() => postGitOperation("pull"), [postGitOperation]);
     const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
-    const handleSync = useCallback(() => postGitOperation("sync"), [postGitOperation]);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -516,14 +518,8 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
-                                onFetch={handleFetch}
-                                onPull={handlePull}
                                 onPush={handlePush}
-                                onSync={handleSync}
-                                canFetch={canFetch}
-                                canPull={canPull}
                                 canPush={canPush}
-                                canSync={canSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -557,6 +553,11 @@ function App(): React.ReactElement {
                                 onBranchAction={handleBranchAction}
                                 onDeleteBranches={handleDeleteBranches}
                                 onWorktreeAction={handleWorktreeAction}
+                                onGitAction={postGitOperation}
+                                canFetch={canFetch}
+                                canPull={canPull}
+                                canPush={canPush}
+                                canSync={canSync}
                                 folderIcon={branchFolderIcon}
                                 folderExpandedIcon={branchFolderExpandedIcon}
                                 folderIconsByName={branchFolderIconsByName}
@@ -666,14 +667,8 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
-                                onFetch={handleFetch}
-                                onPull={handlePull}
                                 onPush={handlePush}
-                                onSync={handleSync}
-                                canFetch={canFetch}
-                                canPull={canPull}
                                 canPush={canPush}
-                                canSync={canSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

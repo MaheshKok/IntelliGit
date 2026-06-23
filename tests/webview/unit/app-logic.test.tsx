@@ -2,7 +2,10 @@
 
 import React, { act } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BranchAction } from "../../../src/webviews/protocol/commitGraphTypes";
+import type {
+    BranchAction,
+    GraphGitOperation,
+} from "../../../src/webviews/protocol/commitGraphTypes";
 
 function setupRoot(): void {
     document.body.innerHTML = "";
@@ -49,6 +52,7 @@ describe("app logic coverage", () => {
         type BranchColumnMockProps = {
             onSelectBranch: (branch: string | null) => void;
             onBranchAction: (action: BranchAction, branch: string) => void;
+            onGitAction?: (action: GraphGitOperation) => void;
         };
         type CommitListMockProps = {
             onSelectCommit: (hash: string) => void;
@@ -69,6 +73,10 @@ describe("app logic coverage", () => {
                         id="branch-action"
                         onClick={() => props.onBranchAction("checkout", "main")}
                     />
+                    <button id="git-fetch" onClick={() => props.onGitAction?.("fetch")} />
+                    <button id="git-pull" onClick={() => props.onGitAction?.("pull")} />
+                    <button id="git-push" onClick={() => props.onGitAction?.("push")} />
+                    <button id="git-sync" onClick={() => props.onGitAction?.("sync")} />
                 </div>
             ),
         }));
@@ -100,6 +108,18 @@ describe("app logic coverage", () => {
                 ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             document
                 .getElementById("branch-action")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("git-fetch")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("git-pull")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("git-push")
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            document
+                .getElementById("git-sync")
                 ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             document
                 .getElementById("filter-short")
@@ -140,6 +160,10 @@ describe("app logic coverage", () => {
         expect(types).toContain("ready");
         expect(types).toContain("filterBranch");
         expect(types).toContain("branchAction");
+        expect(types).toContain("fetch");
+        expect(types).toContain("pull");
+        expect(types).toContain("push");
+        expect(types).toContain("sync");
         expect(types).toContain("commitAction");
         expect(types.filter((t) => t === "loadMore")).toHaveLength(1);
         expect(types).toContain("filterText");
@@ -279,14 +303,8 @@ describe("app logic coverage", () => {
                 onAmendChange: (value: boolean) => void;
                 onCommit: () => void;
                 canCommit: boolean;
-                onFetch: () => void;
-                onPull: () => void;
                 onPush: () => void;
-                onSync: () => void;
-                canFetch: boolean;
-                canPull: boolean;
                 canPush: boolean;
-                canSync: boolean;
             }) => (
                 <div>
                     <button id="msg" onClick={() => props.onMessageChange("next message")} />
@@ -296,10 +314,7 @@ describe("app logic coverage", () => {
                         disabled={!props.canCommit}
                         onClick={() => props.onCommit()}
                     />
-                    <button id="fetch" disabled={!props.canFetch} onClick={() => props.onFetch()} />
-                    <button id="pull" disabled={!props.canPull} onClick={() => props.onPull()} />
                     <button id="push" disabled={!props.canPush} onClick={() => props.onPush()} />
-                    <button id="sync" disabled={!props.canSync} onClick={() => props.onSync()} />
                 </div>
             ),
         }));
@@ -326,26 +341,17 @@ describe("app logic coverage", () => {
         const msg = document.getElementById("msg");
         const amend = document.getElementById("amend");
         const commit = document.getElementById("commit");
-        const fetch = document.getElementById("fetch");
-        const pull = document.getElementById("pull");
         const push = document.getElementById("push");
-        const sync = document.getElementById("sync");
         expect(msg).toBeTruthy();
         expect(amend).toBeTruthy();
         expect(commit).toBeTruthy();
-        expect(fetch).toBeTruthy();
-        expect(pull).toBeTruthy();
         expect(push).toBeTruthy();
-        expect(sync).toBeTruthy();
 
         act(() => {
             msg?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             amend?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             commit?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            fetch?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            pull?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             push?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            sync?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
         expect(dispatch).toHaveBeenCalledWith({
@@ -363,13 +369,10 @@ describe("app logic coverage", () => {
                 paths: ["src/a.ts"],
             }),
         );
-        expect(postMessage).toHaveBeenCalledWith({ type: "fetch" });
-        expect(postMessage).not.toHaveBeenCalledWith({ type: "pull" });
         expect(postMessage).toHaveBeenCalledWith({ type: "push" });
-        expect(postMessage).toHaveBeenCalledWith({ type: "sync" });
     });
 
-    it("CommitPanelApp enables fetch when remotes exist without an upstream branch", async () => {
+    it("CommitGraphApp enables sidebar fetch when remotes exist without an upstream branch", async () => {
         let captured:
             | {
                   canFetch: boolean;
@@ -379,43 +382,11 @@ describe("app logic coverage", () => {
               }
             | undefined;
 
-        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
-            useExtensionMessages: () => [
-                {
-                    files: [],
-                    stashes: [],
-                    shelfFiles: [],
-                    selectedShelfIndex: null,
-                    commitMessage: "",
-                    isAmend: false,
-                    amendBranchCommits: [],
-                    amendBranchHistoryLoaded: false,
-                    iconFonts: [],
-                    isRefreshing: false,
-                    error: null,
-                    currentBranchHasUpstream: false,
-                    hasRemotes: true,
-                    currentBranchAhead: 0,
-                    currentBranchBehind: 0,
-                },
-                vi.fn(),
-            ],
-        }));
-        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles", () => ({
-            useCheckedFiles: () => ({
-                checkedPaths: new Set<string>(),
-                toggleFile: vi.fn(),
-                toggleFolder: vi.fn(),
-                toggleSection: vi.fn(),
-                isAllChecked: () => false,
-                isSomeChecked: () => false,
-            }),
-        }));
-        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
+        vi.doMock("../../../src/webviews/react/shared/vscodeApi", () => ({
             getVsCodeApi: () => ({ postMessage: vi.fn(), getState: () => ({}), setState: vi.fn() }),
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
-            CommitTab: (props: {
+        vi.doMock("../../../src/webviews/react/BranchColumn", () => ({
+            BranchColumn: (props: {
                 canFetch: boolean;
                 canPull: boolean;
                 canPush: boolean;
@@ -425,19 +396,26 @@ describe("app logic coverage", () => {
                 return <div>CommitTab</div>;
             },
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
-        }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
-            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
-                <div>
-                    <div>{props.commitContent}</div>
-                    <div>{props.shelfContent}</div>
-                </div>
-            ),
+        vi.doMock("../../../src/webviews/react/CommitList", () => ({
+            CommitList: () => <div>CommitList</div>,
         }));
 
-        await import("../../../src/webviews/react/commit-panel/CommitPanelApp");
+        await import("../../../src/webviews/react/CommitGraphApp");
+        await flush();
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "setBranches",
+                        branches: [],
+                        hasRemotes: true,
+                        currentBranchHasUpstream: false,
+                        currentBranchAhead: 0,
+                        currentBranchBehind: 0,
+                    },
+                }),
+            );
+        });
         await flush();
 
         expect(captured).toMatchObject({
