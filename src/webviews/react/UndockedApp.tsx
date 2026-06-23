@@ -466,9 +466,6 @@ function App(): React.ReactElement {
 
     const canCommit = cpState.isAmend || checkedPaths.size > 0;
     const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
-    const canFetch = cpState.hasRemotes;
-    const canPull = cpState.currentBranchHasUpstream && cpState.currentBranchBehind > 0;
-    const canSync = canPull || canPush;
 
     const handleCommit = useCallback(() => {
         const msg = cpState.commitMessage.trim();
@@ -481,13 +478,9 @@ function App(): React.ReactElement {
         });
     }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
 
-    const postGitOperation = useCallback((type: "fetch" | "pull" | "push" | "sync") => {
-        vscode.postMessage({ type });
+    const handlePush = useCallback(() => {
+        vscode.postMessage({ type: "push" });
     }, []);
-    const handleFetch = useCallback(() => postGitOperation("fetch"), [postGitOperation]);
-    const handlePull = useCallback(() => postGitOperation("pull"), [postGitOperation]);
-    const handlePush = useCallback(() => postGitOperation("push"), [postGitOperation]);
-    const handleSync = useCallback(() => postGitOperation("sync"), [postGitOperation]);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -516,14 +509,8 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
-                                onFetch={handleFetch}
-                                onPull={handlePull}
                                 onPush={handlePush}
-                                onSync={handleSync}
-                                canFetch={canFetch}
-                                canPull={canPull}
                                 canPush={canPush}
-                                canSync={canSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -666,14 +653,8 @@ function App(): React.ReactElement {
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
                                 canCommit={canCommit}
-                                onFetch={handleFetch}
-                                onPull={handlePull}
                                 onPush={handlePush}
-                                onSync={handleSync}
-                                canFetch={canFetch}
-                                canPull={canPull}
                                 canPush={canPush}
-                                canSync={canSync}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

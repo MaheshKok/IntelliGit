@@ -42,6 +42,7 @@ import {
     commitOnlyFromPanel,
     commitSelectedFromPanel,
     rollbackFromPanel,
+    runGitOperationFromPanel,
     shelfMutationFromPanel,
     shelveSaveFromPanel,
 } from "./commitPanelActions";
@@ -356,6 +357,11 @@ export class UndockedViewProvider {
         const actionDeps = {
             gitOps: this.gitOps,
             refreshData: () => this.refreshCommitPanelData(),
+            refreshGraphData: async () => {
+                await this.sendBranches();
+                await this.loadInitial();
+                this.postCommitDetailState();
+            },
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
             postCommitted: () => this.postToWebview({ type: "committed" }),
             maybeOfferPublishBranch: () => Promise.resolve(),
@@ -493,6 +499,12 @@ export class UndockedViewProvider {
                 await commitAndPushFromPanel(actionDeps, message, msg.amend === true);
                 break;
             }
+            case "fetch":
+            case "pull":
+            case "push":
+            case "sync":
+                await runGitOperationFromPanel(actionDeps, msg.type);
+                break;
             case "publishBranch":
                 await publishBranchFromPanel(fileActionDeps);
                 break;
@@ -701,10 +713,7 @@ export class UndockedViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
-            const [currentBranchHasUpstream, hasRemotes] = await Promise.all([
-                this.currentBranchHasUpstream(),
-                this.hasRemotes(),
-            ]);
+            const currentBranchStatus = await this.currentBranchStatus();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -742,8 +751,10 @@ export class UndockedViewProvider {
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: cpFolderIconsByName,
                 iconFonts,
-                currentBranchHasUpstream,
-                hasRemotes,
+                currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+                hasRemotes: currentBranchStatus.hasRemotes,
+                currentBranchAhead: currentBranchStatus.ahead,
+                currentBranchBehind: currentBranchStatus.behind,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -755,6 +766,7 @@ export class UndockedViewProvider {
      */
     private async sendBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+        const currentBranchStatus = await this.currentBranchStatus();
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -764,17 +776,38 @@ export class UndockedViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
+            currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+            hasRemotes: currentBranchStatus.hasRemotes,
+            currentBranchAhead: currentBranchStatus.ahead,
+            currentBranchBehind: currentBranchStatus.behind,
         });
     }
+
+    private async currentBranchStatus(): Promise<{
+        hasUpstream: boolean;
+        hasRemotes: boolean;
+        ahead: number;
+        behind: number;
+    }> {
+        const [branches, remotes] = await Promise.all([
+            this.gitOps.getBranches(),
+            this.gitOps.getRemotes(),
+        ]);
+        const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+        return {
+            hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
+            hasRemotes: remotes.length > 0,
+            ahead: currentBranch?.ahead ?? 0,
+            behind: currentBranch?.behind ?? 0,
+        };
+    }
+
     private async currentBranchHasUpstream(): Promise<boolean> {
         const branches = await this.gitOps.getBranches();
         const currentBranch = branches.find((branch) => branch.isCurrent);
         return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
 
-    private async hasRemotes(): Promise<boolean> {
-        return (await this.gitOps.getRemotes()).length > 0;
-    }
     // --- Commit detail ------------------------------------------------------
     /**
      * Posts cached commit detail state, or an explicit clear message when no commit is selected.

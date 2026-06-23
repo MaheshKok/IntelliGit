@@ -32,6 +32,7 @@ import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
 import { getGithubCommitChecks } from "../services/githubCommitChecksService";
+import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
  * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
@@ -233,6 +234,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
                         break;
+                    case "fetch":
+                    case "pull":
+                    case "push":
+                    case "sync":
+                        await this.runGitOperation(msg.type);
+                        break;
                 }
             } catch (err) {
                 const message = getErrorMessage(err);
@@ -339,6 +346,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
         });
+    }
+
+    private async runGitOperation(operation: CommitPanelGitOperation): Promise<void> {
+        await runGitOperationFromPanel(
+            {
+                gitOps: this.gitOps,
+                refreshData: () => this.refresh(),
+                fireWorkingTreeChanged: () => undefined,
+            },
+            operation,
+        );
     }
 
     /**

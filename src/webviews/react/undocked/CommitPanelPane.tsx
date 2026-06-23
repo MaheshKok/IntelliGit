@@ -19,14 +19,8 @@ interface CommitPanelPaneProps {
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
     canCommit: boolean;
-    onFetch: () => void;
-    onPull: () => void;
     onPush: () => void;
-    onSync: () => void;
-    canFetch: boolean;
-    canPull: boolean;
     canPush: boolean;
-    canSync: boolean;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -48,14 +42,8 @@ export function CommitPanelPane({
     onAmendChange,
     onCommit,
     canCommit,
-    onFetch,
-    onPull,
     onPush,
-    onSync,
-    canFetch,
-    canPull,
     canPush,
-    canSync,
     groupByDir,
     onToggleGroupBy,
 }: CommitPanelPaneProps): React.ReactElement {
@@ -89,14 +77,8 @@ export function CommitPanelPane({
                             onAmendChange={onAmendChange}
                             onCommit={onCommit}
                             canCommit={canCommit}
-                            onFetch={onFetch}
-                            onPull={onPull}
                             onPush={onPush}
-                            onSync={onSync}
-                            canFetch={canFetch}
-                            canPull={canPull}
                             canPush={canPush}
-                            canSync={canSync}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}

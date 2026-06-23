@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.13.1",
+    "version": "0.13.2",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -134,6 +134,30 @@
                 "title": "%command.refresh%",
                 "category": "%intelligit%",
                 "icon": "$(refresh)"
+            },
+            {
+                "command": "intelligit.graph.sync",
+                "title": "%command.sync%",
+                "category": "%intelligit%",
+                "icon": "$(sync)"
+            },
+            {
+                "command": "intelligit.graph.fetch",
+                "title": "%command.fetch%",
+                "category": "%intelligit%",
+                "icon": "$(cloud-download)"
+            },
+            {
+                "command": "intelligit.graph.pull",
+                "title": "%command.pull%",
+                "category": "%intelligit%",
+                "icon": "$(arrow-down)"
+            },
+            {
+                "command": "intelligit.graph.push",
+                "title": "%command.push%",
+                "category": "%intelligit%",
+                "icon": "$(cloud-upload)"
             },
             {
                 "command": "intelligit.filterByBranch",
@@ -387,6 +411,24 @@
             }
         ],
         "menus": {
+            "commandPalette": [
+                {
+                    "command": "intelligit.graph.sync",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.fetch",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.pull",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.push",
+                    "when": "false"
+                }
+            ],
             "editor/context": [
                 {
                     "submenu": "intelligit.editorContext",
@@ -421,6 +463,26 @@
                     "command": "intelligit.openUndocked",
                     "when": "view == intelligit.commitGraph",
                     "group": "navigation"
+                },
+                {
+                    "command": "intelligit.graph.sync",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "intelligit.graph.fetch",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "intelligit.graph.pull",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "intelligit.graph.push",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@4"
                 },
                 {
                     "command": "intelligit.mergeConflictsRefresh",

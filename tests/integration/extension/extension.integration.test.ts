@@ -1168,6 +1168,10 @@ describe("extension integration", () => {
         await activate(context);
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.fetch")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.pull")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.push")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.sync")).toBe(true);
         expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
         expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);

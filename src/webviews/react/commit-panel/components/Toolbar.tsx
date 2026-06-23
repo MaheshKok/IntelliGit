@@ -9,14 +9,6 @@ import { t } from "../../shared/i18n";
 interface Props {
     onRefresh: () => void;
     isRefreshing?: boolean;
-    onFetch: () => void;
-    onPull: () => void;
-    onPush: () => void;
-    onSync: () => void;
-    canFetch: boolean;
-    canPull: boolean;
-    canPush: boolean;
-    canSync: boolean;
     onRollback: () => void;
     onToggleGroupBy: () => void;
     onShelve: () => void;
@@ -37,14 +29,6 @@ const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0d
 export function Toolbar({
     onRefresh,
     isRefreshing,
-    onFetch,
-    onPull,
-    onPush,
-    onSync,
-    canFetch,
-    canPull,
-    canPush,
-    canSync,
     onRollback,
     onToggleGroupBy,
     onShelve,
@@ -76,64 +60,6 @@ export function Toolbar({
                     fill="currentColor"
                     d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949a4.093 4.093 0 0 1-4.09 4.09 4.093 4.093 0 0 1-4.09-4.09 4.088 4.088 0 0 1 3.354-4.027v1.938l4.308-2.906L7.43.002v1.906a5.593 5.593 0 0 0-4.856 5.617A5.594 5.594 0 0 0 8.166 13.1a5.594 5.594 0 0 0 5.592-5.575c0-1.755-.461-2.381-1.307-3.416l1-.5z"
                 />
-            </ToolbarButton>
-            <ToolbarButton
-                label={t("common.sync")}
-                onClick={onSync}
-                color="#c8a2ff"
-                disabled={!canSync}
-            >
-                <path
-                    fill="currentColor"
-                    d="M12.2 3.8A5.2 5.2 0 0 0 3.1 6H2A6.2 6.2 0 0 1 12.9 3l1-1v3.5h-3.5l1.8-1.7zM3.8 12.2A5.2 5.2 0 0 0 12.9 10H14A6.2 6.2 0 0 1 3.1 13l-1 1v-3.5h3.5l-1.8 1.7z"
-                />
-            </ToolbarButton>
-            <ToolbarButton
-                label={t("common.fetch")}
-                onClick={onFetch}
-                color="#8fd5ff"
-                disabled={!canFetch}
-            >
-                <path
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.3"
-                    d="M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11"
-                />
-                <path
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.3"
-                    d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
-                />
-            </ToolbarButton>
-            <ToolbarButton
-                label={t("common.pull")}
-                onClick={onPull}
-                color="#8fd5ff"
-                disabled={!canPull}
-            >
-                <path
-                    fill="currentColor"
-                    d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
-                />
-                <path fill="currentColor" d="M3 13h10v1H3v-1z" />
-            </ToolbarButton>
-            <ToolbarButton
-                label={t("common.push")}
-                onClick={onPush}
-                color="#a6e3a1"
-                disabled={!canPush}
-            >
-                <path
-                    fill="currentColor"
-                    d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
-                />
-                <path fill="currentColor" d="M3 13h10v1H3v-1z" />
             </ToolbarButton>
             <ToolbarButton label={t("common.rollback")} onClick={onRollback} color="#b8adff">
                 <path

@@ -368,7 +368,6 @@ export function CommitGraphPanel({
         },
         [vscode],
     );
-
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
