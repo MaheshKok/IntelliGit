@@ -336,7 +336,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      */
     private async sendBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
-        const currentBranchStatus = await this.currentBranchStatus();
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -346,10 +345,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
-            currentBranchHasUpstream: currentBranchStatus.hasUpstream,
-            hasRemotes: currentBranchStatus.hasRemotes,
-            currentBranchAhead: currentBranchStatus.ahead,
-            currentBranchBehind: currentBranchStatus.behind,
         });
     }
 
@@ -362,22 +357,6 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             },
             operation,
         );
-    }
-
-    private async currentBranchStatus(): Promise<{
-        hasUpstream: boolean;
-        hasRemotes: boolean;
-        ahead: number;
-        behind: number;
-    }> {
-        const remotes = await this.gitOps.getRemotes();
-        const currentBranch = this.branches.find((branch) => branch.isCurrent && !branch.isRemote);
-        return {
-            hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
-            hasRemotes: remotes.length > 0,
-            ahead: currentBranch?.ahead ?? 0,
-            behind: currentBranch?.behind ?? 0,
-        };
     }
 
     /**
