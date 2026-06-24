@@ -406,8 +406,11 @@
     "Pushed successfully.": "推送成功。",
     "Syncing...": "正在同步...",
     "Synced successfully.": "同步成功。",
-    "Published branch name": "Published branch name",
-    "Branch name is required": "Branch name is required",
-    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
-    "The repo has not been published yet.": "The repo has not been published yet."
+    "Published branch name": "要發佈的分支名稱",
+    "Branch name is required": "分支名稱為必填項",
+    "Invalid branch name '{branch}'.": "分支名稱 '{branch}' 無效。",
+    "The repo has not been published yet.": "儲存庫尚未發佈。",
+    "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "分支 '{branch}' 未設定遠端儲存庫。請先發佈該分支，然後重試 Push All up to Here。",
+    "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 推送到現有 \"origin\"",
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "分支 '{branch}' 未設定遠端儲存庫。請先發佈該分支再推送。"
 }

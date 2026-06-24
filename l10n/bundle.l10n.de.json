@@ -406,8 +406,11 @@
   "Pushed successfully.": "Push erfolgreich.",
   "Syncing...": "Synchronisieren...",
   "Synced successfully.": "Synchronisierung erfolgreich.",
-  "Published branch name": "Published branch name",
-  "Branch name is required": "Branch name is required",
-  "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
-  "The repo has not been published yet.": "The repo has not been published yet."
+  "Published branch name": "Veröffentlichter Branch-Name",
+  "Branch name is required": "Branch-Name ist erforderlich",
+  "Invalid branch name '{branch}'.": "Ungültiger Branch-Name '{branch}'.",
+  "The repo has not been published yet.": "Das Repository wurde noch nicht veröffentlicht.",
+  "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "Für Branch '{branch}' ist kein Remote konfiguriert. Veröffentlichen Sie den Branch zuerst und versuchen Sie Push All up to Here erneut.",
+  "$(git-branch) Push to Existing \"origin\"": "$(git-branch) An vorhandenes \"origin\" pushen",
+  "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Für Branch '{branch}' ist kein Remote konfiguriert. Veröffentlichen Sie den Branch, bevor Sie ihn pushen."
 }
