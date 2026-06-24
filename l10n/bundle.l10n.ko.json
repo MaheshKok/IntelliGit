@@ -406,8 +406,11 @@
     "Pushed successfully.": "푸시가 완료되었습니다.",
     "Syncing...": "동기화 중...",
     "Synced successfully.": "동기화가 완료되었습니다.",
-    "Published branch name": "Published branch name",
-    "Branch name is required": "Branch name is required",
-    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
-    "The repo has not been published yet.": "The repo has not been published yet."
+    "Published branch name": "게시할 브랜치 이름",
+    "Branch name is required": "브랜치 이름은 필수입니다",
+    "Invalid branch name '{branch}'.": "브랜치 이름 '{branch}'이(가) 올바르지 않습니다.",
+    "The repo has not been published yet.": "리포지토리가 아직 게시되지 않았습니다.",
+    "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "브랜치 '{branch}'에 구성된 리모트가 없습니다. 먼저 브랜치를 게시한 다음 Push All up to Here를 다시 시도하세요.",
+    "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 기존 \"origin\"에 푸시",
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "브랜치 '{branch}'에 구성된 리모트가 없습니다. 푸시하기 전에 브랜치를 게시하세요."
 }

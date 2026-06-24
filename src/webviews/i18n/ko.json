@@ -209,7 +209,7 @@
     "common.pull": "풀",
     "common.push": "푸시",
     "common.sync": "동기화",
-    "commit.action.publishAndPush": "Publish and Push",
-    "commit.branchIndicator.local": "Branch: {branch}",
-    "commit.branchIndicator.tracking": "Branch: {branch} -> {upstream}"
+    "commit.action.publishAndPush": "게시 및 푸시",
+    "commit.branchIndicator.local": "브랜치: {branch}",
+    "commit.branchIndicator.tracking": "브랜치: {branch} -> {upstream}"
 }

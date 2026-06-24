@@ -400,14 +400,17 @@
     "Worktree operation failed: {message}": "Ошибка операции worktree: {message}",
     "Fetching...": "Получение...",
     "Fetched successfully.": "Получение успешно завершено.",
-    "Pulling...": "Загрузка...",
-    "Pulled successfully.": "Загрузка успешно завершена.",
+    "Pulling...": "Извлечение...",
+    "Pulled successfully.": "Извлечение успешно завершено.",
     "Pushing...": "Отправка...",
     "Pushed successfully.": "Отправка успешно завершена.",
     "Syncing...": "Синхронизация...",
     "Synced successfully.": "Синхронизация успешно завершена.",
-    "Published branch name": "Published branch name",
-    "Branch name is required": "Branch name is required",
-    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
-    "The repo has not been published yet.": "The repo has not been published yet."
+    "Published branch name": "Имя публикуемой ветки",
+    "Branch name is required": "Имя ветки обязательно",
+    "Invalid branch name '{branch}'.": "Недопустимое имя ветки '{branch}'.",
+    "The repo has not been published yet.": "Репозиторий еще не опубликован.",
+    "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "Для ветки '{branch}' не настроен удалённый репозиторий. Сначала опубликуйте ветку, затем повторите Push All up to Here.",
+    "$(git-branch) Push to Existing \"origin\"": "$(git-branch) Отправить в существующий \"origin\"",
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Для ветки '{branch}' не настроен удалённый репозиторий. Опубликуйте ветку перед отправкой."
 }

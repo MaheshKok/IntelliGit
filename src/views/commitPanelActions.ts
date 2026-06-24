@@ -55,30 +55,16 @@ export async function commitSelectedFromPanel(
     if (paths.length > 0) {
         await gitOps.stageFiles(paths);
     }
-    try {
-        const progressTitle = push
-            ? vscode.l10n.t("Committing and pushing...")
-            : vscode.l10n.t("Committing...");
-        await runWithNotificationProgress(progressTitle, async () => {
-            if (push) {
-                await gitOps.commitAndPush(message, amend);
-            } else {
-                await gitOps.commit(message, amend);
-            }
-        });
-    } catch (err) {
-        if (
-            push &&
-            (await promptRebaseAfterPushRejection(err, gitOps, async () => {
-                await gitOps.push();
-            }))
-        ) {
-            postCommitted();
-            await refreshData();
-            fireWorkingTreeChanged();
-            return;
-        }
-        throw err;
+    const progressTitle = push
+        ? vscode.l10n.t("Committing and pushing...")
+        : vscode.l10n.t("Committing...");
+    await runWithNotificationProgress(progressTitle, async () => {
+        await gitOps.commit(message, amend);
+    });
+    if (push) {
+        await runGitOperationFromPanel(deps, "push");
+        postCommitted();
+        return;
     }
     showTimedInformationMessage(
         push
@@ -129,27 +115,11 @@ export async function commitAndPushFromPanel(
         showTimedWarningMessage(vscode.l10n.t("Enter a commit message."));
         return;
     }
-    try {
-        await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
-            await deps.gitOps.commitAndPush(message, amend);
-        });
-    } catch (err) {
-        if (
-            await promptRebaseAfterPushRejection(err, deps.gitOps, async () => {
-                await deps.gitOps.push();
-            })
-        ) {
-            deps.postCommitted();
-            await deps.refreshData();
-            deps.fireWorkingTreeChanged();
-            return;
-        }
-        throw err;
-    }
-    showTimedInformationMessage(vscode.l10n.t("Committed and pushed successfully."));
+    await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
+        await deps.gitOps.commit(message, amend);
+    });
+    await runGitOperationFromPanel(deps, "push");
     deps.postCommitted();
-    await deps.refreshData();
-    deps.fireWorkingTreeChanged();
 }
 
 /**
@@ -181,7 +151,7 @@ export async function runGitOperationFromPanel(
             deps.fireWorkingTreeChanged();
             return;
         }
-        if (operation === "fetch" || operation === "pull" || operation === "sync") {
+        if (operation === "pull" || operation === "sync") {
             showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
             return;
         }

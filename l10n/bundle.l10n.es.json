@@ -401,13 +401,16 @@
     "Fetching...": "Obteniendo...",
     "Fetched successfully.": "Obtenido correctamente.",
     "Pulling...": "Extrayendo...",
-    "Pulled successfully.": "Pull completado correctamente.",
+    "Pulled successfully.": "Extracción completada correctamente.",
     "Pushing...": "Enviando...",
-    "Pushed successfully.": "Push completado correctamente.",
+    "Pushed successfully.": "Envío completado correctamente.",
     "Syncing...": "Sincronizando...",
     "Synced successfully.": "Sincronización completada correctamente.",
-    "Published branch name": "Published branch name",
-    "Branch name is required": "Branch name is required",
-    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
-    "The repo has not been published yet.": "The repo has not been published yet."
+    "Published branch name": "Nombre de rama publicada",
+    "Branch name is required": "El nombre de la rama es obligatorio",
+    "Invalid branch name '{branch}'.": "Nombre de rama no válido '{branch}'.",
+    "The repo has not been published yet.": "El repositorio aún no se ha publicado.",
+    "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "No hay ningún remoto configurado para la rama '{branch}'. Publica la rama primero y vuelve a intentar Push All up to Here.",
+    "$(git-branch) Push to Existing \"origin\"": "$(git-branch) Enviar al \"origin\" existente",
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "No hay ningún remoto configurado para la rama '{branch}'. Publica la rama antes de enviarla."
 }
