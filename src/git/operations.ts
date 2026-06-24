@@ -432,6 +432,14 @@ export class GitOps {
      * Remote and branch names are validated before the fallback `--set-upstream` push mutates tracking.
      */
     async push(): Promise<string> {
+        const upstreamTarget = await this.resolveCurrentPushTarget();
+        if (upstreamTarget && upstreamTarget.remoteBranch !== upstreamTarget.localBranch) {
+            return this.executor.run([
+                "push",
+                upstreamTarget.remote,
+                `HEAD:${upstreamTarget.remoteBranch}`,
+            ]);
+        }
         try {
             return await this.executor.run(["push"]);
         } catch (err) {
@@ -517,6 +525,29 @@ export class GitOps {
                 .map((r) => r.trim())
                 .find(isValidRemoteName);
             return firstRemote ?? null;
+        } catch {
+            return null;
+        }
+    }
+    /** Resolves validated upstream metadata for explicit pushes when local and remote names differ. */
+    private async resolveCurrentPushTarget(): Promise<{
+        localBranch: string;
+        remote: string;
+        remoteBranch: string;
+    } | null> {
+        const localBranch = await this.resolveCurrentBranchNameForPush();
+        if (!localBranch) return null;
+        try {
+            const upstream = (await this.executor.run(["rev-parse", "--abbrev-ref", "@{upstream}"]))
+                .trim()
+                .split("\n")[0];
+            const slashIndex = upstream.indexOf("/");
+            if (slashIndex <= 0) return null;
+            const remote = upstream.slice(0, slashIndex);
+            const remoteBranch = upstream.slice(slashIndex + 1);
+            assertValidRemoteName(remote);
+            assertValidBranchName(remoteBranch, "remote branch name");
+            return { localBranch, remote, remoteBranch };
         } catch {
             return null;
         }

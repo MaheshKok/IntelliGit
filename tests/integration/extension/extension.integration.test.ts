@@ -267,7 +267,7 @@ class MockCommitGraphViewProvider {
     private commitSelectedEmitter = new MockEventEmitter<string>();
     private branchFilterEmitter = new MockEventEmitter<string | null>();
     private branchActionEmitter = new MockEventEmitter<{ action: string; branchName: string }>();
-    private deleteBranchesEmitter = new MockEventEmitter<string[]>();
+    private deleteBranchesEmitter = new MockEventEmitter<Array<{ name: string } | string>>();
     private commitActionEmitter = new MockEventEmitter<{
         action: string;
         hash: string;
@@ -316,8 +316,8 @@ class MockCommitGraphViewProvider {
         this.branchActionEmitter.fire(payload);
     }
     /** Emits bulk branch deletion from the mocked graph provider. */
-    emitDeleteBranches(branchNames: string[]): void {
-        this.deleteBranchesEmitter.fire(branchNames);
+    emitDeleteBranches(branches: Array<{ name: string } | string>): void {
+        this.deleteBranchesEmitter.fire(branches);
     }
     /** Emits commit-row actions from the mocked graph provider. */
     emitCommitAction(payload: { action: string; hash: string }): void {
@@ -1213,7 +1213,9 @@ describe("extension integration", () => {
         executorRun.mockClear();
         const worktreeParent = await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-worktree-"));
         showOpenDialog.mockResolvedValueOnce([{ fsPath: worktreeParent, path: worktreeParent }]);
-        showInputBox.mockResolvedValueOnce("feature-created").mockResolvedValueOnce("feature-local");
+        showInputBox
+            .mockResolvedValueOnce("feature-created")
+            .mockResolvedValueOnce("feature-local");
         showErrorMessage.mockClear();
         await getCommand("intelligit.createWorktreeFromBranch")({
             branch: { name: "feature-local", isRemote: false },
@@ -1386,9 +1388,27 @@ describe("extension integration", () => {
         );
     });
 
+    it("graph bulk branch delete preserves remote branch rows before command dispatch", async () => {
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        latestCommitGraphProvider!.emitDeleteBranches([{ name: "origin/feature-remote" }]);
+        await waitForAsync();
+
+        expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-remote"]);
+        expect(executorRun).not.toHaveBeenCalledWith(["branch", "-d", "origin/feature-remote"]);
+    });
+
     it("bulk branch delete deletes branches sequentially, offers local delete actions, and refreshes once", async () => {
         gitOpsState.getBranches.mockResolvedValue([
-            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            {
+                name: "main",
+                hash: "feed1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
             {
                 name: "feature-local",
                 hash: "a1b2c3d4",
@@ -1470,12 +1490,7 @@ describe("extension integration", () => {
             ],
         });
 
-        expect(executorRun).toHaveBeenCalledWith([
-            "push",
-            "origin",
-            "--delete",
-            "feature-remote",
-        ]);
+        expect(executorRun).toHaveBeenCalledWith(["push", "origin", "--delete", "feature-remote"]);
         expect(executorRun).not.toHaveBeenCalledWith([
             "branch",
             "-d",
@@ -1486,7 +1501,14 @@ describe("extension integration", () => {
 
     it("bulk branch delete supports the tracked-remote delete action for local branches", async () => {
         gitOpsState.getBranches.mockResolvedValue([
-            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            {
+                name: "main",
+                hash: "feed1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
             {
                 name: "feature-local",
                 hash: "a1b2c3d4",
@@ -1538,9 +1560,30 @@ describe("extension integration", () => {
 
     it("bulk branch delete reports partial failures after earlier deletions succeed", async () => {
         gitOpsState.getBranches.mockResolvedValue([
-            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
-            { name: "feature-local", hash: "a1b2c3d4", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
-            { name: "feature-fails", hash: "b2c3d4e5", isRemote: false, isCurrent: false, ahead: 0, behind: 0 },
+            {
+                name: "main",
+                hash: "feed1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "feature-local",
+                hash: "a1b2c3d4",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "feature-fails",
+                hash: "b2c3d4e5",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
         ]);
         executorRun.mockImplementation(async (args: string[]) => {
             if (args[0] === "branch" && args[1] === "-d" && args[2] === "feature-fails") {
@@ -1559,14 +1602,23 @@ describe("extension integration", () => {
             ],
         });
 
-        expect(executorRun).toHaveBeenCalledWith(expect.arrayContaining(["branch", "-d", "feature-local"]));
+        expect(executorRun).toHaveBeenCalledWith(
+            expect.arrayContaining(["branch", "-d", "feature-local"]),
+        );
         expect(gitOpsState.getBranches).toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("partially deleted"));
     });
 
     it("bulk branch delete reports a direct failure when the first delete fails", async () => {
         gitOpsState.getBranches.mockResolvedValue([
-            { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+            {
+                name: "main",
+                hash: "feed1234",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
             {
                 name: "feature-fails",
                 hash: "b2c3d4e5",

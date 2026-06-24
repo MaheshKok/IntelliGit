@@ -21,6 +21,13 @@ interface CommitFileDiffDeps {
     getRepoRoot: () => string;
 }
 
+type BranchDeleteSelection = Array<Branch | string>;
+
+/** Extracts a branch name from current and legacy bulk-delete event payloads. */
+function getBranchSelectionName(branch: Branch | string): string {
+    return typeof branch === "string" ? branch : branch.name;
+}
+
 /**
  * Shared callback used by repository-backed views to open a commit-scoped file diff.
  *
@@ -165,11 +172,11 @@ export function registerRepositoryViewEvents(
     /**
      * Forwards bulk branch deletion through the dedicated command payload.
      *
-     * Names are resolved against the latest trusted branch list so stale or forged webview
-     * names are rejected before the command performs Git operations.
+     * Branch selections are resolved against the latest trusted branch list so stale or
+     * forged webview payloads are rejected before Git operations run.
      */
-    const forwardDeleteBranches = (branchNames: string[]): void => {
-        const requestedNames = Array.from(new Set(branchNames));
+    const forwardDeleteBranches = (branches: BranchDeleteSelection): void => {
+        const requestedNames = Array.from(new Set(branches.map(getBranchSelectionName)));
         const selected = requestedNames
             .map((name) => getCurrentBranches().find((branch) => branch.name === name))
             .filter((branch): branch is Branch => Boolean(branch));

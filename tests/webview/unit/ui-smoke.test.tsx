@@ -453,6 +453,24 @@ describe("webview ui smoke", () => {
         );
         expect(localOnlyCommitHtml).toContain("Branch: main");
 
+        const upstreamCommitHtml = renderUi(
+            <CommitArea
+                commitMessage=""
+                isAmend={false}
+                onMessageChange={noop}
+                onAmendChange={noop}
+                onCommit={noop}
+                onPush={noop}
+                canCommit={false}
+                canPush={false}
+                pushLabel="common.push"
+                currentBranchName="master"
+                currentBranchUpstream="origin/main"
+            />,
+        );
+        expect(upstreamCommitHtml).toContain("Branch: main");
+        expect(upstreamCommitHtml).not.toContain("Branch: master");
+
         const refreshingToolbarHtml = renderUi(
             <Toolbar
                 isRefreshing={true}

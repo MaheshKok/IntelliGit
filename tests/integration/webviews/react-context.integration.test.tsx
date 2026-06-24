@@ -11,9 +11,11 @@ import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/react
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
 const mockWebviewState = vi.hoisted(() => ({ current: undefined as unknown }));
-const mockSetWebviewState = vi.hoisted(() => vi.fn((state: unknown) => {
-    mockWebviewState.current = state;
-}));
+const mockSetWebviewState = vi.hoisted(() =>
+    vi.fn((state: unknown) => {
+        mockWebviewState.current = state;
+    }),
+);
 
 vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({
     getVsCodeApi: () => ({
@@ -263,7 +265,7 @@ describe("BranchColumn integration", () => {
         act(() => {
             contextMenuItems()[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(onDeleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+        expect(onDeleteBranches).toHaveBeenCalledWith([branches[1], branches[2]]);
         expect(onBranchAction).not.toHaveBeenCalled();
 
         unmount(root, container);
@@ -306,10 +308,7 @@ describe("BranchColumn integration", () => {
         act(() => {
             contextMenuItems()[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(onDeleteBranches).toHaveBeenCalledWith([
-            "origin/remote-alpha",
-            "origin/remote-beta",
-        ]);
+        expect(onDeleteBranches).toHaveBeenCalledWith([branches[4], branches[5]]);
         expect(onBranchAction).not.toHaveBeenCalled();
 
         unmount(root, container);
@@ -366,7 +365,12 @@ describe("BranchColumn integration", () => {
             );
         });
         const labels = contextMenuItems().map((item) => item.textContent?.trim());
-        expect(labels).toEqual(["Open Worktree", "Delete Worktree", "Lock Worktree", "Move Worktree..."]);
+        expect(labels).toEqual([
+            "Open Worktree",
+            "Delete Worktree",
+            "Lock Worktree",
+            "Move Worktree...",
+        ]);
 
         const moveItem = contextMenuItems().find((item) => item.textContent?.includes("Move"));
         act(() => {

@@ -30,6 +30,20 @@ const disabledButtonStyles = {
 };
 
 /**
+ * Chooses the branch label for the commit form: upstream branch leaf when tracking exists,
+ * otherwise the local branch name for unpublished branches.
+ */
+function getBranchIndicatorName(
+    currentBranchName: string | null,
+    currentBranchUpstream: string | null,
+): string | null {
+    const upstream = currentBranchUpstream?.trim();
+    if (!upstream) return currentBranchName;
+    const slashIndex = upstream.indexOf("/");
+    return slashIndex >= 0 ? upstream.slice(slashIndex + 1) || upstream : upstream;
+}
+
+/**
  * Renders amend controls, the commit message editor, and the commit action.
  *
  * The component does not talk to the extension host directly; callers decide how
@@ -46,10 +60,12 @@ export function CommitArea({
     canPush,
     pushLabel,
     currentBranchName,
+    currentBranchUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
-    const branchLabel = currentBranchName
-        ? t("commit.branchIndicator.local", { branch: currentBranchName })
+    const branchName = getBranchIndicatorName(currentBranchName, currentBranchUpstream);
+    const branchLabel = branchName
+        ? t("commit.branchIndicator.local", { branch: branchName })
         : null;
     return (
         <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">

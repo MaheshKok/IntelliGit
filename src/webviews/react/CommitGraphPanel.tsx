@@ -316,8 +316,8 @@ export function CommitGraphPanel({
     );
 
     const handleDeleteBranches = useCallback(
-        (branchNames: string[]) => {
-            vscode.postMessage({ type: "deleteBranches", branchNames });
+        (branches: Branch[]) => {
+            vscode.postMessage({ type: "deleteBranches", branches });
         },
         [vscode],
     );

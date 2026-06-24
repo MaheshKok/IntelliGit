@@ -971,18 +971,41 @@ describe("view providers integration", () => {
 
         (
             provider as unknown as {
-                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+                onDeleteBranches(listener: (branches: unknown[]) => void): void;
             }
         ).onDeleteBranches(deleteBranches);
+        const branchRows = [
+            {
+                name: "feature-one",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature-two",
+                hash: "def5678",
+                isRemote: true,
+                isCurrent: false,
+                remote: "origin",
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+        provider.setBranches(branchRows);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
             {} as unknown as object,
         );
 
-        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "feature-two"] });
+        await webview.send({
+            type: "deleteBranches",
+            branches: [{ name: "feature-one" }, { name: "origin/feature-two", isRemote: false }],
+        });
 
-        expect(deleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+        expect(deleteBranches).toHaveBeenCalledWith(branchRows);
 
         provider.dispose();
     });
@@ -1000,17 +1023,27 @@ describe("view providers integration", () => {
 
         (
             provider as unknown as {
-                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+                onDeleteBranches(listener: (branches: unknown[]) => void): void;
             }
         ).onDeleteBranches(deleteBranches);
+        provider.setBranches([
+            {
+                name: "feature-one",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
             {} as unknown as object,
         );
 
-        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "../secret"] });
-        await webview.send({ type: "deleteBranches", branchNames: [] });
+        await webview.send({ type: "deleteBranches", branches: [{ name: "feature-one" }, {}] });
+        await webview.send({ type: "deleteBranches", branches: [] });
 
         expect(deleteBranches).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(
@@ -1493,7 +1526,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider shows upstream in the header and fires file count after commit", async () => {
+    it("CommitPanelViewProvider keeps branch out of the header and fires file count after commit", async () => {
         const { CommitPanelViewProvider } =
             await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
@@ -1520,16 +1553,16 @@ describe("view providers integration", () => {
 
         const view = (provider as unknown as { view: Record<string, unknown> }).view;
 
-        // Initial state: getStatus returns 1 file -> upstream header and file-count event.
+        // Initial state: getStatus returns 1 file -> no duplicated header branch and file-count event.
         // The activity bar count is carried by the hidden fileCountBadge view to avoid double counting.
-        expect(view.description).toBe("(origin/main)");
+        expect(view.description).toBe("");
         expect(view.badge).toBeUndefined();
         expect(counts).toContain(1);
 
-        // After commit, getStatus returns 0 files -> upstream header remains and count fires 0.
+        // After commit, getStatus returns 0 files -> header stays branch-free and count fires 0.
         gitOps.getStatus.mockResolvedValueOnce([]);
         await webview.send({ type: "commit", message: "feat: clear", amend: false });
-        expect(view.description).toBe("(origin/main)");
+        expect(view.description).toBe("");
         expect(view.badge).toBeUndefined();
         expect(counts).toContain(0);
 
@@ -1584,19 +1617,19 @@ describe("view providers integration", () => {
             await webview.send({ type: "ready" });
 
             const view = (provider as unknown as { view: Record<string, unknown> }).view;
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
             expect(view.badge).toBeUndefined();
 
             await flushVisibleRefresh(webview.send({ type: "stageFiles", paths: ["src/a.ts"] }));
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(webview.send({ type: "unstageFiles", paths: ["src/b.ts"] }));
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(
                 webview.send({ type: "commit", message: "feat: commit", amend: false }),
             );
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(
                 webview.send({
@@ -1607,20 +1640,20 @@ describe("view providers integration", () => {
                     paths: ["src/d.ts"],
                 }),
             );
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             showWarningMessage.mockResolvedValueOnce("Rollback");
             await flushVisibleRefresh(webview.send({ type: "rollback", paths: [] }));
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             showWarningMessage.mockResolvedValueOnce("Delete");
             await flushVisibleRefresh(webview.send({ type: "deleteFile", path: "src/e.ts" }));
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(
                 webview.send({ type: "shelveSave", name: "work", paths: ["src/e.ts"] }),
             );
-            expect(view.description).toBe("(origin/main)");
+            expect(view.description).toBe("");
 
             expect(counts).toEqual([2, 1, 2, 0, 1, 0, 1, 0]);
             expect(workingTreeEvents).toHaveLength(7);
