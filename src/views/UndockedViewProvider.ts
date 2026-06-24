@@ -23,6 +23,7 @@ import type {
     ThemeFolderIconMap,
     WorkingFile,
 } from "../types";
+import { isPendingCheckState } from "../types";
 import type {
     BranchAction,
     CommitAction,
@@ -650,7 +651,7 @@ export class UndockedViewProvider {
 
     private async sendCommitChecks(hash: string): Promise<void> {
         const cached = this.commitChecksCache.get(hash);
-        if (cached && cached.state !== "pending") {
+        if (cached && !isPendingCheckState(cached.state)) {
             this.postToWebview({ type: "setCommitChecks", snapshot: cached });
             return;
         }

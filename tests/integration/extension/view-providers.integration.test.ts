@@ -897,6 +897,54 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("UndockedViewProvider refetches cached none (no checks yet) commit checks", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        const workspaceStore = createMemento({});
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            workspaceStore as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
+        postMessageSpy.mockClear();
+
+        getGithubCommitChecks
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "none",
+                summary: "No checks found",
+                items: [],
+            })
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "pending",
+                summary: "Checks pending",
+                items: [],
+            });
+
+        await send({ type: "requestCommitChecks", hash: "abc1234" });
+        await send({ type: "requestCommitChecks", hash: "abc1234" });
+
+        expect(getGithubCommitChecks).toHaveBeenCalledTimes(2);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setCommitChecks",
+            snapshot: expect.objectContaining({ state: "pending" }),
+        });
+    });
+
     it("CommitGraphViewProvider rejects invalid webview command payloads", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
