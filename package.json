@@ -58,7 +58,9 @@
         "onCommand:intelligit.cloneRepository",
         "onCommand:intelligit.openFolder",
         "onCommand:intelligit.initializeRepository",
-        "onCommand:intelligit.publishBranch"
+        "onCommand:intelligit.publishBranch",
+        "onCommand:intelligit.commitChecks.signIn",
+        "onCommand:intelligit.commitChecks.signOut"
     ],
     "main": "./dist/extension.js",
     "l10n": "./l10n",
@@ -377,6 +379,18 @@
                 "title": "%command.publishBranch%",
                 "category": "%intelligit%",
                 "icon": "$(cloud-upload)"
+            },
+            {
+                "command": "intelligit.commitChecks.signIn",
+                "title": "%command.commitChecksSignIn%",
+                "category": "%intelligit%",
+                "icon": "$(key)"
+            },
+            {
+                "command": "intelligit.commitChecks.signOut",
+                "title": "%command.commitChecksSignOut%",
+                "category": "%intelligit%",
+                "icon": "$(sign-out)"
             }
         ],
         "submenus": [

@@ -8,6 +8,7 @@ import { discoverGitRepositories } from "./services/repositoryDiscovery";
 import { activateNoRepositoryMode } from "./activation/noRepositoryMode";
 import { activateNoWorkspaceMode } from "./activation/onboarding";
 import { activateRepositoryMode } from "./activation/repositoryMode";
+import { registerCommitChecksAuthCommands } from "./activation/commitChecksAuthCommands";
 import {
     HAS_MERGE_CONFLICTS_CONTEXT,
     registerStaleUndockedPanelSerializer,
@@ -26,6 +27,7 @@ import {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     registerStaleUndockedPanelSerializer(context);
     registerReadonlyDiffContentProvider(context);
+    registerCommitChecksAuthCommands(context);
     void setViewContext(HAS_MERGE_CONFLICTS_CONTEXT, false);
 
     if (!vscode.workspace.workspaceFolders?.length) {

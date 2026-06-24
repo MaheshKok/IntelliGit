@@ -397,5 +397,16 @@
     "Repaired worktrees.": "Worktree восстановлены.",
     "Select New Worktree Location": "Выберите новое расположение worktree",
     "Unlocked worktree {path}": "Worktree {path} разблокирован",
-    "Worktree operation failed: {message}": "Ошибка операции worktree: {message}"
+    "Worktree operation failed: {message}": "Ошибка операции worktree: {message}",
+    "$(edit) Other host...": "$(edit) Другой хост...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "Сохранённый токен для {host} удалён.",
+    "Enter the host name (e.g. gitlab.example.com)": "Введите имя хоста (например, gitlab.example.com)",
+    "Enter your access token for {host}": "Введите токен доступа для {host}",
+    "Host is required": "Требуется хост",
+    "Select a provider to sign in to": "Выберите поставщик для входа",
+    "Select a provider to sign out of": "Выберите поставщик для выхода",
+    "Signed in to {host}.": "Выполнен вход в {host}.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "Введите только имя хоста, например gitlab.example.com (без https:// и пути).",
+    "Could not clear the saved token.": "Не удалось удалить сохранённый токен."
 }

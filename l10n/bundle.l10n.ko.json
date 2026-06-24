@@ -92,7 +92,7 @@
     "Open the path prompt": "경로 프롬프트를 엽니다.",
     "Open the unified IntelliGit view and move it to a floating window": "통합 IntelliGit 뷰를 열고 플로팅 창으로 이동합니다.",
     "Open the unified IntelliGit view as an editor tab": "통합 IntelliGit 보기를 편집기 탭으로 엽니다.",
-    "Pick the parent number to use with -m": "-m 옵션과 함께 사용할 부모 번호를 선택하세요.",
+    "Pick the parent number to use with -m": "__INTELLIGIT_LITERAL_PREFIX____INTELLIGIT_LITERAL_PREFIX____INTELLIGIT_TEXT__-m 옵션과 함께 사용할 부모 번호를 선택하세요.",
     "Push All up to Here is available only for unpushed commits.": "\"모두 여기에 푸시\" 기능은 푸시되지 않은 커밋에 대해서만 사용할 수 있습니다.",
     "Push All up to Here is only available when a local branch is checked out.": "여기까지 모두 푸시는 로컬 브랜치가 체크아웃된 경우에만 사용할 수 있습니다.",
     "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?": "원격 브랜치에 로컬 브랜치에 없는 커밋이 포함되어 있어 푸시가 거부되었습니다. 지금 리베이스하고 푸시하시겠습니까?",
@@ -397,5 +397,16 @@
     "Repaired worktrees.": "워크트리를 복구했습니다.",
     "Select New Worktree Location": "새 워크트리 위치 선택",
     "Unlocked worktree {path}": "워크트리 {path} 잠금 해제",
-    "Worktree operation failed: {message}": "워크트리 작업 실패: {message}"
+    "Worktree operation failed: {message}": "워크트리 작업 실패: {message}",
+    "$(edit) Other host...": "$(edit) 다른 호스트...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "{host}의 저장된 토큰을 지웠습니다.",
+    "Enter the host name (e.g. gitlab.example.com)": "호스트 이름 입력 (예: gitlab.example.com)",
+    "Enter your access token for {host}": "{host}의 액세스 토큰 입력",
+    "Host is required": "호스트는 필수입니다",
+    "Select a provider to sign in to": "로그인할 공급자 선택",
+    "Select a provider to sign out of": "로그아웃할 공급자 선택",
+    "Signed in to {host}.": "{host}에 로그인했습니다.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "gitlab.example.com처럼 호스트 이름만 입력하세요 (https://나 경로 제외).",
+    "Could not clear the saved token.": "저장된 토큰을 지울 수 없습니다."
 }

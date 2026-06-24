@@ -59,5 +59,7 @@
     "command.unlockWorktree": "Разблокировать worktree",
     "command.moveWorktree": "Переместить worktree...",
     "command.pruneWorktrees": "Очистить worktree",
-    "command.repairWorktrees": "Восстановить worktree"
+    "command.repairWorktrees": "Восстановить worktree",
+    "command.commitChecksSignIn": "Войти в поставщик проверок коммитов",
+    "command.commitChecksSignOut": "Выйти из поставщика проверок коммитов"
 }

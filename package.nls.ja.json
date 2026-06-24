@@ -59,5 +59,7 @@
     "command.unlockWorktree": "ワークツリーのロックを解除",
     "command.moveWorktree": "ワークツリーを移動...",
     "command.pruneWorktrees": "ワークツリーを整理",
-    "command.repairWorktrees": "ワークツリーを修復"
+    "command.repairWorktrees": "ワークツリーを修復",
+    "command.commitChecksSignIn": "コミットチェックプロバイダーにサインイン",
+    "command.commitChecksSignOut": "コミットチェックプロバイダーからサインアウト"
 }

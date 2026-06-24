@@ -397,5 +397,16 @@
     "Repaired worktrees.": "Worktrees reparados.",
     "Select New Worktree Location": "Seleccionar nueva ubicación del worktree",
     "Unlocked worktree {path}": "Worktree {path} desbloqueado",
-    "Worktree operation failed: {message}": "Error en la operación de worktree: {message}"
+    "Worktree operation failed: {message}": "Error en la operación de worktree: {message}",
+    "$(edit) Other host...": "$(edit) Otro host...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "Se borró el token guardado para {host}.",
+    "Enter the host name (e.g. gitlab.example.com)": "Escriba el nombre del host (p. ej. gitlab.example.com)",
+    "Enter your access token for {host}": "Escriba su token de acceso para {host}",
+    "Host is required": "El host es obligatorio",
+    "Select a provider to sign in to": "Seleccione un proveedor para iniciar sesión",
+    "Select a provider to sign out of": "Seleccione un proveedor para cerrar sesión",
+    "Signed in to {host}.": "Sesión iniciada en {host}.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "Escriba solo un nombre de host, como gitlab.example.com (sin https:// ni ruta).",
+    "Could not clear the saved token.": "No se pudo borrar el token guardado."
 }

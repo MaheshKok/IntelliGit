@@ -397,5 +397,16 @@
     "Repaired worktrees.": "已修復 Worktree。",
     "Select New Worktree Location": "選取新的 Worktree 位置",
     "Unlocked worktree {path}": "已解除鎖定 Worktree {path}",
-    "Worktree operation failed: {message}": "Worktree 操作失敗: {message}"
+    "Worktree operation failed: {message}": "Worktree 操作失敗: {message}",
+    "$(edit) Other host...": "$(edit) 其他主機...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "已清除 {host} 的已儲存權杖。",
+    "Enter the host name (e.g. gitlab.example.com)": "輸入主機名稱（例如 gitlab.example.com）",
+    "Enter your access token for {host}": "輸入 {host} 的存取權杖",
+    "Host is required": "必須提供主機",
+    "Select a provider to sign in to": "選取要登入的提供者",
+    "Select a provider to sign out of": "選取要登出的提供者",
+    "Signed in to {host}.": "已登入到 {host}。",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "僅輸入主機名稱，例如 gitlab.example.com（不要 https:// 或路徑）。",
+    "Could not clear the saved token.": "無法清除已儲存的權杖。"
 }

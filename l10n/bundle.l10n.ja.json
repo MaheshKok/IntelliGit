@@ -92,7 +92,7 @@
     "Open the path prompt": "パスプロンプトを開く",
     "Open the unified IntelliGit view and move it to a floating window": "IntelliGitの統合ビューを開き、フローティングウィンドウに移動します。",
     "Open the unified IntelliGit view as an editor tab": "IntelliGit統合ビューをエディタータブとして開く",
-    "Pick the parent number to use with -m": "-m オプションで使用する親番号を選択してください",
+    "Pick the parent number to use with -m": "__INTELLIGIT_LITERAL_PREFIX____INTELLIGIT_LITERAL_PREFIX____INTELLIGIT_TEXT__-m オプションで使用する親番号を選択してください",
     "Push All up to Here is available only for unpushed commits.": "「ここまでのすべてをプッシュ」機能は、プッシュされていないコミットに対してのみ利用可能です。",
     "Push All up to Here is only available when a local branch is checked out.": "ここまでプッシュは、ローカルブランチがチェックアウトされている場合にのみ使用できます。",
     "Push rejected because the remote branch contains commits that are not in your local branch. Rebase and push now?": "リモートブランチにローカルブランチに存在しないコミットが含まれているため、プッシュが拒否されました。リベースして今すぐプッシュしますか？",
@@ -397,5 +397,16 @@
     "Repaired worktrees.": "ワークツリーを修復しました。",
     "Select New Worktree Location": "新しいワークツリーの場所を選択",
     "Unlocked worktree {path}": "ワークツリー {path} のロックを解除しました",
-    "Worktree operation failed: {message}": "ワークツリー操作に失敗しました: {message}"
+    "Worktree operation failed: {message}": "ワークツリー操作に失敗しました: {message}",
+    "$(edit) Other host...": "$(edit) 他のホスト...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "{host} の保存済みトークンをクリアしました。",
+    "Enter the host name (e.g. gitlab.example.com)": "ホスト名を入力 (例: gitlab.example.com)",
+    "Enter your access token for {host}": "{host} のアクセストークンを入力",
+    "Host is required": "ホストは必須です",
+    "Select a provider to sign in to": "サインインするプロバイダーを選択",
+    "Select a provider to sign out of": "サインアウトするプロバイダーを選択",
+    "Signed in to {host}.": "{host} にサインインしました。",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "ホスト名のみを入力してください。例: gitlab.example.com（https:// やパスは不要）。",
+    "Could not clear the saved token.": "保存済みトークンをクリアできませんでした。"
 }

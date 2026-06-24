@@ -59,5 +59,7 @@
     "command.unlockWorktree": "워크트리 잠금 해제",
     "command.moveWorktree": "워크트리 이동...",
     "command.pruneWorktrees": "워크트리 정리",
-    "command.repairWorktrees": "워크트리 복구"
+    "command.repairWorktrees": "워크트리 복구",
+    "command.commitChecksSignIn": "커밋 검사 공급자에 로그인",
+    "command.commitChecksSignOut": "커밋 검사 공급자에서 로그아웃"
 }

@@ -59,5 +59,7 @@
     "command.unlockWorktree": "Desbloquear worktree",
     "command.moveWorktree": "Mover worktree...",
     "command.pruneWorktrees": "Remover worktrees",
-    "command.repairWorktrees": "Reparar worktrees"
+    "command.repairWorktrees": "Reparar worktrees",
+    "command.commitChecksSignIn": "Iniciar sessão no fornecedor de verificações de commit",
+    "command.commitChecksSignOut": "Terminar sessão do fornecedor de verificações de commit"
 }

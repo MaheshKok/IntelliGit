@@ -397,5 +397,16 @@
     "Repaired worktrees.": "已修复 Worktree。",
     "Select New Worktree Location": "选择新的 Worktree 位置",
     "Unlocked worktree {path}": "已解锁 Worktree {path}",
-    "Worktree operation failed: {message}": "Worktree 操作失败: {message}"
+    "Worktree operation failed: {message}": "Worktree 操作失败: {message}",
+    "$(edit) Other host...": "$(edit) 其他主机...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "已清除 {host} 的已保存令牌。",
+    "Enter the host name (e.g. gitlab.example.com)": "输入主机名（例如 gitlab.example.com）",
+    "Enter your access token for {host}": "输入 {host} 的访问令牌",
+    "Host is required": "必须提供主机",
+    "Select a provider to sign in to": "选择要登录的提供程序",
+    "Select a provider to sign out of": "选择要退出的提供程序",
+    "Signed in to {host}.": "已登录到 {host}。",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "仅输入主机名，例如 gitlab.example.com（不要 https:// 或路径）。",
+    "Could not clear the saved token.": "无法清除已保存的令牌。"
 }

@@ -48,6 +48,8 @@
     "command.openFolder": "Open Folder",
     "command.initializeRepository": "Initialize Repository",
     "command.publishBranch": "Publish Branch",
+    "command.commitChecksSignIn": "Sign In to Commit Checks Provider",
+    "command.commitChecksSignOut": "Sign Out of Commit Checks Provider",
     "configuration.jetbrainsMergeTool.path.markdownDescription": "JetBrains IDE binary path/command (`pycharm`, `idea`, `webstorm`) or a macOS `.app` bundle path. IntelliGit auto-resolves `.app` bundles to the executable inside `Contents/MacOS`.",
     "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Prefer the external JetBrains merge tool when opening merge conflicts. When disabled (default), conflicts open in IntelliGit's native three-way merge editor. Falls back to the native editor if no JetBrains path is configured or launch fails.",
     "configuration.tooltips.enabled.markdownDescription": "Enable or disable tooltips inside the IntelliGit window (Commit Graph, Branch Column, etc.).",

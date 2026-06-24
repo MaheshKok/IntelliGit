@@ -59,5 +59,7 @@
     "command.unlockWorktree": "解锁 Worktree",
     "command.moveWorktree": "移动 Worktree...",
     "command.pruneWorktrees": "清理 Worktree",
-    "command.repairWorktrees": "修复 Worktree"
+    "command.repairWorktrees": "修复 Worktree",
+    "command.commitChecksSignIn": "登录提交检查提供程序",
+    "command.commitChecksSignOut": "退出提交检查提供程序"
 }
