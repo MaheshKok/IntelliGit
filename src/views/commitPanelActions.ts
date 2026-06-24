@@ -178,12 +178,18 @@ export async function runGitOperationFromPanel(
     >,
     operation: CommitPanelGitOperation,
 ): Promise<void> {
-    if (
-        (operation === "pull" || operation === "push" || operation === "sync") &&
-        !(await currentBranchIsPublished(deps.gitOps))
-    ) {
-        showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
-        return;
+    if (!(await currentBranchIsPublished(deps.gitOps))) {
+        if (operation === "push") {
+            await vscode.commands.executeCommand("intelligit.publishBranch");
+            await deps.refreshData();
+            await deps.refreshGraphData?.();
+            deps.fireWorkingTreeChanged();
+            return;
+        }
+        if (operation === "fetch" || operation === "pull" || operation === "sync") {
+            showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+            return;
+        }
     }
 
     const labels = {

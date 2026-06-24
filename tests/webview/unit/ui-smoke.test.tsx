@@ -436,6 +436,23 @@ describe("webview ui smoke", () => {
         );
         expect(disabledCommitHtml).toContain("disabled");
 
+        const localOnlyCommitHtml = renderUi(
+            <CommitArea
+                commitMessage=""
+                isAmend={false}
+                onMessageChange={noop}
+                onAmendChange={noop}
+                onCommit={noop}
+                onPush={noop}
+                canCommit={false}
+                canPush={false}
+                pushLabel="common.push"
+                currentBranchName="main"
+                currentBranchUpstream={null}
+            />,
+        );
+        expect(localOnlyCommitHtml).toContain("Branch: main");
+
         const refreshingToolbarHtml = renderUi(
             <Toolbar
                 isRefreshing={true}

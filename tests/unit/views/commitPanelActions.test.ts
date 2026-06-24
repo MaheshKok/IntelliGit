@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const vscodeMock = vi.hoisted(() => ({
     l10n: { t: (message: string) => message },
+    commands: {
+        executeCommand: vi.fn(async () => undefined),
+    },
     window: {
         showWarningMessage: vi.fn(),
         showInformationMessage: vi.fn(),
@@ -67,7 +70,7 @@ describe("runGitOperationFromPanel", () => {
         vi.clearAllMocks();
     });
 
-    it.each<CommitPanelGitOperation>(["pull", "push", "sync"])(
+    it.each<CommitPanelGitOperation>(["fetch", "pull", "sync"])(
         "warns instead of running %s when the current branch is unpublished",
         async (operation) => {
             const gitOps = makeGitOps();
@@ -80,21 +83,22 @@ describe("runGitOperationFromPanel", () => {
             );
             expect(gitOps.pullRebase).not.toHaveBeenCalled();
             expect(gitOps.push).not.toHaveBeenCalled();
+            expect(gitOps.fetch).not.toHaveBeenCalled();
+            expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
             expect(deps.refreshData).not.toHaveBeenCalled();
             expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
         },
     );
 
-    it("allows fetch when the current branch is unpublished", async () => {
+    it("runs publish branch instead of raw push when the current branch is unpublished", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
 
-        await runGitOperationFromPanel(deps, "fetch");
+        await runGitOperationFromPanel(deps, "push");
 
-        expect(gitOps.fetch).toHaveBeenCalledTimes(1);
-        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
-            "Fetched successfully.",
-        );
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+        expect(gitOps.push).not.toHaveBeenCalled();
         expect(deps.refreshData).toHaveBeenCalledTimes(1);
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
     });

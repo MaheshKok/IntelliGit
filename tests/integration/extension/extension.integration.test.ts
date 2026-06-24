@@ -3114,7 +3114,7 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Update failed: fetch boom"),
         );
-        expect(showWarningMessage).toHaveBeenCalledWith("The repo has not been published yet.");
+        expect(showWarningMessage).not.toHaveBeenCalledWith("The repo has not been published yet.");
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Push failed: push boom"),
         );

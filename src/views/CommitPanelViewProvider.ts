@@ -161,10 +161,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
     }
     /**
-     * Handles repository label changes without replacing the Changes count description.
+     * Handles repository label changes without replacing the branch description.
      *
      * The sidebar title already identifies the view; its description is reserved for the cached
-     * working-file count, so a label change replays the last count instead of showing the label.
+     * tracked branch, so a label change replays the last branch instead of showing the label.
      */
     setRepositoryLabel(_label: string): void {
         this.updateViewCount(this.lastFileCount);
@@ -729,12 +729,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
     /**
-     * Updates the cached file count and sidebar description for the active Changes view.
+     * Updates the cached file count while keeping the view header focused on the tracked branch.
      */
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
         if (!this.view) return;
-        this.view.description = count > 0 ? String(count) : "";
+        this.view.description = this.currentBranchUpstreamCache
+            ? `(${this.currentBranchUpstreamCache})`
+            : "";
         this.view.badge = undefined;
     }
     /**

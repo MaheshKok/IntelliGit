@@ -1,11 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { getErrorMessage } from "../utils/errors";
-import {
-    runWithNotificationProgress,
-    showTimedInformationMessage,
-    showTimedWarningMessage,
-} from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import {
     getCheckedOutBranchName,
     pickMainlineParent,
@@ -255,7 +251,7 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
     if (!target) {
         const remote = await resolveRemoteName(currentBranch, ctx.executor);
         if (!remote) {
-            showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+            await vscode.commands.executeCommand("intelligit.publishBranch");
             return;
         }
 

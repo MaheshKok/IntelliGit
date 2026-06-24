@@ -40,7 +40,13 @@ interface PublishAuth {
     gitUsername: string;
 }
 
-type RemotePlan = { kind: "existing"; remoteName: string } | { kind: "create"; remoteName: string };
+type RemotePlan =
+    | { kind: "existing"; remoteName: string; remoteBranchName?: string }
+    | { kind: "create"; remoteName: string; remoteBranchName?: string };
+
+interface RemoteChoice extends vscode.QuickPickItem {
+    action: "existing" | "create";
+}
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -59,25 +65,28 @@ export async function runPublishBranchFlow(
     repoRoot: string,
     secrets?: vscode.SecretStorage,
 ): Promise<void> {
-    const publishedBranchName = await vscode.window.showInputBox({
-        prompt: vscode.l10n.t("Published branch name"),
-        value: "main",
-        validateInput: (value) => {
-            const trimmed = value.trim();
-            if (!trimmed) return vscode.l10n.t("Branch name is required");
-            if (!isValidBranchName(trimmed)) {
-                return vscode.l10n.t("Invalid branch name '{branch}'.", { branch: value });
-            }
-            return undefined;
-        },
-    });
-    if (!publishedBranchName) return;
-    const remoteBranchName = publishedBranchName.trim();
-
     // 1. Resolve remote strategy before any provider repository is created.
     const remotes = await gitOps.getRemotes();
-    const remotePlan = await pickRemotePlan(remotes);
+    const remotePlan = await pickRemotePlan(remotes, branchName);
     if (!remotePlan) return;
+
+    let remoteBranchName = remotePlan.remoteBranchName ?? branchName;
+    if (remotePlan.kind === "create" && remotes.length === 0) {
+        const publishedBranchName = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("Published branch name"),
+            value: "main",
+            validateInput: (value) => {
+                const trimmed = value.trim();
+                if (!trimmed) return vscode.l10n.t("Branch name is required");
+                if (!isValidBranchName(trimmed)) {
+                    return vscode.l10n.t("Invalid branch name '{branch}'.", { branch: value });
+                }
+                return undefined;
+            },
+        });
+        if (!publishedBranchName) return;
+        remoteBranchName = publishedBranchName.trim();
+    }
 
     if (remotePlan.kind === "existing") {
         try {
@@ -215,51 +224,115 @@ export async function runPublishBranchFlow(
     }
 }
 
-async function pickRemotePlan(remotes: string[]): Promise<RemotePlan | undefined> {
+function parseRemoteRefInput(
+    value: string,
+    fallbackBranch: string,
+): { remoteName: string; remoteBranchName: string } {
+    const trimmed = value.trim();
+    const slashIndex = trimmed.indexOf("/");
+    if (slashIndex <= 0) {
+        return { remoteName: trimmed, remoteBranchName: fallbackBranch };
+    }
+    return {
+        remoteName: trimmed.slice(0, slashIndex),
+        remoteBranchName: trimmed.slice(slashIndex + 1) || fallbackBranch,
+    };
+}
+
+async function pickRemotePlan(
+    remotes: string[],
+    branchName: string,
+): Promise<RemotePlan | undefined> {
     if (remotes.includes("origin")) {
-        const choice = await vscode.window.showQuickPick(
-            [
-                {
-                    label: `$(git-branch) Push to Existing "origin"`,
-                    description: vscode.l10n.t(
-                        "Use the current origin remote without creating a new repository",
-                    ),
-                    action: "existing" as const,
-                },
-                {
-                    label: vscode.l10n.t("$(add) Use a Different Remote Name"),
-                    description: vscode.l10n.t("Add the new repository as a separate remote"),
-                    action: "create" as const,
-                },
-            ],
+        const quickPick = vscode.window.createQuickPick<RemoteChoice>();
+        quickPick.items = [
             {
-                placeHolder: vscode.l10n.t(
-                    'Remote "origin" already exists. How do you want to proceed?',
+                label: `$(git-branch) Push to Existing "origin"`,
+                description: vscode.l10n.t(
+                    "Use the current origin remote without creating a new repository",
                 ),
+                action: "existing" as const,
+                alwaysShow: true,
             },
+            {
+                label: vscode.l10n.t("$(add) Use a Different Remote Name"),
+                description: vscode.l10n.t("Add the new repository as a separate remote"),
+                action: "create" as const,
+                alwaysShow: true,
+            },
+        ];
+        quickPick.placeholder = vscode.l10n.t(
+            'Remote "origin" already exists. How do you want to proceed?',
         );
-        if (!choice) return;
+        quickPick.value = `origin/${branchName}`;
+        const choice = await new Promise<RemotePlan | undefined>((resolve) => {
+            const disposables: vscode.Disposable[] = [];
+            let settled = false;
+            const finish = (plan: RemotePlan | undefined): void => {
+                if (settled) return;
+                settled = true;
+                for (const disposable of disposables) {
+                    disposable.dispose();
+                }
+                quickPick.dispose();
+                resolve(plan);
+            };
+            disposables.push(
+                quickPick.onDidAccept(() => {
+                    const selected = quickPick.selectedItems[0];
+                    if (!selected) return;
+                    if (selected.action === "existing") {
+                        const { remoteBranchName } = parseRemoteRefInput(
+                            quickPick.value,
+                            branchName,
+                        );
+                        finish({
+                            kind: "existing",
+                            remoteName: "origin",
+                            remoteBranchName,
+                        });
+                        return;
+                    }
 
-        if (choice.action === "existing") {
-            return { kind: "existing", remoteName: "origin" };
-        }
-
-        const remoteName = await vscode.window.showInputBox({
-            prompt: vscode.l10n.t("Remote name for the new repository"),
-            value: "upstream",
-            validateInput: (value) => {
-                if (!value.trim()) return vscode.l10n.t("Name is required");
-                if (remotes.includes(value.trim()))
-                    return vscode.l10n.t('Remote "{remote}" already exists', {
-                        remote: value.trim(),
+                    const parsed = parseRemoteRefInput(quickPick.value, branchName);
+                    if (!parsed.remoteName) {
+                        void vscode.window.showErrorMessage(vscode.l10n.t("Name is required"));
+                        return;
+                    }
+                    if (remotes.includes(parsed.remoteName)) {
+                        void vscode.window.showErrorMessage(
+                            vscode.l10n.t('Remote "{remote}" already exists', {
+                                remote: parsed.remoteName,
+                            }),
+                        );
+                        return;
+                    }
+                    if (/[^a-zA-Z0-9._-]/.test(parsed.remoteName)) {
+                        void vscode.window.showErrorMessage(
+                            vscode.l10n.t("Only letters, digits, ., -, _ are allowed"),
+                        );
+                        return;
+                    }
+                    if (!isValidBranchName(parsed.remoteBranchName)) {
+                        void vscode.window.showErrorMessage(
+                            vscode.l10n.t("Invalid branch name '{branch}'.", {
+                                branch: parsed.remoteBranchName,
+                            }),
+                        );
+                        return;
+                    }
+                    finish({
+                        kind: "create",
+                        remoteName: parsed.remoteName,
+                        remoteBranchName: parsed.remoteBranchName,
                     });
-                if (/[^a-zA-Z0-9._-]/.test(value))
-                    return vscode.l10n.t("Only letters, digits, ., -, _ are allowed");
-                return undefined;
-            },
+                }),
+                quickPick.onDidHide(() => finish(undefined)),
+            );
+            quickPick.show();
         });
-        if (!remoteName) return;
-        return { kind: "create", remoteName: remoteName.trim() };
+        if (!choice) return;
+        return choice;
     }
 
     return { kind: "create", remoteName: "origin" };

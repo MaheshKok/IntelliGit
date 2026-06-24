@@ -681,8 +681,11 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         ? await resolveRemoteName(branch, executor)
                         : undefined;
                 const fallbackRemoteName = fallbackRemote ?? "";
-                if (!tracked && (branch.isCurrent || !fallbackRemoteName)) {
-                    showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+                if (!tracked && branch.isCurrent) {
+                    await vscode.commands.executeCommand("intelligit.publishBranch");
+                    return;
+                }
+                if (!tracked && !fallbackRemoteName) {
                     return;
                 }
                 /** Pushes the selected branch through the right upstream or publish flow. */

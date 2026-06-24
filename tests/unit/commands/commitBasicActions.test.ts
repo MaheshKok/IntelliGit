@@ -13,6 +13,9 @@ const vscodeMock = vi.hoisted(() => ({
     l10n: { t: (message: string) => message },
     Uri: { file: (fsPath: string) => ({ fsPath }) },
     env: { clipboard: { writeText: vi.fn() } },
+    commands: {
+        executeCommand: vi.fn(async () => undefined),
+    },
     workspace: { fs: { writeFile: vi.fn() } },
     window: {
         showWarningMessage: vi.fn(),
@@ -516,14 +519,15 @@ describe("pushAllUpToHere", () => {
         expect(refreshOf(ctx)).not.toHaveBeenCalled();
     });
 
-    it("warns when no upstream exists and no remote is configured", async () => {
+    it("runs publish branch when no upstream exists and no remote is configured", async () => {
         mockedUnpushed.mockResolvedValue(true);
         mockedCheckedOut.mockResolvedValue("main");
         mockedTrackedRemote.mockReturnValue(undefined);
         mockedResolveRemote.mockResolvedValue(undefined);
         const ctx = makeCtx({ currentBranches: [makeBranch()] });
         await pushAllUpToHere(ctx);
-        expect(warn).toHaveBeenCalledWith("The repo has not been published yet.");
+        expect(vscode.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(warn).not.toHaveBeenCalledWith("The repo has not been published yet.");
         expect(errorMsg).not.toHaveBeenCalled();
         expect(runOf(ctx)).not.toHaveBeenCalledWith(expect.arrayContaining(["push"]));
         expect(refreshOf(ctx)).not.toHaveBeenCalled();

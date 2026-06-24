@@ -46,16 +46,10 @@ export function CommitArea({
     canPush,
     pushLabel,
     currentBranchName,
-    currentBranchUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     const branchLabel = currentBranchName
-        ? currentBranchUpstream
-            ? t("commit.branchIndicator.tracking", {
-                  branch: currentBranchName,
-                  upstream: currentBranchUpstream,
-              })
-            : t("commit.branchIndicator.local", { branch: currentBranchName })
+        ? t("commit.branchIndicator.local", { branch: currentBranchName })
         : null;
     return (
         <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
