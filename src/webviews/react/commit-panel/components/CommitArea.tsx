@@ -16,7 +16,18 @@ interface Props {
     onPush: () => void;
     canCommit: boolean;
     canPush: boolean;
+    pushLabel: string;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
 }
+
+const disabledButtonStyles = {
+    bg: "rgba(255,255,255,0.03)",
+    color: "var(--vscode-disabledForeground)",
+    borderColor: "rgba(176, 186, 205, 0.24)",
+    cursor: "default",
+    opacity: 0.62,
+};
 
 /**
  * Renders amend controls, the commit message editor, and the commit action.
@@ -33,10 +44,36 @@ export function CommitArea({
     onPush,
     canCommit,
     canPush,
+    pushLabel,
+    currentBranchName,
+    currentBranchUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
+    const branchLabel = currentBranchName
+        ? currentBranchUpstream
+            ? t("commit.branchIndicator.tracking", {
+                  branch: currentBranchName,
+                  upstream: currentBranchUpstream,
+              })
+            : t("commit.branchIndicator.local", { branch: currentBranchName })
+        : null;
     return (
         <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
+            {branchLabel ? (
+                <Box
+                    px="7px"
+                    py="5px"
+                    fontSize="12px"
+                    color="var(--vscode-descriptionForeground)"
+                    borderBottom="1px solid var(--intelligit-pycharm-border)"
+                    overflow="hidden"
+                    textOverflow="ellipsis"
+                    whiteSpace="nowrap"
+                    title={branchLabel}
+                >
+                    {branchLabel}
+                </Box>
+            ) : null}
             <Flex
                 as="label"
                 htmlFor={amendCheckboxId}
@@ -89,6 +126,7 @@ export function CommitArea({
                     isDisabled={!canCommit}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
+                    _disabled={disabledButtonStyles}
                 >
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
@@ -99,15 +137,9 @@ export function CommitArea({
                     isDisabled={!canPush}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
-                    _disabled={{
-                        bg: "rgba(255,255,255,0.03)",
-                        color: "var(--vscode-disabledForeground)",
-                        borderColor: "rgba(176, 186, 205, 0.24)",
-                        cursor: "default",
-                        opacity: 0.62,
-                    }}
+                    _disabled={disabledButtonStyles}
                 >
-                    {t("common.push")}
+                    {t(pushLabel)}
                 </Button>
             </Flex>
         </Flex>

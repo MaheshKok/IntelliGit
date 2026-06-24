@@ -613,6 +613,10 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!validateBranchArg(name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                 if (tracked && !validateTrackedRemote(tracked)) return;
+                if (!tracked) {
+                    showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+                    return;
+                }
                 const currentBranchName = getCurrentBranchName();
                 const isSelectedBranchCurrent = branch.isCurrent || currentBranchName === name;
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
@@ -621,15 +625,6 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     await runWithNotificationProgress(
                         vscode.l10n.t("Updating {branch}...", { branch: name }),
                         async () => {
-                            if (!tracked) {
-                                throw new Error(
-                                    vscode.l10n.t(
-                                        "No tracked remote branch configured for '{branch}'.",
-                                        { branch: name },
-                                    ),
-                                );
-                            }
-
                             if (isSelectedBranchCurrent) {
                                 await executor.run([
                                     "fetch",
@@ -680,9 +675,18 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 if (!validateBranchArg(branch.name)) return;
+                const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
+                const fallbackRemote =
+                    !tracked && !branch.isCurrent
+                        ? await resolveRemoteName(branch, executor)
+                        : undefined;
+                const fallbackRemoteName = fallbackRemote ?? "";
+                if (!tracked && (branch.isCurrent || !fallbackRemoteName)) {
+                    showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+                    return;
+                }
                 /** Pushes the selected branch through the right upstream or publish flow. */
                 const pushBranch = async (): Promise<void> => {
-                    const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                     if (tracked) {
                         assertValidRemoteName(tracked.remote);
                         assertValidBranchName(tracked.remoteBranch, "remote branch name");
@@ -705,16 +709,8 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                 `${branch.name}:${tracked.remoteBranch}`,
                             ]);
                         } else {
-                            const remote = await resolveRemoteName(branch, executor);
-                            if (!remote) {
-                                throw new Error(
-                                    vscode.l10n.t("No remote configured for branch {branch}.", {
-                                        branch: branch.name,
-                                    }),
-                                );
-                            }
-                            assertValidRemoteName(remote);
-                            await executor.run(["push", "-u", remote, branch.name]);
+                            const remoteName = assertValidRemoteName(fallbackRemoteName);
+                            await executor.run(["push", "-u", remoteName, branch.name]);
                         }
                     }
                 };

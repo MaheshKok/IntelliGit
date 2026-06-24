@@ -405,5 +405,9 @@
     "Pushing...": "Enviando...",
     "Pushed successfully.": "Envio concluído com sucesso.",
     "Syncing...": "Sincronizando...",
-    "Synced successfully.": "Sincronização concluída com sucesso."
+    "Synced successfully.": "Sincronização concluída com sucesso.",
+    "Published branch name": "Published branch name",
+    "Branch name is required": "Branch name is required",
+    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
+    "The repo has not been published yet.": "The repo has not been published yet."
 }

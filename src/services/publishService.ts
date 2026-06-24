@@ -5,6 +5,7 @@ import { GitOps } from "../git/operations";
 import { getErrorMessage } from "../utils/errors";
 import { runGitCommandWithAskpass } from "./gitAskpass";
 import { showTimedInformationMessage, showTimedWarningMessage } from "../utils/notifications";
+import { isValidBranchName } from "../utils/gitRefs";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,6 +59,21 @@ export async function runPublishBranchFlow(
     repoRoot: string,
     secrets?: vscode.SecretStorage,
 ): Promise<void> {
+    const publishedBranchName = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Published branch name"),
+        value: "main",
+        validateInput: (value) => {
+            const trimmed = value.trim();
+            if (!trimmed) return vscode.l10n.t("Branch name is required");
+            if (!isValidBranchName(trimmed)) {
+                return vscode.l10n.t("Invalid branch name '{branch}'.", { branch: value });
+            }
+            return undefined;
+        },
+    });
+    if (!publishedBranchName) return;
+    const remoteBranchName = publishedBranchName.trim();
+
     // 1. Resolve remote strategy before any provider repository is created.
     const remotes = await gitOps.getRemotes();
     const remotePlan = await pickRemotePlan(remotes);
@@ -74,12 +90,16 @@ export async function runPublishBranchFlow(
                     cancellable: false,
                 },
                 async () => {
-                    await gitOps.pushWithUpstream(remotePlan.remoteName, branchName);
+                    await gitOps.pushWithUpstream(
+                        remotePlan.remoteName,
+                        branchName,
+                        remoteBranchName,
+                    );
                 },
             );
             showTimedInformationMessage(
                 vscode.l10n.t('Branch "{branch}" published to {remote}.', {
-                    branch: branchName,
+                    branch: remoteBranchName,
                     remote: remotePlan.remoteName,
                 }),
             );
@@ -160,17 +180,23 @@ export async function runPublishBranchFlow(
             async () => {
                 await gitOps.addRemote(remotePlan.remoteName, created.cloneUrl);
                 remoteAdded = true;
-                await runGitPushWithAskpass(repoRoot, remotePlan.remoteName, branchName, {
-                    username: auth.gitUsername,
-                    token: auth.token,
-                });
+                await runGitPushWithAskpass(
+                    repoRoot,
+                    remotePlan.remoteName,
+                    branchName,
+                    remoteBranchName,
+                    {
+                        username: auth.gitUsername,
+                        token: auth.token,
+                    },
+                );
             },
         );
 
         const openRepositoryAction = vscode.l10n.t("Open Repository");
         const openChoice = await vscode.window.showInformationMessage(
             vscode.l10n.t('Branch "{branch}" published to {url}', {
-                branch: branchName,
+                branch: remoteBranchName,
                 url: created.htmlUrl,
             }),
             openRepositoryAction,
@@ -606,7 +632,9 @@ async function runGitPushWithAskpass(
     cwd: string,
     remote: string,
     branch: string,
+    remoteBranch: string,
     auth: { username: string; token: string },
 ): Promise<void> {
-    await runGitCommandWithAskpass(cwd, ["push", "-u", remote, branch], auth);
+    const ref = remoteBranch === branch ? branch : `${branch}:${remoteBranch}`;
+    await runGitCommandWithAskpass(cwd, ["push", "-u", remote, ref], auth);
 }

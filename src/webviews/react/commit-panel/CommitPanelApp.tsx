@@ -61,7 +61,11 @@ function App(): React.ReactElement {
     );
 
     const canCommit = state.isAmend || checkedPaths.size > 0;
-    const canPush = state.currentBranchHasUpstream && state.currentBranchAhead > 0;
+    const shouldPublishBranch = !state.currentBranchHasUpstream;
+    const canPush = shouldPublishBranch
+        ? state.currentBranchName !== null
+        : state.currentBranchAhead > 0;
+    const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
     const handleCommit = useCallback(() => {
         const msg = state.commitMessage.trim();
@@ -75,8 +79,8 @@ function App(): React.ReactElement {
     }, [vscode, state.commitMessage, state.isAmend, checkedPaths]);
 
     const handlePush = useCallback(() => {
-        vscode.postMessage({ type: "push" });
-    }, [vscode]);
+        vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
+    }, [vscode, shouldPublishBranch]);
 
     const handleSync = useCallback(() => {
         vscode.postMessage({ type: "sync" });
@@ -119,6 +123,9 @@ function App(): React.ReactElement {
                         canCommit={canCommit}
                         onPush={handlePush}
                         canPush={canPush}
+                        pushLabel={pushLabel}
+                        currentBranchName={state.currentBranchName}
+                        currentBranchUpstream={state.currentBranchUpstream}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}

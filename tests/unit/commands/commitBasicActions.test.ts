@@ -516,14 +516,16 @@ describe("pushAllUpToHere", () => {
         expect(refreshOf(ctx)).not.toHaveBeenCalled();
     });
 
-    it("errors when no upstream exists and no remote is configured", async () => {
+    it("warns when no upstream exists and no remote is configured", async () => {
         mockedUnpushed.mockResolvedValue(true);
         mockedCheckedOut.mockResolvedValue("main");
         mockedTrackedRemote.mockReturnValue(undefined);
         mockedResolveRemote.mockResolvedValue(undefined);
         const ctx = makeCtx({ currentBranches: [makeBranch()] });
         await pushAllUpToHere(ctx);
-        expect(errorMsg).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith("The repo has not been published yet.");
+        expect(errorMsg).not.toHaveBeenCalled();
+        expect(runOf(ctx)).not.toHaveBeenCalledWith(expect.arrayContaining(["push"]));
         expect(refreshOf(ctx)).not.toHaveBeenCalled();
     });
 

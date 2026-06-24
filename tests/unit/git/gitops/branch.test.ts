@@ -109,6 +109,20 @@ describe("GitOps", () => {
                 "feature/test",
             ]);
         });
+
+        it("constructs publish push with a distinct remote branch command", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.pushWithUpstream("upstream", "master", "main");
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
+                "push",
+                "-u",
+                "upstream",
+                "master:main",
+            ]);
+        });
     });
     describe("getAmendBranchCommits", () => {
         const FS = "\0";

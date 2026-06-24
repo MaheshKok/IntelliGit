@@ -24,6 +24,7 @@ interface CommitPanelPaneProps {
     onPull: () => void;
     onPush: () => void;
     canPush: boolean;
+    pushLabel: string;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -50,6 +51,7 @@ export function CommitPanelPane({
     onPull,
     onPush,
     canPush,
+    pushLabel,
     groupByDir,
     onToggleGroupBy,
 }: CommitPanelPaneProps): React.ReactElement {
@@ -89,6 +91,9 @@ export function CommitPanelPane({
                             canCommit={canCommit}
                             onPush={onPush}
                             canPush={canPush}
+                            pushLabel={pushLabel}
+                            currentBranchName={cpState.currentBranchName}
+                            currentBranchUpstream={cpState.currentBranchUpstream}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}

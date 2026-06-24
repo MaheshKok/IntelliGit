@@ -24,6 +24,13 @@ interface CommitPanelActionDeps {
  */
 export type CommitPanelGitOperation = "fetch" | "pull" | "push" | "sync";
 
+/** Returns whether the current local branch has already been published upstream. */
+async function currentBranchIsPublished(gitOps: GitOps): Promise<boolean> {
+    const branches = await gitOps.getBranches();
+    const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+    return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
+}
+
 /**
  * Commits the validated subset of selected Changes-panel files and optionally pushes it.
  *
@@ -171,6 +178,14 @@ export async function runGitOperationFromPanel(
     >,
     operation: CommitPanelGitOperation,
 ): Promise<void> {
+    if (
+        (operation === "pull" || operation === "push" || operation === "sync") &&
+        !(await currentBranchIsPublished(deps.gitOps))
+    ) {
+        showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+        return;
+    }
+
     const labels = {
         fetch: {
             progress: vscode.l10n.t("Fetching..."),

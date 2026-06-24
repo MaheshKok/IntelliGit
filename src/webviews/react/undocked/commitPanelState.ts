@@ -30,6 +30,8 @@ export interface CommitPanelState {
     hasRemotes: boolean;
     currentBranchAhead: number;
     currentBranchBehind: number;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
 }
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
@@ -48,6 +50,8 @@ export type CommitPanelAction =
           hasRemotes?: boolean;
           currentBranchAhead: number;
           currentBranchBehind: number;
+          currentBranchName?: string | null;
+          currentBranchUpstream?: string | null;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -78,6 +82,8 @@ export const initialCommitPanelState: CommitPanelState = {
     hasRemotes: true,
     currentBranchAhead: 0,
     currentBranchBehind: 0,
+    currentBranchName: null,
+    currentBranchUpstream: null,
 };
 
 /**
@@ -104,6 +110,14 @@ export function commitPanelReducer(
                 hasRemotes: action.hasRemotes ?? state.hasRemotes,
                 currentBranchAhead: action.currentBranchAhead,
                 currentBranchBehind: action.currentBranchBehind,
+                currentBranchName:
+                    action.currentBranchName !== undefined
+                        ? action.currentBranchName
+                        : state.currentBranchName,
+                currentBranchUpstream:
+                    action.currentBranchUpstream !== undefined
+                        ? action.currentBranchUpstream
+                        : state.currentBranchUpstream,
                 error: null,
             };
         case "SET_REFRESHING":

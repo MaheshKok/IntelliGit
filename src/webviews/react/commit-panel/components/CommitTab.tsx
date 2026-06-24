@@ -40,6 +40,9 @@ interface Props {
     canCommit: boolean;
     onPush: () => void;
     canPush: boolean;
+    pushLabel: string;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -73,6 +76,9 @@ export function CommitTab({
     canCommit,
     onPush,
     canPush,
+    pushLabel,
+    currentBranchName,
+    currentBranchUpstream,
     groupByDir,
     onToggleGroupBy,
 }: Props): React.ReactElement {
@@ -231,6 +237,9 @@ export function CommitTab({
                     onPush={onPush}
                     canCommit={canCommit}
                     canPush={canPush}
+                    pushLabel={pushLabel}
+                    currentBranchName={currentBranchName}
+                    currentBranchUpstream={currentBranchUpstream}
                 />
             </Box>
         </Flex>

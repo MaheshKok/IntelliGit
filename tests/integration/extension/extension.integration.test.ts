@@ -163,7 +163,15 @@ const gitOpsState = {
     isRepository: vi.fn(async () => true),
     getRepositoryRoot: vi.fn(async () => "/repo"),
     getBranches: vi.fn(async () => [
-        { name: "main", hash: "feed1234", isRemote: false, isCurrent: true, ahead: 0, behind: 0 },
+        {
+            name: "main",
+            hash: "feed1234",
+            isRemote: false,
+            isCurrent: true,
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+        },
         {
             name: "feature-local",
             hash: "a1b2c3d4",
@@ -3106,9 +3114,7 @@ describe("extension integration", () => {
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Update failed: fetch boom"),
         );
-        expect(showErrorMessage).toHaveBeenCalledWith(
-            "Push failed: No remote configured for branch topic.",
-        );
+        expect(showWarningMessage).toHaveBeenCalledWith("The repo has not been published yet.");
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Push failed: push boom"),
         );

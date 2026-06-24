@@ -1,7 +1,11 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { getErrorMessage } from "../utils/errors";
-import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedInformationMessage,
+    showTimedWarningMessage,
+} from "../utils/notifications";
 import {
     getCheckedOutBranchName,
     pickMainlineParent,
@@ -251,11 +255,7 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
     if (!target) {
         const remote = await resolveRemoteName(currentBranch, ctx.executor);
         if (!remote) {
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("No remote configured for branch {branch}.", {
-                    branch: currentBranch.name,
-                }),
-            );
+            showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
             return;
         }
 
