@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.7] - 2026-06-24
+
+### Fixed
+
+- Pushed tracked branches to their configured upstream target when local and remote branch names differ.
+- Stopped showing the publish-branch notification after commit-only panel flows.
+- Removed duplicated branch text from the native Commit header and showed the upstream branch leaf in the Commit area branch indicator.
+
+### Tests
+
+- Added and updated regression coverage for mismatched upstream Push, commit-only publish suppression, Commit header branch display, and Commit area upstream branch rendering.
+
 ## [0.13.6] - 2026-06-24
 
 ### Added
