@@ -417,8 +417,8 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
-    const handleDeleteBranches = useCallback((branchNames: string[]) => {
-        vscode.postMessage({ type: "deleteBranches", branchNames });
+    const handleDeleteBranches = useCallback((branches: Branch[]) => {
+        vscode.postMessage({ type: "deleteBranches", branches });
     }, []);
 
     const handleWorktreeAction = useCallback((action: WorktreeAction, path: string) => {

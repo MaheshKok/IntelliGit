@@ -142,7 +142,7 @@ export class UndockedViewProvider {
     }>();
     readonly onBranchAction = this._onBranchAction.event;
 
-    private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
+    private readonly _onDeleteBranches = new vscode.EventEmitter<Branch[]>();
     readonly onDeleteBranches = this._onDeleteBranches.event;
     private readonly _onWorktreeAction = new vscode.EventEmitter<{
         action: WorktreeAction;
@@ -418,7 +418,7 @@ export class UndockedViewProvider {
                 });
                 break;
             case "deleteBranches":
-                this._onDeleteBranches.fire(this.assertBranchNames(msg.branchNames, "branchNames"));
+                this._onDeleteBranches.fire(this.assertBranchSelection(msg));
                 break;
             case "worktreeAction":
                 if (!isWorktreeAction(assertString(msg.action, "action"))) {
@@ -680,11 +680,48 @@ export class UndockedViewProvider {
     }
     // --- Commit panel data fetching -----------------------------------------
     /**
-     * Validates bulk branch-delete names from the undocked webview before host dispatch.
+     * Validates bulk branch-delete selections from the undocked webview before host dispatch.
      *
-     * Each name must satisfy Git branch-ref rules so forged webview payloads cannot reach the
-     * command layer as unchecked branch identifiers.
+     * Branch names are resolved through the latest host-owned snapshot so forged webview
+     * payloads cannot alter local/remote metadata before command dispatch.
      */
+    private assertBranchSelection(msg: { branches?: unknown; branchNames?: unknown }): Branch[] {
+        const field = Array.isArray(msg.branches) ? "branches" : "branchNames";
+        const names = Array.isArray(msg.branches)
+            ? msg.branches.map((item, index) =>
+                  this.assertBranchObjectName(item, `branches[${index}]`),
+              )
+            : this.assertBranchNames(msg.branchNames, "branchNames");
+        return this.resolveBranchSelection(names, field);
+    }
+
+    /** Resolves validated branch names to the provider's latest trusted branch rows. */
+    private resolveBranchSelection(names: string[], field: string): Branch[] {
+        if (names.length === 0) {
+            throw new Error(`Expected at least one branch for '${field}'.`);
+        }
+        const branchesByName = new Map(this.branches.map((branch) => [branch.name, branch]));
+        const selected = names
+            .map((name) => branchesByName.get(name))
+            .filter((branch): branch is Branch => Boolean(branch));
+        if (selected.length !== names.length) {
+            const found = new Set(selected.map((branch) => branch.name));
+            const missing = names.filter((name) => !found.has(name));
+            throw new Error(`Unknown branch name(s) for '${field}': ${missing.join(", ")}`);
+        }
+        return selected;
+    }
+
+    /** Reads and validates only the selector name from an untrusted webview branch row. */
+    private assertBranchObjectName(value: unknown, field: string): string {
+        if (!value || typeof value !== "object") {
+            throw new Error(`Expected branch object for '${field}'.`);
+        }
+        const name = assertString((value as { name?: unknown }).name, `${field}.name`);
+        assertValidBranchName(name);
+        return name;
+    }
+
     private assertBranchNames(value: unknown, field: string): string[] {
         if (!Array.isArray(value)) {
             throw new Error(`Expected string array for '${field}'.`);

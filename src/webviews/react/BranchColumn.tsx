@@ -44,7 +44,7 @@ interface Props {
     selectedBranch: string | null;
     onSelectBranch: (name: string | null) => void;
     onBranchAction: (action: BranchAction, branchName: string) => void;
-    onDeleteBranches?: (branchNames: string[]) => void;
+    onDeleteBranches?: (branches: Branch[]) => void;
     onWorktreeAction?: (action: WorktreeAction, path: string) => void;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
@@ -220,7 +220,7 @@ export function BranchColumn({
         x: number;
         y: number;
         branch: Branch;
-        branchNames?: string[];
+        branches?: Branch[];
     } | null>(null);
     const [worktreeContextMenu, setWorktreeContextMenu] = useState<{
         x: number;
@@ -230,6 +230,10 @@ export function BranchColumn({
 
     const filterNeedle = branchFilter.trim().toLowerCase();
     const [selectedBranchNames, setSelectedBranchNames] = useState<Set<string>>(() => new Set());
+    const branchesByName = useMemo(
+        () => new Map(branches.map((branch) => [branch.name, branch])),
+        [branches],
+    );
 
     const actualCurrent = useMemo(() => branches.find((b) => b.isCurrent), [branches]);
 
@@ -289,13 +293,18 @@ export function BranchColumn({
         [onSelectBranch],
     );
 
-    const getBulkBranchNames = useCallback(
-        (branch: Branch): string[] | undefined => {
+    const getBulkBranches = useCallback(
+        (branch: Branch): Branch[] | undefined => {
             if (!selectedBranchNames.has(branch.name) || selectedBranchNames.size < 2)
                 return undefined;
-            return Array.from(selectedBranchNames);
+            const selectedBranches = Array.from(selectedBranchNames)
+                .map((name) => branchesByName.get(name))
+                .filter((selected): selected is Branch => Boolean(selected));
+            return selectedBranches.length === selectedBranchNames.size
+                ? selectedBranches
+                : undefined;
         },
-        [selectedBranchNames],
+        [branchesByName, selectedBranchNames],
     );
 
     const handleBranchContextMenu = useCallback(
@@ -309,10 +318,10 @@ export function BranchColumn({
                 x: anchorX,
                 y: anchorY,
                 branch,
-                branchNames: getBulkBranchNames(branch),
+                branches: getBulkBranches(branch),
             });
         },
-        [getBulkBranchNames],
+        [getBulkBranches],
     );
 
     const openBranchContextMenuFromRow = useCallback(
@@ -324,10 +333,10 @@ export function BranchColumn({
                 x: anchorX,
                 y: anchorY,
                 branch,
-                branchNames: getBulkBranchNames(branch),
+                branches: getBulkBranches(branch),
             });
         },
-        [getBulkBranchNames],
+        [getBulkBranches],
     );
 
     const handleWorktreeContextMenu = useCallback(
@@ -355,8 +364,8 @@ export function BranchColumn({
     const handleContextMenuAction = useCallback(
         (action: string) => {
             if (!contextMenu) return;
-            if (action === "deleteBranches" && contextMenu.branchNames) {
-                onDeleteBranches?.(contextMenu.branchNames);
+            if (action === "deleteBranches" && contextMenu.branches) {
+                onDeleteBranches?.(contextMenu.branches);
                 return;
             }
             if (!isBranchAction(action)) return;
@@ -542,7 +551,7 @@ export function BranchColumn({
                     x={contextMenu.x}
                     y={contextMenu.y}
                     items={
-                        contextMenu.branchNames
+                        contextMenu.branches
                             ? getBulkBranchMenuItems()
                             : getBranchMenuItems(contextMenu.branch, actualCurrent?.name ?? "HEAD")
                     }

@@ -971,18 +971,41 @@ describe("view providers integration", () => {
 
         (
             provider as unknown as {
-                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+                onDeleteBranches(listener: (branches: unknown[]) => void): void;
             }
         ).onDeleteBranches(deleteBranches);
+        const branchRows = [
+            {
+                name: "feature-one",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature-two",
+                hash: "def5678",
+                isRemote: true,
+                isCurrent: false,
+                remote: "origin",
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+        provider.setBranches(branchRows);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
             {} as unknown as object,
         );
 
-        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "feature-two"] });
+        await webview.send({
+            type: "deleteBranches",
+            branches: [{ name: "feature-one" }, { name: "origin/feature-two", isRemote: false }],
+        });
 
-        expect(deleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+        expect(deleteBranches).toHaveBeenCalledWith(branchRows);
 
         provider.dispose();
     });
@@ -1000,17 +1023,27 @@ describe("view providers integration", () => {
 
         (
             provider as unknown as {
-                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+                onDeleteBranches(listener: (branches: unknown[]) => void): void;
             }
         ).onDeleteBranches(deleteBranches);
+        provider.setBranches([
+            {
+                name: "feature-one",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
             {} as unknown as object,
         );
 
-        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "../secret"] });
-        await webview.send({ type: "deleteBranches", branchNames: [] });
+        await webview.send({ type: "deleteBranches", branches: [{ name: "feature-one" }, {}] });
+        await webview.send({ type: "deleteBranches", branches: [] });
 
         expect(deleteBranches).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(

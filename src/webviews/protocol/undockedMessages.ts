@@ -3,6 +3,7 @@
 // webviews into a single channel.
 
 import type { BranchAction, CommitAction, WorktreeAction } from "./commitGraphTypes";
+import type { Branch } from "../../types";
 import type {
     InboundMessage as CommitPanelInbound,
     OutboundMessage as CommitPanelOutbound,
@@ -87,8 +88,10 @@ type GraphOutbound =
     | {
           /** Command requesting deletion of command/ctrl-selected branch rows. */
           type: "deleteBranches";
-          /** Validated branch names from the latest graph branch snapshot. */
-          branchNames: string[];
+          /** Selected branch rows from the latest graph branch snapshot. */
+          branches?: Branch[];
+          /** Legacy payload kept so older webviews fail closed through host validation. */
+          branchNames?: string[];
       }
     | {
           /** Command requesting a worktree row action on the host side. */

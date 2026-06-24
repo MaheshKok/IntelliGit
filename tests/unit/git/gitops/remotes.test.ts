@@ -58,8 +58,8 @@ describe("GitOps", () => {
             const ops = new GitOps(executor);
             await ops.push();
 
-            const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
-            expect(call).toEqual(["push"]);
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toEqual([["rev-parse", "--abbrev-ref", "HEAD"], ["push"]]);
         });
 
         it("retries with --set-upstream when push fails due to missing upstream and user confirms", async () => {
@@ -89,6 +89,8 @@ describe("GitOps", () => {
             expect(confirmSetUpstream).toHaveBeenCalledWith("origin", "feature/no-upstream");
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
             expect(calls).toEqual([
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                ["rev-parse", "--abbrev-ref", "@{upstream}"],
                 ["push"],
                 ["rev-parse", "--abbrev-ref", "HEAD"],
                 ["remote"],
@@ -178,7 +180,13 @@ describe("GitOps", () => {
 
             await expect(ops.push()).rejects.toThrow(UpstreamPushDeclinedError);
             expect(confirmSetUpstream).toHaveBeenCalledTimes(1);
-            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual([
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                ["rev-parse", "--abbrev-ref", "@{upstream}"],
+                ["push"],
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                ["remote"],
+            ]);
         });
     });
     describe("pullRebase", () => {
