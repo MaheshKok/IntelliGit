@@ -205,7 +205,7 @@
     "worktree.menu.lock": "锁定 Worktree",
     "worktree.menu.unlock": "解锁 Worktree",
     "worktree.menu.move": "移动 Worktree...",
-    "common.fetch": "提取",
+    "common.fetch": "获取",
     "common.pull": "拉取",
     "common.push": "推送",
     "common.sync": "同步",

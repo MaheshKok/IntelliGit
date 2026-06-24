@@ -224,6 +224,6 @@
     "common.push": "Enviar",
     "common.sync": "Sincronizar",
     "commit.action.publishAndPush": "Publicar e enviar",
-    "commit.branchIndicator.local": "Ramo: {branch}",
-    "commit.branchIndicator.tracking": "Ramo: {branch} -> {upstream}"
+    "commit.branchIndicator.local": "Branch: {branch}",
+    "commit.branchIndicator.tracking": "Branch: {branch} -> {upstream}"
 }

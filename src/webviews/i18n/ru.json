@@ -227,7 +227,7 @@
     "worktree.menu.unlock": "Разблокировать worktree",
     "worktree.menu.move": "Переместить worktree...",
     "common.fetch": "Получить",
-    "common.pull": "Загрузить",
+    "common.pull": "Извлечь",
     "common.push": "Отправить",
     "common.sync": "Синхронизировать",
     "commit.action.publishAndPush": "Опубликовать и отправить",
