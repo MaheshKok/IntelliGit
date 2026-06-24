@@ -17,7 +17,7 @@ describe("notifications", () => {
     });
 
     it("does not render codicon placeholders in warning titles", async () => {
-        showTimedWarningMessage("The repo has not been published yet.");
+        showTimedWarningMessage("$(warning) The repo has not been published yet.");
 
         expect(vscodeMock.window.withProgress).toHaveBeenCalledWith(
             expect.objectContaining({

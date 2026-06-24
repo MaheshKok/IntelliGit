@@ -406,8 +406,11 @@
     "Pushed successfully.": "プッシュが完了しました。",
     "Syncing...": "同期しています...",
     "Synced successfully.": "同期が完了しました。",
-    "Published branch name": "Published branch name",
-    "Branch name is required": "Branch name is required",
-    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
-    "The repo has not been published yet.": "The repo has not been published yet."
+    "Published branch name": "公開するブランチ名",
+    "Branch name is required": "ブランチ名は必須です",
+    "Invalid branch name '{branch}'.": "ブランチ名 '{branch}' は無効です。",
+    "The repo has not been published yet.": "リポジトリはまだ公開されていません。",
+    "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "ブランチ '{branch}' にリモートが設定されていません。先にブランチを公開してから、Push All up to Here を再試行してください。",
+    "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 既存の \"origin\" にプッシュ",
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "ブランチ '{branch}' にリモートが設定されていません。プッシュする前にブランチを公開してください。"
 }

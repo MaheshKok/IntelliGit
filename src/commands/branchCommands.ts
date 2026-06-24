@@ -686,6 +686,12 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     return;
                 }
                 if (!tracked && !fallbackRemoteName) {
+                    vscode.window.showWarningMessage(
+                        vscode.l10n.t(
+                            "No remote is configured for branch '{branch}'. Publish the branch before pushing it.",
+                            { branch: branch.name },
+                        ),
+                    );
                     return;
                 }
                 /** Pushes the selected branch through the right upstream or publish flow. */

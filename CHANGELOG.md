@@ -5,6 +5,20 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2026-06-24
+
+### Fixed
+
+- Routed Commit panel push actions through the shared publish-aware push flow so unpublished branches open publish behavior consistently.
+- Allowed Fetch on unpublished branches while keeping unpublished-repository warnings limited to Pull and Sync.
+- Added explicit no-remote guidance for branch push and Push All up to Here actions.
+- Removed raw codicon placeholders from timed warning notifications.
+- Showed local and upstream branch names together in the Commit area branch indicator.
+
+### Tests
+
+- Added and updated regression coverage for publish-aware push routing, unpublished Fetch behavior, no-remote push messages, codicon stripping, and Commit area branch labels.
+
 ## [0.13.7] - 2026-06-24
 
 ### Fixed

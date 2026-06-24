@@ -413,7 +413,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Changes");
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
-        expect(html).toContain("Branch: main");
+        expect(html).toContain("Branch: main -&gt; origin/main");
         expect(html).not.toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
 
@@ -468,8 +468,7 @@ describe("webview ui smoke", () => {
                 currentBranchUpstream="origin/main"
             />,
         );
-        expect(upstreamCommitHtml).toContain("Branch: main");
-        expect(upstreamCommitHtml).not.toContain("Branch: master");
+        expect(upstreamCommitHtml).toContain("Branch: master -&gt; origin/main");
 
         const refreshingToolbarHtml = renderUi(
             <Toolbar

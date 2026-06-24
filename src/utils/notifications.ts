@@ -25,7 +25,7 @@ export function showTimedInformationMessage(message: string): void {
 
 /** Shows a non-blocking warning notification that auto-dismisses after five seconds. */
 export function showTimedWarningMessage(message: string): void {
-    showTimedMessage(message);
+    showTimedMessage(message.replace(/^\$\([^)]+\)\s*/, ""));
 }
 
 /**

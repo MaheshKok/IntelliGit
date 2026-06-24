@@ -270,6 +270,9 @@ function makeGitOpsMock() {
         unstageFiles: vi.fn(async () => undefined),
         commit: vi.fn(async () => "ok"),
         commitAndPush: vi.fn(async () => "ok"),
+        fetch: vi.fn(async () => "ok"),
+        pullRebase: vi.fn(async () => "ok"),
+        push: vi.fn(async () => "ok"),
         getLastCommitMessage: vi.fn(async () => "last message"),
         getAmendBranchCommits: vi.fn(async () => [
             { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
@@ -725,9 +728,11 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: selected", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
-        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: push", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push", false);
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalled();
         expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",
@@ -1434,7 +1439,8 @@ describe("view providers integration", () => {
         });
         await webview.send({ type: "commitAndPush", message: "feat: push", amend: false });
         expect(gitOps.commit).toHaveBeenCalled();
-        expect(gitOps.commitAndPush).toHaveBeenCalled();
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
         expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: keep draft");
         expect(
@@ -1660,7 +1666,9 @@ describe("view providers integration", () => {
             expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
             expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/b.ts"]);
             expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
-            expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: selected", false);
+            expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false);
+            expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+            expect(gitOps.push).toHaveBeenCalled();
             expect(gitOps.rollbackAll).toHaveBeenCalled();
             expect(deleteFileWithFallback).toHaveBeenCalledWith(
                 gitOps,
@@ -1864,6 +1872,7 @@ describe("view providers integration", () => {
 
         gitOps.stageFiles.mockClear();
         gitOps.commitAndPush.mockClear();
+        gitOps.push.mockClear();
 
         await webview.send({
             type: "commitSelected",
@@ -1875,8 +1884,10 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
-        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: subset push", false);
-        expect(showInformationMessage).toHaveBeenCalledWith("Committed and pushed successfully.");
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: subset push", false);
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalledTimes(1);
+        expect(showInformationMessage).toHaveBeenCalledWith("Pushed successfully.");
         provider.dispose();
     });
 

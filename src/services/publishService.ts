@@ -71,7 +71,7 @@ export async function runPublishBranchFlow(
     if (!remotePlan) return;
 
     let remoteBranchName = remotePlan.remoteBranchName ?? branchName;
-    if (remotePlan.kind === "create" && remotes.length === 0) {
+    if (remotePlan.kind === "create" && !remotePlan.remoteBranchName) {
         const publishedBranchName = await vscode.window.showInputBox({
             prompt: vscode.l10n.t("Published branch name"),
             value: "main",
@@ -247,7 +247,7 @@ async function pickRemotePlan(
         const quickPick = vscode.window.createQuickPick<RemoteChoice>();
         quickPick.items = [
             {
-                label: `$(git-branch) Push to Existing "origin"`,
+                label: vscode.l10n.t('$(git-branch) Push to Existing "origin"'),
                 description: vscode.l10n.t(
                     "Use the current origin remote without creating a new repository",
                 ),

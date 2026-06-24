@@ -29,18 +29,13 @@ const disabledButtonStyles = {
     opacity: 0.62,
 };
 
-/**
- * Chooses the branch label for the commit form: upstream branch leaf when tracking exists,
- * otherwise the local branch name for unpublished branches.
- */
-function getBranchIndicatorName(
+/** Trims the upstream branch label used by the commit form branch indicator. */
+function getBranchIndicatorUpstream(
     currentBranchName: string | null,
     currentBranchUpstream: string | null,
 ): string | null {
     const upstream = currentBranchUpstream?.trim();
-    if (!upstream) return currentBranchName;
-    const slashIndex = upstream.indexOf("/");
-    return slashIndex >= 0 ? upstream.slice(slashIndex + 1) || upstream : upstream;
+    return upstream && currentBranchName ? upstream : null;
 }
 
 /**
@@ -63,9 +58,14 @@ export function CommitArea({
     currentBranchUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
-    const branchName = getBranchIndicatorName(currentBranchName, currentBranchUpstream);
-    const branchLabel = branchName
-        ? t("commit.branchIndicator.local", { branch: branchName })
+    const branchUpstream = getBranchIndicatorUpstream(currentBranchName, currentBranchUpstream);
+    const branchLabel = currentBranchName
+        ? branchUpstream
+            ? t("commit.branchIndicator.tracking", {
+                  branch: currentBranchName,
+                  upstream: branchUpstream,
+              })
+            : t("commit.branchIndicator.local", { branch: currentBranchName })
         : null;
     return (
         <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
