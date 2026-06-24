@@ -134,9 +134,26 @@ const vscodeMock = {
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
-const getCommitChecks = vi.hoisted(() => vi.fn());
+// Spy on the GitHub provider's network boundary so the real CommitChecksCoordinator
+// runs inside the view provider (exercising its cache/re-fetch logic end-to-end).
+const providerGetChecks = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/utils/notifications", () => ({
+    runWithNotificationProgress: vi.fn(
+        async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+            withProgress(
+                {
+                    location: 15,
+                    title: `IntelliGit: ${_message}`,
+                    cancellable: false,
+                },
+                task,
+            ),
+    ),
+    showTimedInformationMessage: showInformationMessage,
+    showTimedWarningMessage: showWarningMessage,
+}));
 vi.mock("../../../src/views/webviewHtml", () => ({
     buildWebviewShellHtml: vi.fn(() => "<html></html>"),
     escapeHtmlAttr: (value: string) =>
@@ -156,16 +173,14 @@ vi.mock("../../../src/utils/fileOps", async () => {
         deleteFileWithFallback,
     };
 });
-// Mock only the GitHub provider so the real coordinator (cache + refetch-on-pending
-// logic) still runs end-to-end through the view providers; `getCommitChecks` controls
-// what each fetch returns.
 vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
     GitHubProvider: class {
-        readonly id = "github";
-        match(): { host: string } {
-            return { host: "github.com" };
+        match(): { host: string; owner: string; repo: string } {
+            return { host: "github.com", owner: "owner", repo: "repo" };
         }
-        getChecks = getCommitChecks;
+        getChecks(_ref: unknown, hash: string): unknown {
+            return providerGetChecks(hash);
+        }
     },
 }));
 
@@ -248,6 +263,8 @@ function makeGitOpsMock() {
                 behind: 0,
             },
         ]),
+        getRemotes: vi.fn(async () => ["origin"]),
+        getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -263,6 +280,9 @@ function makeGitOpsMock() {
         unstageFiles: vi.fn(async () => undefined),
         commit: vi.fn(async () => "ok"),
         commitAndPush: vi.fn(async () => "ok"),
+        fetch: vi.fn(async () => "ok"),
+        pullRebase: vi.fn(async () => "ok"),
+        push: vi.fn(async () => "ok"),
         getLastCommitMessage: vi.fn(async () => "last message"),
         getAmendBranchCommits: vi.fn(async () => [
             { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
@@ -275,8 +295,6 @@ function makeGitOpsMock() {
         shelveDelete: vi.fn(async () => "deleted"),
         getShelvedFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
-        getRemotes: vi.fn(async () => ["origin"]),
-        getRemoteUrl: vi.fn(async () => "git@github.com:owner/repo.git"),
     };
 }
 
@@ -336,7 +354,7 @@ describe("view providers integration", () => {
         vi.clearAllMocks();
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
-        getCommitChecks.mockImplementation(async (_ref: unknown, hash: string) => ({
+        providerGetChecks.mockImplementation(async (hash: string) => ({
             hash,
             state: "success",
             summary: "All checks passed",
@@ -720,9 +738,11 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: selected", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
-        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: push", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push", false);
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalled();
         expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",
@@ -844,7 +864,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
-        getCommitChecks
+        providerGetChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
                 state: "pending",
@@ -861,7 +881,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(getCommitChecks).toHaveBeenCalledTimes(2);
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "success" }),
@@ -883,7 +903,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
-        getCommitChecks
+        providerGetChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
                 state: "none",
@@ -900,60 +920,12 @@ describe("view providers integration", () => {
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(getCommitChecks).toHaveBeenCalledTimes(2);
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "pending" }),
         });
         provider.dispose();
-    });
-
-    it("UndockedViewProvider refetches cached none (no checks yet) commit checks", async () => {
-        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
-        const gitOps = makeGitOpsMock();
-        const workspaceStore = createMemento({});
-        const provider = new UndockedViewProvider(
-            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
-            gitOps as unknown as object,
-            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
-            workspaceStore as unknown as object,
-        );
-        const testProvider = provider as unknown as {
-            panel: {
-                webview: { postMessage: typeof postMessageSpy };
-                dispose: ReturnType<typeof vi.fn>;
-            };
-            handleMessage: (msg: unknown) => Promise<void>;
-        };
-        testProvider.panel = {
-            webview: { postMessage: postMessageSpy },
-            dispose: vi.fn(),
-        };
-        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
-        postMessageSpy.mockClear();
-
-        getCommitChecks
-            .mockResolvedValueOnce({
-                hash: "abc1234",
-                state: "none",
-                summary: "No checks found",
-                items: [],
-            })
-            .mockResolvedValueOnce({
-                hash: "abc1234",
-                state: "pending",
-                summary: "Checks pending",
-                items: [],
-            });
-
-        await send({ type: "requestCommitChecks", hash: "abc1234" });
-        await send({ type: "requestCommitChecks", hash: "abc1234" });
-
-        expect(getCommitChecks).toHaveBeenCalledTimes(2);
-        expect(postMessageSpy).toHaveBeenLastCalledWith({
-            type: "setCommitChecks",
-            snapshot: expect.objectContaining({ state: "pending" }),
-        });
     });
 
     it("CommitGraphViewProvider rejects invalid webview command payloads", async () => {
@@ -1014,18 +986,41 @@ describe("view providers integration", () => {
 
         (
             provider as unknown as {
-                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+                onDeleteBranches(listener: (branches: unknown[]) => void): void;
             }
         ).onDeleteBranches(deleteBranches);
+        const branchRows = [
+            {
+                name: "feature-one",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "origin/feature-two",
+                hash: "def5678",
+                isRemote: true,
+                isCurrent: false,
+                remote: "origin",
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+        provider.setBranches(branchRows);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
             {} as unknown as object,
         );
 
-        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "feature-two"] });
+        await webview.send({
+            type: "deleteBranches",
+            branches: [{ name: "feature-one" }, { name: "origin/feature-two", isRemote: false }],
+        });
 
-        expect(deleteBranches).toHaveBeenCalledWith(["feature-one", "feature-two"]);
+        expect(deleteBranches).toHaveBeenCalledWith(branchRows);
 
         provider.dispose();
     });
@@ -1043,17 +1038,27 @@ describe("view providers integration", () => {
 
         (
             provider as unknown as {
-                onDeleteBranches(listener: (branchNames: string[]) => void): void;
+                onDeleteBranches(listener: (branches: unknown[]) => void): void;
             }
         ).onDeleteBranches(deleteBranches);
+        provider.setBranches([
+            {
+                name: "feature-one",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
         provider.resolveWebviewView(
             webview.view as unknown as object,
             {} as unknown as object,
             {} as unknown as object,
         );
 
-        await webview.send({ type: "deleteBranches", branchNames: ["feature-one", "../secret"] });
-        await webview.send({ type: "deleteBranches", branchNames: [] });
+        await webview.send({ type: "deleteBranches", branches: [{ name: "feature-one" }, {}] });
+        await webview.send({ type: "deleteBranches", branches: [] });
 
         expect(deleteBranches).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(
@@ -1400,6 +1405,8 @@ describe("view providers integration", () => {
 
         withProgress.mockClear();
         await webview.send({ type: "refresh" });
+        const view = (provider as unknown as { view: Record<string, unknown> }).view;
+        expect(view.description).toBe("");
         expect(withProgress).toHaveBeenCalledWith(
             { location: { viewId: "intelligit.commitPanel" } },
             expect.any(Function),
@@ -1442,7 +1449,8 @@ describe("view providers integration", () => {
         });
         await webview.send({ type: "commitAndPush", message: "feat: push", amend: false });
         expect(gitOps.commit).toHaveBeenCalled();
-        expect(gitOps.commitAndPush).toHaveBeenCalled();
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
         expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: keep draft");
         expect(
@@ -1534,7 +1542,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider updates count badges and fires file count after commit", async () => {
+    it("CommitPanelViewProvider keeps branch out of the header and fires file count after commit", async () => {
         const { CommitPanelViewProvider } =
             await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
@@ -1561,13 +1569,13 @@ describe("view providers integration", () => {
 
         const view = (provider as unknown as { view: Record<string, unknown> }).view;
 
-        // Initial state: getStatus returns 1 file -> numeric description and event.
+        // Initial state: getStatus returns 1 file -> no duplicated header branch and file-count event.
         // The activity bar count is carried by the hidden fileCountBadge view to avoid double counting.
-        expect(view.description).toBe("1");
+        expect(view.description).toBe("");
         expect(view.badge).toBeUndefined();
         expect(counts).toContain(1);
 
-        // After commit, getStatus returns 0 files -> description/badge cleared and count fires 0.
+        // After commit, getStatus returns 0 files -> header stays branch-free and count fires 0.
         gitOps.getStatus.mockResolvedValueOnce([]);
         await webview.send({ type: "commit", message: "feat: clear", amend: false });
         expect(view.description).toBe("");
@@ -1625,14 +1633,14 @@ describe("view providers integration", () => {
             await webview.send({ type: "ready" });
 
             const view = (provider as unknown as { view: Record<string, unknown> }).view;
-            expect(view.description).toBe("2");
+            expect(view.description).toBe("");
             expect(view.badge).toBeUndefined();
 
             await flushVisibleRefresh(webview.send({ type: "stageFiles", paths: ["src/a.ts"] }));
-            expect(view.description).toBe("1");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(webview.send({ type: "unstageFiles", paths: ["src/b.ts"] }));
-            expect(view.description).toBe("2");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(
                 webview.send({ type: "commit", message: "feat: commit", amend: false }),
@@ -1648,7 +1656,7 @@ describe("view providers integration", () => {
                     paths: ["src/d.ts"],
                 }),
             );
-            expect(view.description).toBe("1");
+            expect(view.description).toBe("");
 
             showWarningMessage.mockResolvedValueOnce("Rollback");
             await flushVisibleRefresh(webview.send({ type: "rollback", paths: [] }));
@@ -1656,7 +1664,7 @@ describe("view providers integration", () => {
 
             showWarningMessage.mockResolvedValueOnce("Delete");
             await flushVisibleRefresh(webview.send({ type: "deleteFile", path: "src/e.ts" }));
-            expect(view.description).toBe("1");
+            expect(view.description).toBe("");
 
             await flushVisibleRefresh(
                 webview.send({ type: "shelveSave", name: "work", paths: ["src/e.ts"] }),
@@ -1668,7 +1676,9 @@ describe("view providers integration", () => {
             expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
             expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/b.ts"]);
             expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
-            expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: selected", false);
+            expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false);
+            expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+            expect(gitOps.push).toHaveBeenCalled();
             expect(gitOps.rollbackAll).toHaveBeenCalled();
             expect(deleteFileWithFallback).toHaveBeenCalledWith(
                 gitOps,
@@ -1872,6 +1882,7 @@ describe("view providers integration", () => {
 
         gitOps.stageFiles.mockClear();
         gitOps.commitAndPush.mockClear();
+        gitOps.push.mockClear();
 
         await webview.send({
             type: "commitSelected",
@@ -1883,8 +1894,10 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
-        expect(gitOps.commitAndPush).toHaveBeenCalledWith("feat: subset push", false);
-        expect(showInformationMessage).toHaveBeenCalledWith("Committed and pushed successfully.");
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: subset push", false);
+        expect(gitOps.commitAndPush).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalledTimes(1);
+        expect(showInformationMessage).toHaveBeenCalledWith("Pushed successfully.");
         provider.dispose();
     });
 

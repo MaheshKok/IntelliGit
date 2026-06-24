@@ -26,6 +26,7 @@ import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
 import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
+import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
  * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
@@ -69,7 +70,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }>();
     readonly onBranchAction = this._onBranchAction.event;
 
-    private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
+    private readonly _onDeleteBranches = new vscode.EventEmitter<Branch[]>();
     readonly onDeleteBranches = this._onDeleteBranches.event;
 
     private readonly _onWorktreeAction = new vscode.EventEmitter<{
@@ -192,9 +193,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         });
                         break;
                     case "deleteBranches":
-                        this._onDeleteBranches.fire(
-                            this.assertBranchNames(msg.branchNames, "branchNames"),
-                        );
+                        this._onDeleteBranches.fire(this.assertBranchSelection(msg));
                         break;
                     case "worktreeAction":
                         if (!isWorktreeAction(this.assertString(msg.action, "action"))) {
@@ -227,6 +226,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
+                        break;
+                    case "fetch":
+                    case "pull":
+                    case "push":
+                    case "sync":
+                        await this.runGitOperation(msg.type);
                         break;
                 }
             } catch (err) {
@@ -334,6 +339,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
         });
+    }
+
+    private async runGitOperation(operation: CommitPanelGitOperation): Promise<void> {
+        await runGitOperationFromPanel(
+            {
+                gitOps: this.gitOps,
+                refreshData: () => this.refresh(),
+                fireWorkingTreeChanged: () => undefined,
+            },
+            operation,
+        );
     }
 
     /**
@@ -448,11 +464,48 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Validates branch names received from bulk webview actions before command dispatch.
+     * Validates branch selections received from bulk webview actions before command dispatch.
      *
-     * Each name is checked with Git's branch ref rules so malicious webview payloads cannot
-     * smuggle path traversal, options, or non-branch strings into repository commands.
+     * Names are resolved through the latest host-owned branch snapshot so webviews cannot
+     * forge remote metadata or smuggle path traversal/options into repository commands.
      */
+    private assertBranchSelection(msg: { branches?: unknown; branchNames?: unknown }): Branch[] {
+        const field = Array.isArray(msg.branches) ? "branches" : "branchNames";
+        const names = Array.isArray(msg.branches)
+            ? msg.branches.map((item, index) =>
+                  this.assertBranchObjectName(item, `branches[${index}]`),
+              )
+            : this.assertBranchNames(msg.branchNames, "branchNames");
+        return this.resolveBranchSelection(names, field);
+    }
+
+    /** Resolves validated branch names to the provider's latest trusted branch rows. */
+    private resolveBranchSelection(names: string[], field: string): Branch[] {
+        if (names.length === 0) {
+            throw new Error(`Expected at least one branch for '${field}'.`);
+        }
+        const branchesByName = new Map(this.branches.map((branch) => [branch.name, branch]));
+        const selected = names
+            .map((name) => branchesByName.get(name))
+            .filter((branch): branch is Branch => Boolean(branch));
+        if (selected.length !== names.length) {
+            const found = new Set(selected.map((branch) => branch.name));
+            const missing = names.filter((name) => !found.has(name));
+            throw new Error(`Unknown branch name(s) for '${field}': ${missing.join(", ")}`);
+        }
+        return selected;
+    }
+
+    /** Reads and validates only the selector name from an untrusted webview branch row. */
+    private assertBranchObjectName(value: unknown, field: string): string {
+        if (!value || typeof value !== "object") {
+            throw new Error(`Expected branch object for '${field}'.`);
+        }
+        const name = this.assertString((value as { name?: unknown }).name, `${field}.name`);
+        assertValidBranchName(name);
+        return name;
+    }
+
     private assertBranchNames(value: unknown, field: string): string[] {
         if (!Array.isArray(value)) {
             throw new Error(`Expected string array for '${field}'.`);

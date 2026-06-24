@@ -37,8 +37,12 @@ interface Props {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
-    onCommitAndPush: () => void;
-    currentBranchHasUpstream: boolean;
+    canCommit: boolean;
+    onPush: () => void;
+    canPush: boolean;
+    pushLabel: string;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -69,8 +73,12 @@ export function CommitTab({
     onMessageChange,
     onAmendChange,
     onCommit,
-    onCommitAndPush,
-    currentBranchHasUpstream,
+    canCommit,
+    onPush,
+    canPush,
+    pushLabel,
+    currentBranchName,
+    currentBranchUpstream,
     groupByDir,
     onToggleGroupBy,
 }: Props): React.ReactElement {
@@ -226,8 +234,12 @@ export function CommitTab({
                     onMessageChange={onMessageChange}
                     onAmendChange={onAmendChange}
                     onCommit={onCommit}
-                    onCommitAndPush={onCommitAndPush}
-                    currentBranchHasUpstream={currentBranchHasUpstream}
+                    onPush={onPush}
+                    canCommit={canCommit}
+                    canPush={canPush}
+                    pushLabel={pushLabel}
+                    currentBranchName={currentBranchName}
+                    currentBranchUpstream={currentBranchUpstream}
                 />
             </Box>
         </Flex>

@@ -204,5 +204,12 @@
     "worktree.menu.delete": "ワークツリーを削除",
     "worktree.menu.lock": "ワークツリーをロック",
     "worktree.menu.unlock": "ワークツリーのロックを解除",
-    "worktree.menu.move": "ワークツリーを移動..."
+    "worktree.menu.move": "ワークツリーを移動...",
+    "common.fetch": "フェッチ",
+    "common.pull": "プル",
+    "common.push": "プッシュ",
+    "common.sync": "同期",
+    "commit.action.publishAndPush": "公開してプッシュ",
+    "commit.branchIndicator.local": "ブランチ: {branch}",
+    "commit.branchIndicator.tracking": "ブランチ: {branch} -> {upstream}"
 }

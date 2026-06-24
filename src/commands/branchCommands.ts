@@ -9,7 +9,11 @@ import { GitOps, UpstreamPushDeclinedError } from "../git/operations";
 import type { Branch } from "../types";
 import type { CreateWorktreeOptions } from "../services/worktreeService";
 import { getErrorMessage, isBranchNotFullyMergedError } from "../utils/errors";
-import { runWithNotificationProgress } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedWarningMessage,
+    showTimedInformationMessage,
+} from "../utils/notifications";
 import {
     checkoutBranch,
     getCheckedOutBranchName,
@@ -369,7 +373,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 targetBranch: getCurrentBranchName() || undefined,
             });
             await refreshConflictUi();
-            vscode.window.showWarningMessage(
+            showTimedWarningMessage(
                 vscode.l10n.t(
                     "Merge produced {count} unresolved conflict file(s). Opened Conflicts session.",
                     { count: conflicts.length },
@@ -387,7 +391,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         if (!opts) return;
         try {
             await createWorktree(opts);
-            vscode.window.showInformationMessage(
+            showTimedInformationMessage(
                 vscode.l10n.t("Created worktree at {path}", { path: opts.path }),
             );
             await vscode.commands.executeCommand("intelligit.refresh");
@@ -441,7 +445,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         await promptAndOpenWorktree(result.branch, result.path);
                         return;
                     }
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Checked out {branch}", { branch: result.branch }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
@@ -475,7 +479,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 }
                 try {
                     await executor.run(["checkout", "-b", newName, base]);
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Created and checked out {branch}", { branch: newName }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
@@ -506,7 +510,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     }
                     const checkedOut = result.branch;
                     if (checkedOut === onto) {
-                        vscode.window.showInformationMessage(
+                        showTimedInformationMessage(
                             vscode.l10n.t("{branch} is already the current branch.", {
                                 branch: checkedOut,
                             }),
@@ -514,7 +518,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         return;
                     }
                     await executor.run(["rebase", onto]);
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Checked out {branch} and rebased onto {onto}", {
                             branch: checkedOut,
                             onto,
@@ -544,7 +548,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (confirm !== rebaseLabel) return;
                 try {
                     await executor.run(["rebase", name]);
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Rebased onto {branch}", { branch: name }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
@@ -571,9 +575,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (confirm !== mergeLabel) return;
                 try {
                     await executor.run(["merge", name]);
-                    vscode.window.showInformationMessage(
-                        vscode.l10n.t("Merged {branch}", { branch: name }),
-                    );
+                    showTimedInformationMessage(vscode.l10n.t("Merged {branch}", { branch: name }));
                     await vscode.commands.executeCommand("intelligit.refresh");
                 } catch (err) {
                     try {
@@ -584,7 +586,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                 targetBranch: getCurrentBranchName() || undefined,
                             });
                             await refreshConflictUi();
-                            vscode.window.showWarningMessage(
+                            showTimedWarningMessage(
                                 vscode.l10n.t(
                                     "Merge produced {count} unresolved conflict file(s). Opened Conflicts session.",
                                     { count: conflicts.length },
@@ -611,6 +613,10 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!validateBranchArg(name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                 if (tracked && !validateTrackedRemote(tracked)) return;
+                if (!tracked) {
+                    showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+                    return;
+                }
                 const currentBranchName = getCurrentBranchName();
                 const isSelectedBranchCurrent = branch.isCurrent || currentBranchName === name;
                 const trackedRemoteRef = tracked ? buildTrackedRemoteRef(tracked) : undefined;
@@ -619,15 +625,6 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     await runWithNotificationProgress(
                         vscode.l10n.t("Updating {branch}...", { branch: name }),
                         async () => {
-                            if (!tracked) {
-                                throw new Error(
-                                    vscode.l10n.t(
-                                        "No tracked remote branch configured for '{branch}'.",
-                                        { branch: name },
-                                    ),
-                                );
-                            }
-
                             if (isSelectedBranchCurrent) {
                                 await executor.run([
                                     "fetch",
@@ -653,7 +650,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                             ]);
                         },
                     );
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Updated {branch}", { branch: name }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
@@ -678,9 +675,27 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 if (!branch || branch.isRemote) return;
                 if (!validateBranchArg(branch.name)) return;
+                const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
+                const fallbackRemote =
+                    !tracked && !branch.isCurrent
+                        ? await resolveRemoteName(branch, executor)
+                        : undefined;
+                const fallbackRemoteName = fallbackRemote ?? "";
+                if (!tracked && branch.isCurrent) {
+                    await vscode.commands.executeCommand("intelligit.publishBranch");
+                    return;
+                }
+                if (!tracked && !fallbackRemoteName) {
+                    vscode.window.showWarningMessage(
+                        vscode.l10n.t(
+                            "No remote is configured for branch '{branch}'. Publish the branch before pushing it.",
+                            { branch: branch.name },
+                        ),
+                    );
+                    return;
+                }
                 /** Pushes the selected branch through the right upstream or publish flow. */
                 const pushBranch = async (): Promise<void> => {
-                    const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
                     if (tracked) {
                         assertValidRemoteName(tracked.remote);
                         assertValidBranchName(tracked.remoteBranch, "remote branch name");
@@ -703,16 +718,8 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                 `${branch.name}:${tracked.remoteBranch}`,
                             ]);
                         } else {
-                            const remote = await resolveRemoteName(branch, executor);
-                            if (!remote) {
-                                throw new Error(
-                                    vscode.l10n.t("No remote configured for branch {branch}.", {
-                                        branch: branch.name,
-                                    }),
-                                );
-                            }
-                            assertValidRemoteName(remote);
-                            await executor.run(["push", "-u", remote, branch.name]);
+                            const remoteName = assertValidRemoteName(fallbackRemoteName);
+                            await executor.run(["push", "-u", remoteName, branch.name]);
                         }
                     }
                 };
@@ -723,7 +730,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                             await pushBranch();
                         },
                     );
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Pushed {branch}", { branch: branch.name }),
                     );
                     await vscode.commands.executeCommand("intelligit.refresh");
@@ -765,7 +772,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 }
                 try {
                     await executor.run(["branch", "-m", name, newName]);
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Renamed {oldBranch} to {newBranch}", {
                             oldBranch: name,
                             newBranch: newName,
@@ -863,7 +870,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                                 ]);
                             },
                         );
-                        vscode.window.showInformationMessage(
+                        showTimedInformationMessage(
                             vscode.l10n.t("Deleted {remote}/{remoteBranch}", {
                                 remote: target.remote,
                                 remoteBranch: target.remoteBranch,
@@ -923,7 +930,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                             !branch.isRemote && (branch.isCurrent || branch.name === currentName),
                     );
                     if (current) {
-                        vscode.window.showWarningMessage(
+                        showTimedWarningMessage(
                             vscode.l10n.t("Cannot delete the current branch: {branch}", {
                                 branch: current.name,
                             }),
@@ -978,7 +985,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     }
 
                     await vscode.commands.executeCommand("intelligit.refresh");
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Deleted {count} branch(es).", { count: deleted.length }),
                     );
                 } catch (err) {

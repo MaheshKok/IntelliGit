@@ -395,8 +395,12 @@ describe("webview ui smoke", () => {
                     onMessageChange={noop}
                     onAmendChange={noop}
                     onCommit={noop}
-                    onCommitAndPush={noop}
-                    currentBranchHasUpstream={true}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
                 />
                 <TabBar
                     stashCount={2}
@@ -408,10 +412,12 @@ describe("webview ui smoke", () => {
 
         expect(html).toContain("Changes");
         expect(html).toContain("Apply");
-        expect(html).toContain("Commit and Push");
+        expect(html).toContain("Refresh");
+        expect(html).toContain("Branch: main -&gt; origin/main");
+        expect(html).not.toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
 
-        const unpublishedHtml = renderToStaticMarkup(
+        const disabledCommitHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>
                 <CommitArea
                     commitMessage=""
@@ -419,12 +425,50 @@ describe("webview ui smoke", () => {
                     onMessageChange={noop}
                     onAmendChange={noop}
                     onCommit={noop}
-                    onCommitAndPush={noop}
-                    currentBranchHasUpstream={false}
+                    onPush={noop}
+                    canCommit={false}
+                    canPush={false}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
-        expect(unpublishedHtml).toContain("Publish Branch");
+        expect(disabledCommitHtml).toContain("disabled");
+
+        const localOnlyCommitHtml = renderUi(
+            <CommitArea
+                commitMessage=""
+                isAmend={false}
+                onMessageChange={noop}
+                onAmendChange={noop}
+                onCommit={noop}
+                onPush={noop}
+                canCommit={false}
+                canPush={false}
+                pushLabel="common.push"
+                currentBranchName="main"
+                currentBranchUpstream={null}
+            />,
+        );
+        expect(localOnlyCommitHtml).toContain("Branch: main");
+
+        const upstreamCommitHtml = renderUi(
+            <CommitArea
+                commitMessage=""
+                isAmend={false}
+                onMessageChange={noop}
+                onAmendChange={noop}
+                onCommit={noop}
+                onPush={noop}
+                canCommit={false}
+                canPush={false}
+                pushLabel="common.push"
+                currentBranchName="master"
+                currentBranchUpstream="origin/main"
+            />,
+        );
+        expect(upstreamCommitHtml).toContain("Branch: master -&gt; origin/main");
 
         const refreshingToolbarHtml = renderUi(
             <Toolbar

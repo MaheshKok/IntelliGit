@@ -6,6 +6,7 @@ import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { discoverGitRepositories } from "../services/repositoryDiscovery";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
 import { getErrorMessage } from "../utils/errors";
+import { showTimedInformationMessage } from "../utils/notifications";
 
 /**
  * Workspace-state key that persists the repository root selected across activation modes.
@@ -163,7 +164,7 @@ export async function initializeRepository(
             if (options.onInitialized) {
                 await options.onInitialized(newRepos);
             }
-            vscode.window.showInformationMessage(vscode.l10n.t("Repository initialized."));
+            showTimedInformationMessage(vscode.l10n.t("Repository initialized."));
         } else {
             vscode.window.showErrorMessage(
                 vscode.l10n.t("Failed to initialize repository. Check folder permissions."),

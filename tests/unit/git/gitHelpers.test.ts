@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 
-vi.mock("vscode", () => ({
+const vscodeMock = vi.hoisted(() => ({
     l10n: {
         t: (message: string) => message,
     },
@@ -18,6 +18,28 @@ vi.mock("vscode", () => ({
         showErrorMessage: vi.fn(),
         withProgress: vi.fn(async (_options, task) => task({}, {})),
     },
+}));
+
+vi.mock("vscode", () => vscodeMock);
+
+vi.mock("../../../src/utils/notifications", () => ({
+    runWithNotificationProgress: vi.fn(
+        async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
+            vscodeMock.window.withProgress(
+                {
+                    location: 15,
+                    title: `IntelliGit: ${_message}`,
+                    cancellable: false,
+                },
+                task,
+            ),
+    ),
+    showTimedInformationMessage: vi.fn((message: string) =>
+        vscodeMock.window.showInformationMessage(message),
+    ),
+    showTimedWarningMessage: vi.fn((message: string) =>
+        vscodeMock.window.showWarningMessage(message),
+    ),
 }));
 
 import * as vscode from "vscode";

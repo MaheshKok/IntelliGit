@@ -15,7 +15,11 @@ import {
     launchJetBrainsMergeTool,
     resolveJetBrainsMergeBinaryPath,
 } from "../utils/jetbrainsMergeTool";
-import { runWithNotificationProgress } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedInformationMessage,
+    showTimedWarningMessage,
+} from "../utils/notifications";
 
 function getIntelliGitConfig(): vscode.WorkspaceConfiguration | null {
     const getConfiguration = vscode.workspace.getConfiguration;
@@ -98,7 +102,7 @@ async function saveJetBrainsMergeToolPath(rawPath: string): Promise<string | nul
         await config.update("jetbrainsMergeTool.path", trimmed, vscode.ConfigurationTarget.Global);
     }
 
-    vscode.window.showInformationMessage(
+    showTimedInformationMessage(
         resolvedBinaryPath === trimmed
             ? vscode.l10n.t("Saved JetBrains merge tool path. Executable: {path}", {
                   path: resolvedBinaryPath,
@@ -144,7 +148,7 @@ async function promptForJetBrainsMergeToolPath(): Promise<string | null> {
 export async function detectAndPickJetBrainsMergeToolPath(): Promise<string | null> {
     const candidates = await detectInstalledJetBrainsMergeToolCandidates();
     if (candidates.length === 0) {
-        vscode.window.showWarningMessage(
+        showTimedWarningMessage(
             vscode.l10n.t(
                 "No JetBrains IDE installations were auto-detected. Enter the path manually instead.",
             ),
@@ -330,11 +334,11 @@ export async function openJetBrainsMergeToolForFile(
             const mergedText = await readMergedFileWithRetry(outputFileFsPath, beforeMergeText);
             if (!containsConflictMarkers(mergedText)) {
                 await gitOps.stageFile(safePath);
-                vscode.window.showInformationMessage(
+                showTimedInformationMessage(
                     vscode.l10n.t("Merged and staged: {path}", { path: safePath }),
                 );
             } else {
-                vscode.window.showInformationMessage(
+                showTimedInformationMessage(
                     vscode.l10n.t("Merge tool closed, but conflict markers remain in {path}", {
                         path: safePath,
                     }),
@@ -342,7 +346,7 @@ export async function openJetBrainsMergeToolForFile(
             }
         } catch (readErr) {
             const msg = getErrorMessage(readErr);
-            vscode.window.showWarningMessage(
+            showTimedWarningMessage(
                 vscode.l10n.t(
                     "Could not inspect merged file '{path}' after JetBrains merge: {message}",
                     { path: safePath, message: msg },

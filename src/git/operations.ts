@@ -146,11 +146,13 @@ export class GitOps {
         assertValidRemoteName(name);
         await this.executor.run(["remote", "remove", name]);
     }
-    /** Pushes a validated branch to a validated remote while creating upstream tracking. */
-    async pushWithUpstream(remote: string, branch: string): Promise<string> {
+    /** Pushes a validated branch to a validated remote branch while creating upstream tracking. */
+    async pushWithUpstream(remote: string, branch: string, remoteBranch = branch): Promise<string> {
         assertValidRemoteName(remote);
         assertValidBranchName(branch);
-        return this.executor.run(["push", "-u", remote, branch]);
+        assertValidBranchName(remoteBranch, "remote branch name");
+        const ref = remoteBranch === branch ? branch : `${branch}:${remoteBranch}`;
+        return this.executor.run(["push", "-u", remote, ref]);
     }
     /** Resolves the absolute repository root reported by Git for the executor's current work tree. */
     async getRepositoryRoot(): Promise<string> {
@@ -430,6 +432,14 @@ export class GitOps {
      * Remote and branch names are validated before the fallback `--set-upstream` push mutates tracking.
      */
     async push(): Promise<string> {
+        const upstreamTarget = await this.resolveCurrentPushTarget();
+        if (upstreamTarget && upstreamTarget.remoteBranch !== upstreamTarget.localBranch) {
+            return this.executor.run([
+                "push",
+                upstreamTarget.remote,
+                `HEAD:${upstreamTarget.remoteBranch}`,
+            ]);
+        }
         try {
             return await this.executor.run(["push"]);
         } catch (err) {
@@ -449,6 +459,19 @@ export class GitOps {
     /** Pulls the current branch with rebase semantics and returns Git output. */
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
+    }
+    /**
+     * Fetches remote refs for the current repository without changing local checkout state.
+     *
+     * The command updates remote-tracking refs under `.git/refs/remotes/*` without modifying
+     * the working tree, index, or local branches.
+     *
+     * @returns Git stdout from `git fetch`.
+     * @throws Propagates `GitExecutor` failures when no remote is configured, network or
+     * authentication fails, or Git exits with a non-zero status.
+     */
+    async fetch(): Promise<string> {
+        return this.executor.run(["fetch"]);
     }
     /** Verifies the push remote, creates or amends a commit, then pushes the current branch. */
     async commitAndPush(message: string, amend: boolean = false): Promise<string> {
@@ -502,6 +525,29 @@ export class GitOps {
                 .map((r) => r.trim())
                 .find(isValidRemoteName);
             return firstRemote ?? null;
+        } catch {
+            return null;
+        }
+    }
+    /** Resolves validated upstream metadata for explicit pushes when local and remote names differ. */
+    private async resolveCurrentPushTarget(): Promise<{
+        localBranch: string;
+        remote: string;
+        remoteBranch: string;
+    } | null> {
+        const localBranch = await this.resolveCurrentBranchNameForPush();
+        if (!localBranch) return null;
+        try {
+            const upstream = (await this.executor.run(["rev-parse", "--abbrev-ref", "@{upstream}"]))
+                .trim()
+                .split("\n")[0];
+            const slashIndex = upstream.indexOf("/");
+            if (slashIndex <= 0) return null;
+            const remote = upstream.slice(0, slashIndex);
+            const remoteBranch = upstream.slice(slashIndex + 1);
+            assertValidRemoteName(remote);
+            assertValidBranchName(remoteBranch, "remote branch name");
+            return { localBranch, remote, remoteBranch };
         } catch {
             return null;
         }

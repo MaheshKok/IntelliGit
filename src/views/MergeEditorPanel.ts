@@ -14,7 +14,11 @@ import {
 } from "../mergeEditor/conflictParser";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
-import { runWithNotificationProgress } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedInformationMessage,
+    showTimedWarningMessage,
+} from "../utils/notifications";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 /**
@@ -201,7 +205,7 @@ export class MergeEditorPanel {
                 await this.gitOps.stageFile(this.safePath);
             },
         );
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
         );
         await this.notifyConflictStateChanged();
@@ -230,7 +234,7 @@ export class MergeEditorPanel {
         try {
             await this.onConflictStateChanged();
         } catch (error) {
-            vscode.window.showWarningMessage(
+            showTimedWarningMessage(
                 vscode.l10n.t("Failed to refresh conflict UI: {message}", {
                     message: getErrorMessage(error),
                 }),

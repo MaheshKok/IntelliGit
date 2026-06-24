@@ -318,6 +318,11 @@ function App(): React.ReactElement {
                         folderIconsByName: data.folderIconsByName,
                         iconFonts: data.iconFonts,
                         currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
+                        hasRemotes: data.hasRemotes,
+                        currentBranchAhead: data.currentBranchAhead ?? 0,
+                        currentBranchBehind: data.currentBranchBehind ?? 0,
+                        currentBranchName: data.currentBranchName,
+                        currentBranchUpstream: data.currentBranchUpstream,
                     });
                     return;
 
@@ -412,8 +417,8 @@ function App(): React.ReactElement {
         vscode.postMessage({ type: "branchAction", action, branchName });
     }, []);
 
-    const handleDeleteBranches = useCallback((branchNames: string[]) => {
-        vscode.postMessage({ type: "deleteBranches", branchNames });
+    const handleDeleteBranches = useCallback((branches: Branch[]) => {
+        vscode.postMessage({ type: "deleteBranches", branches });
     }, []);
 
     const handleWorktreeAction = useCallback((action: WorktreeAction, path: string) => {
@@ -461,28 +466,39 @@ function App(): React.ReactElement {
         }
     }, []);
 
-    const stageCheckedAndCommit = useCallback(
-        (push: boolean) => {
-            const msg = cpState.commitMessage.trim();
-            vscode.postMessage({
-                type: "commitSelected",
-                paths: Array.from(checkedPaths),
-                message: msg,
-                amend: cpState.isAmend,
-                push,
-            });
-        },
-        [cpState.commitMessage, cpState.isAmend, checkedPaths],
-    );
+    const canCommit = cpState.isAmend || checkedPaths.size > 0;
+    const shouldPublishBranch = !cpState.currentBranchHasUpstream;
+    const canPush = shouldPublishBranch
+        ? cpState.currentBranchName !== null
+        : cpState.currentBranchAhead > 0;
+    const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
-    const handleCommit = useCallback(() => stageCheckedAndCommit(false), [stageCheckedAndCommit]);
-    const handleCommitAndPush = useCallback(() => {
-        if (!cpState.currentBranchHasUpstream) {
-            vscode.postMessage({ type: "publishBranch" });
-            return;
-        }
-        stageCheckedAndCommit(true);
-    }, [cpState.currentBranchHasUpstream, stageCheckedAndCommit]);
+    const handleCommit = useCallback(() => {
+        const msg = cpState.commitMessage.trim();
+        vscode.postMessage({
+            type: "commitSelected",
+            message: msg,
+            amend: cpState.isAmend,
+            push: false,
+            paths: Array.from(checkedPaths),
+        });
+    }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
+
+    const handlePush = useCallback(() => {
+        vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
+    }, [shouldPublishBranch]);
+
+    const handleSync = useCallback(() => {
+        vscode.postMessage({ type: "sync" });
+    }, []);
+
+    const handleFetch = useCallback(() => {
+        vscode.postMessage({ type: "fetch" });
+    }, []);
+
+    const handlePull = useCallback(() => {
+        vscode.postMessage({ type: "pull" });
+    }, []);
 
     const handleDock = useCallback(() => {
         vscode.postMessage({ type: "dock" });
@@ -510,8 +526,13 @@ function App(): React.ReactElement {
                                 onMessageChange={handleMessageChange}
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
-                                onCommitAndPush={handleCommitAndPush}
-                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
+                                canCommit={canCommit}
+                                onSync={handleSync}
+                                onFetch={handleFetch}
+                                onPull={handlePull}
+                                onPush={handlePush}
+                                canPush={canPush}
+                                pushLabel={pushLabel}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -653,8 +674,13 @@ function App(): React.ReactElement {
                                 onMessageChange={handleMessageChange}
                                 onAmendChange={handleAmendChange}
                                 onCommit={handleCommit}
-                                onCommitAndPush={handleCommitAndPush}
-                                currentBranchHasUpstream={cpState.currentBranchHasUpstream}
+                                canCommit={canCommit}
+                                onSync={handleSync}
+                                onFetch={handleFetch}
+                                onPull={handlePull}
+                                onPush={handlePush}
+                                canPush={canPush}
+                                pushLabel={pushLabel}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

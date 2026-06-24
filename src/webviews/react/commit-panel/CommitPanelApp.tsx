@@ -60,37 +60,49 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
-    const stageCheckedAndCommit = useCallback(
-        (push: boolean) => {
-            const msg = state.commitMessage.trim();
-            vscode.postMessage({
-                type: "commitSelected",
-                paths: Array.from(checkedPaths),
-                message: msg,
-                amend: state.isAmend,
-                push,
-            });
-        },
-        [vscode, state.commitMessage, state.isAmend, checkedPaths],
-    );
+    const canCommit = state.isAmend || checkedPaths.size > 0;
+    const shouldPublishBranch = !state.currentBranchHasUpstream;
+    const canPush = shouldPublishBranch
+        ? state.currentBranchName !== null
+        : state.currentBranchAhead > 0;
+    const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
     const handleCommit = useCallback(() => {
-        stageCheckedAndCommit(false);
-    }, [stageCheckedAndCommit]);
+        const msg = state.commitMessage.trim();
+        vscode.postMessage({
+            type: "commitSelected",
+            message: msg,
+            amend: state.isAmend,
+            push: false,
+            paths: Array.from(checkedPaths),
+        });
+    }, [vscode, state.commitMessage, state.isAmend, checkedPaths]);
 
-    const handleCommitAndPush = useCallback(() => {
-        if (!state.currentBranchHasUpstream) {
-            vscode.postMessage({ type: "publishBranch" });
-            return;
-        }
-        stageCheckedAndCommit(true);
-    }, [stageCheckedAndCommit, state.currentBranchHasUpstream, vscode]);
+    const handlePush = useCallback(() => {
+        vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
+    }, [vscode, shouldPublishBranch]);
+
+    const handleSync = useCallback(() => {
+        vscode.postMessage({ type: "sync" });
+    }, [vscode]);
+
+    const handleFetch = useCallback(() => {
+        vscode.postMessage({ type: "fetch" });
+    }, [vscode]);
+
+    const handlePull = useCallback(() => {
+        vscode.postMessage({ type: "pull" });
+    }, [vscode]);
 
     return (
         <Box display="flex" flexDirection="column" h="100%" bg="var(--intelligit-pycharm-panel)">
             <ThemeIconFontFaces fonts={state.iconFonts} />
             <TabBar
                 stashCount={state.stashes.length}
+                onSync={handleSync}
+                onFetch={handleFetch}
+                onPull={handlePull}
+                onPush={handlePush}
                 commitContent={
                     <CommitTab
                         files={state.files}
@@ -108,8 +120,12 @@ function App(): React.ReactElement {
                         onMessageChange={handleMessageChange}
                         onAmendChange={handleAmendChange}
                         onCommit={handleCommit}
-                        onCommitAndPush={handleCommitAndPush}
-                        currentBranchHasUpstream={state.currentBranchHasUpstream}
+                        canCommit={canCommit}
+                        onPush={handlePush}
+                        canPush={canPush}
+                        pushLabel={pushLabel}
+                        currentBranchName={state.currentBranchName}
+                        currentBranchUpstream={state.currentBranchUpstream}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}

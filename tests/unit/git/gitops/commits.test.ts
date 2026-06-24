@@ -413,7 +413,8 @@ describe("GitOps", () => {
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls;
             expect(calls[0][0]).toEqual(["rev-parse", "--abbrev-ref", "@{upstream}"]);
             expect(calls[1][0]).toEqual(["commit", "-m", "msg"]);
-            expect(calls[2][0]).toEqual(["push"]);
+            expect(calls[2][0]).toEqual(["rev-parse", "--abbrev-ref", "HEAD"]);
+            expect(calls[3][0]).toEqual(["push"]);
         });
 
         it("checks the upstream remote before committing", async () => {
@@ -429,6 +430,7 @@ describe("GitOps", () => {
                 ["rev-parse", "--abbrev-ref", "@{upstream}"],
                 ["ls-remote", "--exit-code", "origin"],
                 ["commit", "-m", "msg"],
+                ["rev-parse", "--abbrev-ref", "HEAD"],
                 ["push"],
             ]);
         });

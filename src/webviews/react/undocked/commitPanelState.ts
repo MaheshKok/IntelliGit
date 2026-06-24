@@ -27,6 +27,11 @@ export interface CommitPanelState {
     isRefreshing: boolean;
     error: string | null;
     currentBranchHasUpstream: boolean;
+    hasRemotes: boolean;
+    currentBranchAhead: number;
+    currentBranchBehind: number;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
 }
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
@@ -42,6 +47,11 @@ export type CommitPanelAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
           currentBranchHasUpstream: boolean;
+          hasRemotes?: boolean;
+          currentBranchAhead: number;
+          currentBranchBehind: number;
+          currentBranchName?: string | null;
+          currentBranchUpstream?: string | null;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
@@ -69,6 +79,11 @@ export const initialCommitPanelState: CommitPanelState = {
     isRefreshing: false,
     error: null,
     currentBranchHasUpstream: true,
+    hasRemotes: true,
+    currentBranchAhead: 0,
+    currentBranchBehind: 0,
+    currentBranchName: null,
+    currentBranchUpstream: null,
 };
 
 /**
@@ -92,6 +107,17 @@ export function commitPanelReducer(
                 folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
                 currentBranchHasUpstream: action.currentBranchHasUpstream,
+                hasRemotes: action.hasRemotes ?? state.hasRemotes,
+                currentBranchAhead: action.currentBranchAhead,
+                currentBranchBehind: action.currentBranchBehind,
+                currentBranchName:
+                    action.currentBranchName !== undefined
+                        ? action.currentBranchName
+                        : state.currentBranchName,
+                currentBranchUpstream:
+                    action.currentBranchUpstream !== undefined
+                        ? action.currentBranchUpstream
+                        : state.currentBranchUpstream,
                 error: null,
             };
         case "SET_REFRESHING":

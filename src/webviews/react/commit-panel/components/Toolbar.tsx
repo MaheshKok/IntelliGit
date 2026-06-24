@@ -1,5 +1,4 @@
-// Toolbar with 7 icon buttons: Refresh, Rollback, Group by Directory,
-// Shelve Changes, Show Diff, Expand All, Collapse All.
+// Toolbar with commit-view Git and file actions.
 
 import React from "react";
 import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
@@ -116,8 +115,11 @@ function ToolbarButton({
     children: React.ReactNode;
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const resolvedColor =
-        iconStyle === "standard" ? "var(--vscode-icon-foreground)" : (color ?? undefined);
+    const resolvedColor = disabled
+        ? "var(--vscode-disabledForeground)"
+        : iconStyle === "standard"
+          ? "var(--vscode-icon-foreground)"
+          : (color ?? undefined);
     const svgStyle: React.CSSProperties = {
         ...(resolvedColor ? { color: resolvedColor } : {}),
         ...(spin
@@ -143,7 +145,12 @@ function ToolbarButton({
                 size="sm"
                 onClick={disabled ? undefined : onClick}
                 isDisabled={disabled}
-                _disabled={{ opacity: 1, cursor: "default" }}
+                _disabled={{
+                    bg: "rgba(255,255,255,0.03)",
+                    color: "var(--vscode-disabledForeground)",
+                    cursor: "default",
+                    opacity: 0.55,
+                }}
                 data-refreshing={spin ? "true" : undefined}
                 icon={
                     <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>

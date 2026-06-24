@@ -1,5 +1,5 @@
 // Bottom area of the commit tab: amend checkbox, commit message textarea,
-// and commit/commit+push buttons.
+// and commit button.
 
 import React from "react";
 import { Flex, Box, Textarea, Button } from "@chakra-ui/react";
@@ -13,16 +13,36 @@ interface Props {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
-    onCommitAndPush: () => void;
-    currentBranchHasUpstream: boolean;
+    onPush: () => void;
+    canCommit: boolean;
+    canPush: boolean;
+    pushLabel: string;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
+}
+
+const disabledButtonStyles = {
+    bg: "rgba(255,255,255,0.03)",
+    color: "var(--vscode-disabledForeground)",
+    borderColor: "rgba(176, 186, 205, 0.24)",
+    cursor: "default",
+    opacity: 0.62,
+};
+
+/** Trims the upstream branch label used by the commit form branch indicator. */
+function getBranchIndicatorUpstream(
+    currentBranchName: string | null,
+    currentBranchUpstream: string | null,
+): string | null {
+    const upstream = currentBranchUpstream?.trim();
+    return upstream && currentBranchName ? upstream : null;
 }
 
 /**
- * Renders amend controls, the commit message editor, and commit action buttons.
+ * Renders amend controls, the commit message editor, and the commit action.
  *
  * The component does not talk to the extension host directly; callers decide how
- * message changes, amend toggles, commit, commit-and-push, and publish requests
- * are translated into outbound webview messages.
+ * message changes, amend toggles, and commit requests are translated into outbound webview messages.
  */
 export function CommitArea({
     commitMessage,
@@ -30,12 +50,40 @@ export function CommitArea({
     onMessageChange,
     onAmendChange,
     onCommit,
-    onCommitAndPush,
-    currentBranchHasUpstream,
+    onPush,
+    canCommit,
+    canPush,
+    pushLabel,
+    currentBranchName,
+    currentBranchUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
+    const branchUpstream = getBranchIndicatorUpstream(currentBranchName, currentBranchUpstream);
+    const branchLabel = currentBranchName
+        ? branchUpstream
+            ? t("commit.branchIndicator.tracking", {
+                  branch: currentBranchName,
+                  upstream: branchUpstream,
+              })
+            : t("commit.branchIndicator.local", { branch: currentBranchName })
+        : null;
     return (
         <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
+            {branchLabel ? (
+                <Box
+                    px="7px"
+                    py="5px"
+                    fontSize="12px"
+                    color="var(--vscode-descriptionForeground)"
+                    borderBottom="1px solid var(--intelligit-pycharm-border)"
+                    overflow="hidden"
+                    textOverflow="ellipsis"
+                    whiteSpace="nowrap"
+                    title={branchLabel}
+                >
+                    {branchLabel}
+                </Box>
+            ) : null}
             <Flex
                 as="label"
                 htmlFor={amendCheckboxId}
@@ -85,23 +133,23 @@ export function CommitArea({
                     variant="primary"
                     size="sm"
                     onClick={onCommit}
+                    isDisabled={!canCommit}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
+                    _disabled={disabledButtonStyles}
                 >
                     {isAmend ? t("commit.action.amend") : t("commit.action.commit")}
                 </Button>
                 <Button
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
-                    onClick={onCommitAndPush}
+                    onClick={onPush}
+                    isDisabled={!canPush}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
+                    _disabled={disabledButtonStyles}
                 >
-                    {currentBranchHasUpstream
-                        ? isAmend
-                            ? t("commit.action.amendAndPush")
-                            : t("commit.action.commitAndPush")
-                        : t("commit.action.publishBranch")}
+                    {t(pushLabel)}
                 </Button>
             </Flex>
         </Flex>

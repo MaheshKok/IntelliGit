@@ -59,6 +59,8 @@ vi.mock("../../../src/utils/jetbrainsMergeTool", () => ({
 
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: mocks.runWithNotificationProgress,
+    showTimedInformationMessage: mocks.showInformationMessage,
+    showTimedWarningMessage: mocks.showWarningMessage,
 }));
 
 import {

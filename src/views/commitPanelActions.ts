@@ -1,14 +1,34 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
-import { runWithNotificationProgress } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedWarningMessage,
+    showTimedInformationMessage,
+} from "../utils/notifications";
 
 interface CommitPanelActionDeps {
     gitOps: GitOps;
     refreshData: () => Promise<void>;
+    refreshGraphData?: () => Promise<void>;
     fireWorkingTreeChanged: () => void;
     postCommitted: () => void;
     maybeOfferPublishBranch: () => Promise<void>;
+}
+
+/**
+ * Git operation identifiers accepted from the Changes toolbar.
+ *
+ * `fetch` updates remote-tracking refs, `pull` rebases the current branch onto its upstream,
+ * `push` sends local commits to the upstream, and `sync` runs pull-rebase followed by push.
+ */
+export type CommitPanelGitOperation = "fetch" | "pull" | "push" | "sync";
+
+/** Returns whether the current local branch has already been published upstream. */
+async function currentBranchIsPublished(gitOps: GitOps): Promise<boolean> {
+    const branches = await gitOps.getBranches();
+    const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+    return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
 }
 
 /**
@@ -22,46 +42,31 @@ export async function commitSelectedFromPanel(
     deps: CommitPanelActionDeps,
     options: { message: string; amend: boolean; push: boolean; paths: string[] },
 ): Promise<void> {
-    const { gitOps, refreshData, fireWorkingTreeChanged, postCommitted, maybeOfferPublishBranch } =
-        deps;
+    const { gitOps, refreshData, fireWorkingTreeChanged, postCommitted } = deps;
     const { message, amend, push, paths } = options;
     if (!message && !amend) {
-        vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
+        showTimedWarningMessage(vscode.l10n.t("Enter a commit message."));
         return;
     }
     if (paths.length === 0 && !amend) {
-        vscode.window.showWarningMessage(vscode.l10n.t("Select files to commit."));
+        showTimedWarningMessage(vscode.l10n.t("Select files to commit."));
         return;
     }
     if (paths.length > 0) {
         await gitOps.stageFiles(paths);
     }
-    try {
-        const progressTitle = push
-            ? vscode.l10n.t("Committing and pushing...")
-            : vscode.l10n.t("Committing...");
-        await runWithNotificationProgress(progressTitle, async () => {
-            if (push) {
-                await gitOps.commitAndPush(message, amend);
-            } else {
-                await gitOps.commit(message, amend);
-            }
-        });
-    } catch (err) {
-        if (
-            push &&
-            (await promptRebaseAfterPushRejection(err, gitOps, async () => {
-                await gitOps.push();
-            }))
-        ) {
-            postCommitted();
-            await refreshData();
-            fireWorkingTreeChanged();
-            return;
-        }
-        throw err;
+    const progressTitle = push
+        ? vscode.l10n.t("Committing and pushing...")
+        : vscode.l10n.t("Committing...");
+    await runWithNotificationProgress(progressTitle, async () => {
+        await gitOps.commit(message, amend);
+    });
+    if (push) {
+        await runGitOperationFromPanel(deps, "push");
+        postCommitted();
+        return;
     }
-    vscode.window.showInformationMessage(
+    showTimedInformationMessage(
         push
             ? vscode.l10n.t("Committed and pushed successfully.")
             : vscode.l10n.t("Committed successfully."),
@@ -69,16 +74,13 @@ export async function commitSelectedFromPanel(
     postCommitted();
     await refreshData();
     fireWorkingTreeChanged();
-    if (!push) {
-        void maybeOfferPublishBranch();
-    }
 }
 
 /**
  * Runs the commit-only button action for the current Changes-panel repository.
  *
  * The helper owns user-facing validation for empty messages, progress notification, success UI,
- * draft reset signaling, panel refresh, and the optional publish-branch prompt after local commits.
+ * draft reset signaling, panel refresh, and working-tree change notification.
  */
 export async function commitOnlyFromPanel(
     deps: CommitPanelActionDeps,
@@ -86,17 +88,16 @@ export async function commitOnlyFromPanel(
     amend: boolean,
 ): Promise<void> {
     if (!message && !amend) {
-        vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
+        showTimedWarningMessage(vscode.l10n.t("Enter a commit message."));
         return;
     }
     await runWithNotificationProgress(vscode.l10n.t("Committing..."), async () => {
         await deps.gitOps.commit(message, amend);
     });
-    vscode.window.showInformationMessage(vscode.l10n.t("Committed successfully."));
+    showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
     deps.postCommitted();
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
-    void deps.maybeOfferPublishBranch();
 }
 
 /**
@@ -111,29 +112,102 @@ export async function commitAndPushFromPanel(
     amend: boolean,
 ): Promise<void> {
     if (!message && !amend) {
-        vscode.window.showWarningMessage(vscode.l10n.t("Enter a commit message."));
+        showTimedWarningMessage(vscode.l10n.t("Enter a commit message."));
         return;
     }
+    await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
+        await deps.gitOps.commit(message, amend);
+    });
+    await runGitOperationFromPanel(deps, "push");
+    deps.postCommitted();
+}
+
+/**
+ * Runs a top-level Git operation requested from the Changes toolbar.
+ *
+ * The caller supplies `gitOps` for Git I/O, `refreshData` for the Changes snapshot,
+ * optional `refreshGraphData` for the embedded graph, and `fireWorkingTreeChanged` for
+ * extension listeners that react to repository updates. On success, the panel shows the
+ * operation-specific completion message, refreshes panel data, refreshes graph data when
+ * available, and fires the working-tree change event.
+ *
+ * `fetch` updates remote-tracking refs only, `pull` runs `pull --rebase`, `push` pushes the
+ * current branch, and `sync` always runs pull-rebase before push. Git failures are rethrown
+ * except rejected `push` or `sync` operations may prompt for a rebase retry through
+ * `promptRebaseAfterPushRejection`.
+ */
+export async function runGitOperationFromPanel(
+    deps: Pick<
+        CommitPanelActionDeps,
+        "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged"
+    >,
+    operation: CommitPanelGitOperation,
+): Promise<void> {
+    if (!(await currentBranchIsPublished(deps.gitOps))) {
+        if (operation === "push") {
+            await vscode.commands.executeCommand("intelligit.publishBranch");
+            await deps.refreshData();
+            await deps.refreshGraphData?.();
+            deps.fireWorkingTreeChanged();
+            return;
+        }
+        if (operation === "pull" || operation === "sync") {
+            showTimedWarningMessage(vscode.l10n.t("The repo has not been published yet."));
+            return;
+        }
+    }
+
+    const labels = {
+        fetch: {
+            progress: vscode.l10n.t("Fetching..."),
+            success: vscode.l10n.t("Fetched successfully."),
+        },
+        pull: {
+            progress: vscode.l10n.t("Pulling..."),
+            success: vscode.l10n.t("Pulled successfully."),
+        },
+        push: {
+            progress: vscode.l10n.t("Pushing..."),
+            success: vscode.l10n.t("Pushed successfully."),
+        },
+        sync: {
+            progress: vscode.l10n.t("Syncing..."),
+            success: vscode.l10n.t("Synced successfully."),
+        },
+    }[operation];
+
     try {
-        await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
-            await deps.gitOps.commitAndPush(message, amend);
+        await runWithNotificationProgress(labels.progress, async () => {
+            if (operation === "fetch") {
+                await deps.gitOps.fetch();
+            } else if (operation === "pull") {
+                await deps.gitOps.pullRebase();
+            } else if (operation === "push") {
+                await deps.gitOps.push();
+            } else {
+                await deps.gitOps.pullRebase();
+                await deps.gitOps.push();
+            }
         });
     } catch (err) {
         if (
-            await promptRebaseAfterPushRejection(err, deps.gitOps, async () => {
+            (operation === "push" || operation === "sync") &&
+            (await promptRebaseAfterPushRejection(err, deps.gitOps, async () => {
                 await deps.gitOps.push();
-            })
+            }))
         ) {
-            deps.postCommitted();
+            showTimedInformationMessage(labels.success);
             await deps.refreshData();
+            await deps.refreshGraphData?.();
             deps.fireWorkingTreeChanged();
             return;
         }
         throw err;
     }
-    vscode.window.showInformationMessage(vscode.l10n.t("Committed and pushed successfully."));
-    deps.postCommitted();
+
+    showTimedInformationMessage(labels.success);
     await deps.refreshData();
+    await deps.refreshGraphData?.();
     deps.fireWorkingTreeChanged();
 }
 
@@ -165,7 +239,7 @@ export async function rollbackFromPanel(
         if (confirm !== rollbackAction) return;
         await deps.gitOps.rollbackFiles(paths);
     }
-    vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
+    showTimedInformationMessage(vscode.l10n.t("Changes rolled back."));
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
@@ -181,7 +255,7 @@ export async function shelveSaveFromPanel(
     options: { name: string; paths?: string[] },
 ): Promise<void> {
     await deps.gitOps.shelveSave(options.paths, options.name);
-    vscode.window.showInformationMessage(vscode.l10n.t("Changes shelved."));
+    showTimedInformationMessage(vscode.l10n.t("Changes shelved."));
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
@@ -206,13 +280,13 @@ export async function shelfMutationFromPanel(
         );
         if (confirm !== deleteAction) return;
         await deps.gitOps.shelveDelete(index);
-        vscode.window.showInformationMessage(vscode.l10n.t("Shelved change deleted."));
+        showTimedInformationMessage(vscode.l10n.t("Shelved change deleted."));
     } else if (action === "pop") {
         await deps.gitOps.shelvePop(index);
-        vscode.window.showInformationMessage(vscode.l10n.t("Unshelved changes."));
+        showTimedInformationMessage(vscode.l10n.t("Unshelved changes."));
     } else {
         await deps.gitOps.shelveApply(index);
-        vscode.window.showInformationMessage(vscode.l10n.t("Applied shelved changes."));
+        showTimedInformationMessage(vscode.l10n.t("Applied shelved changes."));
     }
     await deps.refreshData();
     deps.fireWorkingTreeChanged();

@@ -20,7 +20,15 @@ import { discoverGitRepositories } from "../services/repositoryDiscovery";
 import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
-import { runWithNotificationProgress } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedWarningMessage,
+    showTimedInformationMessage,
+} from "../utils/notifications";
+import {
+    runGitOperationFromPanel,
+    type CommitPanelGitOperation,
+} from "../views/commitPanelActions";
 import type { RefreshService } from "../views/RefreshService";
 import { NO_REPOSITORY_MESSAGE, workspaceRoots } from "./common";
 
@@ -115,6 +123,16 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         dockIntelliGit,
         refreshService,
     } = deps;
+    const runGraphGitOperation = async (operation: CommitPanelGitOperation): Promise<void> => {
+        await runGitOperationFromPanel(
+            {
+                gitOps,
+                refreshData: refreshActiveRepository,
+                fireWorkingTreeChanged: () => undefined,
+            },
+            operation,
+        );
+    };
 
     context.subscriptions.push(
         vscode.commands.registerCommand("intelligit.refresh", async () => {
@@ -125,10 +143,22 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                 },
             );
         }),
+        vscode.commands.registerCommand("intelligit.graph.fetch", async () => {
+            await runGraphGitOperation("fetch");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.pull", async () => {
+            await runGraphGitOperation("pull");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.push", async () => {
+            await runGraphGitOperation("push");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.sync", async () => {
+            await runGraphGitOperation("sync");
+        }),
         vscode.commands.registerCommand("intelligit.publishBranch", async () => {
             const hasCommits = await gitOps.hasAnyCommits();
             if (!hasCommits) {
-                vscode.window.showWarningMessage(
+                showTimedWarningMessage(
                     vscode.l10n.t("Create a commit before publishing this branch."),
                 );
                 return;
@@ -145,7 +175,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             try {
                 const removed = await deps.worktreeService.removeWorktree(ctx.path);
                 if (!removed) return;
-                vscode.window.showInformationMessage(
+                showTimedInformationMessage(
                     vscode.l10n.t("Deleted worktree {path}", { path: ctx.path }),
                 );
                 await vscode.commands.executeCommand("intelligit.refresh");
@@ -165,7 +195,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             if (reason === undefined) return;
             try {
                 await deps.worktreeService.lockWorktree(ctx.path, reason.trim() || undefined);
-                vscode.window.showInformationMessage(
+                showTimedInformationMessage(
                     vscode.l10n.t("Locked worktree {path}", { path: ctx.path }),
                 );
                 await vscode.commands.executeCommand("intelligit.refresh");
@@ -181,7 +211,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             if (!isWorktreeContext(ctx)) return;
             try {
                 await deps.worktreeService.unlockWorktree(ctx.path);
-                vscode.window.showInformationMessage(
+                showTimedInformationMessage(
                     vscode.l10n.t("Unlocked worktree {path}", { path: ctx.path }),
                 );
                 await vscode.commands.executeCommand("intelligit.refresh");
@@ -206,7 +236,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             if (!newPath) return;
             try {
                 await deps.worktreeService.moveWorktree(ctx.path, newPath);
-                vscode.window.showInformationMessage(
+                showTimedInformationMessage(
                     vscode.l10n.t("Moved worktree {path}", { path: newPath }),
                 );
                 await vscode.commands.executeCommand("intelligit.refresh");
@@ -221,7 +251,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         vscode.commands.registerCommand("intelligit.worktree.prune", async () => {
             try {
                 await deps.worktreeService.pruneWorktrees();
-                vscode.window.showInformationMessage(vscode.l10n.t("Pruned worktrees."));
+                showTimedInformationMessage(vscode.l10n.t("Pruned worktrees."));
                 await vscode.commands.executeCommand("intelligit.refresh");
             } catch (err) {
                 vscode.window.showErrorMessage(
@@ -234,7 +264,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         vscode.commands.registerCommand("intelligit.worktree.repair", async () => {
             try {
                 await deps.worktreeService.repairWorktrees();
-                vscode.window.showInformationMessage(vscode.l10n.t("Repaired worktrees."));
+                showTimedInformationMessage(vscode.l10n.t("Repaired worktrees."));
                 await vscode.commands.executeCommand("intelligit.refresh");
             } catch (err) {
                 vscode.window.showErrorMessage(
@@ -248,7 +278,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             const repositories = await discoverGitRepositories(workspaceRoots());
             setRepositories(repositories);
             if (repositories.length === 0) {
-                vscode.window.showInformationMessage(NO_REPOSITORY_MESSAGE);
+                showTimedInformationMessage(NO_REPOSITORY_MESSAGE);
                 return;
             }
             const picked = await vscode.window.showQuickPick(
@@ -334,9 +364,7 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
         vscode.commands.registerCommand("intelligit.openConflictSession", async () => {
             const conflicts = await gitOps.getConflictFilesDetailed();
             if (conflicts.length === 0) {
-                vscode.window.showInformationMessage(
-                    vscode.l10n.t("No unresolved merge conflicts found."),
-                );
+                showTimedInformationMessage(vscode.l10n.t("No unresolved merge conflicts found."));
                 return;
             }
             await openConflictSession();
@@ -393,7 +421,7 @@ async function acceptConflictSide(
         await runWithNotificationProgress(actionText.progress, async () => {
             await deps.gitOps.acceptConflictSide(filePath, side);
         });
-        vscode.window.showInformationMessage(actionText.success);
+        showTimedInformationMessage(actionText.success);
         await deps.refreshService().refreshConflictUi();
     } catch (error) {
         const message = getErrorMessage(error);
@@ -483,7 +511,7 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                     );
                     if (confirm !== rollbackAction) return;
                     await gitOps.rollbackFiles([safePath]);
-                    vscode.window.showInformationMessage(vscode.l10n.t("Changes rolled back."));
+                    showTimedInformationMessage(vscode.l10n.t("Changes rolled back."));
                 } catch (error) {
                     const message = getErrorMessage(error);
                     console.error("Failed to rollback file:", error);
@@ -525,7 +553,7 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                         safePath,
                     );
                     if (deleted) {
-                        vscode.window.showInformationMessage(
+                        showTimedInformationMessage(
                             vscode.l10n.t("Deleted {path}", { path: safePath }),
                         );
                     }
@@ -549,7 +577,7 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 try {
                     const safePath = assertRepoRelativePath(ctx.filePath);
                     await gitOps.shelveSave([safePath]);
-                    vscode.window.showInformationMessage(
+                    showTimedInformationMessage(
                         vscode.l10n.t("Shelved {path}.", { path: safePath }),
                     );
                 } catch (error) {

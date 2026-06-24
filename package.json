@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.13.0",
+    "version": "0.13.8",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -136,6 +136,42 @@
                 "title": "%command.refresh%",
                 "category": "%intelligit%",
                 "icon": "$(refresh)"
+            },
+            {
+                "command": "intelligit.graph.sync",
+                "title": "%command.sync%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-sync-white.svg",
+                    "dark": "media/icons/git-sync-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.graph.fetch",
+                "title": "%command.fetch%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-fetch-white.svg",
+                    "dark": "media/icons/git-fetch-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.graph.pull",
+                "title": "%command.pull%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-pull-white.svg",
+                    "dark": "media/icons/git-pull-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.graph.push",
+                "title": "%command.push%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-push-white.svg",
+                    "dark": "media/icons/git-push-white.svg"
+                }
             },
             {
                 "command": "intelligit.filterByBranch",
@@ -401,6 +437,24 @@
             }
         ],
         "menus": {
+            "commandPalette": [
+                {
+                    "command": "intelligit.graph.sync",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.fetch",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.pull",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.push",
+                    "when": "false"
+                }
+            ],
             "editor/context": [
                 {
                     "submenu": "intelligit.editorContext",
@@ -433,8 +487,28 @@
                 },
                 {
                     "command": "intelligit.openUndocked",
-                    "when": "view == intelligit.commitGraph",
+                    "when": "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
                     "group": "navigation"
+                },
+                {
+                    "command": "intelligit.graph.sync",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "intelligit.graph.fetch",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "intelligit.graph.pull",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "intelligit.graph.push",
+                    "when": "view == intelligit.sidebarGraph",
+                    "group": "navigation@4"
                 },
                 {
                     "command": "intelligit.mergeConflictsRefresh",
@@ -562,6 +636,11 @@
                     "type": "boolean",
                     "default": false,
                     "markdownDescription": "%configuration.undockableWindow.markdownDescription%"
+                },
+                "intelligit.undockableWindowButtonVisability": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "%configuration.undockableWindowButtonVisability.markdownDescription%"
                 },
                 "intelligit.worktree.includeFiles": {
                     "type": "array",

@@ -42,6 +42,7 @@ import {
     commitOnlyFromPanel,
     commitSelectedFromPanel,
     rollbackFromPanel,
+    runGitOperationFromPanel,
     shelfMutationFromPanel,
     shelveSaveFromPanel,
 } from "./commitPanelActions";
@@ -141,7 +142,7 @@ export class UndockedViewProvider {
     }>();
     readonly onBranchAction = this._onBranchAction.event;
 
-    private readonly _onDeleteBranches = new vscode.EventEmitter<string[]>();
+    private readonly _onDeleteBranches = new vscode.EventEmitter<Branch[]>();
     readonly onDeleteBranches = this._onDeleteBranches.event;
     private readonly _onWorktreeAction = new vscode.EventEmitter<{
         action: WorktreeAction;
@@ -357,6 +358,11 @@ export class UndockedViewProvider {
         const actionDeps = {
             gitOps: this.gitOps,
             refreshData: () => this.refreshCommitPanelData(),
+            refreshGraphData: async () => {
+                await this.sendBranches();
+                await this.loadInitial();
+                this.postCommitDetailState();
+            },
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
             postCommitted: () => this.postToWebview({ type: "committed" }),
             maybeOfferPublishBranch: () => Promise.resolve(),
@@ -413,7 +419,16 @@ export class UndockedViewProvider {
                 });
                 break;
             case "deleteBranches":
-                this._onDeleteBranches.fire(this.assertBranchNames(msg.branchNames, "branchNames"));
+                this._onDeleteBranches.fire(this.assertBranchSelection(msg));
+                break;
+            case "worktreeAction":
+                if (!isWorktreeAction(assertString(msg.action, "action"))) {
+                    throw new Error("Invalid worktree action received from webview.");
+                }
+                this._onWorktreeAction.fire({
+                    action: msg.action,
+                    path: assertString(msg.path, "path"),
+                });
                 break;
             case "worktreeAction":
                 if (!isWorktreeAction(assertString(msg.action, "action"))) {
@@ -494,6 +509,12 @@ export class UndockedViewProvider {
                 await commitAndPushFromPanel(actionDeps, message, msg.amend === true);
                 break;
             }
+            case "fetch":
+            case "pull":
+            case "push":
+            case "sync":
+                await runGitOperationFromPanel(actionDeps, msg.type);
+                break;
             case "publishBranch":
                 await publishBranchFromPanel(fileActionDeps);
                 break;
@@ -663,11 +684,48 @@ export class UndockedViewProvider {
     }
     // --- Commit panel data fetching -----------------------------------------
     /**
-     * Validates bulk branch-delete names from the undocked webview before host dispatch.
+     * Validates bulk branch-delete selections from the undocked webview before host dispatch.
      *
-     * Each name must satisfy Git branch-ref rules so forged webview payloads cannot reach the
-     * command layer as unchecked branch identifiers.
+     * Branch names are resolved through the latest host-owned snapshot so forged webview
+     * payloads cannot alter local/remote metadata before command dispatch.
      */
+    private assertBranchSelection(msg: { branches?: unknown; branchNames?: unknown }): Branch[] {
+        const field = Array.isArray(msg.branches) ? "branches" : "branchNames";
+        const names = Array.isArray(msg.branches)
+            ? msg.branches.map((item, index) =>
+                  this.assertBranchObjectName(item, `branches[${index}]`),
+              )
+            : this.assertBranchNames(msg.branchNames, "branchNames");
+        return this.resolveBranchSelection(names, field);
+    }
+
+    /** Resolves validated branch names to the provider's latest trusted branch rows. */
+    private resolveBranchSelection(names: string[], field: string): Branch[] {
+        if (names.length === 0) {
+            throw new Error(`Expected at least one branch for '${field}'.`);
+        }
+        const branchesByName = new Map(this.branches.map((branch) => [branch.name, branch]));
+        const selected = names
+            .map((name) => branchesByName.get(name))
+            .filter((branch): branch is Branch => Boolean(branch));
+        if (selected.length !== names.length) {
+            const found = new Set(selected.map((branch) => branch.name));
+            const missing = names.filter((name) => !found.has(name));
+            throw new Error(`Unknown branch name(s) for '${field}': ${missing.join(", ")}`);
+        }
+        return selected;
+    }
+
+    /** Reads and validates only the selector name from an untrusted webview branch row. */
+    private assertBranchObjectName(value: unknown, field: string): string {
+        if (!value || typeof value !== "object") {
+            throw new Error(`Expected branch object for '${field}'.`);
+        }
+        const name = assertString((value as { name?: unknown }).name, `${field}.name`);
+        assertValidBranchName(name);
+        return name;
+    }
+
     private assertBranchNames(value: unknown, field: string): string[] {
         if (!Array.isArray(value)) {
             throw new Error(`Expected string array for '${field}'.`);
@@ -696,7 +754,7 @@ export class UndockedViewProvider {
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
-            const currentBranchHasUpstream = await this.currentBranchHasUpstream();
+            const currentBranchStatus = await this.currentBranchStatus();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -734,7 +792,12 @@ export class UndockedViewProvider {
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: cpFolderIconsByName,
                 iconFonts,
-                currentBranchHasUpstream,
+                currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+                hasRemotes: currentBranchStatus.hasRemotes,
+                currentBranchAhead: currentBranchStatus.ahead,
+                currentBranchBehind: currentBranchStatus.behind,
+                currentBranchName: currentBranchStatus.name,
+                currentBranchUpstream: currentBranchStatus.upstream,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -746,6 +809,7 @@ export class UndockedViewProvider {
      */
     private async sendBranches(): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+        const currentBranchStatus = await this.currentBranchStatus();
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -755,13 +819,45 @@ export class UndockedViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
+            currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+            hasRemotes: currentBranchStatus.hasRemotes,
+            currentBranchAhead: currentBranchStatus.ahead,
+            currentBranchBehind: currentBranchStatus.behind,
+            currentBranchName: currentBranchStatus.name,
+            currentBranchUpstream: currentBranchStatus.upstream,
         });
     }
+
+    private async currentBranchStatus(): Promise<{
+        hasUpstream: boolean;
+        hasRemotes: boolean;
+        ahead: number;
+        behind: number;
+        name: string | null;
+        upstream: string | null;
+    }> {
+        const [branches, remotes] = await Promise.all([
+            this.gitOps.getBranches(),
+            this.gitOps.getRemotes(),
+        ]);
+        const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+        const upstream = currentBranch?.upstream?.trim() || null;
+        return {
+            hasUpstream: upstream !== null,
+            hasRemotes: remotes.length > 0,
+            ahead: currentBranch?.ahead ?? 0,
+            behind: currentBranch?.behind ?? 0,
+            name: currentBranch?.name ?? null,
+            upstream,
+        };
+    }
+
     private async currentBranchHasUpstream(): Promise<boolean> {
         const branches = await this.gitOps.getBranches();
         const currentBranch = branches.find((branch) => branch.isCurrent);
         return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
     }
+
     // --- Commit detail ------------------------------------------------------
     /**
      * Posts cached commit detail state, or an explicit clear message when no commit is selected.

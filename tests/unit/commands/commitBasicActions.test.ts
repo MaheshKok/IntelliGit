@@ -9,10 +9,21 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
-vi.mock("vscode", () => ({
-    l10n: { t: (message: string) => message },
+const vscodeMock = vi.hoisted(() => ({
+    l10n: {
+        t: (message: string, args?: Record<string, string | number>) =>
+            args
+                ? Object.entries(args).reduce(
+                      (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+                      message,
+                  )
+                : message,
+    },
     Uri: { file: (fsPath: string) => ({ fsPath }) },
     env: { clipboard: { writeText: vi.fn() } },
+    commands: {
+        executeCommand: vi.fn(async () => undefined),
+    },
     workspace: { fs: { writeFile: vi.fn() } },
     window: {
         showWarningMessage: vi.fn(),
@@ -23,10 +34,18 @@ vi.mock("vscode", () => ({
     },
 }));
 
+vi.mock("vscode", () => vscodeMock);
+
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: vi.fn(
         async (_title: string, task: () => Promise<void>): Promise<void> => task(),
     ),
+    showTimedInformationMessage: vi.fn((message: string) => {
+        vscodeMock.window.showInformationMessage(message);
+    }),
+    showTimedWarningMessage: vi.fn((message: string) => {
+        vscodeMock.window.showWarningMessage(message);
+    }),
 }));
 
 vi.mock("../../../src/services/gitHelpers", async (importOriginal) => {
@@ -508,14 +527,19 @@ describe("pushAllUpToHere", () => {
         expect(refreshOf(ctx)).not.toHaveBeenCalled();
     });
 
-    it("errors when no upstream exists and no remote is configured", async () => {
+    it("shows an error when no upstream exists and no remote is configured", async () => {
         mockedUnpushed.mockResolvedValue(true);
         mockedCheckedOut.mockResolvedValue("main");
         mockedTrackedRemote.mockReturnValue(undefined);
         mockedResolveRemote.mockResolvedValue(undefined);
         const ctx = makeCtx({ currentBranches: [makeBranch()] });
         await pushAllUpToHere(ctx);
-        expect(errorMsg).toHaveBeenCalledTimes(1);
+        expect(vscode.commands.executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(warn).not.toHaveBeenCalledWith("The repo has not been published yet.");
+        expect(errorMsg).toHaveBeenCalledWith(
+            "No remote is configured for branch 'main'. Publish the branch first, then retry Push All up to Here.",
+        );
+        expect(runOf(ctx)).not.toHaveBeenCalledWith(expect.arrayContaining(["push"]));
         expect(refreshOf(ctx)).not.toHaveBeenCalled();
     });
 

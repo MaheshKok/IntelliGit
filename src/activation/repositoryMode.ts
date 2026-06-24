@@ -31,6 +31,14 @@ import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
 } from "./repositoryViewEvents";
+import { showTimedWarningMessage } from "../utils/notifications";
+
+type BranchDeleteSelection = Array<Branch | string>;
+
+/** Extracts a branch name from current and legacy bulk-delete event payloads. */
+function getBranchSelectionName(branch: Branch | string): string {
+    return typeof branch === "string" ? branch : branch.name;
+}
 
 /**
  * Activates IntelliGit's repository-backed mode for discovered Git roots.
@@ -236,7 +244,7 @@ export async function activateRepositoryMode(
             });
         } catch (error) {
             const message = getErrorMessage(error);
-            vscode.window.showWarningMessage(
+            showTimedWarningMessage(
                 vscode.l10n.t(
                     "IntelliGit merge editor failed ({message}). Opening the file instead.",
                     { message },
@@ -357,8 +365,10 @@ export async function activateRepositoryMode(
                 }
                 void vscode.commands.executeCommand(`intelligit.worktree.${action}`, worktree);
             }) ?? new vscode.Disposable(() => undefined),
-            undocked.onDeleteBranches?.((branchNames) => {
-                const requestedNames = Array.from(new Set(branchNames));
+            undocked.onDeleteBranches?.((branchSelection: BranchDeleteSelection) => {
+                const requestedNames = Array.from(
+                    new Set(branchSelection.map(getBranchSelectionName)),
+                );
                 const branches = requestedNames
                     .map((name) => getCurrentBranches().find((branch) => branch.name === name))
                     .filter((branch): branch is Branch => Boolean(branch));
@@ -654,7 +664,7 @@ async function moveUndockedEditorToNewWindow(): Promise<void> {
         await vscode.commands.executeCommand("workbench.action.moveEditorToNewWindow");
     } catch (error) {
         const message = getErrorMessage(error);
-        vscode.window.showWarningMessage(
+        showTimedWarningMessage(
             vscode.l10n.t("Unable to move IntelliGit to a new window automatically: {message}", {
                 message,
             }),

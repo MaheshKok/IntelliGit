@@ -5,6 +5,111 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.8] - 2026-06-24
+
+### Fixed
+
+- Routed Commit panel push actions through the shared publish-aware push flow so unpublished branches open publish behavior consistently.
+- Allowed Fetch on unpublished branches while keeping unpublished-repository warnings limited to Pull and Sync.
+- Added explicit no-remote guidance for branch push and Push All up to Here actions.
+- Removed raw codicon placeholders from timed warning notifications.
+- Showed local and upstream branch names together in the Commit area branch indicator.
+
+### Tests
+
+- Added and updated regression coverage for publish-aware push routing, unpublished Fetch behavior, no-remote push messages, codicon stripping, and Commit area branch labels.
+
+## [0.13.7] - 2026-06-24
+
+### Fixed
+
+- Pushed tracked branches to their configured upstream target when local and remote branch names differ.
+- Stopped showing the publish-branch notification after commit-only panel flows.
+- Removed duplicated branch text from the native Commit header and showed the upstream branch leaf in the Commit area branch indicator.
+
+### Tests
+
+- Added and updated regression coverage for mismatched upstream Push, commit-only publish suppression, Commit header branch display, and Commit area upstream branch rendering.
+
+## [0.13.6] - 2026-06-24
+
+### Added
+
+- Added publish-aware Push behavior that opens the publish branch flow when the current branch has no upstream, with the existing remote branch picker prefilled as `origin/<branch>`.
+- Added Commit panel branch context by showing the upstream branch in the native Commit header and the local branch in the Commit area.
+
+### Fixed
+
+- Kept unpublished repository warnings on Fetch, Pull, and Sync while routing Push through publish-and-push behavior.
+- Removed the raw `$(warning)` codicon placeholder from the unpublished repository warning text.
+
+### Tests
+
+- Added and updated regression coverage for publish branch defaults, Commit panel Git actions, Commit header branch display, and Commit area branch context.
+
+## [0.13.5] - 2026-06-23
+
+### Added
+
+- Added the `intelligit.undockableWindowButtonVisability` setting, defaulting to `true`, to let users hide the IntelliGit undock button from the graph view title.
+
+### Tests
+
+- Added manifest regression coverage for the undock button visibility setting and view-title condition.
+
+## [0.13.4] - 2026-06-23
+
+### Changed
+
+- Moved Fetch, Pull, Push, and Sync beside the Commit and Stash tabs while keeping the same actions available in the graph header.
+- Matched the graph-header Git action icons with the toolbar icon style and increased spacing between the tab-row Git actions.
+- Updated the Stash Apply and Pop buttons to use the same primary button style as Commit and Push.
+- Refreshed README copy to position IntelliGit as bringing together the best Git features from PyCharm, VS Code, and Visual Studio IDE.
+
+### Tests
+
+- Updated webview integration coverage for the Commit panel tab-row Git actions and outbound messages.
+
+## [0.13.3] - 2026-06-23
+
+### Added
+
+- Added right-aligned Fetch, Pull, Push, and Sync actions to the Commit panel file toolbar while keeping the graph header actions available.
+
+### Tests
+
+- Added webview regression coverage for the Commit panel Git action buttons and outbound messages.
+
+## [0.13.2] - 2026-06-23
+
+### Changed
+
+- Moved Fetch, Pull, Push, and Sync from the Commit toolbar into the graph sidebar branch header so repository transport actions live with branch navigation.
+
+### Fixed
+
+- Wired graph/sidebar and undocked Git action handling through the existing Git operation flow so the moved actions run and refresh consistently across graph surfaces.
+- Sent current upstream, ahead/behind, and remote state with graph branch snapshots so sidebar Git action enablement stays accurate.
+
+### Tests
+
+- Updated webview regression coverage for sidebar Git action placement and enablement.
+
+## [0.13.1] - 2026-06-23
+
+### Added
+
+- Added Fetch, Pull, Push, and Sync actions to the Commit view toolbar, with Push enabled only when the current branch has commits ahead of its upstream.
+
+### Changed
+
+- Replaced the Commit and Push button in the Commit area with toolbar Git operations and made the Commit button reflect staged-change readiness.
+- Changed non-error information and warning notifications to auto-dismiss after five seconds while keeping error messages permanent.
+
+### Fixed
+
+- Fixed Commit view Collapse All so it also collapses the top-level Changes and Unversioned Files sections.
+
 ## [0.13.0] - 2026-06-21
 
 ### Added

@@ -18,8 +18,13 @@ interface CommitPanelPaneProps {
     onMessageChange: (message: string) => void;
     onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
-    onCommitAndPush: () => void;
-    currentBranchHasUpstream: boolean;
+    canCommit: boolean;
+    onSync: () => void;
+    onFetch: () => void;
+    onPull: () => void;
+    onPush: () => void;
+    canPush: boolean;
+    pushLabel: string;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
 }
@@ -40,8 +45,13 @@ export function CommitPanelPane({
     onMessageChange,
     onAmendChange,
     onCommit,
-    onCommitAndPush,
-    currentBranchHasUpstream,
+    canCommit,
+    onSync,
+    onFetch,
+    onPull,
+    onPush,
+    canPush,
+    pushLabel,
     groupByDir,
     onToggleGroupBy,
 }: CommitPanelPaneProps): React.ReactElement {
@@ -57,6 +67,10 @@ export function CommitPanelPane({
             <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
                 <TabBar
                     stashCount={cpState.stashes.length}
+                    onSync={onSync}
+                    onFetch={onFetch}
+                    onPull={onPull}
+                    onPush={onPush}
                     commitContent={
                         <CommitTab
                             files={cpState.files}
@@ -74,8 +88,12 @@ export function CommitPanelPane({
                             onMessageChange={onMessageChange}
                             onAmendChange={onAmendChange}
                             onCommit={onCommit}
-                            onCommitAndPush={onCommitAndPush}
-                            currentBranchHasUpstream={currentBranchHasUpstream}
+                            canCommit={canCommit}
+                            onPush={onPush}
+                            canPush={canPush}
+                            pushLabel={pushLabel}
+                            currentBranchName={cpState.currentBranchName}
+                            currentBranchUpstream={cpState.currentBranchUpstream}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}

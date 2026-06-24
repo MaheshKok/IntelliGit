@@ -225,5 +225,12 @@
     "worktree.menu.delete": "Usuń worktree",
     "worktree.menu.lock": "Zablokuj worktree",
     "worktree.menu.unlock": "Odblokuj worktree",
-    "worktree.menu.move": "Przenieś worktree..."
+    "worktree.menu.move": "Przenieś worktree...",
+    "common.fetch": "Pobierz",
+    "common.pull": "Ściągnij",
+    "common.push": "Wypchnij",
+    "common.sync": "Synchronizuj",
+    "commit.action.publishAndPush": "Opublikuj i wypchnij",
+    "commit.branchIndicator.local": "Gałąź: {branch}",
+    "commit.branchIndicator.tracking": "Gałąź: {branch} -> {upstream}"
 }

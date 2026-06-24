@@ -225,5 +225,12 @@
     "worktree.menu.delete": "Удалить worktree",
     "worktree.menu.lock": "Заблокировать worktree",
     "worktree.menu.unlock": "Разблокировать worktree",
-    "worktree.menu.move": "Переместить worktree..."
+    "worktree.menu.move": "Переместить worktree...",
+    "common.fetch": "Получить",
+    "common.pull": "Извлечь",
+    "common.push": "Отправить",
+    "common.sync": "Синхронизировать",
+    "commit.action.publishAndPush": "Опубликовать и отправить",
+    "commit.branchIndicator.local": "Ветка: {branch}",
+    "commit.branchIndicator.tracking": "Ветка: {branch} -> {upstream}"
 }

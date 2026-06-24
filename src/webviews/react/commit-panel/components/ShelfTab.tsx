@@ -431,38 +431,22 @@ export function ShelfTab({
                 bg="var(--intelligit-pycharm-panel)"
             >
                 <Button
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     onClick={() => handleShelfAction(selectedIndex, "apply")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="32px"
-                    minW="144px"
-                    px="12px"
-                    bg="var(--intelligit-pycharm-input, var(--vscode-button-secondaryBackground))"
-                    borderColor="var(--intelligit-pycharm-input-border, var(--vscode-button-border))"
-                    borderRadius="2px"
-                    _hover={{
-                        bg: "var(--intelligit-pycharm-header, var(--vscode-button-secondaryHoverBackground))",
-                    }}
+                    fontFamily={SYSTEM_FONT_STACK}
                 >
                     {t("common.apply")}
                 </Button>
                 <Button
-                    variant="secondary"
+                    variant="primary"
                     size="sm"
                     onClick={() => handleShelfAction(selectedIndex, "pop")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
-                    h="32px"
-                    minW="144px"
-                    px="12px"
-                    bg="var(--intelligit-pycharm-input, var(--vscode-button-secondaryBackground))"
-                    borderColor="var(--intelligit-pycharm-input-border, var(--vscode-button-border))"
-                    borderRadius="2px"
-                    _hover={{
-                        bg: "var(--intelligit-pycharm-header, var(--vscode-button-secondaryHoverBackground))",
-                    }}
+                    fontFamily={SYSTEM_FONT_STACK}
                 >
                     {t("common.pop")}
                 </Button>

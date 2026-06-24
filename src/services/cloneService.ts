@@ -6,6 +6,7 @@ import { GitExecutor } from "../git/executor";
 import { getErrorMessage } from "../utils/errors";
 import { runGitCommandWithAskpass } from "./gitAskpass";
 import { extractRepoName } from "./cloneUrl";
+import { showTimedInformationMessage, showTimedWarningMessage } from "../utils/notifications";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -262,9 +263,7 @@ async function pickGitHubRepo(token: string): Promise<GitHubRepo | undefined> {
     }
 
     if (!repos || repos.length === 0) {
-        vscode.window.showInformationMessage(
-            vscode.l10n.t("No repositories found on your GitHub account."),
-        );
+        showTimedInformationMessage(vscode.l10n.t("No repositories found on your GitHub account."));
         return undefined;
     }
 
@@ -446,9 +445,7 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
                 if (!use) return;
                 if (use.value === "clear") {
                     await secrets.delete(GITLAB_TOKEN_SECRET_KEY);
-                    vscode.window.showInformationMessage(
-                        vscode.l10n.t("Saved GitLab token cleared."),
-                    );
+                    showTimedInformationMessage(vscode.l10n.t("Saved GitLab token cleared."));
                     return;
                 }
                 if (use.value === "saved") {
@@ -510,9 +507,7 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
                 try {
                     await secrets.store(GITLAB_TOKEN_SECRET_KEY, token);
                 } catch {
-                    vscode.window.showWarningMessage(
-                        vscode.l10n.t("Could not save token securely."),
-                    );
+                    showTimedWarningMessage(vscode.l10n.t("Could not save token securely."));
                 }
             }
         }
@@ -646,7 +641,7 @@ async function runGitClone(opts: CloneOptions): Promise<void> {
                     await executor.run(["remote", "set-url", "origin", cleanRemoteUrl]);
                 } catch {
                     // Non-fatal: the clone succeeded; warn but don't block.
-                    vscode.window.showWarningMessage(
+                    showTimedWarningMessage(
                         vscode.l10n.t(
                             "Cloned successfully, but could not clean the remote URL. You may want to verify the origin remote in .git/config.",
                         ),

@@ -204,5 +204,12 @@
     "worktree.menu.delete": "刪除 Worktree",
     "worktree.menu.lock": "鎖定 Worktree",
     "worktree.menu.unlock": "解除鎖定 Worktree",
-    "worktree.menu.move": "移動 Worktree..."
+    "worktree.menu.move": "移動 Worktree...",
+    "common.fetch": "擷取",
+    "common.pull": "拉取",
+    "common.push": "推送",
+    "common.sync": "同步",
+    "commit.action.publishAndPush": "發佈並推送",
+    "commit.branchIndicator.local": "分支：{branch}",
+    "commit.branchIndicator.tracking": "分支：{branch} -> {upstream}"
 }

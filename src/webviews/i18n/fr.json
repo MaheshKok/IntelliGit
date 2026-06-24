@@ -218,5 +218,12 @@
     "worktree.menu.delete": "Supprimer le worktree",
     "worktree.menu.lock": "Verrouiller le worktree",
     "worktree.menu.unlock": "Déverrouiller le worktree",
-    "worktree.menu.move": "Déplacer le worktree..."
+    "worktree.menu.move": "Déplacer le worktree...",
+    "common.fetch": "Récupérer",
+    "common.pull": "Tirer",
+    "common.push": "Pousser",
+    "common.sync": "Synchroniser",
+    "commit.action.publishAndPush": "Publier et pousser",
+    "commit.branchIndicator.local": "Branche : {branch}",
+    "commit.branchIndicator.tracking": "Branche : {branch} -> {upstream}"
 }

@@ -1,7 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { getErrorMessage } from "../utils/errors";
-import { runWithNotificationProgress } from "../utils/notifications";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import {
     getCheckedOutBranchName,
     pickMainlineParent,
@@ -21,9 +21,7 @@ import type { CommitActionContext } from "./commitActionContext";
  */
 export async function copyRevision(ctx: CommitActionContext): Promise<void> {
     await vscode.env.clipboard.writeText(ctx.validatedHash);
-    vscode.window.showInformationMessage(
-        vscode.l10n.t("Copied revision {short}.", { short: ctx.short }),
-    );
+    showTimedInformationMessage(vscode.l10n.t("Copied revision {short}.", { short: ctx.short }));
 }
 
 /**
@@ -48,7 +46,7 @@ export async function createPatch(ctx: CommitActionContext): Promise<void> {
             ctx.validatedHash,
         ]);
         await vscode.workspace.fs.writeFile(targetUri, Buffer.from(patchText, "utf8"));
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Patch created: {fileName}", {
                 fileName: path.basename(targetUri.fsPath),
             }),
@@ -89,9 +87,7 @@ export async function cherryPick(ctx: CommitActionContext): Promise<void> {
             : ["cherry-pick", "-m", String(mainlineParent.parentNumber), ctx.validatedHash];
     try {
         await ctx.executor.run(args);
-        vscode.window.showInformationMessage(
-            vscode.l10n.t("Cherry-picked {short}.", { short: ctx.short }),
-        );
+        showTimedInformationMessage(vscode.l10n.t("Cherry-picked {short}.", { short: ctx.short }));
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(vscode.l10n.t("Cherry-pick failed: {message}", { message }));
@@ -118,7 +114,7 @@ export async function checkoutRevision(ctx: CommitActionContext): Promise<void> 
     if (confirm !== checkoutLabel) return;
     try {
         await ctx.executor.run(["checkout", ctx.validatedHash]);
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Checked out revision {short}.", { short: ctx.short }),
         );
     } catch (err) {
@@ -149,7 +145,7 @@ export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void
     if (confirm !== resetLabel) return;
     try {
         await ctx.executor.run(["reset", "--hard", ctx.validatedHash]);
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Reset current branch to {short}.", { short: ctx.short }),
         );
     } catch (err) {
@@ -183,9 +179,7 @@ export async function revertCommit(ctx: CommitActionContext): Promise<void> {
             : ["revert", "-m", String(mainlineParent.parentNumber), "--no-edit", ctx.validatedHash];
     try {
         await ctx.executor.run(args);
-        vscode.window.showInformationMessage(
-            vscode.l10n.t("Reverted {short}.", { short: ctx.short }),
-        );
+        showTimedInformationMessage(vscode.l10n.t("Reverted {short}.", { short: ctx.short }));
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(vscode.l10n.t("Revert failed: {message}", { message }));
@@ -258,9 +252,10 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
         const remote = await resolveRemoteName(currentBranch, ctx.executor);
         if (!remote) {
             vscode.window.showErrorMessage(
-                vscode.l10n.t("No remote configured for branch {branch}.", {
-                    branch: currentBranch.name,
-                }),
+                vscode.l10n.t(
+                    "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.",
+                    { branch: currentBranch.name },
+                ),
             );
             return;
         }
@@ -312,7 +307,7 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
             },
         );
 
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Pushed commits up to {short}.", { short: ctx.short }),
         );
     } catch (err) {
@@ -347,7 +342,7 @@ export async function newBranch(ctx: CommitActionContext): Promise<void> {
     }
     try {
         await ctx.executor.run(["branch", branchName, ctx.validatedHash]);
-        vscode.window.showInformationMessage(
+        showTimedInformationMessage(
             vscode.l10n.t("Created branch {branch} at {short}.", {
                 branch: branchName,
                 short: ctx.short,
@@ -385,7 +380,7 @@ export async function newTag(ctx: CommitActionContext): Promise<void> {
     }
     try {
         await ctx.executor.run(["tag", tagName, ctx.validatedHash]);
-        vscode.window.showInformationMessage(vscode.l10n.t("Created tag {tag}.", { tag: tagName }));
+        showTimedInformationMessage(vscode.l10n.t("Created tag {tag}.", { tag: tagName }));
     } catch (err) {
         const message = getErrorMessage(err);
         vscode.window.showErrorMessage(

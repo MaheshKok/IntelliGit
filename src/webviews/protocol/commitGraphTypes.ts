@@ -134,8 +134,10 @@ export type CommitGraphOutbound =
     | {
           /** Command requesting deletion of command/ctrl-selected branch rows. */
           type: "deleteBranches";
-          /** Validated branch names from the latest branch list before command dispatch. */
-          branchNames: string[];
+          /** Selected branch rows from the latest branch list before command dispatch. */
+          branches?: Branch[];
+          /** Legacy payload kept so older webviews fail closed through host validation. */
+          branchNames?: string[];
       }
     | {
           /** Command requesting a worktree row action on the host side. */
@@ -172,6 +174,22 @@ export type CommitGraphOutbound =
           type: "openCommitCheckUrl";
           /** HTTP(S) target URL returned by GitHub. */
           url: string;
+      }
+    | {
+          /** Command fetching remote refs without changing the current working tree. */
+          type: "fetch";
+      }
+    | {
+          /** Command pulling the current branch with rebase semantics. */
+          type: "pull";
+      }
+    | {
+          /** Command pushing the current branch to its upstream. */
+          type: "push";
+      }
+    | {
+          /** Command pulling the current branch and then pushing it. */
+          type: "sync";
       };
 
 /**
@@ -209,6 +227,21 @@ export type CommitGraphInbound =
           folderIconsByName?: ThemeFolderIconMap;
           /** Webview-safe font-face payloads needed to render glyph-based theme icons. */
           iconFonts?: ThemeIconFont[];
+          /**
+           * Whether the current branch has an upstream; absent producers are treated as
+           * `true` so older payloads do not incorrectly disable remote Git actions.
+           */
+          currentBranchHasUpstream?: boolean;
+          /** Whether the repository has at least one configured remote for fetch operations. */
+          hasRemotes?: boolean;
+          /** Number of commits the current branch is ahead of its upstream, when known. */
+          currentBranchAhead?: number;
+          /** Number of commits the current branch is behind its upstream, when known. */
+          currentBranchBehind?: number;
+          /** Current local branch name, when the repository is not detached. */
+          currentBranchName?: string | null;
+          /** Current branch upstream tracking ref, when configured. */
+          currentBranchUpstream?: string | null;
       }
     | {
           /** State update echoing the branch filter that the host accepted. */

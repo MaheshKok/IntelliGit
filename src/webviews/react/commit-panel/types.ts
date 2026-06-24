@@ -40,6 +40,11 @@ export interface CommitPanelState {
     isRefreshing: boolean;
     error: string | null;
     currentBranchHasUpstream: boolean;
+    hasRemotes: boolean;
+    currentBranchAhead: number;
+    currentBranchBehind: number;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
 }
 
 /**
@@ -61,6 +66,11 @@ export type CommitPanelAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
           currentBranchHasUpstream: boolean;
+          hasRemotes?: boolean;
+          currentBranchAhead: number;
+          currentBranchBehind: number;
+          currentBranchName?: string | null;
+          currentBranchUpstream?: string | null;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
