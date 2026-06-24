@@ -729,14 +729,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
     /**
-     * Updates the cached file count while keeping the view header focused on the tracked branch.
+     * Updates the cached file count without duplicating branch metadata in the native view header.
      */
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
         if (!this.view) return;
-        this.view.description = this.currentBranchUpstreamCache
-            ? `(${this.currentBranchUpstreamCache})`
-            : "";
+        this.view.description = "";
         this.view.badge = undefined;
     }
     /**

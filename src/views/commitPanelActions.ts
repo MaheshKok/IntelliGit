@@ -42,8 +42,7 @@ export async function commitSelectedFromPanel(
     deps: CommitPanelActionDeps,
     options: { message: string; amend: boolean; push: boolean; paths: string[] },
 ): Promise<void> {
-    const { gitOps, refreshData, fireWorkingTreeChanged, postCommitted, maybeOfferPublishBranch } =
-        deps;
+    const { gitOps, refreshData, fireWorkingTreeChanged, postCommitted } = deps;
     const { message, amend, push, paths } = options;
     if (!message && !amend) {
         showTimedWarningMessage(vscode.l10n.t("Enter a commit message."));
@@ -89,16 +88,13 @@ export async function commitSelectedFromPanel(
     postCommitted();
     await refreshData();
     fireWorkingTreeChanged();
-    if (!push) {
-        void maybeOfferPublishBranch();
-    }
 }
 
 /**
  * Runs the commit-only button action for the current Changes-panel repository.
  *
  * The helper owns user-facing validation for empty messages, progress notification, success UI,
- * draft reset signaling, panel refresh, and the optional publish-branch prompt after local commits.
+ * draft reset signaling, panel refresh, and working-tree change notification.
  */
 export async function commitOnlyFromPanel(
     deps: CommitPanelActionDeps,
@@ -116,7 +112,6 @@ export async function commitOnlyFromPanel(
     deps.postCommitted();
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
-    void deps.maybeOfferPublishBranch();
 }
 
 /**

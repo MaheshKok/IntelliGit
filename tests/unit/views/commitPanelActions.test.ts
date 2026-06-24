@@ -33,7 +33,7 @@ vi.mock("../../../src/services/gitHelpers", async (importOriginal) => {
     };
 });
 
-import { runGitOperationFromPanel } from "../../../src/views/commitPanelActions";
+import { commitOnlyFromPanel, runGitOperationFromPanel } from "../../../src/views/commitPanelActions";
 import type { CommitPanelGitOperation } from "../../../src/views/commitPanelActions";
 import type { GitOps } from "../../../src/git/operations";
 
@@ -53,6 +53,7 @@ function makeGitOps(upstream?: string): GitOps {
         fetch: vi.fn(async () => ""),
         pullRebase: vi.fn(async () => ""),
         push: vi.fn(async () => ""),
+        commit: vi.fn(async () => ""),
     } as unknown as GitOps;
 }
 
@@ -62,6 +63,8 @@ function makeDeps(gitOps: GitOps) {
         refreshData: vi.fn(async () => undefined),
         refreshGraphData: vi.fn(async () => undefined),
         fireWorkingTreeChanged: vi.fn(),
+        postCommitted: vi.fn(),
+        maybeOfferPublishBranch: vi.fn(async () => undefined),
     };
 }
 
@@ -101,5 +104,21 @@ describe("runGitOperationFromPanel", () => {
         expect(gitOps.push).not.toHaveBeenCalled();
         expect(deps.refreshData).toHaveBeenCalledTimes(1);
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not offer publish branch automatically after a local-only commit", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+
+        await commitOnlyFromPanel(deps, "feat: local", false);
+
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: local", false);
+        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+            "Committed successfully.",
+        );
+        expect(deps.postCommitted).toHaveBeenCalledTimes(1);
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
+        expect(deps.maybeOfferPublishBranch).not.toHaveBeenCalled();
     });
 });

@@ -123,6 +123,27 @@ describe("GitOps", () => {
                 "master:main",
             ]);
         });
+
+        it("pushes HEAD to the configured upstream when local and remote branch names differ", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key === "rev-parse --abbrev-ref HEAD") return "master\n";
+                    if (key === "rev-parse --abbrev-ref @{upstream}") return "origin/main\n";
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await ops.push();
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[0]);
+            expect(calls).toEqual([
+                ["rev-parse", "--abbrev-ref", "HEAD"],
+                ["rev-parse", "--abbrev-ref", "@{upstream}"],
+                ["push", "origin", "HEAD:main"],
+            ]);
+        });
     });
     describe("getAmendBranchCommits", () => {
         const FS = "\0";
