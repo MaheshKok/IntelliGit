@@ -134,7 +134,7 @@ const vscodeMock = {
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
-const getGithubCommitChecks = vi.hoisted(() => vi.fn());
+const getCommitChecks = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/views/webviewHtml", () => ({
@@ -156,8 +156,17 @@ vi.mock("../../../src/utils/fileOps", async () => {
         deleteFileWithFallback,
     };
 });
-vi.mock("../../../src/services/githubCommitChecksService", () => ({
-    getGithubCommitChecks,
+// Mock only the GitHub provider so the real coordinator (cache + refetch-on-pending
+// logic) still runs end-to-end through the view providers; `getCommitChecks` controls
+// what each fetch returns.
+vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
+    GitHubProvider: class {
+        readonly id = "github";
+        match(): { host: string } {
+            return { host: "github.com" };
+        }
+        getChecks = getCommitChecks;
+    },
 }));
 
 function createWebviewView() {
@@ -266,6 +275,8 @@ function makeGitOpsMock() {
         shelveDelete: vi.fn(async () => "deleted"),
         getShelvedFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
+        getRemotes: vi.fn(async () => ["origin"]),
+        getRemoteUrl: vi.fn(async () => "git@github.com:owner/repo.git"),
     };
 }
 
@@ -325,7 +336,7 @@ describe("view providers integration", () => {
         vi.clearAllMocks();
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
-        getGithubCommitChecks.mockImplementation(async (_gitOps: unknown, hash: string) => ({
+        getCommitChecks.mockImplementation(async (_ref: unknown, hash: string) => ({
             hash,
             state: "success",
             summary: "All checks passed",
@@ -833,7 +844,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
-        getGithubCommitChecks
+        getCommitChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
                 state: "pending",
@@ -850,7 +861,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(getGithubCommitChecks).toHaveBeenCalledTimes(2);
+        expect(getCommitChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "success" }),
@@ -872,7 +883,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
-        getGithubCommitChecks
+        getCommitChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
                 state: "none",
@@ -889,7 +900,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(getGithubCommitChecks).toHaveBeenCalledTimes(2);
+        expect(getCommitChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "pending" }),
@@ -921,7 +932,7 @@ describe("view providers integration", () => {
         const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
         postMessageSpy.mockClear();
 
-        getGithubCommitChecks
+        getCommitChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
                 state: "none",
@@ -938,7 +949,7 @@ describe("view providers integration", () => {
         await send({ type: "requestCommitChecks", hash: "abc1234" });
         await send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(getGithubCommitChecks).toHaveBeenCalledTimes(2);
+        expect(getCommitChecks).toHaveBeenCalledTimes(2);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "pending" }),

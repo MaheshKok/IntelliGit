@@ -4,14 +4,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type {
-    Branch,
-    CommitChecksSnapshot,
-    CommitDetail,
-    GitWorktree,
-    ThemeFolderIconMap,
-} from "../types";
-import { isPendingCheckState } from "../types";
+import type { Branch, CommitDetail, GitWorktree, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
     CommitAction,
@@ -31,7 +24,8 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
-import { getGithubCommitChecks } from "../services/githubCommitChecksService";
+import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
+import { GitHubProvider } from "../services/commitChecks/githubProvider";
 
 /**
  * Hosts the commit graph webview used by the bottom panel and sidebar graph views.
@@ -57,7 +51,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
-    private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
+    private readonly commitChecks: CommitChecksCoordinator;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -111,6 +105,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [new GitHubProvider()]);
     }
 
     /**
@@ -440,13 +435,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async sendCommitChecks(hash: string): Promise<void> {
-        const cached = this.commitChecksCache.get(hash);
-        if (cached && !isPendingCheckState(cached.state)) {
-            this.postToWebview({ type: "setCommitChecks", snapshot: cached });
-            return;
-        }
-        const snapshot = await getGithubCommitChecks(this.gitOps, hash);
-        this.commitChecksCache.set(hash, snapshot);
+        const snapshot = await this.commitChecks.getChecks(hash);
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 

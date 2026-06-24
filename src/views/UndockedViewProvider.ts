@@ -16,21 +16,20 @@ import {
 } from "../webviews/protocol/commitGraphTypes";
 import type {
     Branch,
-    CommitChecksSnapshot,
     CommitDetail,
     GitWorktree,
     StashEntry,
     ThemeFolderIconMap,
     WorkingFile,
 } from "../types";
-import { isPendingCheckState } from "../types";
 import type {
     BranchAction,
     CommitAction,
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
-import { getGithubCommitChecks } from "../services/githubCommitChecksService";
+import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
+import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import {
     assertGitHash,
     assertNullableString,
@@ -122,7 +121,7 @@ export class UndockedViewProvider {
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
-    private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
+    private readonly commitChecks: CommitChecksCoordinator;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -184,6 +183,7 @@ export class UndockedViewProvider {
         this.gitOps = gitOps;
         this.repoRootUri = repoRootUri;
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [new GitHubProvider()]);
     }
     /**
      * Updates the panel title fragment used when the active repository label changes.
@@ -211,7 +211,7 @@ export class UndockedViewProvider {
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
-        this.commitChecksCache.clear();
+        this.commitChecks.clear();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -650,13 +650,7 @@ export class UndockedViewProvider {
     }
 
     private async sendCommitChecks(hash: string): Promise<void> {
-        const cached = this.commitChecksCache.get(hash);
-        if (cached && !isPendingCheckState(cached.state)) {
-            this.postToWebview({ type: "setCommitChecks", snapshot: cached });
-            return;
-        }
-        const snapshot = await getGithubCommitChecks(this.gitOps, hash);
-        this.commitChecksCache.set(hash, snapshot);
+        const snapshot = await this.commitChecks.getChecks(hash);
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 
