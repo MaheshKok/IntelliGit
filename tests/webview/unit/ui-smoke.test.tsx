@@ -398,6 +398,9 @@ describe("webview ui smoke", () => {
                     onPush={noop}
                     canCommit={true}
                     canPush={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
                 />
                 <TabBar
                     stashCount={2}
@@ -410,6 +413,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Changes");
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
+        expect(html).toContain("Branch: main");
         expect(html).not.toContain("Commit and Push");
         expect(html).toContain("Stash (2)");
 
@@ -424,10 +428,30 @@ describe("webview ui smoke", () => {
                     onPush={noop}
                     canCommit={false}
                     canPush={false}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
         expect(disabledCommitHtml).toContain("disabled");
+
+        const localOnlyCommitHtml = renderUi(
+            <CommitArea
+                commitMessage=""
+                isAmend={false}
+                onMessageChange={noop}
+                onAmendChange={noop}
+                onCommit={noop}
+                onPush={noop}
+                canCommit={false}
+                canPush={false}
+                pushLabel="common.push"
+                currentBranchName="main"
+                currentBranchUpstream={null}
+            />,
+        );
+        expect(localOnlyCommitHtml).toContain("Branch: main");
 
         const refreshingToolbarHtml = renderUi(
             <Toolbar

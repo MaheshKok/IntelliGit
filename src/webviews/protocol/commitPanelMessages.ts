@@ -217,6 +217,10 @@ export type InboundMessage =
           currentBranchAhead?: number;
           /** Number of commits the current branch is behind its upstream, when known. */
           currentBranchBehind?: number;
+          /** Current local branch name, when the repository is not detached. */
+          currentBranchName?: string | null;
+          /** Current branch upstream tracking ref, when configured. */
+          currentBranchUpstream?: string | null;
       }
     | {
           /** State update restoring the repository-scoped commit draft from workspace state. */

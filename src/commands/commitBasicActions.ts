@@ -251,11 +251,7 @@ export async function pushAllUpToHere(ctx: CommitActionContext): Promise<void> {
     if (!target) {
         const remote = await resolveRemoteName(currentBranch, ctx.executor);
         if (!remote) {
-            vscode.window.showErrorMessage(
-                vscode.l10n.t("No remote configured for branch {branch}.", {
-                    branch: currentBranch.name,
-                }),
-            );
+            await vscode.commands.executeCommand("intelligit.publishBranch");
             return;
         }
 

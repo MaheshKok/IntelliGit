@@ -73,6 +73,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private hasRemotesCache = false;
     private currentBranchAheadCache = 0;
     private currentBranchBehindCache = 0;
+    private currentBranchNameCache: string | null = null;
+    private currentBranchUpstreamCache: string | null = null;
     private filterText = "";
     private offset = 0;
     private loadingMore = false;
@@ -140,6 +142,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.hasRemotesCache = false;
         this.currentBranchAheadCache = 0;
         this.currentBranchBehindCache = 0;
+        this.currentBranchNameCache = null;
+        this.currentBranchUpstreamCache = null;
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -157,10 +161,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         });
     }
     /**
-     * Handles repository label changes without replacing the Changes count description.
+     * Handles repository label changes without replacing the branch description.
      *
      * The sidebar title already identifies the view; its description is reserved for the cached
-     * working-file count, so a label change replays the last count instead of showing the label.
+     * tracked branch, so a label change replays the last branch instead of showing the label.
      */
     setRepositoryLabel(_label: string): void {
         this.updateViewCount(this.lastFileCount);
@@ -304,6 +308,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             hasRemotes,
             currentBranchAhead: this.currentBranchAheadCache,
             currentBranchBehind: this.currentBranchBehindCache,
+            currentBranchName: this.currentBranchNameCache,
+            currentBranchUpstream: this.currentBranchUpstreamCache,
         });
     }
 
@@ -362,6 +368,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.hasRemotesCache = currentBranchStatus.hasRemotes;
             this.currentBranchAheadCache = currentBranchStatus.ahead;
             this.currentBranchBehindCache = currentBranchStatus.behind;
+            this.currentBranchNameCache = currentBranchStatus.name;
+            this.currentBranchUpstreamCache = currentBranchStatus.upstream;
             const uniquePaths = new Set(files.map((f) => f.path));
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
@@ -380,6 +388,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 hasRemotes: currentBranchStatus.hasRemotes,
                 currentBranchAhead: currentBranchStatus.ahead,
                 currentBranchBehind: currentBranchStatus.behind,
+                currentBranchName: currentBranchStatus.name,
+                currentBranchUpstream: currentBranchStatus.upstream,
             });
         } finally {
             if (!silent) {
@@ -424,6 +434,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             hasRemotes: this.hasRemotesCache,
             currentBranchAhead: this.currentBranchAheadCache,
             currentBranchBehind: this.currentBranchBehindCache,
+            currentBranchName: this.currentBranchNameCache,
+            currentBranchUpstream: this.currentBranchUpstreamCache,
         });
     }
     /**
@@ -717,12 +729,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
     }
     /**
-     * Updates the cached file count and sidebar description for the active Changes view.
+     * Updates the cached file count while keeping the view header focused on the tracked branch.
      */
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
         if (!this.view) return;
-        this.view.description = count > 0 ? String(count) : "";
+        this.view.description = this.currentBranchUpstreamCache
+            ? `(${this.currentBranchUpstreamCache})`
+            : "";
         this.view.badge = undefined;
     }
     /**
@@ -857,17 +871,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         hasRemotes: boolean;
         ahead: number;
         behind: number;
+        name: string | null;
+        upstream: string | null;
     }> {
         const [branches, remotes] = await Promise.all([
             this.gitOps.getBranches(),
             this.gitOps.getRemotes(),
         ]);
-        const currentBranch = branches.find((branch) => branch.isCurrent);
+        const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+        const upstream = currentBranch?.upstream?.trim() || null;
         return {
-            hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
+            hasUpstream: upstream !== null,
             hasRemotes: remotes.length > 0,
             ahead: currentBranch?.ahead ?? 0,
             behind: currentBranch?.behind ?? 0,
+            name: currentBranch?.name ?? null,
+            upstream,
         };
     }
     /**

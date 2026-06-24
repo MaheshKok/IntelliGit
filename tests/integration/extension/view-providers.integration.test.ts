@@ -1357,6 +1357,8 @@ describe("view providers integration", () => {
 
         withProgress.mockClear();
         await webview.send({ type: "refresh" });
+        const view = (provider as unknown as { view: Record<string, unknown> }).view;
+        expect(view.description).toBe("");
         expect(withProgress).toHaveBeenCalledWith(
             { location: { viewId: "intelligit.commitPanel" } },
             expect.any(Function),
@@ -1491,7 +1493,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider updates count badges and fires file count after commit", async () => {
+    it("CommitPanelViewProvider shows upstream in the header and fires file count after commit", async () => {
         const { CommitPanelViewProvider } =
             await import("../../../src/views/CommitPanelViewProvider");
         const gitOps = makeGitOpsMock();
@@ -1518,16 +1520,16 @@ describe("view providers integration", () => {
 
         const view = (provider as unknown as { view: Record<string, unknown> }).view;
 
-        // Initial state: getStatus returns 1 file -> numeric description and event.
+        // Initial state: getStatus returns 1 file -> upstream header and file-count event.
         // The activity bar count is carried by the hidden fileCountBadge view to avoid double counting.
-        expect(view.description).toBe("1");
+        expect(view.description).toBe("(origin/main)");
         expect(view.badge).toBeUndefined();
         expect(counts).toContain(1);
 
-        // After commit, getStatus returns 0 files -> description/badge cleared and count fires 0.
+        // After commit, getStatus returns 0 files -> upstream header remains and count fires 0.
         gitOps.getStatus.mockResolvedValueOnce([]);
         await webview.send({ type: "commit", message: "feat: clear", amend: false });
-        expect(view.description).toBe("");
+        expect(view.description).toBe("(origin/main)");
         expect(view.badge).toBeUndefined();
         expect(counts).toContain(0);
 
@@ -1582,19 +1584,19 @@ describe("view providers integration", () => {
             await webview.send({ type: "ready" });
 
             const view = (provider as unknown as { view: Record<string, unknown> }).view;
-            expect(view.description).toBe("2");
+            expect(view.description).toBe("(origin/main)");
             expect(view.badge).toBeUndefined();
 
             await flushVisibleRefresh(webview.send({ type: "stageFiles", paths: ["src/a.ts"] }));
-            expect(view.description).toBe("1");
+            expect(view.description).toBe("(origin/main)");
 
             await flushVisibleRefresh(webview.send({ type: "unstageFiles", paths: ["src/b.ts"] }));
-            expect(view.description).toBe("2");
+            expect(view.description).toBe("(origin/main)");
 
             await flushVisibleRefresh(
                 webview.send({ type: "commit", message: "feat: commit", amend: false }),
             );
-            expect(view.description).toBe("");
+            expect(view.description).toBe("(origin/main)");
 
             await flushVisibleRefresh(
                 webview.send({
@@ -1605,20 +1607,20 @@ describe("view providers integration", () => {
                     paths: ["src/d.ts"],
                 }),
             );
-            expect(view.description).toBe("1");
+            expect(view.description).toBe("(origin/main)");
 
             showWarningMessage.mockResolvedValueOnce("Rollback");
             await flushVisibleRefresh(webview.send({ type: "rollback", paths: [] }));
-            expect(view.description).toBe("");
+            expect(view.description).toBe("(origin/main)");
 
             showWarningMessage.mockResolvedValueOnce("Delete");
             await flushVisibleRefresh(webview.send({ type: "deleteFile", path: "src/e.ts" }));
-            expect(view.description).toBe("1");
+            expect(view.description).toBe("(origin/main)");
 
             await flushVisibleRefresh(
                 webview.send({ type: "shelveSave", name: "work", paths: ["src/e.ts"] }),
             );
-            expect(view.description).toBe("");
+            expect(view.description).toBe("(origin/main)");
 
             expect(counts).toEqual([2, 1, 2, 0, 1, 0, 1, 0]);
             expect(workingTreeEvents).toHaveLength(7);

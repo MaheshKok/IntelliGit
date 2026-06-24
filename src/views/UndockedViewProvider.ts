@@ -755,6 +755,8 @@ export class UndockedViewProvider {
                 hasRemotes: currentBranchStatus.hasRemotes,
                 currentBranchAhead: currentBranchStatus.ahead,
                 currentBranchBehind: currentBranchStatus.behind,
+                currentBranchName: currentBranchStatus.name,
+                currentBranchUpstream: currentBranchStatus.upstream,
             });
         } finally {
             if (!silent) this.postToWebview({ type: "refreshing", active: false });
@@ -780,6 +782,8 @@ export class UndockedViewProvider {
             hasRemotes: currentBranchStatus.hasRemotes,
             currentBranchAhead: currentBranchStatus.ahead,
             currentBranchBehind: currentBranchStatus.behind,
+            currentBranchName: currentBranchStatus.name,
+            currentBranchUpstream: currentBranchStatus.upstream,
         });
     }
 
@@ -788,17 +792,22 @@ export class UndockedViewProvider {
         hasRemotes: boolean;
         ahead: number;
         behind: number;
+        name: string | null;
+        upstream: string | null;
     }> {
         const [branches, remotes] = await Promise.all([
             this.gitOps.getBranches(),
             this.gitOps.getRemotes(),
         ]);
         const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+        const upstream = currentBranch?.upstream?.trim() || null;
         return {
-            hasUpstream: currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0,
+            hasUpstream: upstream !== null,
             hasRemotes: remotes.length > 0,
             ahead: currentBranch?.ahead ?? 0,
             behind: currentBranch?.behind ?? 0,
+            name: currentBranch?.name ?? null,
+            upstream,
         };
     }
 

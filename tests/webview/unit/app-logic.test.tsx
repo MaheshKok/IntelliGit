@@ -256,6 +256,8 @@ describe("app logic coverage", () => {
                     hasRemotes: true,
                     currentBranchAhead: 1,
                     currentBranchBehind: 0,
+                    currentBranchName: "main",
+                    currentBranchUpstream: "origin/main",
                 },
                 dispatch,
             ],
@@ -281,8 +283,13 @@ describe("app logic coverage", () => {
                 canCommit: boolean;
                 onPush: () => void;
                 canPush: boolean;
+                pushLabel: string;
+                currentBranchName: string | null;
+                currentBranchUpstream: string | null;
             }) => (
                 <div>
+                    <span id="push-label">{props.pushLabel}</span>
+                    <span id="branch-indicator-props">{`${props.currentBranchName}:${props.currentBranchUpstream}`}</span>
                     <button id="msg" onClick={() => props.onMessageChange("next message")} />
                     <button id="amend" onClick={() => props.onAmendChange(true)} />
                     <button
@@ -322,6 +329,10 @@ describe("app logic coverage", () => {
         expect(amend).toBeTruthy();
         expect(commit).toBeTruthy();
         expect(push).toBeTruthy();
+        expect(document.getElementById("push-label")?.textContent).toBe("common.push");
+        expect(document.getElementById("branch-indicator-props")?.textContent).toBe(
+            "main:origin/main",
+        );
 
         act(() => {
             msg?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -348,6 +359,90 @@ describe("app logic coverage", () => {
         expect(postMessage).toHaveBeenCalledWith({ type: "push" });
     });
 
+    it("CommitPanelApp routes unpublished branch pushes through publish flow", async () => {
+        const postMessage = vi.fn();
+
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
+            useExtensionMessages: () => [
+                {
+                    files: [],
+                    stashes: [],
+                    shelfFiles: [],
+                    selectedShelfIndex: null,
+                    commitMessage: "",
+                    isAmend: false,
+                    amendBranchCommits: [],
+                    amendBranchHistoryLoaded: false,
+                    iconFonts: [],
+                    isRefreshing: false,
+                    error: null,
+                    currentBranchHasUpstream: false,
+                    hasRemotes: false,
+                    currentBranchAhead: 0,
+                    currentBranchBehind: 0,
+                    currentBranchName: "master",
+                    currentBranchUpstream: null,
+                },
+                vi.fn(),
+            ],
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles", () => ({
+            useCheckedFiles: () => ({
+                checkedPaths: new Set<string>(),
+                toggleFile: vi.fn(),
+                toggleFolder: vi.fn(),
+                toggleSection: vi.fn(),
+                isAllChecked: () => false,
+                isSomeChecked: () => false,
+            }),
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
+            getVsCodeApi: () => ({ postMessage, getState: () => ({}), setState: vi.fn() }),
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
+            CommitTab: (props: {
+                onPush: () => void;
+                canPush: boolean;
+                pushLabel: string;
+                currentBranchName: string | null;
+                currentBranchUpstream: string | null;
+            }) => (
+                <div>
+                    <span id="push-label">{props.pushLabel}</span>
+                    <span id="branch-indicator-props">{`${props.currentBranchName}:${props.currentBranchUpstream ?? ""}`}</span>
+                    <button id="push" disabled={!props.canPush} onClick={() => props.onPush()} />
+                </div>
+            ),
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
+            ShelfTab: () => <div>Shelf</div>,
+        }));
+        vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
+            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+                <div>
+                    <div>{props.commitContent}</div>
+                    <div>{props.shelfContent}</div>
+                </div>
+            ),
+        }));
+
+        await import("../../../src/webviews/react/commit-panel/CommitPanelApp");
+        await flush();
+
+        const push = document.getElementById("push");
+        expect(push?.hasAttribute("disabled")).toBe(false);
+        expect(document.getElementById("push-label")?.textContent).toBe(
+            "commit.action.publishAndPush",
+        );
+        expect(document.getElementById("branch-indicator-props")?.textContent).toBe("master:");
+
+        act(() => {
+            push?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(postMessage).toHaveBeenCalledWith({ type: "publishBranch" });
+    });
+
     it("CommitPanelApp defaults groupByDir to true when getState returns undefined", async () => {
         const postMessage = vi.fn();
         let capturedGroupByDir: boolean | undefined;
@@ -366,6 +461,12 @@ describe("app logic coverage", () => {
                     iconFonts: [],
                     isRefreshing: false,
                     error: null,
+                    currentBranchHasUpstream: true,
+                    hasRemotes: true,
+                    currentBranchAhead: 0,
+                    currentBranchBehind: 0,
+                    currentBranchName: "main",
+                    currentBranchUpstream: "origin/main",
                 },
                 vi.fn(),
             ],
@@ -432,6 +533,12 @@ describe("app logic coverage", () => {
                     iconFonts: [],
                     isRefreshing: false,
                     error: null,
+                    currentBranchHasUpstream: true,
+                    hasRemotes: true,
+                    currentBranchAhead: 0,
+                    currentBranchBehind: 0,
+                    currentBranchName: "main",
+                    currentBranchUpstream: "origin/main",
                 },
                 vi.fn(),
             ],

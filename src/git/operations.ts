@@ -146,11 +146,13 @@ export class GitOps {
         assertValidRemoteName(name);
         await this.executor.run(["remote", "remove", name]);
     }
-    /** Pushes a validated branch to a validated remote while creating upstream tracking. */
-    async pushWithUpstream(remote: string, branch: string): Promise<string> {
+    /** Pushes a validated branch to a validated remote branch while creating upstream tracking. */
+    async pushWithUpstream(remote: string, branch: string, remoteBranch = branch): Promise<string> {
         assertValidRemoteName(remote);
         assertValidBranchName(branch);
-        return this.executor.run(["push", "-u", remote, branch]);
+        assertValidBranchName(remoteBranch, "remote branch name");
+        const ref = remoteBranch === branch ? branch : `${branch}:${remoteBranch}`;
+        return this.executor.run(["push", "-u", remote, ref]);
     }
     /** Resolves the absolute repository root reported by Git for the executor's current work tree. */
     async getRepositoryRoot(): Promise<string> {

@@ -405,5 +405,9 @@
     "Pushing...": "푸시 중...",
     "Pushed successfully.": "푸시가 완료되었습니다.",
     "Syncing...": "동기화 중...",
-    "Synced successfully.": "동기화가 완료되었습니다."
+    "Synced successfully.": "동기화가 완료되었습니다.",
+    "Published branch name": "Published branch name",
+    "Branch name is required": "Branch name is required",
+    "Invalid branch name '{branch}'.": "Invalid branch name '{branch}'.",
+    "The repo has not been published yet.": "The repo has not been published yet."
 }

@@ -222,5 +222,8 @@
     "common.fetch": "Obtener",
     "common.pull": "Extraer",
     "common.push": "Enviar",
-    "common.sync": "Sincronizar"
+    "common.sync": "Sincronizar",
+    "commit.action.publishAndPush": "Publish and Push",
+    "commit.branchIndicator.local": "Branch: {branch}",
+    "commit.branchIndicator.tracking": "Branch: {branch} -> {upstream}"
 }

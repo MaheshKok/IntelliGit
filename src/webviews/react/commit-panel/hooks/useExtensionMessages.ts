@@ -24,6 +24,8 @@ const initialState: CommitPanelState = {
     hasRemotes: true,
     currentBranchAhead: 0,
     currentBranchBehind: 0,
+    currentBranchName: null,
+    currentBranchUpstream: null,
 };
 
 function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPanelState {
@@ -43,6 +45,14 @@ function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPane
                 hasRemotes: action.hasRemotes ?? state.hasRemotes,
                 currentBranchAhead: action.currentBranchAhead,
                 currentBranchBehind: action.currentBranchBehind,
+                currentBranchName:
+                    action.currentBranchName !== undefined
+                        ? action.currentBranchName
+                        : state.currentBranchName,
+                currentBranchUpstream:
+                    action.currentBranchUpstream !== undefined
+                        ? action.currentBranchUpstream
+                        : state.currentBranchUpstream,
                 error: null,
             };
         case "SET_REFRESHING":
@@ -129,6 +139,8 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         hasRemotes: msg.hasRemotes,
                         currentBranchAhead: msg.currentBranchAhead ?? 0,
                         currentBranchBehind: msg.currentBranchBehind ?? 0,
+                        currentBranchName: msg.currentBranchName,
+                        currentBranchUpstream: msg.currentBranchUpstream,
                     });
                     break;
                 case "restoreCommitDraft":

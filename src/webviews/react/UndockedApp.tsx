@@ -321,6 +321,8 @@ function App(): React.ReactElement {
                         hasRemotes: data.hasRemotes,
                         currentBranchAhead: data.currentBranchAhead ?? 0,
                         currentBranchBehind: data.currentBranchBehind ?? 0,
+                        currentBranchName: data.currentBranchName,
+                        currentBranchUpstream: data.currentBranchUpstream,
                     });
                     return;
 
@@ -465,7 +467,11 @@ function App(): React.ReactElement {
     }, []);
 
     const canCommit = cpState.isAmend || checkedPaths.size > 0;
-    const canPush = cpState.currentBranchHasUpstream && cpState.currentBranchAhead > 0;
+    const shouldPublishBranch = !cpState.currentBranchHasUpstream;
+    const canPush = shouldPublishBranch
+        ? cpState.currentBranchName !== null
+        : cpState.currentBranchAhead > 0;
+    const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
     const handleCommit = useCallback(() => {
         const msg = cpState.commitMessage.trim();
@@ -479,8 +485,8 @@ function App(): React.ReactElement {
     }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
 
     const handlePush = useCallback(() => {
-        vscode.postMessage({ type: "push" });
-    }, []);
+        vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
+    }, [shouldPublishBranch]);
 
     const handleSync = useCallback(() => {
         vscode.postMessage({ type: "sync" });
@@ -526,6 +532,7 @@ function App(): React.ReactElement {
                                 onPull={handlePull}
                                 onPush={handlePush}
                                 canPush={canPush}
+                                pushLabel={pushLabel}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />
@@ -673,6 +680,7 @@ function App(): React.ReactElement {
                                 onPull={handlePull}
                                 onPush={handlePush}
                                 canPush={canPush}
+                                pushLabel={pushLabel}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={() => setGroupByDir((g) => !g)}
                             />

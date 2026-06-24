@@ -43,6 +43,8 @@ export interface CommitPanelState {
     hasRemotes: boolean;
     currentBranchAhead: number;
     currentBranchBehind: number;
+    currentBranchName: string | null;
+    currentBranchUpstream: string | null;
 }
 
 /**
@@ -67,6 +69,8 @@ export type CommitPanelAction =
           hasRemotes?: boolean;
           currentBranchAhead: number;
           currentBranchBehind: number;
+          currentBranchName?: string | null;
+          currentBranchUpstream?: string | null;
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }

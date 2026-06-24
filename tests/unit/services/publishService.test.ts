@@ -3,6 +3,7 @@ import { interpolateL10n } from "../../helpers/l10nTestHelper";
 
 const mocks = vi.hoisted(() => ({
     showQuickPick: vi.fn(),
+    createQuickPick: vi.fn(),
     showInputBox: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("vscode", () => ({
     window: {
         showQuickPick: mocks.showQuickPick,
+        createQuickPick: mocks.createQuickPick,
         showInputBox: mocks.showInputBox,
         showInformationMessage: mocks.showInformationMessage,
         showWarningMessage: mocks.showWarningMessage,
@@ -52,6 +54,24 @@ vi.mock("vscode", () => ({
         parse: (value: string) => ({ value }),
     },
 }));
+
+interface MockRemoteChoice {
+    action: "existing" | "create";
+    alwaysShow?: boolean;
+}
+
+interface MockQuickPick {
+    items: MockRemoteChoice[];
+    selectedItems: MockRemoteChoice[];
+    value: string;
+    assignedValues: string[];
+    placeholder?: string;
+    onDidAccept: ReturnType<typeof vi.fn>;
+    onDidHide: ReturnType<typeof vi.fn>;
+    show: ReturnType<typeof vi.fn>;
+    hide: ReturnType<typeof vi.fn>;
+    dispose: ReturnType<typeof vi.fn>;
+}
 
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: vi.fn(
@@ -198,6 +218,50 @@ function secretStorage(initial?: string): {
     };
 }
 
+function mockPublishedBranchName(value = "main"): void {
+    mocks.showInputBox.mockResolvedValueOnce(value);
+}
+
+function mockRemotePickerSelection(action: "existing" | "create", value: string): MockQuickPick {
+    let accept: (() => void) | undefined;
+    let hide: (() => void) | undefined;
+    let currentValue = "";
+    const picker: MockQuickPick = {
+        items: [],
+        selectedItems: [],
+        value: "",
+        assignedValues: [],
+        onDidAccept: vi.fn((handler: () => void) => {
+            accept = handler;
+            return { dispose: vi.fn() };
+        }),
+        onDidHide: vi.fn((handler: () => void) => {
+            hide = handler;
+            return { dispose: vi.fn() };
+        }),
+        show: vi.fn(() => {
+            picker.value = value;
+            picker.selectedItems = picker.items
+                .filter((item) => item.action === action)
+                .slice(0, 1);
+            accept?.();
+        }),
+        hide: vi.fn(() => {
+            hide?.();
+        }),
+        dispose: vi.fn(),
+    };
+    Object.defineProperty(picker, "value", {
+        get: () => currentValue,
+        set: (next: string) => {
+            currentValue = next;
+            picker.assignedValues.push(next);
+        },
+    });
+    mocks.createQuickPick.mockReturnValueOnce(picker);
+    return picker;
+}
+
 describe("publishService phase 5", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -232,6 +296,7 @@ describe("publishService phase 5", () => {
 
     it("offers GitHub and GitLab providers before creating a repository", async () => {
         const gitOps = makeGitOps([]);
+        mockPublishedBranchName();
         mocks.showQuickPick.mockResolvedValueOnce(undefined);
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
@@ -243,6 +308,7 @@ describe("publishService phase 5", () => {
 
     it("offers private and public visibility after provider selection", async () => {
         const gitOps = makeGitOps([]);
+        mockPublishedBranchName();
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce(undefined);
@@ -259,11 +325,19 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce(undefined);
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce(undefined);
 
         await runPublishBranchFlow(gitOps, "main", "/workspace/my-project");
 
-        expect(mocks.showInputBox).toHaveBeenCalledWith(
+        expect(mocks.showInputBox).toHaveBeenNthCalledWith(
+            1,
+            expect.objectContaining({
+                prompt: "Published branch name",
+                value: "main",
+            }),
+        );
+        expect(mocks.showInputBox).toHaveBeenNthCalledWith(
+            2,
             expect.objectContaining({
                 prompt: "Repository name",
                 value: "my-project",
@@ -277,9 +351,9 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
 
-        await runPublishBranchFlow(gitOps, "main", "/repo");
+        await runPublishBranchFlow(gitOps, "master", "/repo");
 
         expect(gitOps.addRemote).toHaveBeenCalledWith("origin", "https://github.com/user/repo.git");
         const execArgs = mocks.execFile.mock.calls[0][1] as string[];
@@ -287,7 +361,7 @@ describe("publishService phase 5", () => {
             cwd: string;
             env: Record<string, string>;
         };
-        expect(execArgs).toEqual(["push", "-u", "origin", "main"]);
+        expect(execArgs).toEqual(["push", "-u", "origin", "master:main"]);
         expect(JSON.stringify(execArgs)).not.toContain("gh-token");
         expect(execOptions.cwd).toBe("/repo");
         expect(execOptions.env.INTELLIGIT_GIT_USERNAME).toBe("x-access-token");
@@ -303,7 +377,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
         mockCreateRepoTimeout();
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
@@ -319,7 +393,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
         mockCreateRepoResponse(201, "{not-json");
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
@@ -335,7 +409,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "gitlab" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
         mockCreateRepoResponse(201, "{not-json");
 
         await runPublishBranchFlow(gitOps, "main", "/repo", secretStorage("glpat-token") as never);
@@ -351,7 +425,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "gitlab" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
         mockCreateRepoResponse(
             400,
             JSON.stringify({
@@ -373,11 +447,18 @@ describe("publishService phase 5", () => {
 
     it("keeps an existing origin untouched when the user chooses to push there", async () => {
         const gitOps = makeGitOps(["origin"]);
-        mocks.showQuickPick.mockResolvedValueOnce({ action: "existing" });
+        const picker = mockRemotePickerSelection("existing", "origin/codex/publish-push-branch-ui");
 
-        await runPublishBranchFlow(gitOps, "main", "/repo");
+        await runPublishBranchFlow(gitOps, "codex/publish-push-branch-ui", "/repo");
 
-        expect(gitOps.pushWithUpstream).toHaveBeenCalledWith("origin", "main");
+        expect(gitOps.pushWithUpstream).toHaveBeenCalledWith(
+            "origin",
+            "codex/publish-push-branch-ui",
+            "codex/publish-push-branch-ui",
+        );
+        expect(picker.assignedValues).toContain("origin/codex/publish-push-branch-ui");
+        expect(picker.items.every((item) => item.alwaysShow)).toBe(true);
+        expect(mocks.showInputBox).not.toHaveBeenCalled();
         expect(mocks.httpsRequest).not.toHaveBeenCalled();
         expect(mocks.getSession).not.toHaveBeenCalled();
         expect(gitOps.addRemote).not.toHaveBeenCalled();
@@ -387,11 +468,11 @@ describe("publishService phase 5", () => {
 
     it("supports creating a provider remote under a non-origin name when origin exists", async () => {
         const gitOps = makeGitOps(["origin"]);
+        mockRemotePickerSelection("create", "upstream/feature/test");
         mocks.showQuickPick
-            .mockResolvedValueOnce({ action: "create" })
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "public" });
-        mocks.showInputBox.mockResolvedValueOnce("upstream").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo");
 
         await runPublishBranchFlow(gitOps, "feature/test", "/repo");
 
@@ -399,6 +480,7 @@ describe("publishService phase 5", () => {
             "upstream",
             "https://github.com/user/repo.git",
         );
+        expect(mocks.showInputBox).toHaveBeenCalledTimes(1);
         expect(mocks.execFile.mock.calls[0][1]).toEqual(["push", "-u", "upstream", "feature/test"]);
     });
 
@@ -407,7 +489,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
         mocks.execFile.mockImplementation((_file, _args, _options, callback) => {
             callback(new Error("push failed"), "", "permission denied");
             return {} as never;
@@ -428,7 +510,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "gitlab" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
 
         await runPublishBranchFlow(gitOps, "main", "/repo", secrets as never);
 
