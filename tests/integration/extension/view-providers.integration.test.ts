@@ -137,6 +137,10 @@ const deleteFileWithFallback = vi.fn(async () => true);
 // Spy on the GitHub provider's network boundary so the real CommitChecksCoordinator
 // runs inside the view provider (exercising its cache/re-fetch logic end-to-end).
 const providerGetChecks = vi.hoisted(() => vi.fn());
+// Network boundary for the real GitLabProvider. Mocked so self-hosted-routing tests
+// never touch the network; defaults are set per test. GitHub-remote tests never reach
+// the GitLab path (GitHub matches first), so this stays uninvoked there.
+const httpGetJsonSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/utils/notifications", () => ({
@@ -175,13 +179,23 @@ vi.mock("../../../src/utils/fileOps", async () => {
 });
 vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
     GitHubProvider: class {
-        match(): { host: string; owner: string; repo: string } {
-            return { host: "github.com", owner: "owner", repo: "repo" };
+        // URL-aware so a self-hosted (non-github.com) remote falls through to the real
+        // GitLabProvider in the coordinator. github.com remotes still match first, so the
+        // existing github commit-check tests are unaffected.
+        match(remoteUrl: string): { host: string; owner: string; repo: string } | null {
+            return remoteUrl.includes("github.com")
+                ? { host: "github.com", owner: "owner", repo: "repo" }
+                : null;
         }
         getChecks(_ref: unknown, hash: string): unknown {
             return providerGetChecks(hash);
         }
     },
+}));
+// Mock the GitLabProvider's network boundary (the view providers inject this exact
+// module-level function). Self-hosted-routing tests set a per-test resolved value.
+vi.mock("../../../src/services/commitChecks/http", () => ({
+    httpGetJson: httpGetJsonSpy,
 }));
 
 function createWebviewView() {
@@ -309,6 +323,16 @@ function makeCredentialStore() {
     };
 }
 
+// CredentialStore double that returns a stored token for any host. Used by the
+// self-hosted GitLab routing test that exercises the full fetch path.
+function makeCredentialStoreWithToken(token: string) {
+    return {
+        get: vi.fn(async () => token),
+        set: vi.fn(async () => undefined),
+        delete: vi.fn(async () => undefined),
+    };
+}
+
 async function flushVisibleRefresh<T>(promise: Promise<T>): Promise<T> {
     await vi.advanceTimersByTimeAsync(1_000);
     return promise;
@@ -338,6 +362,30 @@ function refreshingStates(): boolean[] {
                 typeof message.active === "boolean",
         )
         .map((message) => message.active);
+}
+
+// Returns the snapshot from the most recent setCommitChecks postMessage, or undefined
+// if the view never emitted one. Used by the self-hosted GitLab routing tests to assert
+// on the snapshot's state and error text.
+function lastCommitChecksSnapshot():
+    | { state: string; summary?: string; error?: string; items?: unknown[] }
+    | undefined {
+    const snapshots = postMessageSpy.mock.calls
+        .map(([message]) => message)
+        .filter(
+            (
+                message,
+            ): message is {
+                type: "setCommitChecks";
+                snapshot: { state: string; summary?: string; error?: string; items?: unknown[] };
+            } =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "setCommitChecks",
+        )
+        .map((message) => message.snapshot);
+    return snapshots[snapshots.length - 1];
 }
 
 async function setupCommitPanelProvider() {
@@ -1951,6 +1999,103 @@ describe("view providers integration", () => {
         expect(stagedCall[0]).toHaveLength(checkedPaths.length);
         expect(stagedCall[0].sort()).toEqual([...checkedPaths].sort());
         expect(gitOps.commit).toHaveBeenCalledTimes(1);
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider routes a configured self-hosted GitLab remote to the GitLab provider", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getRemoteUrl.mockResolvedValue("https://git.acme.com/group/repo.git");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+            { hostMap: { "git.acme.com": "gitlab" } },
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+
+        // GitHub did not claim the self-hosted remote, so the real GitLab provider handled it.
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        // No token is stored, so the provider short-circuits before any network call.
+        expect(httpGetJsonSpy).not.toHaveBeenCalled();
+        const snapshot = lastCommitChecksSnapshot();
+        expect(snapshot?.state).toBe("unavailable");
+        // The error is the GitLab sign-in hint (l10n mock returns the raw template), proving
+        // the host mapped to gitlab rather than the coordinator's no-supported-remote path.
+        expect(snapshot?.error).toMatch(/sign in/i);
+        expect(snapshot?.error).not.toMatch(/no supported remote/i);
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider does not route a self-hosted remote without a host mapping", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getRemoteUrl.mockResolvedValue("https://git.acme.com/group/repo.git");
+        // No hostMap: neither provider claims the remote.
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(httpGetJsonSpy).not.toHaveBeenCalled();
+        const snapshot = lastCommitChecksSnapshot();
+        // Unavailable, but via the coordinator's no-supported-remote path, not GitLab's
+        // sign-in hint — this is what makes the host mapping in the prior test necessary.
+        expect(snapshot?.state).toBe("unavailable");
+        expect(snapshot?.error).toMatch(/no supported remote/i);
+        expect(snapshot?.error).not.toMatch(/sign in/i);
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider fetches GitLab statuses for a configured self-hosted remote with a token", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getRemoteUrl.mockResolvedValue("https://git.acme.com/group/repo.git");
+        httpGetJsonSpy.mockResolvedValueOnce([{ name: "build", status: "success" }]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStoreWithToken("glpat-test-token") as unknown as object,
+            { hostMap: { "git.acme.com": "gitlab" } },
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+
+        // The self-hosted host produced the correct GitLab API URL on its own domain.
+        expect(httpGetJsonSpy).toHaveBeenCalledTimes(1);
+        const [requestedUrl] = httpGetJsonSpy.mock.calls[0] as [string, Record<string, string>];
+        expect(requestedUrl).toContain("https://git.acme.com/api/v4/projects/");
+        expect(requestedUrl).toContain(encodeURIComponent("group/repo"));
+        expect(requestedUrl).toContain("/repository/commits/abc1234/statuses");
+        const snapshot = lastCommitChecksSnapshot();
+        expect(snapshot?.state).toBe("success");
+        expect(providerGetChecks).not.toHaveBeenCalled();
         provider.dispose();
     });
 });

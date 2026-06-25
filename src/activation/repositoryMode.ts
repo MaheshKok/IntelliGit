@@ -14,6 +14,7 @@ import {
 } from "../services/jetbrainsMergeService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CredentialStore } from "../services/commitChecks/credentialStore";
+import { normalizeHostMap } from "../services/commitChecks/hostConfig";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -70,6 +71,11 @@ export async function activateRepositoryMode(
     const gitOps = new GitOps(executor);
     // Shared per-host token store for non-GitHub commit-check providers (e.g. GitLab).
     const credentialStore = new CredentialStore(context.secrets);
+    // Self-hosted commit-check host → provider mappings from user config. Read once at
+    // activation; changing the setting requires a window reload to take effect.
+    const commitCheckHostMap = normalizeHostMap(
+        vscode.workspace.getConfiguration("intelligit").get("commitChecks.hosts"),
+    );
 
     let currentBranches: Branch[] = [];
     let currentWorktrees: GitWorktree[] = [];
@@ -77,7 +83,9 @@ export async function activateRepositoryMode(
     let repoRootUri = vscode.Uri.file(repoRoot);
     let undocked: UndockedViewProvider | undefined;
 
-    const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore);
+    const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
+        hostMap: commitCheckHostMap,
+    });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
         gitOps,
@@ -85,6 +93,7 @@ export async function activateRepositoryMode(
         {
             scriptFile: "webview-compactcommitgraph.js",
             title: vscode.l10n.t("Graph"),
+            hostMap: commitCheckHostMap,
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
@@ -329,6 +338,7 @@ export async function activateRepositoryMode(
             repoRootUri,
             credentialStore,
             context.workspaceState,
+            commitCheckHostMap,
         );
         undocked.setRepositoryLabel(activeRepository.label);
         context.subscriptions.push(undocked);
@@ -532,8 +542,28 @@ export async function activateRepositoryMode(
         await vscode.commands.executeCommand("intelligit.commitGraph.focus");
     }
 
+    /**
+     * Drops cached commit-check snapshots and re-renders every graph surface.
+     *
+     * Fired by the sign-in/sign-out commands after a credential change. A stored
+     * "unavailable" snapshot is a terminal state the coordinator never re-fetches,
+     * so badges would stay stuck after the user signs in unless the cache is cleared
+     * and the graphs re-render (which makes the webview re-request checks).
+     */
+    const refreshCommitCheckBadges = async (): Promise<void> => {
+        commitGraph.clearChecksCache();
+        sidebarGraph.clearChecksCache();
+        undocked?.clearChecksCache();
+        await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
+        if (undocked) await undocked.refresh();
+    };
+
     context.subscriptions.push(
         mergeConflictsView,
+        vscode.commands.registerCommand(
+            "intelligit.commitChecks.refreshBadges",
+            refreshCommitCheckBadges,
+        ),
         commitPanel.onDidChangeWorkingTree(() => {
             undocked?.refreshSilent().catch((err) => {
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);

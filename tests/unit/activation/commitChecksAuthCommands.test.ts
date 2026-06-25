@@ -25,6 +25,12 @@ const mocks = vi.hoisted(() => {
             commandHandlers.set(id, handler);
             return { dispose: () => undefined };
         }),
+        // The badge-refresh command is registered only in repository mode; here it is
+        // absent, so executeCommand rejects to mirror that, exercising the best-effort
+        // swallow in refreshCommitCheckBadges.
+        executeCommand: vi.fn(async () => {
+            throw new Error("command 'intelligit.commitChecks.refreshBadges' not found");
+        }),
     };
 });
 
@@ -35,7 +41,7 @@ vi.mock("vscode", () => ({
         showInformationMessage: mocks.showInformationMessage,
         showErrorMessage: mocks.showErrorMessage,
     },
-    commands: { registerCommand: mocks.registerCommand },
+    commands: { registerCommand: mocks.registerCommand, executeCommand: mocks.executeCommand },
     l10n: { t: interpolateL10n },
 }));
 

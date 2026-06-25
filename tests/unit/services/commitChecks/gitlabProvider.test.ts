@@ -195,6 +195,17 @@ describe("parseGitlabRemoteUrl", () => {
         expect(parseGitlabRemoteUrl("https://bitbucket.org/owner/repo.git")).toBeNull();
     });
 
+    it("returns null for a non-HTTPS http:// gitlab.com URL (plaintext is never queried)", () => {
+        // The host matches but the scheme is http; the SSRF guard must reject it so a
+        // plaintext remote can never be turned into an API request.
+        expect(parseGitlabRemoteUrl("http://gitlab.com/group/repo.git")).toBeNull();
+    });
+
+    it("returns null for a non-HTTP(S) scheme on the gitlab.com host", () => {
+        // ftp:// also has hostname gitlab.com but must not be accepted as a GitLab remote.
+        expect(parseGitlabRemoteUrl("ftp://gitlab.com/group/repo.git")).toBeNull();
+    });
+
     it("returns null for an ssh:// scheme URL (only SCP and HTTPS supported)", () => {
         // ssh:// is a distinct scheme from the git@ SCP form; GitLab typically uses SCP.
         // Ensure the parser does not accidentally accept it as GitLab.
@@ -245,6 +256,14 @@ describe("GitLabProvider.match", () => {
         expect(provider.match("https://git.acme.com/group/project.git", {})).toBeNull();
     });
 
+    it("does not match an http:// self-hosted URL even when the host is mapped to gitlab", () => {
+        // The SSRF guard applies to configured hosts too: a plaintext remote on a
+        // mapped host must not resolve to a queryable ref.
+        const provider = new GitLabProvider(vi.fn(), emptyStore());
+        const hostMap = { "git.acme.com": "gitlab" as const };
+        expect(provider.match("http://git.acme.com/group/project.git", hostMap)).toBeNull();
+    });
+
     it("does not match a host mapped to a different provider in HostMap", () => {
         const provider = new GitLabProvider(vi.fn(), emptyStore());
         // host is in the map but points to bitbucket-cloud, not gitlab
@@ -283,14 +302,26 @@ describe("GitLabProvider.match", () => {
 // ---------------------------------------------------------------------------
 
 describe("GitLabProvider.getChecks — no token stored", () => {
-    it("returns state 'none' and never calls fetchJson when no token is stored", async () => {
+    it("returns state 'unavailable' and never calls fetchJson when no token is stored", async () => {
+        // The runbook requires a missing token to surface an actionable "unavailable"
+        // badge (not "none", which hides the badge entirely).
         const fetchJson = vi.fn();
         const provider = new GitLabProvider(fetchJson, emptyStore());
 
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
 
-        expect(snapshot.state).toBe("none");
+        expect(snapshot.state).toBe("unavailable");
         expect(fetchJson).not.toHaveBeenCalled();
+    });
+
+    it("includes a sign-in hint naming the host when no token is stored", async () => {
+        const provider = new GitLabProvider(vi.fn(), emptyStore());
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        // The error message must invite the user to sign in and identify the host so the
+        // hint is actionable. The token is never part of this string (none exists here).
+        expect(snapshot.error).toBeDefined();
+        expect(snapshot.error).toMatch(/sign in/i);
+        expect(snapshot.error).toContain("gitlab.com");
     });
 
     it("returns an empty items array when no token is stored", async () => {
@@ -429,7 +460,7 @@ describe("GitLabProvider.getChecks — empty and malformed responses", () => {
 // ---------------------------------------------------------------------------
 
 describe("GitLabProvider.getChecks — HTTP errors", () => {
-    it("returns state 'unavailable' when fetchJson rejects (any HTTP error)", async () => {
+    it("returns state 'unavailable' with a sign-in hint for HTTP 401", async () => {
         const provider = new GitLabProvider(
             vi.fn(async () => {
                 throw new Error("HTTP 401: Unauthorized");
@@ -438,9 +469,10 @@ describe("GitLabProvider.getChecks — HTTP errors", () => {
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
         expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toContain("Sign in to gitlab.com");
     });
 
-    it("returns state 'unavailable' for HTTP 403", async () => {
+    it("returns state 'unavailable' with a sign-in hint for HTTP 403", async () => {
         const provider = new GitLabProvider(
             vi.fn(async () => {
                 throw new Error("HTTP 403: Forbidden");
@@ -449,6 +481,7 @@ describe("GitLabProvider.getChecks — HTTP errors", () => {
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
         expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toContain("Sign in to gitlab.com");
     });
 
     it("returns state 'unavailable' for HTTP 500", async () => {
@@ -460,6 +493,7 @@ describe("GitLabProvider.getChecks — HTTP errors", () => {
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
         expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toContain("HTTP 500");
     });
 
     it("returns state 'unavailable' for a network timeout", async () => {

@@ -423,5 +423,6 @@
     "Select a provider to sign out of": "로그아웃할 공급자 선택",
     "Signed in to {host}.": "{host}에 로그인했습니다.",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "gitlab.example.com처럼 호스트 이름만 입력하세요 (https://나 경로 제외).",
-    "Could not clear the saved token.": "저장된 토큰을 지울 수 없습니다."
+    "Could not clear the saved token.": "저장된 토큰을 지울 수 없습니다.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
 }

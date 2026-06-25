@@ -423,5 +423,6 @@
     "Select a provider to sign out of": "Sélectionnez un fournisseur pour vous déconnecter",
     "Signed in to {host}.": "Connecté à {host}.",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "Entrez uniquement un nom d'hôte, comme gitlab.example.com (sans https:// ni chemin).",
-    "Could not clear the saved token.": "Impossible d'effacer le jeton enregistré."
+    "Could not clear the saved token.": "Impossible d'effacer le jeton enregistré.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
 }

@@ -677,6 +677,18 @@
                     ],
                     "default": "auto",
                     "markdownDescription": "%configuration.commitWindowPosition.markdownDescription%"
+                },
+                "intelligit.commitChecks.hosts": {
+                    "type": "object",
+                    "default": {},
+                    "scope": "window",
+                    "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                            "gitlab"
+                        ]
+                    },
+                    "markdownDescription": "%configuration.commitChecks.hosts.markdownDescription%"
                 }
             }
         }

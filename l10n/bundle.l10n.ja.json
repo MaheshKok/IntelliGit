@@ -423,5 +423,6 @@
     "Select a provider to sign out of": "サインアウトするプロバイダーを選択",
     "Signed in to {host}.": "{host} にサインインしました。",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "ホスト名のみを入力してください。例: gitlab.example.com（https:// やパスは不要）。",
-    "Could not clear the saved token.": "保存済みトークンをクリアできませんでした。"
+    "Could not clear the saved token.": "保存済みトークンをクリアできませんでした。",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
 }

@@ -423,5 +423,6 @@
     "Select a provider to sign out of": "Selecione um provedor para sair",
     "Signed in to {host}.": "Conectado a {host}.",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "Digite apenas um nome de host, como gitlab.example.com (sem https:// ou caminho).",
-    "Could not clear the saved token.": "Não foi possível limpar o token salvo."
+    "Could not clear the saved token.": "Não foi possível limpar o token salvo.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
 }

@@ -29,6 +29,7 @@ import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
+import type { HostMap } from "../services/commitChecks/types";
 import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
@@ -107,13 +108,26 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         private readonly options: {
             scriptFile?: string;
             title?: string;
+            hostMap?: HostMap;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
-        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [
-            new GitHubProvider(),
-            new GitLabProvider(httpGetJson, credentialStore),
-        ]);
+        this.commitChecks = new CommitChecksCoordinator(
+            this.gitOps,
+            [new GitHubProvider(), new GitLabProvider(httpGetJson, credentialStore)],
+            options.hostMap ?? {},
+        );
+    }
+
+    /**
+     * Drops cached commit-check snapshots so the next request re-fetches.
+     *
+     * Called after a credential change (sign-in or sign-out) because a stored
+     * "unavailable" snapshot is a terminal state the coordinator would otherwise
+     * never re-fetch, leaving the badge stuck after the user signs in.
+     */
+    clearChecksCache(): void {
+        this.commitChecks.clear();
     }
 
     /**

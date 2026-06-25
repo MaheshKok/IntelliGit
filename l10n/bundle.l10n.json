@@ -178,6 +178,7 @@
   "Select Worktree Parent Folder": "Select Worktree Parent Folder",
   "Selected file is outside the current IntelliGit repository workspace.": "Selected file is outside the current IntelliGit repository workspace.",
   "Shelved change deleted.": "Shelved change deleted.",
+  "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
   "Sign in with your GitHub account": "Sign in with your GitHub account",
   "Squash Commits is available only for unpushed commits.": "Squash Commits is available only for unpushed commits.",
   "Squash Commits is available only when every commit in the selected range is unpushed.": "Squash Commits is available only when every commit in the selected range is unpushed.",

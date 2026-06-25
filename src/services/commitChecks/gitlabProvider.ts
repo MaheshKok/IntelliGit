@@ -3,6 +3,7 @@
 // commit-statuses endpoint for one commit, and normalizes results into the shared
 // snapshot shape. HTTP is injected (FetchJson) so state-mapping is unit-testable.
 
+import * as vscode from "vscode";
 import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { FetchJson } from "./http";
@@ -74,9 +75,11 @@ function parseGitlabUrl(remoteUrl: string, host: string): GitLabRepoRef | null {
         return buildRef(host, scpMatch[1]);
     }
 
-    // HTTPS: https://<host>/<path>
+    // HTTPS: https://<host>/<path>. Only https is accepted; http and any other
+    // scheme are rejected so a plaintext remote can never be queried (SSRF guard).
     try {
         const url = new URL(trimmed);
+        if (url.protocol !== "https:") return null;
         if (url.hostname.toLowerCase() !== host.toLowerCase()) return null;
         const path = url.pathname.replace(/^\/+|\/+$/g, "");
         return buildRef(host, path);
@@ -130,9 +133,10 @@ function escapeRegex(str: string): string {
  *
  * Matches remote URLs against the built-in gitlab.com host or hosts registered
  * as "gitlab" in the HostMap. Authentication uses a PRIVATE-TOKEN fetched from
- * the CredentialStore; when no token is stored the provider returns a "none"
- * snapshot without fetching. HTTP errors produce an "unavailable" snapshot
- * whose error message never contains the access token.
+ * the CredentialStore; when no token is stored the provider returns an
+ * "unavailable" snapshot (with a sign-in hint) without fetching. HTTP errors
+ * also produce an "unavailable" snapshot whose error message never contains the
+ * access token.
  */
 export class GitLabProvider implements CommitChecksProvider {
     readonly id = "gitlab" as const;
@@ -176,10 +180,10 @@ export class GitLabProvider implements CommitChecksProvider {
     /**
      * Fetches commit statuses from the GitLab API and returns a normalized snapshot.
      *
-     * Returns state "none" (without fetching) when no token is stored for the host.
-     * Returns state "unavailable" on HTTP or network errors; the error message will
-     * not contain the access token. Returns state "none" for empty or non-array
-     * responses. Must not throw.
+     * Returns state "unavailable" (without fetching) when no token is stored for the
+     * host; the error message invites the user to sign in. Returns state "unavailable"
+     * on HTTP or network errors; the error message will not contain the access token.
+     * Returns state "none" for empty or non-array responses. Must not throw.
      *
      * @param ref - The repository reference produced by `match`.
      * @param hash - The full commit SHA to fetch statuses for.
@@ -190,7 +194,14 @@ export class GitLabProvider implements CommitChecksProvider {
 
         const token = await this.store.get(host);
         if (!token) {
-            return noneSnapshot(hash);
+            // No token: surface an actionable "unavailable" rather than hiding the badge
+            // as "none". The coordinator caches this terminal state, so a successful
+            // sign-in must clear the cache (see intelligit.commitChecks.signIn) for the
+            // badge to recover without a window reload.
+            return unavailableSnapshot(
+                hash,
+                vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+            );
         }
 
         const projectPath = encodeURIComponent(`${owner}/${repo}`);
@@ -201,8 +212,15 @@ export class GitLabProvider implements CommitChecksProvider {
         try {
             raw = await this.fetchJson(url, headers);
         } catch (err) {
+            const message = getErrorMessage(err);
+            if (/\bHTTP (401|403)\b/i.test(message)) {
+                return unavailableSnapshot(
+                    hash,
+                    vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+                );
+            }
             // getErrorMessage extracts the message without embedding the token.
-            return unavailableSnapshot(hash, getErrorMessage(err));
+            return unavailableSnapshot(hash, message);
         }
 
         if (!Array.isArray(raw)) {

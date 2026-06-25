@@ -423,5 +423,6 @@
     "Select a provider to sign out of": "Выберите поставщик для выхода",
     "Signed in to {host}.": "Выполнен вход в {host}.",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "Введите только имя хоста, например gitlab.example.com (без https:// и пути).",
-    "Could not clear the saved token.": "Не удалось удалить сохранённый токен."
+    "Could not clear the saved token.": "Не удалось удалить сохранённый токен.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
 }

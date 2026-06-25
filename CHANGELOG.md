@@ -12,15 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a GitLab commit-checks provider that reads the GitLab commit-statuses API (`gitlab.com` and self-hosted hosts via the host map), authenticating with the per-host token from SecretStorage and mapping pipeline statuses into the shared check snapshot. Tokens are passed only to the request header and are never written to logs, error messages, or snapshots.
 - Added `Sign In to Commit Checks Provider` and `Sign Out of Commit Checks Provider` commands that securely store and clear per-host access tokens in VS Code SecretStorage, laying the groundwork for self-hosted commit-check providers.
 - Added a `CredentialStore` that keys tokens by host with case-insensitive (lowercase) normalization so the same host resolves regardless of capitalization.
+- Added the `intelligit.commitChecks.hosts` setting that maps self-hosted Git hostnames to a commit-check provider (currently `gitlab`), so self-hosted GitLab remotes show CI status badges. The map is normalized and passed to both the docked and undocked commit-graph coordinators.
 
 ### Changed
 
 - Refactored commit checks into a provider seam (`CommitChecksProvider`) and a `CommitChecksCoordinator` that resolves the matching provider per request and caches snapshots by commit hash, re-fetching pending and no-result states until they settle. GitHub and GitLab are both active providers; the seam is the foundation for upcoming Bitbucket support.
 - Made the commit-checks "unavailable" summary provider-agnostic (`Checks unavailable` instead of `GitHub checks unavailable`) so the badge reads correctly for non-GitHub remotes.
 
+### Fixed
+
+- Changed the GitLab provider to return an `unavailable` snapshot with a sign-in hint (instead of a hidden `none`) when no token is stored for the host, so the badge invites authentication rather than disappearing. Because that state is cached as terminal, sign-in and sign-out now clear the commit-check cache and refresh the graphs (via the new `intelligit.commitChecks.refreshBadges` command) so the badge recovers without a window reload.
+- Required the `https:` scheme when parsing the HTTPS form of a GitLab remote URL, so a plaintext `http://` remote can never be queried (SSRF guard).
+
 ### Tests
 
-- Added unit coverage for the GitLab provider (remote-URL parsing, request construction, status mapping, aggregate state, and token non-leakage across error paths), the credential store (host normalization, case-insensitivity, missing-host validation), the auth commands (sign-in/out flows, host validation, storage-failure handling), and the coordinator/provider seam; updated view-provider integration tests to exercise the real coordinator end-to-end.
+- Added unit coverage for the GitLab provider (remote-URL parsing including non-`https` scheme rejection, request construction, status mapping, aggregate state, missing-token `unavailable` behavior, and token non-leakage across error paths), the credential store (host normalization, case-insensitivity, missing-host validation), the host-map config normalizer, the auth commands (sign-in/out flows, host validation, storage-failure handling), and the coordinator/provider seam; added view-provider integration tests that route a configured self-hosted GitLab remote through the real coordinator end-to-end.
 
 ## [0.13.8] - 2026-06-24
 

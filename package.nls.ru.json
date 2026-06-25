@@ -55,6 +55,7 @@
     "configuration.commitWindowPosition.enum.left": "Разместите панель подтверждения изменений в левой части открепленного/открытого окна.",
     "configuration.commitWindowPosition.enum.right": "Разместите панель подтверждения изменений в правой части открепленного/открытого окна.",
     "configuration.commitWindowPosition.markdownDescription": "Положение панели фиксации в открепленном/вложенном окне IntelliGit. Параметр `auto` (по умолчанию) соответствует параметру `workbench.sideBar.location` в VS Code; `left` и `right` принудительно определяют сторону.",
+    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Currently only `gitlab` is supported. Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
     "view.fileCountBadge": "Измененные файлы",
     "command.createWorktree": "Создать worktree...",
     "command.deleteWorktree": "Удалить worktree",

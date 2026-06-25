@@ -54,6 +54,7 @@ async function signIn(store: CredentialStore): Promise<void> {
         vscode.window.showErrorMessage(vscode.l10n.t("Could not save token securely."));
         return;
     }
+    await refreshCommitCheckBadges();
     vscode.window.showInformationMessage(vscode.l10n.t("Signed in to {host}.", { host }));
 }
 
@@ -72,9 +73,24 @@ async function signOut(store: CredentialStore): Promise<void> {
         vscode.window.showErrorMessage(vscode.l10n.t("Could not clear the saved token."));
         return;
     }
+    await refreshCommitCheckBadges();
     vscode.window.showInformationMessage(
         vscode.l10n.t("Cleared the saved token for {host}.", { host }),
     );
+}
+
+/**
+ * Asks repository mode to re-render commit-check badges after a credential change.
+ *
+ * The `intelligit.commitChecks.refreshBadges` command is only registered while a
+ * repository is open, so its absence in no-repository mode is expected; the rejection
+ * is swallowed. Refreshing clears the coordinator cache, letting a freshly signed-in
+ * (or signed-out) host re-fetch its badge without a window reload.
+ */
+async function refreshCommitCheckBadges(): Promise<void> {
+    await vscode.commands
+        .executeCommand("intelligit.commitChecks.refreshBadges")
+        .then(undefined, () => undefined);
 }
 
 /**
