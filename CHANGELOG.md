@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-06-25
+
+### Added
+
+- Added `Sign In to Commit Checks Provider` and `Sign Out of Commit Checks Provider` commands that securely store and clear per-host access tokens in VS Code SecretStorage, laying the groundwork for self-hosted commit-check providers.
+- Added a `CredentialStore` that keys tokens by host with case-insensitive (lowercase) normalization so the same host resolves regardless of capitalization.
+
+### Changed
+
+- Refactored commit checks into a provider seam (`CommitChecksProvider`) and a `CommitChecksCoordinator` that resolves the matching provider per request and caches snapshots by commit hash, re-fetching pending and no-result states until they settle. GitHub remains the only active provider; this is the foundation for GitLab and Bitbucket support.
+
+### Tests
+
+- Added unit coverage for the credential store (host normalization, case-insensitivity, missing-host validation), the auth commands (sign-in/out flows, host validation, storage-failure handling), and the coordinator/provider seam; updated view-provider integration tests to exercise the real coordinator end-to-end.
+
 ## [0.13.8] - 2026-06-24
 
 ### Fixed
