@@ -13,10 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `Sign In to Commit Checks Provider` and `Sign Out of Commit Checks Provider` commands that securely store and clear per-host access tokens in VS Code SecretStorage, laying the groundwork for self-hosted commit-check providers.
 - Added a `CredentialStore` that keys tokens by host with case-insensitive (lowercase) normalization so the same host resolves regardless of capitalization.
 - Added the `intelligit.commitChecks.hosts` setting that maps self-hosted Git hostnames to a commit-check provider (currently `gitlab`), so self-hosted GitLab remotes show CI status badges. The map is normalized and passed to both the docked and undocked commit-graph coordinators.
+- Added a Bitbucket Cloud commit-checks provider that reads the `bitbucket.org` commit build-statuses API (following pagination up to a bounded page cap), authenticating with the per-host token from SecretStorage as an `Authorization: Bearer` access token. Every returned build status is aggregated (no CI/CD name allowlist, which could otherwise hide a failing Jenkins or SonarCloud run), Bitbucket states map into the shared check snapshot, and the token is passed only to the request header — never written to logs, error messages, or snapshots.
 
 ### Changed
 
-- Refactored commit checks into a provider seam (`CommitChecksProvider`) and a `CommitChecksCoordinator` that resolves the matching provider per request and caches snapshots by commit hash, re-fetching pending and no-result states until they settle. GitHub and GitLab are both active providers; the seam is the foundation for upcoming Bitbucket support.
+- Refactored commit checks into a provider seam (`CommitChecksProvider`) and a `CommitChecksCoordinator` that resolves the matching provider per request and caches snapshots by commit hash, re-fetching pending and no-result states until they settle. GitHub, GitLab, and Bitbucket Cloud are all active providers; the seam is the foundation for upcoming Bitbucket Data Center support.
 - Made the commit-checks "unavailable" summary provider-agnostic (`Checks unavailable` instead of `GitHub checks unavailable`) so the badge reads correctly for non-GitHub remotes.
 
 ### Fixed
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests
 
 - Added unit coverage for the GitLab provider (remote-URL parsing including non-`https` scheme rejection, request construction, status mapping, aggregate state, missing-token `unavailable` behavior, and token non-leakage across error paths), the credential store (host normalization, case-insensitivity, missing-host validation), the host-map config normalizer, the auth commands (sign-in/out flows, host validation, storage-failure handling), and the coordinator/provider seam; added view-provider integration tests that route a configured self-hosted GitLab remote through the real coordinator end-to-end.
+- Added unit coverage for the Bitbucket Cloud provider (remote-URL parsing including non-`https` scheme rejection and the single fixed host, request construction against the `api.bitbucket.org` host, `Authorization: Bearer` header carrying the stored token verbatim even when it contains a colon, pagination including the page cap, the full Bitbucket state-mapping table, aggregate state, the no-allowlist guarantee that a failing non-keyword tool such as Jenkins still reports `failure`, empty/malformed-response handling, missing-token `unavailable` behavior, and token redaction when a transport error echoes the token verbatim).
 
 ## [0.13.8] - 2026-06-24
 

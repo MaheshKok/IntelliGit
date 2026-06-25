@@ -68,6 +68,23 @@ export function summaryForItems(items: CommitCheckItem[], state: CommitCheckStat
     return summaryForState(state);
 }
 
+/**
+ * Removes every literal occurrence of a secret from an error message.
+ *
+ * The shared `getErrorMessage` helper only strips credentials embedded in URLs
+ * (`https://token@host`); it cannot know a provider's stored access token. A
+ * transport, proxy, or SDK error may echo a request header verbatim, so any
+ * error text bound for a snapshot must have the token redacted here first.
+ *
+ * @param message - The already display-safe error message.
+ * @param secret - The access token to remove; empty values are a no-op.
+ * @returns The message with the secret replaced by `***`.
+ */
+export function redactSecret(message: string, secret: string): string {
+    if (!secret) return message;
+    return message.split(secret).join("***");
+}
+
 /** Builds the terminal snapshot shown when checks cannot be retrieved. */
 export function unavailableSnapshot(hash: string, error: string): CommitChecksSnapshot {
     return {

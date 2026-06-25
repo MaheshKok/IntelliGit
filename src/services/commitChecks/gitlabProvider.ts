@@ -12,6 +12,7 @@ import {
     compactText,
     isCiCdCheckItem,
     readString,
+    redactSecret,
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
@@ -219,8 +220,9 @@ export class GitLabProvider implements CommitChecksProvider {
                     vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
                 );
             }
-            // getErrorMessage extracts the message without embedding the token.
-            return unavailableSnapshot(hash, message);
+            // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
+            // stored token in case a transport error echoed the PRIVATE-TOKEN header.
+            return unavailableSnapshot(hash, redactSecret(message, token));
         }
 
         if (!Array.isArray(raw)) {

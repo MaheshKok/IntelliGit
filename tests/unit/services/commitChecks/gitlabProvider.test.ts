@@ -559,6 +559,23 @@ describe("GitLabProvider.getChecks — HTTP errors", () => {
         expect(snapshot.summary).not.toContain(secretToken);
     });
 
+    it("redacts the token when a transport error echoes it verbatim", async () => {
+        // The earlier leak tests throw token-free errors, so they cannot prove the
+        // guarantee. This throws an error whose text embeds the stored PRIVATE-TOKEN
+        // and asserts it is scrubbed to *** before reaching the snapshot.
+        const secretToken = "glpat-LEAK";
+        const provider = new GitLabProvider(
+            vi.fn(async () => {
+                throw new Error("boom glpat-LEAK");
+            }),
+            storeWithToken("gitlab.com", secretToken),
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.error).not.toContain(secretToken);
+        expect(snapshot.error).toContain("***");
+        expect(snapshot.summary).not.toContain(secretToken);
+    });
+
     it("returns empty items array on HTTP error", async () => {
         const provider = new GitLabProvider(
             vi.fn(async () => {

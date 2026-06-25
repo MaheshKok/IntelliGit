@@ -27,6 +27,7 @@ import { isValidGitHash } from "../services/gitHelpers";
 import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
+import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
 import type { HostMap } from "../services/commitChecks/types";
@@ -114,7 +115,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
-            [new GitHubProvider(), new GitLabProvider(httpGetJson, credentialStore)],
+            [
+                new GitHubProvider(),
+                new GitLabProvider(httpGetJson, credentialStore),
+                new BitbucketCloudProvider(httpGetJson, credentialStore),
+            ],
             options.hostMap ?? {},
         );
     }
