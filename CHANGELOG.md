@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.9] - 2026-06-25
+
+### Fixed
+
+- Disabled the Commit action until a non-amend commit has both selected files and a non-empty commit message.
+- Increased the default Commit input area height and kept Commit before Push/Publish in the action row.
+
+### Tests
+
+- Added webview regression coverage for whitespace-only commit messages and Commit/Push action order.
+
 ## [0.13.8] - 2026-06-24
 
 ### Fixed
