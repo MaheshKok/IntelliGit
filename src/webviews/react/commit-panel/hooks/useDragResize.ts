@@ -14,6 +14,21 @@ export interface DragResizeOptions {
     onResize?: (height: number) => void;
 }
 
+const FALLBACK_MAX_HEIGHT = 500;
+
+function getMaxHeight(
+    containerRef: React.RefObject<HTMLDivElement | null>,
+    maxReservedHeight: number,
+): number {
+    return containerRef.current
+        ? containerRef.current.clientHeight - maxReservedHeight
+        : FALLBACK_MAX_HEIGHT;
+}
+
+function clampHeight(height: number, minHeight: number, maxHeight: number): number {
+    return Math.max(minHeight, Math.min(maxHeight, height));
+}
+
 /**
  * Provides vertical drag-to-resize state for the commit-panel bottom area.
  *
@@ -27,10 +42,12 @@ export function useDragResize(
     containerRef: React.RefObject<HTMLDivElement | null>,
     options: DragResizeOptions = {},
 ): DragResizeAPI {
-    const [height, setHeight] = useState(initialHeight);
+    const { maxReservedHeight = 60, onResize } = options;
+    const [height, setHeight] = useState(() =>
+        clampHeight(initialHeight, minHeight, getMaxHeight(containerRef, maxReservedHeight)),
+    );
     const dragging = useRef(false);
     const heightRef = useRef(height);
-    const { maxReservedHeight = 60, onResize } = options;
     const onResizeRef = useRef(onResize);
 
     useEffect(() => {
@@ -40,6 +57,17 @@ export function useDragResize(
     useEffect(() => {
         heightRef.current = height;
     }, [height]);
+
+    useEffect(() => {
+        const nextHeight = clampHeight(
+            heightRef.current,
+            minHeight,
+            getMaxHeight(containerRef, maxReservedHeight),
+        );
+        if (nextHeight !== heightRef.current) {
+            setHeight(nextHeight);
+        }
+    }, [containerRef, maxReservedHeight, minHeight]);
 
     const onMouseDown = useCallback(
         (e: React.MouseEvent) => {
@@ -51,10 +79,8 @@ export function useDragResize(
             const onMouseMove = (ev: MouseEvent) => {
                 if (!dragging.current) return;
                 const delta = startY - ev.clientY;
-                const maxH = containerRef.current
-                    ? containerRef.current.clientHeight - maxReservedHeight
-                    : 500;
-                const nextHeight = Math.max(minHeight, Math.min(maxH, startH + delta));
+                const maxH = getMaxHeight(containerRef, maxReservedHeight);
+                const nextHeight = clampHeight(startH + delta, minHeight, maxH);
                 setHeight(nextHeight);
                 onResizeRef.current?.(nextHeight);
             };

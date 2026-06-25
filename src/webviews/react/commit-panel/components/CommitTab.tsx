@@ -84,8 +84,8 @@ export function CommitTab({
 }: Props): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
-        140,
-        80,
+        170,
+        110,
         containerRef,
     );
     const vscode = getVsCodeApi();
