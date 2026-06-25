@@ -13,6 +13,7 @@ import {
     openJetBrainsMergeToolForFile,
 } from "../services/jetbrainsMergeService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
+import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -67,6 +68,8 @@ export async function activateRepositoryMode(
     let repoRoot = activeRepository.root;
     const executor = new GitExecutor(repoRoot);
     const gitOps = new GitOps(executor);
+    // Shared per-host token store for non-GitHub commit-check providers (e.g. GitLab).
+    const credentialStore = new CredentialStore(context.secrets);
 
     let currentBranches: Branch[] = [];
     let currentWorktrees: GitWorktree[] = [];
@@ -74,11 +77,16 @@ export async function activateRepositoryMode(
     let repoRootUri = vscode.Uri.file(repoRoot);
     let undocked: UndockedViewProvider | undefined;
 
-    const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps);
-    const sidebarGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, {
-        scriptFile: "webview-compactcommitgraph.js",
-        title: vscode.l10n.t("Graph"),
-    });
+    const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore);
+    const sidebarGraph = new CommitGraphViewProvider(
+        context.extensionUri,
+        gitOps,
+        credentialStore,
+        {
+            scriptFile: "webview-compactcommitgraph.js",
+            title: vscode.l10n.t("Graph"),
+        },
+    );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
     const commitPanel = new CommitPanelViewProvider(
         context.extensionUri,
@@ -319,6 +327,7 @@ export async function activateRepositoryMode(
             context.extensionUri,
             gitOps,
             repoRootUri,
+            credentialStore,
             context.workspaceState,
         );
         undocked.setRepositoryLabel(activeRepository.label);

@@ -280,6 +280,7 @@ class MockCommitGraphViewProvider {
     constructor(
         _uri: unknown,
         _gitOps: unknown,
+        _credentialStore: unknown,
         options?: { scriptFile?: string; title?: string },
     ) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -429,7 +430,7 @@ class MockUndockedViewProvider {
     private dockRequestedEmitter = new MockEventEmitter<void>();
     private disposeEmitter = new MockEventEmitter<void>();
 
-    constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown) {
+    constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown, _credentialStore: unknown) {
         updateLatestUndockedProvider(this);
     }
 

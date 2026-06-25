@@ -369,7 +369,7 @@
     "Checks skipped": "검사를 건너뛰었습니다",
     "Commit status": "커밋 상태",
     "GitHub check": "GitHub 검사",
-    "GitHub checks unavailable": "GitHub 검사를 사용할 수 없습니다",
+    "Checks unavailable": "검사를 사용할 수 없습니다",
     "No GitHub remote found.": "GitHub 원격 저장소를 찾을 수 없습니다.",
     "No checks found": "검사를 찾을 수 없습니다",
     "Keep this VS Code window open": "이 VS Code 창을 열어 둠",

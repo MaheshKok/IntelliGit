@@ -298,6 +298,17 @@ function makeGitOpsMock() {
     };
 }
 
+// Minimal CredentialStore double for the view providers' GitLab provider. The github
+// remote matches first in these tests, so GitLabProvider.getChecks (the only path that
+// reads a token) is never invoked; get() returning undefined keeps it inert if it were.
+function makeCredentialStore() {
+    return {
+        get: vi.fn(async () => undefined),
+        set: vi.fn(async () => undefined),
+        delete: vi.fn(async () => undefined),
+    };
+}
+
 async function flushVisibleRefresh<T>(promise: Promise<T>): Promise<T> {
     await vi.advanceTimersByTimeAsync(1_000);
     return promise;
@@ -551,6 +562,7 @@ describe("view providers integration", () => {
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             makeGitOpsMock() as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
             createMemento({
                 "intelligit.undockedColumnWidths": {
                     branchWidth: 400,
@@ -590,6 +602,7 @@ describe("view providers integration", () => {
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
             { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
             workspaceStore as unknown as object,
         );
         const selected: string[] = [];
@@ -774,6 +787,7 @@ describe("view providers integration", () => {
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
         );
         const webview = createWebviewView();
 
@@ -857,6 +871,7 @@ describe("view providers integration", () => {
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
         );
         const webview = createWebviewView();
         provider.resolveWebviewView(
@@ -896,6 +911,7 @@ describe("view providers integration", () => {
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
         );
         const webview = createWebviewView();
         provider.resolveWebviewView(
@@ -935,6 +951,7 @@ describe("view providers integration", () => {
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
         );
         const webview = createWebviewView();
         const selected = vi.fn();
@@ -980,6 +997,7 @@ describe("view providers integration", () => {
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
         );
         const webview = createWebviewView();
         const deleteBranches = vi.fn();
@@ -1032,6 +1050,7 @@ describe("view providers integration", () => {
         const provider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
             gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
         );
         const webview = createWebviewView();
         const deleteBranches = vi.fn();

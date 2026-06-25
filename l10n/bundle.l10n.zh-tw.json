@@ -369,7 +369,7 @@
     "Checks skipped": "檢查已略過",
     "Commit status": "提交狀態",
     "GitHub check": "GitHub 檢查",
-    "GitHub checks unavailable": "GitHub 檢查無法使用",
+    "Checks unavailable": "檢查無法使用",
     "No GitHub remote found.": "找不到 GitHub 遠端儲存庫。",
     "No checks found": "找不到檢查",
     "Keep this VS Code window open": "保持此 VS Code 視窗開啟",

@@ -26,6 +26,9 @@ import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
 import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
+import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
+import { httpGetJson } from "../services/commitChecks/http";
+import type { CredentialStore } from "../services/commitChecks/credentialStore";
 import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
@@ -100,13 +103,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
+        credentialStore: CredentialStore,
         private readonly options: {
             scriptFile?: string;
             title?: string;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
-        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [new GitHubProvider()]);
+        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [
+            new GitHubProvider(),
+            new GitLabProvider(httpGetJson, credentialStore),
+        ]);
     }
 
     /**

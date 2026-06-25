@@ -53,9 +53,8 @@ export class CommitChecksCoordinator {
     private async fetchFresh(hash: string): Promise<CommitChecksSnapshot> {
         const match = await this.resolveProvider();
         if (!match) {
-            // ponytail: reuse the existing localized GitHub string; Phase 0 is GitHub-only,
-            // so "no match" still means "no GitHub remote". Generalize in Phase 5.
-            return unavailableSnapshot(hash, vscode.l10n.t("No GitHub remote found."));
+            // No registered provider matched any remote (GitHub, GitLab, ...).
+            return unavailableSnapshot(hash, vscode.l10n.t("No supported remote found."));
         }
         try {
             return await match.provider.getChecks(match.ref, hash);

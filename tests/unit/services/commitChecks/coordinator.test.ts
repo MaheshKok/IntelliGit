@@ -67,7 +67,7 @@ describe("CommitChecksCoordinator", () => {
         const result = await coordinator.getChecks("abc1234");
 
         expect(result.state).toBe("unavailable");
-        expect(result.error).toBe("No GitHub remote found.");
+        expect(result.error).toBe("No supported remote found.");
         expect(provider.getChecks).not.toHaveBeenCalled();
     });
 

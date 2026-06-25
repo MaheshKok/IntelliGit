@@ -323,9 +323,9 @@ describe("webview ui smoke", () => {
                 checks={{
                     hash: "unavailable123",
                     state: "unavailable",
-                    summary: "GitHub checks unavailable",
+                    summary: "Checks unavailable",
                     items: [],
-                    error: "No GitHub remote found.",
+                    error: "No supported remote found.",
                 }}
                 onRequestChecks={onRequestChecks}
                 onOpenCheckUrl={onOpenCheckUrl}

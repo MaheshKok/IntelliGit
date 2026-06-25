@@ -369,7 +369,7 @@
     "Checks skipped": "Sprawdzenia pominięte",
     "Commit status": "Status commita",
     "GitHub check": "Sprawdzenie GitHub",
-    "GitHub checks unavailable": "Sprawdzenia GitHub są niedostępne",
+    "Checks unavailable": "Sprawdzenia niedostępne",
     "No GitHub remote found.": "Nie znaleziono zdalnego repozytorium GitHub.",
     "No checks found": "Nie znaleziono sprawdzeń",
     "Keep this VS Code window open": "Pozostaw to okno VS Code otwarte",

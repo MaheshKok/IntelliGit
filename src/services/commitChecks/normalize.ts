@@ -48,7 +48,7 @@ export function summaryForState(state: CommitCheckState): string {
         case "none":
             return vscode.l10n.t("No checks found");
         case "unavailable":
-            return vscode.l10n.t("GitHub checks unavailable");
+            return vscode.l10n.t("Checks unavailable");
         default:
             return vscode.l10n.t("Checks completed");
     }

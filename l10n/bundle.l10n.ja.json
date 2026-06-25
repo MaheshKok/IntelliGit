@@ -369,7 +369,7 @@
     "Checks skipped": "チェックはスキップされました",
     "Commit status": "コミット ステータス",
     "GitHub check": "GitHub チェック",
-    "GitHub checks unavailable": "GitHub チェックを利用できません",
+    "Checks unavailable": "チェックを利用できません",
     "No GitHub remote found.": "GitHub リモートが見つかりません。",
     "No checks found": "チェックが見つかりません",
     "Keep this VS Code window open": "この VS Code ウィンドウを開いたままにする",

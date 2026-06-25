@@ -30,6 +30,9 @@ import type {
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
 import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
+import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
+import { httpGetJson } from "../services/commitChecks/http";
+import type { CredentialStore } from "../services/commitChecks/credentialStore";
 import {
     assertGitHash,
     assertNullableString,
@@ -179,12 +182,16 @@ export class UndockedViewProvider {
         private readonly extensionUri: vscode.Uri,
         gitOps: GitOps,
         repoRootUri: vscode.Uri,
+        credentialStore: CredentialStore,
         private readonly workspaceState?: vscode.Memento,
     ) {
         this.gitOps = gitOps;
         this.repoRootUri = repoRootUri;
         this.iconTheme = new IconThemeService(this.extensionUri);
-        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [new GitHubProvider()]);
+        this.commitChecks = new CommitChecksCoordinator(this.gitOps, [
+            new GitHubProvider(),
+            new GitLabProvider(httpGetJson, credentialStore),
+        ]);
     }
     /**
      * Updates the panel title fragment used when the active repository label changes.
@@ -420,15 +427,6 @@ export class UndockedViewProvider {
                 break;
             case "deleteBranches":
                 this._onDeleteBranches.fire(this.assertBranchSelection(msg));
-                break;
-            case "worktreeAction":
-                if (!isWorktreeAction(assertString(msg.action, "action"))) {
-                    throw new Error("Invalid worktree action received from webview.");
-                }
-                this._onWorktreeAction.fire({
-                    action: msg.action,
-                    path: assertString(msg.path, "path"),
-                });
                 break;
             case "worktreeAction":
                 if (!isWorktreeAction(assertString(msg.action, "action"))) {
