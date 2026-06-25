@@ -466,7 +466,8 @@ function App(): React.ReactElement {
         }
     }, []);
 
-    const canCommit = cpState.isAmend || checkedPaths.size > 0;
+    const canCommit =
+        cpState.isAmend || (checkedPaths.size > 0 && cpState.commitMessage.trim().length > 0);
     const shouldPublishBranch = !cpState.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
         ? cpState.currentBranchName !== null

@@ -60,7 +60,8 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
-    const canCommit = state.isAmend || checkedPaths.size > 0;
+    const canCommit =
+        state.isAmend || (checkedPaths.size > 0 && state.commitMessage.trim().length > 0);
     const shouldPublishBranch = !state.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
         ? state.currentBranchName !== null

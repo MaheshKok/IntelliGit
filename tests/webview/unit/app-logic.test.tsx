@@ -508,7 +508,7 @@ describe("app logic coverage", () => {
         expect(capturedGroupByDir).toBe(true);
     });
 
-    it("CommitPanelApp disables commit when no files are checked", async () => {
+    it("CommitPanelApp disables commit when selected files have no commit message", async () => {
         const postMessage = vi.fn();
 
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
@@ -545,7 +545,7 @@ describe("app logic coverage", () => {
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles", () => ({
             useCheckedFiles: () => ({
-                checkedPaths: new Set<string>(),
+                checkedPaths: new Set(["src/a.ts"]),
                 toggleFile: vi.fn(),
                 toggleFolder: vi.fn(),
                 toggleSection: vi.fn(),

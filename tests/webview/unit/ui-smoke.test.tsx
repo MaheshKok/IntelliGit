@@ -415,6 +415,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Refresh");
         expect(html).toContain("Branch: main -&gt; origin/main");
         expect(html).not.toContain("Commit and Push");
+        expect(html.indexOf("Commit")).toBeLessThan(html.indexOf("Push"));
         expect(html).toContain("Stash (2)");
 
         const disabledCommitHtml = renderToStaticMarkup(
