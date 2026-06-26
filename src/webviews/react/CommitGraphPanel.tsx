@@ -160,6 +160,8 @@ export function CommitGraphPanel({
         }
     });
     const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
+    // Absent flag = enabled, so older host payloads keep rendering badges.
+    const [commitChecksEnabled, setCommitChecksEnabled] = useState(true);
     const loadingMore = useRef(false);
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -214,6 +216,7 @@ export function CommitGraphPanel({
                     break;
                 case "setBranches":
                     setBranches(data.branches);
+                    setCommitChecksEnabled(data.commitChecksEnabled ?? true);
                     setWorktrees(data.worktrees ?? []);
                     setBranchFolderIcon(data.folderIcon);
                     setBranchFolderExpandedIcon(data.folderExpandedIcon);
@@ -368,6 +371,12 @@ export function CommitGraphPanel({
         },
         [vscode],
     );
+    const handleSignInForCommitChecks = useCallback(
+        (host: string) => {
+            vscode.postMessage({ type: "signInForCommitChecks", host });
+        },
+        [vscode],
+    );
     return (
         <>
             <ThemeIconFontFaces fonts={iconFonts} />
@@ -421,8 +430,15 @@ export function CommitGraphPanel({
                             onLoadMore={handleLoadMore}
                             onCommitAction={handleCommitAction}
                             commitChecks={commitChecks}
-                            onRequestCommitChecks={handleRequestCommitChecks}
-                            onOpenCommitCheckUrl={handleOpenCommitCheckUrl}
+                            onRequestCommitChecks={
+                                commitChecksEnabled ? handleRequestCommitChecks : undefined
+                            }
+                            onOpenCommitCheckUrl={
+                                commitChecksEnabled ? handleOpenCommitCheckUrl : undefined
+                            }
+                            onSignInForCommitChecks={
+                                commitChecksEnabled ? handleSignInForCommitChecks : undefined
+                            }
                         />
                     </div>
                     <div

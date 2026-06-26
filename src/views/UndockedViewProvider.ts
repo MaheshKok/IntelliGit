@@ -28,7 +28,11 @@ import type {
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
-import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
+import {
+    CommitChecksCoordinator,
+    DEFAULT_COMMIT_CHECKS_TTL_MS,
+} from "../services/commitChecks/coordinator";
+import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -188,6 +192,7 @@ export class UndockedViewProvider {
         credentialStore: CredentialStore,
         private readonly workspaceState?: vscode.Memento,
         hostMap: HostMap = {},
+        private readonly commitChecksSettings?: CommitChecksSettings,
     ) {
         this.gitOps = gitOps;
         this.repoRootUri = repoRootUri;
@@ -195,12 +200,17 @@ export class UndockedViewProvider {
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             [
-                new GitHubProvider(),
-                new GitLabProvider(httpGetJson, credentialStore),
+                new GitHubProvider(httpGetJson, commitChecksSettings?.ciCdPattern),
+                new GitLabProvider(httpGetJson, credentialStore, commitChecksSettings?.ciCdPattern),
                 new BitbucketCloudProvider(httpGetJson, credentialStore),
                 new BitbucketServerProvider(httpGetJson, credentialStore),
             ],
             hostMap,
+            {
+                enabled: commitChecksSettings?.enabled,
+                providerEnabled: commitChecksSettings?.providers,
+                ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+            },
         );
     }
 
@@ -478,6 +488,12 @@ export class UndockedViewProvider {
                 break;
             case "openCommitCheckUrl":
                 await this.openExternalHttpUrl(assertString(msg.url, "url"));
+                break;
+            case "signInForCommitChecks":
+                await vscode.commands.executeCommand(
+                    "intelligit.commitChecks.signIn",
+                    assertString(msg.host, "host"),
+                );
                 break;
             case "dock":
                 this._onDockRequested.fire();
@@ -844,6 +860,7 @@ export class UndockedViewProvider {
             currentBranchBehind: currentBranchStatus.behind,
             currentBranchName: currentBranchStatus.name,
             currentBranchUpstream: currentBranchStatus.upstream,
+            commitChecksEnabled: this.commitChecksSettings?.enabled ?? true,
         });
     }
 

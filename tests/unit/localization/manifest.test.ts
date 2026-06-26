@@ -27,7 +27,9 @@ type ExtensionManifest = {
                 {
                     type?: string;
                     default?: unknown;
+                    scope?: string;
                     markdownDescription?: string;
+                    properties?: Record<string, { type?: string; default?: unknown }>;
                 }
             >;
         };
@@ -101,6 +103,76 @@ describe("extension manifest", () => {
         // meaningless and the normalizer drops them).
         expect(providerEnum).not.toContain("github");
         expect(providerEnum).not.toContain("bitbucket-cloud");
+    });
+
+    it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const setting =
+            manifest.contributes?.configuration?.properties?.["intelligit.commitChecks.enabled"];
+
+        expect(setting?.type).toBe("boolean");
+        expect(setting?.default).toBe(true);
+        // Window scope: read once at activation, takes effect after a reload (like hosts).
+        expect(setting?.scope).toBe("window");
+        expect(setting?.markdownDescription).toBe(
+            "%configuration.commitChecks.enabled.markdownDescription%",
+        );
+    });
+
+    it("contributes a per-provider commitChecks.providers object defaulting all to true", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const setting =
+            manifest.contributes?.configuration?.properties?.["intelligit.commitChecks.providers"];
+
+        expect(setting?.type).toBe("object");
+        expect(setting?.scope).toBe("window");
+        // The default object must enable every provider id the runtime understands, so an
+        // empty/absent setting and the documented default agree.
+        expect(setting?.default).toEqual({
+            github: true,
+            gitlab: true,
+            "bitbucket-cloud": true,
+            "bitbucket-server": true,
+        });
+        expect(setting?.markdownDescription).toBe(
+            "%configuration.commitChecks.providers.markdownDescription%",
+        );
+    });
+
+    it("contributes a commitChecks.ciCdFilter string defaulting to empty (built-in pattern)", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const setting =
+            manifest.contributes?.configuration?.properties?.["intelligit.commitChecks.ciCdFilter"];
+
+        expect(setting?.type).toBe("string");
+        expect(setting?.default).toBe("");
+        expect(setting?.scope).toBe("window");
+        expect(setting?.markdownDescription).toBe(
+            "%configuration.commitChecks.ciCdFilter.markdownDescription%",
+        );
+    });
+
+    it("defines manifest NLS keys for the three new commitChecks settings", () => {
+        const nls = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.nls.json"), "utf8"),
+        ) as Record<string, string>;
+
+        for (const key of [
+            "configuration.commitChecks.enabled.markdownDescription",
+            "configuration.commitChecks.providers.markdownDescription",
+            "configuration.commitChecks.ciCdFilter.markdownDescription",
+        ]) {
+            expect(typeof nls[key]).toBe("string");
+            expect(nls[key].length).toBeGreaterThan(0);
+        }
+        // Each description must tell the user the value is read at activation.
+        expect(nls["configuration.commitChecks.enabled.markdownDescription"]).toMatch(/reload/i);
     });
 
     it("gates the undock view title button with a visible-by-default setting", () => {

@@ -14,6 +14,8 @@ interface Props {
     checks?: CommitChecksValue;
     onRequestChecks: (hash: string) => void;
     onOpenCheckUrl: (url: string) => void;
+    /** Sign in to the snapshot's `signInHost` from the popover (recoverable `unavailable` only). */
+    onSignIn?: (host: string) => void;
 }
 
 const PANEL_MAX_WIDTH = 420;
@@ -26,6 +28,7 @@ export function CommitChecksButton({
     checks,
     onRequestChecks,
     onOpenCheckUrl,
+    onSignIn,
 }: Props): React.ReactElement | null {
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
@@ -113,6 +116,7 @@ export function CommitChecksButton({
                         checks={checks}
                         position={position}
                         onOpenCheckUrl={onOpenCheckUrl}
+                        onSignIn={onSignIn}
                     />,
                     document.body,
                 )}
@@ -125,13 +129,17 @@ function CommitChecksPanel({
     checks,
     position,
     onOpenCheckUrl,
+    onSignIn,
 }: {
     panelRef: React.RefObject<HTMLDivElement>;
     checks?: CommitChecksValue;
     position: { left: number; top: number; placement: "above" | "below" };
     onOpenCheckUrl: (url: string) => void;
+    onSignIn?: (host: string) => void;
 }): React.ReactElement {
     const snapshot = checks && checks !== "loading" ? checks : undefined;
+    const signInHost =
+        snapshot && snapshot.state === "unavailable" ? snapshot.signInHost : undefined;
     return (
         <div
             ref={panelRef}
@@ -175,6 +183,15 @@ function CommitChecksPanel({
                 ) : (
                     <div style={emptyStyle}>
                         {snapshot?.error ?? snapshot?.summary ?? t("commit.checks.none")}
+                        {signInHost && onSignIn ? (
+                            <button
+                                type="button"
+                                style={signInButtonStyle}
+                                onClick={() => onSignIn(signInHost)}
+                            >
+                                {t("commit.checks.signIn")}
+                            </button>
+                        ) : null}
                     </div>
                 )}
             </div>
@@ -329,4 +346,18 @@ const descriptionStyle: React.CSSProperties = {
 const emptyStyle: React.CSSProperties = {
     color: JETBRAINS_UI.color.muted,
     fontSize: 12,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 8,
+};
+
+const signInButtonStyle: React.CSSProperties = {
+    border: "none",
+    borderRadius: 4,
+    background: "var(--vscode-button-background, #2f6fde)",
+    color: "var(--vscode-button-foreground, #ffffff)",
+    padding: "4px 12px",
+    fontSize: 12,
+    cursor: "pointer",
 };

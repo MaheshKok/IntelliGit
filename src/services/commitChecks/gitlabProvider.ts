@@ -147,10 +147,14 @@ export class GitLabProvider implements CommitChecksProvider {
      *
      * @param fetchJson - The HTTP boundary; pass `httpGetJson` in production.
      * @param store - The credential store used to retrieve PRIVATE-TOKENs.
+     * @param ciCdPattern - Optional include pattern from `commitChecks.ciCdFilter`; when
+     *   omitted the built-in `CICD_CHECK_PATTERN` is used. The review-bot exclusion always
+     *   applies regardless of this override.
      */
     constructor(
         private readonly fetchJson: FetchJson,
         private readonly store: CredentialStore,
+        private readonly ciCdPattern?: RegExp,
     ) {}
 
     /**
@@ -202,6 +206,7 @@ export class GitLabProvider implements CommitChecksProvider {
             return unavailableSnapshot(
                 hash,
                 vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+                host,
             );
         }
 
@@ -218,6 +223,7 @@ export class GitLabProvider implements CommitChecksProvider {
                 return unavailableSnapshot(
                     hash,
                     vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+                    host,
                 );
             }
             // getErrorMessage redacts URL-embedded credentials; redactSecret strips the
@@ -229,7 +235,9 @@ export class GitLabProvider implements CommitChecksProvider {
             return noneSnapshot(hash);
         }
 
-        const items = (raw as GitLabStatus[]).map(toStatusItem).filter(isCiCdCheckItem);
+        const items = (raw as GitLabStatus[])
+            .map(toStatusItem)
+            .filter((item) => isCiCdCheckItem(item, this.ciCdPattern));
         const state = aggregateState(items);
         return {
             hash,

@@ -420,6 +420,7 @@
   "Enter the host name (e.g. gitlab.example.com)": "Enter the host name (e.g. gitlab.example.com)",
   "Enter your access token for {host}": "Enter your access token for {host}",
   "Host is required": "Host is required",
+  "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
   "Select a provider to sign in to": "Select a provider to sign in to",
   "Select a provider to sign out of": "Select a provider to sign out of",
   "Signed in to {host}.": "Signed in to {host}.",

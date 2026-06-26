@@ -502,3 +502,57 @@ describe("BitbucketServerProvider.getChecks — token non-leakage", () => {
         expect(snapshot.summary).not.toContain(secretToken);
     });
 });
+
+// BitbucketServerProvider.getChecks — signInHost (actionable sign-in target)
+
+describe("BitbucketServerProvider.getChecks — signInHost", () => {
+    it("sets signInHost to the mapped server host when no token is stored", async () => {
+        const provider = new BitbucketServerProvider(vi.fn(), emptyStore());
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+        expect(snapshot.signInHost).toBe(SERVER_HOST);
+    });
+
+    it("sets signInHost to the mapped server host on HTTP 401", async () => {
+        const provider = new BitbucketServerProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 401: Unauthorized");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+        expect(snapshot.signInHost).toBe(SERVER_HOST);
+    });
+
+    it("sets signInHost to the mapped server host on HTTP 403", async () => {
+        const provider = new BitbucketServerProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 403: Forbidden");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+        expect(snapshot.signInHost).toBe(SERVER_HOST);
+    });
+
+    it("leaves signInHost unset on HTTP 500 (not a sign-in problem)", async () => {
+        const provider = new BitbucketServerProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 500: Internal Server Error");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+        expect(snapshot.signInHost).toBeUndefined();
+    });
+
+    it("leaves signInHost unset on a network error (not a sign-in problem)", async () => {
+        const provider = new BitbucketServerProvider(
+            vi.fn(async () => {
+                throw new Error("ECONNRESET");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+        expect(snapshot.signInHost).toBeUndefined();
+    });
+});

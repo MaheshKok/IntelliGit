@@ -23,21 +23,32 @@ interface HostPick extends vscode.QuickPickItem {
 export function registerCommitChecksAuthCommands(context: vscode.ExtensionContext): void {
     const store = new CredentialStore(context.secrets);
     context.subscriptions.push(
-        vscode.commands.registerCommand("intelligit.commitChecks.signIn", () => signIn(store)),
+        vscode.commands.registerCommand("intelligit.commitChecks.signIn", (host?: string) =>
+            signIn(store, host),
+        ),
         vscode.commands.registerCommand("intelligit.commitChecks.signOut", () => signOut(store)),
     );
 }
 
 /**
- * Prompts for a host and access token, then stores the token for that host.
+ * Prompts for an access token and stores it for a host, optionally skipping the picker.
  *
- * Cancelling either prompt aborts without changing stored credentials. A storage
- * failure surfaces a generic message so the token value is never shown.
+ * When `presetHost` is a syntactically valid host (e.g. supplied by the badge "Sign in"
+ * action), the host picker is skipped and the token prompt targets that host directly.
+ * An absent or malformed `presetHost` falls back to the picker so a palette invocation —
+ * or a host that fails validation — can still sign in safely. Cancelling either prompt
+ * aborts without changing stored credentials; a storage failure surfaces a generic
+ * message so the token value is never shown.
  *
  * @param store - The credential store that receives the token.
+ * @param presetHost - Optional host to sign into without showing the picker; validated
+ *   with `validateHost` before use, so an invalid value is ignored, not trusted.
  */
-async function signIn(store: CredentialStore): Promise<void> {
-    const host = await pickHost(vscode.l10n.t("Select a provider to sign in to"));
+async function signIn(store: CredentialStore, presetHost?: string): Promise<void> {
+    const host =
+        presetHost && validateHost(presetHost) === undefined
+            ? presetHost.trim()
+            : await pickHost(vscode.l10n.t("Select a provider to sign in to"));
     if (!host) return;
 
     const token = await vscode.window.showInputBox({

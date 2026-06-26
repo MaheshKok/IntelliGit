@@ -392,10 +392,19 @@ Make it configurable, discoverable, localized, and API-friendly.
    localization CSV and regenerate with `bun run l10n:import` (then `l10n:validate`
    / `l10n:audit`); do not hand-edit the generated locale JSON.
 4. Rate limits / caching: keep the coordinator's per-hash cache. Terminal states are
-   cached indefinitely (already the Phase 0 rule). Non-terminal (`pending`/`none`)
-   states re-fetch on each 15s poll, but bound that with a short TTL so a hot commit
-   is not hammered; and if a response carries `Retry-After` or a rate-limit-exhausted
-   signal, return the cached snapshot instead of re-requesting until it clears.
+   cached indefinitely (already the Phase 0 rule). Non-terminal (`pending`/`none`) and
+   recoverable `unavailable` states re-fetch on each 15s poll, but a coordinator TTL
+   (`DEFAULT_COMMIT_CHECKS_TTL_MS`, 15s) bounds that so a hot commit is not hammered.
+
+   **Approved scope deviation (was P1):** this phase ships a fixed TTL only — it does
+   NOT parse a server-sent `Retry-After` / rate-limit-reset header. The TTL is an
+   *approximation* of backoff: while a host stays rate-limited (HTTP 429 →
+   `unavailable`), the coordinator still re-fetches once per TTL; it does not honor a
+   server clear-time. This is a throttle ("at most one request per TTL"), not literal
+   `Retry-After` handling. Literal `Retry-After` is a tracked follow-up, not a Phase 5
+   deliverable. Upgrade path: thread the response headers through the `FetchJson` /
+   `httpGetJson` contract so the coordinator can store and honor a per-host
+   `retryAfter` timestamp; until then the fixed TTL is the only backoff signal.
 5. `docs/commit-checks/README.md`: setup (tokens, scopes, self-hosted host mapping).
 
 ### What to check
@@ -414,11 +423,13 @@ and confirm the sign-in affordance works end to end.
 - Coordinator tests for settings gating (enabled=false -> never calls a provider;
   host map drives selection; per-provider toggle respected).
 - A custom `ciCdFilter` regex changes which items are kept.
-- TTL/rate-limit (the point is the non-terminal path — terminal caching is already
-  covered by the Phase 0 coordinator tests): with a fake clock, a second call for a
-  `pending` state within the TTL serves the cache (provider NOT called again); once
-  the TTL elapses, the same `pending` state DOES re-fetch. Separately, a
-  `Retry-After` response serves the cached snapshot instead of re-fetching immediately.
+- TTL (the point is the non-terminal path — terminal caching is already covered by the
+  Phase 0 coordinator tests): with a fake clock, a second call for a `pending` state
+  within the TTL serves the cache (provider NOT called again); once the TTL elapses, the
+  same `pending` state DOES re-fetch. A simulated 429 (`unavailable`) behaves the same —
+  cache-served within the TTL, re-fetched (auto-recover) after it. There is NO
+  `Retry-After` test because the implementation does not read that header (see the
+  approved scope deviation above); the TTL is the only backoff signal.
 
 ### Done
 Section 0 green; settings honored; localized; sign-in reachable from a failed badge.

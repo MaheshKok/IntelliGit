@@ -690,6 +690,48 @@
                         ]
                     },
                     "markdownDescription": "%configuration.commitChecks.hosts.markdownDescription%"
+                },
+                "intelligit.commitChecks.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "markdownDescription": "%configuration.commitChecks.enabled.markdownDescription%"
+                },
+                "intelligit.commitChecks.providers": {
+                    "type": "object",
+                    "default": {
+                        "github": true,
+                        "gitlab": true,
+                        "bitbucket-cloud": true,
+                        "bitbucket-server": true
+                    },
+                    "scope": "window",
+                    "properties": {
+                        "github": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "gitlab": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "bitbucket-cloud": {
+                            "type": "boolean",
+                            "default": true
+                        },
+                        "bitbucket-server": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    },
+                    "additionalProperties": false,
+                    "markdownDescription": "%configuration.commitChecks.providers.markdownDescription%"
+                },
+                "intelligit.commitChecks.ciCdFilter": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "window",
+                    "markdownDescription": "%configuration.commitChecks.ciCdFilter.markdownDescription%"
                 }
             }
         }

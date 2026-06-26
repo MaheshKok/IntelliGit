@@ -219,7 +219,7 @@ describe("webview ui smoke", () => {
             />,
         );
 
-        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        expect(document.body.textContent).not.toContain("Commit Checks");
         const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
         const previousInnerHeight = window.innerHeight;
         Object.defineProperty(window, "innerHeight", { configurable: true, value: 320 });
@@ -237,20 +237,20 @@ describe("webview ui smoke", () => {
         act(() => {
             trigger.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
         });
-        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        expect(document.body.textContent).not.toContain("Commit Checks");
 
         act(() => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(document.body.textContent).toContain("GitHub Commit Checks");
+        expect(document.body.textContent).toContain("Commit Checks");
         expect(document.body.textContent).toContain("GitGuardian Security Checks");
         expect(document.body.textContent).toContain("Code Review Skipped");
         expect(document.body.textContent).not.toContain("All checks passed");
         const panel = Array.from(document.body.querySelectorAll("div")).find(
             (node): node is HTMLDivElement =>
                 node.style.position === "fixed" &&
-                (node.textContent?.includes("GitHub Commit Checks") ?? false),
+                (node.textContent?.includes("Commit Checks") ?? false),
         );
         expect(panel?.style.transform).toBe("translateY(-100%)");
         expect(panel?.style.width).toBe("max-content");
@@ -273,27 +273,27 @@ describe("webview ui smoke", () => {
         act(() => {
             document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
         });
-        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        expect(document.body.textContent).not.toContain("Commit Checks");
 
         act(() => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(document.body.textContent).toContain("GitHub Commit Checks");
+        expect(document.body.textContent).toContain("Commit Checks");
 
         act(() => {
             window.dispatchEvent(new Event("blur"));
         });
-        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        expect(document.body.textContent).not.toContain("Commit Checks");
 
         act(() => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(document.body.textContent).toContain("GitHub Commit Checks");
+        expect(document.body.textContent).toContain("Commit Checks");
 
         act(() => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
-        expect(document.body.textContent).not.toContain("GitHub Commit Checks");
+        expect(document.body.textContent).not.toContain("Commit Checks");
         rectSpy.mockRestore();
         Object.defineProperty(window, "innerHeight", {
             configurable: true,
@@ -346,6 +346,91 @@ describe("webview ui smoke", () => {
         expect(spinnerAnimation?.getAttribute("type")).toBe("rotate");
         expect(spinnerAnimation?.getAttribute("repeatCount")).toBe("indefinite");
         unmount(pendingMounted.root, pendingMounted.container);
+    });
+
+    it("offers a host-targeted Sign in button only for a recoverable unavailable snapshot", () => {
+        const onRequestChecks = vi.fn();
+        const onOpenCheckUrl = vi.fn();
+        const onSignIn = vi.fn();
+
+        const openPanel = (container: HTMLElement): void => {
+            const trigger = container.querySelector("button") as HTMLButtonElement;
+            act(() => {
+                trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+        };
+        const signInButton = (): HTMLButtonElement | undefined =>
+            Array.from(document.body.querySelectorAll("button")).find(
+                (button) => button.textContent === "Sign in",
+            );
+
+        // 1) unavailable + signInHost -> Sign in button targets that exact host.
+        const recoverable = mount(
+            <CommitChecksButton
+                hash="needauth1"
+                checks={{
+                    hash: "needauth1",
+                    state: "unavailable",
+                    summary: "Sign in required",
+                    items: [],
+                    error: "No token stored for gitlab.acme.com.",
+                    signInHost: "gitlab.acme.com",
+                }}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+                onSignIn={onSignIn}
+            />,
+        );
+        openPanel(recoverable.container);
+        const button = signInButton();
+        expect(button).toBeDefined();
+        act(() => {
+            button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(onSignIn).toHaveBeenCalledWith("gitlab.acme.com");
+        expect(onOpenCheckUrl).not.toHaveBeenCalled();
+        unmount(recoverable.root, recoverable.container);
+
+        // 2) unavailable WITHOUT signInHost (network error) -> no Sign in button.
+        onSignIn.mockClear();
+        const networkError = mount(
+            <CommitChecksButton
+                hash="neterr1"
+                checks={{
+                    hash: "neterr1",
+                    state: "unavailable",
+                    summary: "Checks unavailable",
+                    items: [],
+                    error: "Network request failed.",
+                }}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+                onSignIn={onSignIn}
+            />,
+        );
+        openPanel(networkError.container);
+        expect(signInButton()).toBeUndefined();
+        unmount(networkError.root, networkError.container);
+
+        // 3) terminal success (even if a stray signInHost leaks in) -> no Sign in button.
+        const terminal = mount(
+            <CommitChecksButton
+                hash="ok1"
+                checks={{
+                    hash: "ok1",
+                    state: "success",
+                    summary: "All checks passed",
+                    items: [],
+                    signInHost: "gitlab.acme.com",
+                }}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+                onSignIn={onSignIn}
+            />,
+        );
+        openPanel(terminal.container);
+        expect(signInButton()).toBeUndefined();
+        unmount(terminal.root, terminal.container);
     });
 
     it("renders section/folder/shelf/toolbar/tab and commit area layouts", () => {

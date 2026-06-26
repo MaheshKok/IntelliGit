@@ -64,6 +64,7 @@ interface Props {
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
     onRequestCommitChecks?: (hash: string) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
+    onSignInForCommitChecks?: (host: string) => void;
     showSearch?: boolean;
     showAuthorDate?: boolean;
     headerLabel?: string;
@@ -90,6 +91,7 @@ export function CommitList({
     commitChecks,
     onRequestCommitChecks,
     onOpenCommitCheckUrl,
+    onSignInForCommitChecks,
     showSearch = true,
     showAuthorDate = true,
     headerLabel,
@@ -223,8 +225,13 @@ export function CommitList({
                 continue;
             }
             if (checks === "loading") continue;
-            if (checks.state === "pending") {
-                // CI is running; keep polling and drop any "no checks yet" budget.
+            if (checks.state === "pending" || checks.state === "unavailable") {
+                // pending: CI is running. unavailable: recoverable (a missing token to
+                // sign in for, or a transient host error such as a 429 that may clear).
+                // Both re-poll unbounded and drop any "no checks yet" budget — the
+                // coordinator TTL throttles this to at most one fetch per TTL.
+                // ponytail: unbounded by design; if visible-row volume ever makes the
+                // message count matter, add a budget like the "none" path below.
                 noneCheckRetries.current.delete(commit.hash);
                 retryHashes.push(commit.hash);
             } else if (checks.state === "none" && !isUnpushedCommit(commit.hash)) {
@@ -344,6 +351,7 @@ export function CommitList({
                                     checks={commitChecks?.get(commit.hash)}
                                     onRequestChecks={onRequestCommitChecks}
                                     onOpenCheckUrl={onOpenCommitCheckUrl}
+                                    onSignIn={onSignInForCommitChecks}
                                 />
                             );
                         })}

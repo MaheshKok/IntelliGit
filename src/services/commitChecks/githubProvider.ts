@@ -60,11 +60,12 @@ export function normalizeGithubChecks(
     hash: string,
     checkRunsResponse: unknown,
     statusesResponse: unknown,
+    ciCdPattern?: RegExp,
 ): CommitChecksSnapshot {
     const items = [
         ...readCheckRuns(checkRunsResponse).map(toCheckRunItem),
         ...readStatuses(statusesResponse).map(toStatusItem),
-    ].filter(isCiCdCheckItem);
+    ].filter((item) => isCiCdCheckItem(item, ciCdPattern));
     const state = aggregateState(items);
     return {
         hash,
@@ -78,8 +79,18 @@ export function normalizeGithubChecks(
 export class GitHubProvider implements CommitChecksProvider {
     readonly id = "github" as const;
 
-    /** Accepts an injected HTTP boundary; defaults to the real HTTPS helper in production. */
-    constructor(private readonly fetchJson: FetchJson = httpGetJson) {}
+    /**
+     * Accepts an injected HTTP boundary and an optional CI/CD include override.
+     *
+     * @param fetchJson - The HTTP boundary; defaults to the real HTTPS helper in production.
+     * @param ciCdPattern - Optional include pattern from `commitChecks.ciCdFilter`; when
+     *   omitted the built-in `CICD_CHECK_PATTERN` is used. The review-bot exclusion always
+     *   applies regardless of this override.
+     */
+    constructor(
+        private readonly fetchJson: FetchJson = httpGetJson,
+        private readonly ciCdPattern?: RegExp,
+    ) {}
 
     /** Matches any github.com remote; the host map is not consulted for GitHub. */
     match(remoteUrl: string, _hostMap: HostMap): ProviderRepoRef | null {
@@ -127,6 +138,7 @@ export class GitHubProvider implements CommitChecksProvider {
             hash,
             checkRunsResult.status === "fulfilled" ? checkRunsResult.value : undefined,
             statusesResult.status === "fulfilled" ? statusesResult.value : undefined,
+            this.ciCdPattern,
         );
     }
 }

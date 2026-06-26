@@ -232,5 +232,6 @@
     "common.sync": "Синхронизировать",
     "commit.action.publishAndPush": "Опубликовать и отправить",
     "commit.branchIndicator.local": "Ветка: {branch}",
-    "commit.branchIndicator.tracking": "Ветка: {branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "Ветка: {branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }

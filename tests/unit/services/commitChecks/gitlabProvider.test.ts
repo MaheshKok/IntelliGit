@@ -825,3 +825,114 @@ describe("GitLabProvider.getChecks — snapshot shape", () => {
         expect(item).toBeDefined();
     });
 });
+
+// ---------------------------------------------------------------------------
+// GitLabProvider.getChecks — signInHost (popover "Sign in" affordance)
+// ---------------------------------------------------------------------------
+
+describe("GitLabProvider.getChecks — signInHost", () => {
+    it("sets signInHost to the ref host when no token is stored", async () => {
+        const provider = new GitLabProvider(vi.fn(), emptyStore());
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.signInHost).toBe("gitlab.com");
+    });
+
+    it("sets signInHost on HTTP 401", async () => {
+        const provider = new GitLabProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 401: Unauthorized");
+            }),
+            storeWithToken("gitlab.com", "glpat-abc"),
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.signInHost).toBe("gitlab.com");
+    });
+
+    it("sets signInHost on HTTP 403", async () => {
+        const provider = new GitLabProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 403: Forbidden");
+            }),
+            storeWithToken("gitlab.com", "glpat-abc"),
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.signInHost).toBe("gitlab.com");
+    });
+
+    it("uses the actual self-hosted host, not a hardcoded gitlab.com", async () => {
+        const selfHostedRef = {
+            host: "gitlab.acme.com",
+            owner: "group",
+            repo: "repo",
+        } as ProviderRepoRef;
+        const provider = new GitLabProvider(vi.fn(), emptyStore());
+        const snapshot = await provider.getChecks(selfHostedRef, "abc1234");
+        expect(snapshot.signInHost).toBe("gitlab.acme.com");
+    });
+
+    it("does NOT set signInHost for a generic network error (sign-in cannot fix it)", async () => {
+        const provider = new GitLabProvider(
+            vi.fn(async () => {
+                throw new Error("ECONNRESET");
+            }),
+            storeWithToken("gitlab.com", "glpat-abc"),
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.signInHost).toBeUndefined();
+    });
+
+    it("does NOT set signInHost for HTTP 500", async () => {
+        const provider = new GitLabProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 500: Internal Server Error");
+            }),
+            storeWithToken("gitlab.com", "glpat-abc"),
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.signInHost).toBeUndefined();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GitLabProvider — custom ciCdPattern (commitChecks.ciCdFilter override)
+// ---------------------------------------------------------------------------
+
+describe("GitLabProvider — custom ciCdPattern", () => {
+    it("includes a row the default would drop when the custom include pattern matches it", async () => {
+        // "sonarcloud" is not in the built-in CI/CD pattern; a custom filter admits it.
+        const rows = [{ name: "sonarcloud", status: "success" }];
+        const fetchJson = fetchReturning(() => rows);
+        const provider = new GitLabProvider(
+            fetchJson,
+            storeWithToken("gitlab.com", "glpat-abc"),
+            /sonarcloud/i,
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.items.find((i) => i.name === "sonarcloud")).toBeDefined();
+    });
+
+    it("drops a row the built-in pattern keeps when the custom pattern excludes it", async () => {
+        const rows = [{ name: "build", status: "success" }];
+        const fetchJson = fetchReturning(() => rows);
+        const provider = new GitLabProvider(
+            fetchJson,
+            storeWithToken("gitlab.com", "glpat-abc"),
+            /deploy/i, // narrow include: "build" no longer qualifies
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.items.find((i) => i.name === "build")).toBeUndefined();
+    });
+
+    it("still excludes review bots even when the custom pattern would admit them", async () => {
+        const rows = [{ name: "coderabbit", status: "failed" }];
+        const fetchJson = fetchReturning(() => rows);
+        const provider = new GitLabProvider(
+            fetchJson,
+            storeWithToken("gitlab.com", "glpat-abc"),
+            /coderabbit/i,
+        );
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+        expect(snapshot.items.find((i) => i.name === "coderabbit")).toBeUndefined();
+    });
+});

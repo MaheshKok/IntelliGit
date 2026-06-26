@@ -12,10 +12,24 @@ export const CICD_CHECK_PATTERN =
 /** Matches code-review bots that should be excluded from the CI/CD badge. */
 export const REVIEW_CHECK_PATTERN = /\b(code\s*review|coderabbit|reviewdog|qodo)\b/i;
 
-/** Keeps CI/CD checks while excluding code-review bot rows. */
-export function isCiCdCheckItem(item: CommitCheckItem): boolean {
+/**
+ * Keeps CI/CD checks while excluding code-review bot rows.
+ *
+ * The include pattern is overridable so a user-supplied `commitChecks.ciCdFilter` can
+ * widen or narrow which rows count as CI/CD. The review-bot exclusion is unconditional:
+ * a row matching `REVIEW_CHECK_PATTERN` is dropped regardless of the include pattern, so
+ * a custom filter can never resurface a code-review bot into the CI/CD badge.
+ *
+ * @param item - The check row to test (name and description are matched).
+ * @param pattern - Include pattern for CI/CD names; defaults to the built-in pattern.
+ * @returns True when the row is a CI/CD check and not a code-review bot.
+ */
+export function isCiCdCheckItem(
+    item: CommitCheckItem,
+    pattern: RegExp = CICD_CHECK_PATTERN,
+): boolean {
     const text = `${item.name} ${item.description}`;
-    return CICD_CHECK_PATTERN.test(text) && !REVIEW_CHECK_PATTERN.test(text);
+    return pattern.test(text) && !REVIEW_CHECK_PATTERN.test(text);
 }
 
 /** Reduces per-check states into one badge state, failing closed on any failure-like state. */
@@ -85,14 +99,28 @@ export function redactSecret(message: string, secret: string): string {
     return message.split(secret).join("***");
 }
 
-/** Builds the terminal snapshot shown when checks cannot be retrieved. */
-export function unavailableSnapshot(hash: string, error: string): CommitChecksSnapshot {
+/**
+ * Builds the terminal snapshot shown when checks cannot be retrieved.
+ *
+ * @param hash - The commit hash the snapshot describes.
+ * @param error - The display-safe (token-redacted) error message.
+ * @param signInHost - The host to sign into, set only when a missing/rejected token is
+ *   the cause so the popover can offer a "Sign in" button; a blank value is treated as
+ *   no host. Omit for generic network/HTTP errors.
+ * @returns An immutable `unavailable` snapshot, with `signInHost` set only when actionable.
+ */
+export function unavailableSnapshot(
+    hash: string,
+    error: string,
+    signInHost?: string,
+): CommitChecksSnapshot {
     return {
         hash,
         state: "unavailable",
         summary: summaryForState("unavailable"),
         items: [],
         error,
+        signInHost: signInHost || undefined,
     };
 }
 

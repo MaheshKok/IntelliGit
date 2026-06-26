@@ -237,6 +237,58 @@ describe("signIn", () => {
         expect(validateHost("gitlab.example.com")).toBeUndefined();
         expect(validateHost("gitlab.example.com:8443")).toBeUndefined();
     });
+
+    it("skips the host picker and prompts for a token when a valid host arg is passed", async () => {
+        const { context, map, store } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        // No pickCloud(): the picker must not be consulted when a host is supplied.
+        mocks.showInputBox.mockResolvedValueOnce("glpat-self-hosted");
+
+        await mocks.commandHandlers.get(SIGN_IN)!("gitlab.acme.com");
+
+        expect(mocks.showQuickPick).not.toHaveBeenCalled();
+        expect(store).toHaveBeenCalledWith(`${KEY_PREFIX}gitlab.acme.com`, "glpat-self-hosted");
+        expect(map.get(`${KEY_PREFIX}gitlab.acme.com`)).toBe("glpat-self-hosted");
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith("Signed in to gitlab.acme.com.");
+    });
+
+    it("targets the token prompt at the passed host", async () => {
+        const { context } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        mocks.showInputBox.mockResolvedValueOnce("tok");
+
+        await mocks.commandHandlers.get(SIGN_IN)!("bitbucket.acme.com");
+
+        const promptText = mocks.showInputBox.mock.calls[0]?.[0]?.prompt as string;
+        expect(promptText).toContain("bitbucket.acme.com");
+    });
+
+    it("still shows the picker when invoked with no host arg (palette path)", async () => {
+        const { context, map } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        pickCloud("gitlab.com");
+        mocks.showInputBox.mockResolvedValueOnce("glpat-palette");
+
+        await mocks.commandHandlers.get(SIGN_IN)!();
+
+        expect(mocks.showQuickPick).toHaveBeenCalledTimes(1);
+        expect(map.get(`${KEY_PREFIX}gitlab.com`)).toBe("glpat-palette");
+    });
+
+    it("rejects an invalid passed host and falls back to the picker", async () => {
+        const { context, map, store } = makeContext();
+        registerCommitChecksAuthCommands(context);
+        // A malformed host (URL with scheme/path) must not become a secret key; the
+        // command falls back to the picker so the user can still sign in safely.
+        pickCloud("gitlab.com");
+        mocks.showInputBox.mockResolvedValueOnce("glpat-fallback");
+
+        await mocks.commandHandlers.get(SIGN_IN)!("https://evil.example.com/steal");
+
+        expect(mocks.showQuickPick).toHaveBeenCalledTimes(1);
+        expect(store).toHaveBeenCalledWith(`${KEY_PREFIX}gitlab.com`, "glpat-fallback");
+        expect(map.has(`${KEY_PREFIX}https://evil.example.com/steal`)).toBe(false);
+    });
 });
 
 describe("signOut", () => {

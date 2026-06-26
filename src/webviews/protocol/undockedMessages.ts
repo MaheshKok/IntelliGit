@@ -130,6 +130,12 @@ type GraphOutbound =
           url: string;
       }
     | {
+          /** Request to sign in to a commit-check provider host (from an unavailable badge). */
+          type: "signInForCommitChecks";
+          /** Host to sign into; validated host-side before the sign-in command runs. */
+          host: string;
+      }
+    | {
           /** Command requesting the controller to return IntelliGit to docked views. */
           type: "dock";
       };

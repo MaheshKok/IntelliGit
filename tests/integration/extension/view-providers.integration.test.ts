@@ -912,7 +912,11 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitGraphViewProvider refetches cached pending commit checks", async () => {
+    it("CommitGraphViewProvider serves a cached pending snapshot for a sub-poll burst (TTL throttle)", async () => {
+        // Production wiring uses a non-zero TTL (DEFAULT_COMMIT_CHECKS_TTL_MS ~15s), so two
+        // back-to-back requests for the same hash within that window serve cache rather than
+        // re-fetching on every webview re-render. The after-TTL re-fetch is covered by the
+        // coordinator unit tests with a fake clock; here we guard the throttle end-to-end.
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
@@ -927,6 +931,12 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
+        // Drop the shared beforeEach impl and any once-values a prior test left unconsumed
+        // (clearAllMocks does not drain the mockResolvedValueOnce queue, and the TTL means
+        // each test now makes a single call, so an unused second value would leak forward).
+        // A second mock value proves the cache is what suppresses the re-fetch: if the TTL
+        // were ignored, the second send would consume it and post "success".
+        providerGetChecks.mockReset();
         providerGetChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
@@ -944,15 +954,15 @@ describe("view providers integration", () => {
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
-            snapshot: expect.objectContaining({ state: "success" }),
+            snapshot: expect.objectContaining({ state: "pending" }),
         });
         provider.dispose();
     });
 
-    it("CommitGraphViewProvider refetches cached none (no checks yet) commit checks", async () => {
+    it("CommitGraphViewProvider serves a cached none snapshot for a sub-poll burst (TTL throttle)", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
@@ -967,6 +977,9 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
+        // See the pending test above: reset the shared spy so a leftover once-value cannot
+        // satisfy this test's first fetch.
+        providerGetChecks.mockReset();
         providerGetChecks
             .mockResolvedValueOnce({
                 hash: "abc1234",
@@ -984,10 +997,10 @@ describe("view providers integration", () => {
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
         await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
 
-        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
-            snapshot: expect.objectContaining({ state: "pending" }),
+            snapshot: expect.objectContaining({ state: "none" }),
         });
         provider.dispose();
     });

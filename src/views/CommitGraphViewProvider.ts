@@ -24,7 +24,11 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
-import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
+import {
+    CommitChecksCoordinator,
+    DEFAULT_COMMIT_CHECKS_TTL_MS,
+} from "../services/commitChecks/coordinator";
+import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -111,18 +115,25 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             scriptFile?: string;
             title?: string;
             hostMap?: HostMap;
+            settings?: CommitChecksSettings;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        const settings = options.settings;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
             [
-                new GitHubProvider(),
-                new GitLabProvider(httpGetJson, credentialStore),
+                new GitHubProvider(httpGetJson, settings?.ciCdPattern),
+                new GitLabProvider(httpGetJson, credentialStore, settings?.ciCdPattern),
                 new BitbucketCloudProvider(httpGetJson, credentialStore),
                 new BitbucketServerProvider(httpGetJson, credentialStore),
             ],
             options.hostMap ?? {},
+            {
+                enabled: settings?.enabled,
+                providerEnabled: settings?.providers,
+                ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+            },
         );
     }
 
@@ -255,6 +266,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
                         break;
+                    case "signInForCommitChecks":
+                        await vscode.commands.executeCommand(
+                            "intelligit.commitChecks.signIn",
+                            this.assertString(msg.host, "host"),
+                        );
+                        break;
                     case "fetch":
                     case "pull":
                     case "push":
@@ -366,6 +383,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
+            commitChecksEnabled: this.options.settings?.enabled ?? true,
         });
     }
 

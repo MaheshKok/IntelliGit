@@ -149,6 +149,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             return unavailableSnapshot(
                 hash,
                 vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+                host,
             );
         }
 
@@ -167,6 +168,7 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
                 return unavailableSnapshot(
                     hash,
                     vscode.l10n.t("Sign in to {host} to view commit checks.", { host }),
+                    host,
                 );
             }
             // getErrorMessage redacts URL-embedded credentials; redactSecret strips the

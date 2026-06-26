@@ -424,5 +424,6 @@
     "Signed in to {host}.": "Выполнен вход в {host}.",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "Введите только имя хоста, например gitlab.example.com (без https:// и пути).",
     "Could not clear the saved token.": "Не удалось удалить сохранённый токен.",
-    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

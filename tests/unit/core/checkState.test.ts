@@ -27,6 +27,11 @@ const ALL_STATES: CommitCheckState[] = [
 
 const NON_TERMINAL: CommitCheckState[] = ["pending", "none"];
 
+// States the webview re-requests: the non-terminal pair plus "unavailable",
+// which is recoverable (a sign-in, or a transient 429 that clears after the
+// coordinator TTL) and so must be re-asked even though it is not "pending".
+const REQUESTABLE: CommitCheckState[] = ["pending", "none", "unavailable"];
+
 function snapshot(state: CommitCheckState): CommitChecksSnapshot {
     return { hash: "abc1234", state, summary: "", items: [] };
 }
@@ -60,8 +65,15 @@ describe("shouldRequestCommitChecks", () => {
         }
     });
 
-    it("does not request for terminal cached snapshots", () => {
-        const terminal = ALL_STATES.filter((state) => !NON_TERMINAL.includes(state));
+    it("requests for a recoverable unavailable snapshot", () => {
+        // "unavailable" is terminal for isPendingCheckState but recoverable: a
+        // sign-in or a TTL-expired 429 can flip it to a real state, so the
+        // webview must keep re-asking (the coordinator TTL throttles the fetch).
+        expect(shouldRequestCommitChecks(snapshot("unavailable"))).toBe(true);
+    });
+
+    it("does not request for genuinely terminal cached snapshots", () => {
+        const terminal = ALL_STATES.filter((state) => !REQUESTABLE.includes(state));
         for (const state of terminal) {
             expect(shouldRequestCommitChecks(snapshot(state))).toBe(false);
         }

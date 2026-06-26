@@ -296,3 +296,183 @@ describe("CommitChecksCoordinator — Bitbucket Server selection via HostMap", (
         expect(fetchJson).not.toHaveBeenCalled();
     });
 });
+
+describe("CommitChecksCoordinator — feature-enabled gate", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("returns a none snapshot and never touches remotes or providers when disabled", async () => {
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const gitOps = makeGitOps({ origin: "git@github.com:owner/repo.git" });
+        const coordinator = new CommitChecksCoordinator(gitOps, [provider], {}, { enabled: false });
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("none");
+        expect(provider.match).not.toHaveBeenCalled();
+        expect(getChecks).not.toHaveBeenCalled();
+        expect(gitOps.getRemotes).not.toHaveBeenCalled();
+    });
+
+    it("resolves and fetches normally when enabled is true", async () => {
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { enabled: true },
+        );
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("success");
+        expect(getChecks).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("CommitChecksCoordinator — per-provider toggle (hard-stop)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("hard-stops at the matched-but-disabled origin provider without falling through", async () => {
+        const gitlabChecks = vi.fn(async () => snapshot("failure"));
+        const githubChecks = vi.fn(async () => snapshot("success"));
+        const gitlab = makeProvider("gitlab", "gitlab.com", gitlabChecks);
+        const github = makeProvider("github", "github.com", githubChecks);
+        // origin (gitlab) matches first and is disabled; the enabled github upstream must
+        // NOT be consulted — a disabled matched provider yields no badge, full stop.
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({
+                origin: "https://gitlab.com/group/repo.git",
+                upstream: "git@github.com:owner/repo.git",
+            }),
+            [gitlab, github],
+            {},
+            { providerEnabled: { gitlab: false } },
+        );
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("none");
+        expect(gitlabChecks).not.toHaveBeenCalled();
+        expect(githubChecks).not.toHaveBeenCalled();
+    });
+
+    it("calls the same matched provider when it is enabled (the gate, not ordering, suppresses)", async () => {
+        const gitlabChecks = vi.fn(async () => snapshot("failure"));
+        const githubChecks = vi.fn(async () => snapshot("success"));
+        const gitlab = makeProvider("gitlab", "gitlab.com", gitlabChecks);
+        const github = makeProvider("github", "github.com", githubChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({
+                origin: "https://gitlab.com/group/repo.git",
+                upstream: "git@github.com:owner/repo.git",
+            }),
+            [gitlab, github],
+            {},
+            { providerEnabled: { gitlab: true } },
+        );
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("failure");
+        expect(gitlabChecks).toHaveBeenCalledTimes(1);
+        expect(githubChecks).not.toHaveBeenCalled();
+    });
+
+    it("treats an unlisted provider id as enabled (default true)", async () => {
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { providerEnabled: { gitlab: false } }, // github unlisted → enabled
+        );
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("success");
+        expect(getChecks).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("serves a cached pending snapshot within the TTL, then re-fetches after it elapses", async () => {
+        let clock = 1_000;
+        const getChecks = vi
+            .fn()
+            .mockResolvedValueOnce(snapshot("pending"))
+            .mockResolvedValueOnce(snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { ttlMs: 15_000, now: () => clock },
+        );
+
+        const first = await coordinator.getChecks("abc1234"); // fetch #1 at t=1000
+        clock = 5_000; // within TTL
+        const second = await coordinator.getChecks("abc1234"); // cache hit
+        expect(getChecks).toHaveBeenCalledTimes(1);
+        expect(second).toBe(first);
+
+        clock = 17_000; // 16s after fetch → past 15s TTL
+        const third = await coordinator.getChecks("abc1234"); // re-fetch
+        expect(getChecks).toHaveBeenCalledTimes(2);
+        expect(third.state).toBe("success");
+    });
+
+    it("auto-recovers an unavailable snapshot after the TTL (simulated 429 clears)", async () => {
+        let clock = 0;
+        const getChecks = vi
+            .fn()
+            .mockResolvedValueOnce(snapshot("unavailable"))
+            .mockResolvedValueOnce(snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { ttlMs: 10_000, now: () => clock },
+        );
+
+        await coordinator.getChecks("abc1234");
+        clock = 5_000;
+        const cached = await coordinator.getChecks("abc1234");
+        expect(getChecks).toHaveBeenCalledTimes(1); // within TTL → cached unavailable
+        expect(cached.state).toBe("unavailable");
+
+        clock = 11_000;
+        const recovered = await coordinator.getChecks("abc1234");
+        expect(getChecks).toHaveBeenCalledTimes(2); // past TTL → re-fetch
+        expect(recovered.state).toBe("success");
+    });
+
+    it("serves a terminal success indefinitely even long past the TTL", async () => {
+        let clock = 0;
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { ttlMs: 1_000, now: () => clock },
+        );
+
+        await coordinator.getChecks("abc1234");
+        clock = 9_999_999; // far past any TTL
+        await coordinator.getChecks("abc1234");
+
+        expect(getChecks).toHaveBeenCalledTimes(1); // terminal → never re-fetched
+    });
+});

@@ -781,3 +781,57 @@ describe("BitbucketCloudProvider.getChecks — non-CI/CD-keyword tools surface t
         expect(snapshot.state).toBe("failure");
     });
 });
+
+// BitbucketCloudProvider.getChecks — signInHost (actionable sign-in target)
+
+describe("BitbucketCloudProvider.getChecks — signInHost", () => {
+    it("sets signInHost to the ref host when no token is stored", async () => {
+        const provider = new BitbucketCloudProvider(vi.fn(), emptyStore());
+        const snapshot = await provider.getChecks(bbRef, "abc1234");
+        expect(snapshot.signInHost).toBe("bitbucket.org");
+    });
+
+    it("sets signInHost to the ref host on HTTP 401", async () => {
+        const provider = new BitbucketCloudProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 401: Unauthorized");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(bbRef, "abc1234");
+        expect(snapshot.signInHost).toBe("bitbucket.org");
+    });
+
+    it("sets signInHost to the ref host on HTTP 403", async () => {
+        const provider = new BitbucketCloudProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 403: Forbidden");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(bbRef, "abc1234");
+        expect(snapshot.signInHost).toBe("bitbucket.org");
+    });
+
+    it("leaves signInHost unset on HTTP 500 (not a sign-in problem)", async () => {
+        const provider = new BitbucketCloudProvider(
+            vi.fn(async () => {
+                throw new Error("HTTP 500: Internal Server Error");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(bbRef, "abc1234");
+        expect(snapshot.signInHost).toBeUndefined();
+    });
+
+    it("leaves signInHost unset on a network error (not a sign-in problem)", async () => {
+        const provider = new BitbucketCloudProvider(
+            vi.fn(async () => {
+                throw new Error("ECONNRESET");
+            }),
+            storeWithToken("bb-token"),
+        );
+        const snapshot = await provider.getChecks(bbRef, "abc1234");
+        expect(snapshot.signInHost).toBeUndefined();
+    });
+});

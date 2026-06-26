@@ -225,5 +225,6 @@
     "common.sync": "Sincronizar",
     "commit.action.publishAndPush": "Publicar e enviar",
     "commit.branchIndicator.local": "Ramo: {branch}",
-    "commit.branchIndicator.tracking": "Ramo: {branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "Ramo: {branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }

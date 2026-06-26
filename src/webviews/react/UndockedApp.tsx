@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
+import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { ThemeIconFontFaces } from "./shared/components";
 import { getVsCodeApi } from "./shared/vscodeApi";
@@ -70,6 +71,8 @@ function App(): React.ReactElement {
     const [commitChecks, setCommitChecks] = useState<Map<string, CommitChecksSnapshot | "loading">>(
         new Map(),
     );
+    // Absent flag = enabled, so older host payloads keep rendering badges.
+    const [commitChecksEnabled, setCommitChecksEnabled] = useState(true);
     const loadingMore = useRef(false);
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -264,6 +267,7 @@ function App(): React.ReactElement {
 
                 case "setBranches":
                     setBranches(data.branches);
+                    setCommitChecksEnabled(data.commitChecksEnabled ?? true);
                     setWorktrees(data.worktrees ?? []);
                     setBranchFolderIcon(data.folderIcon);
                     setBranchFolderExpandedIcon(data.folderExpandedIcon);
@@ -435,11 +439,9 @@ function App(): React.ReactElement {
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
-            const cached = commitChecks.get(hash);
-            if (cached && (cached === "loading" || cached.state !== "pending")) return;
+            if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
             setCommitChecks((prev) => {
-                const latest = prev.get(hash);
-                if (latest && (latest === "loading" || latest.state !== "pending")) return prev;
+                if (!shouldRequestCommitChecks(prev.get(hash))) return prev;
                 const next = new Map(prev);
                 next.set(hash, "loading");
                 return next;
@@ -451,6 +453,10 @@ function App(): React.ReactElement {
 
     const handleOpenCommitCheckUrl = useCallback((url: string) => {
         vscode.postMessage({ type: "openCommitCheckUrl", url });
+    }, []);
+
+    const handleSignInForCommitChecks = useCallback((host: string) => {
+        vscode.postMessage({ type: "signInForCommitChecks", host });
     }, []);
 
     // --- Commit-panel callbacks ---
@@ -608,8 +614,17 @@ function App(): React.ReactElement {
                                     onLoadMore={handleLoadMore}
                                     onCommitAction={handleCommitAction}
                                     commitChecks={commitChecks}
-                                    onRequestCommitChecks={handleRequestCommitChecks}
-                                    onOpenCommitCheckUrl={handleOpenCommitCheckUrl}
+                                    onRequestCommitChecks={
+                                        commitChecksEnabled ? handleRequestCommitChecks : undefined
+                                    }
+                                    onOpenCommitCheckUrl={
+                                        commitChecksEnabled ? handleOpenCommitCheckUrl : undefined
+                                    }
+                                    onSignInForCommitChecks={
+                                        commitChecksEnabled
+                                            ? handleSignInForCommitChecks
+                                            : undefined
+                                    }
                                 />
                             </div>
 

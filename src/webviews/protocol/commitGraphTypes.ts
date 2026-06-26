@@ -176,6 +176,12 @@ export type CommitGraphOutbound =
           url: string;
       }
     | {
+          /** Request to sign in to a commit-check provider host (from an unavailable badge). */
+          type: "signInForCommitChecks";
+          /** Host to sign into; validated host-side before the sign-in command runs. */
+          host: string;
+      }
+    | {
           /** Command fetching remote refs without changing the current working tree. */
           type: "fetch";
       }
@@ -242,6 +248,12 @@ export type CommitGraphInbound =
           currentBranchName?: string | null;
           /** Current branch upstream tracking ref, when configured. */
           currentBranchUpstream?: string | null;
+          /**
+           * Whether commit-check badges are enabled (the `commitChecks.enabled` setting).
+           * Absent producers are treated as `true` so older payloads keep rendering badges;
+           * `false` makes the webview withhold the badge callbacks so no button renders.
+           */
+          commitChecksEnabled?: boolean;
       }
     | {
           /** State update echoing the branch filter that the host accepted. */

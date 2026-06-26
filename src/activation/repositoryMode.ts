@@ -15,6 +15,7 @@ import {
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
+import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -76,6 +77,19 @@ export async function activateRepositoryMode(
     const commitCheckHostMap = normalizeHostMap(
         vscode.workspace.getConfiguration("intelligit").get("commitChecks.hosts"),
     );
+    // Feature/provider toggles and CI/CD name filter. Read once at activation (reload to
+    // change), like the host map. A malformed user regex falls back to the built-in filter
+    // and surfaces a one-time warning so the silent fallback is visible.
+    const commitCheckSettings = normalizeCommitChecksSettings(
+        vscode.workspace.getConfiguration("intelligit").get("commitChecks"),
+    );
+    if (commitCheckSettings.ciCdFilterInvalid) {
+        void vscode.window.showWarningMessage(
+            vscode.l10n.t(
+                "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
+            ),
+        );
+    }
 
     let currentBranches: Branch[] = [];
     let currentWorktrees: GitWorktree[] = [];
@@ -85,6 +99,7 @@ export async function activateRepositoryMode(
 
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
         hostMap: commitCheckHostMap,
+        settings: commitCheckSettings,
     });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
@@ -94,6 +109,7 @@ export async function activateRepositoryMode(
             scriptFile: "webview-compactcommitgraph.js",
             title: vscode.l10n.t("Graph"),
             hostMap: commitCheckHostMap,
+            settings: commitCheckSettings,
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
@@ -339,6 +355,7 @@ export async function activateRepositoryMode(
             credentialStore,
             context.workspaceState,
             commitCheckHostMap,
+            commitCheckSettings,
         );
         undocked.setRepositoryLabel(activeRepository.label);
         context.subscriptions.push(undocked);

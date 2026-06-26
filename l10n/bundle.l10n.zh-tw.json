@@ -424,5 +424,6 @@
     "Signed in to {host}.": "已登入到 {host}。",
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "僅輸入主機名稱，例如 gitlab.example.com（不要 https:// 或路徑）。",
     "Could not clear the saved token.": "無法清除已儲存的權杖。",
-    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks."
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

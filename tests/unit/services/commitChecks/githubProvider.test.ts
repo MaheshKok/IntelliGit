@@ -267,4 +267,31 @@ describe("GitHubProvider", () => {
         expect(snapshot.state).toBe("success");
         expect(snapshot.items).toHaveLength(1);
     });
+
+    it("admits a row the default filter drops when a custom ciCdPattern matches it", async () => {
+        // "sonarcloud" is not a built-in CI/CD term; a custom include pattern keeps it.
+        const fetchJson: FetchJson = vi.fn(async (url: string) => {
+            if (url.includes("/statuses")) return [{ context: "sonarcloud", state: "success" }];
+            return { check_runs: [] };
+        });
+        const provider = new GitHubProvider(fetchJson, /sonarcloud/i);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.items.find((i) => i.name === "sonarcloud")).toBeDefined();
+    });
+
+    it("drops a default-CI row when a narrow custom ciCdPattern excludes it", async () => {
+        const fetchJson: FetchJson = vi.fn(async (url: string) => {
+            if (url.includes("/statuses")) return [];
+            return {
+                check_runs: [{ name: "CI / build", status: "completed", conclusion: "success" }],
+            };
+        });
+        const provider = new GitHubProvider(fetchJson, /deploy/i);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.items.find((i) => i.name === "CI / build")).toBeUndefined();
+    });
 });

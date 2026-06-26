@@ -211,5 +211,6 @@
     "common.sync": "同步",
     "commit.action.publishAndPush": "發佈並推送",
     "commit.branchIndicator.local": "分支：{branch}",
-    "commit.branchIndicator.tracking": "分支：{branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "分支：{branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }
