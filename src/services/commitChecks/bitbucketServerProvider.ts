@@ -10,15 +10,15 @@ import type { CommitChecksSnapshot } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { FetchJson } from "./http";
 import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
-import { isStatusPage, toStatusItem } from "./bitbucketShared";
+import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 import type { CredentialStore } from "./credentialStore";
 
-// ponytail: a commit's build statuses fit well under one page of 100. The Server API
-// paginates with start/limit/isLastPage, but a single fetch with limit=100 covers
-// every realistic case. Add isLastPage/nextPageStart looping only if a real repo
-// exceeds it.
+/** Page size requested from the Server build-status endpoint. */
 const PAGE_LIMIT = 100;
+// ponytail: MAX_PAGES guards a pathological isLastPage=false chain; 5 x 100 statuses on a
+// single commit is already far past realistic. Raise it only if a real repo exceeds it.
+const MAX_PAGES = 5;
 
 // URL parser (exported for unit testing)
 
@@ -141,7 +141,8 @@ export class BitbucketServerProvider implements CommitChecksProvider {
      * Returns state "unavailable" (without fetching) when no token is stored for the
      * host; the error message invites the user to sign in. Returns state "unavailable"
      * on HTTP or network errors; the error message will not contain the access token.
-     * Returns state "none" for empty or malformed responses. Must not throw.
+     * Returns state "none" for empty or malformed responses. Follows pagination up to
+     * MAX_PAGES. Must not throw.
      *
      * @param ref - The repository reference produced by `match`.
      * @param hash - The full commit SHA to fetch statuses for.
@@ -160,12 +161,10 @@ export class BitbucketServerProvider implements CommitChecksProvider {
 
         // Bitbucket Server / Data Center uses HTTP access tokens sent as a Bearer header.
         const headers = { Authorization: `Bearer ${token}` };
-        // The build-status endpoint is global (keyed by commit SHA only); no project/repo.
-        const url = `https://${host}/rest/build-status/1.0/commits/${encodeURIComponent(hash)}?limit=${PAGE_LIMIT}`;
 
-        let raw: unknown;
+        let rows: BitbucketStatus[];
         try {
-            raw = await this.fetchJson(url, headers);
+            rows = await this.fetchAllPages(host, hash, headers);
         } catch (err) {
             const message = getErrorMessage(err);
             if (/\bHTTP (401|403)\b/i.test(message)) {
@@ -181,7 +180,6 @@ export class BitbucketServerProvider implements CommitChecksProvider {
 
         // The Server build-status endpoint returns build statuses only (no review bots),
         // so every value is aggregated; an allowlist would silently hide real failures.
-        const rows = isStatusPage(raw) ? raw.values : [];
         const items = rows.map(toStatusItem);
         const state = aggregateState(items);
         return {
@@ -190,5 +188,40 @@ export class BitbucketServerProvider implements CommitChecksProvider {
             summary: summaryForItems(items, state),
             items,
         };
+    }
+
+    /**
+     * Follows Bitbucket Server offset pagination, accumulating build statuses.
+     *
+     * The build-status endpoint is global (keyed by commit SHA alone; no project/repo).
+     * Starts at offset 0 and follows `nextPageStart` while `isLastPage` is false, stopping
+     * at the first non-page response, when the page reports it is the last, or when
+     * MAX_PAGES is reached (a runaway-chain guard). A status on a later page must not be
+     * dropped silently — it could be the one failing build. Headers are reused per page.
+     *
+     * @param host - The Bitbucket Server host.
+     * @param hash - The full commit SHA.
+     * @param headers - The auth headers to send on every page request.
+     * @returns All status rows gathered across the fetched pages.
+     */
+    private async fetchAllPages(
+        host: string,
+        hash: string,
+        headers: Record<string, string>,
+    ): Promise<BitbucketStatus[]> {
+        const base = `https://${host}/rest/build-status/1.0/commits/${encodeURIComponent(hash)}`;
+        const rows: BitbucketStatus[] = [];
+        let start: number | undefined = 0;
+        for (let page = 0; start !== undefined && page < MAX_PAGES; page++) {
+            const url = `${base}?limit=${PAGE_LIMIT}&start=${start}`;
+            const raw = await this.fetchJson(url, headers);
+            if (!isStatusPage(raw)) break;
+            rows.push(...raw.values);
+            start =
+                raw.isLastPage === false && typeof raw.nextPageStart === "number"
+                    ? raw.nextPageStart
+                    : undefined;
+        }
+        return rows;
     }
 }

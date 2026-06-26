@@ -82,6 +82,27 @@ describe("extension manifest", () => {
         }
     });
 
+    it("offers every host-config provider id in the commitChecks.hosts enum", () => {
+        // The setting schema's enum is what VS Code validates user input against. If a
+        // provider id is accepted by the runtime host-map normalizer but missing from this
+        // enum, users get a red squiggle and cannot configure it. This guards that drift:
+        // the manifest enum must list exactly the self-hosted (host-configurable) ids.
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const hostsSetting = manifest.contributes?.configuration?.properties?.[
+            "intelligit.commitChecks.hosts"
+        ] as { additionalProperties?: { enum?: string[] } } | undefined;
+        const providerEnum = hostsSetting?.additionalProperties?.enum ?? [];
+
+        expect(providerEnum).toContain("gitlab");
+        expect(providerEnum).toContain("bitbucket-server");
+        // Fixed-host SaaS ids must NOT be configurable here (mapping a host to them is
+        // meaningless and the normalizer drops them).
+        expect(providerEnum).not.toContain("github");
+        expect(providerEnum).not.toContain("bitbucket-cloud");
+    });
+
     it("gates the undock view title button with a visible-by-default setting", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

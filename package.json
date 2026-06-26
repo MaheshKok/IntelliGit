@@ -685,7 +685,8 @@
                     "additionalProperties": {
                         "type": "string",
                         "enum": [
-                            "gitlab"
+                            "gitlab",
+                            "bitbucket-server"
                         ]
                     },
                     "markdownDescription": "%configuration.commitChecks.hosts.markdownDescription%"

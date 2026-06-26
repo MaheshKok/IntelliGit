@@ -74,10 +74,7 @@ function providerForStatus(state: string, token = "bb-token"): BitbucketServerPr
 
 describe("parseBitbucketServerUrl", () => {
     it("matches the HTTPS clone form with the /scm prefix", () => {
-        const ref = parseBitbucketServerUrl(
-            "https://bb.acme.com/scm/proj/repo.git",
-            SERVER_HOST,
-        );
+        const ref = parseBitbucketServerUrl("https://bb.acme.com/scm/proj/repo.git", SERVER_HOST);
         expect(ref).toEqual({ host: SERVER_HOST });
     });
 
@@ -100,11 +97,15 @@ describe("parseBitbucketServerUrl", () => {
     });
 
     it("rejects an http:// remote (SSRF guard)", () => {
-        expect(parseBitbucketServerUrl("http://bb.acme.com/scm/proj/repo.git", SERVER_HOST)).toBeNull();
+        expect(
+            parseBitbucketServerUrl("http://bb.acme.com/scm/proj/repo.git", SERVER_HOST),
+        ).toBeNull();
     });
 
     it("returns null when the host does not match", () => {
-        expect(parseBitbucketServerUrl("https://other.com/scm/proj/repo.git", SERVER_HOST)).toBeNull();
+        expect(
+            parseBitbucketServerUrl("https://other.com/scm/proj/repo.git", SERVER_HOST),
+        ).toBeNull();
     });
 
     it("returns null for a bare host with no project/repo path", () => {
@@ -128,7 +129,10 @@ describe("parseBitbucketServerUrl", () => {
 // BitbucketServerProvider.match — HostMap-only selection
 
 describe("BitbucketServerProvider.match", () => {
-    const provider = new BitbucketServerProvider(fetchReturning(() => ({ values: [] })), emptyStore());
+    const provider = new BitbucketServerProvider(
+        fetchReturning(() => ({ values: [] })),
+        emptyStore(),
+    );
 
     it("matches a remote whose host is mapped to bitbucket-server", () => {
         const ref = provider.match("https://bb.acme.com/scm/proj/repo.git", SERVER_MAP);
@@ -165,7 +169,10 @@ describe("BitbucketServerProvider.getChecks — auth", () => {
 
     it("sends an Authorization: Bearer header carrying the stored token verbatim", async () => {
         const fetchJson = fetchReturning(() => ({ values: [] }));
-        const provider = new BitbucketServerProvider(fetchJson, storeWithToken("http-access-token"));
+        const provider = new BitbucketServerProvider(
+            fetchJson,
+            storeWithToken("http-access-token"),
+        );
         await provider.getChecks(serverRef, "abc1234");
         const headers = (fetchJson as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<
             string,
@@ -195,7 +202,7 @@ describe("BitbucketServerProvider.getChecks — request", () => {
         await provider.getChecks(serverRef, "deadbeef");
         const calledUrl = (fetchJson as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
         expect(calledUrl).toBe(
-            "https://bb.acme.com/rest/build-status/1.0/commits/deadbeef?limit=100",
+            "https://bb.acme.com/rest/build-status/1.0/commits/deadbeef?limit=100&start=0",
         );
     });
 
@@ -205,6 +212,79 @@ describe("BitbucketServerProvider.getChecks — request", () => {
         await provider.getChecks(serverRef, "sha/../etc");
         const calledUrl = (fetchJson as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
         expect(calledUrl).toContain(`/commits/${encodeURIComponent("sha/../etc")}?`);
+    });
+});
+
+// BitbucketServerProvider.getChecks — offset pagination
+//
+// Server reports paging via isLastPage/nextPageStart. A failing build on a second page
+// must not be dropped, so the provider follows nextPageStart until isLastPage, bounded by
+// a page cap. A response missing isLastPage is treated as the final (and only) page.
+
+describe("BitbucketServerProvider.getChecks — pagination", () => {
+    it("aggregates build statuses across multiple pages", async () => {
+        const fetchJson = vi
+            .fn()
+            .mockResolvedValueOnce({
+                isLastPage: false,
+                nextPageStart: 100,
+                values: [{ key: "1", name: "build", state: "SUCCESSFUL" }],
+            })
+            .mockResolvedValueOnce({
+                isLastPage: true,
+                values: [{ key: "2", name: "deploy", state: "FAILED" }],
+            });
+        const provider = new BitbucketServerProvider(fetchJson, storeWithToken("bb-token"));
+
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+
+        // Both pages contribute; the page-2 FAILED must survive and drive the aggregate.
+        expect(snapshot.items).toHaveLength(2);
+        expect(snapshot.state).toBe("failure");
+        expect(fetchJson).toHaveBeenCalledTimes(2);
+        // The second request must carry the server-supplied offset.
+        expect(fetchJson.mock.calls[1][0]).toContain("start=100");
+    });
+
+    it("stops at a single page when the first page is the last", async () => {
+        const fetchJson = vi.fn().mockResolvedValue({
+            isLastPage: true,
+            values: [{ key: "1", name: "build", state: "SUCCESSFUL" }],
+        });
+        const provider = new BitbucketServerProvider(fetchJson, storeWithToken("bb-token"));
+
+        await provider.getChecks(serverRef, "abc1234");
+
+        expect(fetchJson).toHaveBeenCalledTimes(1);
+    });
+
+    it("treats a response without isLastPage as the only page", async () => {
+        const fetchJson = vi.fn().mockResolvedValue({
+            values: [{ key: "1", name: "build", state: "SUCCESSFUL" }],
+        });
+        const provider = new BitbucketServerProvider(fetchJson, storeWithToken("bb-token"));
+
+        await provider.getChecks(serverRef, "abc1234");
+
+        expect(fetchJson).toHaveBeenCalledTimes(1);
+    });
+
+    it("caps the page chain even when the server never reports the last page", async () => {
+        // A pathological isLastPage=false chain must not loop forever; MAX_PAGES bounds it.
+        const fetchJson = vi.fn(async (url: string) => {
+            const start = Number(new URL(url).searchParams.get("start"));
+            return {
+                isLastPage: false,
+                nextPageStart: start + 100,
+                values: [{ key: String(start), name: "build", state: "SUCCESSFUL" }],
+            };
+        });
+        const provider = new BitbucketServerProvider(fetchJson, storeWithToken("bb-token"));
+
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+
+        expect(fetchJson).toHaveBeenCalledTimes(5); // MAX_PAGES
+        expect(snapshot.items).toHaveLength(5);
     });
 });
 
@@ -276,7 +356,9 @@ describe("BitbucketServerProvider.getChecks — no CI/CD allowlist", () => {
         // Regression: an allowlist filter would drop a row named "Jenkins" and collapse a
         // real failure to 'none'. The badge must show the failure.
         const provider = new BitbucketServerProvider(
-            fetchReturning(() => ({ values: [{ key: "jenkins", name: "Jenkins", state: "FAILED" }] })),
+            fetchReturning(() => ({
+                values: [{ key: "jenkins", name: "Jenkins", state: "FAILED" }],
+            })),
             storeWithToken("bb-token"),
         );
         const snapshot = await provider.getChecks(serverRef, "sha");
@@ -346,6 +428,22 @@ describe("BitbucketServerProvider.getChecks — HTTP errors", () => {
         const snapshot = await provider.getChecks(serverRef, "abc1234");
         expect(snapshot.state).toBe("unavailable");
         expect(snapshot.error).toContain("HTTP 500");
+    });
+
+    it("maps a network timeout to unavailable without leaking the token", async () => {
+        // A timeout is neither 401/403 nor a clean HTTP status: it must still resolve to an
+        // unavailable snapshot (never throw) and the message must not echo the token.
+        const secretToken = "bb-timeout-token";
+        const provider = new BitbucketServerProvider(
+            vi.fn(async () => {
+                throw new Error("network timeout after 10000ms");
+            }),
+            storeWithToken(secretToken),
+        );
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toContain("timeout");
+        expect(snapshot.error).not.toContain(secretToken);
     });
 
     it("returns an empty items array on HTTP error", async () => {

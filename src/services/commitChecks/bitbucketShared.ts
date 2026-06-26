@@ -16,10 +16,19 @@ export interface BitbucketStatus {
     description?: unknown;
 }
 
-/** One page of a Bitbucket build-statuses response; `next` is Cloud-only pagination. */
+/**
+ * One page of a Bitbucket build-statuses response.
+ *
+ * The two Bitbucket flavors paginate differently: Cloud uses a cursor (`next` is the
+ * absolute URL of the following page), while Server / Data Center uses offset paging
+ * (`isLastPage` plus `nextPageStart`). Both shapes are declared here so each provider
+ * reads only the fields its API emits.
+ */
 export interface BitbucketStatusPage {
     values: BitbucketStatus[];
     next?: unknown;
+    isLastPage?: unknown;
+    nextPageStart?: unknown;
 }
 
 /**
