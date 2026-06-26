@@ -32,6 +32,7 @@ import { CommitChecksCoordinator } from "../services/commitChecks/coordinator";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
+import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
 import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
 import type { HostMap } from "../services/commitChecks/types";
@@ -197,6 +198,7 @@ export class UndockedViewProvider {
                 new GitHubProvider(),
                 new GitLabProvider(httpGetJson, credentialStore),
                 new BitbucketCloudProvider(httpGetJson, credentialStore),
+                new BitbucketServerProvider(httpGetJson, credentialStore),
             ],
             hostMap,
         );

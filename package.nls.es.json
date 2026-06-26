@@ -55,7 +55,7 @@
     "configuration.commitWindowPosition.enum.left": "Coloca el panel de confirmación en el lado izquierdo de la ventana desacoplada/con pestañas.",
     "configuration.commitWindowPosition.enum.right": "Coloca el panel de confirmación en el lado derecho de la ventana desacoplada/con pestañas.",
     "configuration.commitWindowPosition.markdownDescription": "Posición del panel de confirmación dentro de la ventana de IntelliGit desacoplada/con pestañas. `auto` (predeterminado) sigue la `workbench.sideBar.location` de VS Code; `left` y `right` fuerzan un lado.",
-    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Currently only `gitlab` is supported. Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
+    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Supported provider ids are `gitlab` and `bitbucket-server` (for self-hosted Bitbucket Data Center). Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
     "view.fileCountBadge": "Archivos modificados",
     "command.createWorktree": "Crear worktree...",
     "command.deleteWorktree": "Eliminar worktree",

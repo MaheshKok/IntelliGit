@@ -7,8 +7,16 @@
 
 import type { HostMap, ProviderId } from "./types";
 
-/** Provider ids accepted in the hosts config; expand when more providers are wired. */
-const SUPPORTED_HOST_CONFIG_PROVIDER_IDS: ReadonlySet<ProviderId> = new Set<ProviderId>(["gitlab"]);
+/**
+ * Provider ids accepted in the hosts config; expand when more providers are wired.
+ *
+ * Only self-hosted providers belong here. `github` and `bitbucket-cloud` are SaaS with
+ * fixed hosts and match without any config, so mapping a host to them is meaningless.
+ */
+const SUPPORTED_HOST_CONFIG_PROVIDER_IDS: ReadonlySet<ProviderId> = new Set<ProviderId>([
+    "gitlab",
+    "bitbucket-server",
+]);
 
 /**
  * Normalizes a raw `intelligit.commitChecks.hosts` config value into a HostMap.

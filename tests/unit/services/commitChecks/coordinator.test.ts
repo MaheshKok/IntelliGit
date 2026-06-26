@@ -12,6 +12,8 @@ vi.mock("vscode", () => ({
 }));
 
 import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
+import { BitbucketServerProvider } from "../../../../src/services/commitChecks/bitbucketServerProvider";
+import { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
 
 function makeGitOps(remotes: Record<string, string | null>): GitOps {
     return {
@@ -235,5 +237,62 @@ describe("CommitChecksCoordinator", () => {
 
         expect(result.state).toBe("unavailable");
         expect(result.error).toBe("boom");
+    });
+});
+
+// Real BitbucketServerProvider routing: the HostMap, not the remote alone, drives selection.
+
+/** Minimal SecretStorage double seeding one token, for wiring a real CredentialStore. */
+function secretsWith(entries: Record<string, string>): import("vscode").SecretStorage {
+    const map = new Map(Object.entries(entries));
+    return {
+        get: vi.fn(async (key: string) => map.get(key)),
+        store: vi.fn(),
+        delete: vi.fn(),
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as import("vscode").SecretStorage;
+}
+
+describe("CommitChecksCoordinator — Bitbucket Server selection via HostMap", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("selects the bitbucket-server provider for a host mapped to it", async () => {
+        const store = new CredentialStore(
+            secretsWith({ "intelligit.commitChecks.token:bb.acme.com": "bb-token" }),
+        );
+        const fetchJson = vi.fn(async () => ({ values: [{ key: "ci", state: "FAILED" }] }));
+        const provider = new BitbucketServerProvider(fetchJson, store);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "https://bb.acme.com/scm/proj/repo.git" }),
+            [provider],
+            { "bb.acme.com": "bitbucket-server" },
+        );
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("failure"); // the real provider ran and aggregated the row
+        expect(fetchJson).toHaveBeenCalledTimes(1);
+    });
+
+    it("does NOT select the provider when the host is absent from the HostMap", async () => {
+        const store = new CredentialStore(
+            secretsWith({ "intelligit.commitChecks.token:bb.acme.com": "bb-token" }),
+        );
+        const fetchJson = vi.fn(async () => ({ values: [{ key: "ci", state: "FAILED" }] }));
+        const provider = new BitbucketServerProvider(fetchJson, store);
+        // Empty HostMap: the same remote must NOT route to the server provider.
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "https://bb.acme.com/scm/proj/repo.git" }),
+            [provider],
+            {},
+        );
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("unavailable");
+        expect(result.error).toBe("No supported remote found.");
+        expect(fetchJson).not.toHaveBeenCalled();
     });
 });

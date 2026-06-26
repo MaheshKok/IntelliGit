@@ -41,7 +41,10 @@ describe("normalizeHostMap — valid entries", () => {
         });
     });
 
-    it("drops provider ids that are not wired for host config yet", () => {
+    it("keeps self-hosted provider ids and drops the fixed-host SaaS ones", () => {
+        // gitlab and bitbucket-server are self-hosted (host config is meaningful); github
+        // and bitbucket-cloud are SaaS with fixed hosts, so mapping a host to them is
+        // dropped as meaningless.
         expect(
             normalizeHostMap({
                 "a.example.com": "github",
@@ -51,6 +54,13 @@ describe("normalizeHostMap — valid entries", () => {
             }),
         ).toEqual({
             "b.example.com": "gitlab",
+            "d.example.com": "bitbucket-server",
+        });
+    });
+
+    it("keeps a bitbucket-server entry with normalized case and whitespace", () => {
+        expect(normalizeHostMap({ "BB.acme.com": "  Bitbucket-Server " })).toEqual({
+            "bb.acme.com": "bitbucket-server",
         });
     });
 

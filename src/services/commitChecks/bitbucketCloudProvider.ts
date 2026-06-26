@@ -5,17 +5,11 @@
 // unit-testable with no network access.
 
 import * as vscode from "vscode";
-import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
+import type { CommitChecksSnapshot } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import type { FetchJson } from "./http";
-import {
-    aggregateState,
-    compactText,
-    readString,
-    redactSecret,
-    summaryForItems,
-    unavailableSnapshot,
-} from "./normalize";
+import { aggregateState, redactSecret, summaryForItems, unavailableSnapshot } from "./normalize";
+import { isStatusPage, toStatusItem, type BitbucketStatus } from "./bitbucketShared";
 import type { CommitChecksProvider, HostMap, ProviderRepoRef } from "./types";
 import type { CredentialStore } from "./credentialStore";
 
@@ -31,21 +25,6 @@ const MAX_PAGES = 5;
 interface BitbucketCloudRepoRef extends ProviderRepoRef {
     readonly workspace: string;
     readonly repo: string;
-}
-
-/** One entry in the Bitbucket Cloud commit build-statuses response. */
-interface BitbucketStatus {
-    key?: unknown;
-    name?: unknown;
-    state?: unknown;
-    url?: unknown;
-    description?: unknown;
-}
-
-/** One page of the paginated commit build-statuses response. */
-interface BitbucketStatusPage {
-    values: BitbucketStatus[];
-    next?: unknown;
 }
 
 // URL parser (exported for unit testing)
@@ -231,64 +210,5 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             url = typeof raw.next === "string" ? raw.next : undefined;
         }
         return rows;
-    }
-}
-
-// Private helpers
-
-/**
- * Type guard for one page of the Bitbucket Cloud statuses response.
- *
- * @param raw - The decoded JSON body from a statuses request.
- * @returns True when the body is an object with a `values` array.
- */
-function isStatusPage(raw: unknown): raw is BitbucketStatusPage {
-    return (
-        typeof raw === "object" &&
-        raw !== null &&
-        Array.isArray((raw as { values?: unknown }).values)
-    );
-}
-
-/**
- * Converts one Bitbucket Cloud build-status entry into a CommitCheckItem.
- *
- * @param status - A raw object from the statuses `values` array.
- * @returns A normalized CommitCheckItem.
- */
-function toStatusItem(status: BitbucketStatus): CommitCheckItem {
-    return {
-        name: readString(status.name) || readString(status.key) || "Bitbucket status",
-        description: compactText(readString(status.description)),
-        state: mapBitbucketState(readString(status.state)),
-        source: "status",
-        url: readString(status.url) || undefined,
-    };
-}
-
-/**
- * Maps a Bitbucket Cloud build/pipeline state string to the shared CommitCheckState.
- *
- * Bitbucket states: SUCCESSFUL, FAILED, INPROGRESS, PENDING, STOPPED, and the
- * pipeline-only EXPIRED. Matching is case-insensitive.
- *
- * @param state - The raw Bitbucket state string.
- * @returns The normalized CommitCheckState.
- */
-function mapBitbucketState(state: string): CommitCheckState {
-    switch (state.toUpperCase()) {
-        case "SUCCESSFUL":
-            return "success";
-        case "FAILED":
-            return "failure";
-        case "INPROGRESS":
-        case "PENDING":
-            return "pending";
-        case "STOPPED":
-            return "cancelled";
-        case "EXPIRED":
-            return "timed_out";
-        default:
-            return "unknown";
     }
 }

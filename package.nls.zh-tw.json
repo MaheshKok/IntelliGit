@@ -55,7 +55,7 @@
     "configuration.commitWindowPosition.enum.left": "將提交面板放置在未停靠/已新增標籤頁的視窗的左側。",
     "configuration.commitWindowPosition.enum.right": "將提交面板放置在未停靠/已新增標籤頁的視窗的右側。",
     "configuration.commitWindowPosition.markdownDescription": "在未停靠/標籤頁化的 IntelliGit 視窗中，提交面板的位置。 `auto`（預設值）遵循 VS Code 的 `workbench.sideBar.location`；`left` 和 `right` 強制設定在左側。",
-    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Currently only `gitlab` is supported. Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
+    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Supported provider ids are `gitlab` and `bitbucket-server` (for self-hosted Bitbucket Data Center). Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
     "view.fileCountBadge": "已更改的文件",
     "command.createWorktree": "建立 Worktree...",
     "command.deleteWorktree": "刪除 Worktree",
