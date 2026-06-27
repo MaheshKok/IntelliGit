@@ -75,13 +75,18 @@ export function ShelfStashList({
                     return (
                         <React.Fragment key={stash.index}>
                             <Flex
+                                as="button"
+                                type="button"
                                 align="center"
                                 px="9px"
                                 py="2px"
                                 minH="32px"
+                                w="calc(100% - 16px)"
                                 fontSize="13px"
                                 fontFamily={SYSTEM_FONT_STACK}
                                 cursor="pointer"
+                                border="0"
+                                textAlign="left"
                                 bg={
                                     isExpanded
                                         ? "var(--intelligit-pycharm-selected)"
@@ -99,6 +104,7 @@ export function ShelfStashList({
                                 }}
                                 onClick={() => onStashClick(stash.index)}
                                 onContextMenu={(event) => onStashContextMenu(event, stash.index)}
+                                aria-expanded={isExpanded}
                                 title={stash.message}
                                 borderRadius={isExpanded ? "6px" : 0}
                                 mx="8px"
@@ -244,15 +250,22 @@ function ShelfFileTree({
                     const fileName = getLeafName(entry.file.path);
                     return (
                         <Flex
+                            as="button"
+                            type="button"
                             key={entry.file.path}
                             align="center"
                             pl={`${10 + depth * 16}px`}
                             pr="8px"
                             minH="20px"
+                            w="100%"
                             gap="4px"
                             fontSize="12px"
                             fontFamily={SYSTEM_FONT_STACK}
                             cursor="pointer"
+                            border="0"
+                            textAlign="left"
+                            bg="transparent"
+                            color="inherit"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onFileClick(entry.file.path)}
                             title={entry.file.path}
@@ -285,16 +298,24 @@ function ShelfFileTree({
                 return (
                     <React.Fragment key={entry.path}>
                         <Flex
+                            as="button"
+                            type="button"
                             align="center"
                             pl={`${10 + depth * 16}px`}
                             pr="8px"
                             minH="20px"
+                            w="100%"
                             gap="4px"
                             fontSize="12px"
                             fontFamily={SYSTEM_FONT_STACK}
                             cursor="pointer"
+                            border="0"
+                            textAlign="left"
+                            bg="transparent"
+                            color="inherit"
                             _hover={{ bg: "var(--vscode-list-hoverBackground)" }}
                             onClick={() => onToggleDir(entry.path)}
+                            aria-expanded={isExpanded}
                         >
                             <ChevronIcon expanded={isExpanded} />
                             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />

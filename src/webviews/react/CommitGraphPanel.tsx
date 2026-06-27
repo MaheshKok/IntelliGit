@@ -165,7 +165,7 @@ function commitGraphPanelReducer(
                 branchFolderExpandedIcon: action.folderExpandedIcon,
                 branchFolderIconsByName: action.folderIconsByName,
                 iconFonts: action.iconFonts ?? state.iconFonts,
-                commitChecksEnabled: action.commitChecksEnabled ?? true,
+                commitChecksEnabled: action.commitChecksEnabled ?? state.commitChecksEnabled,
             };
         case "setSelectedBranch":
             return { ...state, selectedBranch: action.branch };

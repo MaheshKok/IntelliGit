@@ -86,7 +86,7 @@ function VscCheckboxInner({
                 ref={inputRef}
                 type="checkbox"
                 id={inputId}
-                aria-label={ariaLabel ?? inputId ?? inputTestId}
+                aria-label={ariaLabel}
                 data-testid={inputTestId}
                 checked={isChecked}
                 onChange={(e) => {

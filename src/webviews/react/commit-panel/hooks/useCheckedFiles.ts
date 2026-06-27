@@ -42,6 +42,12 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         [checkedPaths, validPaths],
     );
 
+    useEffect(() => {
+        // Host file snapshots invalidate stale selections after render; backing state must be pruned.
+        // react-doctor-disable-next-line react-doctor/no-derived-state
+        setCheckedPaths((prev) => pruneToKnownPaths(prev, validPaths));
+    }, [validPaths]);
+
     // Persist to vscode state on every change (merge to preserve other keys)
     useEffect(() => {
         const vscode = getVsCodeApi();
@@ -51,6 +57,7 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
 
     const toggleFile = useCallback(
         (path: string) => {
+            if (!validPaths.has(path)) return;
             setCheckedPaths((prev) => {
                 const next = new Set(pruneToKnownPaths(prev, validPaths));
                 if (next.has(path)) next.delete(path);
@@ -63,11 +70,12 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
 
     const toggleMany = useCallback(
         (paths: string[]) => {
-            if (paths.length === 0) return;
+            const knownPaths = paths.filter((path) => validPaths.has(path));
+            if (knownPaths.length === 0) return;
             setCheckedPaths((prev) => {
                 const next = new Set(pruneToKnownPaths(prev, validPaths));
-                const allChecked = paths.every((path) => next.has(path));
-                for (const path of paths) {
+                const allChecked = knownPaths.every((path) => next.has(path));
+                for (const path of knownPaths) {
                     if (allChecked) next.delete(path);
                     else next.add(path);
                 }

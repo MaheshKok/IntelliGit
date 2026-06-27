@@ -105,6 +105,7 @@ function App() {
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
             let alignment: AlignedHunkRows | undefined;
+            let renderKey: string;
 
             if (segment.type === "common") {
                 const commonLen = segment.lines.length;
@@ -124,6 +125,7 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, commonLen, lineCount),
                     },
                 };
+                renderKey = `common-${oursCursor}-${baseCursor}-${theirsCursor}-${commonLen}-${segment.lines[0] ?? ""}`;
                 oursCursor += commonLen;
                 baseCursor += commonLen;
                 theirsCursor += commonLen;
@@ -168,6 +170,7 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                 };
+                renderKey = `conflict-${segment.id}`;
                 oursCursor += oursLen;
                 baseCursor += baseLen;
                 theirsCursor += theirsLen;
@@ -186,11 +189,6 @@ function App() {
                     computedTrueConflictOrdinal = trueConflictOrdinal;
                 }
             }
-
-            const renderKey =
-                segment.type === "conflict"
-                    ? `conflict-${segment.id}`
-                    : `common-${startLine}-${lineCount}-${segment.lines[0] ?? ""}`;
 
             return {
                 segment,

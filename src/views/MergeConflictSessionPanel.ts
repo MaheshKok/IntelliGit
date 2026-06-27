@@ -252,8 +252,11 @@ export class MergeConflictSessionPanel {
                     files,
                 };
 
-                if (this.isAlive()) {
+                if (!this.isAlive()) return;
+                try {
                     await this.panel.webview.postMessage({ type: "setSessionData", data });
+                } catch {
+                    // Panel may have been disposed between the active check and postMessage.
                 }
             }
         }

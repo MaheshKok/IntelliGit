@@ -69,5 +69,5 @@
     "command.commitChecksSignOut": "退出提交检查提供程序",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a regular expression (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "覆盖哪些检查名称会被视为徽章的 CI/CD（仅 GitHub 和 GitLab）。提供正则表达式（与每个检查的名称和说明进行不区分大小写的匹配）；留空则使用内置模式。无论此值如何，代码审查机器人始终会被排除。更改会在重新加载窗口后生效。"
 }
