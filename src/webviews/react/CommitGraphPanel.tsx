@@ -26,8 +26,6 @@ import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "./commit-graph/types";
 
-export type { CommitGraphPanelAction } from "./commit-graph/types";
-
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
 const DEFAULT_BRANCH_WIDTH = 260;
