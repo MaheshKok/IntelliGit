@@ -302,16 +302,18 @@ async function assertBulkBranchesMerged(
     executor: GitExecutor,
     branches: Branch[],
 ): Promise<string[]> {
-    const unmerged: string[] = [];
-    for (const branch of branches) {
-        if (branch.isRemote) continue;
-        try {
-            await executor.run(["merge-base", "--is-ancestor", branch.name, "HEAD"]);
-        } catch {
-            unmerged.push(branch.name);
-        }
-    }
-    return unmerged;
+    const localBranches = branches.filter((branch) => !branch.isRemote);
+    const results = await Promise.all(
+        localBranches.map(async (branch) => {
+            try {
+                await executor.run(["merge-base", "--is-ancestor", branch.name, "HEAD"]);
+                return null;
+            } catch {
+                return branch.name;
+            }
+        }),
+    );
+    return results.filter((name): name is string => name !== null);
 }
 
 /** Deletes either a local branch ref or its remote-tracking target without mixing the two paths. */
