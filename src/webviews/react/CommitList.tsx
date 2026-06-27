@@ -271,6 +271,7 @@ export function CommitList({
                     <div style={FILTER_INPUT_WRAP_STYLE}>
                         <input
                             type="text"
+                            aria-label={t("commit.search.placeholder")}
                             placeholder={t("commit.search.placeholder")}
                             value={filterText}
                             onChange={(event) => onFilterText(event.target.value)}

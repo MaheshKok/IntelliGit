@@ -48,7 +48,7 @@ function RefBadge({ kind, name }: { kind: "branch" | "tag"; name: string }): Rea
                 whiteSpace: "nowrap",
                 borderRadius: 3,
                 padding: "1px 6px",
-                fontSize: 10,
+                fontSize: 12,
                 lineHeight: "15px",
                 color: colors.fg,
                 background: colors.bg,
@@ -74,7 +74,7 @@ function TooltipRefRow({
                 alignItems: "center",
                 gap: 6,
                 minWidth: 0,
-                fontSize: 11,
+                fontSize: 12,
                 lineHeight: "16px",
             }}
             title={name}
@@ -200,7 +200,7 @@ function CommitMessageCell({
                         alignItems: "center",
                         gap: 3,
                         flexShrink: 0,
-                        fontSize: "11px",
+                        fontSize: "12px",
                         opacity: 0.85,
                         color: "var(--vscode-charts-blue, #6eb3ff)",
                     }}
@@ -223,7 +223,7 @@ function CommitMessageCell({
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 3,
-                        fontSize: "10px",
+                        fontSize: "12px",
                         opacity: 0.75,
                     }}
                     title={t("commit.tooltip.moreTags", { count: hiddenTagCount })}
@@ -248,13 +248,13 @@ function CommitMessageCell({
                             color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
                             border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
                             borderRadius: JETBRAINS_UI.size.radius,
-                            fontSize: 11,
+                            fontSize: 12,
                             lineHeight: "15px",
                             padding: "8px 9px",
                             whiteSpace: "normal",
                             maxWidth: "560px",
                             minWidth: "240px",
-                            zIndex: 9999,
+                            zIndex: 30,
                             pointerEvents: "none",
                             boxShadow: "0 10px 28px rgba(0,0,0,0.42)",
                         }}
@@ -278,7 +278,7 @@ function CommitMessageCell({
                                         <span
                                             style={{
                                                 display: "block",
-                                                fontSize: 11,
+                                                fontSize: 12,
                                                 opacity: 0.82,
                                                 marginBottom: 5,
                                             }}
@@ -307,7 +307,7 @@ function CommitMessageCell({
                                         <span
                                             style={{
                                                 display: "block",
-                                                fontSize: 11,
+                                                fontSize: 12,
                                                 opacity: 0.82,
                                                 marginTop: branchRefs.length > 0 ? 12 : 0,
                                                 marginBottom: 5,
@@ -410,7 +410,7 @@ function CommitRowInner({
                             opacity: isMergeCommit ? 0.8 : 0.5,
                             flexShrink: 0,
                             marginLeft: 4,
-                            fontSize: "11px",
+                            fontSize: "12px",
                         }}
                     >
                         {formatDateTime(commit.date)}

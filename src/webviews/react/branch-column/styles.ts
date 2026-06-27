@@ -12,6 +12,14 @@ export const BRANCH_ROW_CLASS_CSS = `
     .branch-row:hover {
         background: ${JETBRAINS_UI.color.hover} !important;
     }
+    button.branch-row {
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+    }
     .branch-row.selected {
         background: ${JETBRAINS_UI.color.selected} !important;
         color: ${JETBRAINS_UI.color.selectedForeground} !important;
@@ -101,8 +109,14 @@ export const ROW_STYLE: CSSProperties = {
     position: "relative",
     display: "flex",
     alignItems: "center",
+    width: "100%",
     padding: "1px 8px",
+    border: "none",
     cursor: "pointer",
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    textAlign: "left",
     whiteSpace: "nowrap",
     overflow: "hidden",
     lineHeight: "20px",

@@ -80,14 +80,12 @@ describe("webview ui smoke", () => {
             <BranchSectionHeader label="Local" expanded={true} onToggle={onToggle} />,
         );
         const sectionElement = mountedSection.container.querySelector(
-            '[role="button"]',
-        ) as HTMLElement;
+            "button[aria-expanded]",
+        ) as HTMLButtonElement;
         expect(sectionElement.getAttribute("aria-expanded")).toBe("true");
         act(() => {
-            sectionElement.dispatchEvent(
-                new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
-            );
-            sectionElement.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+            sectionElement.click();
+            sectionElement.click();
         });
         expect(onToggle).toHaveBeenCalledTimes(2);
         unmount(mountedSection.root, mountedSection.container);

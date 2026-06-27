@@ -71,7 +71,7 @@ export function toStatusItem(status: BitbucketStatus): CommitCheckItem {
  * @param state - The raw Bitbucket state string.
  * @returns The normalized CommitCheckState.
  */
-export function mapBitbucketState(state: string): CommitCheckState {
+function mapBitbucketState(state: string): CommitCheckState {
     switch (state.toUpperCase()) {
         case "SUCCESSFUL":
             return "success";

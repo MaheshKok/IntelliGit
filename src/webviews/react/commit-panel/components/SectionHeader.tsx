@@ -80,6 +80,7 @@ export function SectionHeader({
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}
                 onChange={onToggleCheck}
+                ariaLabel={label}
             />
             <Box as="span">{label}</Box>
             <Box

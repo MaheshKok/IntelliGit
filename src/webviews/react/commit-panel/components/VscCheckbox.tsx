@@ -9,6 +9,7 @@ interface Props {
     onChange: () => void;
     inputTestId?: string;
     inputId?: string;
+    ariaLabel?: string;
 }
 
 const SIZE = 14;
@@ -26,6 +27,7 @@ function VscCheckboxInner({
     onChange,
     inputTestId,
     inputId,
+    ariaLabel,
 }: Props): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -53,6 +55,7 @@ function VscCheckboxInner({
                 ref={inputRef}
                 type="checkbox"
                 id={inputId}
+                aria-label={ariaLabel ?? inputId ?? inputTestId}
                 data-testid={inputTestId}
                 checked={isChecked}
                 onChange={(e) => {

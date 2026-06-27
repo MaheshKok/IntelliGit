@@ -77,6 +77,7 @@ function FolderRowInner({
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}
+                ariaLabel={dirPath}
             />
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.82}>

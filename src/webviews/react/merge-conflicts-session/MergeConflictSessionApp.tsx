@@ -175,6 +175,7 @@ function App() {
 
                 <div className="action-column">
                     <button
+                        type="button"
                         className="action-btn"
                         disabled={!selectedFile}
                         onClick={() => acceptSelected("acceptYours")}
@@ -182,6 +183,7 @@ function App() {
                         {t("mergeSession.acceptYours")}
                     </button>
                     <button
+                        type="button"
                         className="action-btn"
                         disabled={!selectedFile}
                         onClick={() => acceptSelected("acceptTheirs")}
@@ -189,13 +191,14 @@ function App() {
                         {t("mergeSession.acceptTheirs")}
                     </button>
                     <button
+                        type="button"
                         className="action-btn primary"
                         disabled={!selectedFile}
                         onClick={() => selectedFile && openMerge(selectedFile.path)}
                     >
                         {t("mergeSession.merge")}
                     </button>
-                    <button className="action-btn" onClick={refresh}>
+                    <button type="button" className="action-btn" onClick={refresh}>
                         {t("common.refresh")}
                     </button>
                 </div>
@@ -210,7 +213,7 @@ function App() {
                     />
                     {t("mergeSession.groupByDirectory")}
                 </label>
-                <button className="close-btn" onClick={close}>
+                <button type="button" className="close-btn" onClick={close}>
                     {t("common.close")}
                 </button>
             </div>

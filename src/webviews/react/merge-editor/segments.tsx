@@ -617,6 +617,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 </div>
                 <div className="hunk-header-center" onClick={(e) => e.stopPropagation()}>
                     <button
+                        type="button"
                         className={`hunk-choice ${isOurs ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "ours")}
                         title={t("merge.hunk.useLeft")}
@@ -626,6 +627,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                     </button>
                     {segment.changeKind === "conflict" ? (
                         <button
+                            type="button"
                             className={`hunk-choice ${isBoth ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "both")}
                             title={t("merge.hunk.useBoth")}
@@ -635,6 +637,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         </button>
                     ) : null}
                     <button
+                        type="button"
                         className={`hunk-choice ${isTheirs ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "theirs")}
                         title={t("merge.hunk.useRight")}
@@ -643,6 +646,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         {t("merge.hunk.right")}
                     </button>
                     <button
+                        type="button"
                         className={`hunk-choice danger ${isNone ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "none")}
                         title={t("merge.hunk.dropTitle")}
@@ -679,6 +683,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                     />
                     <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                         <button
+                            type="button"
                             className="action-btn discard-btn"
                             onClick={() => onResolve(segment.id, "theirs")}
                             title={t("merge.hunk.ignoreLeft")}
@@ -687,6 +692,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                             <IconClose />
                         </button>
                         <button
+                            type="button"
                             className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "ours")}
                             title={t("merge.hunk.acceptLeft")}
@@ -715,6 +721,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 >
                     <div className="conflict-actions-right" onClick={(e) => e.stopPropagation()}>
                         <button
+                            type="button"
                             className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "theirs")}
                             title={t("merge.hunk.acceptRight")}
@@ -724,6 +731,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                             <IconArrowLeft />
                         </button>
                         <button
+                            type="button"
                             className="action-btn discard-btn"
                             onClick={() => onResolve(segment.id, "ours")}
                             title={t("merge.hunk.ignoreRight")}
@@ -808,6 +816,7 @@ export function OverviewRail({
             <div className="overview-track">
                 {markers.map((marker) => (
                     <button
+                        type="button"
                         key={marker.id}
                         className={[
                             "overview-marker",

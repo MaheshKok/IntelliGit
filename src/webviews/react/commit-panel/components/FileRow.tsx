@@ -80,7 +80,11 @@ function FileRowInner({
         >
             <IndentGuides treeDepth={depth} />
             <Box as="span" w={`${INDENT_STEP}px`} flexShrink={0} />
-            <VscCheckbox isChecked={isChecked} onChange={() => onToggle(file.path)} />
+            <VscCheckbox
+                isChecked={isChecked}
+                onChange={() => onToggle(file.path)}
+                ariaLabel={file.path}
+            />
             <FileTypeIcon status={file.status} icon={file.icon} />
             <Box
                 as="span"

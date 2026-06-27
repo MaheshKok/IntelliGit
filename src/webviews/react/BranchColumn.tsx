@@ -102,20 +102,14 @@ function WorktreeRow({
     const folderName = getPathBasename(worktree.path);
     const activate = (): void => onAction?.("open", worktree.path);
     return (
-        <div
+        <button
+            type="button"
             className="branch-row"
             data-worktree-path={worktree.path}
-            role="button"
-            tabIndex={0}
             title={worktree.path}
             onClick={activate}
             onContextMenu={(event) => onContextMenu(event, worktree)}
             onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    if (event.key === " ") event.preventDefault();
-                    activate();
-                    return;
-                }
                 if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
                     event.preventDefault();
                     onOpenContextMenu(event.currentTarget, worktree);
@@ -134,7 +128,7 @@ function WorktreeRow({
                     {folderName}
                 </span>
             )}
-        </div>
+        </button>
     );
 }
 function readPersistedBranchColumnState(): BranchColumnPersistState | null {
@@ -407,22 +401,15 @@ export function BranchColumn({
 
             {current && (
                 <div style={HEAD_WRAPPER_STYLE}>
-                    <div
+                    <button
+                        type="button"
                         className={`branch-row${selectedBranch === null ? " selected" : ""}`}
-                        role="button"
-                        tabIndex={0}
                         onClick={() => {
                             setSelectedBranchNames(new Set());
                             onSelectBranch(null);
                         }}
                         onContextMenu={(event) => handleBranchContextMenu(event, current)}
                         onKeyDown={(event) => {
-                            if (event.key === "Enter" || event.key === " ") {
-                                if (event.key === " ") event.preventDefault();
-                                setSelectedBranchNames(new Set());
-                                onSelectBranch(null);
-                                return;
-                            }
                             if (
                                 event.key === "ContextMenu" ||
                                 (event.shiftKey && event.key === "F10")
@@ -437,7 +424,7 @@ export function BranchColumn({
                         <span style={HEAD_LABEL_STYLE}>
                             {t("branch.head.label", { name: current.name })}
                         </span>
-                    </div>
+                    </button>
                 </div>
             )}
 
@@ -448,9 +435,9 @@ export function BranchColumn({
             />
             {expandedSections.has("local") && (
                 <div style={TREE_SECTION_STYLE}>
-                    {localTree.map((node, index) => (
+                    {localTree.map((node) => (
                         <BranchTreeNodeRow
-                            key={`local-${node.branch?.name ?? node.label}-${index}`}
+                            key={`local-${node.fullName ?? node.label}`}
                             node={node}
                             depth={1}
                             selectedBranch={selectedBranch}
@@ -491,9 +478,9 @@ export function BranchColumn({
                                     />
                                 </div>
                                 {isExpanded &&
-                                    group.tree.map((node, index) => (
+                                    group.tree.map((node) => (
                                         <BranchTreeNodeRow
-                                            key={`remote-${remote}-${node.branch?.name ?? node.label}-${index}`}
+                                            key={`remote-${remote}-${node.fullName ?? node.label}`}
                                             node={node}
                                             depth={2}
                                             selectedBranch={selectedBranch}

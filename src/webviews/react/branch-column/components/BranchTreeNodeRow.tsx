@@ -134,11 +134,11 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
                         color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
                         border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
                         borderRadius: JETBRAINS_UI.size.radius,
-                        fontSize: 11,
+                        fontSize: 12,
                         lineHeight: "14px",
                         padding: "3px 6px",
                         whiteSpace: "nowrap",
-                        zIndex: 9999,
+                        zIndex: 30,
                         pointerEvents: "none",
                         boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
                     }}
@@ -207,17 +207,6 @@ export function BranchTreeNodeRow({
     folderExpandedIcon,
     folderIconsByName,
 }: Props): React.ReactElement {
-    /** Normalizes Enter/Space keyboard activation for folder rows without page scrolling. */
-    const handleActivateKey = (
-        event: React.KeyboardEvent<HTMLDivElement>,
-        action: () => void,
-    ): void => {
-        if (event.key === "Enter" || event.key === " ") {
-            if (event.key === " ") event.preventDefault();
-            action();
-        }
-    };
-
     const isFolder = node.children.length > 0 && !node.branch;
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
@@ -236,12 +225,10 @@ export function BranchTreeNodeRow({
         );
         return (
             <>
-                <div
+                <button
+                    type="button"
                     className="branch-row"
                     onClick={() => onToggleFolder(folderKey)}
-                    onKeyDown={(event) => handleActivateKey(event, () => onToggleFolder(folderKey))}
-                    role="button"
-                    tabIndex={0}
                     aria-expanded={isExpanded}
                     style={rowStyle}
                 >
@@ -254,11 +241,11 @@ export function BranchTreeNodeRow({
                         <TreeFolderIcon isExpanded={isExpanded} icon={resolvedFolderIcon} />
                     </span>
                     <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
-                </div>
+                </button>
                 {isExpanded &&
-                    node.children.map((child, index) => (
+                    node.children.map((child) => (
                         <BranchTreeNodeRow
-                            key={`${folderKey}/${child.branch?.name ?? child.label}-${index}`}
+                            key={`${folderKey}/${child.fullName ?? child.label}`}
                             node={child}
                             depth={depth + 1}
                             selectedBranch={selectedBranch}
@@ -296,17 +283,13 @@ export function BranchTreeNodeRow({
     };
 
     return (
-        <div
+        <button
+            type="button"
             className={`branch-row${isSelected ? " selected" : ""}`}
             onClick={handleSelectBranch}
-            onKeyDown={(event) =>
-                handleActivateKey(event, () => onSelectBranch(node.fullName ?? null))
-            }
             onContextMenu={(event) => {
                 if (node.branch) onContextMenu(event, node.branch);
             }}
-            role="button"
-            tabIndex={0}
             style={rowStyle}
         >
             <BranchIndentGuides depth={depth} />
@@ -321,6 +304,6 @@ export function BranchTreeNodeRow({
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <WorktreeBadge branch={node.branch} />}
             {node.branch && <TrackingBadge branch={node.branch} />}
-        </div>
+        </button>
     );
 }
