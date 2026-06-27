@@ -89,6 +89,8 @@ function sessionReducer(state: SessionState, action: SessionAction): SessionStat
  * selectable rows, posts file-scoped accept/open commands, and sends session-level
  * refresh/close commands.
  */
+// Webview entrypoint owns root render side effects; Fast Refresh component-export rule is not applicable here.
+// react-doctor-disable-next-line react-doctor/only-export-components
 function App() {
     const [state, dispatch] = useReducer(sessionReducer, undefined, createInitialSessionState);
     const { sourceBranch, targetBranch, files, selectedPath, groupByDirectory, error } = state;

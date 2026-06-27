@@ -29,6 +29,8 @@ interface Props {
  * checkbox toggles every file in the section while clicking the row only expands
  * or collapses that section.
  */
+// Independent visual and selection flags; no single variant object would model this state.
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function SectionHeader({
     label,
     count,

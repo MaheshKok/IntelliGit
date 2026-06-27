@@ -97,6 +97,6 @@ export function useCommitGraphMessages(params: {
         window.addEventListener("message", handler);
         return () => window.removeEventListener("message", handler);
         // Keep the original root effect subscription lifetime; dispatch and loadingMore are stable.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sendReady, vscode]);
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
+    }, [sendReady, vscode]); // eslint-disable-line react-hooks/exhaustive-deps
 }

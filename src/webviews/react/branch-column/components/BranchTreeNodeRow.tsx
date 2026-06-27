@@ -253,6 +253,8 @@ export function BranchTreeNodeRow({
                     <span data-branch-icon="folder" style={FOLDER_ICON_WRAPPER_STYLE}>
                         <TreeFolderIcon isExpanded={isExpanded} icon={resolvedFolderIcon} />
                     </span>
+                    {/* Pure label highlighter, not a component invocation. */}
+                    {/* react-doctor-disable-next-line react-doctor/no-render-in-render */}
                     <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
                 </button>
                 {isExpanded &&
@@ -314,6 +316,8 @@ export function BranchTreeNodeRow({
             ) : (
                 <GitBranchIcon color={JETBRAINS_UI.color.branch} />
             )}
+            {/* Pure label highlighter, not a component invocation. */}
+            {/* react-doctor-disable-next-line react-doctor/no-render-in-render */}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <WorktreeBadge branch={node.branch} />}
             {node.branch && <TrackingBadge branch={node.branch} />}

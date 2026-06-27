@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
-import { BASE_ICON_STYLE } from "../shared/components/Icons";
+import { BASE_ICON_STYLE } from "../shared/components/iconStyles";
 import { JETBRAINS_UI } from "../shared/tokens";
 
 export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;

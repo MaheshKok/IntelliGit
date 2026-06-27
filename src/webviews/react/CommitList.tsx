@@ -36,6 +36,8 @@ const PENDING_CHECK_REFRESH_MS = 15_000;
  * Allows cherry-pick actions when the graph is scoped to a non-current branch,
  * or when the current branch is unavailable and the extension must decide.
  */
+// Utility export is covered by webview unit tests; moving it would only churn local imports.
+// react-doctor-disable-next-line react-doctor/only-export-components
 export function canCherryPickFromBranchScope(
     selectedBranch: string | null,
     currentBranchName?: string | null,
@@ -212,6 +214,8 @@ export function CommitList({
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
+    // Visible-row polling is viewport state synchronization; there is no event handler to move this into.
+    // react-doctor-disable-next-line react-doctor/no-effect-event-handler
     useEffect(() => {
         if (!onRequestCommitChecks) return;
         const retryHashes: string[] = [];
@@ -219,6 +223,8 @@ export function CommitList({
         for (const commit of visibleCommits) {
             const checks = commitChecks?.get(commit.hash);
             if (!checks) {
+                // Commit-check requests are host IO driven by visibility, not parent state synchronization.
+                // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
                 onRequestCommitChecks(commit.hash);
                 continue;
             }

@@ -154,6 +154,8 @@ function RefBadge({ kind, name }: { kind: "branch" | "tag"; name: string }): Rea
     );
 }
 
+// Single-use tooltip row kept beside commit-row tooltip styles and ref rendering.
+// react-doctor-disable-next-line react-doctor/no-multi-comp
 function TooltipRefRow({
     kind,
     name,
@@ -175,6 +177,8 @@ function TooltipRefRow({
     );
 }
 
+// Single-use commit message cell kept beside commit-row tooltip and badge behavior.
+// react-doctor-disable-next-line react-doctor/no-multi-comp
 function CommitMessageCell({
     message,
     refs,
@@ -351,6 +355,8 @@ function CommitMessageCell({
     );
 }
 
+// Memo target kept local so the comparator and exported memoized row stay together.
+// react-doctor-disable-next-line react-doctor/no-multi-comp
 function CommitRowInner({
     commit,
     graphWidth,

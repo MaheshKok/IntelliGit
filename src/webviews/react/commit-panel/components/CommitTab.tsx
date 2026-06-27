@@ -54,6 +54,8 @@ interface Props {
  * requests, shelf/rollback commands, and the draggable commit-message area while
  * delegating checked-path state to the root commit-panel app.
  */
+// Independent commit workflow flags come from different host state; grouping them would hide intent.
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitTab({
     files,
     folderIcon,

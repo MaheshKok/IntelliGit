@@ -33,6 +33,8 @@ interface CommitPanelPaneProps {
  * Embeds the shared commit/shelf tab UI inside the undocked layout while routing
  * all selection, amend, commit, and grouping callbacks back to the app shell.
  */
+// Pass-through pane props mirror independent child controls, not a mutually exclusive variant.
+// react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitPanelPane({
     width,
     cpState,

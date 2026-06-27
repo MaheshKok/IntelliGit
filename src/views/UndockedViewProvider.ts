@@ -3,7 +3,7 @@
 // intelligit.undockableWindow to allow dragging to a second monitor.
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import { IconThemeService } from "./shared";
+import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";

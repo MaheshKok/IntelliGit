@@ -21,6 +21,8 @@ import { canRunCommitAction } from "./commitEligibility";
  * amend-message loading, draft persistence, and the local group-by-directory
  * preference shared by the commit and shelf tabs.
  */
+// Webview entrypoint owns root render side effects; Fast Refresh component-export rule is not applicable here.
+// react-doctor-disable-next-line react-doctor/only-export-components
 function App(): React.ReactElement {
     const [state, dispatch] = useExtensionMessages();
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
