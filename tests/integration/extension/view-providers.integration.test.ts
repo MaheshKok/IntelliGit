@@ -828,6 +828,68 @@ describe("view providers integration", () => {
         expect(fileCounts.length).toBeGreaterThan(0);
     });
 
+    it("UndockedViewProvider drops stale commit-check replies after cache scope changes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        let resolveFirst!: (value: unknown) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockReturnValueOnce(
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+            )
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            });
+        postMessageSpy.mockClear();
+
+        const staleRequest = testProvider.handleMessage.call(provider, {
+            type: "requestCommitChecks",
+            hash: "abc1234",
+        });
+        provider.clearChecksCache();
+        resolveFirst({
+            hash: "abc1234",
+            state: "pending",
+            summary: "Checks pending",
+            items: [],
+        });
+        await staleRequest;
+
+        expect(lastCommitChecksSnapshot()).toBeUndefined();
+
+        await testProvider.handleMessage.call(provider, {
+            type: "requestCommitChecks",
+            hash: "abc1234",
+        });
+        expect(lastCommitChecksSnapshot()).toEqual(
+            expect.objectContaining({ state: "success" }),
+        );
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");

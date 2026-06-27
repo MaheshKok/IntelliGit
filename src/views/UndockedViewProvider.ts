@@ -133,6 +133,7 @@ export class UndockedViewProvider {
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
     private readonly commitChecks: CommitChecksCoordinator;
+    private commitChecksGeneration = 0;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -222,6 +223,7 @@ export class UndockedViewProvider {
      * never re-fetch, leaving the badge stuck after the user signs in.
      */
     clearChecksCache(): void {
+        this.commitChecksGeneration += 1;
         this.commitChecks.clear();
     }
     /**
@@ -252,6 +254,7 @@ export class UndockedViewProvider {
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
+        this.commitChecksGeneration += 1;
         this.commitChecks.clear();
         this.filterText = "";
         this.offset = 0;
@@ -708,7 +711,12 @@ export class UndockedViewProvider {
     }
 
     private async sendCommitChecks(hash: string): Promise<void> {
+        const generation = this.commitChecksGeneration;
         const snapshot = await this.commitChecks.getChecks(hash);
+        if (generation !== this.commitChecksGeneration) {
+            this.commitChecks.clear();
+            return;
+        }
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 

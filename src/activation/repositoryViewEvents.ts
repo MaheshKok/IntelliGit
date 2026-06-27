@@ -134,6 +134,7 @@ export function registerRepositoryViewEvents(
             commitPanel.setCommitDetail(detail);
             commitInfo.setCommitDetail(detail);
         } catch (err) {
+            if (requestId !== commitDetailRequestSeq) return;
             const msg = getErrorMessage(err);
             vscode.window.showErrorMessage(
                 vscode.l10n.t("Failed to load commit: {message}", { message: msg }),
