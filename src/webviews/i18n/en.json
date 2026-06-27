@@ -23,6 +23,10 @@
     "common.drop": "Drop",
     "common.delete": "Delete",
     "common.clear": "Clear",
+    "a11y.resizeBranchColumn": "Resize branch column",
+    "a11y.resizeCommitDetailsPane": "Resize commit details pane",
+    "a11y.resizeCommitList": "Resize commit list",
+    "a11y.resizeCommitPanel": "Resize commit panel",
     "common.branches": "Branches",
     "common.tags": "Tags",
     "common.fileCount": {
@@ -184,6 +188,7 @@
     "merge.hunk.acceptLeft": "Accept left block",
     "merge.hunk.acceptRight": "Accept right block",
     "merge.hunk.ignoreRight": "Ignore right block",
+    "merge.hunk.groupAria": "Conflict hunk #{ordinal}",
     "merge.status.droppedLeftOnly": "Dropped left-only change",
     "merge.status.leftOnly": "Left-only change",
     "merge.status.droppedRightOnly": "Dropped right-only change",

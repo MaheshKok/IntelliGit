@@ -138,6 +138,8 @@ export function ContextMenu({
                 position: "fixed",
                 left: pos.left,
                 top: pos.top,
+                // Portal context menus must float above all VS Code webview panes/popovers.
+                // react-doctor-disable-next-line react-doctor/no-z-index-9999
                 zIndex: 9999,
                 background: JETBRAINS_UI.color.panel,
                 border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
@@ -151,14 +153,13 @@ export function ContextMenu({
             {items.map((item, i) => {
                 if (item.separator) {
                     return (
-                        <div
+                        <hr
                             key={`sep-${i}`}
-                            role="separator"
-                            aria-orientation="horizontal"
                             style={{
                                 height: 1,
                                 margin: "4px 8px",
                                 background: `var(--vscode-menu-separatorBackground, ${JETBRAINS_UI.color.menuSeparator})`,
+                                border: 0,
                             }}
                         />
                     );

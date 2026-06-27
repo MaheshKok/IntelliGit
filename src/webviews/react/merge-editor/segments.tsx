@@ -384,6 +384,8 @@ function EditableResultBlock({
                 aria-label={t("merge.result.editingAria")}
                 value={draft}
                 rows={rowCount}
+                // Deliberate: edit mode opens from a user action and should focus the draft textarea.
+                // react-doctor-disable-next-line react-doctor/no-autofocus
                 autoFocus
                 spellCheck={false}
                 onChange={(event) => setDraft(event.target.value)}
@@ -590,6 +592,18 @@ export const ConflictSection = React.memo(function ConflictSection({
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
     );
+    const handleSectionSelect = useCallback(() => {
+        onSelect(segment.id);
+    }, [onSelect, segment.id]);
+    const handleSectionKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.currentTarget !== event.target) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleSectionSelect();
+        },
+        [handleSectionSelect],
+    );
     const resultCompareLines =
         resolution === "ours"
             ? segment.theirsLines
@@ -601,6 +615,13 @@ export const ConflictSection = React.memo(function ConflictSection({
         <div
             ref={setSectionRef}
             style={intrinsicSizeStyle(lineCount, CONFLICT_CHROME_PX)}
+            // Native button is invalid here because the hunk contains action buttons and an edit textarea.
+            // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+            role="button"
+            tabIndex={0}
+            aria-label={t("merge.hunk.groupAria", {
+                ordinal: trueConflictOrdinal ?? conflictOrdinal,
+            })}
             className={[
                 "segment",
                 "segment-conflict",
@@ -612,7 +633,8 @@ export const ConflictSection = React.memo(function ConflictSection({
                 .filter(Boolean)
                 .join(" ")}
             data-conflict-id={segment.id}
-            onClick={() => onSelect(segment.id)}
+            onClick={handleSectionSelect}
+            onKeyDown={handleSectionKeyDown}
         >
             <div className="hunk-header">
                 <div className="hunk-header-left">

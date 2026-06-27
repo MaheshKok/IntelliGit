@@ -413,10 +413,28 @@ function CommitRowInner({
         }),
         [isMergeCommit],
     );
+    const handleSelect = React.useCallback(() => {
+        onSelect(commit.hash);
+    }, [commit.hash, onSelect]);
+    const handleKeyDown = React.useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.currentTarget !== event.target) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handleSelect();
+        },
+        [handleSelect],
+    );
 
     return (
         <div
-            onClick={() => onSelect(commit.hash)}
+            // Native button would wrap nested commit-check controls; keep the row div keyboard-activated.
+            // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+            role="button"
+            tabIndex={0}
+            aria-current={isSelected ? "true" : undefined}
+            onClick={handleSelect}
+            onKeyDown={handleKeyDown}
             onContextMenu={(event) => onContextMenu(event, commit)}
             onMouseEnter={(event) => onHover?.(commit, event)}
             onMouseLeave={() => onUnhover?.()}

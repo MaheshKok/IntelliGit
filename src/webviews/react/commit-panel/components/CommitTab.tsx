@@ -111,6 +111,8 @@ export function CommitTab({
     }, [clearRefreshFeedbackTimer]);
 
     useEffect(() => {
+        // Host refresh state drives transient visual feedback; this is prop synchronization.
+        // react-doctor-disable-next-line react-doctor/no-event-handler
         if (isRefreshing) {
             // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
             showRefreshFeedback();

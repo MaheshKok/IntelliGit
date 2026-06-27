@@ -25,6 +25,7 @@ import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
 import type { CommitGraphPanelAction } from "./commit-graph/types";
+import { t } from "./shared/i18n";
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
@@ -32,6 +33,7 @@ const DEFAULT_BRANCH_WIDTH = 260;
 const MIN_INFO_WIDTH = 250;
 const MAX_INFO_WIDTH = 760;
 const DEFAULT_INFO_WIDTH = 330;
+const KEYBOARD_RESIZE_STEP = 16;
 
 interface Props {
     vscode: VsCodeApi<CommitGraphOutbound | CommitPanelOutbound, Record<string, unknown>>;
@@ -286,6 +288,24 @@ export function CommitGraphPanel({
 
     useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore });
 
+    const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const delta = event.key === "ArrowRight" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
+        setBranchWidth((current) =>
+            Math.max(MIN_BRANCH_WIDTH, Math.min(MAX_BRANCH_WIDTH, current + delta)),
+        );
+    }, []);
+
+    const handleInfoDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const delta = event.key === "ArrowLeft" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
+        setInfoWidth((current) =>
+            Math.max(MIN_INFO_WIDTH, Math.min(MAX_INFO_WIDTH, current + delta)),
+        );
+    }, []);
+
     useEffect(() => {
         try {
             const prev = vscode.getState() ?? {};
@@ -424,14 +444,19 @@ export function CommitGraphPanel({
                     />
                 </div>
 
-                <div
+                <button
+                    type="button"
+                    aria-label={t("a11y.resizeBranchColumn")}
                     data-testid="commit-graph-divider"
                     onMouseDown={onDividerMouseDown}
+                    onKeyDown={handleBranchDividerKeyDown}
                     style={{
                         width: 4,
                         flexShrink: 0,
                         cursor: "col-resize",
                         background: JETBRAINS_UI.color.divider,
+                        border: 0,
+                        padding: 0,
                     }}
                 />
 
@@ -461,14 +486,19 @@ export function CommitGraphPanel({
                             }
                         />
                     </div>
-                    <div
+                    <button
+                        type="button"
+                        aria-label={t("a11y.resizeCommitDetailsPane")}
                         data-testid="commit-info-divider"
                         onMouseDown={onInfoDividerMouseDown}
+                        onKeyDown={handleInfoDividerKeyDown}
                         style={{
                             width: 4,
                             flexShrink: 0,
                             cursor: "col-resize",
                             background: JETBRAINS_UI.color.divider,
+                            border: 0,
+                            padding: 0,
                         }}
                     />
                     <div
