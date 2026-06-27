@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "Git-интерфейс в стиле IntelliJ для VS Code с графом коммитов, сведениями о коммитах, workflow отложенных изменений и обозревателем изменений файлов.",
+    "extension.description": "Лучшие функции Git из PyCharm, VS Code и Visual Studio IDE",
     "view.commit": "Коммит",
     "view.graph": "График",
     "view.mergeConflicts": "Конфликты слияния",

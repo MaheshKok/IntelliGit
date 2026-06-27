@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "适用于 VS Code 的 IntelliJ 风格 Git UI，包含提交图、提交详情、搁置工作流和文件更改浏览器。",
+    "extension.description": "来自 PyCharm、VS Code 和 Visual Studio IDE 的最佳 Git 功能",
     "view.commit": "提交",
     "view.graph": "图形",
     "view.mergeConflicts": "合并冲突",
