@@ -31,6 +31,16 @@ async function currentBranchIsPublished(gitOps: GitOps): Promise<boolean> {
     return currentBranch?.upstream !== undefined && currentBranch.upstream.length > 0;
 }
 
+/** Warns when repository-modifying actions should wait for a clean working tree. */
+export async function warnIfUncommittedChanges(gitOps: GitOps): Promise<boolean> {
+    const files = await gitOps.getStatus();
+    if (files.length === 0) return false;
+    showTimedWarningMessage(
+        vscode.l10n.t("There are uncommitted changes, please commit or stash them first."),
+    );
+    return true;
+}
+
 /**
  * Commits the validated subset of selected Changes-panel files and optionally pushes it.
  *
@@ -146,6 +156,10 @@ export async function runGitOperationFromPanel(
     >,
     operation: CommitPanelGitOperation,
 ): Promise<void> {
+    if (operation !== "fetch" && (await warnIfUncommittedChanges(deps.gitOps))) {
+        return;
+    }
+
     if (!(await currentBranchIsPublished(deps.gitOps))) {
         if (operation === "push") {
             // Publishing must finish before commit-panel and graph refresh read branch state.

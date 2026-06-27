@@ -21,6 +21,7 @@ interface Props {
     onFetch: () => void;
     onPull: () => void;
     onPush: () => void;
+    hasUncommittedChanges: boolean;
     commitContent: React.ReactNode;
     shelfContent: React.ReactNode;
 }
@@ -55,6 +56,7 @@ export function TabBar({
     onFetch,
     onPull,
     onPush,
+    hasUncommittedChanges,
     commitContent,
     shelfContent,
 }: Props): React.ReactElement {
@@ -92,8 +94,13 @@ export function TabBar({
                         </Tab>
                     ))}
                 </TabList>
-                <Flex align="center">
-                    <GitActionButton label={t("common.sync")} onClick={onSync} color="#c8a2ff">
+                <Flex align="center" ml="auto">
+                    <GitActionButton
+                        label={t("common.sync")}
+                        onClick={onSync}
+                        color="#c8a2ff"
+                        disabled={hasUncommittedChanges}
+                    >
                         <path
                             fill="currentColor"
                             d="M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z"
@@ -117,7 +124,12 @@ export function TabBar({
                             d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
                         />
                     </GitActionButton>
-                    <GitActionButton label={t("common.pull")} onClick={onPull} color="#8fd5ff">
+                    <GitActionButton
+                        label={t("common.pull")}
+                        onClick={onPull}
+                        color="#8fd5ff"
+                        disabled={hasUncommittedChanges}
+                    >
                         <path
                             fill="currentColor"
                             d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
@@ -128,6 +140,7 @@ export function TabBar({
                         label={t("common.push")}
                         onClick={onPush}
                         color="var(--vscode-gitDecoration-addedResourceForeground, #a6e3a1)"
+                        disabled={hasUncommittedChanges}
                     >
                         <path
                             fill="currentColor"
@@ -159,15 +172,21 @@ function GitActionButton({
     label,
     onClick,
     color,
+    disabled = false,
     children,
 }: {
     label: string;
     onClick: () => void;
     color: string;
+    disabled?: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const resolvedColor = iconStyle === "standard" ? "var(--vscode-icon-foreground)" : color;
+    const resolvedColor = disabled
+        ? "var(--vscode-disabledForeground)"
+        : iconStyle === "standard"
+          ? "var(--vscode-icon-foreground)"
+          : color;
     return (
         <Tooltip
             label={label}
@@ -178,10 +197,13 @@ function GitActionButton({
         >
             <IconButton
                 aria-label={label}
+                aria-disabled={disabled || undefined}
                 variant="toolbarGhost"
                 size="sm"
                 alignSelf="center"
                 mx="4px"
+                opacity={disabled ? 0.55 : undefined}
+                cursor={disabled ? "default" : undefined}
                 onClick={onClick}
                 icon={
                     <svg

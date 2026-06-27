@@ -120,6 +120,50 @@ describe("GitOps", () => {
             expect(branches[0].behind).toBe(3);
             expect(branches[0].ahead).toBe(0);
         });
+
+        it("marks default branches and parses branch tip dates", async () => {
+            const output = [
+                "refs/remotes/origin/HEAD\torigin\tabc1234\t\t\t \torigin/main\t1700000000",
+                "refs/heads/main\tmain\tabc1234\torigin/main\t\t \t\t1700000000",
+                "refs/heads/codex/work\tcodex/work\tdef5678\t\t\t*\t\t1700000100",
+                "refs/remotes/origin/main\torigin/main\tabc1234\t\t\t \t\t1700000000",
+                "refs/remotes/origin/codex/work\torigin/codex/work\tdef5678\t\t\t \t\t1700000100",
+            ].join("\n");
+
+            const executor = createMockExecutor({ branch: output });
+            const ops = new GitOps(executor);
+            const branches = await ops.getBranches();
+
+            expect(branches.find((branch) => branch.name === "main")?.isDefault).toBe(true);
+            expect(branches.find((branch) => branch.name === "origin/main")?.isDefault).toBe(true);
+            expect(
+                branches.find((branch) => branch.name === "codex/work")?.isDefault,
+            ).toBeUndefined();
+            expect(branches.find((branch) => branch.name === "codex/work")?.committerDate).toBe(
+                1700000100,
+            );
+        });
+
+        it("does not pin main when Git reports a different default branch", async () => {
+            const output = [
+                "refs/remotes/origin/HEAD\torigin\tabc1234\t\t\t \torigin/trunk\t1700000000",
+                "refs/heads/main\tmain\tabc1234\torigin/main\t\t \t\t1700000000",
+                "refs/heads/trunk\ttrunk\tdef5678\torigin/trunk\t\t*\t\t1700000100",
+                "refs/remotes/origin/main\torigin/main\tabc1234\t\t\t \t\t1700000000",
+                "refs/remotes/origin/trunk\torigin/trunk\tdef5678\t\t\t \t\t1700000100",
+            ].join("\n");
+
+            const executor = createMockExecutor({ branch: output });
+            const ops = new GitOps(executor);
+            const branches = await ops.getBranches();
+
+            expect(branches.find((branch) => branch.name === "trunk")?.isDefault).toBe(true);
+            expect(branches.find((branch) => branch.name === "origin/trunk")?.isDefault).toBe(true);
+            expect(branches.find((branch) => branch.name === "main")?.isDefault).toBeUndefined();
+            expect(
+                branches.find((branch) => branch.name === "origin/main")?.isDefault,
+            ).toBeUndefined();
+        });
     });
     describe("getStatus", () => {
         it("parses porcelain status output", async () => {
@@ -283,7 +327,9 @@ describe("GitOps", () => {
         it("moves unversioned files into the unstaged changes group without staging contents", async () => {
             const repo = await createTempGitRepo();
             try {
-                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor) as GitOps & {
+                const ops = new GitOps(
+                    new RealGitExecutor(repo) as unknown as GitExecutor,
+                ) as GitOps & {
                     intentToAddFiles(paths: string[]): Promise<void>;
                 };
                 await writeFile(path.join(repo, "new-file.txt"), "draft\n", "utf8");

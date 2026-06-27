@@ -40,6 +40,7 @@ interface Props {
     canCommit: boolean;
     onPush: () => void;
     canPush: boolean;
+    pushBlockedByUncommittedChanges: boolean;
     pushLabel: string;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
@@ -78,6 +79,7 @@ export function CommitTab({
     canCommit,
     onPush,
     canPush,
+    pushBlockedByUncommittedChanges,
     pushLabel,
     currentBranchName,
     currentBranchUpstream,
@@ -240,6 +242,7 @@ export function CommitTab({
                     onPush={onPush}
                     canCommit={canCommit}
                     canPush={canPush}
+                    pushBlockedByUncommittedChanges={pushBlockedByUncommittedChanges}
                     pushLabel={pushLabel}
                     currentBranchName={currentBranchName}
                     currentBranchUpstream={currentBranchUpstream}
