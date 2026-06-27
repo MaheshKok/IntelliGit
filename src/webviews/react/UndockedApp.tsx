@@ -4,18 +4,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
 import { createRoot } from "react-dom/client";
-import { ChakraProvider, Box } from "@chakra-ui/react";
-import { BranchColumn } from "./BranchColumn";
-import { CommitList } from "./CommitList";
-import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
-import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import { useCheckedFiles } from "./commit-panel/hooks/useCheckedFiles";
-import theme from "./commit-panel/theme";
 import { getSettings } from "./shared/settings";
-import { CommitPanelPane } from "./undocked/CommitPanelPane";
-import { commitPanelReducer, initialCommitPanelState } from "./undocked/commitPanelState";
+import {
+    commitPanelReducer,
+    initialCommitPanelState,
+    type CommitChecksValue,
+    type GraphAction,
+} from "./undocked/commitPanelState";
 import { canRunCommitAction } from "./commit-panel/commitEligibility";
 import {
     computeEqualSectionWidths,
@@ -24,26 +21,24 @@ import {
     sectionWidthsAreClose,
     type SectionWidths,
 } from "./undocked/sectionWidths";
-import { UndockedHeader } from "./undocked/UndockedHeader";
+import { UndockedLayout } from "./undocked/UndockedLayout";
 import { useColumnPairDrag } from "./undocked/useColumnPairDrag";
+import { useUnifiedMessages } from "./undocked/useUnifiedMessages";
+import { useUndockedActions } from "./undocked/useUndockedActions";
 import type {
     Branch,
     Commit,
-    CommitChecksSnapshot,
     CommitDetail,
     GitWorktree,
     ThemeFolderIconMap,
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type { BranchAction, CommitAction, WorktreeAction } from "../protocol/commitGraphTypes";
-import type { UnifiedInbound, UnifiedOutbound } from "../protocol/undockedMessages";
+import type { UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
-
-type CommitChecksValue = CommitChecksSnapshot | "loading";
 
 interface GraphState {
     commits: Commit[];
@@ -65,41 +60,6 @@ interface GraphState {
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
 }
-
-type GraphAction =
-    | {
-          type: "loadCommits";
-          commits: Commit[];
-          append: boolean;
-          hasMore: boolean;
-          unpushedHashes?: string[];
-      }
-    | {
-          type: "setBranches";
-          branches: Branch[];
-          worktrees?: GitWorktree[];
-          folderIcon?: ThemeTreeIcon;
-          folderExpandedIcon?: ThemeTreeIcon;
-          folderIconsByName?: ThemeFolderIconMap;
-          iconFonts?: ThemeIconFont[];
-          commitChecksEnabled?: boolean;
-      }
-    | { type: "setSelectedBranch"; branch: string | null }
-    | {
-          type: "setCommitDetail";
-          detail: CommitDetail;
-          folderIcon?: ThemeTreeIcon;
-          folderExpandedIcon?: ThemeTreeIcon;
-          folderIconsByName?: ThemeFolderIconMap;
-          iconFonts?: ThemeIconFont[];
-      }
-    | { type: "clearCommitDetail" }
-    | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
-    | { type: "markCommitChecksLoading"; hash: string }
-    | { type: "loadError"; clearCommits: boolean }
-    | { type: "selectCommit"; hash: string }
-    | { type: "selectBranch"; branch: string | null }
-    | { type: "setFilterText"; text: string };
 
 const initialGraphState: GraphState = {
     commits: [],
@@ -369,228 +329,15 @@ function App(): React.ReactElement {
     }, [cpState.isAmend, cpState.isRefreshing]);
 
     // --- Single message handler for both sides ---
-    useEffect(() => {
-        const handler = (event: MessageEvent<UnifiedInbound>) => {
-            const data = event.data;
-
-            switch (data.type) {
-                // --- Graph-side messages ---
-                case "loadCommits":
-                    loadingMore.current = false;
-                    graphDispatch({
-                        type: "loadCommits",
-                        commits: data.commits,
-                        append: Boolean(data.append),
-                        hasMore: data.hasMore,
-                        unpushedHashes: data.unpushedHashes,
-                    });
-                    if (!data.append && data.commits.length > 0) {
-                        vscode.postMessage({
-                            type: "selectCommit",
-                            hash: data.commits[0].hash,
-                        });
-                    }
-                    return;
-
-                case "setBranches":
-                    graphDispatch({
-                        type: "setBranches",
-                        branches: data.branches,
-                        worktrees: data.worktrees,
-                        folderIcon: data.folderIcon,
-                        folderExpandedIcon: data.folderExpandedIcon,
-                        folderIconsByName: data.folderIconsByName,
-                        iconFonts: data.iconFonts,
-                        commitChecksEnabled: data.commitChecksEnabled,
-                    });
-                    return;
-
-                case "setSelectedBranch":
-                    graphDispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
-                    return;
-
-                case "setCommitDetail":
-                    graphDispatch({
-                        type: "setCommitDetail",
-                        detail: data.detail,
-                        folderIcon: data.folderIcon,
-                        folderExpandedIcon: data.folderExpandedIcon,
-                        folderIconsByName: data.folderIconsByName,
-                        iconFonts: data.iconFonts,
-                    });
-                    return;
-
-                case "clearCommitDetail":
-                    graphDispatch({ type: "clearCommitDetail" });
-                    return;
-
-                case "setCommitChecks":
-                    graphDispatch({ type: "setCommitChecks", snapshot: data.snapshot });
-                    return;
-
-                case "loadError":
-                    graphDispatch({ type: "loadError", clearCommits: !loadingMore.current });
-                    loadingMore.current = false;
-                    console.error("[IntelliGit] Load error:", data.message);
-                    return;
-
-                // --- Commit-panel-side messages ---
-                case "update":
-                    cpDispatch({
-                        type: "SET_FILES_AND_STASHES",
-                        files: data.files,
-                        stashes: data.stashes,
-                        shelfFiles: data.shelfFiles,
-                        selectedShelfIndex: data.selectedShelfIndex,
-                        folderIcon: data.folderIcon,
-                        folderExpandedIcon: data.folderExpandedIcon,
-                        folderIconsByName: data.folderIconsByName,
-                        iconFonts: data.iconFonts,
-                        currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
-                        hasRemotes: data.hasRemotes,
-                        currentBranchAhead: data.currentBranchAhead ?? 0,
-                        currentBranchBehind: data.currentBranchBehind ?? 0,
-                        currentBranchName: data.currentBranchName,
-                        currentBranchUpstream: data.currentBranchUpstream,
-                    });
-                    return;
-
-                case "restoreCommitDraft":
-                    cpDispatch({ type: "RESTORE_COMMIT_DRAFT", message: data.message });
-                    return;
-
-                case "lastCommitMessage":
-                    cpDispatch({ type: "SET_LAST_COMMIT_MESSAGE", message: data.message });
-                    return;
-
-                case "amendBranchCommits":
-                    cpDispatch({ type: "SET_AMEND_BRANCH_COMMITS", commits: data.commits });
-                    return;
-
-                case "committed":
-                    cpDispatch({ type: "COMMITTED" });
-                    return;
-
-                case "refreshing":
-                    cpDispatch({ type: "SET_REFRESHING", active: data.active });
-                    return;
-
-                case "settings":
-                    setCommitPanelPosition(data.commitWindowPosition);
-                    return;
-
-                // Restore persisted column widths from extension
-                case "columnWidths":
-                    // Mark hydrated first so the subsequent state updates are
-                    // allowed to persist (and future user drags too).
-                    markWidthsHydrated();
-                    {
-                        const measuredWidth = layoutRef.current?.clientWidth;
-                        const totalWidth =
-                            typeof measuredWidth === "number" && measuredWidth > 0
-                                ? measuredWidth
-                                : undefined;
-                        const normalized = normalizeSectionWidths(
-                            {
-                                branchWidth: data.branchWidth,
-                                graphWidth: data.graphWidth,
-                                infoWidth: data.infoWidth,
-                                commitPanelWidth: data.commitPanelWidth,
-                            },
-                            totalWidth,
-                        );
-                        setSectionWidths(normalized);
-                    }
-                    return;
-
-                case "error":
-                    cpDispatch({ type: "SET_ERROR", message: data.message });
-                    console.error("[IntelliGit] Extension error:", data.message);
-                    return;
-            }
-        };
-
-        window.addEventListener("message", handler);
-        vscode.postMessage({ type: "ready" });
-
-        return () => window.removeEventListener("message", handler);
-    }, [markWidthsHydrated, setSectionWidths]);
-
-    // --- Graph-side callbacks ---
-    const handleSelectCommit = useCallback((hash: string) => {
-        graphDispatch({ type: "selectCommit", hash });
-        vscode.postMessage({ type: "selectCommit", hash });
-    }, []);
-
-    const handleFilterText = useCallback((text: string) => {
-        graphDispatch({ type: "setFilterText", text });
-        if (text.length >= 3 || text.length === 0) {
-            loadingMore.current = false;
-            vscode.postMessage({ type: "filterText", text });
-        }
-    }, []);
-
-    const handleLoadMore = useCallback(() => {
-        if (loadingMore.current) return;
-        loadingMore.current = true;
-        vscode.postMessage({ type: "loadMore" });
-    }, []);
-
-    const handleSelectBranch = useCallback((name: string | null) => {
-        graphDispatch({ type: "selectBranch", branch: name });
-        loadingMore.current = false;
-        vscode.postMessage({ type: "filterBranch", branch: name });
-    }, []);
-
-    const handleBranchAction = useCallback((action: BranchAction, branchName: string) => {
-        vscode.postMessage({ type: "branchAction", action, branchName });
-    }, []);
-
-    const handleDeleteBranches = useCallback((branches: Branch[]) => {
-        vscode.postMessage({ type: "deleteBranches", branches });
-    }, []);
-
-    const handleWorktreeAction = useCallback((action: WorktreeAction, path: string) => {
-        vscode.postMessage({ type: "worktreeAction", action, path });
-    }, []);
-
-    const handleCommitAction = useCallback((action: CommitAction, hash: string) => {
-        vscode.postMessage({ type: "commitAction", action, hash });
-    }, []);
-
-    const handleOpenDiff = useCallback((commitHash: string, filePath: string) => {
-        vscode.postMessage({ type: "openCommitFileDiff", commitHash, filePath });
-    }, []);
-
-    const handleRequestCommitChecks = useCallback(
-        (hash: string) => {
-            if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
-            graphDispatch({ type: "markCommitChecksLoading", hash });
-            vscode.postMessage({ type: "requestCommitChecks", hash });
-        },
-        [commitChecks],
-    );
-
-    const handleOpenCommitCheckUrl = useCallback((url: string) => {
-        vscode.postMessage({ type: "openCommitCheckUrl", url });
-    }, []);
-
-    const handleSignInForCommitChecks = useCallback((host: string) => {
-        vscode.postMessage({ type: "signInForCommitChecks", host });
-    }, []);
-
-    // --- Commit-panel callbacks ---
-    const handleMessageChange = useCallback((message: string) => {
-        cpDispatch({ type: "SET_COMMIT_MESSAGE", message });
-        vscode.postMessage({ type: "saveCommitDraft", message });
-    }, []);
-
-    const handleAmendChange = useCallback((isAmend: boolean) => {
-        cpDispatch({ type: "SET_AMEND", isAmend });
-        if (isAmend) {
-            vscode.postMessage({ type: "getLastCommitMessage" });
-        }
-    }, []);
+    useUnifiedMessages({
+        graphDispatch,
+        cpDispatch,
+        loadingMore,
+        markWidthsHydrated,
+        setSectionWidths,
+        layoutRef,
+        setCommitPanelPosition,
+    });
 
     const canCommit = canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
     const shouldPublishBranch = !cpState.currentBranchHasUpstream;
@@ -599,231 +346,88 @@ function App(): React.ReactElement {
         : cpState.currentBranchAhead > 0;
     const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
-    const handleCommit = useCallback(() => {
-        const msg = cpState.commitMessage.trim();
-        vscode.postMessage({
-            type: "commitSelected",
-            message: msg,
-            amend: cpState.isAmend,
-            push: false,
-            paths: Array.from(checkedPaths),
-        });
-    }, [cpState.commitMessage, cpState.isAmend, checkedPaths]);
+    // --- Graph and commit-panel callbacks ---
+    const actions = useUndockedActions({
+        graphDispatch,
+        cpDispatch,
+        loadingMore,
+        commitChecks,
+        commitMessage: cpState.commitMessage,
+        isAmend: cpState.isAmend,
+        checkedPaths,
+        shouldPublishBranch,
+    });
 
-    const handlePush = useCallback(() => {
-        vscode.postMessage({ type: shouldPublishBranch ? "publishBranch" : "push" });
-    }, [shouldPublishBranch]);
-
-    const handleSync = useCallback(() => {
-        vscode.postMessage({ type: "sync" });
-    }, []);
-
-    const handleFetch = useCallback(() => {
-        vscode.postMessage({ type: "fetch" });
-    }, []);
-
-    const handlePull = useCallback(() => {
-        vscode.postMessage({ type: "pull" });
-    }, []);
-
-    const handleDock = useCallback(() => {
-        vscode.postMessage({ type: "dock" });
+    const onToggleGroupBy = useCallback(() => {
+        setGroupByDir((g) => !g);
     }, []);
 
     // --- Render ---
     return (
-        <ChakraProvider theme={theme}>
-            <ThemeIconFontFaces fonts={iconFonts} />
-            <Box display="flex" height="100vh" overflow="hidden" flexDirection="column">
-                <UndockedHeader onDock={handleDock} />
-                <Box ref={layoutRef} display="flex" flex={1} overflow="hidden" minHeight={0}>
-                    {/* Divider and commit panel — only on left side */}
-                    {commitPanelPosition === "left" && (
-                        <>
-                            <CommitPanelPane
-                                width={commitPanelWidth}
-                                cpState={cpState}
-                                checkedPaths={checkedPaths}
-                                onToggleFile={toggleFile}
-                                onToggleFolder={toggleFolder}
-                                onToggleSection={toggleSection}
-                                isAllChecked={isAllChecked}
-                                isSomeChecked={isSomeChecked}
-                                onMessageChange={handleMessageChange}
-                                onAmendChange={handleAmendChange}
-                                onCommit={handleCommit}
-                                canCommit={canCommit}
-                                onSync={handleSync}
-                                onFetch={handleFetch}
-                                onPull={handlePull}
-                                onPush={handlePush}
-                                canPush={canPush}
-                                pushLabel={pushLabel}
-                                groupByDir={groupByDir}
-                                onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                            />
-
-                            <Box
-                                data-testid="undocked-left-commit-divider"
-                                width="4px"
-                                flexShrink={0}
-                                cursor="col-resize"
-                                bg="var(--vscode-panel-border)"
-                                onMouseDown={(e) => {
-                                    markWidthsHydrated();
-                                    onLeftCommitPanelDividerMouseDown(e);
-                                }}
-                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
-                            />
-                        </>
-                    )}
-
-                    {/* Graph panel */}
-                    <Box display="flex" overflow="hidden" flexShrink={0}>
-                        <div
-                            data-testid="undocked-branch-section"
-                            style={{ width: branchWidth, flexShrink: 0, overflow: "hidden" }}
-                        >
-                            <BranchColumn
-                                branches={branches}
-                                worktrees={worktrees}
-                                selectedBranch={selectedBranch}
-                                onSelectBranch={handleSelectBranch}
-                                onBranchAction={handleBranchAction}
-                                onDeleteBranches={handleDeleteBranches}
-                                onWorktreeAction={handleWorktreeAction}
-                                folderIcon={branchFolderIcon}
-                                folderExpandedIcon={branchFolderExpandedIcon}
-                                folderIconsByName={branchFolderIconsByName}
-                            />
-                        </div>
-
-                        <div
-                            data-testid="undocked-branch-divider"
-                            style={{
-                                width: 4,
-                                flexShrink: 0,
-                                cursor: "col-resize",
-                                background: "var(--vscode-panel-border)",
-                            }}
-                            onMouseDown={(e) => {
-                                markWidthsHydrated();
-                                onBranchDividerMouseDown(e);
-                            }}
-                        />
-
-                        <div style={{ display: "flex", overflow: "hidden", flexShrink: 0 }}>
-                            <div
-                                data-testid="undocked-graph-section"
-                                style={{
-                                    width: graphWidth,
-                                    flexShrink: 0,
-                                    overflow: "hidden",
-                                }}
-                            >
-                                <CommitList
-                                    commits={commits}
-                                    selectedHash={selectedHash}
-                                    filterText={filterText}
-                                    hasMore={hasMore}
-                                    unpushedHashes={unpushedHashes}
-                                    selectedBranch={selectedBranch}
-                                    currentBranchName={currentBranchName}
-                                    onSelectCommit={handleSelectCommit}
-                                    onFilterText={handleFilterText}
-                                    onLoadMore={handleLoadMore}
-                                    onCommitAction={handleCommitAction}
-                                    commitChecks={commitChecks}
-                                    onRequestCommitChecks={
-                                        commitChecksEnabled ? handleRequestCommitChecks : undefined
-                                    }
-                                    onOpenCommitCheckUrl={
-                                        commitChecksEnabled ? handleOpenCommitCheckUrl : undefined
-                                    }
-                                    onSignInForCommitChecks={
-                                        commitChecksEnabled
-                                            ? handleSignInForCommitChecks
-                                            : undefined
-                                    }
-                                />
-                            </div>
-
-                            <div
-                                data-testid="undocked-graph-divider"
-                                style={{
-                                    width: 4,
-                                    flexShrink: 0,
-                                    cursor: "col-resize",
-                                    background: "var(--vscode-panel-border)",
-                                }}
-                                onMouseDown={(e) => {
-                                    markWidthsHydrated();
-                                    onGraphDividerMouseDown(e);
-                                }}
-                            />
-
-                            <div
-                                data-testid="undocked-info-section"
-                                style={{
-                                    width: infoWidth,
-                                    flexShrink: 0,
-                                    overflow: "hidden",
-                                }}
-                            >
-                                <CommitInfoPane
-                                    detail={selectedDetail}
-                                    folderIcon={commitFolderIcon}
-                                    folderExpandedIcon={commitFolderExpandedIcon}
-                                    folderIconsByName={commitFolderIconsByName}
-                                    onOpenDiff={handleOpenDiff}
-                                />
-                            </div>
-                        </div>
-                    </Box>
-
-                    {/* Divider and commit panel — only on right side */}
-                    {commitPanelPosition === "right" && (
-                        <>
-                            <Box
-                                data-testid="undocked-right-commit-divider"
-                                width="4px"
-                                flexShrink={0}
-                                cursor="col-resize"
-                                bg="var(--vscode-panel-border)"
-                                onMouseDown={(e) => {
-                                    markWidthsHydrated();
-                                    onRightCommitPanelDividerMouseDown(e);
-                                }}
-                                _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
-                            />
-
-                            <CommitPanelPane
-                                width={commitPanelWidth}
-                                cpState={cpState}
-                                checkedPaths={checkedPaths}
-                                onToggleFile={toggleFile}
-                                onToggleFolder={toggleFolder}
-                                onToggleSection={toggleSection}
-                                isAllChecked={isAllChecked}
-                                isSomeChecked={isSomeChecked}
-                                onMessageChange={handleMessageChange}
-                                onAmendChange={handleAmendChange}
-                                onCommit={handleCommit}
-                                canCommit={canCommit}
-                                onSync={handleSync}
-                                onFetch={handleFetch}
-                                onPull={handlePull}
-                                onPush={handlePush}
-                                canPush={canPush}
-                                pushLabel={pushLabel}
-                                groupByDir={groupByDir}
-                                onToggleGroupBy={() => setGroupByDir((g) => !g)}
-                            />
-                        </>
-                    )}
-                </Box>
-            </Box>
-        </ChakraProvider>
+        <UndockedLayout
+            iconFonts={iconFonts}
+            cpState={cpState}
+            checkedPaths={checkedPaths}
+            commitPanelPosition={commitPanelPosition}
+            commitPanelWidth={commitPanelWidth}
+            branchWidth={branchWidth}
+            graphWidth={graphWidth}
+            infoWidth={infoWidth}
+            branches={branches}
+            worktrees={worktrees}
+            selectedBranch={selectedBranch}
+            commits={commits}
+            selectedHash={selectedHash}
+            filterText={filterText}
+            hasMore={hasMore}
+            unpushedHashes={unpushedHashes}
+            currentBranchName={currentBranchName}
+            commitChecks={commitChecks}
+            commitChecksEnabled={commitChecksEnabled}
+            selectedDetail={selectedDetail}
+            branchFolderIcon={branchFolderIcon}
+            branchFolderExpandedIcon={branchFolderExpandedIcon}
+            branchFolderIconsByName={branchFolderIconsByName}
+            commitFolderIcon={commitFolderIcon}
+            commitFolderExpandedIcon={commitFolderExpandedIcon}
+            commitFolderIconsByName={commitFolderIconsByName}
+            groupByDir={groupByDir}
+            canCommit={canCommit}
+            canPush={canPush}
+            pushLabel={pushLabel}
+            isAllChecked={isAllChecked}
+            isSomeChecked={isSomeChecked}
+            layoutRef={layoutRef}
+            markWidthsHydrated={markWidthsHydrated}
+            onLeftCommitPanelDividerMouseDown={onLeftCommitPanelDividerMouseDown}
+            onBranchDividerMouseDown={onBranchDividerMouseDown}
+            onGraphDividerMouseDown={onGraphDividerMouseDown}
+            onRightCommitPanelDividerMouseDown={onRightCommitPanelDividerMouseDown}
+            handleSelectCommit={actions.handleSelectCommit}
+            handleFilterText={actions.handleFilterText}
+            handleLoadMore={actions.handleLoadMore}
+            handleSelectBranch={actions.handleSelectBranch}
+            handleBranchAction={actions.handleBranchAction}
+            handleDeleteBranches={actions.handleDeleteBranches}
+            handleWorktreeAction={actions.handleWorktreeAction}
+            handleCommitAction={actions.handleCommitAction}
+            handleOpenDiff={actions.handleOpenDiff}
+            handleRequestCommitChecks={actions.handleRequestCommitChecks}
+            handleOpenCommitCheckUrl={actions.handleOpenCommitCheckUrl}
+            handleSignInForCommitChecks={actions.handleSignInForCommitChecks}
+            handleMessageChange={actions.handleMessageChange}
+            handleAmendChange={actions.handleAmendChange}
+            handleCommit={actions.handleCommit}
+            handlePush={actions.handlePush}
+            handleSync={actions.handleSync}
+            handleFetch={actions.handleFetch}
+            handlePull={actions.handlePull}
+            toggleFile={toggleFile}
+            toggleFolder={toggleFolder}
+            toggleSection={toggleSection}
+            onToggleGroupBy={onToggleGroupBy}
+            onDock={actions.handleDock}
+        />
     );
 }
 

@@ -1,11 +1,55 @@
 import type {
     AmendBranchCommitSummary,
+    Branch,
+    Commit,
+    CommitChecksSnapshot,
+    CommitDetail,
+    GitWorktree,
     StashEntry,
     ThemeFolderIconMap,
     ThemeIconFont,
     ThemeTreeIcon,
     WorkingFile,
 } from "../../../types";
+
+/** Commit-check state cached by the undocked commit graph. */
+export type CommitChecksValue = CommitChecksSnapshot | "loading";
+
+/** Reducer action for graph state owned by the undocked app shell. */
+export type GraphAction =
+    | {
+          type: "loadCommits";
+          commits: Commit[];
+          append: boolean;
+          hasMore: boolean;
+          unpushedHashes?: string[];
+      }
+    | {
+          type: "setBranches";
+          branches: Branch[];
+          worktrees?: GitWorktree[];
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
+          commitChecksEnabled?: boolean;
+      }
+    | { type: "setSelectedBranch"; branch: string | null }
+    | {
+          type: "setCommitDetail";
+          detail: CommitDetail;
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
+      }
+    | { type: "clearCommitDetail" }
+    | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
+    | { type: "markCommitChecksLoading"; hash: string }
+    | { type: "loadError"; clearCommits: boolean }
+    | { type: "selectCommit"; hash: string }
+    | { type: "selectBranch"; branch: string | null }
+    | { type: "setFilterText"; text: string };
 
 /**
  * Commit-panel slice owned by the undocked app, mirroring working-tree, shelf,
