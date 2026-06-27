@@ -398,6 +398,9 @@ export function CommitGraphPanel({
     useEffect(() => {
         try {
             const prev = vscode.getState() ?? {};
+            // False positive: vscode.setState is the VS Code webview persistence API (acquireVsCodeApi().setState),
+            // not a React parent callback. CommitGraphPanel is a webview root — no React parent exists.
+            // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent, react-doctor/no-pass-live-state-to-parent
             vscode.setState({
                 ...prev,
                 [stateKey(stateKeyPrefix, "branchWidth")]: branchWidth,

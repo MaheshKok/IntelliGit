@@ -2966,6 +2966,33 @@ describe("extension integration", () => {
         expect(latestCommitPanelProvider.clearCommitDetail).toHaveBeenCalledTimes(1);
     });
 
+    it("suppresses stale commit detail errors after the selection is cleared", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+        let rejectDetail!: (error: Error) => void;
+        gitOpsState.getCommitDetail.mockReturnValueOnce(
+            new Promise((_resolve, reject) => {
+                rejectDetail = reject;
+            }),
+        );
+
+        await activate(context);
+        await waitForAsync();
+        showErrorMessage.mockClear();
+
+        latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");
+        latestCommitGraphProvider!.emitBranchFilterChanged(null);
+        rejectDetail(new Error("detail failed after clear"));
+        await waitForAsync();
+
+        expect(showErrorMessage).not.toHaveBeenCalledWith(
+            expect.stringContaining("Failed to load commit: detail failed after clear"),
+        );
+    });
+
     it("opens interactive rebase terminals with git shell arguments instead of sent shell text", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {

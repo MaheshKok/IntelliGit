@@ -3,7 +3,7 @@
 // intelligit.undockableWindow to allow dragging to a second monitor.
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import { IconThemeService } from "./shared/IconThemeService";
+import { IconThemeService } from "./shared";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
@@ -133,6 +133,7 @@ export class UndockedViewProvider {
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
     private readonly commitChecks: CommitChecksCoordinator;
+    private commitChecksGeneration = 0;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -222,6 +223,7 @@ export class UndockedViewProvider {
      * never re-fetch, leaving the badge stuck after the user signs in.
      */
     clearChecksCache(): void {
+        this.commitChecksGeneration += 1;
         this.commitChecks.clear();
     }
     /**
@@ -239,6 +241,8 @@ export class UndockedViewProvider {
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
+        this.requestSeq += 1;
+        this.commitDetailSeq += 1;
         this.files = [];
         this.stashes = [];
         this.selectedShelfIndex = null;
@@ -250,6 +254,7 @@ export class UndockedViewProvider {
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
+        this.commitChecksGeneration += 1;
         this.commitChecks.clear();
         this.filterText = "";
         this.offset = 0;
@@ -647,24 +652,20 @@ export class UndockedViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId === this.requestSeq) {
-                this.offset = commits.length;
-                this.postToWebview({
-                    type: "loadCommits",
-                    commits,
-                    hasMore: commits.length >= this.PAGE_SIZE,
-                    append: false,
-                    unpushedHashes,
-                });
-            }
+            if (requestId !== this.requestSeq) return;
+            this.offset = commits.length;
+            this.postToWebview({
+                type: "loadCommits",
+                commits,
+                hasMore: commits.length >= this.PAGE_SIZE,
+                append: false,
+                unpushedHashes,
+            });
         } catch (err) {
-            if (requestId === this.requestSeq) {
-                const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(
-                    vscode.l10n.t("Git log error: {message}", { message }),
-                );
-                this.postToWebview({ type: "loadError", message });
-            }
+            if (requestId !== this.requestSeq) return;
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
+            this.postToWebview({ type: "loadError", message });
         }
     }
     /**
@@ -684,24 +685,20 @@ export class UndockedViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId === this.requestSeq) {
-                this.offset += commits.length;
-                this.postToWebview({
-                    type: "loadCommits",
-                    commits,
-                    hasMore: commits.length >= this.PAGE_SIZE,
-                    append: true,
-                    unpushedHashes,
-                });
-            }
+            if (requestId !== this.requestSeq) return;
+            this.offset += commits.length;
+            this.postToWebview({
+                type: "loadCommits",
+                commits,
+                hasMore: commits.length >= this.PAGE_SIZE,
+                append: true,
+                unpushedHashes,
+            });
         } catch (err) {
-            if (requestId === this.requestSeq) {
-                const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(
-                    vscode.l10n.t("Git log error: {message}", { message }),
-                );
-                this.postToWebview({ type: "loadError", message });
-            }
+            if (requestId !== this.requestSeq) return;
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
+            this.postToWebview({ type: "loadError", message });
         } finally {
             if (requestId === this.requestSeq) {
                 this.loadingMore = false;
@@ -714,7 +711,12 @@ export class UndockedViewProvider {
     }
 
     private async sendCommitChecks(hash: string): Promise<void> {
+        const generation = this.commitChecksGeneration;
         const snapshot = await this.commitChecks.getChecks(hash);
+        if (generation !== this.commitChecksGeneration) {
+            this.commitChecks.clear();
+            return;
+        }
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 
@@ -794,13 +796,10 @@ export class UndockedViewProvider {
     private async refreshCommitPanelData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
-            const [status, stashes, currentBranchStatus] = await Promise.all([
-                this.gitOps.getStatus(),
-                this.gitOps.listShelved(),
-                this.currentBranchStatus(),
-                this.iconTheme.initIconThemeData(),
-            ]);
-            const files = await this.iconTheme.decorateWorkingFiles(status);
+            await this.iconTheme.initIconThemeData();
+            const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
+            const stashes = await this.gitOps.listShelved();
+            const currentBranchStatus = await this.currentBranchStatus();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -931,13 +930,11 @@ export class UndockedViewProvider {
         detail: CommitDetail,
         requestId: number,
     ): Promise<void> {
-        if (requestId !== this.commitDetailSeq) return;
         const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
-        if (requestId === this.commitDetailSeq) {
-            this.selectedCommitDetail = decorated.detail;
-            this.folderIconsByName = decorated.folderIconsByName;
-            this.postCommitDetailState();
-        }
+        if (requestId !== this.commitDetailSeq) return;
+        this.selectedCommitDetail = decorated.detail;
+        this.folderIconsByName = decorated.folderIconsByName;
+        this.postCommitDetailState();
     }
     // --- HTML generation ----------------------------------------------------
     /**
@@ -1022,13 +1019,12 @@ export class UndockedViewProvider {
     private async refreshThemeData(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
-        const selectedCommitDetail = this.selectedCommitDetail;
-        if (selectedCommitDetail) {
-            const requestId = ++this.commitDetailSeq;
-            await this.decorateAndStoreCommitDetail(selectedCommitDetail, requestId);
-        } else {
+        if (!this.selectedCommitDetail) {
             this.postCommitDetailState();
+            return;
         }
+        const requestId = ++this.commitDetailSeq;
+        await this.decorateAndStoreCommitDetail(this.selectedCommitDetail, requestId);
     }
     private registerThemeChangeListeners(): void {
         this.themeChangeDisposables.push(

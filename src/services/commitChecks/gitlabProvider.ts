@@ -197,7 +197,12 @@ export class GitLabProvider implements CommitChecksProvider {
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
         const { host, owner, repo } = ref as GitLabRepoRef;
 
-        const token = await this.store.get(host);
+        let token: string | undefined;
+        try {
+            token = await this.store.get(host);
+        } catch (err) {
+            return unavailableSnapshot(hash, getErrorMessage(err));
+        }
         if (!token) {
             // No token: surface an actionable "unavailable" rather than hiding the badge
             // as "none". The coordinator caches this terminal state, so a successful

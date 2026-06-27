@@ -63,6 +63,17 @@ function emptyStore(): CredentialStore {
     return new CredentialStore(makeSecrets());
 }
 
+function throwingStore(): CredentialStore {
+    return new CredentialStore({
+        get: vi.fn(async () => {
+            throw new Error("secret store unavailable");
+        }),
+        store: vi.fn(),
+        delete: vi.fn(),
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.SecretStorage);
+}
+
 // ---------------------------------------------------------------------------
 // A stable GitLab ref used throughout getChecks tests
 // ---------------------------------------------------------------------------
@@ -209,7 +220,7 @@ describe("parseGitlabRemoteUrl", () => {
     it("returns null for an ssh:// scheme URL (only SCP and HTTPS supported)", () => {
         // ssh:// is a distinct scheme from the git@ SCP form; GitLab typically uses SCP.
         // Ensure the parser does not accidentally accept it as GitLab.
-        expect(parseGitlabRemoteUrl("ssh://git@github.com/owner/repo.git")).toBeNull();
+        expect(parseGitlabRemoteUrl("ssh://git@gitlab.com/owner/repo.git")).toBeNull();
     });
 
     it("trims surrounding whitespace before parsing", () => {
@@ -328,6 +339,17 @@ describe("GitLabProvider.getChecks — no token stored", () => {
         const provider = new GitLabProvider(vi.fn(), emptyStore());
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
         expect(snapshot.items).toEqual([]);
+    });
+
+    it("returns unavailable when the credential store rejects", async () => {
+        const fetchJson = vi.fn();
+        const provider = new GitLabProvider(fetchJson, throwingStore());
+
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toBe("secret store unavailable");
+        expect(fetchJson).not.toHaveBeenCalled();
     });
 
     it("records the commit hash in the snapshot even when token is absent", async () => {
@@ -521,59 +543,59 @@ describe("GitLabProvider.getChecks — HTTP errors", () => {
     // --- CRITICAL: token must never appear in error messages ---
 
     it("does NOT include the token in the error message on HTTP 4xx", async () => {
-        const testToken = "redaction-token-401";
+        const secretToken = "glpat-THIS-MUST-NOT-LEAK";
         const provider = new GitLabProvider(
             vi.fn(async () => {
                 throw new Error("HTTP 401: Unauthorized");
             }),
-            storeWithToken("gitlab.com", testToken),
+            storeWithToken("gitlab.com", secretToken),
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
-        expect(snapshot.error).not.toContain(testToken);
-        expect(snapshot.summary).not.toContain(testToken);
+        expect(snapshot.error).not.toContain(secretToken);
+        expect(snapshot.summary).not.toContain(secretToken);
     });
 
     it("does NOT include the token in the error message on HTTP 500", async () => {
-        const testToken = "redaction-token-500";
+        const secretToken = "glpat-SERVER-ERROR-LEAK-CHECK";
         const provider = new GitLabProvider(
             vi.fn(async () => {
                 throw new Error("HTTP 500: Internal Server Error");
             }),
-            storeWithToken("gitlab.com", testToken),
+            storeWithToken("gitlab.com", secretToken),
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
-        expect(snapshot.error).not.toContain(testToken);
-        expect(snapshot.summary).not.toContain(testToken);
+        expect(snapshot.error).not.toContain(secretToken);
+        expect(snapshot.summary).not.toContain(secretToken);
     });
 
     it("does NOT include the token in the error message on a network error", async () => {
-        const testToken = "redaction-token-network";
+        const secretToken = "glpat-NETWORK-LEAK-CHECK";
         const provider = new GitLabProvider(
             vi.fn(async () => {
                 throw new Error("ECONNRESET");
             }),
-            storeWithToken("gitlab.com", testToken),
+            storeWithToken("gitlab.com", secretToken),
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
-        expect(snapshot.error).not.toContain(testToken);
-        expect(snapshot.summary).not.toContain(testToken);
+        expect(snapshot.error).not.toContain(secretToken);
+        expect(snapshot.summary).not.toContain(secretToken);
     });
 
     it("redacts the token when a transport error echoes it verbatim", async () => {
         // The earlier leak tests throw token-free errors, so they cannot prove the
         // guarantee. This throws an error whose text embeds the stored PRIVATE-TOKEN
         // and asserts it is scrubbed to *** before reaching the snapshot.
-        const testToken = "redaction-token-echoed";
+        const secretToken = "glpat-LEAK";
         const provider = new GitLabProvider(
             vi.fn(async () => {
-                throw new Error("boom redaction-token-echoed");
+                throw new Error("boom glpat-LEAK");
             }),
-            storeWithToken("gitlab.com", testToken),
+            storeWithToken("gitlab.com", secretToken),
         );
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
-        expect(snapshot.error).not.toContain(testToken);
+        expect(snapshot.error).not.toContain(secretToken);
         expect(snapshot.error).toContain("***");
-        expect(snapshot.summary).not.toContain(testToken);
+        expect(snapshot.summary).not.toContain(secretToken);
     });
 
     it("returns empty items array on HTTP error", async () => {

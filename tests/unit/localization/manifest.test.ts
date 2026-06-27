@@ -103,6 +103,7 @@ describe("extension manifest", () => {
         // meaningless and the normalizer drops them).
         expect(providerEnum).not.toContain("github");
         expect(providerEnum).not.toContain("bitbucket-cloud");
+        expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
     it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {

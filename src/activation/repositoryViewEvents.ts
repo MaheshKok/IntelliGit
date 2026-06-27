@@ -135,6 +135,7 @@ export function registerRepositoryViewEvents(
                 commitInfo.setCommitDetail(detail);
             }
         } catch (err) {
+            if (requestId !== commitDetailRequestSeq) return;
             const msg = getErrorMessage(err);
             vscode.window.showErrorMessage(
                 vscode.l10n.t("Failed to load commit: {message}", { message: msg }),
@@ -146,6 +147,7 @@ export function registerRepositoryViewEvents(
      * Clears commit detail state after branch filtering invalidates the selection.
      */
     const clearCommitDetail = (): void => {
+        commitDetailRequestSeq += 1;
         commitGraph.clearCommitDetail();
         sidebarGraph.clearCommitDetail();
         commitPanel.clearCommitDetail();

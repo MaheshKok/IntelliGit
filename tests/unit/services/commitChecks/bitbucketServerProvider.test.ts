@@ -62,6 +62,17 @@ function emptyStore(): CredentialStore {
     return new CredentialStore(makeSecrets());
 }
 
+function throwingStore(): CredentialStore {
+    return new CredentialStore({
+        get: vi.fn(async () => {
+            throw new Error("secret store unavailable");
+        }),
+        store: vi.fn(),
+        delete: vi.fn(),
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.SecretStorage);
+}
+
 /** Wraps a single status row in a build-status response with a token-bearing provider. */
 function providerForStatus(state: string, token = "bb-token"): BitbucketServerProvider {
     return new BitbucketServerProvider(
@@ -190,6 +201,17 @@ describe("BitbucketServerProvider.getChecks — auth", () => {
             string
         >;
         expect(headers.Authorization).toBe("Bearer a:b:c");
+    });
+
+    it("returns unavailable when the credential store rejects", async () => {
+        const fetchJson = vi.fn();
+        const provider = new BitbucketServerProvider(fetchJson, throwingStore());
+
+        const snapshot = await provider.getChecks(serverRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toBe("secret store unavailable");
+        expect(fetchJson).not.toHaveBeenCalled();
     });
 });
 

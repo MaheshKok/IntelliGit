@@ -211,11 +211,10 @@ describe("GitHubProvider", () => {
         expect(calledUrls[1]).toBe(
             "https://api.github.com/repos/owner/repo/commits/abc1234/statuses?per_page=100",
         );
-        const headers = (fetchJson as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<
-            string,
-            string
-        >;
-        expect(headers.Authorization).toBe("Bearer gh-token");
+        for (const call of (fetchJson as ReturnType<typeof vi.fn>).mock.calls) {
+            const headers = call[1] as Record<string, string>;
+            expect(headers.Authorization).toBe("Bearer gh-token");
+        }
     });
 
     it("treats unexpected API shapes (no check_runs / non-array statuses) as none", async () => {

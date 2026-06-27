@@ -240,6 +240,23 @@ describe("CommitChecksCoordinator", () => {
         expect(result.state).toBe("unavailable");
         expect(result.error).toBe("boom");
     });
+
+    it("returns an unavailable snapshot when remote resolution throws", async () => {
+        const gitOps = {
+            getRemotes: vi.fn(async () => {
+                throw new Error("git remotes failed");
+            }),
+            getRemoteUrl: vi.fn(),
+        } as unknown as GitOps;
+        const provider = makeProvider("github", "github.com", vi.fn());
+        const coordinator = new CommitChecksCoordinator(gitOps, [provider]);
+
+        const result = await coordinator.getChecks("abc1234");
+
+        expect(result.state).toBe("unavailable");
+        expect(result.error).toBe("git remotes failed");
+        expect(provider.getChecks).not.toHaveBeenCalled();
+    });
 });
 
 // Real BitbucketServerProvider routing: the HostMap, not the remote alone, drives selection.
