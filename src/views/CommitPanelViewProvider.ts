@@ -411,6 +411,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * Refreshes embedded graph theme data, branch metadata, first-page commits, and detail state.
      */
     private async refreshGraphData(): Promise<void> {
+        // Embedded graph refresh relies on current theme data before branch/log decoration.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await this.iconTheme.initIconThemeData();
         await this.sendGraphBranches();
         await this.loadInitialGraphCommits();

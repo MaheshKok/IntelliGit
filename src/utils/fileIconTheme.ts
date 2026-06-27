@@ -105,6 +105,8 @@ function parseFonts(
         const srcEntry =
             preferredFormats.reduce<Record<string, unknown> | undefined>((best, fmt) => {
                 if (best) return best;
+                // Font src lists are tiny; first supported format wins in declared preference order.
+                // react-doctor-disable-next-line react-doctor/js-index-maps
                 return validEntries.find((e) => {
                     const p = String(e.path).toLowerCase();
                     return p.endsWith(`.${fmt}`);
@@ -370,6 +372,8 @@ export class FileIconThemeResolver {
                     }
                 )?.contributes?.iconThemes;
                 if (!Array.isArray(iconThemes)) continue;
+                // Theme contributions are extension metadata; first matching theme id wins.
+                // react-doctor-disable-next-line react-doctor/js-index-maps
                 const matched = iconThemes.find((theme) => theme.id === themeId);
                 if (matched) {
                     return {
@@ -605,6 +609,8 @@ export class FileIconThemeResolver {
         if (!resolved) return {};
         const byName: ThemeFolderIconMap = {};
         const deduped = new Set<string>(
+            // Folder names are small UI payloads; map/filter keeps normalization obvious.
+            // react-doctor-disable-next-line react-doctor/js-combine-iterations
             folderNames.map((name) => name.trim().toLowerCase()).filter((name) => name.length > 0),
         );
         for (const name of deduped) {

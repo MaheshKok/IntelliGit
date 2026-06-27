@@ -381,6 +381,8 @@ function openInteractiveRebaseTerminal(
  * Callers depend on the parent count in each line to reject merge commits before rewriting history.
  */
 async function getCommitRangeLines(ctx: CommitActionContext, range: string): Promise<string[]> {
+    // Commit range output is small command text; map/filter preserves parsing clarity.
+    // react-doctor-disable-next-line react-doctor/js-flatmap-filter
     return (await ctx.executor.run(["rev-list", "--reverse", "--parents", range]))
         .trim()
         .split("\n")
@@ -444,6 +446,8 @@ async function promptSquashMessage(
     range: string,
     count: number,
 ): Promise<string | undefined> {
+    // Squash subjects are prompt defaults, not a hot collection transform.
+    // react-doctor-disable-next-line react-doctor/js-flatmap-filter
     const defaultMessage = (await ctx.executor.run(["log", "--reverse", "--format=%s", range]))
         .trim()
         .split("\n")

@@ -107,6 +107,8 @@ export class WorktreeService implements vscode.Disposable {
             assertValidBranchName(opts.branch.name, "remote branch name");
             const localName = opts.newBranch ?? getLocalNameFromRemote(opts.branch.name);
             assertValidBranchName(localName, "local branch name");
+            // Worktree must exist before upstream config and optional file copy run.
+            // react-doctor-disable-next-line react-doctor/async-parallel
             await addWorktree(this.executor, {
                 path: opts.path,
                 newBranch: localName,
@@ -228,6 +230,8 @@ function resolveIncludedWorktreeFile(
 async function copyIncludedWorktreeFiles(files: IncludedWorktreeFile[]): Promise<void> {
     for (const file of files) {
         try {
+            // Include-file copy is ordered so the first non-missing failure stops the operation.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await fs.mkdir(path.dirname(file.target), { recursive: true });
             await fs.cp(file.source, file.target, { recursive: true, force: true });
         } catch (err) {

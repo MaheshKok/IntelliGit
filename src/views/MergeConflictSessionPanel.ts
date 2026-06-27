@@ -185,6 +185,8 @@ export class MergeConflictSessionPanel {
                 const filePath = this.getFilePath(msg.filePath);
                 if (!filePath) return;
                 const safePath = assertRepoRelativePath(filePath);
+                // Conflict state refresh must wait until Git accepts the chosen side.
+                // react-doctor-disable-next-line react-doctor/async-parallel
                 await runWithNotificationProgress(
                     `Accepting yours for ${safePath}...`,
                     async () => {
@@ -200,6 +202,8 @@ export class MergeConflictSessionPanel {
                 const filePath = this.getFilePath(msg.filePath);
                 if (!filePath) return;
                 const safePath = assertRepoRelativePath(filePath);
+                // Conflict state refresh must wait until Git accepts the chosen side.
+                // react-doctor-disable-next-line react-doctor/async-parallel
                 await runWithNotificationProgress(
                     `Accepting theirs for ${safePath}...`,
                     async () => {

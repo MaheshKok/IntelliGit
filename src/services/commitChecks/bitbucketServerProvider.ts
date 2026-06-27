@@ -221,6 +221,8 @@ export class BitbucketServerProvider implements CommitChecksProvider {
         let start: number | undefined = 0;
         for (let page = 0; start !== undefined && page < MAX_PAGES; page++) {
             const url = `${base}?limit=${PAGE_LIMIT}&start=${start}`;
+            // Pagination is token-driven: each request determines the next page start.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const raw = await this.fetchJson(url, headers);
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);

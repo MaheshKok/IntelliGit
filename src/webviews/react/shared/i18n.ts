@@ -35,6 +35,8 @@ export function t(key: string, args: InterpolationArgs = {}): string {
 function pluralRulesFor(locale: string): Intl.PluralRules {
     const cached = pluralRulesByLocale.get(locale);
     if (cached) return cached;
+    // PluralRules is cached per locale; this allocation happens once per locale.
+    // react-doctor-disable-next-line react-doctor/js-hoist-intl
     const rules = new Intl.PluralRules(locale);
     pluralRulesByLocale.set(locale, rules);
     return rules;

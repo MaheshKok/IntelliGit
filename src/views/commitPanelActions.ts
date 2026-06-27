@@ -148,6 +148,8 @@ export async function runGitOperationFromPanel(
 ): Promise<void> {
     if (!(await currentBranchIsPublished(deps.gitOps))) {
         if (operation === "push") {
+            // Publishing must finish before commit-panel and graph refresh read branch state.
+            // react-doctor-disable-next-line react-doctor/async-parallel
             await vscode.commands.executeCommand("intelligit.publishBranch");
             await deps.refreshData();
             await deps.refreshGraphData?.();

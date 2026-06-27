@@ -880,6 +880,8 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         await vscode.commands.executeCommand("intelligit.refresh");
                     } else {
                         const forceDelete = confirmLabel === deleteAnywayLabel;
+                        // Delete must complete before refresh/actions observe the new branch state.
+                        // react-doctor-disable-next-line react-doctor/async-parallel
                         await executor.run(["branch", forceDelete ? "-D" : "-d", name]);
                         await vscode.commands.executeCommand("intelligit.refresh");
                         await showDeletedBranchActions(branch, getCurrentBranches(), executor);
@@ -896,6 +898,8 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                         );
                         if (forceConfirm !== deleteAnywayLabel) return;
                         try {
+                            // Force-delete fallback must finish before refresh/actions read branch state.
+                            // react-doctor-disable-next-line react-doctor/async-parallel
                             await executor.run(["branch", "-D", name]);
                             await vscode.commands.executeCommand("intelligit.refresh");
                             await showDeletedBranchActions(branch, getCurrentBranches(), executor);
@@ -952,6 +956,8 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                     const deleted: string[] = [];
                     for (const branch of branches) {
                         try {
+                            // Bulk delete is intentionally ordered so the first failure reports partial progress.
+                            // react-doctor-disable-next-line react-doctor/async-await-in-loop
                             await deleteBranchRef(executor, branch);
                             deleted.push(branch.name);
                             if (!branch.isRemote) {

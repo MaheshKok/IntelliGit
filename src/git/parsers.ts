@@ -157,6 +157,8 @@ export function parseStashEntries(result: string): StashEntry[] {
 export function parseFileHistoryEntries(
     raw: string,
 ): Array<{ hash: string; shortHash: string; author: string; date: string; subject: string }> {
+    // File-history parser favors readable normalization over fusing tiny string loops.
+    // react-doctor-disable-next-line react-doctor/js-flatmap-filter
     return raw
         .split("\n")
         .map((line) => line.trim())
@@ -239,12 +241,13 @@ function splitCommitParents(raw: string | undefined): string[] {
 }
 
 function splitCommitRefs(raw: string | undefined): string[] {
-    return raw
-        ? raw
-              .split(",")
-              .map((ref) => ref.trim())
-              .filter(Boolean)
-        : [];
+    if (!raw) return [];
+    const refs: string[] = [];
+    for (const ref of raw.split(",")) {
+        const trimmed = ref.trim();
+        if (trimmed) refs.push(trimmed);
+    }
+    return refs;
 }
 
 const VALID_COMMIT_FILE_STATUSES = new Set<CommitFile["status"]>(["A", "M", "D", "R", "C", "T"]);

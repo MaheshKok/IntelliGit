@@ -68,6 +68,8 @@ export function FileTree({
     const { changesOpen, unversionedOpen, expandedDirs } = expansion;
     const lastExpandSignal = useRef(0);
     const lastCollapseSignal = useRef(0);
+    // Small local set tracks first-seen directories without altering effect dependencies.
+    // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
     const seenDirsRef = useRef<Set<string>>(new Set());
 
     // react-doctor-disable-next-line react-doctor/no-event-handler
