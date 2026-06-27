@@ -15,7 +15,6 @@ import type {
     BranchAction,
     CommitAction,
     CommitGraphOutbound,
-    CommitGraphInbound,
     WorktreeAction,
 } from "../protocol/commitGraphTypes";
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
@@ -24,6 +23,10 @@ import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
+import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
+import type { CommitGraphPanelAction } from "./commit-graph/types";
+
+export type { CommitGraphPanelAction } from "./commit-graph/types";
 
 const MIN_BRANCH_WIDTH = 80;
 const MAX_BRANCH_WIDTH = 500;
@@ -123,41 +126,6 @@ interface CommitGraphPanelState {
     unpushedHashes: Set<string>;
     commitChecksEnabled: boolean;
 }
-
-type CommitGraphPanelAction =
-    | {
-          type: "loadCommits";
-          commits: Commit[];
-          append: boolean;
-          hasMore: boolean;
-          unpushedHashes?: string[];
-      }
-    | {
-          type: "setBranches";
-          branches: Branch[];
-          worktrees?: GitWorktree[];
-          folderIcon?: ThemeTreeIcon;
-          folderExpandedIcon?: ThemeTreeIcon;
-          folderIconsByName?: ThemeFolderIconMap;
-          iconFonts?: ThemeIconFont[];
-          commitChecksEnabled?: boolean;
-      }
-    | { type: "setSelectedBranch"; branch: string | null }
-    | {
-          type: "setCommitDetail";
-          detail: CommitDetail;
-          folderIcon?: ThemeTreeIcon;
-          folderExpandedIcon?: ThemeTreeIcon;
-          folderIconsByName?: ThemeFolderIconMap;
-          iconFonts?: ThemeIconFont[];
-      }
-    | { type: "clearCommitDetail" }
-    | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
-    | { type: "markCommitChecksLoading"; hash: string }
-    | { type: "loadError"; clearCommits: boolean }
-    | { type: "selectCommit"; hash: string }
-    | { type: "selectBranch"; branch: string | null }
-    | { type: "setFilterText"; text: string };
 
 const initialCommitGraphPanelState: CommitGraphPanelState = {
     commits: [],
@@ -318,82 +286,7 @@ export function CommitGraphPanel({
         true,
     );
 
-    useEffect(() => {
-        if (sendReady) {
-            vscode.postMessage({ type: "ready" });
-        }
-
-        const handler = (event: MessageEvent<CommitGraphInbound>) => {
-            const data = event.data;
-            if (
-                !data ||
-                typeof data !== "object" ||
-                typeof (data as { type?: unknown }).type !== "string"
-            ) {
-                return;
-            }
-            switch (data.type) {
-                case "loadCommits":
-                    loadingMore.current = false;
-                    dispatch({
-                        type: "loadCommits",
-                        commits: data.commits,
-                        append: Boolean(data.append),
-                        hasMore: data.hasMore,
-                        unpushedHashes: data.unpushedHashes,
-                    });
-                    if (!data.append && data.commits.length > 0) {
-                        vscode.postMessage({
-                            type: "selectCommit",
-                            hash: data.commits[0].hash,
-                        });
-                    }
-                    break;
-                case "setBranches":
-                    dispatch({
-                        type: "setBranches",
-                        branches: data.branches,
-                        worktrees: data.worktrees,
-                        folderIcon: data.folderIcon,
-                        folderExpandedIcon: data.folderExpandedIcon,
-                        folderIconsByName: data.folderIconsByName,
-                        iconFonts: data.iconFonts,
-                        commitChecksEnabled: data.commitChecksEnabled,
-                    });
-                    break;
-                case "setSelectedBranch":
-                    dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
-                    break;
-                case "setCommitDetail":
-                    dispatch({
-                        type: "setCommitDetail",
-                        detail: data.detail,
-                        folderIcon: data.folderIcon,
-                        folderExpandedIcon: data.folderExpandedIcon,
-                        folderIconsByName: data.folderIconsByName,
-                        iconFonts: data.iconFonts,
-                    });
-                    break;
-                case "clearCommitDetail":
-                    dispatch({ type: "clearCommitDetail" });
-                    break;
-                case "setCommitChecks":
-                    dispatch({ type: "setCommitChecks", snapshot: data.snapshot });
-                    break;
-                case "loadError":
-                    dispatch({ type: "loadError", clearCommits: !loadingMore.current });
-                    loadingMore.current = false;
-                    console.error("[IntelliGit] Load error:", data.message);
-                    break;
-                case "error":
-                    console.error("[IntelliGit] Extension error:", data);
-                    break;
-            }
-        };
-
-        window.addEventListener("message", handler);
-        return () => window.removeEventListener("message", handler);
-    }, [sendReady, vscode]);
+    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore });
 
     useEffect(() => {
         try {

@@ -17,26 +17,10 @@ import {
     getWorktreeMenuItems,
 } from "./branch-column/menu";
 import { buildPrefixTree, buildRemoteGroups } from "./branch-column/treeModel";
-import { renderHighlightedLabel } from "./branch-column/highlight";
-import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
-import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
+import { BranchColumnSections } from "./branch-column/BranchColumnSections";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
-import { GitBranchIcon, RepoIcon, TagRightIcon } from "./shared/components/Icons";
-import { JETBRAINS_UI } from "./shared/tokens";
 import { getVsCodeApi } from "./shared/vscodeApi";
-import { t } from "./shared/i18n";
-import {
-    BRANCH_ROW_CLASS_CSS,
-    HEAD_LABEL_STYLE,
-    HEAD_ROW_STYLE,
-    HEAD_WRAPPER_STYLE,
-    NODE_LABEL_STYLE,
-    NO_MATCH_STYLE,
-    PANEL_STYLE,
-    ROW_STYLE,
-    TREE_INDENT_STEP,
-    TREE_SECTION_STYLE,
-} from "./branch-column/styles";
+import { BRANCH_ROW_CLASS_CSS, PANEL_STYLE } from "./branch-column/styles";
 
 interface Props {
     branches: Branch[];
@@ -155,72 +139,11 @@ function branchColumnReducer(
     }
 }
 
-/** Returns a compact stable label for a worktree row. */
-function getWorktreeLabel(worktree: GitWorktree): string {
-    if (worktree.branch) return worktree.branch;
-    if (worktree.head) return worktree.head.slice(0, 7);
-    return getPathBasename(worktree.path);
-}
-
-/** Extracts a folder name from Git's absolute worktree path in the webview. */
-function getPathBasename(value: string): string {
-    const parts = value.split(/[\\/]/).filter(Boolean);
-    return parts.length > 0 ? (parts[parts.length - 1] ?? value) : value;
-}
-
 /** Matches worktrees against the same branch-list filter input. */
 function worktreeMatches(worktree: GitWorktree, needle: string): boolean {
     if (!needle) return true;
     return [worktree.branch, worktree.head, worktree.path].some((value) =>
         value?.toLowerCase().includes(needle),
-    );
-}
-
-/** Renders one linked worktree under the branch list without mutating branch filters. */
-function WorktreeRow({
-    worktree,
-    filterNeedle,
-    onAction,
-    onContextMenu,
-    onOpenContextMenu,
-}: {
-    worktree: GitWorktree;
-    filterNeedle: string;
-    onAction?: (action: WorktreeAction, path: string) => void;
-    onContextMenu: (event: React.MouseEvent, worktree: GitWorktree) => void;
-    onOpenContextMenu: (row: HTMLElement, worktree: GitWorktree) => void;
-}): React.ReactElement {
-    const label = getWorktreeLabel(worktree);
-    const folderName = getPathBasename(worktree.path);
-    const activate = (): void => onAction?.("open", worktree.path);
-    return (
-        <button
-            type="button"
-            className="branch-row"
-            data-worktree-path={worktree.path}
-            title={worktree.path}
-            onClick={activate}
-            onContextMenu={(event) => onContextMenu(event, worktree)}
-            onKeyDown={(event) => {
-                if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-                    event.preventDefault();
-                    onOpenContextMenu(event.currentTarget, worktree);
-                }
-            }}
-            style={{ ...ROW_STYLE, paddingLeft: TREE_INDENT_STEP }}
-        >
-            {worktree.isCurrent ? (
-                <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
-            ) : (
-                <GitBranchIcon />
-            )}
-            <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(label, filterNeedle)}</span>
-            {folderName !== label && (
-                <span style={{ marginLeft: 6, opacity: 0.65, overflow: "hidden" }}>
-                    {folderName}
-                </span>
-            )}
-        </button>
     );
 }
 function readPersistedBranchColumnState(): BranchColumnPersistState | null {
@@ -460,139 +383,33 @@ export function BranchColumn({
                 onClear={() => dispatch({ type: "setBranchFilter", value: "" })}
             />
 
-            {current && (
-                <div style={HEAD_WRAPPER_STYLE}>
-                    <button
-                        type="button"
-                        className={`branch-row${selectedBranch === null ? " selected" : ""}`}
-                        onClick={() => {
-                            dispatch({ type: "clearSelectedBranches" });
-                            onSelectBranch(null);
-                        }}
-                        onContextMenu={(event) => handleBranchContextMenu(event, current)}
-                        onKeyDown={(event) => {
-                            if (
-                                event.key === "ContextMenu" ||
-                                (event.shiftKey && event.key === "F10")
-                            ) {
-                                event.preventDefault();
-                                openBranchContextMenuFromRow(event.currentTarget, current);
-                            }
-                        }}
-                        style={HEAD_ROW_STYLE}
-                    >
-                        <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
-                        <span style={HEAD_LABEL_STYLE}>
-                            {t("branch.head.label", { name: current.name })}
-                        </span>
-                    </button>
-                </div>
-            )}
-
-            <BranchSectionHeader
-                label={t("branch.section.local")}
-                expanded={expandedSections.has("local")}
-                onToggle={() => toggleSection("local")}
+            <BranchColumnSections
+                current={current}
+                selectedBranch={selectedBranch}
+                expandedSections={expandedSections}
+                expandedFolders={expandedFolders}
+                localTree={localTree}
+                remoteGroups={remoteGroups}
+                worktrees={worktrees}
+                filteredWorktrees={filteredWorktrees}
+                filterNeedle={filterNeedle}
+                locals={locals}
+                remotes={remotes}
+                selectedBranchNames={selectedBranchNames}
+                folderIcon={folderIcon}
+                folderExpandedIcon={folderExpandedIcon}
+                folderIconsByName={folderIconsByName}
+                onSelectBranch={onSelectBranch}
+                onClearSelectedBranches={() => dispatch({ type: "clearSelectedBranches" })}
+                onToggleSection={toggleSection}
+                onToggleFolder={toggleFolder}
+                onBranchClick={handleBranchRowClick}
+                onBranchContextMenu={handleBranchContextMenu}
+                onOpenBranchContextMenuFromRow={openBranchContextMenuFromRow}
+                onWorktreeAction={onWorktreeAction}
+                onWorktreeContextMenu={handleWorktreeContextMenu}
+                onOpenWorktreeContextMenuFromRow={openWorktreeContextMenuFromRow}
             />
-            {expandedSections.has("local") && (
-                <div style={TREE_SECTION_STYLE}>
-                    {localTree.map((node) => (
-                        <BranchTreeNodeRow
-                            key={`local-${node.fullName ?? node.label}`}
-                            node={node}
-                            depth={1}
-                            selectedBranch={selectedBranch}
-                            selectedBranchNames={selectedBranchNames}
-                            expandedFolders={expandedFolders}
-                            onSelectBranch={onSelectBranch}
-                            onBranchClick={handleBranchRowClick}
-                            onToggleFolder={toggleFolder}
-                            onContextMenu={handleBranchContextMenu}
-                            filterNeedle={filterNeedle}
-                            prefix="local"
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
-                        />
-                    ))}
-                </div>
-            )}
-
-            <BranchSectionHeader
-                label={t("branch.section.remote")}
-                expanded={expandedSections.has("remote")}
-                onToggle={() => toggleSection("remote")}
-            />
-            {expandedSections.has("remote") && (
-                <div style={TREE_SECTION_STYLE}>
-                    {Array.from(remoteGroups.entries()).map(([remote, group]) => {
-                        const remoteKey = `remote-${remote}`;
-                        const isExpanded = expandedFolders.has(remoteKey);
-                        return (
-                            <div key={remote}>
-                                <div style={{ paddingLeft: TREE_INDENT_STEP }}>
-                                    <BranchSectionHeader
-                                        label={remote}
-                                        expanded={isExpanded}
-                                        onToggle={() => toggleFolder(remoteKey)}
-                                        leadingIcon={<RepoIcon />}
-                                    />
-                                </div>
-                                {isExpanded &&
-                                    group.tree.map((node) => (
-                                        <BranchTreeNodeRow
-                                            key={`remote-${remote}-${node.fullName ?? node.label}`}
-                                            node={node}
-                                            depth={2}
-                                            selectedBranch={selectedBranch}
-                                            selectedBranchNames={selectedBranchNames}
-                                            expandedFolders={expandedFolders}
-                                            onSelectBranch={onSelectBranch}
-                                            onBranchClick={handleBranchRowClick}
-                                            onToggleFolder={toggleFolder}
-                                            onContextMenu={handleBranchContextMenu}
-                                            filterNeedle={filterNeedle}
-                                            prefix={`remote/${remote}`}
-                                            folderIcon={folderIcon}
-                                            folderExpandedIcon={folderExpandedIcon}
-                                            folderIconsByName={folderIconsByName}
-                                        />
-                                    ))}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {worktrees.length > 0 && (
-                <>
-                    <BranchSectionHeader
-                        label={t("branch.section.worktrees")}
-                        expanded={expandedSections.has("worktrees")}
-                        onToggle={() => toggleSection("worktrees")}
-                    />
-                    {expandedSections.has("worktrees") && (
-                        <div style={TREE_SECTION_STYLE}>
-                            {filteredWorktrees.map((worktree) => (
-                                <WorktreeRow
-                                    key={worktree.path}
-                                    worktree={worktree}
-                                    filterNeedle={filterNeedle}
-                                    onAction={onWorktreeAction}
-                                    onContextMenu={handleWorktreeContextMenu}
-                                    onOpenContextMenu={openWorktreeContextMenuFromRow}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </>
-            )}
-
-            {filterNeedle &&
-                locals.length === 0 &&
-                remotes.length === 0 &&
-                filteredWorktrees.length === 0 &&
-                !current && <div style={NO_MATCH_STYLE}>{t("branch.noMatches")}</div>}
 
             {contextMenu && (
                 <ContextMenu
