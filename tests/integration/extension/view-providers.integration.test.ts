@@ -2071,11 +2071,12 @@ describe("view providers integration", () => {
         expect(providerGetChecks).not.toHaveBeenCalled();
         expect(httpGetJsonSpy).not.toHaveBeenCalled();
         const snapshot = lastCommitChecksSnapshot();
-        // Unavailable, but via the coordinator's no-supported-remote path, not GitLab's
-        // sign-in hint — this is what makes the host mapping in the prior test necessary.
-        expect(snapshot?.state).toBe("unavailable");
-        expect(snapshot?.error).toMatch(/no supported remote/i);
-        expect(snapshot?.error).not.toMatch(/sign in/i);
+        // No provider claims the remote, so the coordinator yields no badge (state "none"),
+        // NOT an "unavailable" error badge. Contrast the prior test, where the host maps to
+        // GitLab and an absent token surfaces a recoverable sign-in hint — that is what makes
+        // the host mapping necessary.
+        expect(snapshot?.state).toBe("none");
+        expect(snapshot?.error).toBeUndefined();
         provider.dispose();
     });
 

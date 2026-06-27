@@ -7,7 +7,6 @@
 // refresh yet is not re-fetched on every sub-poll request. The whole feature and each
 // provider can be disabled, in which case the matched commit yields no badge.
 
-import * as vscode from "vscode";
 import type { GitOps } from "../../git/operations";
 import type { CommitChecksSnapshot } from "../../types";
 import { isPendingCheckState } from "../../types";
@@ -118,8 +117,12 @@ export class CommitChecksCoordinator {
     private async fetchFresh(hash: string): Promise<CommitChecksSnapshot> {
         const match = await this.resolveProvider();
         if (!match) {
-            // No registered provider matched any remote (GitHub, GitLab, ...).
-            return unavailableSnapshot(hash, vscode.l10n.t("No supported remote found."));
+            // No registered provider matched any remote (an unmapped self-hosted host, or
+            // an unsupported forge). That is a configuration state, not a recoverable
+            // error: yield no badge (state "none"), the same as a disabled provider. An
+            // "unavailable" error badge here would be permanent — re-fetching can never
+            // map the host — and the UI only hides "none".
+            return this.noneSnapshot(hash);
         }
         if (this.providerEnabled[match.provider.id] === false) {
             // Hard-stop: the origin-first matched provider is disabled. Yield no badge and

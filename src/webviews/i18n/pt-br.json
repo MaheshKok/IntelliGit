@@ -207,7 +207,7 @@
     "merge.status.autoResolved": "Resolvido automaticamente",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "Verificações de commits do GitHub",
+    "commit.checks.title": "Verificações de commits",
     "commit.checks.loading": "Carregando verificações...",
     "commit.checks.none": "Nenhuma verificação encontrada",
     "branch.worktreeBadge.current": "Checkout feito neste worktree",

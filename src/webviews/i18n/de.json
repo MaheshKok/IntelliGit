@@ -200,7 +200,7 @@
     "merge.status.autoResolved": "Automatisch aufgelöst",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "GitHub-Commit-Prüfungen",
+    "commit.checks.title": "Commit-Prüfungen",
     "commit.checks.loading": "Prüfungen werden geladen...",
     "commit.checks.none": "Keine Prüfungen gefunden",
     "branch.worktreeBadge.current": "In diesem Worktree ausgecheckt",

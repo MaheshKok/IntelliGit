@@ -193,7 +193,7 @@
     "merge.status.autoResolved": "自動解決済み",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "GitHub コミット チェック",
+    "commit.checks.title": "コミット チェック",
     "commit.checks.loading": "チェックを読み込んでいます...",
     "commit.checks.none": "チェックが見つかりません",
     "branch.worktreeBadge.current": "この worktree でチェックアウト済み",

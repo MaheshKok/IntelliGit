@@ -325,7 +325,7 @@ describe("webview ui smoke", () => {
                     state: "unavailable",
                     summary: "Checks unavailable",
                     items: [],
-                    error: "No supported remote found.",
+                    error: "Sign in to gitlab.example.com to view commit checks.",
                 }}
                 onRequestChecks={onRequestChecks}
                 onOpenCheckUrl={onOpenCheckUrl}

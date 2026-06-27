@@ -59,7 +59,10 @@ describe("CommitChecksCoordinator", () => {
         expect(getChecks).toHaveBeenCalledTimes(1);
     });
 
-    it("returns unavailable (never throws) when no provider matches", async () => {
+    it("returns none (no badge) when no provider matches the remote", async () => {
+        // An unmapped/unsupported remote is a configuration state, not a recoverable
+        // error: yield no badge (state "none"), never an "unavailable" error badge that
+        // the UI would render and that would invite pointless TTL re-fetches.
         const provider = makeProvider("github", "github.com", vi.fn());
         const coordinator = new CommitChecksCoordinator(
             makeGitOps({ origin: "https://bitbucket.org/team/repo.git" }),
@@ -68,18 +71,17 @@ describe("CommitChecksCoordinator", () => {
 
         const result = await coordinator.getChecks("abc1234");
 
-        expect(result.state).toBe("unavailable");
-        expect(result.error).toBe("No supported remote found.");
+        expect(result.state).toBe("none");
         expect(provider.getChecks).not.toHaveBeenCalled();
     });
 
-    it("returns unavailable when there are no remotes at all", async () => {
+    it("returns none when there are no remotes at all", async () => {
         const provider = makeProvider("github", "github.com", vi.fn());
         const coordinator = new CommitChecksCoordinator(makeGitOps({}), [provider]);
 
         const result = await coordinator.getChecks("abc1234");
 
-        expect(result.state).toBe("unavailable");
+        expect(result.state).toBe("none");
         expect(provider.getChecks).not.toHaveBeenCalled();
     });
 
@@ -291,8 +293,7 @@ describe("CommitChecksCoordinator — Bitbucket Server selection via HostMap", (
 
         const result = await coordinator.getChecks("abc1234");
 
-        expect(result.state).toBe("unavailable");
-        expect(result.error).toBe("No supported remote found.");
+        expect(result.state).toBe("none");
         expect(fetchJson).not.toHaveBeenCalled();
     });
 });
