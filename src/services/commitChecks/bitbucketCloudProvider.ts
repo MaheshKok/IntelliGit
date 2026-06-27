@@ -144,7 +144,12 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
         const { host, workspace, repo } = ref as BitbucketCloudRepoRef;
 
-        const token = await this.store.get(host);
+        let token: string | undefined;
+        try {
+            token = await this.store.get(host);
+        } catch (err) {
+            return unavailableSnapshot(hash, getErrorMessage(err));
+        }
         if (!token) {
             return unavailableSnapshot(
                 hash,
@@ -209,8 +214,22 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
             const raw = await this.fetchJson(url, headers);
             if (!isStatusPage(raw)) break;
             rows.push(...raw.values);
-            url = typeof raw.next === "string" ? raw.next : undefined;
+            url = normalizeBitbucketCloudNextUrl(raw.next);
         }
         return rows;
+    }
+}
+
+function normalizeBitbucketCloudNextUrl(next: unknown): string | undefined {
+    if (typeof next !== "string") return undefined;
+    try {
+        const url = new URL(next);
+        if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "api.bitbucket.org") {
+            return undefined;
+        }
+        if (!url.pathname.startsWith("/2.0/")) return undefined;
+        return url.toString();
+    } catch {
+        return undefined;
     }
 }

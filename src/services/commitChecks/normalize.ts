@@ -7,10 +7,10 @@ import * as vscode from "vscode";
 import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
 
 /** Matches check names that represent CI/CD pipeline work worth showing as a badge. */
-export const CICD_CHECK_PATTERN =
+const CICD_CHECK_PATTERN =
     /\b(ci|cd|build|release|deploy|deployment|test|tests|lint|typecheck|coverage|security|secret|secrets|scan|codeql|guard|package|publish|workflow|actions?)\b/i;
 /** Matches code-review bots that should be excluded from the CI/CD badge. */
-export const REVIEW_CHECK_PATTERN = /\b(code\s*review|coderabbit|reviewdog|qodo)\b/i;
+const REVIEW_CHECK_PATTERN = /\b(code\s*review|coderabbit|reviewdog|qodo)\b/i;
 
 /**
  * Keeps CI/CD checks while excluding code-review bot rows.

@@ -151,7 +151,12 @@ export class BitbucketServerProvider implements CommitChecksProvider {
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
         const { host } = ref;
 
-        const token = await this.store.get(host);
+        let token: string | undefined;
+        try {
+            token = await this.store.get(host);
+        } catch (err) {
+            return unavailableSnapshot(hash, getErrorMessage(err));
+        }
         if (!token) {
             return unavailableSnapshot(
                 hash,

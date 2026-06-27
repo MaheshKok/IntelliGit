@@ -62,7 +62,14 @@ export async function commitSelectedFromPanel(
         await gitOps.commit(message, amend);
     });
     if (push) {
-        await runGitOperationFromPanel(deps, "push");
+        try {
+            await runGitOperationFromPanel(deps, "push");
+        } catch (err) {
+            postCommitted();
+            await refreshData();
+            fireWorkingTreeChanged();
+            throw err;
+        }
         postCommitted();
         return;
     }

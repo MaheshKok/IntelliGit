@@ -97,12 +97,7 @@ describe("extension manifest", () => {
         ] as { additionalProperties?: { enum?: string[] } } | undefined;
         const providerEnum = hostsSetting?.additionalProperties?.enum ?? [];
 
-        expect(providerEnum).toContain("gitlab");
-        expect(providerEnum).toContain("bitbucket-server");
-        // Fixed-host SaaS ids must NOT be configurable here (mapping a host to them is
-        // meaningless and the normalizer drops them).
-        expect(providerEnum).not.toContain("github");
-        expect(providerEnum).not.toContain("bitbucket-cloud");
+        expect([...providerEnum].sort()).toEqual(["bitbucket-server", "gitlab"]);
     });
 
     it("contributes the commitChecks.enabled feature toggle as a window-scoped boolean", () => {

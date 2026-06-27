@@ -121,6 +121,12 @@ describe("normalizeCommitChecksSettings — ciCdFilter compilation", () => {
         expect(settings.ciCdPattern).toBeUndefined();
         expect(settings.ciCdFilterInvalid).toBe(true);
     });
+
+    it("rejects unsafe regex features before compiling", () => {
+        const settings = normalizeCommitChecksSettings({ ciCdFilter: "(a+)+" });
+        expect(settings.ciCdPattern).toBeUndefined();
+        expect(settings.ciCdFilterInvalid).toBe(true);
+    });
 });
 
 describe("normalizeCommitChecksSettings — immutability", () => {

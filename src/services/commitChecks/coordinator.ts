@@ -115,7 +115,12 @@ export class CommitChecksCoordinator {
     }
 
     private async fetchFresh(hash: string): Promise<CommitChecksSnapshot> {
-        const match = await this.resolveProvider();
+        let match: ProviderMatch | null;
+        try {
+            match = await this.resolveProvider();
+        } catch (err) {
+            return unavailableSnapshot(hash, getErrorMessage(err));
+        }
         if (!match) {
             // No registered provider matched any remote (an unmapped self-hosted host, or
             // an unsupported forge). That is a configuration state, not a recoverable

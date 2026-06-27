@@ -63,6 +63,17 @@ function emptyStore(): CredentialStore {
     return new CredentialStore(makeSecrets());
 }
 
+function throwingStore(): CredentialStore {
+    return new CredentialStore({
+        get: vi.fn(async () => {
+            throw new Error("secret store unavailable");
+        }),
+        store: vi.fn(),
+        delete: vi.fn(),
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.SecretStorage);
+}
+
 // ---------------------------------------------------------------------------
 // A stable GitLab ref used throughout getChecks tests
 // ---------------------------------------------------------------------------
@@ -209,7 +220,7 @@ describe("parseGitlabRemoteUrl", () => {
     it("returns null for an ssh:// scheme URL (only SCP and HTTPS supported)", () => {
         // ssh:// is a distinct scheme from the git@ SCP form; GitLab typically uses SCP.
         // Ensure the parser does not accidentally accept it as GitLab.
-        expect(parseGitlabRemoteUrl("ssh://git@github.com/owner/repo.git")).toBeNull();
+        expect(parseGitlabRemoteUrl("ssh://git@gitlab.com/owner/repo.git")).toBeNull();
     });
 
     it("trims surrounding whitespace before parsing", () => {
@@ -328,6 +339,17 @@ describe("GitLabProvider.getChecks — no token stored", () => {
         const provider = new GitLabProvider(vi.fn(), emptyStore());
         const snapshot = await provider.getChecks(gitlabRef, "abc1234");
         expect(snapshot.items).toEqual([]);
+    });
+
+    it("returns unavailable when the credential store rejects", async () => {
+        const fetchJson = vi.fn();
+        const provider = new GitLabProvider(fetchJson, throwingStore());
+
+        const snapshot = await provider.getChecks(gitlabRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toBe("secret store unavailable");
+        expect(fetchJson).not.toHaveBeenCalled();
     });
 
     it("records the commit hash in the snapshot even when token is absent", async () => {

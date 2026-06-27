@@ -94,14 +94,16 @@ export class IconThemeService implements vscode.Disposable {
      * and font URIs remain loadable under the webview CSP.
      */
     async initIconThemeData(): Promise<void> {
-        if (!this.iconResolver || !this.webview) return;
+        const iconResolver = this.iconResolver;
+        const webview = this.webview;
+        if (!iconResolver || !webview) return;
         if (!this.iconThemeDirty && this.iconThemeInitialized) return;
 
         const distRoot = vscode.Uri.joinPath(this.extensionUri, "dist");
-        const themeRoot = this.iconResolver.getThemeResourceRootUri();
+        const themeRoot = iconResolver.getThemeResourceRootUri();
         const nextThemeRootUri = themeRoot?.toString();
         if (this.lastThemeRootUri !== nextThemeRootUri) {
-            const existingRoots = this.webview.options.localResourceRoots ?? [];
+            const existingRoots = webview.options.localResourceRoots ?? [];
             const mergedRoots: vscode.Uri[] = [];
             const seen = new Set<string>();
             const addRoot = (root: vscode.Uri | undefined | null): void => {
@@ -116,14 +118,18 @@ export class IconThemeService implements vscode.Disposable {
             }
             addRoot(distRoot);
             addRoot(themeRoot);
-            this.webview.options = {
-                ...this.webview.options,
+            webview.options = {
+                ...webview.options,
                 localResourceRoots: mergedRoots,
             };
             this.lastThemeRootUri = nextThemeRootUri;
         }
-        this.folderIcons = await this.iconResolver.getFolderIcons();
-        this.iconFonts = await this.iconResolver.getThemeFonts();
+        const folderIcons = await iconResolver.getFolderIcons();
+        if (iconResolver !== this.iconResolver || webview !== this.webview) return;
+        const iconFonts = await iconResolver.getThemeFonts();
+        if (iconResolver !== this.iconResolver || webview !== this.webview) return;
+        this.folderIcons = folderIcons;
+        this.iconFonts = iconFonts;
         this.iconThemeDirty = false;
         this.iconThemeInitialized = true;
     }

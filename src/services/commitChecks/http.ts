@@ -13,10 +13,13 @@ export type FetchJson = (url: string, headers: Record<string, string>) => Promis
 export const httpGetJson: FetchJson = (url, headers) => {
     return new Promise((resolve, reject) => {
         const req = https.get(url, { headers }, (res) => {
-            let data = "";
-            res.on("data", (chunk: Buffer) => (data += chunk.toString()));
+            const chunks: Buffer[] = [];
+            res.on("data", (chunk: Buffer | string) => {
+                chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
+            });
             res.on("end", () => {
                 req.setTimeout(0);
+                const data = Buffer.concat(chunks).toString("utf8");
                 const statusCode = res.statusCode ?? 0;
                 if (statusCode < 200 || statusCode >= 300) {
                     reject(new Error(`HTTP ${statusCode}: ${data.slice(0, 200)}`));

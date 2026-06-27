@@ -145,6 +145,7 @@ export function registerRepositoryViewEvents(
      * Clears commit detail state after branch filtering invalidates the selection.
      */
     const clearCommitDetail = (): void => {
+        commitDetailRequestSeq += 1;
         commitGraph.clearCommitDetail();
         sidebarGraph.clearCommitDetail();
         commitPanel.clearCommitDetail();

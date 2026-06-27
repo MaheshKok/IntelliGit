@@ -153,6 +153,8 @@ export function ContextMenu({
                     return (
                         <div
                             key={`sep-${i}`}
+                            role="separator"
+                            aria-orientation="horizontal"
                             style={{
                                 height: 1,
                                 margin: "4px 8px",

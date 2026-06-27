@@ -62,6 +62,17 @@ function emptyStore(): CredentialStore {
     return new CredentialStore(makeSecrets());
 }
 
+function throwingStore(): CredentialStore {
+    return new CredentialStore({
+        get: vi.fn(async () => {
+            throw new Error("secret store unavailable");
+        }),
+        store: vi.fn(),
+        delete: vi.fn(),
+        onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+    } as unknown as vscode.SecretStorage);
+}
+
 /** Wraps a single status row in a one-page response and a token-bearing provider. */
 function providerForStatus(bitbucketState: string, token = "bb-token"): BitbucketCloudProvider {
     return new BitbucketCloudProvider(
@@ -361,6 +372,17 @@ describe("BitbucketCloudProvider.getChecks — request construction", () => {
 
         expect(fetchJson).toHaveBeenCalledTimes(1);
     });
+
+    it("returns unavailable when the credential store rejects", async () => {
+        const fetchJson = vi.fn();
+        const provider = new BitbucketCloudProvider(fetchJson, throwingStore());
+
+        const snapshot = await provider.getChecks(bbRef, "abc1234");
+
+        expect(snapshot.state).toBe("unavailable");
+        expect(snapshot.error).toBe("secret store unavailable");
+        expect(fetchJson).not.toHaveBeenCalled();
+    });
 });
 
 // BitbucketCloudProvider.getChecks — pagination
@@ -409,6 +431,18 @@ describe("BitbucketCloudProvider.getChecks — pagination", () => {
 
         // The cap is 5 pages; the loop must not run unbounded.
         expect(fetchJson).toHaveBeenCalledTimes(5);
+    });
+
+    it("does not follow next links outside the Bitbucket Cloud API host", async () => {
+        const fetchJson = vi.fn(async () => ({
+            values: [{ key: "CI", name: "CI / build", state: "SUCCESSFUL" }],
+            next: "https://evil.example.com/2.0/repositories/acme/app/statuses",
+        }));
+        const provider = new BitbucketCloudProvider(fetchJson, storeWithToken("bb-token"));
+
+        await provider.getChecks(bbRef, "abc1234");
+
+        expect(fetchJson).toHaveBeenCalledTimes(1);
     });
 });
 

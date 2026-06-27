@@ -113,8 +113,8 @@ describe("normalizeHostMap — invalid entries are dropped", () => {
     it("lets the last valid entry win when two hosts collide after lowercasing", () => {
         const raw = {
             "GIT.acme.com": "gitlab",
-            "git.acme.com": "gitlab",
+            "git.acme.com": "bitbucket-server",
         };
-        expect(normalizeHostMap(raw)).toEqual({ "git.acme.com": "gitlab" });
+        expect(normalizeHostMap(raw)).toEqual({ "git.acme.com": "bitbucket-server" });
     });
 });

@@ -239,6 +239,8 @@ export class UndockedViewProvider {
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
+        this.requestSeq += 1;
+        this.commitDetailSeq += 1;
         this.files = [];
         this.stashes = [];
         this.selectedShelfIndex = null;

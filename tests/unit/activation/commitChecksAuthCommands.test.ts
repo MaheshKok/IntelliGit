@@ -14,14 +14,14 @@ const SIGN_OUT = "intelligit.commitChecks.signOut";
 const KEY_PREFIX = "intelligit.commitChecks.token:";
 
 const mocks = vi.hoisted(() => {
-    const commandHandlers = new Map<string, () => Promise<void>>();
+    const commandHandlers = new Map<string, (...args: unknown[]) => Promise<void>>();
     return {
         showQuickPick: vi.fn(),
         showInputBox: vi.fn(),
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
         commandHandlers,
-        registerCommand: vi.fn((id: string, handler: () => Promise<void>) => {
+        registerCommand: vi.fn((id: string, handler: (...args: unknown[]) => Promise<void>) => {
             commandHandlers.set(id, handler);
             return { dispose: () => undefined };
         }),
