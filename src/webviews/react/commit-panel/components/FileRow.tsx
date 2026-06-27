@@ -9,7 +9,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { StatusBadge } from "./StatusBadge";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
-import { getLeafName, getParentPath } from "../../shared/utils";
+import { getLeafName, getParentPath } from "../../shared/utils/path";
 
 interface Props {
     file: WorkingFile;

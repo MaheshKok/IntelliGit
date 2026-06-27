@@ -160,9 +160,11 @@ export class RefreshService implements vscode.Disposable {
                 this.deps.commitPanel.setBranches(branches);
                 const undocked = this.deps.getUndocked?.();
                 undocked?.setBranches(branches, worktrees);
-                await Promise.all(commitGraphs.map((graph) => graph.refresh()));
-                await this.refreshCommitPanels();
-                await this.refreshMergeConflicts();
+                await Promise.all([
+                    ...commitGraphs.map((graph) => graph.refresh()),
+                    this.refreshCommitPanels(),
+                    this.refreshMergeConflicts(),
+                ]);
             })().catch((err) => {
                 console.error("[IntelliGit] Full refresh failed:", err);
             });
@@ -276,27 +278,27 @@ export class RefreshService implements vscode.Disposable {
         if (!gitExtension) return;
 
         const git = await gitExtension.activate();
-        if (this.disposed) return;
+        if (!this.disposed) {
+            const api = git.getAPI(1);
+            for (const repository of api.repositories) {
+                this.registerGitRepositoryStateWatcher(repository);
+            }
 
-        const api = git.getAPI(1);
-        for (const repository of api.repositories) {
-            this.registerGitRepositoryStateWatcher(repository);
-        }
+            if (api.onDidOpenRepository) {
+                this.disposables.push(
+                    api.onDidOpenRepository((repository) => {
+                        this.registerGitRepositoryStateWatcher(repository);
+                    }),
+                );
+            }
 
-        if (api.onDidOpenRepository) {
-            this.disposables.push(
-                api.onDidOpenRepository((repository) => {
-                    this.registerGitRepositoryStateWatcher(repository);
-                }),
-            );
-        }
-
-        if (api.onDidCloseRepository) {
-            this.disposables.push(
-                api.onDidCloseRepository((repository) => {
-                    this.disposeGitRepositoryStateWatcher(repository);
-                }),
-            );
+            if (api.onDidCloseRepository) {
+                this.disposables.push(
+                    api.onDidCloseRepository((repository) => {
+                        this.disposeGitRepositoryStateWatcher(repository);
+                    }),
+                );
+            }
         }
     }
 

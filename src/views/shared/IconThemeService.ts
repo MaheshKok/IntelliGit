@@ -233,9 +233,9 @@ export class IconThemeService implements vscode.Disposable {
      * theme initialization and returns an empty map when no webview resolver is available.
      */
     async getFolderIconsByNames(names: string[]): Promise<ThemeFolderIconMap> {
-        await this.initIconThemeData();
         if (!this.iconResolver) return {};
-        return this.iconResolver.getFolderIconsByName(names);
+        await this.initIconThemeData();
+        return this.iconResolver ? this.iconResolver.getFolderIconsByName(names) : {};
     }
 
     /**

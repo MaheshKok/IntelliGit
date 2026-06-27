@@ -6,6 +6,20 @@ interface UndockedHeaderProps {
     onDock: () => void;
 }
 
+const DOCK_BUTTON_STYLE: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 24,
+    border: "1px solid var(--vscode-button-border, transparent)",
+    borderRadius: 3,
+    padding: "0 8px",
+    color: "var(--vscode-button-foreground)",
+    background: "var(--vscode-button-secondaryBackground)",
+    font: "inherit",
+    cursor: "pointer",
+};
+
 /** Renders the undocked editor-tab header and invokes the dock callback. */
 export function UndockedHeader({ onDock }: UndockedHeaderProps): React.ReactElement {
     return (
@@ -29,19 +43,7 @@ export function UndockedHeader({ onDock }: UndockedHeaderProps): React.ReactElem
                 onClick={onDock}
                 title={t("common.dockIntelliGit")}
                 aria-label={t("common.dockIntelliGit")}
-                style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    height: 24,
-                    border: "1px solid var(--vscode-button-border, transparent)",
-                    borderRadius: 3,
-                    padding: "0 8px",
-                    color: "var(--vscode-button-foreground)",
-                    background: "var(--vscode-button-secondaryBackground)",
-                    font: "inherit",
-                    cursor: "pointer",
-                }}
+                style={DOCK_BUTTON_STYLE}
             >
                 <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
                     <path

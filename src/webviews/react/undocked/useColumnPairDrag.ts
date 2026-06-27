@@ -17,21 +17,22 @@ export function useColumnPairDrag(
     const widthsRef = useRef(widths);
     widthsRef.current = widths;
 
-    useEffect(() => {
-        return () => {
-            if (draggingRef.current) {
-                if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);
-                if (upRef.current) document.removeEventListener("mouseup", upRef.current);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
-                draggingRef.current = false;
-            }
-        };
+    const cleanupDrag = useCallback(() => {
+        if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);
+        if (upRef.current) document.removeEventListener("mouseup", upRef.current);
+        moveRef.current = null;
+        upRef.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        draggingRef.current = false;
     }, []);
+
+    useEffect(() => cleanupDrag, [cleanupDrag]);
 
     return useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
+            cleanupDrag();
             draggingRef.current = true;
             const startX = e.clientX;
             const startWidths = widthsRef.current;
@@ -55,13 +56,7 @@ export function useColumnPairDrag(
             };
 
             const onMouseUp = () => {
-                draggingRef.current = false;
-                moveRef.current = null;
-                upRef.current = null;
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
+                cleanupDrag();
             };
 
             moveRef.current = onMouseMove;
@@ -71,6 +66,6 @@ export function useColumnPairDrag(
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
         },
-        [firstKey, secondKey, setWidths],
+        [cleanupDrag, firstKey, secondKey, setWidths],
     );
 }

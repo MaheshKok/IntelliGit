@@ -37,6 +37,7 @@ export function CommitChecksButton({
         top: number;
         placement: "above" | "below";
     } | null>(null);
+    const closePanel = React.useCallback(() => setPosition(null), []);
 
     const state = checks && checks !== "loading" ? checks.state : "pending";
     const buttonLabel = t("commit.checks.title");
@@ -61,10 +62,10 @@ export function CommitChecksButton({
         if (!checks) onRequestChecks(hash);
     };
 
-    const handleClick = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    const toggleChecksPanel = (event: React.MouseEvent<HTMLButtonElement>): void => {
         event.stopPropagation();
         if (position) {
-            setPosition(null);
+            closePanel();
             return;
         }
         openPanel();
@@ -76,12 +77,12 @@ export function CommitChecksButton({
             const target = event.target;
             if (!(target instanceof Node)) return;
             if (buttonRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-            setPosition(null);
+            closePanel();
         };
         const closeOnEscape = (event: KeyboardEvent): void => {
-            if (event.key === "Escape") setPosition(null);
+            if (event.key === "Escape") closePanel();
         };
-        const closeOnWindowBlur = (): void => setPosition(null);
+        const closeOnWindowBlur = (): void => closePanel();
         document.addEventListener("pointerdown", closeOnOutsidePointer);
         document.addEventListener("keydown", closeOnEscape);
         window.addEventListener("blur", closeOnWindowBlur);
@@ -90,7 +91,7 @@ export function CommitChecksButton({
             document.removeEventListener("keydown", closeOnEscape);
             window.removeEventListener("blur", closeOnWindowBlur);
         };
-    }, [position]);
+    }, [closePanel, position]);
 
     if (checks && checks !== "loading" && checks.state === "none" && checks.items.length === 0) {
         return null;
@@ -103,7 +104,7 @@ export function CommitChecksButton({
                 type="button"
                 title={buttonTitle}
                 aria-label={buttonLabel}
-                onClick={handleClick}
+                onClick={toggleChecksPanel}
                 style={buttonStyle}
                 data-testid={`commit-checks-button-${hash}`}
             >

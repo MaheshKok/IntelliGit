@@ -676,15 +676,14 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!branch || branch.isRemote) return;
                 if (!validateBranchArg(branch.name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
-                const fallbackRemote =
-                    !tracked && !branch.isCurrent
-                        ? await resolveRemoteName(branch, executor)
-                        : undefined;
-                const fallbackRemoteName = fallbackRemote ?? "";
                 if (!tracked && branch.isCurrent) {
                     await vscode.commands.executeCommand("intelligit.publishBranch");
                     return;
                 }
+                const fallbackRemote = !tracked
+                    ? await resolveRemoteName(branch, executor)
+                    : undefined;
+                const fallbackRemoteName = fallbackRemote ?? "";
                 if (!tracked && !fallbackRemoteName) {
                     vscode.window.showWarningMessage(
                         vscode.l10n.t(

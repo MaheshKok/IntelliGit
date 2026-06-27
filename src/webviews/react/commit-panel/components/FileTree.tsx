@@ -31,6 +31,12 @@ interface Props {
     collapseAllSignal: number;
 }
 
+interface FileTreeExpansionState {
+    changesOpen: boolean;
+    unversionedOpen: boolean;
+    expandedDirs: Set<string>;
+}
+
 /**
  * Renders tracked and unversioned working-tree files with optional directory grouping.
  *
@@ -55,9 +61,12 @@ export function FileTree({
     expandAllSignal,
     collapseAllSignal,
 }: Props): React.ReactElement {
-    const [changesOpen, setChangesOpen] = useState(true);
-    const [unversionedOpen, setUnversionedOpen] = useState(true);
-    const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
+    const [expansion, setExpansion] = useState<FileTreeExpansionState>(() => ({
+        changesOpen: true,
+        unversionedOpen: true,
+        expandedDirs: new Set(),
+    }));
+    const { changesOpen, unversionedOpen, expandedDirs } = expansion;
     const [isDragOverChanges, setIsDragOverChanges] = useState(false);
     const [dragSelectedUnversionedPaths, setDragSelectedUnversionedPaths] = useState<Set<string>>(
         () => new Set(),
@@ -78,21 +87,31 @@ export function FileTree({
 
     const trackedTree = useFileTree(tracked, groupByDir);
     const unversionedTree = useFileTree(unversioned, groupByDir);
+    const allDirPaths = useMemo(
+        () => [...collectAllDirPaths(trackedTree), ...collectAllDirPaths(unversionedTree)],
+        [trackedTree, unversionedTree],
+    );
     const unversionedPaths = useMemo(
         () => new Set(unversioned.map((file) => file.path)),
         [unversioned],
     );
+    const visibleDragSelectedUnversionedPaths = useMemo(() => {
+        const next = new Set(
+            Array.from(dragSelectedUnversionedPaths).filter((path) => unversionedPaths.has(path)),
+        );
+        return next.size === dragSelectedUnversionedPaths.size
+            ? dragSelectedUnversionedPaths
+            : next;
+    }, [dragSelectedUnversionedPaths, unversionedPaths]);
 
     const getUnversionedDragPaths = useCallback(
         (file: WorkingFile): string[] => {
             if (file.status !== "?") return [];
-            const selectedUnversioned = Array.from(dragSelectedUnversionedPaths).filter((path) =>
-                unversionedPaths.has(path),
-            );
+            const selectedUnversioned = Array.from(visibleDragSelectedUnversionedPaths);
             if (selectedUnversioned.length === 0) return [file.path];
             return selectedUnversioned.includes(file.path) ? selectedUnversioned : [file.path];
         },
-        [dragSelectedUnversionedPaths, unversionedPaths],
+        [visibleDragSelectedUnversionedPaths],
     );
 
     const handleTreeFileClick = useCallback(
@@ -101,7 +120,9 @@ export function FileTree({
                 event.preventDefault();
                 event.stopPropagation();
                 setDragSelectedUnversionedPaths((prev) => {
-                    const next = new Set(prev);
+                    const next = new Set(
+                        Array.from(prev).filter((path) => unversionedPaths.has(path)),
+                    );
                     if (next.has(file.path)) next.delete(file.path);
                     else next.add(file.path);
                     return next;
@@ -111,7 +132,7 @@ export function FileTree({
             setDragSelectedUnversionedPaths(new Set());
             onFileClick(file.path);
         },
-        [onFileClick],
+        [onFileClick, unversionedPaths],
     );
 
     const handleFileDragStart = useCallback(
@@ -227,72 +248,57 @@ export function FileTree({
         [onTrackUnversionedFiles, readDraggedUnversionedPaths],
     );
 
-    // Respond to expand/collapse all signals
-    React.useEffect(() => {
-        if (expandAllSignal === 0 || expandAllSignal === lastExpandSignal.current) return;
-        lastExpandSignal.current = expandAllSignal;
-        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
-        setChangesOpen(true);
-        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
-        setUnversionedOpen(true);
-        const allDirs = [
-            ...collectAllDirPaths(trackedTree),
-            ...collectAllDirPaths(unversionedTree),
-        ];
-        for (const dir of allDirs) {
-            seenDirsRef.current.add(dir);
-        }
-        setExpandedDirs(new Set(allDirs));
-    }, [expandAllSignal, trackedTree, unversionedTree]);
-
-    React.useEffect(() => {
-        if (collapseAllSignal === 0 || collapseAllSignal === lastCollapseSignal.current) return;
-        lastCollapseSignal.current = collapseAllSignal;
-        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
-        setChangesOpen(false);
-        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
-        setUnversionedOpen(false);
-        // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
-        setExpandedDirs(new Set());
-    }, [collapseAllSignal]);
-
-    React.useEffect(() => {
-        setDragSelectedUnversionedPaths((prev) => {
-            const next = new Set(Array.from(prev).filter((path) => unversionedPaths.has(path)));
-            return next.size === prev.size ? prev : next;
-        });
-    }, [unversionedPaths]);
-
-    // Auto-expand new dirs when files come in and sections are open
-    React.useEffect(() => {
-        if (!changesOpen && !unversionedOpen) return;
-        const allDirs = [
-            ...collectAllDirPaths(trackedTree),
-            ...collectAllDirPaths(unversionedTree),
-        ];
-        setExpandedDirs((prev) => {
-            const next = new Set(prev);
-            let changed = false;
-            for (const d of allDirs) {
-                // Auto-expand only directories that appear for the first time.
-                if (!seenDirsRef.current.has(d)) {
-                    seenDirsRef.current.add(d);
-                    next.add(d);
-                    changed = true;
-                }
-            }
-            return changed ? next : prev;
-        });
-    }, [trackedTree, unversionedTree, changesOpen, unversionedOpen]);
-
     const toggleDir = useCallback((dirPath: string) => {
-        setExpandedDirs((prev) => {
-            const next = new Set(prev);
+        setExpansion((prev) => {
+            const next = new Set(prev.expandedDirs);
             if (next.has(dirPath)) next.delete(dirPath);
             else next.add(dirPath);
-            return next;
+            return { ...prev, expandedDirs: next };
         });
     }, []);
+
+    const newAutoExpandedDirs =
+        changesOpen || unversionedOpen
+            ? allDirPaths.filter((dirPath) => !seenDirsRef.current.has(dirPath))
+            : [];
+
+    if (
+        newAutoExpandedDirs.length > 0 ||
+        (expandAllSignal !== 0 && expandAllSignal !== lastExpandSignal.current) ||
+        (collapseAllSignal !== 0 && collapseAllSignal !== lastCollapseSignal.current)
+    ) {
+        let nextExpansion = expansion;
+        if (newAutoExpandedDirs.length > 0) {
+            const nextExpandedDirs = new Set(nextExpansion.expandedDirs);
+            for (const dirPath of newAutoExpandedDirs) {
+                seenDirsRef.current.add(dirPath);
+                nextExpandedDirs.add(dirPath);
+            }
+            nextExpansion = { ...nextExpansion, expandedDirs: nextExpandedDirs };
+        }
+        if (expandAllSignal !== 0 && expandAllSignal !== lastExpandSignal.current) {
+            lastExpandSignal.current = expandAllSignal;
+            for (const dir of allDirPaths) {
+                seenDirsRef.current.add(dir);
+            }
+            nextExpansion = {
+                ...nextExpansion,
+                changesOpen: true,
+                unversionedOpen: true,
+                expandedDirs: new Set(allDirPaths),
+            };
+        }
+        if (collapseAllSignal !== 0 && collapseAllSignal !== lastCollapseSignal.current) {
+            lastCollapseSignal.current = collapseAllSignal;
+            nextExpansion = {
+                ...nextExpansion,
+                changesOpen: false,
+                unversionedOpen: false,
+                expandedDirs: new Set(),
+            };
+        }
+        setExpansion(nextExpansion);
+    }
 
     if (files.length === 0) {
         return (
@@ -322,7 +328,9 @@ export function FileTree({
                         isOpen={changesOpen}
                         isAllChecked={isAllChecked(tracked)}
                         isSomeChecked={isSomeChecked(tracked)}
-                        onToggleOpen={() => setChangesOpen((o) => !o)}
+                        onToggleOpen={() =>
+                            setExpansion((prev) => ({ ...prev, changesOpen: !prev.changesOpen }))
+                        }
                         onToggleCheck={() => onToggleSection(tracked)}
                         isDragOver={isDragOverChanges}
                     />
@@ -336,7 +344,7 @@ export function FileTree({
                             folderIconsByName={folderIconsByName}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
-                            dragSelectedPaths={dragSelectedUnversionedPaths}
+                            dragSelectedPaths={visibleDragSelectedUnversionedPaths}
                             onToggleFile={onToggleFile}
                             onToggleFolder={onToggleFolder}
                             isAllChecked={isAllChecked}
@@ -357,7 +365,12 @@ export function FileTree({
                         isOpen={unversionedOpen}
                         isAllChecked={isAllChecked(unversioned)}
                         isSomeChecked={isSomeChecked(unversioned)}
-                        onToggleOpen={() => setUnversionedOpen((o) => !o)}
+                        onToggleOpen={() =>
+                            setExpansion((prev) => ({
+                                ...prev,
+                                unversionedOpen: !prev.unversionedOpen,
+                            }))
+                        }
                         onToggleCheck={() => onToggleSection(unversioned)}
                     />
                     {unversionedOpen && (
@@ -370,7 +383,7 @@ export function FileTree({
                             folderIconsByName={folderIconsByName}
                             expandedDirs={expandedDirs}
                             checkedPaths={checkedPaths}
-                            dragSelectedPaths={dragSelectedUnversionedPaths}
+                            dragSelectedPaths={visibleDragSelectedUnversionedPaths}
                             onToggleFile={onToggleFile}
                             onToggleFolder={onToggleFolder}
                             isAllChecked={isAllChecked}

@@ -1,7 +1,7 @@
 // Shelf tab with selectable shelved entries, changed-file preview, and
 // bottom Apply/Pop/Delete actions.
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flex, Box, Button, IconButton, Tooltip } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -9,11 +9,16 @@ import { TreeFolderIcon } from "./TreeIcons";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { getSettings } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
-import { ChevronIcon, CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
+import {
+    ChevronIcon,
+    CollapseAllIconGlyph,
+    ExpandAllIconGlyph,
+} from "../../shared/components/Icons";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import type { TreeEntry } from "../types";
-import { getLeafName, resolveFolderIcon } from "../../shared/utils";
+import { resolveFolderIcon } from "../../shared/utils/folderIcons";
+import { getLeafName } from "../../shared/utils/path";
 import { t } from "../../shared/i18n";
 
 interface Props {
@@ -33,6 +38,11 @@ interface ExpansionOverride {
     selectedIndex: number | null;
     expandedIndex: number | null;
     isLoading: boolean;
+}
+
+interface ExpandedDirsState {
+    tree: TreeEntry[];
+    dirs: Set<string>;
 }
 
 /**
@@ -56,7 +66,15 @@ export function ShelfTab({
     const vscode = getVsCodeApi();
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
     const tree = useFileTree(shelfFiles, groupByDir);
-    const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+    const allDirPaths = useMemo(() => collectAllDirPaths(tree), [tree]);
+    const [expandedDirsState, setExpandedDirsState] = useState<ExpandedDirsState>(() => ({
+        tree,
+        dirs: new Set(allDirPaths),
+    }));
+    const expandedDirs = useMemo(
+        () => (expandedDirsState.tree === tree ? expandedDirsState.dirs : new Set(allDirPaths)),
+        [allDirPaths, expandedDirsState, tree],
+    );
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(
         null,
     );
@@ -126,26 +144,25 @@ export function ShelfTab({
         [selectedIndex, shelfFiles, vscode],
     );
 
-    const toggleDir = useCallback((path: string) => {
-        setExpandedDirs((prev) => {
-            const next = new Set(prev);
-            if (next.has(path)) next.delete(path);
-            else next.add(path);
-            return next;
-        });
-    }, []);
-
-    useEffect(() => {
-        setExpandedDirs(new Set(collectAllDirPaths(tree)));
-    }, [tree]);
+    const toggleDir = useCallback(
+        (path: string) => {
+            setExpandedDirsState((prev) => {
+                const next = new Set(prev.tree === tree ? prev.dirs : allDirPaths);
+                if (next.has(path)) next.delete(path);
+                else next.add(path);
+                return { tree, dirs: next };
+            });
+        },
+        [allDirPaths, tree],
+    );
 
     const expandAll = useCallback(() => {
-        setExpandedDirs(new Set(collectAllDirPaths(tree)));
-    }, [tree]);
+        setExpandedDirsState({ tree, dirs: new Set(allDirPaths) });
+    }, [allDirPaths, tree]);
 
     const collapseAll = useCallback(() => {
-        setExpandedDirs(new Set());
-    }, []);
+        setExpandedDirsState({ tree, dirs: new Set() });
+    }, [tree]);
 
     const handleShowSelectedDiff = useCallback(() => {
         handleShelfAction(selectedIndex, "showDiff");
@@ -172,11 +189,11 @@ export function ShelfTab({
 
     const dragCleanupRef = useRef<(() => void) | null>(null);
 
-    useEffect(() => {
-        return () => {
-            dragCleanupRef.current?.();
-        };
+    const cleanupFileTreeDrag = useCallback(() => {
+        dragCleanupRef.current?.();
     }, []);
+
+    useEffect(() => cleanupFileTreeDrag, [cleanupFileTreeDrag]);
 
     const handleFileTreeDragStart = useCallback((e: React.MouseEvent) => {
         e.preventDefault();

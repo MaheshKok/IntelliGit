@@ -3,7 +3,7 @@
 // same virtual scrolling. Keeps its own state management to match the
 // extension-host message contract.
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useCallback, useMemo, useRef, useReducer } from "react";
 import { CommitList } from "./CommitList";
 import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
@@ -21,6 +21,100 @@ interface Props {
     sendReady?: boolean;
 }
 
+type CommitChecksValue = CommitChecksSnapshot | "loading";
+
+interface NativeCommitGraphState {
+    commits: Commit[];
+    branches: Branch[];
+    selectedHash: string | null;
+    selectedBranch: string | null;
+    hasMore: boolean;
+    filterText: string;
+    unpushedHashes: Set<string>;
+    commitChecks: Map<string, CommitChecksValue>;
+    commitChecksEnabled: boolean;
+}
+
+type NativeCommitGraphAction =
+    | {
+          type: "loadCommits";
+          commits: Commit[];
+          append: boolean;
+          hasMore: boolean;
+          unpushedHashes?: string[];
+      }
+    | { type: "setSelectedBranch"; branch: string | null }
+    | { type: "setBranches"; branches: Branch[]; commitChecksEnabled?: boolean }
+    | { type: "loadError"; clearCommits: boolean }
+    | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
+    | { type: "markCommitChecksLoading"; hash: string }
+    | { type: "selectCommit"; hash: string }
+    | { type: "setFilterText"; text: string };
+
+const initialNativeCommitGraphState: NativeCommitGraphState = {
+    commits: [],
+    branches: [],
+    selectedHash: null,
+    selectedBranch: null,
+    hasMore: false,
+    filterText: "",
+    unpushedHashes: new Set(),
+    commitChecks: new Map(),
+    commitChecksEnabled: true,
+};
+
+function nativeCommitGraphReducer(
+    state: NativeCommitGraphState,
+    action: NativeCommitGraphAction,
+): NativeCommitGraphState {
+    switch (action.type) {
+        case "loadCommits":
+            return {
+                ...state,
+                commits: action.append ? [...state.commits, ...action.commits] : action.commits,
+                selectedHash:
+                    !action.append && action.commits.length > 0
+                        ? action.commits[0].hash
+                        : state.selectedHash,
+                hasMore: action.hasMore,
+                unpushedHashes: new Set(action.unpushedHashes ?? []),
+            };
+        case "setSelectedBranch":
+            return { ...state, selectedBranch: action.branch };
+        case "setBranches":
+            return {
+                ...state,
+                branches: action.branches,
+                commitChecksEnabled: action.commitChecksEnabled ?? true,
+            };
+        case "loadError":
+            return {
+                ...state,
+                commits: action.clearCommits ? [] : state.commits,
+                hasMore: false,
+            };
+        case "setCommitChecks": {
+            const next = new Map(state.commitChecks);
+            next.set(action.snapshot.hash, action.snapshot);
+            return { ...state, commitChecks: next };
+        }
+        case "markCommitChecksLoading": {
+            if (state.commitChecks.get(action.hash) !== undefined) return state;
+            const next = new Map(state.commitChecks);
+            next.set(action.hash, "loading");
+            return { ...state, commitChecks: next };
+        }
+        case "selectCommit":
+            return { ...state, selectedHash: action.hash };
+        case "setFilterText":
+            return { ...state, filterText: action.text };
+        default: {
+            const exhaustive: never = action;
+            return exhaustive;
+        }
+    }
+}
+
 /**
  * Hosts the compact graph used by sidebar and commit-panel contexts, preserving
  * the extension-host commit graph message protocol while hiding branch and detail columns.
@@ -30,18 +124,18 @@ export function NativeCommitGraph({
     stateKeyPrefix: _stateKeyPrefix = "",
     sendReady = true,
 }: Props): React.ReactElement {
-    const [commits, setCommits] = useState<Commit[]>([]);
-    const [branches, setBranches] = useState<Branch[]>([]);
-    const [selectedHash, setSelectedHash] = useState<string | null>(null);
-    const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
-    const [hasMore, setHasMore] = useState(false);
-    const [filterText, setFilterText] = useState("");
-    const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
-    const [commitChecks, setCommitChecks] = useState<Map<string, CommitChecksSnapshot | "loading">>(
-        new Map(),
-    );
-    // Absent flag = enabled, so older host payloads keep rendering badges.
-    const [commitChecksEnabled, setCommitChecksEnabled] = useState(true);
+    const [state, dispatch] = useReducer(nativeCommitGraphReducer, initialNativeCommitGraphState);
+    const {
+        commits,
+        branches,
+        selectedHash,
+        selectedBranch,
+        hasMore,
+        filterText,
+        unpushedHashes,
+        commitChecks,
+        commitChecksEnabled,
+    } = state;
     const loadingMore = useRef(false);
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -65,39 +159,36 @@ export function NativeCommitGraph({
             switch (data.type) {
                 case "loadCommits":
                     loadingMore.current = false;
-                    if (data.append) {
-                        setCommits((prev) => [...prev, ...data.commits]);
-                    } else {
-                        setCommits(data.commits);
-                        if (data.commits.length > 0) {
-                            setSelectedHash(data.commits[0].hash);
-                            vscode.postMessage({
-                                type: "selectCommit",
-                                hash: data.commits[0].hash,
-                            });
-                        }
+                    dispatch({
+                        type: "loadCommits",
+                        commits: data.commits,
+                        append: Boolean(data.append),
+                        hasMore: data.hasMore,
+                        unpushedHashes: data.unpushedHashes,
+                    });
+                    if (!data.append && data.commits.length > 0) {
+                        vscode.postMessage({
+                            type: "selectCommit",
+                            hash: data.commits[0].hash,
+                        });
                     }
-                    setHasMore(data.hasMore);
-                    setUnpushedHashes(new Set(data.unpushedHashes ?? []));
                     break;
                 case "setSelectedBranch":
-                    setSelectedBranch(data.branch ?? null);
+                    dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;
                 case "setBranches":
-                    setBranches(data.branches);
-                    setCommitChecksEnabled(data.commitChecksEnabled ?? true);
+                    dispatch({
+                        type: "setBranches",
+                        branches: data.branches,
+                        commitChecksEnabled: data.commitChecksEnabled,
+                    });
                     break;
                 case "loadError":
-                    if (!loadingMore.current) setCommits([]);
+                    dispatch({ type: "loadError", clearCommits: !loadingMore.current });
                     loadingMore.current = false;
-                    setHasMore(false);
                     break;
                 case "setCommitChecks":
-                    setCommitChecks((prev) => {
-                        const next = new Map(prev);
-                        next.set(data.snapshot.hash, data.snapshot);
-                        return next;
-                    });
+                    dispatch({ type: "setCommitChecks", snapshot: data.snapshot });
                     break;
             }
         };
@@ -108,7 +199,7 @@ export function NativeCommitGraph({
 
     const handleSelectCommit = useCallback(
         (hash: string) => {
-            setSelectedHash(hash);
+            dispatch({ type: "selectCommit", hash });
             vscode.postMessage({ type: "selectCommit", hash });
         },
         [vscode],
@@ -116,7 +207,7 @@ export function NativeCommitGraph({
 
     const handleFilterText = useCallback(
         (text: string) => {
-            setFilterText(text);
+            dispatch({ type: "setFilterText", text });
             if (text.length >= 3 || text.length === 0) {
                 loadingMore.current = false;
                 vscode.postMessage({ type: "filterText", text });
@@ -145,12 +236,7 @@ export function NativeCommitGraph({
             // Only show the spinner on the first fetch. A background refresh of an
             // already-displayed snapshot keeps the current badge so it does not flicker.
             if (current === undefined) {
-                setCommitChecks((prev) => {
-                    if (prev.get(hash) !== undefined) return prev;
-                    const next = new Map(prev);
-                    next.set(hash, "loading");
-                    return next;
-                });
+                dispatch({ type: "markCommitChecksLoading", hash });
             }
             vscode.postMessage({ type: "requestCommitChecks", hash });
         },

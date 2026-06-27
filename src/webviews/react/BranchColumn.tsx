@@ -2,7 +2,7 @@
 // Shows HEAD, local branches grouped by prefix, and remote branches grouped by remote.
 // Clicking a branch filters the graph. Right-click shows context menu with git actions.
 
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useCallback, useEffect, useReducer } from "react";
 import type { Branch, GitWorktree, ThemeFolderIconMap, ThemeTreeIcon } from "../../types";
 import {
     isBranchAction,
@@ -21,7 +21,7 @@ import { renderHighlightedLabel } from "./branch-column/highlight";
 import { BranchTreeNodeRow } from "./branch-column/components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./branch-column/components/BranchSectionHeader";
 import { BranchSearchBar } from "./branch-column/components/BranchSearchBar";
-import { GitBranchIcon, RepoIcon, TagRightIcon } from "./shared/components";
+import { GitBranchIcon, RepoIcon, TagRightIcon } from "./shared/components/Icons";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { getVsCodeApi } from "./shared/vscodeApi";
 import { t } from "./shared/i18n";
@@ -62,6 +62,98 @@ interface CommitGraphViewState {
 }
 
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote", "worktrees"];
+
+interface BranchContextMenuState {
+    x: number;
+    y: number;
+    branch: Branch;
+    branches?: Branch[];
+}
+
+interface WorktreeContextMenuState {
+    x: number;
+    y: number;
+    worktree: GitWorktree;
+}
+
+interface BranchColumnState {
+    branchFilter: string;
+    expandedSections: Set<string>;
+    expandedFolders: Set<string>;
+    contextMenu: BranchContextMenuState | null;
+    worktreeContextMenu: WorktreeContextMenuState | null;
+    selectedBranchNames: Set<string>;
+}
+
+type BranchColumnAction =
+    | { type: "setBranchFilter"; value: string }
+    | { type: "toggleSection"; key: string }
+    | { type: "toggleFolder"; key: string }
+    | { type: "toggleSelectedBranch"; name: string }
+    | { type: "clearSelectedBranches" }
+    | { type: "openBranchContextMenu"; menu: BranchContextMenuState }
+    | { type: "openWorktreeContextMenu"; menu: WorktreeContextMenuState }
+    | { type: "closeContextMenu" };
+
+function toggleSetValue(values: Set<string>, key: string): Set<string> {
+    const next = new Set(values);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+}
+
+function createInitialBranchColumnState(): BranchColumnState {
+    const persistedState = readPersistedBranchColumnState();
+    return {
+        branchFilter: persistedState?.branchFilter ?? "",
+        expandedSections: new Set(
+            Array.isArray(persistedState?.expandedSections)
+                ? persistedState.expandedSections
+                : DEFAULT_EXPANDED_SECTIONS,
+        ),
+        expandedFolders: new Set(persistedState?.expandedFolders ?? []),
+        contextMenu: null,
+        worktreeContextMenu: null,
+        selectedBranchNames: new Set(),
+    };
+}
+
+function branchColumnReducer(
+    state: BranchColumnState,
+    action: BranchColumnAction,
+): BranchColumnState {
+    switch (action.type) {
+        case "setBranchFilter":
+            return { ...state, branchFilter: action.value };
+        case "toggleSection":
+            return {
+                ...state,
+                expandedSections: toggleSetValue(state.expandedSections, action.key),
+            };
+        case "toggleFolder":
+            return {
+                ...state,
+                expandedFolders: toggleSetValue(state.expandedFolders, action.key),
+            };
+        case "toggleSelectedBranch":
+            return {
+                ...state,
+                selectedBranchNames: toggleSetValue(state.selectedBranchNames, action.name),
+            };
+        case "clearSelectedBranches":
+            return { ...state, selectedBranchNames: new Set() };
+        case "openBranchContextMenu":
+            return { ...state, contextMenu: action.menu, worktreeContextMenu: null };
+        case "openWorktreeContextMenu":
+            return { ...state, contextMenu: null, worktreeContextMenu: action.menu };
+        case "closeContextMenu":
+            return { ...state, contextMenu: null, worktreeContextMenu: null };
+        default: {
+            const exhaustive: never = action;
+            return exhaustive;
+        }
+    }
+}
 
 /** Returns a compact stable label for a worktree row. */
 function getWorktreeLabel(worktree: GitWorktree): string {
@@ -153,18 +245,6 @@ function persistBranchColumnState(state: BranchColumnPersistState): void {
     }
 }
 
-function toggleSetKey(
-    setState: React.Dispatch<React.SetStateAction<Set<string>>>,
-    key: string,
-): void {
-    setState((prev) => {
-        const next = new Set(prev);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-    });
-}
-
 function getIconAnchorX(row: HTMLElement): number {
     const rowRect = row.getBoundingClientRect();
     const firstIcon = row.querySelector("[data-branch-icon], svg, img");
@@ -197,33 +277,21 @@ export function BranchColumn({
     folderExpandedIcon,
     folderIconsByName,
 }: Props): React.ReactElement {
-    const [persistedState] = useState(readPersistedBranchColumnState);
-    const [branchFilter, setBranchFilter] = useState(() => persistedState?.branchFilter ?? "");
-    const [expandedSections, setExpandedSections] = useState<Set<string>>(
-        () =>
-            new Set(
-                Array.isArray(persistedState?.expandedSections)
-                    ? persistedState.expandedSections
-                    : DEFAULT_EXPANDED_SECTIONS,
-            ),
+    const [state, dispatch] = useReducer(
+        branchColumnReducer,
+        undefined,
+        createInitialBranchColumnState,
     );
-    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-        () => new Set(persistedState?.expandedFolders ?? []),
-    );
-    const [contextMenu, setContextMenu] = useState<{
-        x: number;
-        y: number;
-        branch: Branch;
-        branches?: Branch[];
-    } | null>(null);
-    const [worktreeContextMenu, setWorktreeContextMenu] = useState<{
-        x: number;
-        y: number;
-        worktree: GitWorktree;
-    } | null>(null);
+    const {
+        branchFilter,
+        expandedSections,
+        expandedFolders,
+        contextMenu,
+        worktreeContextMenu,
+        selectedBranchNames,
+    } = state;
 
     const filterNeedle = branchFilter.trim().toLowerCase();
-    const [selectedBranchNames, setSelectedBranchNames] = useState<Set<string>>(() => new Set());
     const branchesByName = useMemo(
         () => new Map(branches.map((branch) => [branch.name, branch])),
         [branches],
@@ -251,37 +319,23 @@ export function BranchColumn({
     const localTree = useMemo(() => buildPrefixTree(locals), [locals]);
     const remoteGroups = useMemo(() => buildRemoteGroups(remotes), [remotes]);
 
-    const toggleSection = useCallback(
-        (key: string) => {
-            toggleSetKey(setExpandedSections, key);
-        },
-        [setExpandedSections],
-    );
-    const toggleFolder = useCallback(
-        (key: string) => {
-            toggleSetKey(setExpandedFolders, key);
-        },
-        [setExpandedFolders],
-    );
+    const toggleSection = useCallback((key: string) => {
+        dispatch({ type: "toggleSection", key });
+    }, []);
+    const toggleFolder = useCallback((key: string) => {
+        dispatch({ type: "toggleFolder", key });
+    }, []);
 
     const handleBranchRowClick = useCallback(
         (event: React.MouseEvent, branchName: string): void => {
             if (event.metaKey || event.ctrlKey) {
                 event.preventDefault();
                 event.stopPropagation();
-                setSelectedBranchNames((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(branchName)) {
-                        next.delete(branchName);
-                    } else {
-                        next.add(branchName);
-                    }
-                    return next;
-                });
+                dispatch({ type: "toggleSelectedBranch", name: branchName });
                 return;
             }
 
-            setSelectedBranchNames(new Set());
+            dispatch({ type: "clearSelectedBranches" });
             onSelectBranch(branchName);
         },
         [onSelectBranch],
@@ -307,12 +361,14 @@ export function BranchColumn({
             event.stopPropagation();
             const row = event.currentTarget as HTMLElement;
             const { anchorX, anchorY } = computeAnchorPosition(row, event.clientX + 2);
-            setWorktreeContextMenu(null);
-            setContextMenu({
-                x: anchorX,
-                y: anchorY,
-                branch,
-                branches: getBulkBranches(branch),
+            dispatch({
+                type: "openBranchContextMenu",
+                menu: {
+                    x: anchorX,
+                    y: anchorY,
+                    branch,
+                    branches: getBulkBranches(branch),
+                },
             });
         },
         [getBulkBranches],
@@ -322,12 +378,14 @@ export function BranchColumn({
         (row: HTMLElement, branch: Branch): void => {
             const rowRect = row.getBoundingClientRect();
             const { anchorX, anchorY } = computeAnchorPosition(row, rowRect.left + 22);
-            setWorktreeContextMenu(null);
-            setContextMenu({
-                x: anchorX,
-                y: anchorY,
-                branch,
-                branches: getBulkBranches(branch),
+            dispatch({
+                type: "openBranchContextMenu",
+                menu: {
+                    x: anchorX,
+                    y: anchorY,
+                    branch,
+                    branches: getBulkBranches(branch),
+                },
             });
         },
         [getBulkBranches],
@@ -339,8 +397,10 @@ export function BranchColumn({
             event.stopPropagation();
             const row = event.currentTarget as HTMLElement;
             const { anchorX, anchorY } = computeAnchorPosition(row, event.clientX + 2);
-            setContextMenu(null);
-            setWorktreeContextMenu({ x: anchorX, y: anchorY, worktree });
+            dispatch({
+                type: "openWorktreeContextMenu",
+                menu: { x: anchorX, y: anchorY, worktree },
+            });
         },
         [],
     );
@@ -349,8 +409,10 @@ export function BranchColumn({
         (row: HTMLElement, worktree: GitWorktree): void => {
             const rowRect = row.getBoundingClientRect();
             const { anchorX, anchorY } = computeAnchorPosition(row, rowRect.left + 22);
-            setContextMenu(null);
-            setWorktreeContextMenu({ x: anchorX, y: anchorY, worktree });
+            dispatch({
+                type: "openWorktreeContextMenu",
+                menu: { x: anchorX, y: anchorY, worktree },
+            });
         },
         [],
     );
@@ -377,8 +439,7 @@ export function BranchColumn({
     );
 
     const closeContextMenu = useCallback(() => {
-        setContextMenu(null);
-        setWorktreeContextMenu(null);
+        dispatch({ type: "closeContextMenu" });
     }, []);
 
     useEffect(() => {
@@ -395,8 +456,8 @@ export function BranchColumn({
 
             <BranchSearchBar
                 value={branchFilter}
-                onChange={setBranchFilter}
-                onClear={() => setBranchFilter("")}
+                onChange={(value) => dispatch({ type: "setBranchFilter", value })}
+                onClear={() => dispatch({ type: "setBranchFilter", value: "" })}
             />
 
             {current && (
@@ -405,7 +466,7 @@ export function BranchColumn({
                         type="button"
                         className={`branch-row${selectedBranch === null ? " selected" : ""}`}
                         onClick={() => {
-                            setSelectedBranchNames(new Set());
+                            dispatch({ type: "clearSelectedBranches" });
                             onSelectBranch(null);
                         }}
                         onContextMenu={(event) => handleBranchContextMenu(event, current)}

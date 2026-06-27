@@ -128,11 +128,12 @@ export function registerRepositoryViewEvents(
         const requestId = ++commitDetailRequestSeq;
         try {
             const detail = await gitOps.getCommitDetail(hash);
-            if (requestId !== commitDetailRequestSeq) return;
-            commitGraph.setCommitDetail(detail);
-            sidebarGraph.setCommitDetail(detail);
-            commitPanel.setCommitDetail(detail);
-            commitInfo.setCommitDetail(detail);
+            if (requestId === commitDetailRequestSeq) {
+                commitGraph.setCommitDetail(detail);
+                sidebarGraph.setCommitDetail(detail);
+                commitPanel.setCommitDetail(detail);
+                commitInfo.setCommitDetail(detail);
+            }
         } catch (err) {
             const msg = getErrorMessage(err);
             vscode.window.showErrorMessage(

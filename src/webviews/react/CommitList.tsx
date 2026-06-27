@@ -97,7 +97,8 @@ export function CommitList({
     headerLabel,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const viewportRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+    const viewportResizeObserverRef = useRef<ResizeObserver | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: Commit } | null>(
         null,
     );
@@ -121,20 +122,21 @@ export function CommitList({
         graphWidth,
     });
 
-    useEffect(() => {
-        const viewport = viewportRef.current;
-        if (!viewport) return;
+    const setViewportNode = useCallback((node: HTMLDivElement | null) => {
+        viewportResizeObserverRef.current?.disconnect();
+        viewportResizeObserverRef.current = null;
+        viewportRef.current = node;
+        if (!node) return;
 
-        const updateHeight = () => setViewportHeight(viewport.clientHeight);
+        const updateHeight = () => setViewportHeight(node.clientHeight);
         updateHeight();
 
         const observer = new ResizeObserver(updateHeight);
-        observer.observe(viewport);
-
-        return () => {
-            observer.disconnect();
-        };
+        observer.observe(node);
+        viewportResizeObserverRef.current = observer;
     }, []);
+
+    useEffect(() => () => viewportResizeObserverRef.current?.disconnect(), []);
 
     const unpushedLookup = useMemo(() => {
         const exact = new Set(unpushedHashes);
@@ -317,7 +319,7 @@ export function CommitList({
             )}
 
             <div
-                ref={viewportRef}
+                ref={setViewportNode}
                 data-testid="commit-list-viewport"
                 style={SCROLL_VIEWPORT_STYLE}
                 onScroll={handleScroll}

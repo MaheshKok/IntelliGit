@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from "react";
 import { BranchColumn } from "./BranchColumn";
 import { CommitList } from "./CommitList";
 import type {
@@ -22,7 +22,7 @@ import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/type
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
-import { ThemeIconFontFaces } from "./shared/components";
+import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 
 const MIN_BRANCH_WIDTH = 80;
@@ -60,21 +60,22 @@ function useColumnDrag(
     const widthRef = useRef(width);
     widthRef.current = width;
 
-    useEffect(() => {
-        return () => {
-            if (draggingRef.current) {
-                if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);
-                if (upRef.current) document.removeEventListener("mouseup", upRef.current);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
-                draggingRef.current = false;
-            }
-        };
+    const cleanupDrag = useCallback(() => {
+        if (moveRef.current) document.removeEventListener("mousemove", moveRef.current);
+        if (upRef.current) document.removeEventListener("mouseup", upRef.current);
+        moveRef.current = null;
+        upRef.current = null;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        draggingRef.current = false;
     }, []);
+
+    useEffect(() => cleanupDrag, [cleanupDrag]);
 
     return useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
+            cleanupDrag();
             draggingRef.current = true;
             const startX = e.clientX;
             const startWidth = widthRef.current;
@@ -86,13 +87,7 @@ function useColumnDrag(
             };
 
             const onMouseUp = () => {
-                draggingRef.current = false;
-                moveRef.current = null;
-                upRef.current = null;
-                document.removeEventListener("mousemove", onMouseMove);
-                document.removeEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "";
-                document.body.style.userSelect = "";
+                cleanupDrag();
             };
 
             moveRef.current = onMouseMove;
@@ -102,8 +97,157 @@ function useColumnDrag(
             document.body.style.cursor = "col-resize";
             document.body.style.userSelect = "none";
         },
-        [setWidth, min, max, invert],
+        [cleanupDrag, setWidth, min, max, invert],
     );
+}
+
+type CommitChecksValue = CommitChecksSnapshot | "loading";
+
+interface CommitGraphPanelState {
+    commits: Commit[];
+    branches: Branch[];
+    worktrees: GitWorktree[];
+    selectedHash: string | null;
+    selectedBranch: string | null;
+    hasMore: boolean;
+    filterText: string;
+    selectedDetail: CommitDetail | null;
+    commitChecks: Map<string, CommitChecksValue>;
+    branchFolderIcon?: ThemeTreeIcon;
+    branchFolderExpandedIcon?: ThemeTreeIcon;
+    commitFolderIcon?: ThemeTreeIcon;
+    commitFolderExpandedIcon?: ThemeTreeIcon;
+    commitFolderIconsByName?: ThemeFolderIconMap;
+    branchFolderIconsByName?: ThemeFolderIconMap;
+    iconFonts: ThemeIconFont[];
+    unpushedHashes: Set<string>;
+    commitChecksEnabled: boolean;
+}
+
+type CommitGraphPanelAction =
+    | {
+          type: "loadCommits";
+          commits: Commit[];
+          append: boolean;
+          hasMore: boolean;
+          unpushedHashes?: string[];
+      }
+    | {
+          type: "setBranches";
+          branches: Branch[];
+          worktrees?: GitWorktree[];
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
+          commitChecksEnabled?: boolean;
+      }
+    | { type: "setSelectedBranch"; branch: string | null }
+    | {
+          type: "setCommitDetail";
+          detail: CommitDetail;
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts?: ThemeIconFont[];
+      }
+    | { type: "clearCommitDetail" }
+    | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
+    | { type: "markCommitChecksLoading"; hash: string }
+    | { type: "loadError"; clearCommits: boolean }
+    | { type: "selectCommit"; hash: string }
+    | { type: "selectBranch"; branch: string | null }
+    | { type: "setFilterText"; text: string };
+
+const initialCommitGraphPanelState: CommitGraphPanelState = {
+    commits: [],
+    branches: [],
+    worktrees: [],
+    selectedHash: null,
+    selectedBranch: null,
+    hasMore: false,
+    filterText: "",
+    selectedDetail: null,
+    commitChecks: new Map(),
+    iconFonts: [],
+    unpushedHashes: new Set(),
+    commitChecksEnabled: true,
+};
+
+function commitGraphPanelReducer(
+    state: CommitGraphPanelState,
+    action: CommitGraphPanelAction,
+): CommitGraphPanelState {
+    switch (action.type) {
+        case "loadCommits":
+            return {
+                ...state,
+                commits: action.append ? [...state.commits, ...action.commits] : action.commits,
+                selectedHash:
+                    !action.append && action.commits.length > 0
+                        ? action.commits[0].hash
+                        : state.selectedHash,
+                hasMore: action.hasMore,
+                unpushedHashes: new Set(action.unpushedHashes ?? []),
+            };
+        case "setBranches":
+            return {
+                ...state,
+                branches: action.branches,
+                worktrees: action.worktrees ?? [],
+                branchFolderIcon: action.folderIcon,
+                branchFolderExpandedIcon: action.folderExpandedIcon,
+                branchFolderIconsByName: action.folderIconsByName,
+                iconFonts: action.iconFonts ?? state.iconFonts,
+                commitChecksEnabled: action.commitChecksEnabled ?? true,
+            };
+        case "setSelectedBranch":
+            return { ...state, selectedBranch: action.branch };
+        case "setCommitDetail":
+            return {
+                ...state,
+                selectedDetail: action.detail,
+                commitFolderIcon: action.folderIcon,
+                commitFolderExpandedIcon: action.folderExpandedIcon,
+                commitFolderIconsByName: action.folderIconsByName,
+                iconFonts: action.iconFonts ?? state.iconFonts,
+            };
+        case "clearCommitDetail":
+            return {
+                ...state,
+                selectedDetail: null,
+                commitFolderIcon: undefined,
+                commitFolderExpandedIcon: undefined,
+                commitFolderIconsByName: undefined,
+            };
+        case "setCommitChecks": {
+            const next = new Map(state.commitChecks);
+            next.set(action.snapshot.hash, action.snapshot);
+            return { ...state, commitChecks: next };
+        }
+        case "markCommitChecksLoading": {
+            if (state.commitChecks.get(action.hash) !== undefined) return state;
+            const next = new Map(state.commitChecks);
+            next.set(action.hash, "loading");
+            return { ...state, commitChecks: next };
+        }
+        case "loadError":
+            return {
+                ...state,
+                commits: action.clearCommits ? [] : state.commits,
+                hasMore: false,
+            };
+        case "selectCommit":
+            return { ...state, selectedHash: action.hash };
+        case "selectBranch":
+            return { ...state, selectedBranch: action.branch };
+        case "setFilterText":
+            return { ...state, filterText: action.text };
+        default: {
+            const exhaustive: never = action;
+            return exhaustive;
+        }
+    }
 }
 
 /**
@@ -115,32 +259,27 @@ export function CommitGraphPanel({
     stateKeyPrefix = "",
     sendReady = true,
 }: Props): React.ReactElement {
-    const [commits, setCommits] = useState<Commit[]>([]);
-    const [branches, setBranches] = useState<Branch[]>([]);
-    const [worktrees, setWorktrees] = useState<GitWorktree[]>([]);
-    const [selectedHash, setSelectedHash] = useState<string | null>(null);
-    const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
-    const [hasMore, setHasMore] = useState(false);
-    const [filterText, setFilterText] = useState("");
-    const [selectedDetail, setSelectedDetail] = useState<CommitDetail | null>(null);
-    const [commitChecks, setCommitChecks] = useState<Map<string, CommitChecksSnapshot | "loading">>(
-        new Map(),
-    );
-    const [branchFolderIcon, setBranchFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
-    const [branchFolderExpandedIcon, setBranchFolderExpandedIcon] = useState<
-        ThemeTreeIcon | undefined
-    >(undefined);
-    const [commitFolderIcon, setCommitFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
-    const [commitFolderExpandedIcon, setCommitFolderExpandedIcon] = useState<
-        ThemeTreeIcon | undefined
-    >(undefined);
-    const [commitFolderIconsByName, setCommitFolderIconsByName] = useState<
-        ThemeFolderIconMap | undefined
-    >(undefined);
-    const [branchFolderIconsByName, setBranchFolderIconsByName] = useState<
-        ThemeFolderIconMap | undefined
-    >(undefined);
-    const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
+    const [state, dispatch] = useReducer(commitGraphPanelReducer, initialCommitGraphPanelState);
+    const {
+        commits,
+        branches,
+        worktrees,
+        selectedHash,
+        selectedBranch,
+        hasMore,
+        filterText,
+        selectedDetail,
+        commitChecks,
+        branchFolderIcon,
+        branchFolderExpandedIcon,
+        commitFolderIcon,
+        commitFolderExpandedIcon,
+        commitFolderIconsByName,
+        branchFolderIconsByName,
+        iconFonts,
+        unpushedHashes,
+        commitChecksEnabled,
+    } = state;
     const [branchWidth, setBranchWidth] = useState(() => {
         try {
             const state = vscode.getState();
@@ -159,9 +298,6 @@ export function CommitGraphPanel({
             return DEFAULT_INFO_WIDTH;
         }
     });
-    const [unpushedHashes, setUnpushedHashes] = useState<Set<string>>(new Set());
-    // Absent flag = enabled, so older host payloads keep rendering badges.
-    const [commitChecksEnabled, setCommitChecksEnabled] = useState(true);
     const loadingMore = useRef(false);
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -199,59 +335,54 @@ export function CommitGraphPanel({
             switch (data.type) {
                 case "loadCommits":
                     loadingMore.current = false;
-                    if (data.append) {
-                        setCommits((prev) => [...prev, ...data.commits]);
-                    } else {
-                        setCommits(data.commits);
-                        if (data.commits.length > 0) {
-                            setSelectedHash(data.commits[0].hash);
-                            vscode.postMessage({
-                                type: "selectCommit",
-                                hash: data.commits[0].hash,
-                            });
-                        }
+                    dispatch({
+                        type: "loadCommits",
+                        commits: data.commits,
+                        append: Boolean(data.append),
+                        hasMore: data.hasMore,
+                        unpushedHashes: data.unpushedHashes,
+                    });
+                    if (!data.append && data.commits.length > 0) {
+                        vscode.postMessage({
+                            type: "selectCommit",
+                            hash: data.commits[0].hash,
+                        });
                     }
-                    setHasMore(data.hasMore);
-                    setUnpushedHashes(new Set(data.unpushedHashes ?? []));
                     break;
                 case "setBranches":
-                    setBranches(data.branches);
-                    setCommitChecksEnabled(data.commitChecksEnabled ?? true);
-                    setWorktrees(data.worktrees ?? []);
-                    setBranchFolderIcon(data.folderIcon);
-                    setBranchFolderExpandedIcon(data.folderExpandedIcon);
-                    setBranchFolderIconsByName(data.folderIconsByName);
-                    if (data.iconFonts) setIconFonts(data.iconFonts);
-                    break;
-                case "setSelectedBranch":
-                    setSelectedBranch(data.branch ?? null);
-                    break;
-                case "setCommitDetail":
-                    setSelectedDetail(data.detail);
-                    setCommitFolderIcon(data.folderIcon);
-                    setCommitFolderExpandedIcon(data.folderExpandedIcon);
-                    setCommitFolderIconsByName(data.folderIconsByName);
-                    if (data.iconFonts) setIconFonts(data.iconFonts);
-                    break;
-                case "clearCommitDetail":
-                    setSelectedDetail(null);
-                    setCommitFolderIcon(undefined);
-                    setCommitFolderExpandedIcon(undefined);
-                    setCommitFolderIconsByName(undefined);
-                    break;
-                case "setCommitChecks":
-                    setCommitChecks((prev) => {
-                        const next = new Map(prev);
-                        next.set(data.snapshot.hash, data.snapshot);
-                        return next;
+                    dispatch({
+                        type: "setBranches",
+                        branches: data.branches,
+                        worktrees: data.worktrees,
+                        folderIcon: data.folderIcon,
+                        folderExpandedIcon: data.folderExpandedIcon,
+                        folderIconsByName: data.folderIconsByName,
+                        iconFonts: data.iconFonts,
+                        commitChecksEnabled: data.commitChecksEnabled,
                     });
                     break;
+                case "setSelectedBranch":
+                    dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
+                    break;
+                case "setCommitDetail":
+                    dispatch({
+                        type: "setCommitDetail",
+                        detail: data.detail,
+                        folderIcon: data.folderIcon,
+                        folderExpandedIcon: data.folderExpandedIcon,
+                        folderIconsByName: data.folderIconsByName,
+                        iconFonts: data.iconFonts,
+                    });
+                    break;
+                case "clearCommitDetail":
+                    dispatch({ type: "clearCommitDetail" });
+                    break;
+                case "setCommitChecks":
+                    dispatch({ type: "setCommitChecks", snapshot: data.snapshot });
+                    break;
                 case "loadError":
-                    if (!loadingMore.current) {
-                        setCommits([]);
-                    }
+                    dispatch({ type: "loadError", clearCommits: !loadingMore.current });
                     loadingMore.current = false;
-                    setHasMore(false);
                     console.error("[IntelliGit] Load error:", data.message);
                     break;
                 case "error":
@@ -279,7 +410,7 @@ export function CommitGraphPanel({
 
     const handleSelectCommit = useCallback(
         (hash: string) => {
-            setSelectedHash(hash);
+            dispatch({ type: "selectCommit", hash });
             vscode.postMessage({ type: "selectCommit", hash });
         },
         [vscode],
@@ -287,7 +418,7 @@ export function CommitGraphPanel({
 
     const handleFilterText = useCallback(
         (text: string) => {
-            setFilterText(text);
+            dispatch({ type: "setFilterText", text });
             if (text.length >= 3 || text.length === 0) {
                 loadingMore.current = false;
                 vscode.postMessage({ type: "filterText", text });
@@ -304,7 +435,7 @@ export function CommitGraphPanel({
 
     const handleSelectBranch = useCallback(
         (name: string | null) => {
-            setSelectedBranch(name);
+            dispatch({ type: "selectBranch", branch: name });
             loadingMore.current = false;
             vscode.postMessage({ type: "filterBranch", branch: name });
         },
@@ -353,12 +484,7 @@ export function CommitGraphPanel({
             // Only show the spinner on the first fetch. A background refresh of an
             // already-displayed snapshot keeps the current badge so it does not flicker.
             if (current === undefined) {
-                setCommitChecks((prev) => {
-                    if (prev.get(hash) !== undefined) return prev;
-                    const next = new Map(prev);
-                    next.set(hash, "loading");
-                    return next;
-                });
+                dispatch({ type: "markCommitChecksLoading", hash });
             }
             vscode.postMessage({ type: "requestCommitChecks", hash });
         },

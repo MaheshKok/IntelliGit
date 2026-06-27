@@ -18,7 +18,7 @@ import {
     isWorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
 import { getErrorMessage } from "../utils/errors";
-import { IconThemeService } from "./shared";
+import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
@@ -425,20 +425,24 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId !== this.requestSeq) return;
-            this.offset = commits.length;
-            this.postToWebview({
-                type: "loadCommits",
-                commits,
-                hasMore: commits.length >= this.PAGE_SIZE,
-                append: false,
-                unpushedHashes,
-            });
+            if (requestId === this.requestSeq) {
+                this.offset = commits.length;
+                this.postToWebview({
+                    type: "loadCommits",
+                    commits,
+                    hasMore: commits.length >= this.PAGE_SIZE,
+                    append: false,
+                    unpushedHashes,
+                });
+            }
         } catch (err) {
-            if (requestId !== this.requestSeq) return;
-            const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
-            this.postToWebview({ type: "loadError", message });
+            if (requestId === this.requestSeq) {
+                const message = getErrorMessage(err);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Git log error: {message}", { message }),
+                );
+                this.postToWebview({ type: "loadError", message });
+            }
         }
     }
 
@@ -463,20 +467,24 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId !== this.requestSeq) return;
-            this.offset += commits.length;
-            this.postToWebview({
-                type: "loadCommits",
-                commits,
-                hasMore: commits.length >= this.PAGE_SIZE,
-                append: true,
-                unpushedHashes,
-            });
+            if (requestId === this.requestSeq) {
+                this.offset += commits.length;
+                this.postToWebview({
+                    type: "loadCommits",
+                    commits,
+                    hasMore: commits.length >= this.PAGE_SIZE,
+                    append: true,
+                    unpushedHashes,
+                });
+            }
         } catch (err) {
-            if (requestId !== this.requestSeq) return;
-            const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
-            this.postToWebview({ type: "loadError", message });
+            if (requestId === this.requestSeq) {
+                const message = getErrorMessage(err);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Git log error: {message}", { message }),
+                );
+                this.postToWebview({ type: "loadError", message });
+            }
         } finally {
             if (requestId === this.requestSeq) {
                 this.loadingMore = false;
@@ -621,11 +629,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         detail: CommitDetail,
         requestId: number,
     ): Promise<void> {
-        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
         if (requestId !== this.commitDetailSeq) return;
-        this.selectedCommitDetail = decorated.detail;
-        this.folderIconsByName = decorated.folderIconsByName;
-        this.postCommitDetailState();
+        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
+        if (requestId === this.commitDetailSeq) {
+            this.selectedCommitDetail = decorated.detail;
+            this.folderIconsByName = decorated.folderIconsByName;
+            this.postCommitDetailState();
+        }
     }
 
     /**
@@ -675,12 +685,13 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private async refreshThemeData(): Promise<void> {
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
-        if (!this.selectedCommitDetail) {
+        const selectedCommitDetail = this.selectedCommitDetail;
+        if (selectedCommitDetail) {
+            const requestId = ++this.commitDetailSeq;
+            await this.decorateAndStoreCommitDetail(selectedCommitDetail, requestId);
+        } else {
             this.postCommitDetailState();
-            return;
         }
-        const requestId = ++this.commitDetailSeq;
-        await this.decorateAndStoreCommitDetail(this.selectedCommitDetail, requestId);
     }
 
     private registerThemeChangeListeners(): void {

@@ -11,7 +11,7 @@ import { ShelfTab } from "./components/ShelfTab";
 import { useExtensionMessages } from "./hooks/useExtensionMessages";
 import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
-import { ThemeIconFontFaces } from "../shared/components";
+import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 import { canRunCommitAction } from "./commitEligibility";
 
 /**

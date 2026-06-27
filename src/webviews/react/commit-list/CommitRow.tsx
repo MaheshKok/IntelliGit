@@ -1,10 +1,10 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import type { Commit } from "../../../types";
-import { RefTypeIcon } from "../shared/components";
+import { RefTypeIcon } from "../shared/components/RefTypeIcon";
 import { formatDateTime } from "../shared/date";
 import { JETBRAINS_UI, REF_BADGE_COLORS } from "../shared/tokens";
-import { splitCommitRefs } from "../shared/utils";
+import { splitCommitRefs } from "../shared/utils/refs";
 import { AUTHOR_COL_WIDTH, DATE_COL_WIDTH, ROW_SIDE_PADDING } from "./styles";
 import { ROW_HEIGHT } from "../graph";
 import { getSettings } from "../shared/settings";
@@ -28,6 +28,108 @@ interface Props {
     onSignIn?: (host: string) => void;
 }
 
+const REF_BADGE_BASE_STYLE: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    maxWidth: 200,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    borderRadius: 3,
+    padding: "1px 6px",
+    fontSize: 12,
+    lineHeight: "15px",
+};
+const TOOLTIP_REF_ROW_STYLE: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+    fontSize: 12,
+    lineHeight: "16px",
+};
+const TOOLTIP_REF_ICON_STYLE: React.CSSProperties = {
+    display: "inline-flex",
+    flexShrink: 0,
+};
+const TOOLTIP_REF_TEXT_STYLE: React.CSSProperties = {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: "var(--vscode-foreground)",
+};
+const MESSAGE_CELL_STYLE: React.CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    overflow: "hidden",
+};
+const MESSAGE_TEXT_STYLE: React.CSSProperties = {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    minWidth: 0,
+    flex: 1,
+};
+const BRANCH_REF_COUNT_STYLE: React.CSSProperties = {
+    marginLeft: 6,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    flexShrink: 0,
+    fontSize: "12px",
+    opacity: 0.85,
+    color: "var(--vscode-charts-blue, #6eb3ff)",
+};
+const TAG_REF_WRAPPER_STYLE: React.CSSProperties = {
+    marginLeft: 5,
+    flexShrink: 0,
+};
+const HIDDEN_TAG_COUNT_STYLE: React.CSSProperties = {
+    marginLeft: 5,
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    fontSize: "12px",
+    opacity: 0.75,
+};
+const COMMIT_TOOLTIP_BASE_STYLE: React.CSSProperties = {
+    position: "fixed",
+    background: JETBRAINS_UI.color.tooltipBackground,
+    color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
+    border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
+    borderRadius: JETBRAINS_UI.size.radius,
+    fontSize: 12,
+    lineHeight: "15px",
+    padding: "8px 9px",
+    whiteSpace: "normal",
+    maxWidth: "560px",
+    minWidth: "240px",
+    zIndex: 30,
+    pointerEvents: "none",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.42)",
+};
+const COMMIT_TOOLTIP_MESSAGE_BASE_STYLE: React.CSSProperties = {
+    display: "block",
+    color: "var(--vscode-foreground)",
+    fontSize: "12px",
+    lineHeight: "16px",
+    wordBreak: "break-word",
+};
+const COMMIT_TOOLTIP_SECTION_LABEL_STYLE: React.CSSProperties = {
+    display: "block",
+    fontSize: 12,
+    opacity: 0.82,
+    marginBottom: 5,
+};
+const COMMIT_TOOLTIP_SECTION_LIST_STYLE: React.CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+};
+
 function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: string } {
     if (kind === "tag") return REF_BADGE_COLORS.tag;
     if (name.includes("HEAD")) return REF_BADGE_COLORS.head;
@@ -37,24 +139,16 @@ function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: s
 
 function RefBadge({ kind, name }: { kind: "branch" | "tag"; name: string }): React.ReactElement {
     const colors = getRefColors(kind, name);
+    const style = React.useMemo<React.CSSProperties>(
+        () => ({
+            ...REF_BADGE_BASE_STYLE,
+            color: colors.fg,
+            background: colors.bg,
+        }),
+        [colors.bg, colors.fg],
+    );
     return (
-        <span
-            style={{
-                display: "inline-flex",
-                alignItems: "center",
-                maxWidth: 200,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                borderRadius: 3,
-                padding: "1px 6px",
-                fontSize: 12,
-                lineHeight: "15px",
-                color: colors.fg,
-                background: colors.bg,
-            }}
-            title={name}
-        >
+        <span style={style} title={name}>
             {name}
         </span>
     );
@@ -68,35 +162,15 @@ function TooltipRefRow({
     name: string;
 }): React.ReactElement {
     return (
-        <span
-            style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                minWidth: 0,
-                fontSize: 12,
-                lineHeight: "16px",
-            }}
-            title={name}
-        >
-            <span style={{ display: "inline-flex", flexShrink: 0 }}>
+        <span style={TOOLTIP_REF_ROW_STYLE} title={name}>
+            <span style={TOOLTIP_REF_ICON_STYLE}>
                 <RefTypeIcon
                     kind={kind}
                     size={12}
                     tagColor={kind === "tag" ? REF_BADGE_COLORS.tag.bg : undefined}
                 />
             </span>
-            <span
-                style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: "var(--vscode-foreground)",
-                }}
-            >
-                {name}
-            </span>
+            <span style={TOOLTIP_REF_TEXT_STYLE}>{name}</span>
         </span>
     );
 }
@@ -118,6 +192,35 @@ function CommitMessageCell({
     const branchRefsCount = branchRefs.length;
     const visibleTagRefs = tagRefs.slice(0, 2);
     const hiddenTagCount = Math.max(0, tagRefs.length - visibleTagRefs.length);
+    const tooltipStyle = React.useMemo<React.CSSProperties | undefined>(
+        () =>
+            tooltipPos
+                ? {
+                      ...COMMIT_TOOLTIP_BASE_STYLE,
+                      left: tooltipPos.x,
+                      top: tooltipPos.y,
+                      transform:
+                          tooltipPos.placement === "above"
+                              ? "translate(-50%, -100%)"
+                              : "translate(-50%, 0)",
+                  }
+                : undefined,
+        [tooltipPos],
+    );
+    const tooltipMessageStyle = React.useMemo<React.CSSProperties>(
+        () => ({
+            ...COMMIT_TOOLTIP_MESSAGE_BASE_STYLE,
+            marginBottom: refs.length > 0 ? 14 : 0,
+        }),
+        [refs.length],
+    );
+    const tooltipTagLabelStyle = React.useMemo<React.CSSProperties>(
+        () => ({
+            ...COMMIT_TOOLTIP_SECTION_LABEL_STYLE,
+            marginTop: branchRefs.length > 0 ? 12 : 0,
+        }),
+        [branchRefs.length],
+    );
     const refSummaryLines: string[] = [];
     if (branchRefs.length > 0) {
         refSummaryLines.push(t("commit.tooltip.branchesList", { refs: branchRefs.join(" • ") }));
@@ -127,6 +230,13 @@ function CommitMessageCell({
     }
     const tooltipText =
         refSummaryLines.length > 0 ? `${message}\n\n${refSummaryLines.join("\n")}` : message;
+
+    const clearTooltipTimer = React.useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    }, []);
 
     const showTooltip = (event: React.PointerEvent<HTMLElement>): void => {
         const { hoverDelay, tooltipsEnabled } = getSettings();
@@ -147,9 +257,7 @@ function CommitMessageCell({
         if (tooltipPos) {
             setTooltipPos(newPos);
         } else {
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
+            clearTooltipTimer();
             timerRef.current = setTimeout(() => {
                 setTooltipPos(newPos);
             }, hoverDelay);
@@ -157,53 +265,26 @@ function CommitMessageCell({
     };
 
     const hideTooltip = (): void => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
+        clearTooltipTimer();
         setTooltipPos(null);
     };
 
-    React.useEffect(() => {
-        return () => {
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
-        };
-    }, []);
+    React.useEffect(() => clearTooltipTimer, [clearTooltipTimer]);
 
     return (
         <span
-            style={{
-                flex: 1,
-                minWidth: 0,
-                display: "flex",
-                alignItems: "center",
-                overflow: "hidden",
-            }}
+            style={MESSAGE_CELL_STYLE}
             data-commit-tooltip={tooltipText}
             onPointerEnter={showTooltip}
             onPointerMove={showTooltip}
             onPointerLeave={hideTooltip}
         >
-            <span
-                style={{ overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flex: 1 }}
-                title={message}
-            >
+            <span style={MESSAGE_TEXT_STYLE} title={message}>
                 {message}
             </span>
             {branchRefsCount > 0 && (
                 <span
-                    style={{
-                        marginLeft: 6,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 3,
-                        flexShrink: 0,
-                        fontSize: "12px",
-                        opacity: 0.85,
-                        color: "var(--vscode-charts-blue, #6eb3ff)",
-                    }}
+                    style={BRANCH_REF_COUNT_STYLE}
                     title={t("commit.tooltip.branchLabels", { count: branchRefsCount })}
                 >
                     <RefTypeIcon kind="branch" size={12} />
@@ -211,21 +292,13 @@ function CommitMessageCell({
                 </span>
             )}
             {visibleTagRefs.map((tagRef) => (
-                <span key={`tag:${tagRef}`} style={{ marginLeft: 5, flexShrink: 0 }}>
+                <span key={`tag:${tagRef}`} style={TAG_REF_WRAPPER_STYLE}>
                     <RefBadge kind="tag" name={tagRef} />
                 </span>
             ))}
             {hiddenTagCount > 0 && (
                 <span
-                    style={{
-                        marginLeft: 5,
-                        flexShrink: 0,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 3,
-                        fontSize: "12px",
-                        opacity: 0.75,
-                    }}
+                    style={HIDDEN_TAG_COUNT_STYLE}
                     title={t("commit.tooltip.moreTags", { count: hiddenTagCount })}
                 >
                     <RefTypeIcon kind="tag" size={11} tagColor={REF_BADGE_COLORS.tag.bg} />
@@ -235,63 +308,16 @@ function CommitMessageCell({
 
             {tooltipPos &&
                 createPortal(
-                    <span
-                        style={{
-                            position: "fixed",
-                            left: tooltipPos.x,
-                            top: tooltipPos.y,
-                            transform:
-                                tooltipPos.placement === "above"
-                                    ? "translate(-50%, -100%)"
-                                    : "translate(-50%, 0)",
-                            background: JETBRAINS_UI.color.tooltipBackground,
-                            color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
-                            border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
-                            borderRadius: JETBRAINS_UI.size.radius,
-                            fontSize: 12,
-                            lineHeight: "15px",
-                            padding: "8px 9px",
-                            whiteSpace: "normal",
-                            maxWidth: "560px",
-                            minWidth: "240px",
-                            zIndex: 30,
-                            pointerEvents: "none",
-                            boxShadow: "0 10px 28px rgba(0,0,0,0.42)",
-                        }}
-                    >
-                        <span
-                            style={{
-                                display: "block",
-                                color: "var(--vscode-foreground)",
-                                fontSize: "12px",
-                                lineHeight: "16px",
-                                marginBottom: refs.length > 0 ? 14 : 0,
-                                wordBreak: "break-word",
-                            }}
-                        >
-                            {message}
-                        </span>
+                    <span style={tooltipStyle}>
+                        <span style={tooltipMessageStyle}>{message}</span>
                         {(branchRefs.length > 0 || tagRefs.length > 0) && (
                             <>
                                 {branchRefs.length > 0 && (
                                     <>
-                                        <span
-                                            style={{
-                                                display: "block",
-                                                fontSize: 12,
-                                                opacity: 0.82,
-                                                marginBottom: 5,
-                                            }}
-                                        >
+                                        <span style={COMMIT_TOOLTIP_SECTION_LABEL_STYLE}>
                                             {t("common.branches")}
                                         </span>
-                                        <span
-                                            style={{
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                gap: 3,
-                                            }}
-                                        >
+                                        <span style={COMMIT_TOOLTIP_SECTION_LIST_STYLE}>
                                             {branchRefs.map((name) => (
                                                 <TooltipRefRow
                                                     key={`branch:${name}`}
@@ -304,24 +330,8 @@ function CommitMessageCell({
                                 )}
                                 {tagRefs.length > 0 && (
                                     <>
-                                        <span
-                                            style={{
-                                                display: "block",
-                                                fontSize: 12,
-                                                opacity: 0.82,
-                                                marginTop: branchRefs.length > 0 ? 12 : 0,
-                                                marginBottom: 5,
-                                            }}
-                                        >
-                                            {t("common.tags")}
-                                        </span>
-                                        <span
-                                            style={{
-                                                display: "flex",
-                                                flexDirection: "column",
-                                                gap: 3,
-                                            }}
-                                        >
+                                        <span style={tooltipTagLabelStyle}>{t("common.tags")}</span>
+                                        <span style={COMMIT_TOOLTIP_SECTION_LIST_STYLE}>
                                             {tagRefs.map((name) => (
                                                 <TooltipRefRow
                                                     key={`tag:${name}`}
@@ -358,6 +368,51 @@ function CommitRowInner({
     onSignIn,
 }: Props): React.ReactElement {
     const isMergeCommit = commit.parentHashes.length > 1;
+    const rowStyle = React.useMemo<React.CSSProperties>(
+        () => ({
+            height: ROW_HEIGHT,
+            display: "flex",
+            alignItems: "center",
+            marginLeft: graphWidth,
+            paddingRight: ROW_SIDE_PADDING,
+            cursor: "pointer",
+            fontSize: "12px",
+            whiteSpace: "nowrap",
+            borderLeft: isUnpushed
+                ? `2px solid ${laneColor ?? JETBRAINS_UI.color.head}`
+                : "2px solid transparent",
+            background: isSelected ? JETBRAINS_UI.color.selected : "transparent",
+            color: isSelected
+                ? JETBRAINS_UI.color.selectedForeground
+                : isMergeCommit
+                  ? "var(--vscode-disabledForeground)"
+                  : JETBRAINS_UI.color.foreground,
+        }),
+        [graphWidth, isMergeCommit, isSelected, isUnpushed, laneColor],
+    );
+    const authorStyle = React.useMemo<React.CSSProperties>(
+        () => ({
+            width: AUTHOR_COL_WIDTH,
+            textAlign: "right",
+            opacity: isMergeCommit ? 1 : 0.7,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            flexShrink: 0,
+            marginLeft: 4,
+        }),
+        [isMergeCommit],
+    );
+    const dateStyle = React.useMemo<React.CSSProperties>(
+        () => ({
+            width: DATE_COL_WIDTH,
+            textAlign: "right",
+            opacity: isMergeCommit ? 0.8 : 0.5,
+            flexShrink: 0,
+            marginLeft: 4,
+            fontSize: "12px",
+        }),
+        [isMergeCommit],
+    );
 
     return (
         <div
@@ -365,56 +420,15 @@ function CommitRowInner({
             onContextMenu={(event) => onContextMenu(event, commit)}
             onMouseEnter={(event) => onHover?.(commit, event)}
             onMouseLeave={() => onUnhover?.()}
-            style={{
-                height: ROW_HEIGHT,
-                display: "flex",
-                alignItems: "center",
-                marginLeft: graphWidth,
-                paddingRight: ROW_SIDE_PADDING,
-                cursor: "pointer",
-                fontSize: "12px",
-                whiteSpace: "nowrap",
-                borderLeft: isUnpushed
-                    ? `2px solid ${laneColor ?? JETBRAINS_UI.color.head}`
-                    : "2px solid transparent",
-                background: isSelected ? JETBRAINS_UI.color.selected : "transparent",
-                color: isSelected
-                    ? JETBRAINS_UI.color.selectedForeground
-                    : isMergeCommit
-                      ? "var(--vscode-disabledForeground)"
-                      : JETBRAINS_UI.color.foreground,
-            }}
+            style={rowStyle}
         >
             <CommitMessageCell message={commit.message} refs={commit.refs} />
 
             {showAuthorDate && (
                 <>
-                    <span
-                        style={{
-                            width: AUTHOR_COL_WIDTH,
-                            textAlign: "right",
-                            opacity: isMergeCommit ? 1 : 0.7,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            flexShrink: 0,
-                            marginLeft: 4,
-                        }}
-                    >
-                        {commit.author}
-                    </span>
+                    <span style={authorStyle}>{commit.author}</span>
 
-                    <span
-                        style={{
-                            width: DATE_COL_WIDTH,
-                            textAlign: "right",
-                            opacity: isMergeCommit ? 0.8 : 0.5,
-                            flexShrink: 0,
-                            marginLeft: 4,
-                            fontSize: "12px",
-                        }}
-                    >
-                        {formatDateTime(commit.date)}
-                    </span>
+                    <span style={dateStyle}>{formatDateTime(commit.date)}</span>
                 </>
             )}
 
