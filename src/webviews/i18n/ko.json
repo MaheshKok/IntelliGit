@@ -193,7 +193,7 @@
     "merge.status.autoResolved": "자동 해결됨",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "GitHub 커밋 검사",
+    "commit.checks.title": "커밋 검사",
     "commit.checks.loading": "검사를 불러오는 중...",
     "commit.checks.none": "검사를 찾을 수 없습니다",
     "branch.worktreeBadge.current": "이 worktree에서 체크아웃됨",
@@ -211,5 +211,6 @@
     "common.sync": "동기화",
     "commit.action.publishAndPush": "게시 및 푸시",
     "commit.branchIndicator.local": "브랜치: {branch}",
-    "commit.branchIndicator.tracking": "브랜치: {branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "브랜치: {branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }

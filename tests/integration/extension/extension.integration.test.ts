@@ -280,6 +280,7 @@ class MockCommitGraphViewProvider {
     constructor(
         _uri: unknown,
         _gitOps: unknown,
+        _credentialStore: unknown,
         options?: { scriptFile?: string; title?: string },
     ) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
@@ -429,7 +430,7 @@ class MockUndockedViewProvider {
     private dockRequestedEmitter = new MockEventEmitter<void>();
     private disposeEmitter = new MockEventEmitter<void>();
 
-    constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown) {
+    constructor(_uri: unknown, _gitOps: unknown, _repoRootUri: unknown, _credentialStore: unknown) {
         updateLatestUndockedProvider(this);
     }
 
@@ -2963,6 +2964,33 @@ describe("extension integration", () => {
         await refresh();
 
         expect(latestCommitPanelProvider.clearCommitDetail).toHaveBeenCalledTimes(1);
+    });
+
+    it("suppresses stale commit detail errors after the selection is cleared", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+        let rejectDetail!: (error: Error) => void;
+        gitOpsState.getCommitDetail.mockReturnValueOnce(
+            new Promise((_resolve, reject) => {
+                rejectDetail = reject;
+            }),
+        );
+
+        await activate(context);
+        await waitForAsync();
+        showErrorMessage.mockClear();
+
+        latestCommitGraphProvider!.emitCommitSelected("a1b2c3d4");
+        latestCommitGraphProvider!.emitBranchFilterChanged(null);
+        rejectDetail(new Error("detail failed after clear"));
+        await waitForAsync();
+
+        expect(showErrorMessage).not.toHaveBeenCalledWith(
+            expect.stringContaining("Failed to load commit: detail failed after clear"),
+        );
     });
 
     it("opens interactive rebase terminals with git shell arguments instead of sent shell text", async () => {

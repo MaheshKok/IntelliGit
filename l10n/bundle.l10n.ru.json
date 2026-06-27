@@ -369,7 +369,7 @@
     "Checks skipped": "Проверки пропущены",
     "Commit status": "Статус коммита",
     "GitHub check": "Проверка GitHub",
-    "GitHub checks unavailable": "Проверки GitHub недоступны",
+    "Checks unavailable": "Проверки недоступны",
     "No GitHub remote found.": "Удалённый репозиторий GitHub не найден.",
     "No checks found": "Проверки не найдены",
     "Keep this VS Code window open": "Оставить это окно VS Code открытым",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "Репозиторий еще не опубликован.",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "Для ветки '{branch}' не настроен удалённый репозиторий. Сначала опубликуйте ветку, затем повторите Push All up to Here.",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) Отправить в существующий \"origin\"",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Для ветки '{branch}' не настроен удалённый репозиторий. Опубликуйте ветку перед отправкой."
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Для ветки '{branch}' не настроен удалённый репозиторий. Опубликуйте ветку перед отправкой.",
+    "$(edit) Other host...": "$(edit) Другой хост...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "Сохранённый токен для {host} удалён.",
+    "Enter the host name (e.g. gitlab.example.com)": "Введите имя хоста (например, gitlab.example.com)",
+    "Enter your access token for {host}": "Введите токен доступа для {host}",
+    "Host is required": "Требуется хост",
+    "Select a provider to sign in to": "Выберите поставщик для входа",
+    "Select a provider to sign out of": "Выберите поставщик для выхода",
+    "Signed in to {host}.": "Выполнен вход в {host}.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "Введите только имя хоста, например gitlab.example.com (без https:// и пути).",
+    "Could not clear the saved token.": "Не удалось удалить сохранённый токен.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "Interface Git de style IntelliJ pour VS Code avec graphe de commits, détails de commits, workflow de mise de côté et explorateur de changements de fichiers.",
+    "extension.description": "Les meilleures fonctionnalités Git de PyCharm, VS Code et Visual Studio IDE",
     "view.commit": "Commit",
     "view.graph": "Graphique",
     "view.mergeConflicts": "Conflits de fusion",
@@ -55,6 +55,7 @@
     "configuration.commitWindowPosition.enum.left": "Placez le panneau de validation sur le côté gauche de la fenêtre détachée/à onglets.",
     "configuration.commitWindowPosition.enum.right": "Placez le panneau de validation sur le côté droit de la fenêtre détachée/à onglets.",
     "configuration.commitWindowPosition.markdownDescription": "Position du panneau de commit dans la fenêtre IntelliGit non ancrée/à onglets. `auto` (par défaut) suit la propriété `workbench.sideBar.location` de VS Code ; `left` et `right` forcent un positionnement latéral.",
+    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Supported provider ids are `gitlab` and `bitbucket-server` (for self-hosted Bitbucket Data Center). Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
     "view.fileCountBadge": "Fichiers modifiés",
     "command.createWorktree": "Créer un worktree...",
     "command.deleteWorktree": "Supprimer le worktree",
@@ -63,5 +64,10 @@
     "command.unlockWorktree": "Déverrouiller le worktree",
     "command.moveWorktree": "Déplacer le worktree...",
     "command.pruneWorktrees": "Nettoyer les worktrees",
-    "command.repairWorktrees": "Réparer les worktrees"
+    "command.repairWorktrees": "Réparer les worktrees",
+    "command.commitChecksSignIn": "Se connecter au fournisseur de vérifications de commits",
+    "command.commitChecksSignOut": "Se déconnecter du fournisseur de vérifications de commits",
+    "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
+    "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a safe regex subset (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload."
 }

@@ -369,7 +369,7 @@
     "Checks skipped": "검사를 건너뛰었습니다",
     "Commit status": "커밋 상태",
     "GitHub check": "GitHub 검사",
-    "GitHub checks unavailable": "GitHub 검사를 사용할 수 없습니다",
+    "Checks unavailable": "검사를 사용할 수 없습니다",
     "No GitHub remote found.": "GitHub 원격 저장소를 찾을 수 없습니다.",
     "No checks found": "검사를 찾을 수 없습니다",
     "Keep this VS Code window open": "이 VS Code 창을 열어 둠",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "리포지토리가 아직 게시되지 않았습니다.",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "브랜치 '{branch}'에 구성된 리모트가 없습니다. 먼저 브랜치를 게시한 다음 Push All up to Here를 다시 시도하세요.",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 기존 \"origin\"에 푸시",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "브랜치 '{branch}'에 구성된 리모트가 없습니다. 푸시하기 전에 브랜치를 게시하세요."
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "브랜치 '{branch}'에 구성된 리모트가 없습니다. 푸시하기 전에 브랜치를 게시하세요.",
+    "$(edit) Other host...": "$(edit) 다른 호스트...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "{host}의 저장된 토큰을 지웠습니다.",
+    "Enter the host name (e.g. gitlab.example.com)": "호스트 이름 입력 (예: gitlab.example.com)",
+    "Enter your access token for {host}": "{host}의 액세스 토큰 입력",
+    "Host is required": "호스트는 필수입니다",
+    "Select a provider to sign in to": "로그인할 공급자 선택",
+    "Select a provider to sign out of": "로그아웃할 공급자 선택",
+    "Signed in to {host}.": "{host}에 로그인했습니다.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "gitlab.example.com처럼 호스트 이름만 입력하세요 (https://나 경로 제외).",
+    "Could not clear the saved token.": "저장된 토큰을 지울 수 없습니다.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

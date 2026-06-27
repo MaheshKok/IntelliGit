@@ -369,7 +369,7 @@
     "Checks skipped": "检查已跳过",
     "Commit status": "提交状态",
     "GitHub check": "GitHub 检查",
-    "GitHub checks unavailable": "GitHub 检查不可用",
+    "Checks unavailable": "检查不可用",
     "No GitHub remote found.": "未找到 GitHub 远程仓库。",
     "No checks found": "未找到检查",
     "Keep this VS Code window open": "保持此 VS Code 窗口打开",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "仓库尚未发布。",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "分支 '{branch}' 未配置远程仓库。请先发布该分支，然后重试 Push All up to Here。",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 推送到现有 \"origin\"",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "分支 '{branch}' 未配置远程仓库。请先发布该分支再推送。"
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "分支 '{branch}' 未配置远程仓库。请先发布该分支再推送。",
+    "$(edit) Other host...": "$(edit) 其他主机...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "已清除 {host} 的已保存令牌。",
+    "Enter the host name (e.g. gitlab.example.com)": "输入主机名（例如 gitlab.example.com）",
+    "Enter your access token for {host}": "输入 {host} 的访问令牌",
+    "Host is required": "必须提供主机",
+    "Select a provider to sign in to": "选择要登录的提供程序",
+    "Select a provider to sign out of": "选择要退出的提供程序",
+    "Signed in to {host}.": "已登录到 {host}。",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "仅输入主机名，例如 gitlab.example.com（不要 https:// 或路径）。",
+    "Could not clear the saved token.": "无法清除已保存的令牌。",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

@@ -369,7 +369,7 @@
     "Checks skipped": "Verificações ignoradas",
     "Commit status": "Estado do commit",
     "GitHub check": "Verificação do GitHub",
-    "GitHub checks unavailable": "Verificações do GitHub indisponíveis",
+    "Checks unavailable": "Verificações indisponíveis",
     "No GitHub remote found.": "Nenhum remoto do GitHub encontrado.",
     "No checks found": "Nenhuma verificação encontrada",
     "Keep this VS Code window open": "Manter esta janela do VS Code aberta",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "O repositório ainda não foi publicado.",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "Nenhum remoto está configurado para o ramo '{branch}'. Publique primeiro o ramo e volte a tentar Push All up to Here.",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) Enviar para \"origin\" existente",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Nenhum remoto está configurado para o ramo '{branch}'. Publique o ramo antes de o enviar."
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Nenhum remoto está configurado para o ramo '{branch}'. Publique o ramo antes de o enviar.",
+    "$(edit) Other host...": "$(edit) Outro anfitrião...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "Token guardado para {host} limpo.",
+    "Enter the host name (e.g. gitlab.example.com)": "Introduza o nome do anfitrião (ex.: gitlab.example.com)",
+    "Enter your access token for {host}": "Introduza o seu token de acesso para {host}",
+    "Host is required": "O anfitrião é obrigatório",
+    "Select a provider to sign in to": "Selecione um fornecedor para iniciar sessão",
+    "Select a provider to sign out of": "Selecione um fornecedor para terminar sessão",
+    "Signed in to {host}.": "Sessão iniciada em {host}.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "Introduza apenas um nome de anfitrião, como gitlab.example.com (sem https:// ou caminho).",
+    "Could not clear the saved token.": "Não foi possível limpar o token guardado.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

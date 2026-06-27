@@ -145,6 +145,13 @@ export interface CommitChecksSnapshot {
     summary: string;
     items: CommitCheckItem[];
     error?: string;
+    /**
+     * Host to sign into when this snapshot is `unavailable` because a token is missing
+     * or rejected (401/403). Present only when signing in can resolve the failure, so the
+     * popover can offer a host-targeted "Sign in" button. Absent for generic network or
+     * HTTP errors, terminal states, and GitHub (which uses VS Code's built-in session).
+     */
+    signInHost?: string;
 }
 
 /**

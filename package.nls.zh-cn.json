@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "适用于 VS Code 的 IntelliJ 风格 Git UI，包含提交图、提交详情、搁置工作流和文件更改浏览器。",
+    "extension.description": "来自 PyCharm、VS Code 和 Visual Studio IDE 的最佳 Git 功能",
     "view.commit": "提交",
     "view.graph": "图形",
     "view.mergeConflicts": "合并冲突",
@@ -55,6 +55,7 @@
     "configuration.commitWindowPosition.enum.left": "将提交面板放置在未停靠/已添加标签页的窗口的左侧。",
     "configuration.commitWindowPosition.enum.right": "将提交面板放置在未停靠/已添加标签页的窗口的右侧。",
     "configuration.commitWindowPosition.markdownDescription": "在未停靠/标签页化的 IntelliGit 窗口中，提交面板的位置。`auto`（默认值）遵循 VS Code 的 `workbench.sideBar.location`；`left` 和 `right` 强制设置在左侧。",
+    "configuration.commitChecks.hosts.markdownDescription": "Map self-hosted Git hostnames to a commit-check provider so IntelliGit shows CI status badges for them. Keys are hostnames (no scheme or path), values are provider ids. Supported provider ids are `gitlab` and `bitbucket-server` (for self-hosted Bitbucket Data Center). Example: `{ \"git.example.com\": \"gitlab\" }`. Changes take effect after a window reload.",
     "view.fileCountBadge": "已更改的文件",
     "command.createWorktree": "创建 Worktree...",
     "command.deleteWorktree": "删除 Worktree",
@@ -63,5 +64,10 @@
     "command.unlockWorktree": "解锁 Worktree",
     "command.moveWorktree": "移动 Worktree...",
     "command.pruneWorktrees": "清理 Worktree",
-    "command.repairWorktrees": "修复 Worktree"
+    "command.repairWorktrees": "修复 Worktree",
+    "command.commitChecksSignIn": "登录提交检查提供程序",
+    "command.commitChecksSignOut": "退出提交检查提供程序",
+    "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
+    "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a safe regex subset (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload."
 }

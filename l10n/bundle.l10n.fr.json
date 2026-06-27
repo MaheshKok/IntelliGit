@@ -369,7 +369,7 @@
     "Checks skipped": "Vérifications ignorées",
     "Commit status": "État du commit",
     "GitHub check": "Vérification GitHub",
-    "GitHub checks unavailable": "Vérifications GitHub indisponibles",
+    "Checks unavailable": "Vérifications indisponibles",
     "No GitHub remote found.": "Aucun remote GitHub trouvé.",
     "No checks found": "Aucune vérification trouvée",
     "Keep this VS Code window open": "Garder cette fenêtre VS Code ouverte",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "Le dépôt n’a pas encore été publié.",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "Aucun remote n’est configuré pour la branche '{branch}'. Publiez d’abord la branche, puis réessayez Push All up to Here.",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) Pousser vers \"origin\" existant",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Aucun remote n’est configuré pour la branche '{branch}'. Publiez la branche avant de la pousser."
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "Aucun remote n’est configuré pour la branche '{branch}'. Publiez la branche avant de la pousser.",
+    "$(edit) Other host...": "$(edit) Autre hôte...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "Jeton enregistré pour {host} effacé.",
+    "Enter the host name (e.g. gitlab.example.com)": "Entrez le nom d'hôte (par ex. gitlab.example.com)",
+    "Enter your access token for {host}": "Entrez votre jeton d'accès pour {host}",
+    "Host is required": "L'hôte est requis",
+    "Select a provider to sign in to": "Sélectionnez un fournisseur pour vous connecter",
+    "Select a provider to sign out of": "Sélectionnez un fournisseur pour vous déconnecter",
+    "Signed in to {host}.": "Connecté à {host}.",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "Entrez uniquement un nom d'hôte, comme gitlab.example.com (sans https:// ni chemin).",
+    "Could not clear the saved token.": "Impossible d'effacer le jeton enregistré.",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

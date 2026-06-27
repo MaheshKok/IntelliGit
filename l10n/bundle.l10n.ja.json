@@ -369,7 +369,7 @@
     "Checks skipped": "チェックはスキップされました",
     "Commit status": "コミット ステータス",
     "GitHub check": "GitHub チェック",
-    "GitHub checks unavailable": "GitHub チェックを利用できません",
+    "Checks unavailable": "チェックを利用できません",
     "No GitHub remote found.": "GitHub リモートが見つかりません。",
     "No checks found": "チェックが見つかりません",
     "Keep this VS Code window open": "この VS Code ウィンドウを開いたままにする",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "リポジトリはまだ公開されていません。",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "ブランチ '{branch}' にリモートが設定されていません。先にブランチを公開してから、Push All up to Here を再試行してください。",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 既存の \"origin\" にプッシュ",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "ブランチ '{branch}' にリモートが設定されていません。プッシュする前にブランチを公開してください。"
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "ブランチ '{branch}' にリモートが設定されていません。プッシュする前にブランチを公開してください。",
+    "$(edit) Other host...": "$(edit) 他のホスト...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "{host} の保存済みトークンをクリアしました。",
+    "Enter the host name (e.g. gitlab.example.com)": "ホスト名を入力 (例: gitlab.example.com)",
+    "Enter your access token for {host}": "{host} のアクセストークンを入力",
+    "Host is required": "ホストは必須です",
+    "Select a provider to sign in to": "サインインするプロバイダーを選択",
+    "Select a provider to sign out of": "サインアウトするプロバイダーを選択",
+    "Signed in to {host}.": "{host} にサインインしました。",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "ホスト名のみを入力してください。例: gitlab.example.com（https:// やパスは不要）。",
+    "Could not clear the saved token.": "保存済みトークンをクリアできませんでした。",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

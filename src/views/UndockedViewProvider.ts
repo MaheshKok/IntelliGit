@@ -16,7 +16,6 @@ import {
 } from "../webviews/protocol/commitGraphTypes";
 import type {
     Branch,
-    CommitChecksSnapshot,
     CommitDetail,
     GitWorktree,
     StashEntry,
@@ -29,7 +28,18 @@ import type {
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
 import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
-import { getGithubCommitChecks } from "../services/githubCommitChecksService";
+import {
+    CommitChecksCoordinator,
+    DEFAULT_COMMIT_CHECKS_TTL_MS,
+} from "../services/commitChecks/coordinator";
+import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import { GitHubProvider } from "../services/commitChecks/githubProvider";
+import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
+import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
+import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
+import { httpGetJson } from "../services/commitChecks/http";
+import type { CredentialStore } from "../services/commitChecks/credentialStore";
+import type { HostMap } from "../services/commitChecks/types";
 import {
     assertGitHash,
     assertNullableString,
@@ -122,7 +132,8 @@ export class UndockedViewProvider {
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
-    private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
+    private readonly commitChecks: CommitChecksCoordinator;
+    private commitChecksGeneration = 0;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -179,11 +190,41 @@ export class UndockedViewProvider {
         private readonly extensionUri: vscode.Uri,
         gitOps: GitOps,
         repoRootUri: vscode.Uri,
+        credentialStore: CredentialStore,
         private readonly workspaceState?: vscode.Memento,
+        hostMap: HostMap = {},
+        private readonly commitChecksSettings?: CommitChecksSettings,
     ) {
         this.gitOps = gitOps;
         this.repoRootUri = repoRootUri;
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.commitChecks = new CommitChecksCoordinator(
+            this.gitOps,
+            [
+                new GitHubProvider(httpGetJson, commitChecksSettings?.ciCdPattern),
+                new GitLabProvider(httpGetJson, credentialStore, commitChecksSettings?.ciCdPattern),
+                new BitbucketCloudProvider(httpGetJson, credentialStore),
+                new BitbucketServerProvider(httpGetJson, credentialStore),
+            ],
+            hostMap,
+            {
+                enabled: commitChecksSettings?.enabled,
+                providerEnabled: commitChecksSettings?.providers,
+                ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+            },
+        );
+    }
+
+    /**
+     * Drops cached commit-check snapshots so the next request re-fetches.
+     *
+     * Called after a credential change (sign-in or sign-out) because a stored
+     * "unavailable" snapshot is a terminal state the coordinator would otherwise
+     * never re-fetch, leaving the badge stuck after the user signs in.
+     */
+    clearChecksCache(): void {
+        this.commitChecksGeneration += 1;
+        this.commitChecks.clear();
     }
     /**
      * Updates the panel title fragment used when the active repository label changes.
@@ -200,6 +241,8 @@ export class UndockedViewProvider {
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
+        this.requestSeq += 1;
+        this.commitDetailSeq += 1;
         this.files = [];
         this.stashes = [];
         this.selectedShelfIndex = null;
@@ -211,7 +254,8 @@ export class UndockedViewProvider {
         this.selectedCommitDetail = null;
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
-        this.commitChecksCache.clear();
+        this.commitChecksGeneration += 1;
+        this.commitChecks.clear();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -450,6 +494,12 @@ export class UndockedViewProvider {
             case "openCommitCheckUrl":
                 await this.openExternalHttpUrl(assertString(msg.url, "url"));
                 break;
+            case "signInForCommitChecks":
+                await vscode.commands.executeCommand(
+                    "intelligit.commitChecks.signIn",
+                    assertString(msg.host, "host"),
+                );
+                break;
             case "dock":
                 this._onDockRequested.fire();
                 break;
@@ -661,13 +711,12 @@ export class UndockedViewProvider {
     }
 
     private async sendCommitChecks(hash: string): Promise<void> {
-        const cached = this.commitChecksCache.get(hash);
-        if (cached && cached.state !== "pending") {
-            this.postToWebview({ type: "setCommitChecks", snapshot: cached });
+        const generation = this.commitChecksGeneration;
+        const snapshot = await this.commitChecks.getChecks(hash);
+        if (generation !== this.commitChecksGeneration) {
+            this.commitChecks.clear();
             return;
         }
-        const snapshot = await getGithubCommitChecks(this.gitOps, hash);
-        this.commitChecksCache.set(hash, snapshot);
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 
@@ -821,6 +870,7 @@ export class UndockedViewProvider {
             currentBranchBehind: currentBranchStatus.behind,
             currentBranchName: currentBranchStatus.name,
             currentBranchUpstream: currentBranchStatus.upstream,
+            commitChecksEnabled: this.commitChecksSettings?.enabled ?? true,
         });
     }
 

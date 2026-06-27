@@ -4,14 +4,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type {
-    Branch,
-    CommitChecksSnapshot,
-    CommitDetail,
-    GitWorktree,
-    ThemeFolderIconMap,
-} from "../types";
-import { isPendingCheckState } from "../types";
+import type { Branch, CommitDetail, GitWorktree, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
     CommitAction,
@@ -31,7 +24,18 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
 import { isValidGitHash } from "../services/gitHelpers";
-import { getGithubCommitChecks } from "../services/githubCommitChecksService";
+import {
+    CommitChecksCoordinator,
+    DEFAULT_COMMIT_CHECKS_TTL_MS,
+} from "../services/commitChecks/coordinator";
+import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import { GitHubProvider } from "../services/commitChecks/githubProvider";
+import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
+import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
+import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
+import { httpGetJson } from "../services/commitChecks/http";
+import type { CredentialStore } from "../services/commitChecks/credentialStore";
+import type { HostMap } from "../services/commitChecks/types";
 import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
@@ -58,7 +62,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
-    private readonly commitChecksCache = new Map<string, CommitChecksSnapshot>();
+    private readonly commitChecks: CommitChecksCoordinator;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -106,12 +110,42 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
+        credentialStore: CredentialStore,
         private readonly options: {
             scriptFile?: string;
             title?: string;
+            hostMap?: HostMap;
+            settings?: CommitChecksSettings;
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        const settings = options.settings;
+        this.commitChecks = new CommitChecksCoordinator(
+            this.gitOps,
+            [
+                new GitHubProvider(httpGetJson, settings?.ciCdPattern),
+                new GitLabProvider(httpGetJson, credentialStore, settings?.ciCdPattern),
+                new BitbucketCloudProvider(httpGetJson, credentialStore),
+                new BitbucketServerProvider(httpGetJson, credentialStore),
+            ],
+            options.hostMap ?? {},
+            {
+                enabled: settings?.enabled,
+                providerEnabled: settings?.providers,
+                ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+            },
+        );
+    }
+
+    /**
+     * Drops cached commit-check snapshots so the next request re-fetches.
+     *
+     * Called after a credential change (sign-in or sign-out) because a stored
+     * "unavailable" snapshot is a terminal state the coordinator would otherwise
+     * never re-fetch, leaving the badge stuck after the user signs in.
+     */
+    clearChecksCache(): void {
+        this.commitChecks.clear();
     }
 
     /**
@@ -232,6 +266,12 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
                         break;
+                    case "signInForCommitChecks":
+                        await vscode.commands.executeCommand(
+                            "intelligit.commitChecks.signIn",
+                            this.assertString(msg.host, "host"),
+                        );
+                        break;
                     case "fetch":
                     case "pull":
                     case "push":
@@ -343,6 +383,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
+            commitChecksEnabled: this.options.settings?.enabled ?? true,
         });
     }
 
@@ -456,13 +497,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async sendCommitChecks(hash: string): Promise<void> {
-        const cached = this.commitChecksCache.get(hash);
-        if (cached && !isPendingCheckState(cached.state)) {
-            this.postToWebview({ type: "setCommitChecks", snapshot: cached });
-            return;
-        }
-        const snapshot = await getGithubCommitChecks(this.gitOps, hash);
-        this.commitChecksCache.set(hash, snapshot);
+        const snapshot = await this.commitChecks.getChecks(hash);
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 

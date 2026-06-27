@@ -25,6 +25,7 @@ interface Props {
     checks?: CommitChecksValue;
     onRequestChecks?: (hash: string) => void;
     onOpenCheckUrl?: (url: string) => void;
+    onSignIn?: (host: string) => void;
 }
 
 function getRefColors(kind: "branch" | "tag", name: string): { bg: string; fg: string } {
@@ -354,6 +355,7 @@ function CommitRowInner({
     checks,
     onRequestChecks,
     onOpenCheckUrl,
+    onSignIn,
 }: Props): React.ReactElement {
     const isMergeCommit = commit.parentHashes.length > 1;
 
@@ -422,6 +424,7 @@ function CommitRowInner({
                     checks={checks}
                     onRequestChecks={onRequestChecks}
                     onOpenCheckUrl={onOpenCheckUrl}
+                    onSignIn={onSignIn}
                 />
             ) : null}
         </div>
@@ -444,6 +447,7 @@ function areEqual(prev: Props, next: Props): boolean {
         prev.checks === next.checks &&
         prev.onRequestChecks === next.onRequestChecks &&
         prev.onOpenCheckUrl === next.onOpenCheckUrl &&
+        prev.onSignIn === next.onSignIn &&
         prev.onSelect === next.onSelect &&
         prev.onContextMenu === next.onContextMenu
     );

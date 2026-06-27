@@ -369,7 +369,7 @@
     "Checks skipped": "檢查已略過",
     "Commit status": "提交狀態",
     "GitHub check": "GitHub 檢查",
-    "GitHub checks unavailable": "GitHub 檢查無法使用",
+    "Checks unavailable": "檢查無法使用",
     "No GitHub remote found.": "找不到 GitHub 遠端儲存庫。",
     "No checks found": "找不到檢查",
     "Keep this VS Code window open": "保持此 VS Code 視窗開啟",
@@ -412,5 +412,18 @@
     "The repo has not been published yet.": "儲存庫尚未發佈。",
     "No remote is configured for branch '{branch}'. Publish the branch first, then retry Push All up to Here.": "分支 '{branch}' 未設定遠端儲存庫。請先發佈該分支，然後重試 Push All up to Here。",
     "$(git-branch) Push to Existing \"origin\"": "$(git-branch) 推送到現有 \"origin\"",
-    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "分支 '{branch}' 未設定遠端儲存庫。請先發佈該分支再推送。"
+    "No remote is configured for branch '{branch}'. Publish the branch before pushing it.": "分支 '{branch}' 未設定遠端儲存庫。請先發佈該分支再推送。",
+    "$(edit) Other host...": "$(edit) 其他主機...",
+    "$(source-control) Bitbucket": "$(source-control) Bitbucket",
+    "Cleared the saved token for {host}.": "已清除 {host} 的已儲存權杖。",
+    "Enter the host name (e.g. gitlab.example.com)": "輸入主機名稱（例如 gitlab.example.com）",
+    "Enter your access token for {host}": "輸入 {host} 的存取權杖",
+    "Host is required": "必須提供主機",
+    "Select a provider to sign in to": "選取要登入的提供者",
+    "Select a provider to sign out of": "選取要登出的提供者",
+    "Signed in to {host}.": "已登入到 {host}。",
+    "Enter a host name only, like gitlab.example.com (no https:// or path).": "僅輸入主機名稱，例如 gitlab.example.com（不要 https:// 或路徑）。",
+    "Could not clear the saved token.": "無法清除已儲存的權杖。",
+    "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
 }

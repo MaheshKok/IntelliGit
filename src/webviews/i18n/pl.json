@@ -214,7 +214,7 @@
     "merge.status.autoResolved": "Rozwiązano automatycznie",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "Sprawdzenia commitów GitHub",
+    "commit.checks.title": "Sprawdzenia commitów",
     "commit.checks.loading": "Ładowanie sprawdzeń...",
     "commit.checks.none": "Nie znaleziono sprawdzeń",
     "branch.worktreeBadge.current": "Wyewidencjonowano w tym worktree",
@@ -232,5 +232,6 @@
     "common.sync": "Synchronizuj",
     "commit.action.publishAndPush": "Opublikuj i wypchnij",
     "commit.branchIndicator.local": "Gałąź: {branch}",
-    "commit.branchIndicator.tracking": "Gałąź: {branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "Gałąź: {branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }

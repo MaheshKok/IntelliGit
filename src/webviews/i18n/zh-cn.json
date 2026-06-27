@@ -193,7 +193,7 @@
     "merge.status.autoResolved": "已自动解决",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "GitHub 提交检查",
+    "commit.checks.title": "提交检查",
     "commit.checks.loading": "正在加载检查...",
     "commit.checks.none": "未找到检查",
     "branch.worktreeBadge.current": "已在此 worktree 中检出",
@@ -211,5 +211,6 @@
     "common.sync": "同步",
     "commit.action.publishAndPush": "发布并推送",
     "commit.branchIndicator.local": "分支：{branch}",
-    "commit.branchIndicator.tracking": "分支：{branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "分支：{branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }

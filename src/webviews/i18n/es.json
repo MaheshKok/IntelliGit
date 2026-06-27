@@ -207,7 +207,7 @@
     "merge.status.autoResolved": "Resuelto automáticamente",
     "merge.result.editHint": "Double-click to edit the result",
     "merge.result.editingAria": "Edit merge result block",
-    "commit.checks.title": "Comprobaciones de commits de GitHub",
+    "commit.checks.title": "Comprobaciones de commits",
     "commit.checks.loading": "Cargando comprobaciones...",
     "commit.checks.none": "No se encontraron comprobaciones",
     "branch.worktreeBadge.current": "Con checkout en este worktree",
@@ -225,5 +225,6 @@
     "common.sync": "Sincronizar",
     "commit.action.publishAndPush": "Publicar y enviar",
     "commit.branchIndicator.local": "Rama: {branch}",
-    "commit.branchIndicator.tracking": "Rama: {branch} -> {upstream}"
+    "commit.branchIndicator.tracking": "Rama: {branch} -> {upstream}",
+    "commit.checks.signIn": "Sign in"
 }
