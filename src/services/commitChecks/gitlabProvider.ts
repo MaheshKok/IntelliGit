@@ -240,6 +240,8 @@ export class GitLabProvider implements CommitChecksProvider {
             return noneSnapshot(hash);
         }
 
+        // Commit status payloads are small network responses; keep transform readable.
+        // react-doctor-disable-next-line react-doctor/js-combine-iterations
         const items = (raw as GitLabStatus[])
             .map(toStatusItem)
             .filter((item) => isCiCdCheckItem(item, this.ciCdPattern));

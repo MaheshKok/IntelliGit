@@ -252,6 +252,8 @@ export class GitOps {
             // Commits reachable from local branches but not from any remote-tracking ref.
             // This works even when the current branch has no upstream configured.
             const out = await this.executor.run(["rev-list", "--branches", "--not", "--remotes"]);
+            // Git output parsing is small and clearer as trim/split/map/filter.
+            // react-doctor-disable-next-line react-doctor/js-flatmap-filter
             return out
                 .trim()
                 .split("\n")

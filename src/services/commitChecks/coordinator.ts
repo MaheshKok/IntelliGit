@@ -148,6 +148,8 @@ export class CommitChecksCoordinator {
             ? ["origin", ...remotes.filter((remote) => remote !== "origin")]
             : remotes;
         for (const remote of ordered) {
+            // Remote matching is first-match semantics with origin priority.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             const url = await this.gitOps.getRemoteUrl(remote);
             if (!url) continue;
             for (const provider of this.providers) {

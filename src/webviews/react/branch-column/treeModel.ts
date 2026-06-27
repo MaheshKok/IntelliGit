@@ -30,6 +30,8 @@ export function buildPrefixTree(
                 current.push({ label: part, fullName: branch.name, branch, children: [] });
                 continue;
             }
+            // Path sibling counts are small and insertion order is the tree order contract.
+            // react-doctor-disable-next-line react-doctor/js-index-maps
             let folder = current.find((n) => n.label === part && !n.branch);
             if (!folder) {
                 folder = { label: part, children: [] };

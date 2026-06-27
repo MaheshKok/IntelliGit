@@ -132,11 +132,15 @@ async function scanForGitMarkers(
     for (const entry of entries) {
         if (IGNORED_DIRS.has(entry.name)) {
             if (entry.name === ".git") {
+                // Discovery is sequential to keep recursive filesystem IO bounded and ordered.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
                 await addResolvedRoot(directory, workspaceRoots, seen, resolveGitRoot);
             }
             continue;
         }
         if (!entry.isDirectory()) continue;
+        // Discovery is sequential to keep recursive filesystem IO bounded and ordered.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await scanForGitMarkers(
             path.join(directory, entry.name),
             workspaceRoots,
@@ -162,9 +166,13 @@ export async function discoverGitRepositories(
     const resolveGitRoot = options.resolveGitRoot ?? defaultResolveGitRoot;
 
     for (const workspaceRoot of roots) {
+        // Each root is added before its children so repository de-duplication stays deterministic.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await addResolvedRoot(workspaceRoot, roots, seen, resolveGitRoot);
         await scanForGitMarkers(workspaceRoot, roots, seen, resolveGitRoot);
     }
 
+    // Spread already isolates the map values before sorting; no shared array is mutated.
+    // react-doctor-disable-next-line react-doctor/js-tosorted-immutable
     return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
 }

@@ -128,6 +128,8 @@ async function readTextIfExists(filePath: string): Promise<string | null> {
 async function listDirectories(rootDir: string): Promise<string[]> {
     try {
         const entries = await fsp.readdir(rootDir, { withFileTypes: true });
+        // Directory listings are tiny and clearer as filter/map than a manual accumulator.
+        // react-doctor-disable-next-line react-doctor/js-combine-iterations
         return entries
             .filter((entry) => entry.isDirectory())
             .map((entry) => path.join(rootDir, entry.name));
@@ -139,6 +141,8 @@ async function listDirectories(rootDir: string): Promise<string[]> {
 async function listFiles(rootDir: string): Promise<string[]> {
     try {
         const entries = await fsp.readdir(rootDir, { withFileTypes: true });
+        // Directory listings are tiny and clearer as filter/map than a manual accumulator.
+        // react-doctor-disable-next-line react-doctor/js-combine-iterations
         return entries
             .filter((entry) => entry.isFile())
             .map((entry) => path.join(rootDir, entry.name));
@@ -177,6 +181,8 @@ async function walkDirectories(
         for (const entry of entries) {
             if (!entry.isDirectory()) continue;
             if (entry.name.startsWith(".")) continue;
+            // Directory walk is depth-limited and sequential to avoid bursty filesystem IO.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await visit(path.join(dirPath, entry.name), depth + 1);
         }
     };
@@ -230,6 +236,8 @@ async function resolveExecutableFromMacAppBundle(appBundlePath: string): Promise
         .map((name) => path.join(macOsDir, name));
 
     for (const candidate of candidates) {
+        // Executable probing short-circuits on the first ranked valid candidate.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         if (await isExecutableFile(candidate)) return candidate;
     }
 
@@ -295,6 +303,8 @@ async function detectMacJetBrainsAppBundleCandidates(): Promise<DetectedJetBrain
             const topLevelDirs = await listDirectories(rootDir);
             for (const dirPath of topLevelDirs) {
                 if (dirPath.toLowerCase().endsWith(".app")) {
+                    // App bundle candidates are deduped as discovered; keep deterministic order.
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop
                     await maybeAddAppBundle(dirPath);
                 }
             }
@@ -325,6 +335,8 @@ async function findWindowsExecutableCandidatesInRoot(
                 if (!JETBRAINS_EXECUTABLE_NAMES_WIN.has(fileName)) continue;
                 if (seen.has(filePath)) continue;
                 seen.add(filePath);
+                // File validation and mtime collection stay sequential per candidate.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
                 const isFile = await isExecutableFile(filePath);
                 if (!isFile) continue;
                 candidates.push({

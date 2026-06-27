@@ -331,6 +331,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * publishes a new selection.
      */
     async refresh(): Promise<void> {
+        // Theme data must be current before branch/log payloads are decorated.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();

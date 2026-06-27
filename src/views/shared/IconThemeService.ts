@@ -124,8 +124,12 @@ export class IconThemeService implements vscode.Disposable {
             };
             this.lastThemeRootUri = nextThemeRootUri;
         }
+        // Snapshot guard below is the race protection after this async resolver call.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const folderIcons = await iconResolver.getFolderIcons();
         if (iconResolver !== this.iconResolver || webview !== this.webview) return;
+        // Snapshot guard below is the race protection after this async resolver call.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const iconFonts = await iconResolver.getThemeFonts();
         if (iconResolver !== this.iconResolver || webview !== this.webview) return;
         this.folderIcons = folderIcons;
@@ -216,6 +220,8 @@ export class IconThemeService implements vscode.Disposable {
                 if (remotePrefix && fullName.startsWith(remotePrefix)) {
                     displayName = fullName.slice(remotePrefix.length);
                 } else {
+                    // This is string indexOf, not repeated array lookup.
+                    // react-doctor-disable-next-line react-doctor/js-set-map-lookups
                     const firstSlash = fullName.indexOf("/");
                     displayName = firstSlash >= 0 ? fullName.slice(firstSlash + 1) : fullName;
                 }

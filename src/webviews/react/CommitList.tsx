@@ -104,6 +104,8 @@ export function CommitList({
     const [viewportHeight, setViewportHeight] = useState(0);
     const isLoadingMoreRef = useRef(false);
     // Per-commit budget for re-fetching a "no checks yet" snapshot after a push.
+    // Ref initializer is tiny and keeps hook deps unchanged around the polling effect.
+    // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
     const noneCheckRetries = useRef<Map<string, number>>(new Map());
 
     const graphRows = useMemo(() => computeGraph(commits), [commits]);

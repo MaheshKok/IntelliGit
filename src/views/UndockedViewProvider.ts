@@ -305,6 +305,8 @@ export class UndockedViewProvider {
      * Refreshes graph branches/commits and commit-panel data for the current repository.
      */
     async refresh(): Promise<void> {
+        // Theme data must be current before branch and commit payloads are decorated.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();
@@ -313,6 +315,8 @@ export class UndockedViewProvider {
 
     /** Refreshes graph and commit-panel data without showing commit-panel refresh feedback. */
     async refreshSilent(): Promise<void> {
+        // Silent refresh keeps the same theme -> branches -> log ordering as visible refresh.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         await this.loadInitial();
@@ -643,6 +647,8 @@ export class UndockedViewProvider {
             this.postToWebview({ type: "setSelectedBranch", branch: null });
         }
         try {
+            // Stale-request guard must run after both async reads settle.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const [commits, unpushedHashes] = await Promise.all([
                 this.gitOps.getLog(
                     this.PAGE_SIZE,
@@ -676,6 +682,8 @@ export class UndockedViewProvider {
         this.loadingMore = true;
         const requestId = ++this.requestSeq;
         try {
+            // Pagination guard must compare the captured request after async reads settle.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const [commits, unpushedHashes] = await Promise.all([
                 this.gitOps.getLog(
                     this.PAGE_SIZE,
@@ -712,6 +720,8 @@ export class UndockedViewProvider {
 
     private async sendCommitChecks(hash: string): Promise<void> {
         const generation = this.commitChecksGeneration;
+        // Generation guard must run after the provider returns its snapshot.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const snapshot = await this.commitChecks.getChecks(hash);
         if (generation !== this.commitChecksGeneration) {
             this.commitChecks.clear();
@@ -796,6 +806,8 @@ export class UndockedViewProvider {
     private async refreshCommitPanelData(silent = false): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
+            // Theme initialization must finish before decorated working-tree files are built.
+            // react-doctor-disable-next-line react-doctor/async-parallel
             await this.iconTheme.initIconThemeData();
             const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
             const stashes = await this.gitOps.listShelved();
@@ -930,6 +942,8 @@ export class UndockedViewProvider {
         detail: CommitDetail,
         requestId: number,
     ): Promise<void> {
+        // Decoration can become stale while awaiting; requestId is checked immediately after.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
         if (requestId !== this.commitDetailSeq) return;
         this.selectedCommitDetail = decorated.detail;
@@ -1017,6 +1031,8 @@ export class UndockedViewProvider {
      * Reloads icon theme metadata and re-sends branch/detail decoration to the webview.
      */
     private async refreshThemeData(): Promise<void> {
+        // Theme refresh must complete before branch/detail decorations are recalculated.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
         await this.sendBranches();
         if (!this.selectedCommitDetail) {

@@ -39,6 +39,8 @@ export function computeGraph(commits: Array<{ hash: string; parentHashes: string
     }
 
     for (const commit of commits) {
+        // Lane count is small and order-coupled to drawing columns; no side index to sync.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         let col = lanes.indexOf(commit.hash);
         if (col === -1) col = findFree();
 
@@ -55,6 +57,8 @@ export function computeGraph(commits: Array<{ hash: string; parentHashes: string
 
         for (let p = 0; p < commit.parentHashes.length; p++) {
             const ph = commit.parentHashes[p];
+            // Lane count is small and order-coupled to drawing columns; no side index to sync.
+            // react-doctor-disable-next-line react-doctor/js-set-map-lookups
             const pCol = lanes.indexOf(ph);
 
             if (pCol >= 0) {

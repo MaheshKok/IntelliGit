@@ -221,6 +221,8 @@ async function readMergedFileWithRetry(
 
     for (let attempt = 0; attempt < delaysMs.length; attempt++) {
         if (delaysMs[attempt] > 0) {
+            // Retry delay must elapse between reads so JetBrains can flush the output file.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await sleep(delaysMs[attempt]);
         }
 

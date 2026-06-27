@@ -46,6 +46,7 @@ interface CommitGraphViewState {
 }
 
 const DEFAULT_EXPANDED_SECTIONS = ["local", "remote", "worktrees"];
+const DEFAULT_WORKTREES: GitWorktree[] = [];
 
 interface BranchContextMenuState {
     x: number;
@@ -190,7 +191,7 @@ function computeAnchorPosition(
  */
 export function BranchColumn({
     branches,
-    worktrees = [],
+    worktrees = DEFAULT_WORKTREES,
     selectedBranch,
     onSelectBranch,
     onBranchAction,
