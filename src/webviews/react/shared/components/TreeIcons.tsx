@@ -1,7 +1,8 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import type { ThemeTreeIcon } from "../../../../types";
-import { FileIcon, FolderIcon, ICON_SIZE } from "./Icons";
+import { FileIcon, FolderIcon } from "./Icons";
+import { ICON_SIZE } from "./iconStyles";
 
 interface TreeFileIconProps {
     status?: string;

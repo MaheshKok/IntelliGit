@@ -24,6 +24,7 @@ import {
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
 import type { AlignedHunkRows } from "./rowAlignment";
+import type { LineNumberValue } from "./lineNumbers";
 import { t } from "../shared/i18n";
 
 // --- Syntax highlighting ---
@@ -57,6 +58,8 @@ const HighlightedLine = React.memo(function HighlightedLine({
     line: string;
 }): React.ReactElement {
     if (!line) return <>{`\u00A0`}</>;
+    // Pure syntax-token helper, not a component invocation.
+    // react-doctor-disable-next-line react-doctor/no-render-in-render
     return <>{renderSyntaxHighlightedNodes(line, "line")}</>;
 });
 
@@ -110,46 +113,9 @@ const WordDiffLine = React.memo(function WordDiffLine({
 
 // --- Line numbers ---
 
-/** Line-number value for a rendered row; `null` reserves padding rows. */
-export type LineNumberValue = number | null;
-
 interface LineNumberSpec {
     primary: LineNumberValue[];
     secondary?: LineNumberValue[];
-}
-
-/**
- * Builds displayed line numbers for a pane, using null placeholders when a
- * shorter side needs visual padding to align with the hunk's row count.
- */
-export function buildLineNumberValues(
-    startAt: number,
-    actualCount: number,
-    rowCount: number,
-): LineNumberValue[] {
-    const values: LineNumberValue[] = [];
-    for (let i = 0; i < rowCount; i++) {
-        values.push(i < actualCount ? startAt + i : null);
-    }
-    return values;
-}
-
-/**
- * Builds displayed line numbers from an intra-hunk row alignment: rows mapped
- * to a source line get sequential numbers while spacer rows (null entries)
- * render blank, so numbering skips alignment gaps instead of counting them.
- */
-export function buildAlignedLineNumberValues(
-    startAt: number,
-    lineIndex: Array<number | null>,
-    rowCount: number,
-): LineNumberValue[] {
-    const values: LineNumberValue[] = [];
-    for (let i = 0; i < rowCount; i++) {
-        const sourceIndex = i < lineIndex.length ? lineIndex[i] : null;
-        values.push(sourceIndex === null ? null : startAt + sourceIndex);
-    }
-    return values;
 }
 
 function padLines(lines: string[], count: number): string[] {

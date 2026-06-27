@@ -270,6 +270,8 @@ function WorktreeRow({
             ) : (
                 <GitBranchIcon />
             )}
+            {/* Pure label highlighter, not a component invocation. */}
+            {/* react-doctor-disable-next-line react-doctor/no-render-in-render */}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(label, filterNeedle)}</span>
             {folderName !== label && (
                 <span style={{ marginLeft: 6, opacity: 0.65, overflow: "hidden" }}>

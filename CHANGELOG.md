@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.3] - 2026-06-27
+
+### Changed
+
+- Cleared the Maintainability tier of read-only react-doctor warnings by hoisting pure helpers, moving merge-editor line-number helpers and shared icon style constants out of component modules, replacing the remaining host-side barrel import with a direct import, and documenting deliberate false positives with narrow inline suppressions.
+
+### Fixed
+
+- Documented the commit-check visibility polling and commit-graph message subscription as intentional effect patterns so react-doctor no longer reports Bugs-tier false positives while preserving the existing dependency arrays and webview message behavior.
+
 ## [0.14.2] - 2026-06-27
 
 ### Fixed

@@ -2,15 +2,9 @@ import React from "react";
 import { LuGitBranch, LuSearch, LuTag, LuX } from "react-icons/lu";
 import type { CSSProperties } from "react";
 import { JETBRAINS_UI } from "../tokens";
+import { BASE_ICON_STYLE, ICON_SIZE } from "./iconStyles";
 
-export const ICON_SIZE = JETBRAINS_UI.size.icon;
 const CHEVRON_ICON_SIZE = 16;
-
-export const BASE_ICON_STYLE: CSSProperties = {
-    flexShrink: 0,
-    marginRight: 4,
-    opacity: 0.92,
-};
 
 export function SearchIcon({
     size = 16,

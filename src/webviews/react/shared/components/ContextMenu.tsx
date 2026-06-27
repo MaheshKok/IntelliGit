@@ -27,6 +27,88 @@ const CONTEXT_MENU_STYLE_RULES = `
         outline-offset: -1px;
     }
 `;
+const CONTEXT_MENU_BASE_STYLE: React.CSSProperties = {
+    position: "fixed",
+    // Portal context menus must float above all VS Code webview panes/popovers.
+    // react-doctor-disable-next-line react-doctor/no-z-index-9999
+    zIndex: 9999,
+    background: JETBRAINS_UI.color.panel,
+    border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
+    borderRadius: 8,
+    padding: "4px 0",
+    fontFamily: SYSTEM_FONT_STACK,
+    boxShadow: "0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35)",
+};
+const SEPARATOR_STYLE: React.CSSProperties = {
+    height: 1,
+    margin: "4px 8px",
+    background: `var(--vscode-menu-separatorBackground, ${JETBRAINS_UI.color.menuSeparator})`,
+    border: 0,
+};
+const CONTEXT_MENU_ITEM_BASE_STYLE: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    minHeight: ITEM_HEIGHT,
+    margin: 0,
+    borderRadius: 0,
+    fontSize: ITEM_FONT_SIZE,
+    lineHeight: `${ITEM_HEIGHT}px`,
+    whiteSpace: "nowrap",
+};
+const ICON_SLOT_STYLE: React.CSSProperties = {
+    width: 16,
+    height: 16,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+};
+const TRAILING_BASE_STYLE: React.CSSProperties = {
+    minWidth: 58,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexShrink: 0,
+    overflow: "visible",
+    fontSize: 12,
+    paddingLeft: 16,
+};
+
+function contextMenuStyle(
+    pos: { left: number; top: number },
+    minWidth: number,
+): React.CSSProperties {
+    return { ...CONTEXT_MENU_BASE_STYLE, left: pos.left, top: pos.top, minWidth };
+}
+
+function contextMenuItemStyle(
+    hasAnyIcon: boolean,
+    hasAnyTrailing: boolean,
+    disabled: boolean | undefined,
+): React.CSSProperties {
+    return {
+        ...CONTEXT_MENU_ITEM_BASE_STYLE,
+        gap: hasAnyIcon ? 8 : 0,
+        padding: `0 ${hasAnyTrailing ? 12 : 8}px 0 ${hasAnyIcon ? 12 : 8}px`,
+        cursor: disabled ? "default" : "pointer",
+        color: disabled
+            ? "var(--vscode-disabledForeground, rgba(187,191,196,1))"
+            : `var(--vscode-menu-foreground, ${JETBRAINS_UI.color.menuForeground})`,
+    };
+}
+
+function iconSlotStyle(hasIcon: boolean): React.CSSProperties {
+    return { ...ICON_SLOT_STYLE, opacity: hasIcon ? 0.95 : 0 };
+}
+
+function trailingStyle(disabled: boolean | undefined): React.CSSProperties {
+    return {
+        ...TRAILING_BASE_STYLE,
+        color: disabled
+            ? `var(--vscode-disabledForeground, ${JETBRAINS_UI.color.menuHint})`
+            : `var(--vscode-descriptionForeground, ${JETBRAINS_UI.color.menuHint})`,
+    };
+}
 
 /**
  * Menu item contract consumed by shared JetBrains-style context menus.
@@ -131,38 +213,10 @@ export function ContextMenu({
     );
 
     return createPortal(
-        <div
-            ref={ref}
-            role="menu"
-            style={{
-                position: "fixed",
-                left: pos.left,
-                top: pos.top,
-                // Portal context menus must float above all VS Code webview panes/popovers.
-                // react-doctor-disable-next-line react-doctor/no-z-index-9999
-                zIndex: 9999,
-                background: JETBRAINS_UI.color.panel,
-                border: `1px solid var(--vscode-menu-border, ${JETBRAINS_UI.color.menuBorder})`,
-                borderRadius: 8,
-                padding: "4px 0",
-                minWidth,
-                fontFamily: SYSTEM_FONT_STACK,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.35)",
-            }}
-        >
+        <div ref={ref} role="menu" style={contextMenuStyle(pos, minWidth)}>
             {items.map((item, i) => {
                 if (item.separator) {
-                    return (
-                        <hr
-                            key={`sep-${i}`}
-                            style={{
-                                height: 1,
-                                margin: "4px 8px",
-                                background: `var(--vscode-menu-separatorBackground, ${JETBRAINS_UI.color.menuSeparator})`,
-                                border: 0,
-                            }}
-                        />
-                    );
+                    return <hr key={`sep-${i}`} style={SEPARATOR_STYLE} />;
                 }
                 return (
                     <div
@@ -183,55 +237,14 @@ export function ContextMenu({
                                       }
                                   }
                         }
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: hasAnyIcon ? 8 : 0,
-                            minHeight: ITEM_HEIGHT,
-                            padding: `0 ${hasAnyTrailing ? 12 : 8}px 0 ${hasAnyIcon ? 12 : 8}px`,
-                            margin: 0,
-                            borderRadius: 0,
-                            cursor: item.disabled ? "default" : "pointer",
-                            fontSize: ITEM_FONT_SIZE,
-                            lineHeight: `${ITEM_HEIGHT}px`,
-                            color: item.disabled
-                                ? "var(--vscode-disabledForeground, rgba(187,191,196,1))"
-                                : `var(--vscode-menu-foreground, ${JETBRAINS_UI.color.menuForeground})`,
-                            whiteSpace: "nowrap",
-                        }}
+                        style={contextMenuItemStyle(hasAnyIcon, hasAnyTrailing, item.disabled)}
                     >
                         {hasAnyIcon && (
-                            <span
-                                style={{
-                                    width: 16,
-                                    height: 16,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0,
-                                    opacity: item.icon ? 0.95 : 0,
-                                }}
-                            >
-                                {item.icon}
-                            </span>
+                            <span style={iconSlotStyle(Boolean(item.icon))}>{item.icon}</span>
                         )}
                         <span style={{ flex: 1, flexShrink: 1 }}>{item.label}</span>
                         {hasAnyTrailing && (
-                            <span
-                                style={{
-                                    minWidth: 58,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "flex-end",
-                                    flexShrink: 0,
-                                    overflow: "visible",
-                                    fontSize: 12,
-                                    color: item.disabled
-                                        ? `var(--vscode-disabledForeground, ${JETBRAINS_UI.color.menuHint})`
-                                        : `var(--vscode-descriptionForeground, ${JETBRAINS_UI.color.menuHint})`,
-                                    paddingLeft: 16,
-                                }}
-                            >
+                            <span style={trailingStyle(item.disabled)}>
                                 {item.submenu ? (
                                     <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden>
                                         <path fill="currentColor" d="M6 4l4 4-4 4z" />

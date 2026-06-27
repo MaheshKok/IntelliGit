@@ -34,14 +34,13 @@ import {
     isTrueConflict,
 } from "./mergeState";
 import {
-    buildLineNumberValues,
     CommonSection,
     ConflictSection,
     OverviewRail,
-    buildAlignedLineNumberValues,
     type SegmentPaneLineNumbers,
     type OverviewMarker,
 } from "./segments";
+import { buildAlignedLineNumberValues, buildLineNumberValues } from "./lineNumbers";
 import { alignConflictRows, type AlignedHunkRows } from "./rowAlignment";
 import "./merge-editor.css";
 
@@ -61,6 +60,8 @@ function getVsCodeApi() {
  * pane rows, local hunk resolutions, overview markers, keyboard navigation, and
  * extension apply/ignore-mode commands.
  */
+// Webview entrypoint owns merge-editor state orchestration and root render side effects.
+// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component
 function App() {
     const [state, dispatch] = useReducer(reducer, {
         data: null,

@@ -151,6 +151,21 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
     }
 }
 
+function readInitialWidths(): SectionWidths {
+    try {
+        const state = vscode.getState();
+        const migrated = migrateSectionWidths(state);
+        if (migrated) {
+            return normalizeSectionWidths(migrated);
+        }
+        return computeEqualSectionWidths();
+    } catch {
+        return computeEqualSectionWidths();
+    }
+}
+
+// Webview entrypoint owns root orchestration and root render side effects; splitting further is not useful here.
+// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component
 function App(): React.ReactElement {
     // --- Graph-side state ---
     const [graphState, graphDispatch] = useReducer(graphReducer, initialGraphState);
@@ -189,18 +204,6 @@ function App(): React.ReactElement {
         widthsHydratedRef.current = true;
     }, []);
 
-    const readInitialWidths = (): SectionWidths => {
-        try {
-            const state = vscode.getState();
-            const migrated = migrateSectionWidths(state);
-            if (migrated) {
-                return normalizeSectionWidths(migrated);
-            }
-            return computeEqualSectionWidths();
-        } catch {
-            return computeEqualSectionWidths();
-        }
-    };
     const initialWidths = useRef<SectionWidths | null>(null);
     if (!initialWidths.current) initialWidths.current = readInitialWidths();
 
