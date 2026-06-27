@@ -5,6 +5,14 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.5] - 2026-06-27
+
+### Fixed
+
+- Pinned default local and remote branches at the top of the branch tree while keeping current `codex/...` branches first inside their folder and sorting the rest by latest branch-tip date.
+- Blocked push, pull, sync, and publish actions when the working tree has uncommitted changes, with the PyCharm-style warning while leaving fetch available.
+- Moved the published branch-name prompt to the end of the create-repository prompt flow and right-aligned the commit-panel Git operation buttons.
+
 ## [0.14.4] - 2026-06-27
 
 ### Changed
@@ -81,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added unit coverage for the Bitbucket Cloud provider (remote-URL parsing including non-`https` scheme rejection and the single fixed host, request construction against the `api.bitbucket.org` host, `Authorization: Bearer` header carrying the stored token verbatim even when it contains a colon, pagination including the page cap, the full Bitbucket state-mapping table, aggregate state, the no-allowlist guarantee that a failing non-keyword tool such as Jenkins still reports `failure`, empty/malformed-response handling, missing-token `unavailable` behavior, and token redaction when a transport error echoes the token verbatim).
 - Added unit coverage for the Bitbucket Server / Data Center provider (remote-URL parsing across `https`, `ssh://`, and SCP forms with `http://` rejection, `/scm/` prefix stripping, and host normalization; host-map-gated `match` so the same remote only routes when its host maps to `bitbucket-server`; request construction against the global `https://<host>/rest/build-status/1.0/commits/<sha>` endpoint with the `Authorization: Bearer` token carried verbatim; offset pagination across multiple pages including the page cap and the single-page short-circuit; state mapping, aggregate state, the no-allowlist guarantee, empty/malformed-response handling, missing-token `unavailable` behavior, a network-timeout path, and token non-leakage including redaction); added coordinator tests that a `bitbucket-server`-mapped host selects this provider while an unmapped host does not, and a manifest test asserting the `intelligit.commitChecks.hosts` setting enum offers every host-configurable provider id (`gitlab`, `bitbucket-server`) while excluding the fixed-host SaaS ones.
 - Added unit coverage for the settings normalizer (defaults from undefined/garbage input, unknown provider keys ignored, non-boolean coercion, a valid `ciCdFilter` compiling and an invalid one falling back without throwing while flagging `ciCdFilterInvalid`); coordinator tests with a fake clock for the TTL behavior (cache-served `pending`/`unavailable` within the TTL, re-fetch after it, terminal states cached indefinitely), the feature-disabled gate (no provider calls), and the per-provider hard-stop (a disabled origin provider yields `none` without consulting an enabled upstream remote); `shouldRequestCommitChecks` returning true for the recoverable `unavailable` state; `isCiCdCheckItem` honoring a custom include pattern while always keeping the review-bot exclusion; provider tests that `signInHost` is set only on token-missing/401/403 paths (including a self-hosted host) and unset for generic network errors; the host-aware `signIn` command skipping the host picker when given a host; manifest tests for the three new settings; and webview tests that the popover renders the `Sign in` button only for an `unavailable` snapshot carrying a `signInHost`.
+
 ## [0.13.9] - 2026-06-25
 
 ### Fixed
