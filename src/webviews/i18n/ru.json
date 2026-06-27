@@ -233,5 +233,10 @@
     "commit.action.publishAndPush": "Опубликовать и отправить",
     "commit.branchIndicator.local": "Ветка: {branch}",
     "commit.branchIndicator.tracking": "Ветка: {branch} -> {upstream}",
-    "commit.checks.signIn": "Sign in"
+    "commit.checks.signIn": "Sign in",
+    "a11y.resizeBranchColumn": "Resize branch column",
+    "a11y.resizeCommitDetailsPane": "Resize commit details pane",
+    "a11y.resizeCommitList": "Resize commit list",
+    "a11y.resizeCommitPanel": "Resize commit panel",
+    "merge.hunk.groupAria": "Conflict hunk #{ordinal}"
 }

@@ -5,6 +5,17 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.2] - 2026-06-27
+
+### Fixed
+
+- Cleared the Accessibility tier of read-only react-doctor warnings in the webviews by making commit graph and undocked splitters keyboard-resizable, adding keyboard activation for commit rows and merge conflict hunks, and replacing context-menu separator markup with a native `<hr>`.
+- Documented deliberate scanner false positives for merge-result autofocus, context-menu overlay stacking, and commit refresh feedback with narrow inline suppressions.
+
+### Changed
+
+- Added localized accessible names for resize controls and merge hunks, then regenerated the webview localization catalogs from the localization CSV.
+
 ## [0.14.1] - 2026-06-27
 
 ### Changed

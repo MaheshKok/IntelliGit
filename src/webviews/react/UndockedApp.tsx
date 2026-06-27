@@ -19,10 +19,11 @@ import {
     migrateSectionWidths,
     normalizeSectionWidths,
     sectionWidthsAreClose,
+    type SectionWidthKey,
     type SectionWidths,
 } from "./undocked/sectionWidths";
 import { UndockedLayout } from "./undocked/UndockedLayout";
-import { useColumnPairDrag } from "./undocked/useColumnPairDrag";
+import { resizeSectionPair, useColumnPairDrag } from "./undocked/useColumnPairDrag";
 import { useUnifiedMessages } from "./undocked/useUnifiedMessages";
 import { useUndockedActions } from "./undocked/useUndockedActions";
 import type {
@@ -39,6 +40,7 @@ import type { UnifiedOutbound } from "../protocol/undockedMessages";
 // --- Helpers ----------------------------------------------------------------
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
+const KEYBOARD_RESIZE_STEP = 16;
 
 interface GraphState {
     commits: Commit[];
@@ -284,6 +286,35 @@ function App(): React.ReactElement {
         "infoWidth",
         "commitPanelWidth",
     );
+    const handleSectionPairKeyDown = useCallback(
+        (event: React.KeyboardEvent, firstKey: SectionWidthKey, secondKey: SectionWidthKey) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            markWidthsHydrated();
+            const delta = event.key === "ArrowRight" ? KEYBOARD_RESIZE_STEP : -KEYBOARD_RESIZE_STEP;
+            setSectionWidths(resizeSectionPair(sectionWidths, firstKey, secondKey, delta));
+        },
+        [markWidthsHydrated, sectionWidths, setSectionWidths],
+    );
+    const onLeftCommitPanelDividerKeyDown = useCallback(
+        (event: React.KeyboardEvent) =>
+            handleSectionPairKeyDown(event, "commitPanelWidth", "branchWidth"),
+        [handleSectionPairKeyDown],
+    );
+    const onBranchDividerKeyDown = useCallback(
+        (event: React.KeyboardEvent) =>
+            handleSectionPairKeyDown(event, "branchWidth", "graphWidth"),
+        [handleSectionPairKeyDown],
+    );
+    const onGraphDividerKeyDown = useCallback(
+        (event: React.KeyboardEvent) => handleSectionPairKeyDown(event, "graphWidth", "infoWidth"),
+        [handleSectionPairKeyDown],
+    );
+    const onRightCommitPanelDividerKeyDown = useCallback(
+        (event: React.KeyboardEvent) =>
+            handleSectionPairKeyDown(event, "infoWidth", "commitPanelWidth"),
+        [handleSectionPairKeyDown],
+    );
 
     // --- Persist column widths ---
     useEffect(() => {
@@ -400,9 +431,13 @@ function App(): React.ReactElement {
             layoutRef={layoutRef}
             markWidthsHydrated={markWidthsHydrated}
             onLeftCommitPanelDividerMouseDown={onLeftCommitPanelDividerMouseDown}
+            onLeftCommitPanelDividerKeyDown={onLeftCommitPanelDividerKeyDown}
             onBranchDividerMouseDown={onBranchDividerMouseDown}
+            onBranchDividerKeyDown={onBranchDividerKeyDown}
             onGraphDividerMouseDown={onGraphDividerMouseDown}
+            onGraphDividerKeyDown={onGraphDividerKeyDown}
             onRightCommitPanelDividerMouseDown={onRightCommitPanelDividerMouseDown}
+            onRightCommitPanelDividerKeyDown={onRightCommitPanelDividerKeyDown}
             handleSelectCommit={actions.handleSelectCommit}
             handleFilterText={actions.handleFilterText}
             handleLoadMore={actions.handleLoadMore}

@@ -19,6 +19,7 @@ import { BranchColumn } from "../BranchColumn";
 import { CommitList } from "../CommitList";
 import { CommitInfoPane } from "../commit-info/CommitInfoPane";
 import theme from "../commit-panel/theme";
+import { t } from "../shared/i18n";
 import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 import { CommitPanelPane } from "./CommitPanelPane";
 import { UndockedHeader } from "./UndockedHeader";
@@ -66,9 +67,13 @@ export interface UndockedLayoutProps {
     layoutRef: React.MutableRefObject<HTMLDivElement | null>;
     markWidthsHydrated: () => void;
     onLeftCommitPanelDividerMouseDown: (e: React.MouseEvent) => void;
+    onLeftCommitPanelDividerKeyDown: (e: React.KeyboardEvent) => void;
     onBranchDividerMouseDown: (e: React.MouseEvent) => void;
+    onBranchDividerKeyDown: (e: React.KeyboardEvent) => void;
     onGraphDividerMouseDown: (e: React.MouseEvent) => void;
+    onGraphDividerKeyDown: (e: React.KeyboardEvent) => void;
     onRightCommitPanelDividerMouseDown: (e: React.MouseEvent) => void;
+    onRightCommitPanelDividerKeyDown: (e: React.KeyboardEvent) => void;
     handleSelectCommit: (hash: string) => void;
     handleFilterText: (text: string) => void;
     handleLoadMore: () => void;
@@ -137,9 +142,13 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         layoutRef,
         markWidthsHydrated,
         onLeftCommitPanelDividerMouseDown,
+        onLeftCommitPanelDividerKeyDown,
         onBranchDividerMouseDown,
+        onBranchDividerKeyDown,
         onGraphDividerMouseDown,
+        onGraphDividerKeyDown,
         onRightCommitPanelDividerMouseDown,
+        onRightCommitPanelDividerKeyDown,
         handleSelectCommit,
         handleFilterText,
         handleLoadMore,
@@ -199,15 +208,21 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                             />
 
                             <Box
+                                as="button"
+                                type="button"
+                                aria-label={t("a11y.resizeCommitPanel")}
                                 data-testid="undocked-left-commit-divider"
                                 width="4px"
                                 flexShrink={0}
                                 cursor="col-resize"
                                 bg="var(--vscode-panel-border)"
-                                onMouseDown={(e) => {
+                                border={0}
+                                p={0}
+                                onMouseDown={(e: React.MouseEvent) => {
                                     markWidthsHydrated();
                                     onLeftCommitPanelDividerMouseDown(e);
                                 }}
+                                onKeyDown={onLeftCommitPanelDividerKeyDown}
                                 _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
                             />
                         </>
@@ -234,18 +249,23 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                             />
                         </div>
 
-                        <div
+                        <button
+                            type="button"
+                            aria-label={t("a11y.resizeBranchColumn")}
                             data-testid="undocked-branch-divider"
                             style={{
                                 width: 4,
                                 flexShrink: 0,
                                 cursor: "col-resize",
                                 background: "var(--vscode-panel-border)",
+                                border: 0,
+                                padding: 0,
                             }}
                             onMouseDown={(e) => {
                                 markWidthsHydrated();
                                 onBranchDividerMouseDown(e);
                             }}
+                            onKeyDown={onBranchDividerKeyDown}
                         />
 
                         <div style={{ display: "flex", overflow: "hidden", flexShrink: 0 }}>
@@ -285,18 +305,23 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 />
                             </div>
 
-                            <div
+                            <button
+                                type="button"
+                                aria-label={t("a11y.resizeCommitList")}
                                 data-testid="undocked-graph-divider"
                                 style={{
                                     width: 4,
                                     flexShrink: 0,
                                     cursor: "col-resize",
                                     background: "var(--vscode-panel-border)",
+                                    border: 0,
+                                    padding: 0,
                                 }}
-                                onMouseDown={(e) => {
+                                onMouseDown={(e: React.MouseEvent) => {
                                     markWidthsHydrated();
                                     onGraphDividerMouseDown(e);
                                 }}
+                                onKeyDown={onGraphDividerKeyDown}
                             />
 
                             <div
@@ -322,15 +347,21 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                     {commitPanelPosition === "right" && (
                         <>
                             <Box
+                                as="button"
+                                type="button"
+                                aria-label={t("a11y.resizeCommitPanel")}
                                 data-testid="undocked-right-commit-divider"
                                 width="4px"
                                 flexShrink={0}
                                 cursor="col-resize"
                                 bg="var(--vscode-panel-border)"
-                                onMouseDown={(e) => {
+                                border={0}
+                                p={0}
+                                onMouseDown={(e: React.MouseEvent) => {
                                     markWidthsHydrated();
                                     onRightCommitPanelDividerMouseDown(e);
                                 }}
+                                onKeyDown={onRightCommitPanelDividerKeyDown}
                                 _hover={{ bg: "var(--vscode-focusBorder, #007acc)" }}
                             />
 

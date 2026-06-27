@@ -2,6 +2,29 @@ import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } fr
 import { MIN_SECTION_WIDTH, type SectionWidthKey, type SectionWidths } from "./sectionWidths";
 
 /**
+ * Redistributes an adjacent section pair by a signed pixel delta while keeping
+ * the pair total stable and preserving the same minimum-width behavior as drag.
+ */
+export function resizeSectionPair(
+    widths: SectionWidths,
+    firstKey: SectionWidthKey,
+    secondKey: SectionWidthKey,
+    delta: number,
+): SectionWidths {
+    const firstStart = widths[firstKey];
+    const secondStart = widths[secondKey];
+    const pairTotal = firstStart + secondStart;
+    const pairMin = Math.min(MIN_SECTION_WIDTH, pairTotal / 2);
+    const nextFirst = Math.max(pairMin, Math.min(pairTotal - pairMin, firstStart + delta));
+
+    return {
+        ...widths,
+        [firstKey]: nextFirst,
+        [secondKey]: pairTotal - nextFirst,
+    };
+}
+
+/**
  * Creates a divider-drag handler that redistributes width between two adjacent
  * undocked sections while keeping their combined width stable.
  */
@@ -36,23 +59,11 @@ export function useColumnPairDrag(
             draggingRef.current = true;
             const startX = e.clientX;
             const startWidths = widthsRef.current;
-            const firstStart = startWidths[firstKey];
-            const secondStart = startWidths[secondKey];
-            const pairTotal = firstStart + secondStart;
-            const pairMin = Math.min(MIN_SECTION_WIDTH, pairTotal / 2);
 
             const onMouseMove = (ev: MouseEvent) => {
                 if (!draggingRef.current) return;
                 const delta = ev.clientX - startX;
-                const nextFirst = Math.max(
-                    pairMin,
-                    Math.min(pairTotal - pairMin, firstStart + delta),
-                );
-                setWidths({
-                    ...startWidths,
-                    [firstKey]: nextFirst,
-                    [secondKey]: pairTotal - nextFirst,
-                });
+                setWidths(resizeSectionPair(startWidths, firstKey, secondKey, delta));
             };
 
             const onMouseUp = () => {
