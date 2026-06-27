@@ -71,16 +71,12 @@ export async function commitSelectedFromPanel(
             throw err;
         }
         postCommitted();
-        return;
+    } else {
+        showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
+        postCommitted();
+        await refreshData();
+        fireWorkingTreeChanged();
     }
-    showTimedInformationMessage(
-        push
-            ? vscode.l10n.t("Committed and pushed successfully.")
-            : vscode.l10n.t("Committed successfully."),
-    );
-    postCommitted();
-    await refreshData();
-    fireWorkingTreeChanged();
 }
 
 /**

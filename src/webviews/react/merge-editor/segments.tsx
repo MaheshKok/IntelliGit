@@ -39,11 +39,16 @@ const TOKEN_CLASS: Record<SyntaxTokenKind, string | undefined> = {
 
 function renderSyntaxHighlightedNodes(line: string, keyPrefix: string): React.ReactNode[] {
     if (!line) return [<React.Fragment key={`${keyPrefix}-nbsp`}>{`\u00A0`}</React.Fragment>];
-    return tokenizeSyntaxLine(line).map((token, i) => (
-        <span key={`${keyPrefix}-${i}`} className={TOKEN_CLASS[token.kind]}>
-            {token.text}
-        </span>
-    ));
+    let offset = 0;
+    return tokenizeSyntaxLine(line).map((token) => {
+        const key = `${keyPrefix}-${offset}-${token.text}`;
+        offset += token.text.length;
+        return (
+            <span key={key} className={TOKEN_CLASS[token.kind]}>
+                {token.text}
+            </span>
+        );
+    });
 }
 
 const HighlightedLine = React.memo(function HighlightedLine({
@@ -76,20 +81,23 @@ const WordDiffLine = React.memo(function WordDiffLine({
 
     const changedMask = buildWordDiffMask(line, compareLine);
     const nodes: React.ReactNode[] = [];
+    let offset = 0;
 
     for (let i = 0; i < tokens.length; i++) {
         const token = tokens[i];
+        const keyOffset = offset;
+        offset += token.length;
         const changed = changedMask[i];
-        const syntaxNodes = renderSyntaxHighlightedNodes(token, `wd-${i}`);
+        const syntaxNodes = renderSyntaxHighlightedNodes(token, `wd-${keyOffset}`);
         if (!changed) {
-            nodes.push(<React.Fragment key={`same-${i}`}>{syntaxNodes}</React.Fragment>);
+            nodes.push(<React.Fragment key={`same-${keyOffset}`}>{syntaxNodes}</React.Fragment>);
             continue;
         }
 
         const isWhitespace = /^\s+$/.test(token);
         nodes.push(
             <span
-                key={`chg-${i}`}
+                key={`chg-${keyOffset}`}
                 className={`word-diff-change ${isWhitespace ? "word-diff-whitespace" : ""}`}
             >
                 {syntaxNodes}
@@ -232,6 +240,12 @@ function padAlignedRows(rows: Array<string | null>, count: number): Array<string
     return padded;
 }
 
+function rowKey(lineNumbers: LineNumberSpec, line: string | null, row: number): string {
+    const primary = lineNumbers.primary[row] ?? "gap";
+    const secondary = lineNumbers.secondary?.[row] ?? "gap";
+    return `${primary}-${secondary}-${row}-${line ?? "spacer"}`;
+}
+
 const CodeBlock = React.memo(
     function CodeBlock({
         lines,
@@ -265,11 +279,14 @@ const CodeBlock = React.memo(
                 <div className="code-lines">
                     {padded.map((line, i) =>
                         line === null ? (
-                            <div key={i} className="code-line spacer-line">
+                            <div
+                                key={rowKey(lineNumbers, line, i)}
+                                className="code-line spacer-line"
+                            >
                                 {" "}
                             </div>
                         ) : (
-                            <div key={i} className="code-line">
+                            <div key={rowKey(lineNumbers, line, i)} className="code-line">
                                 {wordHighlight && paddedCompare ? (
                                     <WordDiffLine line={line} compareLine={paddedCompare[i]} />
                                 ) : (
@@ -617,6 +634,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 </div>
                 <div className="hunk-header-center" onClick={(e) => e.stopPropagation()}>
                     <button
+                        type="button"
                         className={`hunk-choice ${isOurs ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "ours")}
                         title={t("merge.hunk.useLeft")}
@@ -626,6 +644,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                     </button>
                     {segment.changeKind === "conflict" ? (
                         <button
+                            type="button"
                             className={`hunk-choice ${isBoth ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "both")}
                             title={t("merge.hunk.useBoth")}
@@ -635,6 +654,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         </button>
                     ) : null}
                     <button
+                        type="button"
                         className={`hunk-choice ${isTheirs ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "theirs")}
                         title={t("merge.hunk.useRight")}
@@ -643,6 +663,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         {t("merge.hunk.right")}
                     </button>
                     <button
+                        type="button"
                         className={`hunk-choice danger ${isNone ? "active" : ""}`}
                         onClick={() => onResolve(segment.id, "none")}
                         title={t("merge.hunk.dropTitle")}
@@ -679,6 +700,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                     />
                     <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                         <button
+                            type="button"
                             className="action-btn discard-btn"
                             onClick={() => onResolve(segment.id, "theirs")}
                             title={t("merge.hunk.ignoreLeft")}
@@ -687,6 +709,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                             <IconClose />
                         </button>
                         <button
+                            type="button"
                             className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "ours")}
                             title={t("merge.hunk.acceptLeft")}
@@ -715,6 +738,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 >
                     <div className="conflict-actions-right" onClick={(e) => e.stopPropagation()}>
                         <button
+                            type="button"
                             className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
                             onClick={() => onResolve(segment.id, "theirs")}
                             title={t("merge.hunk.acceptRight")}
@@ -724,6 +748,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                             <IconArrowLeft />
                         </button>
                         <button
+                            type="button"
                             className="action-btn discard-btn"
                             onClick={() => onResolve(segment.id, "ours")}
                             title={t("merge.hunk.ignoreRight")}
@@ -808,6 +833,7 @@ export function OverviewRail({
             <div className="overview-track">
                 {markers.map((marker) => (
                     <button
+                        type="button"
                         key={marker.id}
                         className={[
                             "overview-marker",

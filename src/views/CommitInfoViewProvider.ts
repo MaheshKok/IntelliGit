@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import type { CommitDetail, ThemeFolderIconMap } from "../types";
 import type { CommitInfoInbound, CommitInfoOutbound } from "../webviews/protocol/commitInfoTypes";
-import { IconThemeService } from "./shared";
+import { IconThemeService } from "./shared/IconThemeService";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
@@ -189,11 +189,13 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
      * Applies icon-theme decoration and stores the result only if it matches the latest request.
      */
     private async decorateAndStoreDetail(detail: CommitDetail, requestId: number): Promise<void> {
-        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
         if (requestId !== this.requestSeq) return;
-        this.detail = decorated.detail;
-        this.folderIconsByName = decorated.folderIconsByName;
-        this.postCurrentState();
+        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
+        if (requestId === this.requestSeq) {
+            this.detail = decorated.detail;
+            this.folderIconsByName = decorated.folderIconsByName;
+            this.postCurrentState();
+        }
     }
 
     /**

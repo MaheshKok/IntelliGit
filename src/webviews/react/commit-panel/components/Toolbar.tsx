@@ -3,7 +3,7 @@
 import React from "react";
 import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
-import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components";
+import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 
 interface Props {

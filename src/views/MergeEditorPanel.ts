@@ -255,41 +255,43 @@ export class MergeEditorPanel {
     private async postConflictData(): Promise<void> {
         if (!this.isAlive()) return;
         const versions = await this.gitOps.getConflictFileVersions(this.safePath);
-        if (!this.isAlive()) return;
+        if (this.isAlive()) {
+            if (versions.base === "" && versions.ours === "" && versions.theirs === "") {
+                await this.panel.webview.postMessage({
+                    type: "loadError",
+                    message: vscode.l10n.t("File is not in a conflicted state: {path}", {
+                        path: this.safePath,
+                    }),
+                });
+            } else {
+                const labels = await this.gitOps.getMergeSideLabels();
+                if (this.isAlive()) {
+                    const segments = parseConflictVersions(
+                        versions.base,
+                        versions.ours,
+                        versions.theirs,
+                        this.diffOptions,
+                    );
+                    const eolMetadata = detectEolMetadata(
+                        versions.ours,
+                        versions.theirs,
+                        versions.base,
+                    );
 
-        if (versions.base === "" && versions.ours === "" && versions.theirs === "") {
-            await this.panel.webview.postMessage({
-                type: "loadError",
-                message: vscode.l10n.t("File is not in a conflicted state: {path}", {
-                    path: this.safePath,
-                }),
-            });
-            return;
+                    const data: MergeEditorData = {
+                        filePath: this.safePath,
+                        segments,
+                        oursLabel: labels.ours,
+                        theirsLabel: labels.theirs,
+                        eol: eolMetadata.eol,
+                        hasTrailingNewline: eolMetadata.hasTrailingNewline,
+                        diffOptions: this.diffOptions,
+                    };
+
+                    await this.panel.webview.postMessage({ type: "setConflictData", data });
+                }
+            }
         }
-
-        const labels = await this.gitOps.getMergeSideLabels();
-        if (!this.isAlive()) return;
-
-        const segments = parseConflictVersions(
-            versions.base,
-            versions.ours,
-            versions.theirs,
-            this.diffOptions,
-        );
-        const eolMetadata = detectEolMetadata(versions.ours, versions.theirs, versions.base);
-
-        const data: MergeEditorData = {
-            filePath: this.safePath,
-            segments,
-            oursLabel: labels.ours,
-            theirsLabel: labels.theirs,
-            eol: eolMetadata.eol,
-            hasTrailingNewline: eolMetadata.hasTrailingNewline,
-            diffOptions: this.diffOptions,
-        };
-
-        if (!this.isAlive()) return;
-        await this.panel.webview.postMessage({ type: "setConflictData", data });
     }
 
     /**

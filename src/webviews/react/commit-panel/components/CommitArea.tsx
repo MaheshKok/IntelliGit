@@ -100,6 +100,7 @@ export function CommitArea({
                     onChange={() => onAmendChange(!isAmend)}
                     inputId={amendCheckboxId}
                     inputTestId="amend-checkbox"
+                    ariaLabel={t("commit.amend")}
                 />
                 <Box as="span" color="var(--intelligit-pycharm-foreground)" opacity={0.92}>
                     {t("commit.amend")}

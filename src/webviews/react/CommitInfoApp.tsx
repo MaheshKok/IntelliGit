@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useReducer } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import type { CommitDetail, ThemeFolderIconMap, ThemeIconFont, ThemeTreeIcon } from "../../types";
@@ -6,42 +6,76 @@ import type { CommitInfoOutbound, CommitInfoInbound } from "../protocol/commitIn
 import { getVsCodeApi } from "./shared/vscodeApi";
 import theme from "./commit-panel/theme";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { ThemeIconFontFaces } from "./shared/components";
+import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 
 const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
+
+interface CommitInfoState {
+    detail: CommitDetail | null;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+    iconFonts: ThemeIconFont[];
+}
+
+type CommitInfoAction =
+    | { type: "clear" }
+    | {
+          type: "setCommitDetail";
+          detail: CommitDetail;
+          folderIcon?: ThemeTreeIcon;
+          folderExpandedIcon?: ThemeTreeIcon;
+          folderIconsByName?: ThemeFolderIconMap;
+          iconFonts: ThemeIconFont[];
+      };
+
+const initialCommitInfoState: CommitInfoState = {
+    detail: null,
+    iconFonts: [],
+};
+
+function commitInfoReducer(_state: CommitInfoState, action: CommitInfoAction): CommitInfoState {
+    switch (action.type) {
+        case "clear":
+            return initialCommitInfoState;
+        case "setCommitDetail":
+            return {
+                detail: action.detail,
+                folderIcon: action.folderIcon,
+                folderExpandedIcon: action.folderExpandedIcon,
+                folderIconsByName: action.folderIconsByName,
+                iconFonts: action.iconFonts,
+            };
+        default: {
+            const exhaustive: never = action;
+            return exhaustive;
+        }
+    }
+}
 
 /**
  * Hosts the standalone commit-info webview and mirrors extension-owned commit
  * detail, file-icon theme data, and clear messages into local React state.
  */
 function App(): React.ReactElement {
-    const [detail, setDetail] = useState<CommitDetail | null>(null);
-    const [folderIcon, setFolderIcon] = useState<ThemeTreeIcon | undefined>(undefined);
-    const [folderExpandedIcon, setFolderExpandedIcon] = useState<ThemeTreeIcon | undefined>(
-        undefined,
-    );
-    const [folderIconsByName, setFolderIconsByName] = useState<ThemeFolderIconMap | undefined>(
-        undefined,
-    );
-    const [iconFonts, setIconFonts] = useState<ThemeIconFont[]>([]);
+    const [state, dispatch] = useReducer(commitInfoReducer, initialCommitInfoState);
 
     useEffect(() => {
         const handler = (event: MessageEvent<CommitInfoInbound>) => {
             const msg = event.data;
             switch (msg.type) {
                 case "clear":
-                    setDetail(null);
-                    setFolderIcon(undefined);
-                    setFolderExpandedIcon(undefined);
-                    setFolderIconsByName(undefined);
-                    setIconFonts([]);
+                    dispatch({ type: "clear" });
                     return;
                 case "setCommitDetail":
-                    setDetail(msg.detail);
-                    setFolderIcon(msg.folderIcon);
-                    setFolderExpandedIcon(msg.folderExpandedIcon);
-                    setFolderIconsByName(msg.folderIconsByName);
-                    setIconFonts(msg.iconFonts ?? []);
+                    dispatch({
+                        type: "setCommitDetail",
+                        detail: msg.detail,
+                        folderIcon: msg.folderIcon,
+                        folderExpandedIcon: msg.folderExpandedIcon,
+                        folderIconsByName: msg.folderIconsByName,
+                        iconFonts: msg.iconFonts ?? [],
+                    });
                     return;
                 default: {
                     const exhaustive: never = msg;
@@ -62,12 +96,12 @@ function App(): React.ReactElement {
 
     return (
         <>
-            <ThemeIconFontFaces fonts={iconFonts} />
+            <ThemeIconFontFaces fonts={state.iconFonts} />
             <CommitInfoPane
-                detail={detail}
-                folderIcon={folderIcon}
-                folderExpandedIcon={folderExpandedIcon}
-                folderIconsByName={folderIconsByName}
+                detail={state.detail}
+                folderIcon={state.folderIcon}
+                folderExpandedIcon={state.folderExpandedIcon}
+                folderIconsByName={state.folderIconsByName}
                 onOpenDiff={handleOpenDiff}
             />
         </>

@@ -1,0 +1,195 @@
+// Owns the unified extension-host message listener for the undocked webview.
+// The hook keeps graph, commit-panel, settings, and layout restore messages on the existing single channel.
+// Width hydration logic stays byte-for-byte equivalent to the former App effect.
+
+/* eslint-disable react-hooks/exhaustive-deps -- Dependency array intentionally matches the pre-extraction effect. */
+
+import { useEffect } from "react";
+import type React from "react";
+import type { UnifiedInbound, UnifiedOutbound } from "../../protocol/undockedMessages";
+import { getVsCodeApi } from "../shared/vscodeApi";
+import { normalizeSectionWidths, type SectionWidths } from "./sectionWidths";
+import type { CommitPanelAction, GraphAction } from "./commitPanelState";
+
+const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
+
+/**
+ * Parameters for wiring the undocked message bridge into reducer dispatchers.
+ *
+ * Carries reducer dispatchers, graph pagination state, width hydration controls,
+ * the layout measurement ref, and the host-driven commit-panel position setter.
+ */
+export interface UseUnifiedMessagesParams {
+    graphDispatch: React.Dispatch<GraphAction>;
+    cpDispatch: React.Dispatch<CommitPanelAction>;
+    loadingMore: React.MutableRefObject<boolean>;
+    markWidthsHydrated: () => void;
+    setSectionWidths: (next: SectionWidths) => void;
+    layoutRef: React.MutableRefObject<HTMLDivElement | null>;
+    setCommitPanelPosition: (pos: "left" | "right") => void;
+}
+
+/**
+ * Subscribes to unified undocked messages from the extension host.
+ *
+ * @param params - Reducer dispatchers, width controls, and layout setters used by the message switch.
+ */
+export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
+    const {
+        graphDispatch,
+        cpDispatch,
+        loadingMore,
+        markWidthsHydrated,
+        setSectionWidths,
+        layoutRef,
+        setCommitPanelPosition,
+    } = params;
+
+    useEffect(() => {
+        const handler = (event: MessageEvent<UnifiedInbound>) => {
+            const data = event.data;
+
+            switch (data.type) {
+                // --- Graph-side messages ---
+                case "loadCommits":
+                    loadingMore.current = false;
+                    graphDispatch({
+                        type: "loadCommits",
+                        commits: data.commits,
+                        append: Boolean(data.append),
+                        hasMore: data.hasMore,
+                        unpushedHashes: data.unpushedHashes,
+                    });
+                    if (!data.append && data.commits.length > 0) {
+                        vscode.postMessage({
+                            type: "selectCommit",
+                            hash: data.commits[0].hash,
+                        });
+                    }
+                    return;
+
+                case "setBranches":
+                    graphDispatch({
+                        type: "setBranches",
+                        branches: data.branches,
+                        worktrees: data.worktrees,
+                        folderIcon: data.folderIcon,
+                        folderExpandedIcon: data.folderExpandedIcon,
+                        folderIconsByName: data.folderIconsByName,
+                        iconFonts: data.iconFonts,
+                        commitChecksEnabled: data.commitChecksEnabled,
+                    });
+                    return;
+
+                case "setSelectedBranch":
+                    graphDispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
+                    return;
+
+                case "setCommitDetail":
+                    graphDispatch({
+                        type: "setCommitDetail",
+                        detail: data.detail,
+                        folderIcon: data.folderIcon,
+                        folderExpandedIcon: data.folderExpandedIcon,
+                        folderIconsByName: data.folderIconsByName,
+                        iconFonts: data.iconFonts,
+                    });
+                    return;
+
+                case "clearCommitDetail":
+                    graphDispatch({ type: "clearCommitDetail" });
+                    return;
+
+                case "setCommitChecks":
+                    graphDispatch({ type: "setCommitChecks", snapshot: data.snapshot });
+                    return;
+
+                case "loadError":
+                    graphDispatch({ type: "loadError", clearCommits: !loadingMore.current });
+                    loadingMore.current = false;
+                    console.error("[IntelliGit] Load error:", data.message);
+                    return;
+
+                // --- Commit-panel-side messages ---
+                case "update":
+                    cpDispatch({
+                        type: "SET_FILES_AND_STASHES",
+                        files: data.files,
+                        stashes: data.stashes,
+                        shelfFiles: data.shelfFiles,
+                        selectedShelfIndex: data.selectedShelfIndex,
+                        folderIcon: data.folderIcon,
+                        folderExpandedIcon: data.folderExpandedIcon,
+                        folderIconsByName: data.folderIconsByName,
+                        iconFonts: data.iconFonts,
+                        currentBranchHasUpstream: data.currentBranchHasUpstream ?? true,
+                        hasRemotes: data.hasRemotes,
+                        currentBranchAhead: data.currentBranchAhead ?? 0,
+                        currentBranchBehind: data.currentBranchBehind ?? 0,
+                        currentBranchName: data.currentBranchName,
+                        currentBranchUpstream: data.currentBranchUpstream,
+                    });
+                    return;
+
+                case "restoreCommitDraft":
+                    cpDispatch({ type: "RESTORE_COMMIT_DRAFT", message: data.message });
+                    return;
+
+                case "lastCommitMessage":
+                    cpDispatch({ type: "SET_LAST_COMMIT_MESSAGE", message: data.message });
+                    return;
+
+                case "amendBranchCommits":
+                    cpDispatch({ type: "SET_AMEND_BRANCH_COMMITS", commits: data.commits });
+                    return;
+
+                case "committed":
+                    cpDispatch({ type: "COMMITTED" });
+                    return;
+
+                case "refreshing":
+                    cpDispatch({ type: "SET_REFRESHING", active: data.active });
+                    return;
+
+                case "settings":
+                    setCommitPanelPosition(data.commitWindowPosition);
+                    return;
+
+                // Restore persisted column widths from extension
+                case "columnWidths":
+                    // Mark hydrated first so the subsequent state updates are
+                    // allowed to persist (and future user drags too).
+                    markWidthsHydrated();
+                    {
+                        const measuredWidth = layoutRef.current?.clientWidth;
+                        const totalWidth =
+                            typeof measuredWidth === "number" && measuredWidth > 0
+                                ? measuredWidth
+                                : undefined;
+                        const normalized = normalizeSectionWidths(
+                            {
+                                branchWidth: data.branchWidth,
+                                graphWidth: data.graphWidth,
+                                infoWidth: data.infoWidth,
+                                commitPanelWidth: data.commitPanelWidth,
+                            },
+                            totalWidth,
+                        );
+                        setSectionWidths(normalized);
+                    }
+                    return;
+
+                case "error":
+                    cpDispatch({ type: "SET_ERROR", message: data.message });
+                    console.error("[IntelliGit] Extension error:", data.message);
+                    return;
+            }
+        };
+
+        window.addEventListener("message", handler);
+        vscode.postMessage({ type: "ready" });
+
+        return () => window.removeEventListener("message", handler);
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
+    }, [markWidthsHydrated, setSectionWidths]);
+}

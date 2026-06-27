@@ -105,6 +105,7 @@ function App() {
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
             let alignment: AlignedHunkRows | undefined;
+            let renderKey: string;
 
             if (segment.type === "common") {
                 const commonLen = segment.lines.length;
@@ -124,6 +125,7 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, commonLen, lineCount),
                     },
                 };
+                renderKey = `common-${oursCursor}-${baseCursor}-${theirsCursor}-${commonLen}-${segment.lines[0] ?? ""}`;
                 oursCursor += commonLen;
                 baseCursor += commonLen;
                 theirsCursor += commonLen;
@@ -168,6 +170,7 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                 };
+                renderKey = `conflict-${segment.id}`;
                 oursCursor += oursLen;
                 baseCursor += baseLen;
                 theirsCursor += theirsLen;
@@ -190,6 +193,7 @@ function App() {
             return {
                 segment,
                 index,
+                renderKey,
                 startLine,
                 lineCount,
                 lineNumbers,
@@ -425,7 +429,7 @@ function App() {
         return (
             <div className="loading">
                 <div className="error-message">{t("merge.error.load", { error: state.error })}</div>
-                <button className="retry-btn" onClick={handleRetry}>
+                <button type="button" className="retry-btn" onClick={handleRetry}>
                     {t("merge.error.retry")}
                 </button>
             </div>
@@ -498,6 +502,7 @@ function App() {
             <div className="merge-toolbar">
                 <div className="toolbar-left">
                     <button
+                        type="button"
                         className="toolbar-btn subtle"
                         onClick={handleApplyNonConflicting}
                         disabled={autoResolvedCount === 0}
@@ -509,6 +514,7 @@ function App() {
                     </button>
                     <div className="toolbar-nav-group">
                         <button
+                            type="button"
                             className="toolbar-icon-btn"
                             onClick={() => moveActiveConflict(-1)}
                             title={t("merge.toolbar.prevConflict.title")}
@@ -518,6 +524,7 @@ function App() {
                             <IconChevronUp />
                         </button>
                         <button
+                            type="button"
                             className="toolbar-icon-btn"
                             onClick={() => moveActiveConflict(1)}
                             title={t("merge.toolbar.nextConflict.title")}
@@ -529,6 +536,7 @@ function App() {
                     </div>
                     <div className="toolbar-separator" />
                     <button
+                        type="button"
                         className="toolbar-btn subtle dropdown"
                         onClick={handleToggleIgnoreMode}
                         title={t("merge.toolbar.ignoreMode.title")}
@@ -544,6 +552,7 @@ function App() {
                         </span>
                     </button>
                     <button
+                        type="button"
                         className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
                         onClick={() => setHighlightWords((v) => !v)}
                         aria-pressed={highlightWords}
@@ -554,6 +563,7 @@ function App() {
                         {t("merge.toolbar.highlightWords")}
                     </button>
                     <button
+                        type="button"
                         className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
                         onClick={() => setShowDetails((v) => !v)}
                         aria-pressed={showDetails}
@@ -577,6 +587,7 @@ function App() {
                     </span>
                     {currentConflictIndex > 0 ? (
                         <button
+                            type="button"
                             className="toolbar-inline-link"
                             onClick={() => {
                                 if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
@@ -591,6 +602,7 @@ function App() {
 
                 <div className="toolbar-right">
                     <button
+                        type="button"
                         className="toolbar-btn"
                         onClick={handleAcceptAllYours}
                         title={t("merge.toolbar.acceptAllYours.title")}
@@ -601,6 +613,7 @@ function App() {
                         {t("merge.toolbar.acceptAllYours.label")}
                     </button>
                     <button
+                        type="button"
                         className="toolbar-btn"
                         onClick={handleAcceptAllTheirs}
                         title={t("merge.toolbar.acceptAllTheirs.title")}
@@ -648,7 +661,11 @@ function App() {
                             {t("merge.count.changes", { count: oursChanges })},{" "}
                             {t("merge.count.conflicts", { count: total })}
                         </span>
-                        <button className="show-details" onClick={() => setShowDetails((v) => !v)}>
+                        <button
+                            type="button"
+                            className="show-details"
+                            onClick={() => setShowDetails((v) => !v)}
+                        >
                             {showDetails
                                 ? t("merge.toolbar.hideDetails")
                                 : t("merge.toolbar.showDetails")}
@@ -670,7 +687,11 @@ function App() {
                             {t("merge.count.changes", { count: theirsChanges })},{" "}
                             {t("merge.count.conflicts", { count: total })}
                         </span>
-                        <button className="show-details" onClick={() => setShowDetails((v) => !v)}>
+                        <button
+                            type="button"
+                            className="show-details"
+                            onClick={() => setShowDetails((v) => !v)}
+                        >
                             {showDetails
                                 ? t("merge.toolbar.hideDetails")
                                 : t("merge.toolbar.showDetails")}
@@ -684,7 +705,7 @@ function App() {
                     {renderedSegments.map(
                         ({
                             segment,
-                            index,
+                            renderKey,
                             lineCount,
                             lineNumbers,
                             alignment,
@@ -693,7 +714,7 @@ function App() {
                         }) =>
                             segment.type === "common" ? (
                                 <CommonSection
-                                    key={index}
+                                    key={renderKey}
                                     segment={segment}
                                     lineCount={lineCount}
                                     lineNumbers={lineNumbers}
@@ -701,7 +722,7 @@ function App() {
                                 />
                             ) : (
                                 <ConflictSection
-                                    key={index}
+                                    key={renderKey}
                                     segment={segment}
                                     resolution={state.resolutions[segment.id]}
                                     editedLines={state.edits[segment.id]}
@@ -730,19 +751,28 @@ function App() {
 
             <div className="merge-footer">
                 <div className="footer-left">
-                    <button className="footer-btn secondary ghost" onClick={handleBulkAcceptYours}>
+                    <button
+                        type="button"
+                        className="footer-btn secondary ghost"
+                        onClick={handleBulkAcceptYours}
+                    >
                         {t("merge.footer.useFileOurs")}
                     </button>
-                    <button className="footer-btn secondary ghost" onClick={handleBulkAcceptTheirs}>
+                    <button
+                        type="button"
+                        className="footer-btn secondary ghost"
+                        onClick={handleBulkAcceptTheirs}
+                    >
                         {t("merge.footer.useFileTheirs")}
                     </button>
                     <span className="footer-hint">{t("merge.footer.hint")}</span>
                 </div>
                 <div className="footer-right">
-                    <button className="footer-btn secondary" onClick={handleClose}>
+                    <button type="button" className="footer-btn secondary" onClick={handleClose}>
                         {t("common.cancel")}
                     </button>
                     <button
+                        type="button"
                         className={`footer-btn primary ${canApply ? "" : "disabled"}`}
                         onClick={handleApply}
                         disabled={!canApply}

@@ -6,9 +6,12 @@ import { formatDateTime } from "../shared/date";
 import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
 import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
-import { RefTypeIcon, TreeFolderIcon } from "../shared/components";
+import { RefTypeIcon } from "../shared/components/RefTypeIcon";
+import { TreeFolderIcon } from "../shared/components/TreeIcons";
 import { ChevronIcon } from "../shared/components/Icons";
-import { getLeafName, resolveFolderIcon, splitCommitRefs } from "../shared/utils";
+import { resolveFolderIcon } from "../shared/utils/folderIcons";
+import { getLeafName } from "../shared/utils/path";
+import { splitCommitRefs } from "../shared/utils/refs";
 import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
 import {

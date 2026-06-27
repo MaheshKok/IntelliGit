@@ -252,7 +252,7 @@ describe("low coverage components", () => {
                 onBranchAction={onBranchAction}
             />,
         );
-        const localHeader = Array.from(container.querySelectorAll("div")).find(
+        const localHeader = Array.from(container.querySelectorAll("button")).find(
             (el) => el.textContent?.trim() === "Local",
         ) as HTMLElement;
         act(() => {
@@ -260,7 +260,7 @@ describe("low coverage components", () => {
             localHeader.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        const remoteFolderHeader = Array.from(container.querySelectorAll("div")).find(
+        const remoteFolderHeader = Array.from(container.querySelectorAll("button")).find(
             (el) => el.textContent?.trim() === "origin",
         ) as HTMLElement;
         act(() => {

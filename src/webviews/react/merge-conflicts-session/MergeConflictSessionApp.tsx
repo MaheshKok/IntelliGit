@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useReducer } from "react";
 import { createRoot } from "react-dom/client";
 import { getVsCodeApi as getSharedVsCodeApi } from "../shared/vscodeApi";
 import { t } from "../shared/i18n";
@@ -25,37 +25,83 @@ function fileName(filePath: string): string {
     return filePath.slice(idx + 1);
 }
 
+interface SessionState {
+    sourceBranch: string;
+    targetBranch: string;
+    files: MergeConflictFile[];
+    selectedPath: string | null;
+    groupByDirectory: boolean;
+    error: string | null;
+}
+
+type SessionAction =
+    | {
+          type: "setSessionData";
+          data: { sourceBranch: string; targetBranch: string; files: MergeConflictFile[] };
+      }
+    | { type: "loadError"; message: string }
+    | { type: "selectPath"; path: string }
+    | { type: "setGroupByDirectory"; value: boolean };
+
+function createInitialSessionState(): SessionState {
+    return {
+        sourceBranch: t("mergeSession.defaultSource"),
+        targetBranch: t("mergeSession.defaultTarget"),
+        files: [],
+        selectedPath: null,
+        groupByDirectory: false,
+        error: null,
+    };
+}
+
+function sessionReducer(state: SessionState, action: SessionAction): SessionState {
+    switch (action.type) {
+        case "setSessionData": {
+            const nextFiles = action.data.files;
+            const selectedPath =
+                state.selectedPath && nextFiles.some((file) => file.path === state.selectedPath)
+                    ? state.selectedPath
+                    : (nextFiles[0]?.path ?? null);
+            return {
+                ...state,
+                sourceBranch: action.data.sourceBranch,
+                targetBranch: action.data.targetBranch,
+                files: nextFiles,
+                selectedPath,
+                error: null,
+            };
+        }
+        case "loadError":
+            return { ...state, error: action.message };
+        case "selectPath":
+            return { ...state, selectedPath: action.path };
+        case "setGroupByDirectory":
+            return { ...state, groupByDirectory: action.value };
+        default: {
+            const exhaustive: never = action;
+            return exhaustive;
+        }
+    }
+}
+
 /**
  * Renders the merge-conflict session dashboard, maps extension session data into
  * selectable rows, posts file-scoped accept/open commands, and sends session-level
  * refresh/close commands.
  */
 function App() {
-    const [sourceBranch, setSourceBranch] = useState(t("mergeSession.defaultSource"));
-    const [targetBranch, setTargetBranch] = useState(t("mergeSession.defaultTarget"));
-    const [files, setFiles] = useState<MergeConflictFile[]>([]);
-    const [selectedPath, setSelectedPath] = useState<string | null>(null);
-    const [groupByDirectory, setGroupByDirectory] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [state, dispatch] = useReducer(sessionReducer, undefined, createInitialSessionState);
+    const { sourceBranch, targetBranch, files, selectedPath, groupByDirectory, error } = state;
 
     useEffect(() => {
         const vscode = getVsCodeApi();
         const handler = (event: MessageEvent<InboundMessage>) => {
             if (event.data.type === "setSessionData") {
-                const next = event.data.data;
-                setSourceBranch(next.sourceBranch);
-                setTargetBranch(next.targetBranch);
-                setFiles(next.files);
-                setError(null);
-                setSelectedPath((prev) =>
-                    prev && next.files.some((file) => file.path === prev)
-                        ? prev
-                        : (next.files[0]?.path ?? null),
-                );
+                dispatch({ type: "setSessionData", data: event.data.data });
                 return;
             }
             if (event.data.type === "loadError") {
-                setError(event.data.message);
+                dispatch({ type: "loadError", message: event.data.message });
             }
         };
 
@@ -111,12 +157,12 @@ function App() {
                 className={selected ? "row selected" : "row"}
                 tabIndex={0}
                 aria-selected={selected}
-                onClick={() => setSelectedPath(file.path)}
+                onClick={() => dispatch({ type: "selectPath", path: file.path })}
                 onDoubleClick={() => openMerge(file.path)}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
-                        setSelectedPath(file.path);
+                        dispatch({ type: "selectPath", path: file.path });
                     }
                     if (event.key === "Enter") {
                         openMerge(file.path);
@@ -175,6 +221,7 @@ function App() {
 
                 <div className="action-column">
                     <button
+                        type="button"
                         className="action-btn"
                         disabled={!selectedFile}
                         onClick={() => acceptSelected("acceptYours")}
@@ -182,6 +229,7 @@ function App() {
                         {t("mergeSession.acceptYours")}
                     </button>
                     <button
+                        type="button"
                         className="action-btn"
                         disabled={!selectedFile}
                         onClick={() => acceptSelected("acceptTheirs")}
@@ -189,13 +237,14 @@ function App() {
                         {t("mergeSession.acceptTheirs")}
                     </button>
                     <button
+                        type="button"
                         className="action-btn primary"
                         disabled={!selectedFile}
                         onClick={() => selectedFile && openMerge(selectedFile.path)}
                     >
                         {t("mergeSession.merge")}
                     </button>
-                    <button className="action-btn" onClick={refresh}>
+                    <button type="button" className="action-btn" onClick={refresh}>
                         {t("common.refresh")}
                     </button>
                 </div>
@@ -206,11 +255,16 @@ function App() {
                     <input
                         type="checkbox"
                         checked={groupByDirectory}
-                        onChange={(event) => setGroupByDirectory(event.target.checked)}
+                        onChange={(event) =>
+                            dispatch({
+                                type: "setGroupByDirectory",
+                                value: event.target.checked,
+                            })
+                        }
                     />
                     {t("mergeSession.groupByDirectory")}
                 </label>
-                <button className="close-btn" onClick={close}>
+                <button type="button" className="close-btn" onClick={close}>
                     {t("common.close")}
                 </button>
             </div>

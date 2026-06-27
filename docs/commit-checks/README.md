@@ -76,14 +76,14 @@ reload** (`Developer: Reload Window`).
 |---------|------|---------|--------|
 | `intelligit.commitChecks.enabled` | boolean | `true` | Master switch. When `false`, no badge renders and no check network calls are made. |
 | `intelligit.commitChecks.providers` | object | all `true` | Per-provider toggles keyed `github`, `gitlab`, `bitbucket-cloud`, `bitbucket-server`. A disabled provider yields no badge for its remotes. |
-| `intelligit.commitChecks.ciCdFilter` | string | `""` | Safe regex subset (case-insensitive) selecting which check names count as CI/CD on GitHub and GitLab. Empty keeps the built-in pattern. |
+| `intelligit.commitChecks.ciCdFilter` | string | `""` | Regex (case-insensitive) selecting which check names count as CI/CD on GitHub and GitLab. Empty keeps the built-in pattern. |
 | `intelligit.commitChecks.hosts` | object | `{}` | Self-hosted host-to-provider map (see above). |
 
 Notes:
 
 - `ciCdFilter` only overrides the *include* half of the filter. Review-bot checks
-  (coderabbit, reviewdog, and similar) are always excluded regardless of the pattern,
-  and an invalid or unsafe regex falls back to the built-in pattern and shows a one-time warning.
+  (CodeRabbit, reviewdog, and similar) are always excluded regardless of the pattern,
+  and an invalid regex falls back to the built-in pattern and shows a one-time warning.
 - The `ciCdFilter` allowlist applies to GitHub and GitLab only. Bitbucket Cloud and
   Server intentionally aggregate every reported build status (no allowlist) so a
   failing non-keyword tool such as Jenkins or SonarCloud is never hidden.

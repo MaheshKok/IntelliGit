@@ -241,21 +241,25 @@ export class MergeConflictSessionPanel {
     private async postSessionData(options: { closeWhenResolved: boolean }): Promise<void> {
         if (!this.isAlive()) return;
         const files = await this.gitOps.getConflictFilesDetailed();
-        if (!this.isAlive()) return;
-        if (files.length === 0 && options.closeWhenResolved) {
-            showTimedInformationMessage(vscode.l10n.t("All merge conflicts are resolved."));
-            this.panel.dispose();
-            return;
+        if (this.isAlive()) {
+            if (files.length === 0 && options.closeWhenResolved) {
+                showTimedInformationMessage(vscode.l10n.t("All merge conflicts are resolved."));
+                this.panel.dispose();
+            } else {
+                const data: MergeConflictSessionData = {
+                    sourceBranch: this.sourceBranch,
+                    targetBranch: this.targetBranch,
+                    files,
+                };
+
+                if (!this.isAlive()) return;
+                try {
+                    await this.panel.webview.postMessage({ type: "setSessionData", data });
+                } catch {
+                    // Panel may have been disposed between the active check and postMessage.
+                }
+            }
         }
-
-        const data: MergeConflictSessionData = {
-            sourceBranch: this.sourceBranch,
-            targetBranch: this.targetBranch,
-            files,
-        };
-
-        if (!this.isAlive()) return;
-        await this.panel.webview.postMessage({ type: "setSessionData", data });
     }
 
     /**

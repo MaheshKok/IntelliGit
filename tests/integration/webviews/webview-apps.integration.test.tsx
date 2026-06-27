@@ -106,7 +106,6 @@ afterEach(() => {
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/TabBar");
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/CommitTab");
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/ShelfTab");
-    vi.doUnmock("../../../src/webviews/react/shared/components");
     document.body.innerHTML = "";
     vi.clearAllMocks();
 });
@@ -676,9 +675,6 @@ describe("UndockedApp integration", () => {
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
             ShelfTab: () => <div>Shelf</div>,
-        }));
-        vi.doMock("../../../src/webviews/react/shared/components", () => ({
-            ThemeIconFontFaces: () => null,
         }));
     }
 

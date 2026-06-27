@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "Os melhores recursos de Git do PyCharm, VS Code e Visual Studio IDE",
+    "extension.description": "Interface Git no estilo IntelliJ para VS Code com gráfico de commits, detalhes de commits, fluxo de shelf e explorador de alterações de arquivos.",
     "view.commit": "Commit",
     "view.graph": "Gráfico",
     "view.mergeConflicts": "Conflitos de mesclagem",
@@ -69,5 +69,5 @@
     "command.commitChecksSignOut": "Sair do provedor de verificações de commit",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a safe regex subset (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Substitui quais nomes de verificação contam como CI/CD para o selo (somente GitHub e GitLab). Forneça uma expressão regular (comparada sem diferenciar maiúsculas de minúsculas com o nome e a descrição de cada verificação); deixe em branco para usar o padrão integrado. Bots de revisão de código são sempre excluídos, independentemente deste valor. As alterações entram em vigor após recarregar a janela."
 }

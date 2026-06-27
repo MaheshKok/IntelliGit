@@ -15,7 +15,7 @@ import type {
     CommitGraphInbound,
 } from "../webviews/protocol/commitGraphTypes";
 import { isBranchAction, isCommitAction } from "../webviews/protocol/commitGraphTypes";
-import { IconThemeService } from "./shared";
+import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import {
     assertGitHash,
@@ -329,10 +329,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             ).catch(() => {});
         }
         try {
-            await this.iconTheme.initIconThemeData();
-            const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
-            const stashes = await this.gitOps.listShelved();
-            const currentBranchStatus = await this.currentBranchStatus();
+            const [status, stashes, currentBranchStatus] = await Promise.all([
+                this.gitOps.getStatus(),
+                this.gitOps.listShelved(),
+                this.currentBranchStatus(),
+                this.iconTheme.initIconThemeData(),
+            ]);
+            const files = await this.iconTheme.decorateWorkingFiles(status);
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedShelfIndex !== null &&
@@ -353,39 +356,40 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 ...files,
                 ...shelfFiles,
             ]);
-            if (refreshRequestId !== this.dataRefreshSeq) return;
-            this.folderIconsByName = folderIconsByName;
-            this.files = files;
-            this.stashes = stashes;
-            this.selectedShelfIndex = selectedShelfIndex;
-            this.shelfFiles = shelfFiles;
-            this.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
-            this.hasRemotesCache = currentBranchStatus.hasRemotes;
-            this.currentBranchAheadCache = currentBranchStatus.ahead;
-            this.currentBranchBehindCache = currentBranchStatus.behind;
-            this.currentBranchNameCache = currentBranchStatus.name;
-            this.currentBranchUpstreamCache = currentBranchStatus.upstream;
-            const uniquePaths = new Set(files.map((f) => f.path));
-            const count = uniquePaths.size;
-            this._onDidChangeFileCount.fire(count);
-            this.updateViewCount(count);
-            this.postToWebview({
-                type: "update",
-                files,
-                stashes,
-                shelfFiles,
-                selectedShelfIndex,
-                folderIcon: folderIcons.folderIcon,
-                folderExpandedIcon: folderIcons.folderExpandedIcon,
-                folderIconsByName: this.folderIconsByName,
-                iconFonts,
-                currentBranchHasUpstream: currentBranchStatus.hasUpstream,
-                hasRemotes: currentBranchStatus.hasRemotes,
-                currentBranchAhead: currentBranchStatus.ahead,
-                currentBranchBehind: currentBranchStatus.behind,
-                currentBranchName: currentBranchStatus.name,
-                currentBranchUpstream: currentBranchStatus.upstream,
-            });
+            if (refreshRequestId === this.dataRefreshSeq) {
+                this.folderIconsByName = folderIconsByName;
+                this.files = files;
+                this.stashes = stashes;
+                this.selectedShelfIndex = selectedShelfIndex;
+                this.shelfFiles = shelfFiles;
+                this.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
+                this.hasRemotesCache = currentBranchStatus.hasRemotes;
+                this.currentBranchAheadCache = currentBranchStatus.ahead;
+                this.currentBranchBehindCache = currentBranchStatus.behind;
+                this.currentBranchNameCache = currentBranchStatus.name;
+                this.currentBranchUpstreamCache = currentBranchStatus.upstream;
+                const uniquePaths = new Set(files.map((f) => f.path));
+                const count = uniquePaths.size;
+                this._onDidChangeFileCount.fire(count);
+                this.updateViewCount(count);
+                this.postToWebview({
+                    type: "update",
+                    files,
+                    stashes,
+                    shelfFiles,
+                    selectedShelfIndex,
+                    folderIcon: folderIcons.folderIcon,
+                    folderExpandedIcon: folderIcons.folderExpandedIcon,
+                    folderIconsByName: this.folderIconsByName,
+                    iconFonts,
+                    currentBranchHasUpstream: currentBranchStatus.hasUpstream,
+                    hasRemotes: currentBranchStatus.hasRemotes,
+                    currentBranchAhead: currentBranchStatus.ahead,
+                    currentBranchBehind: currentBranchStatus.behind,
+                    currentBranchName: currentBranchStatus.name,
+                    currentBranchUpstream: currentBranchStatus.upstream,
+                });
+            }
         } finally {
             if (!silent) {
                 const remainingMs = MIN_VISIBLE_REFRESH_MS - (Date.now() - refreshStartedAt);
@@ -457,20 +461,24 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId !== this.requestSeq) return;
-            this.offset = commits.length;
-            this.postToWebview({
-                type: "loadCommits",
-                commits,
-                hasMore: commits.length >= this.PAGE_SIZE,
-                append: false,
-                unpushedHashes,
-            });
+            if (requestId === this.requestSeq) {
+                this.offset = commits.length;
+                this.postToWebview({
+                    type: "loadCommits",
+                    commits,
+                    hasMore: commits.length >= this.PAGE_SIZE,
+                    append: false,
+                    unpushedHashes,
+                });
+            }
         } catch (err) {
-            if (requestId !== this.requestSeq) return;
-            const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
-            this.postToWebview({ type: "loadError", message });
+            if (requestId === this.requestSeq) {
+                const message = getErrorMessage(err);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Git log error: {message}", { message }),
+                );
+                this.postToWebview({ type: "loadError", message });
+            }
         }
     }
     /**
@@ -490,20 +498,24 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId !== this.requestSeq) return;
-            this.offset += commits.length;
-            this.postToWebview({
-                type: "loadCommits",
-                commits,
-                hasMore: commits.length >= this.PAGE_SIZE,
-                append: true,
-                unpushedHashes,
-            });
+            if (requestId === this.requestSeq) {
+                this.offset += commits.length;
+                this.postToWebview({
+                    type: "loadCommits",
+                    commits,
+                    hasMore: commits.length >= this.PAGE_SIZE,
+                    append: true,
+                    unpushedHashes,
+                });
+            }
         } catch (err) {
-            if (requestId !== this.requestSeq) return;
-            const message = getErrorMessage(err);
-            vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
-            this.postToWebview({ type: "loadError", message });
+            if (requestId === this.requestSeq) {
+                const message = getErrorMessage(err);
+                vscode.window.showErrorMessage(
+                    vscode.l10n.t("Git log error: {message}", { message }),
+                );
+                this.postToWebview({ type: "loadError", message });
+            }
         } finally {
             if (requestId === this.requestSeq) {
                 this.loadingMore = false;
@@ -755,11 +767,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         detail: CommitDetail,
         requestId: number,
     ): Promise<void> {
-        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
         if (requestId !== this.commitDetailSeq) return;
-        this.selectedCommitDetail = decorated.detail;
-        this.commitDetailFolderIconsByName = decorated.folderIconsByName;
-        this.postGraphCommitDetailState();
+        const decorated = await this.iconTheme.decorateCommitDetailWithFolderIcons(detail);
+        if (requestId === this.commitDetailSeq) {
+            this.selectedCommitDetail = decorated.detail;
+            this.commitDetailFolderIconsByName = decorated.folderIconsByName;
+            this.postGraphCommitDetailState();
+        }
     }
     private postToWebview(msg: InboundMessage | CommitGraphInbound): void {
         this.view?.webview.postMessage(msg);

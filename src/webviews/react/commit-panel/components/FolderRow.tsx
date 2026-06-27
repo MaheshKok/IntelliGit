@@ -8,8 +8,8 @@ import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "./TreeIcons";
-import { resolveFolderIcon } from "../../shared/utils";
-import { ChevronIcon } from "../../shared/components";
+import { ChevronIcon } from "../../shared/components/Icons";
+import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { t } from "../../shared/i18n";
 
 interface Props {
@@ -77,6 +77,7 @@ function FolderRowInner({
                 isChecked={isAllChecked}
                 isIndeterminate={isSomeChecked}
                 onChange={() => onToggleCheck(dirPath)}
+                ariaLabel={dirPath}
             />
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.82}>

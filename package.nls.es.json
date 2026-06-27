@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "Las mejores funciones de Git de PyCharm, VS Code y Visual Studio IDE",
+    "extension.description": "IU de Git estilo IntelliJ para VS Code con gráfico de commits, detalles de commits, flujo de shelf y explorador de cambios de archivos.",
     "view.commit": "Commit",
     "view.graph": "Gráfico",
     "view.mergeConflicts": "Fusionar conflictos",
@@ -69,5 +69,5 @@
     "command.commitChecksSignOut": "Cerrar sesión del proveedor de comprobaciones de commits",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a safe regex subset (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Sobrescribe qué nombres de comprobación cuentan como CI/CD para la insignia (solo GitHub y GitLab). Proporciona una expresión regular (se compara sin distinguir mayúsculas y minúsculas con el nombre y la descripción de cada comprobación); déjalo vacío para usar el patrón integrado. Los bots de revisión de código siempre se excluyen independientemente de este valor. Los cambios surten efecto después de recargar la ventana."
 }

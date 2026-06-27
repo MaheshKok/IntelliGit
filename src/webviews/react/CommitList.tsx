@@ -8,7 +8,7 @@ import { computeGraph, LANE_WIDTH, ROW_HEIGHT } from "./graph";
 import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
-import { CommitRow } from "./commit-list/CommitRow";
+import { CommitListRows } from "./commit-list/CommitListRows";
 import { MAX_NONE_REFRESH_ATTEMPTS } from "./commit-list/checksRefresh";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
@@ -17,9 +17,7 @@ import { t } from "./shared/i18n";
 import {
     AUTHOR_COL_WIDTH,
     BRANCH_SCOPE_STYLE,
-    CANVAS_STYLE,
     CHECKS_COL_WIDTH,
-    contentContainerStyle,
     DATE_COL_WIDTH,
     FILTER_BAR_STYLE,
     FILTER_CLEAR_BUTTON_STYLE,
@@ -27,9 +25,7 @@ import {
     FILTER_INPUT_STYLE,
     FILTER_INPUT_WRAP_STYLE,
     headerRowStyle,
-    LOADING_MORE_STYLE,
     ROOT_STYLE,
-    SCROLL_VIEWPORT_STYLE,
 } from "./commit-list/styles";
 
 const MIN_PREFIX_LENGTH = 7;
@@ -97,7 +93,8 @@ export function CommitList({
     headerLabel,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const viewportRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+    const viewportResizeObserverRef = useRef<ResizeObserver | null>(null);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; commit: Commit } | null>(
         null,
     );
@@ -121,20 +118,21 @@ export function CommitList({
         graphWidth,
     });
 
-    useEffect(() => {
-        const viewport = viewportRef.current;
-        if (!viewport) return;
+    const setViewportNode = useCallback((node: HTMLDivElement | null) => {
+        viewportResizeObserverRef.current?.disconnect();
+        viewportResizeObserverRef.current = null;
+        viewportRef.current = node;
+        if (!node) return;
 
-        const updateHeight = () => setViewportHeight(viewport.clientHeight);
+        const updateHeight = () => setViewportHeight(node.clientHeight);
         updateHeight();
 
         const observer = new ResizeObserver(updateHeight);
-        observer.observe(viewport);
-
-        return () => {
-            observer.disconnect();
-        };
+        observer.observe(node);
+        viewportResizeObserverRef.current = observer;
     }, []);
+
+    useEffect(() => () => viewportResizeObserverRef.current?.disconnect(), []);
 
     const unpushedLookup = useMemo(() => {
         const exact = new Set(unpushedHashes);
@@ -271,6 +269,7 @@ export function CommitList({
                     <div style={FILTER_INPUT_WRAP_STYLE}>
                         <input
                             type="text"
+                            aria-label={t("commit.search.placeholder")}
                             placeholder={t("commit.search.placeholder")}
                             value={filterText}
                             onChange={(event) => onFilterText(event.target.value)}
@@ -315,63 +314,29 @@ export function CommitList({
                 </div>
             )}
 
-            <div
-                ref={viewportRef}
-                data-testid="commit-list-viewport"
-                style={SCROLL_VIEWPORT_STYLE}
+            <CommitListRows
+                commits={commits}
+                visibleCommits={visibleCommits}
+                visibleRange={visibleRange}
+                graphWidth={graphWidth}
+                graphRows={graphRows}
+                canvasRef={canvasRef}
+                setViewportNode={setViewportNode}
+                selectedHash={selectedHash}
+                unpushedHashes={unpushedHashes}
+                isUnpushedCommit={isUnpushedCommit}
+                hasMore={hasMore}
+                showAuthorDate={showAuthorDate}
+                commitChecks={commitChecks}
+                onSelectCommit={onSelectCommit}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={onOpenCommitCheckUrl}
+                onSignInForCommitChecks={onSignInForCommitChecks}
+                onCommitHover={onCommitHover}
+                onCommitUnhover={onCommitUnhover}
+                onRowContextMenu={handleRowContextMenu}
                 onScroll={handleScroll}
-            >
-                <div style={contentContainerStyle(commits.length + (hasMore ? 1 : 0))}>
-                    <canvas ref={canvasRef} style={CANVAS_STYLE} />
-
-                    <div
-                        style={{
-                            position: "absolute",
-                            left: 0,
-                            right: 0,
-                            top: visibleRange.start * ROW_HEIGHT,
-                            zIndex: 2,
-                        }}
-                    >
-                        {visibleCommits.map((commit, offset) => {
-                            const idx = visibleRange.start + offset;
-                            return (
-                                <CommitRow
-                                    key={commit.hash}
-                                    commit={commit}
-                                    graphWidth={graphWidth}
-                                    isSelected={selectedHash === commit.hash}
-                                    isUnpushed={isUnpushedCommit(commit.hash)}
-                                    laneColor={graphRows[idx]?.color}
-                                    onSelect={onSelectCommit}
-                                    onContextMenu={handleRowContextMenu}
-                                    onHover={onCommitHover}
-                                    onUnhover={onCommitUnhover}
-                                    showAuthorDate={showAuthorDate}
-                                    checks={commitChecks?.get(commit.hash)}
-                                    onRequestChecks={onRequestCommitChecks}
-                                    onOpenCheckUrl={onOpenCommitCheckUrl}
-                                    onSignIn={onSignInForCommitChecks}
-                                />
-                            );
-                        })}
-                    </div>
-
-                    {hasMore && (
-                        <div
-                            style={{
-                                ...LOADING_MORE_STYLE,
-                                position: "absolute",
-                                left: 0,
-                                right: 0,
-                                top: commits.length * ROW_HEIGHT,
-                            }}
-                        >
-                            {t("commit.loadingMore")}
-                        </div>
-                    )}
-                </div>
-            </div>
+            />
 
             {contextMenu && (
                 <ContextMenu

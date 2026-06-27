@@ -9,7 +9,7 @@ import type {
 } from "../types";
 import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps";
 import { assertNumber, assertRepoPathArray, assertString } from "./messageValidation";
-import type { IconThemeService } from "./shared";
+import type { IconThemeService } from "./shared/IconThemeService";
 import { showTimedInformationMessage } from "../utils/notifications";
 
 interface PanelFileActionDeps {

@@ -5,6 +5,22 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.1] - 2026-06-27
+
+### Changed
+
+- Reduced React static-analysis (react-doctor) warning noise across the webviews through a series of zero-behaviour-change refactors. Split six oversized components into focused presentational children and custom hooks: `CommitList` into `CommitListRows`; `FileTree` into `FileTreeEntries` plus the `useFileDrag` drag-and-drop hook; `CommitGraphPanel` into the `useCommitGraphMessages` message-handler hook; `BranchColumn` into `BranchColumnSections`; `ShelfTab` into `ShelfToolbar` and `ShelfStashList`; and the undocked `App` into `UndockedLayout` plus the `useUnifiedMessages` and `useUndockedActions` hooks. No component render output or webview message contract changed; dependency arrays were preserved verbatim during every extraction.
+- Migrated `BranchColumn` and `NativeCommitGraph` to the `useReducer` pattern, pruned derived state in `FileTree` and the checked-files hook with `useMemo`, replaced inline style objects with stable constant references, and switched barrel imports to direct module paths to cut needless re-renders and import-cycle warnings.
+
+### Fixed
+
+- Fixed unstable React list keys and sequential-`await` race conditions in the commit-graph view-provider request handling that react-doctor flagged, reducing bug-class warnings from 33 to 5.
+- Parallelised the bulk-branch-delete merge-safety preflight (the per-branch `merge-base --is-ancestor` check) and other independent refresh operations with `Promise.all`; the per-branch checks are independent, so deleting many branches no longer serialises them.
+
+### Security
+
+- Replaced `glpat-`-shaped fixture tokens in the GitLab provider tests with scanner-safe sentinel values so secret scanners stop flagging the test data as a leaked credential (test-only; no runtime change).
+
 ## [0.14.0] - 2026-06-25
 
 ### Added

@@ -302,16 +302,18 @@ async function assertBulkBranchesMerged(
     executor: GitExecutor,
     branches: Branch[],
 ): Promise<string[]> {
-    const unmerged: string[] = [];
-    for (const branch of branches) {
-        if (branch.isRemote) continue;
-        try {
-            await executor.run(["merge-base", "--is-ancestor", branch.name, "HEAD"]);
-        } catch {
-            unmerged.push(branch.name);
-        }
-    }
-    return unmerged;
+    const localBranches = branches.filter((branch) => !branch.isRemote);
+    const results = await Promise.all(
+        localBranches.map(async (branch) => {
+            try {
+                await executor.run(["merge-base", "--is-ancestor", branch.name, "HEAD"]);
+                return null;
+            } catch {
+                return branch.name;
+            }
+        }),
+    );
+    return results.filter((name): name is string => name !== null);
 }
 
 /** Deletes either a local branch ref or its remote-tracking target without mixing the two paths. */
@@ -676,15 +678,14 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!branch || branch.isRemote) return;
                 if (!validateBranchArg(branch.name)) return;
                 const tracked = resolveTrackedRemoteBranch(branch, getCurrentBranches());
-                const fallbackRemote =
-                    !tracked && !branch.isCurrent
-                        ? await resolveRemoteName(branch, executor)
-                        : undefined;
-                const fallbackRemoteName = fallbackRemote ?? "";
                 if (!tracked && branch.isCurrent) {
                     await vscode.commands.executeCommand("intelligit.publishBranch");
                     return;
                 }
+                const fallbackRemote = !tracked
+                    ? await resolveRemoteName(branch, executor)
+                    : undefined;
+                const fallbackRemoteName = fallbackRemote ?? "";
                 if (!tracked && !fallbackRemoteName) {
                     vscode.window.showWarningMessage(
                         vscode.l10n.t(

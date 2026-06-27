@@ -9,6 +9,7 @@ interface Props {
     onChange: () => void;
     inputTestId?: string;
     inputId?: string;
+    ariaLabel?: string;
 }
 
 const SIZE = 14;
@@ -19,6 +20,47 @@ const UNCHECKED_BORDER = "var(--intelligit-pycharm-checkbox-unchecked-border)";
 const CHECKED_BG = "var(--intelligit-pycharm-checkbox-checked-bg)";
 const CHECKED_BORDER = "var(--intelligit-pycharm-blue)";
 const CHECK_COLOR = "#c8ddff";
+const CHECKBOX_CONTAINER_STYLE: React.CSSProperties = {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: SIZE,
+    height: SIZE,
+    flexShrink: 0,
+};
+const CHECKBOX_INPUT_STYLE: React.CSSProperties = {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+    cursor: "pointer",
+    margin: 0,
+};
+const CHECKBOX_UNCHECKED_STYLE: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: SIZE,
+    height: SIZE,
+    border: `${BORDER_WIDTH}px solid ${UNCHECKED_BORDER}`,
+    borderRadius: BORDER_RADIUS,
+    background: UNCHECKED_BG,
+    pointerEvents: "none",
+    boxShadow: "none",
+};
+const CHECKBOX_FILLED_STYLE: React.CSSProperties = {
+    ...CHECKBOX_UNCHECKED_STYLE,
+    border: `${BORDER_WIDTH}px solid ${CHECKED_BORDER}`,
+    background: CHECKED_BG,
+    boxShadow: "inset 0 0 0 1px rgba(160, 189, 237, 0.14)",
+};
+const INDETERMINATE_MARK_STYLE: React.CSSProperties = {
+    width: 6,
+    height: 2,
+    background: CHECK_COLOR,
+    borderRadius: 1,
+};
 
 function VscCheckboxInner({
     isChecked,
@@ -26,6 +68,7 @@ function VscCheckboxInner({
     onChange,
     inputTestId,
     inputId,
+    ariaLabel,
 }: Props): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -38,50 +81,21 @@ function VscCheckboxInner({
     const filled = isChecked || isIndeterminate;
 
     return (
-        <span
-            style={{
-                position: "relative",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: SIZE,
-                height: SIZE,
-                flexShrink: 0,
-            }}
-        >
+        <span style={CHECKBOX_CONTAINER_STYLE}>
             <input
                 ref={inputRef}
                 type="checkbox"
                 id={inputId}
+                aria-label={ariaLabel}
                 data-testid={inputTestId}
                 checked={isChecked}
                 onChange={(e) => {
                     e.stopPropagation();
                     onChange();
                 }}
-                style={{
-                    position: "absolute",
-                    width: "100%",
-                    height: "100%",
-                    opacity: 0,
-                    cursor: "pointer",
-                    margin: 0,
-                }}
+                style={CHECKBOX_INPUT_STYLE}
             />
-            <span
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: SIZE,
-                    height: SIZE,
-                    border: `${BORDER_WIDTH}px solid ${filled ? CHECKED_BORDER : UNCHECKED_BORDER}`,
-                    borderRadius: BORDER_RADIUS,
-                    background: filled ? CHECKED_BG : UNCHECKED_BG,
-                    pointerEvents: "none",
-                    boxShadow: filled ? "inset 0 0 0 1px rgba(160, 189, 237, 0.14)" : "none",
-                }}
-            >
+            <span style={filled ? CHECKBOX_FILLED_STYLE : CHECKBOX_UNCHECKED_STYLE}>
                 {isChecked && !isIndeterminate && (
                     <svg width="9" height="9" viewBox="0 0 12 12">
                         <path
@@ -94,16 +108,7 @@ function VscCheckboxInner({
                         />
                     </svg>
                 )}
-                {isIndeterminate && (
-                    <span
-                        style={{
-                            width: 6,
-                            height: 2,
-                            background: CHECK_COLOR,
-                            borderRadius: 1,
-                        }}
-                    />
-                )}
+                {isIndeterminate && <span style={INDETERMINATE_MARK_STYLE} />}
             </span>
         </span>
     );

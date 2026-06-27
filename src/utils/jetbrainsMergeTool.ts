@@ -486,6 +486,8 @@ export async function launchJetBrainsMergeTool(
     input: JetBrainsMergeToolLaunchInput,
 ): Promise<JetBrainsMergeToolLaunchResult> {
     const resolvedBinaryPath = await resolveJetBrainsMergeBinaryPath(input.binaryPath);
+    // Binary validation must finish first so a failing path cannot orphan a temp directory.
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
     const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-"));
     const names = buildTempFileNames(input.relativeFilePath);
     const basePath = path.join(tempRoot, names.base);

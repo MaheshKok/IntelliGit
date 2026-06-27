@@ -204,25 +204,29 @@ export async function activateRepositoryMode(
      * the caller; background initial refreshes attach their own logging handlers.
      */
     const refreshActiveRepository = async (): Promise<void> => {
-        const branches = await gitOps.getBranches();
-        let refreshedWorktrees: GitWorktree[] = [];
-        try {
-            refreshedWorktrees = await worktreeService.refresh();
-        } catch (err) {
-            console.error("[IntelliGit] Worktrees refresh failed:", err);
-        }
+        const [branches, refreshedWorktrees] = await Promise.all([
+            gitOps.getBranches(),
+            worktreeService.refresh().catch((err) => {
+                console.error("[IntelliGit] Worktrees refresh failed:", err);
+                return [] as GitWorktree[];
+            }),
+        ]);
         currentWorktrees = refreshedWorktrees;
         currentBranches = worktreeService.decorateBranches(branches);
         commitGraph.setBranches(currentBranches, currentWorktrees);
         sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
-        await Promise.all([commitGraph.refresh(), sidebarGraph.refresh()]);
-        await commitPanel.refresh();
+        const refreshes: Array<Promise<void>> = [
+            commitGraph.refresh(),
+            sidebarGraph.refresh(),
+            commitPanel.refresh(),
+            refreshService.refreshMergeConflicts(),
+        ];
         if (undocked) {
             undocked.setBranches(currentBranches, currentWorktrees);
-            await undocked.refresh();
+            refreshes.push(undocked.refresh());
         }
-        await refreshService.refreshMergeConflicts();
+        await Promise.all(refreshes);
         clearSelection();
     };
 
@@ -371,8 +375,9 @@ export async function activateRepositoryMode(
                 const requestId = ++undockedCommitDetailRequestSeq;
                 try {
                     const detail = await gitOps.getCommitDetail(hash);
-                    if (requestId !== undockedCommitDetailRequestSeq) return;
-                    undocked?.setCommitDetail(detail);
+                    if (requestId === undockedCommitDetailRequestSeq) {
+                        undocked?.setCommitDetail(detail);
+                    }
                 } catch (err) {
                     const msg = getErrorMessage(err);
                     vscode.window.showErrorMessage(

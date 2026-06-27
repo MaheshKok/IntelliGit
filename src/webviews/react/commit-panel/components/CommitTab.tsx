@@ -94,16 +94,21 @@ export function CommitTab({
     const [isRefreshFeedbackActive, setIsRefreshFeedbackActive] = useState(false);
     const refreshFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-    const showRefreshFeedback = useCallback(() => {
+    const clearRefreshFeedbackTimer = useCallback(() => {
         if (refreshFeedbackTimerRef.current) {
             clearTimeout(refreshFeedbackTimerRef.current);
+            refreshFeedbackTimerRef.current = undefined;
         }
+    }, []);
+
+    const showRefreshFeedback = useCallback(() => {
+        clearRefreshFeedbackTimer();
         setIsRefreshFeedbackActive(true);
         refreshFeedbackTimerRef.current = setTimeout(() => {
             setIsRefreshFeedbackActive(false);
             refreshFeedbackTimerRef.current = undefined;
         }, MIN_REFRESH_FEEDBACK_MS);
-    }, []);
+    }, [clearRefreshFeedbackTimer]);
 
     useEffect(() => {
         if (isRefreshing) {
@@ -112,13 +117,7 @@ export function CommitTab({
         }
     }, [isRefreshing, showRefreshFeedback]);
 
-    useEffect(() => {
-        return () => {
-            if (refreshFeedbackTimerRef.current) {
-                clearTimeout(refreshFeedbackTimerRef.current);
-            }
-        };
-    }, []);
+    useEffect(() => clearRefreshFeedbackTimer, [clearRefreshFeedbackTimer]);
 
     const handleRefresh = useCallback(() => {
         showRefreshFeedback();

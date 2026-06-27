@@ -10,6 +10,8 @@ interface IntelligitI18nPayload {
 
 type InterpolationArgs = Record<string, string | number | boolean>;
 
+const pluralRulesByLocale = new Map<string, Intl.PluralRules>();
+
 /**
  * Resolves a localized webview string from the injected catalog payload.
  *
@@ -24,10 +26,18 @@ export function t(key: string, args: InterpolationArgs = {}): string {
     if (value && typeof value === "object") {
         const count = typeof args.count === "number" ? args.count : undefined;
         const locale = payload?.locale ?? "en";
-        const category = count === undefined ? "other" : new Intl.PluralRules(locale).select(count);
+        const category = count === undefined ? "other" : pluralRulesFor(locale).select(count);
         return interpolate(value[category] ?? value.other ?? key, args);
     }
     return key;
+}
+
+function pluralRulesFor(locale: string): Intl.PluralRules {
+    const cached = pluralRulesByLocale.get(locale);
+    if (cached) return cached;
+    const rules = new Intl.PluralRules(locale);
+    pluralRulesByLocale.set(locale, rules);
+    return rules;
 }
 
 function getPayload(): IntelligitI18nPayload | undefined {

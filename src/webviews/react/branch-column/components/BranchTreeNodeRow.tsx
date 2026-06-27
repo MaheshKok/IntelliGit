@@ -8,10 +8,10 @@ import {
     PushArrowIcon,
     StarIcon,
     TagRightIcon,
-    TreeFolderIcon,
-} from "../../shared/components";
+} from "../../shared/components/Icons";
+import { TreeFolderIcon } from "../../shared/components/TreeIcons";
 import { JETBRAINS_UI } from "../../shared/tokens";
-import { resolveFolderIcon } from "../../shared/utils";
+import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { getSettings } from "../../shared/settings";
 import { t } from "../../shared/i18n";
 import {
@@ -29,6 +29,32 @@ import {
 import type { TreeNode } from "../types";
 
 const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
+const TRACKING_TOOLTIP_BASE_STYLE: React.CSSProperties = {
+    position: "fixed",
+    transform: "translate(-50%, -100%)",
+    background: JETBRAINS_UI.color.tooltipBackground,
+    color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
+    border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
+    borderRadius: JETBRAINS_UI.size.radius,
+    fontSize: 12,
+    lineHeight: "14px",
+    padding: "3px 6px",
+    whiteSpace: "nowrap",
+    zIndex: 30,
+    pointerEvents: "none",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+};
+const FOLDER_ICON_WRAPPER_STYLE: React.CSSProperties = {
+    display: "inline-flex",
+    marginRight: 4,
+    flexShrink: 0,
+};
+const BRANCH_ICON_SPACER_STYLE: React.CSSProperties = {
+    display: "inline-block",
+    width: 14,
+    marginRight: 4,
+    flexShrink: 0,
+};
 
 /** Recursive branch-row inputs shared by folder rows and concrete branch rows. */
 interface Props {
@@ -53,13 +79,25 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     const [tooltipPos, setTooltipPos] = React.useState<{ x: number; y: number } | null>(null);
     const timerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    React.useEffect(() => {
-        return () => {
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
-        };
+    const clearTooltipTimer = React.useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
     }, []);
+    const tooltipStyle = React.useMemo<React.CSSProperties | undefined>(
+        () =>
+            tooltipPos
+                ? {
+                      ...TRACKING_TOOLTIP_BASE_STYLE,
+                      left: tooltipPos.x,
+                      top: tooltipPos.y,
+                  }
+                : undefined,
+        [tooltipPos],
+    );
+
+    React.useEffect(() => clearTooltipTimer, [clearTooltipTimer]);
 
     if (branch.ahead <= 0 && branch.behind <= 0) return null;
     const tooltipParts: string[] = [];
@@ -85,9 +123,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
         if (tooltipPos) {
             setTooltipPos(newPos);
         } else {
-            if (timerRef.current) {
-                clearTimeout(timerRef.current);
-            }
+            clearTooltipTimer();
             timerRef.current = setTimeout(() => {
                 setTooltipPos(newPos);
             }, hoverDelay);
@@ -96,10 +132,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
 
     /** Cancels pending tooltip work before hiding so rapid pointer movement cannot resurrect it. */
     const hideTooltip = (): void => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
+        clearTooltipTimer();
         setTooltipPos(null);
     };
 
@@ -123,29 +156,7 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
                     {branch.behind}
                 </span>
             )}
-            {tooltipPos && (
-                <span
-                    style={{
-                        position: "fixed",
-                        left: tooltipPos.x,
-                        top: tooltipPos.y,
-                        transform: "translate(-50%, -100%)",
-                        background: JETBRAINS_UI.color.tooltipBackground,
-                        color: "var(--vscode-editorHoverWidget-foreground, #d8dbe2)",
-                        border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
-                        borderRadius: JETBRAINS_UI.size.radius,
-                        fontSize: 11,
-                        lineHeight: "14px",
-                        padding: "3px 6px",
-                        whiteSpace: "nowrap",
-                        zIndex: 9999,
-                        pointerEvents: "none",
-                        boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
-                    }}
-                >
-                    {tooltipText}
-                </span>
-            )}
+            {tooltipPos && <span style={tooltipStyle}>{tooltipText}</span>}
         </span>
     );
 }
@@ -161,18 +172,20 @@ function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | nul
 
 /** Draws branch tree indentation guides without adding focusable elements to the row. */
 function BranchIndentGuides({ depth }: { depth: number }): React.ReactElement | null {
+    const guideStyles = React.useMemo<React.CSSProperties[]>(
+        () =>
+            Array.from({ length: Math.max(0, depth) }, (_, index) => ({
+                ...INDENT_GUIDE_STYLE,
+                left: BRANCH_TREE_GUIDE_BASE + index * BRANCH_TREE_INDENT_STEP,
+            })),
+        [depth],
+    );
+
     if (depth <= 0) return null;
     return (
         <>
-            {Array.from({ length: depth }, (_, index) => (
-                <span
-                    key={index}
-                    aria-hidden="true"
-                    style={{
-                        ...INDENT_GUIDE_STYLE,
-                        left: BRANCH_TREE_GUIDE_BASE + index * BRANCH_TREE_INDENT_STEP,
-                    }}
-                />
+            {guideStyles.map((style, index) => (
+                <span key={index} aria-hidden="true" style={style} />
             ))}
         </>
     );
@@ -207,24 +220,16 @@ export function BranchTreeNodeRow({
     folderExpandedIcon,
     folderIconsByName,
 }: Props): React.ReactElement {
-    /** Normalizes Enter/Space keyboard activation for folder rows without page scrolling. */
-    const handleActivateKey = (
-        event: React.KeyboardEvent<HTMLDivElement>,
-        action: () => void,
-    ): void => {
-        if (event.key === "Enter" || event.key === " ") {
-            if (event.key === " ") event.preventDefault();
-            action();
-        }
-    };
-
     const isFolder = node.children.length > 0 && !node.branch;
     const folderKey = `${prefix}/${node.label}`;
     const isExpanded = expandedFolders.has(folderKey);
-    const rowStyle = {
-        ...ROW_STYLE,
-        paddingLeft: BRANCH_TREE_INDENT_BASE + depth * BRANCH_TREE_INDENT_STEP,
-    };
+    const rowStyle = React.useMemo<React.CSSProperties>(
+        () => ({
+            ...ROW_STYLE,
+            paddingLeft: BRANCH_TREE_INDENT_BASE + depth * BRANCH_TREE_INDENT_STEP,
+        }),
+        [depth],
+    );
 
     if (isFolder) {
         const resolvedFolderIcon = resolveFolderIcon(
@@ -236,29 +241,24 @@ export function BranchTreeNodeRow({
         );
         return (
             <>
-                <div
+                <button
+                    type="button"
                     className="branch-row"
                     onClick={() => onToggleFolder(folderKey)}
-                    onKeyDown={(event) => handleActivateKey(event, () => onToggleFolder(folderKey))}
-                    role="button"
-                    tabIndex={0}
                     aria-expanded={isExpanded}
                     style={rowStyle}
                 >
                     <BranchIndentGuides depth={depth} />
                     <ChevronIcon expanded={isExpanded} />
-                    <span
-                        data-branch-icon="folder"
-                        style={{ display: "inline-flex", marginRight: 4, flexShrink: 0 }}
-                    >
+                    <span data-branch-icon="folder" style={FOLDER_ICON_WRAPPER_STYLE}>
                         <TreeFolderIcon isExpanded={isExpanded} icon={resolvedFolderIcon} />
                     </span>
                     <span>{renderHighlightedLabel(node.label, filterNeedle)}</span>
-                </div>
+                </button>
                 {isExpanded &&
-                    node.children.map((child, index) => (
+                    node.children.map((child) => (
                         <BranchTreeNodeRow
-                            key={`${folderKey}/${child.branch?.name ?? child.label}-${index}`}
+                            key={`${folderKey}/${child.fullName ?? child.label}`}
                             node={child}
                             depth={depth + 1}
                             selectedBranch={selectedBranch}
@@ -296,21 +296,17 @@ export function BranchTreeNodeRow({
     };
 
     return (
-        <div
+        <button
+            type="button"
             className={`branch-row${isSelected ? " selected" : ""}`}
             onClick={handleSelectBranch}
-            onKeyDown={(event) =>
-                handleActivateKey(event, () => onSelectBranch(node.fullName ?? null))
-            }
             onContextMenu={(event) => {
                 if (node.branch) onContextMenu(event, node.branch);
             }}
-            role="button"
-            tabIndex={0}
             style={rowStyle}
         >
             <BranchIndentGuides depth={depth} />
-            <span style={{ display: "inline-block", width: 14, marginRight: 4, flexShrink: 0 }} />
+            <span style={BRANCH_ICON_SPACER_STYLE} />
             {isCurrent ? (
                 <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
             ) : isMainLike ? (
@@ -321,6 +317,6 @@ export function BranchTreeNodeRow({
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
             {node.branch && <WorktreeBadge branch={node.branch} />}
             {node.branch && <TrackingBadge branch={node.branch} />}
-        </div>
+        </button>
     );
 }

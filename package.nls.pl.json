@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "Najlepsze funkcje Git z PyCharm, VS Code i Visual Studio IDE",
+    "extension.description": "Interfejs Git w stylu IntelliJ dla VS Code z grafem commitów, szczegółami commitów, workflow odkładania zmian i eksploratorem zmian plików.",
     "view.commit": "Commit",
     "view.graph": "Wykres",
     "view.mergeConflicts": "Scalanie konfliktów",
@@ -69,5 +69,5 @@
     "command.commitChecksSignOut": "Wyloguj się z dostawcy sprawdzeń commitów",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a safe regex subset (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Zastąp nazwy sprawdzeń uznawane za CI/CD na potrzeby odznaki (tylko GitHub i GitLab). Podaj wyrażenie regularne (dopasowywane bez rozróżniania wielkości liter do nazwy i opisu każdego sprawdzenia); pozostaw puste, aby użyć wbudowanego wzorca. Boty do przeglądu kodu są zawsze wykluczane niezależnie od tej wartości. Zmiany zaczną obowiązywać po ponownym załadowaniu okna."
 }
