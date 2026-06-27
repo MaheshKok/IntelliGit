@@ -131,7 +131,7 @@ export async function runPublishBranchFlow(
     if (!remotePlan.remoteBranchName) {
         const publishedBranchName = await vscode.window.showInputBox({
             prompt: vscode.l10n.t("Published branch name"),
-            value: "main",
+            value: remoteBranchName,
             validateInput: (value) => {
                 const trimmed = value.trim();
                 if (!trimmed) return vscode.l10n.t("Branch name is required");

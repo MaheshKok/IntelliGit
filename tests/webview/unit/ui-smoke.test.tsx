@@ -487,6 +487,11 @@ describe("webview ui smoke", () => {
                 />
                 <TabBar
                     stashCount={2}
+                    onSync={noop}
+                    onFetch={noop}
+                    onPull={noop}
+                    onPush={noop}
+                    hasUncommittedChanges={true}
                     commitContent={<div>Commit tab</div>}
                     shelfContent={<div>Shelf tab</div>}
                 />
@@ -504,6 +509,7 @@ describe("webview ui smoke", () => {
         expect(pushActionIndex).toBeGreaterThanOrEqual(0);
         expect(commitActionIndex).toBeLessThan(pushActionIndex);
         expect(html).toContain("Stash (2)");
+        expect(html).not.toContain('aria-disabled="true"');
 
         const disabledCommitHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>
@@ -523,6 +529,52 @@ describe("webview ui smoke", () => {
             </ChakraProvider>,
         );
         expect(disabledCommitHtml).toContain("disabled");
+
+        const blockedUnavailablePushHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={false}
+                    pushBlockedByUncommittedChanges={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                />
+            </ChakraProvider>,
+        );
+        expect(blockedUnavailablePushHtml).toContain("disabled");
+
+        const dirtyPushableHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <CommitArea
+                    commitMessage=""
+                    isAmend={false}
+                    onMessageChange={noop}
+                    onAmendChange={noop}
+                    onCommit={noop}
+                    onPush={noop}
+                    canCommit={true}
+                    canPush={true}
+                    pushBlockedByUncommittedChanges={true}
+                    pushLabel="common.push"
+                    currentBranchName="main"
+                    currentBranchUpstream="origin/main"
+                />
+            </ChakraProvider>,
+        );
+        const dirtyPushableContainer = document.createElement("div");
+        dirtyPushableContainer.innerHTML = dirtyPushableHtml;
+        const dirtyPushButton = Array.from(dirtyPushableContainer.querySelectorAll("button")).find(
+            (button) => button.textContent === "Push",
+        );
+        expect(dirtyPushButton?.disabled).toBe(false);
+        expect(dirtyPushButton?.getAttribute("aria-disabled")).toBeNull();
 
         const localOnlyCommitHtml = renderUi(
             <CommitArea

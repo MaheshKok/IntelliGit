@@ -61,6 +61,7 @@ function makeGitOps(upstream?: string): GitOps {
         commit: vi.fn(async () => ""),
         commitAndPush: vi.fn(async () => ""),
         stageFiles: vi.fn(async () => ""),
+        hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => []),
     } as unknown as GitOps;
 }
@@ -97,11 +98,13 @@ describe("runGitOperationFromPanel", () => {
     it("runs fetch even when checking uncommitted changes would fail", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
-        vi.mocked(gitOps.getStatus).mockRejectedValueOnce(new Error("status should not run"));
+        vi.mocked(gitOps.hasUncommittedChanges).mockRejectedValueOnce(
+            new Error("status should not run"),
+        );
 
         await runGitOperationFromPanel(deps, "fetch");
 
-        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
         expect(gitOps.fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -110,7 +113,7 @@ describe("runGitOperationFromPanel", () => {
         async (operation) => {
             const gitOps = makeGitOps("origin/main");
             const deps = makeDeps(gitOps);
-            vi.mocked(gitOps.getStatus).mockResolvedValueOnce([{ path: "src/a.ts" }] as never);
+            vi.mocked(gitOps.hasUncommittedChanges).mockResolvedValueOnce(true);
 
             await runGitOperationFromPanel(deps, operation);
 
@@ -129,7 +132,7 @@ describe("runGitOperationFromPanel", () => {
     it("warns instead of publishing an unpublished branch when the working tree is dirty", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
-        vi.mocked(gitOps.getStatus).mockResolvedValueOnce([{ path: "src/a.ts" }] as never);
+        vi.mocked(gitOps.hasUncommittedChanges).mockResolvedValueOnce(true);
 
         await runGitOperationFromPanel(deps, "push");
 

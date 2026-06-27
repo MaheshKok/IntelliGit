@@ -183,8 +183,10 @@ export class GitOps {
             const remoteRefMatch = /^([^/]+)\/(.+)$/.exec(symref);
             if (remoteRefMatch) {
                 const [, remoteName, localName] = remoteRefMatch;
-                if (isValidRemoteName(remoteName)) remotesWithDefault.add(remoteName);
-                if (isValidBranchName(localName)) defaultLocalNames.add(localName);
+                if (isValidRemoteName(remoteName) && isValidBranchName(localName)) {
+                    remotesWithDefault.add(remoteName);
+                    defaultLocalNames.add(localName);
+                }
             }
         }
         const branches: Branch[] = [];
@@ -416,6 +418,13 @@ export class GitOps {
         applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
         return files;
     }
+
+    /** Returns whether porcelain status reports any working-tree entry without loading numstat. */
+    async hasUncommittedChanges(): Promise<boolean> {
+        const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
+        return result.length > 0;
+    }
+
     /** Stages literal repository paths, skipping files already staged as deletions to avoid re-adding them. */
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;

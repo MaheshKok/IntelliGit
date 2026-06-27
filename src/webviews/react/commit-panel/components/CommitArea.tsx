@@ -54,15 +54,14 @@ export function CommitArea({
     onPush,
     canCommit,
     canPush,
-    pushBlockedByUncommittedChanges,
     pushLabel,
     currentBranchName,
     currentBranchUpstream,
 }: Props): React.ReactElement {
     const amendCheckboxId = "commit-area-amend-checkbox";
     const branchUpstream = getBranchIndicatorUpstream(currentBranchName, currentBranchUpstream);
-    const isPushVisuallyDisabled = !canPush || pushBlockedByUncommittedChanges;
-    const isPushButtonDisabled = !canPush && !pushBlockedByUncommittedChanges;
+    const isPushVisuallyDisabled = !canPush;
+    const isPushButtonDisabled = !canPush;
     const branchLabel = currentBranchName
         ? branchUpstream
             ? t("commit.branchIndicator.tracking", {

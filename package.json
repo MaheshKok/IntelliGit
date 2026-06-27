@@ -147,12 +147,30 @@
                 }
             },
             {
+                "command": "intelligit.graph.sync.color",
+                "title": "%command.sync%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-sync-color.svg",
+                    "dark": "media/icons/git-sync-color.svg"
+                }
+            },
+            {
                 "command": "intelligit.graph.fetch",
                 "title": "%command.fetch%",
                 "category": "%intelligit%",
                 "icon": {
                     "light": "media/icons/git-fetch-white.svg",
                     "dark": "media/icons/git-fetch-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.graph.fetch.color",
+                "title": "%command.fetch%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-fetch-color.svg",
+                    "dark": "media/icons/git-fetch-color.svg"
                 }
             },
             {
@@ -165,12 +183,30 @@
                 }
             },
             {
+                "command": "intelligit.graph.pull.color",
+                "title": "%command.pull%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-pull-color.svg",
+                    "dark": "media/icons/git-pull-color.svg"
+                }
+            },
+            {
                 "command": "intelligit.graph.push",
                 "title": "%command.push%",
                 "category": "%intelligit%",
                 "icon": {
                     "light": "media/icons/git-push-white.svg",
                     "dark": "media/icons/git-push-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.graph.push.color",
+                "title": "%command.push%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/git-push-color.svg",
+                    "dark": "media/icons/git-push-color.svg"
                 }
             },
             {
@@ -443,7 +479,15 @@
                     "when": "false"
                 },
                 {
+                    "command": "intelligit.graph.sync.color",
+                    "when": "false"
+                },
+                {
                     "command": "intelligit.graph.fetch",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.fetch.color",
                     "when": "false"
                 },
                 {
@@ -451,7 +495,15 @@
                     "when": "false"
                 },
                 {
+                    "command": "intelligit.graph.pull.color",
+                    "when": "false"
+                },
+                {
                     "command": "intelligit.graph.push",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.graph.push.color",
                     "when": "false"
                 }
             ],
@@ -492,22 +544,42 @@
                 },
                 {
                     "command": "intelligit.graph.sync",
-                    "when": "view == intelligit.sidebarGraph",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons != color",
+                    "group": "navigation@1"
+                },
+                {
+                    "command": "intelligit.graph.sync.color",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons == color",
                     "group": "navigation@1"
                 },
                 {
                     "command": "intelligit.graph.fetch",
-                    "when": "view == intelligit.sidebarGraph",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons != color",
+                    "group": "navigation@2"
+                },
+                {
+                    "command": "intelligit.graph.fetch.color",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons == color",
                     "group": "navigation@2"
                 },
                 {
                     "command": "intelligit.graph.pull",
-                    "when": "view == intelligit.sidebarGraph",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons != color",
+                    "group": "navigation@3"
+                },
+                {
+                    "command": "intelligit.graph.pull.color",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons == color",
                     "group": "navigation@3"
                 },
                 {
                     "command": "intelligit.graph.push",
-                    "when": "view == intelligit.sidebarGraph",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons != color",
+                    "group": "navigation@4"
+                },
+                {
+                    "command": "intelligit.graph.push.color",
+                    "when": "view == intelligit.sidebarGraph && config.intelligit.icons == color",
                     "group": "navigation@4"
                 },
                 {

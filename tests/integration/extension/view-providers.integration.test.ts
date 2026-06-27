@@ -280,6 +280,7 @@ function makeGitOpsMock() {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
+        hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]),
@@ -1745,7 +1746,6 @@ describe("view providers integration", () => {
                 { path: "src/b.ts", status: "A", staged: false, additions: 3, deletions: 0 },
                 { path: "src/c.ts", status: "M", staged: false, additions: 1, deletions: 1 },
             ])
-            .mockResolvedValueOnce([])
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([
                 { path: "src/d.ts", status: "M", staged: false, additions: 4, deletions: 0 },

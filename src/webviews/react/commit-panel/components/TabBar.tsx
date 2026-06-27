@@ -56,7 +56,6 @@ export function TabBar({
     onFetch,
     onPull,
     onPush,
-    hasUncommittedChanges,
     commitContent,
     shelfContent,
 }: Props): React.ReactElement {
@@ -95,12 +94,7 @@ export function TabBar({
                     ))}
                 </TabList>
                 <Flex align="center" ml="auto">
-                    <GitActionButton
-                        label={t("common.sync")}
-                        onClick={onSync}
-                        color="#c8a2ff"
-                        disabled={hasUncommittedChanges}
-                    >
+                    <GitActionButton label={t("common.sync")} onClick={onSync} color="#c8a2ff">
                         <path
                             fill="currentColor"
                             d="M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z"
@@ -124,24 +118,14 @@ export function TabBar({
                             d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
                         />
                     </GitActionButton>
-                    <GitActionButton
-                        label={t("common.pull")}
-                        onClick={onPull}
-                        color="#8fd5ff"
-                        disabled={hasUncommittedChanges}
-                    >
+                    <GitActionButton label={t("common.pull")} onClick={onPull} color="#8fd5ff">
                         <path
                             fill="currentColor"
                             d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
                         />
                         <path fill="currentColor" d="M3 13h10v1H3v-1z" />
                     </GitActionButton>
-                    <GitActionButton
-                        label={t("common.push")}
-                        onClick={onPush}
-                        color="var(--vscode-gitDecoration-addedResourceForeground, #a6e3a1)"
-                        disabled={hasUncommittedChanges}
-                    >
+                    <GitActionButton label={t("common.push")} onClick={onPush} color="#a6e3a1">
                         <path
                             fill="currentColor"
                             d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"

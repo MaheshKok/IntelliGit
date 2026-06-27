@@ -349,6 +349,13 @@ describe("publishService phase 5", () => {
 
         await runPublishBranchFlow(gitOps, "master", "/repo");
 
+        expect(mocks.showInputBox).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({
+                prompt: "Published branch name",
+                value: "master",
+            }),
+        );
         expect(gitOps.addRemote).toHaveBeenCalledWith("origin", "https://github.com/user/repo.git");
         const execArgs = mocks.execFile.mock.calls[0][1] as string[];
         const execOptions = mocks.execFile.mock.calls[0][2] as {

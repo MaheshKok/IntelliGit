@@ -96,9 +96,13 @@ function getTreeSortMeta(node: TreeNode): TreeSortMeta {
     };
 }
 
-function compareTreeNodes(left: TreeNode, right: TreeNode): number {
-    const leftMeta = getTreeSortMeta(left);
-    const rightMeta = getTreeSortMeta(right);
+function compareTreeNodes(
+    left: TreeNode,
+    right: TreeNode,
+    sortMetaByNode: ReadonlyMap<TreeNode, TreeSortMeta>,
+): number {
+    const leftMeta = sortMetaByNode.get(left)!;
+    const rightMeta = sortMetaByNode.get(right)!;
     if (leftMeta.isDefault !== rightMeta.isDefault) return leftMeta.isDefault ? -1 : 1;
     if (leftMeta.isCurrent !== rightMeta.isCurrent) return leftMeta.isCurrent ? -1 : 1;
     if (leftMeta.newestCommitterDate !== rightMeta.newestCommitterDate) {
@@ -111,5 +115,6 @@ function sortBranchTree(nodes: TreeNode[]): void {
     for (const node of nodes) {
         sortBranchTree(node.children);
     }
-    nodes.sort(compareTreeNodes);
+    const sortMetaByNode = new Map(nodes.map((node) => [node, getTreeSortMeta(node)]));
+    nodes.sort((left, right) => compareTreeNodes(left, right, sortMetaByNode));
 }

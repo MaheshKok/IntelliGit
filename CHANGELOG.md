@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Pinned default local and remote branches at the top of the branch tree while keeping current `codex/...` branches first inside their folder and sorting the rest by latest branch-tip date.
-- Blocked push, pull, sync, and publish actions when the working tree has uncommitted changes, with the PyCharm-style warning while leaving fetch available.
+- Blocked push, pull, sync, and publish actions when the working tree has uncommitted changes, with the IDE-style warning while leaving fetch available.
 - Moved the published branch-name prompt to the end of the create-repository prompt flow and right-aligned the commit-panel Git operation buttons.
 
 ## [0.14.4] - 2026-06-27

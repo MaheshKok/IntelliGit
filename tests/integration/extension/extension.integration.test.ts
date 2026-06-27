@@ -225,6 +225,7 @@ const gitOpsState = {
     rollbackFiles: vi.fn(async () => undefined),
     shelveSave: vi.fn(async () => "saved"),
     getFileHistory: vi.fn(async () => "history"),
+    hasUncommittedChanges: vi.fn(async () => false),
     getStatus: vi.fn(async () => []),
     listShelved: vi.fn(async () => []),
     getShelvedFiles: vi.fn(async () => []),
@@ -1178,9 +1179,13 @@ describe("extension integration", () => {
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.fetch")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.fetch.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.pull")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.pull.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.push")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.push.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.sync")).toBe(true);
+        expect(registeredCommands.has("intelligit.graph.sync.color")).toBe(true);
         expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
         expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);

@@ -179,9 +179,13 @@ export function activateNoRepositoryMode(
         "intelligit.toggleUndocked",
         "intelligit.publishBranch",
         "intelligit.graph.fetch",
+        "intelligit.graph.fetch.color",
         "intelligit.graph.pull",
+        "intelligit.graph.pull.color",
         "intelligit.graph.push",
+        "intelligit.graph.push.color",
         "intelligit.graph.sync",
+        "intelligit.graph.sync.color",
     ]) {
         registerNoRepositoryDisposable(
             vscode.commands.registerCommand(command, () => {

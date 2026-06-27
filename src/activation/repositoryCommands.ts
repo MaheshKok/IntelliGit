@@ -147,13 +147,25 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         vscode.commands.registerCommand("intelligit.graph.fetch", async () => {
             await runGraphGitOperation("fetch");
         }),
+        vscode.commands.registerCommand("intelligit.graph.fetch.color", async () => {
+            await runGraphGitOperation("fetch");
+        }),
         vscode.commands.registerCommand("intelligit.graph.pull", async () => {
+            await runGraphGitOperation("pull");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.pull.color", async () => {
             await runGraphGitOperation("pull");
         }),
         vscode.commands.registerCommand("intelligit.graph.push", async () => {
             await runGraphGitOperation("push");
         }),
+        vscode.commands.registerCommand("intelligit.graph.push.color", async () => {
+            await runGraphGitOperation("push");
+        }),
         vscode.commands.registerCommand("intelligit.graph.sync", async () => {
+            await runGraphGitOperation("sync");
+        }),
+        vscode.commands.registerCommand("intelligit.graph.sync.color", async () => {
             await runGraphGitOperation("sync");
         }),
         vscode.commands.registerCommand("intelligit.publishBranch", async () => {

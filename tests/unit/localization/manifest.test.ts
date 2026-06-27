@@ -66,21 +66,111 @@ describe("extension manifest", () => {
         const titleMenu = manifest.contributes?.menus?.["view/title"] ?? [];
 
         const actions = [
-            ["intelligit.graph.sync", "navigation@1", "media/icons/git-sync-white.svg"],
-            ["intelligit.graph.fetch", "navigation@2", "media/icons/git-fetch-white.svg"],
-            ["intelligit.graph.pull", "navigation@3", "media/icons/git-pull-white.svg"],
-            ["intelligit.graph.push", "navigation@4", "media/icons/git-push-white.svg"],
+            [
+                "intelligit.graph.sync",
+                "intelligit.graph.sync.color",
+                "navigation@1",
+                "media/icons/git-sync-white.svg",
+                "media/icons/git-sync-color.svg",
+            ],
+            [
+                "intelligit.graph.fetch",
+                "intelligit.graph.fetch.color",
+                "navigation@2",
+                "media/icons/git-fetch-white.svg",
+                "media/icons/git-fetch-color.svg",
+            ],
+            [
+                "intelligit.graph.pull",
+                "intelligit.graph.pull.color",
+                "navigation@3",
+                "media/icons/git-pull-white.svg",
+                "media/icons/git-pull-color.svg",
+            ],
+            [
+                "intelligit.graph.push",
+                "intelligit.graph.push.color",
+                "navigation@4",
+                "media/icons/git-push-white.svg",
+                "media/icons/git-push-color.svg",
+            ],
         ] as const;
 
-        for (const [command, group, icon] of actions) {
+        for (const [command, colorCommand, group, icon, colorIcon] of actions) {
             const item = titleMenu.find((entry) => entry.command === command);
+            const colorItem = titleMenu.find((entry) => entry.command === colorCommand);
             const commandContribution = commands.find((entry) => entry.command === command);
+            const colorCommandContribution = commands.find(
+                (entry) => entry.command === colorCommand,
+            );
             const paletteItem = commandPalette.find((entry) => entry.command === command);
+            const colorPaletteItem = commandPalette.find((entry) => entry.command === colorCommand);
 
-            expect(item?.when).toBe("view == intelligit.sidebarGraph");
+            expect(item?.when).toBe(
+                "view == intelligit.sidebarGraph && config.intelligit.icons != color",
+            );
+            expect(colorItem?.when).toBe(
+                "view == intelligit.sidebarGraph && config.intelligit.icons == color",
+            );
             expect(item?.group).toBe(group);
+            expect(colorItem?.group).toBe(group);
             expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
+            expect(colorCommandContribution?.icon).toEqual({ light: colorIcon, dark: colorIcon });
             expect(paletteItem?.when).toBe("false");
+            expect(colorPaletteItem?.when).toBe("false");
+        }
+    });
+
+    it("keeps native sidebar color icons matching the commit tab toolbar icons", () => {
+        const tabBarSource = readFileSync(
+            path.join(process.cwd(), "src/webviews/react/commit-panel/components/TabBar.tsx"),
+            "utf8",
+        );
+        const icons = [
+            {
+                name: "sync",
+                color: "#c8a2ff",
+                paths: [
+                    "M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z",
+                ],
+            },
+            {
+                name: "fetch",
+                color: "#8fd5ff",
+                paths: [
+                    "M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11",
+                    "M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1",
+                ],
+            },
+            {
+                name: "pull",
+                color: "#8fd5ff",
+                paths: [
+                    "M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z",
+                    "M3 13h10v1H3v-1z",
+                ],
+            },
+            {
+                name: "push",
+                color: "#a6e3a1",
+                paths: [
+                    "M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z",
+                    "M3 13h10v1H3v-1z",
+                ],
+            },
+        ] as const;
+
+        for (const icon of icons) {
+            const svg = readFileSync(
+                path.join(process.cwd(), `media/icons/git-${icon.name}-color.svg`),
+                "utf8",
+            );
+            expect(tabBarSource).toContain(`color="${icon.color}"`);
+            expect(svg).toContain(icon.color);
+            for (const pathData of icon.paths) {
+                expect(tabBarSource).toContain(`d="${pathData}"`);
+                expect(svg).toContain(`d="${pathData}"`);
+            }
         }
     });
 
