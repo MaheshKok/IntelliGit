@@ -16,6 +16,10 @@ export interface Branch {
     worktreePath?: string;
     /** True when the matching checked-out worktree is the active repository root. */
     isCurrentWorktree?: boolean;
+    /** True when the branch matches the repository's default branch reference. */
+    isDefault?: boolean;
+    /** Unix commit timestamp for the branch tip, used for stable chronological sorting. */
+    committerDate?: number;
     upstream?: string;
     remote?: string;
     ahead: number;

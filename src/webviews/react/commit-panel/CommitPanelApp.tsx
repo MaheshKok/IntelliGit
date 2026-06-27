@@ -63,6 +63,7 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
+    const hasUncommittedChanges = state.files.length > 0;
     const canCommit = canRunCommitAction(state.isAmend, checkedPaths.size, state.commitMessage);
     const shouldPublishBranch = !state.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
@@ -106,6 +107,7 @@ function App(): React.ReactElement {
                 onFetch={handleFetch}
                 onPull={handlePull}
                 onPush={handlePush}
+                hasUncommittedChanges={hasUncommittedChanges}
                 commitContent={
                     <CommitTab
                         files={state.files}
@@ -126,6 +128,7 @@ function App(): React.ReactElement {
                         canCommit={canCommit}
                         onPush={handlePush}
                         canPush={canPush}
+                        pushBlockedByUncommittedChanges={hasUncommittedChanges}
                         pushLabel={pushLabel}
                         currentBranchName={state.currentBranchName}
                         currentBranchUpstream={state.currentBranchUpstream}

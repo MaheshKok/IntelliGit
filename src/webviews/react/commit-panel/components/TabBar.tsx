@@ -21,6 +21,7 @@ interface Props {
     onFetch: () => void;
     onPull: () => void;
     onPush: () => void;
+    hasUncommittedChanges: boolean;
     commitContent: React.ReactNode;
     shelfContent: React.ReactNode;
 }
@@ -92,7 +93,7 @@ export function TabBar({
                         </Tab>
                     ))}
                 </TabList>
-                <Flex align="center">
+                <Flex align="center" ml="auto">
                     <GitActionButton label={t("common.sync")} onClick={onSync} color="#c8a2ff">
                         <path
                             fill="currentColor"
@@ -124,11 +125,7 @@ export function TabBar({
                         />
                         <path fill="currentColor" d="M3 13h10v1H3v-1z" />
                     </GitActionButton>
-                    <GitActionButton
-                        label={t("common.push")}
-                        onClick={onPush}
-                        color="var(--vscode-gitDecoration-addedResourceForeground, #a6e3a1)"
-                    >
+                    <GitActionButton label={t("common.push")} onClick={onPush} color="#a6e3a1">
                         <path
                             fill="currentColor"
                             d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
@@ -159,15 +156,21 @@ function GitActionButton({
     label,
     onClick,
     color,
+    disabled = false,
     children,
 }: {
     label: string;
     onClick: () => void;
     color: string;
+    disabled?: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const resolvedColor = iconStyle === "standard" ? "var(--vscode-icon-foreground)" : color;
+    const resolvedColor = disabled
+        ? "var(--vscode-disabledForeground)"
+        : iconStyle === "standard"
+          ? "var(--vscode-icon-foreground)"
+          : color;
     return (
         <Tooltip
             label={label}
@@ -178,10 +181,13 @@ function GitActionButton({
         >
             <IconButton
                 aria-label={label}
+                aria-disabled={disabled || undefined}
                 variant="toolbarGhost"
                 size="sm"
                 alignSelf="center"
                 mx="4px"
+                opacity={disabled ? 0.55 : undefined}
+                cursor={disabled ? "default" : undefined}
                 onClick={onClick}
                 icon={
                     <svg

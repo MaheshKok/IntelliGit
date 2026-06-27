@@ -61,6 +61,7 @@ export interface UndockedLayoutProps {
     groupByDir: boolean;
     canCommit: boolean;
     canPush: boolean;
+    hasUncommittedChanges: boolean;
     pushLabel: string;
     isAllChecked: (files: WorkingFile[]) => boolean;
     isSomeChecked: (files: WorkingFile[]) => boolean;
@@ -136,6 +137,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         groupByDir,
         canCommit,
         canPush,
+        hasUncommittedChanges,
         pushLabel,
         isAllChecked,
         isSomeChecked,
@@ -202,6 +204,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 onPull={handlePull}
                                 onPush={handlePush}
                                 canPush={canPush}
+                                hasUncommittedChanges={hasUncommittedChanges}
                                 pushLabel={pushLabel}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={onToggleGroupBy}
@@ -383,6 +386,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 onPull={handlePull}
                                 onPush={handlePush}
                                 canPush={canPush}
+                                hasUncommittedChanges={hasUncommittedChanges}
                                 pushLabel={pushLabel}
                                 groupByDir={groupByDir}
                                 onToggleGroupBy={onToggleGroupBy}

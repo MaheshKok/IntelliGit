@@ -218,10 +218,6 @@ function secretStorage(initial?: string): {
     };
 }
 
-function mockPublishedBranchName(value = "main"): void {
-    mocks.showInputBox.mockResolvedValueOnce(value);
-}
-
 function mockRemotePickerSelection(action: "existing" | "create", value: string): MockQuickPick {
     let accept: (() => void) | undefined;
     let hide: (() => void) | undefined;
@@ -296,7 +292,6 @@ describe("publishService phase 5", () => {
 
     it("offers GitHub and GitLab providers before creating a repository", async () => {
         const gitOps = makeGitOps([]);
-        mockPublishedBranchName();
         mocks.showQuickPick.mockResolvedValueOnce(undefined);
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
@@ -308,7 +303,6 @@ describe("publishService phase 5", () => {
 
     it("offers private and public visibility after provider selection", async () => {
         const gitOps = makeGitOps([]);
-        mockPublishedBranchName();
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce(undefined);
@@ -325,22 +319,22 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce(undefined);
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce(undefined);
 
         await runPublishBranchFlow(gitOps, "main", "/workspace/my-project");
 
         expect(mocks.showInputBox).toHaveBeenNthCalledWith(
             1,
             expect.objectContaining({
-                prompt: "Published branch name",
-                value: "main",
+                prompt: "Repository name",
+                value: "my-project",
             }),
         );
         expect(mocks.showInputBox).toHaveBeenNthCalledWith(
             2,
             expect.objectContaining({
-                prompt: "Repository name",
-                value: "my-project",
+                prompt: "Published branch name",
+                value: "main",
             }),
         );
         expect(mocks.httpsRequest).not.toHaveBeenCalled();
@@ -351,10 +345,17 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
 
         await runPublishBranchFlow(gitOps, "master", "/repo");
 
+        expect(mocks.showInputBox).toHaveBeenNthCalledWith(
+            2,
+            expect.objectContaining({
+                prompt: "Published branch name",
+                value: "master",
+            }),
+        );
         expect(gitOps.addRemote).toHaveBeenCalledWith("origin", "https://github.com/user/repo.git");
         const execArgs = mocks.execFile.mock.calls[0][1] as string[];
         const execOptions = mocks.execFile.mock.calls[0][2] as {
@@ -377,7 +378,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
         mockCreateRepoTimeout();
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
@@ -393,7 +394,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
         mockCreateRepoResponse(201, "{not-json");
 
         await runPublishBranchFlow(gitOps, "main", "/repo");
@@ -409,7 +410,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "gitlab" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
         mockCreateRepoResponse(201, "{not-json");
 
         await runPublishBranchFlow(gitOps, "main", "/repo", secretStorage("glpat-token") as never);
@@ -425,7 +426,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "gitlab" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
         mockCreateRepoResponse(
             400,
             JSON.stringify({
@@ -489,7 +490,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "github" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
         mocks.execFile.mockImplementation((_file, _args, _options, callback) => {
             callback(new Error("push failed"), "", "permission denied");
             return {} as never;
@@ -510,7 +511,7 @@ describe("publishService phase 5", () => {
         mocks.showQuickPick
             .mockResolvedValueOnce({ provider: "gitlab" })
             .mockResolvedValueOnce({ value: "private" });
-        mocks.showInputBox.mockResolvedValueOnce("main").mockResolvedValueOnce("repo");
+        mocks.showInputBox.mockResolvedValueOnce("repo").mockResolvedValueOnce("main");
 
         await runPublishBranchFlow(gitOps, "main", "/repo", secrets as never);
 

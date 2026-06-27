@@ -71,23 +71,6 @@ export async function runPublishBranchFlow(
     if (!remotePlan) return;
 
     let remoteBranchName = remotePlan.remoteBranchName ?? branchName;
-    if (remotePlan.kind === "create" && !remotePlan.remoteBranchName) {
-        const publishedBranchName = await vscode.window.showInputBox({
-            prompt: vscode.l10n.t("Published branch name"),
-            value: "main",
-            validateInput: (value) => {
-                const trimmed = value.trim();
-                if (!trimmed) return vscode.l10n.t("Branch name is required");
-                if (!isValidBranchName(trimmed)) {
-                    return vscode.l10n.t("Invalid branch name '{branch}'.", { branch: value });
-                }
-                return undefined;
-            },
-        });
-        if (!publishedBranchName) return;
-        remoteBranchName = publishedBranchName.trim();
-    }
-
     if (remotePlan.kind === "existing") {
         try {
             await vscode.window.withProgress(
@@ -144,11 +127,29 @@ export async function runPublishBranchFlow(
     });
     if (!repoName) return;
 
-    // 5. Authenticate
+    // 5. Published branch name is the last user input before auth and provider writes.
+    if (!remotePlan.remoteBranchName) {
+        const publishedBranchName = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("Published branch name"),
+            value: remoteBranchName,
+            validateInput: (value) => {
+                const trimmed = value.trim();
+                if (!trimmed) return vscode.l10n.t("Branch name is required");
+                if (!isValidBranchName(trimmed)) {
+                    return vscode.l10n.t("Invalid branch name '{branch}'.", { branch: value });
+                }
+                return undefined;
+            },
+        });
+        if (!publishedBranchName) return;
+        remoteBranchName = publishedBranchName.trim();
+    }
+
+    // 6. Authenticate
     const auth = await acquireAuth(provider, secrets);
     if (!auth) return;
 
-    // 6. Create the remote repository via provider API.
+    // 7. Create the remote repository via provider API.
     let created: CreatedRepo;
     try {
         created = await vscode.window.withProgress(
@@ -175,7 +176,7 @@ export async function runPublishBranchFlow(
         return;
     }
 
-    // 7. Add clean remote URL and push with transient askpass credentials.
+    // 8. Add clean remote URL and push with transient askpass credentials.
     let remoteAdded = false;
     try {
         await vscode.window.withProgress(

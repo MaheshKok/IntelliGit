@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 import type { Branch, Commit } from "../../../src/types";
 import { renderHighlightedLabel } from "../../../src/webviews/react/branch-column/highlight";
 import { getBranchMenuItems } from "../../../src/webviews/react/branch-column/menu";
-import { buildPrefixTree, buildRemoteGroups } from "../../../src/webviews/react/branch-column/treeModel";
+import {
+    buildPrefixTree,
+    buildRemoteGroups,
+} from "../../../src/webviews/react/branch-column/treeModel";
 import {
     BRANCH_ACTION_VALUES,
     COMMIT_ACTION_VALUES,
@@ -13,7 +16,11 @@ import {
 } from "../../../src/webviews/protocol/commitGraphTypes";
 import { canCherryPickFromBranchScope } from "../../../src/webviews/react/CommitList";
 import { getCommitMenuItems } from "../../../src/webviews/react/commit-list/commitMenu";
-import { buildFileTree, collectDirPaths, countFiles } from "../../../src/webviews/react/shared/fileTree";
+import {
+    buildFileTree,
+    collectDirPaths,
+    countFiles,
+} from "../../../src/webviews/react/shared/fileTree";
 
 /** Builds a branch fixture for menu and branch-scope utility tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
@@ -156,6 +163,54 @@ describe("tree model", () => {
         ]);
         const upstreamTree = groups.get("upstream")?.tree ?? [];
         expect(upstreamTree[0]?.label).toBe("feature");
+    });
+
+    it("pins defaults and sorts branch folders by current branch then chronology", () => {
+        const tree = buildPrefixTree([
+            makeBranch({ name: "codex/older", committerDate: 10 }),
+            makeBranch({ name: "codex/newer", committerDate: 30 }),
+            makeBranch({ name: "main", isDefault: true, committerDate: 20 }),
+            makeBranch({ name: "codex/current", isCurrent: true, committerDate: 15 }),
+        ]);
+
+        expect(tree[0]?.label).toBe("main");
+        const codexFolder = tree.find((node) => node.label === "codex");
+        expect(codexFolder?.children.map((child) => child.label)).toEqual([
+            "current",
+            "newer",
+            "older",
+        ]);
+    });
+
+    it("pins remote default branches at the top of each remote group", () => {
+        const groups = buildRemoteGroups([
+            makeBranch({
+                name: "origin/codex/newer",
+                isRemote: true,
+                remote: "origin",
+                committerDate: 30,
+            }),
+            makeBranch({
+                name: "origin/main",
+                isRemote: true,
+                remote: "origin",
+                isDefault: true,
+                committerDate: 20,
+            }),
+            makeBranch({
+                name: "origin/codex/current",
+                isRemote: true,
+                remote: "origin",
+                isCurrent: true,
+                committerDate: 10,
+            }),
+        ]);
+
+        const originTree = groups.get("origin")?.tree ?? [];
+        expect(originTree[0]?.label).toBe("main");
+        expect(originTree.find((node) => node.label === "codex")?.children[0]?.label).toBe(
+            "current",
+        );
     });
 });
 

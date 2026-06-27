@@ -280,6 +280,7 @@ function makeGitOpsMock() {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
+        hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]),
@@ -771,6 +772,7 @@ describe("view providers integration", () => {
 
         await send({ type: "stageFiles", paths: ["src/a.ts"] });
         await send({ type: "unstageFiles", paths: ["src/a.ts"] });
+        gitOps.getStatus.mockResolvedValue([]);
         await send({
             type: "commitSelected",
             message: "feat: selected",
@@ -883,9 +885,7 @@ describe("view providers integration", () => {
             type: "requestCommitChecks",
             hash: "abc1234",
         });
-        expect(lastCommitChecksSnapshot()).toEqual(
-            expect.objectContaining({ state: "success" }),
-        );
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
         provider.dispose();
     });
@@ -1581,6 +1581,7 @@ describe("view providers integration", () => {
         expect(showWarningMessage).toHaveBeenCalledWith("Select files to commit.");
         expect(gitOps.stageFiles).not.toHaveBeenCalled();
 
+        gitOps.getStatus.mockResolvedValue([]);
         await webview.send({ type: "commit", message: "feat: ok", amend: false });
         await webview.send({
             type: "commitSelected",
@@ -2025,6 +2026,7 @@ describe("view providers integration", () => {
         gitOps.stageFiles.mockClear();
         gitOps.commitAndPush.mockClear();
         gitOps.push.mockClear();
+        gitOps.getStatus.mockResolvedValue([]);
 
         await webview.send({
             type: "commitSelected",

@@ -373,6 +373,7 @@ function App(): React.ReactElement {
         setCommitPanelPosition,
     });
 
+    const hasUncommittedChanges = cpState.files.length > 0;
     const canCommit = canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
     const shouldPublishBranch = !cpState.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
@@ -428,6 +429,7 @@ function App(): React.ReactElement {
             groupByDir={groupByDir}
             canCommit={canCommit}
             canPush={canPush}
+            hasUncommittedChanges={hasUncommittedChanges}
             pushLabel={pushLabel}
             isAllChecked={isAllChecked}
             isSomeChecked={isSomeChecked}

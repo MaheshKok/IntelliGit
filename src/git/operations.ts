@@ -167,16 +167,35 @@ export class GitOps {
      */
     async getBranches(): Promise<Branch[]> {
         const format =
-            "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)";
+            "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)\t%(symref:short)\t%(committerdate:unix)";
         const result = await this.executor.run(["branch", "-a", `--format=${format}`]);
+        const rows = result
+            .trim()
+            .split("\n")
+            .filter((line) => line.trim())
+            .map((line) => line.split("\t"));
+        const defaultRemoteRefs = new Set<string>();
+        const remotesWithDefault = new Set<string>();
+        const defaultLocalNames = new Set<string>();
+        for (const [refname, , , , , , symref] of rows) {
+            if (!refname?.endsWith("/HEAD") || !symref || !isValidBranchName(symref)) continue;
+            defaultRemoteRefs.add(symref);
+            const remoteRefMatch = /^([^/]+)\/(.+)$/.exec(symref);
+            if (remoteRefMatch) {
+                const [, remoteName, localName] = remoteRefMatch;
+                if (isValidRemoteName(remoteName) && isValidBranchName(localName)) {
+                    remotesWithDefault.add(remoteName);
+                    defaultLocalNames.add(localName);
+                }
+            }
+        }
         const branches: Branch[] = [];
-        for (const line of result.trim().split("\n")) {
-            if (!line.trim()) continue;
-            const [refname, name, hash, upstream, track, head] = line.split("\t");
+        for (const [refname, name, hash, upstream, track, head, , committerDateRaw] of rows) {
             const isRemote = refname.startsWith("refs/remotes/");
             // Skip symbolic refs like origin/HEAD (refname:short resolves to just "origin")
             if (refname.endsWith("/HEAD")) continue;
             if (!isValidBranchName(name)) continue;
+            const committerDate = Number(committerDateRaw);
             let remote: string | undefined;
             if (isRemote) {
                 // refname:short for remote is "origin/main", first segment is the remote name
@@ -188,6 +207,13 @@ export class GitOps {
                     remote = undefined;
                 }
             }
+            const isDefault = isRemote
+                ? defaultRemoteRefs.has(name) ||
+                  (remote !== undefined &&
+                      !remotesWithDefault.has(remote) &&
+                      (name === `${remote}/main` || name === `${remote}/master`))
+                : defaultLocalNames.has(name) ||
+                  (defaultLocalNames.size === 0 && (name === "main" || name === "master"));
             let ahead = 0,
                 behind = 0;
             if (track) {
@@ -201,6 +227,8 @@ export class GitOps {
                 hash,
                 isRemote,
                 isCurrent: head === "*",
+                isDefault: isDefault || undefined,
+                committerDate: Number.isFinite(committerDate) ? committerDate : undefined,
                 upstream: upstream || undefined,
                 remote,
                 ahead,
@@ -390,6 +418,13 @@ export class GitOps {
         applyNumstat(stagedStat, true, "staged", stagedStatsUnavailableMessage());
         return files;
     }
+
+    /** Returns whether porcelain status reports any working-tree entry without loading numstat. */
+    async hasUncommittedChanges(): Promise<boolean> {
+        const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
+        return result.length > 0;
+    }
+
     /** Stages literal repository paths, skipping files already staged as deletions to avoid re-adding them. */
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;

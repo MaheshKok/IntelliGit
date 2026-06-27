@@ -41,6 +41,7 @@ export function buildPrefixTree(
         }
     }
 
+    sortBranchTree(root);
     return root;
 }
 
@@ -73,4 +74,47 @@ export function buildRemoteGroups(remotes: Branch[]): Map<string, RemoteGroup> {
     }
 
     return groups;
+}
+
+interface TreeSortMeta {
+    isDefault: boolean;
+    isCurrent: boolean;
+    newestCommitterDate: number;
+}
+
+function getTreeSortMeta(node: TreeNode): TreeSortMeta {
+    const childMeta = node.children.map(getTreeSortMeta);
+    const branchDate = node.branch?.committerDate ?? 0;
+    return {
+        isDefault: node.branch?.isDefault === true || childMeta.some((meta) => meta.isDefault),
+        isCurrent: node.branch?.isCurrent === true || childMeta.some((meta) => meta.isCurrent),
+        newestCommitterDate: Math.max(
+            branchDate,
+            ...childMeta.map((meta) => meta.newestCommitterDate),
+            0,
+        ),
+    };
+}
+
+function compareTreeNodes(
+    left: TreeNode,
+    right: TreeNode,
+    sortMetaByNode: ReadonlyMap<TreeNode, TreeSortMeta>,
+): number {
+    const leftMeta = sortMetaByNode.get(left)!;
+    const rightMeta = sortMetaByNode.get(right)!;
+    if (leftMeta.isDefault !== rightMeta.isDefault) return leftMeta.isDefault ? -1 : 1;
+    if (leftMeta.isCurrent !== rightMeta.isCurrent) return leftMeta.isCurrent ? -1 : 1;
+    if (leftMeta.newestCommitterDate !== rightMeta.newestCommitterDate) {
+        return rightMeta.newestCommitterDate - leftMeta.newestCommitterDate;
+    }
+    return left.label.localeCompare(right.label);
+}
+
+function sortBranchTree(nodes: TreeNode[]): void {
+    for (const node of nodes) {
+        sortBranchTree(node.children);
+    }
+    const sortMetaByNode = new Map(nodes.map((node) => [node, getTreeSortMeta(node)]));
+    nodes.sort((left, right) => compareTreeNodes(left, right, sortMetaByNode));
 }
