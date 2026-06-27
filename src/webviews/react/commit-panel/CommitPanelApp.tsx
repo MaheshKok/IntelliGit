@@ -12,6 +12,7 @@ import { useExtensionMessages } from "./hooks/useExtensionMessages";
 import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
 import { ThemeIconFontFaces } from "../shared/components";
+import { canRunCommitAction } from "./commitEligibility";
 
 /**
  * Root commit-panel React app wired to the VS Code webview host.
@@ -60,7 +61,7 @@ function App(): React.ReactElement {
         [dispatch, vscode],
     );
 
-    const canCommit = state.isAmend || checkedPaths.size > 0;
+    const canCommit = canRunCommitAction(state.isAmend, checkedPaths.size, state.commitMessage);
     const shouldPublishBranch = !state.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
         ? state.currentBranchName !== null

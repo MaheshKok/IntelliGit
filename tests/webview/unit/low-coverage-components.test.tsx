@@ -34,6 +34,37 @@ beforeEach(() => {
 });
 
 describe("low coverage components", () => {
+    it("useDragResize clamps initial height to container bounds", () => {
+        function Harness(): React.ReactElement {
+            const ref = useRef<HTMLDivElement | null>(null);
+            const { height } = useDragResize(220, 80, ref, {
+                maxReservedHeight: 50,
+            });
+            return (
+                <div
+                    ref={(node) => {
+                        if (node) {
+                            Object.defineProperty(node, "clientHeight", {
+                                value: 140,
+                                configurable: true,
+                            });
+                        }
+                        ref.current = node;
+                    }}
+                    data-host="1"
+                >
+                    <span data-height>{height}</span>
+                </div>
+            );
+        }
+
+        const { root, container } = mount(<Harness />);
+        const heightText = container.querySelector("[data-height]")?.textContent ?? "";
+        expect(Number(heightText)).toBe(90);
+
+        unmount(root, container);
+    });
+
     it("useDragResize updates and clamps height", () => {
         const onResize = vi.fn();
         function Harness(): React.ReactElement {

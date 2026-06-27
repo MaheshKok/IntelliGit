@@ -16,6 +16,7 @@ import theme from "./commit-panel/theme";
 import { getSettings } from "./shared/settings";
 import { CommitPanelPane } from "./undocked/CommitPanelPane";
 import { commitPanelReducer, initialCommitPanelState } from "./undocked/commitPanelState";
+import { canRunCommitAction } from "./commit-panel/commitEligibility";
 import {
     computeEqualSectionWidths,
     migrateSectionWidths,
@@ -472,7 +473,7 @@ function App(): React.ReactElement {
         }
     }, []);
 
-    const canCommit = cpState.isAmend || checkedPaths.size > 0;
+    const canCommit = canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
     const shouldPublishBranch = !cpState.currentBranchHasUpstream;
     const canPush = shouldPublishBranch
         ? cpState.currentBranchName !== null
