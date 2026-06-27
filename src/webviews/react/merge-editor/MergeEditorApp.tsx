@@ -187,9 +187,15 @@ function App() {
                 }
             }
 
+            const renderKey =
+                segment.type === "conflict"
+                    ? `conflict-${segment.id}`
+                    : `common-${startLine}-${lineCount}-${segment.lines[0] ?? ""}`;
+
             return {
                 segment,
                 index,
+                renderKey,
                 startLine,
                 lineCount,
                 lineNumbers,
@@ -701,7 +707,7 @@ function App() {
                     {renderedSegments.map(
                         ({
                             segment,
-                            index,
+                            renderKey,
                             lineCount,
                             lineNumbers,
                             alignment,
@@ -710,7 +716,7 @@ function App() {
                         }) =>
                             segment.type === "common" ? (
                                 <CommonSection
-                                    key={index}
+                                    key={renderKey}
                                     segment={segment}
                                     lineCount={lineCount}
                                     lineNumbers={lineNumbers}
@@ -718,7 +724,7 @@ function App() {
                                 />
                             ) : (
                                 <ConflictSection
-                                    key={index}
+                                    key={renderKey}
                                     segment={segment}
                                     resolution={state.resolutions[segment.id]}
                                     editedLines={state.edits[segment.id]}

@@ -485,8 +485,10 @@ export function containsConflictMarkers(text: string): boolean {
 export async function launchJetBrainsMergeTool(
     input: JetBrainsMergeToolLaunchInput,
 ): Promise<JetBrainsMergeToolLaunchResult> {
-    const resolvedBinaryPath = await resolveJetBrainsMergeBinaryPath(input.binaryPath);
-    const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-"));
+    const [resolvedBinaryPath, tempRoot] = await Promise.all([
+        resolveJetBrainsMergeBinaryPath(input.binaryPath),
+        fsp.mkdtemp(path.join(os.tmpdir(), "intelligit-merge-")),
+    ]);
     const names = buildTempFileNames(input.relativeFilePath);
     const basePath = path.join(tempRoot, names.base);
     const oursPath = path.join(tempRoot, names.ours);
