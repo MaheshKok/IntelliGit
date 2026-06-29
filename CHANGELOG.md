@@ -5,6 +5,24 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.6] - 2026-06-29
+
+### Added
+
+- Added Bitbucket Cloud and Bitbucket Server / Data Center choices to the first-publish repository creation flow, so new remotes can be created from the same publish path as GitHub and GitLab.
+
+### Changed
+
+- Matched the graph toolbar fetch, pull, push, and sync icons to the commit-panel Git action icon set, including the colored icon-theme variants.
+
+### Fixed
+
+- Allowed push and publish actions to run when the working tree has uncommitted changes, while keeping the dirty-tree warning for pull and sync operations that can merge remote changes into local work.
+- Kept Git warning and error notifications manually dismissible instead of auto-closing the dirty-tree warning after a timeout.
+- Hardened branch ordering by validating remote default-branch symrefs while preserving default-branch pinning and current `codex/...` branch ordering.
+- Used the computed branch name as the publish prompt default while keeping the branch-name prompt at the end of the repository creation flow.
+- Kept the push button disabled only for actual non-pushable states, not simply because the working tree is dirty.
+
 ## [0.14.5] - 2026-06-27
 
 ### Fixed
