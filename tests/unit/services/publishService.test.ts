@@ -358,7 +358,7 @@ describe("publishService phase 5", () => {
             2,
             expect.objectContaining({
                 prompt: "Published branch name",
-                value: "main",
+                value: "master",
             }),
         );
         expect(gitOps.addRemote).toHaveBeenCalledWith("origin", "https://github.com/user/repo.git");
