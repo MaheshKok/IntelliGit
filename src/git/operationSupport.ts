@@ -3,7 +3,6 @@ import { getErrorMessage, sanitizeErrorMessage } from "../utils/errors";
 declare const require: (id: string) => unknown;
 
 const OUTPUT_CHANNEL_NAME = "IntelliGit";
-const TRANSIENT_WARNING_MS = 5000;
 
 type VsCodeApi = typeof import("vscode");
 type OutputChannelLike = { appendLine: (value: string) => void };
@@ -24,7 +23,10 @@ let outputChannel: OutputChannelLike | undefined;
 export function getVsCodeApi(): VsCodeApi | null {
     if (cachedVsCodeApi !== undefined) return cachedVsCodeApi;
     try {
-        cachedVsCodeApi = require("vscode") as VsCodeApi;
+        const globalRequire = (globalThis as { require?: (id: string) => unknown }).require;
+        cachedVsCodeApi = (
+            typeof globalRequire === "function" ? globalRequire("vscode") : require("vscode")
+        ) as VsCodeApi;
     } catch {
         cachedVsCodeApi = null;
     }
@@ -51,14 +53,7 @@ function withNotificationPrefix(message: string): string {
 }
 
 function showTimedWarningMessage(vscode: VsCodeApi, message: string): void {
-    void vscode.window.withProgress(
-        {
-            location: vscode.ProgressLocation.Notification,
-            title: withNotificationPrefix(message),
-            cancellable: false,
-        },
-        () => new Promise<void>((resolve) => setTimeout(resolve, TRANSIENT_WARNING_MS)),
-    );
+    void vscode.window.showWarningMessage(withNotificationPrefix(message));
 }
 
 /**
