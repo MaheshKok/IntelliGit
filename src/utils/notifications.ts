@@ -1,31 +1,23 @@
 import * as vscode from "vscode";
 
 const PREFIX = "IntelliGit";
-const TRANSIENT_MESSAGE_MS = 5000;
 
 function withPrefix(message: string): string {
     return `${PREFIX}: ${message}`;
 }
 
-function showTimedMessage(message: string): void {
-    void vscode.window.withProgress(
-        {
-            location: vscode.ProgressLocation.Notification,
-            title: withPrefix(message),
-            cancellable: false,
-        },
-        () => new Promise<void>((resolve) => setTimeout(resolve, TRANSIENT_MESSAGE_MS)),
-    );
+function stripCodiconPrefix(message: string): string {
+    return message.replace(/^\$\([^)]+\)\s*/, "");
 }
 
-/** Shows a non-blocking information notification that auto-dismisses after five seconds. */
+/** Shows a non-blocking information notification with the IntelliGit product prefix. */
 export function showTimedInformationMessage(message: string): void {
-    showTimedMessage(message);
+    void vscode.window.showInformationMessage(withPrefix(message));
 }
 
-/** Shows a non-blocking warning notification that auto-dismisses after five seconds. */
+/** Shows a non-blocking warning notification with the IntelliGit product prefix. */
 export function showTimedWarningMessage(message: string): void {
-    showTimedMessage(message.replace(/^\$\([^)]+\)\s*/, ""));
+    void vscode.window.showWarningMessage(withPrefix(stripCodiconPrefix(message)));
 }
 
 /**

@@ -1,6 +1,6 @@
 {
     "intelligit": "IntelliGit",
-    "extension.description": "コミットグラフ、コミット詳細、シェルフワークフロー、ファイル変更エクスプローラーを備えた VS Code 向け IntelliJ スタイルの Git UI。",
+    "extension.description": "The best Git features from PyCharm, VS Code, and Visual Studio IDE.",
     "view.commit": "コミット",
     "view.graph": "グラフ",
     "view.mergeConflicts": "マージの競合",

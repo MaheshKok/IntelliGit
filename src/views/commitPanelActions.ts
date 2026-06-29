@@ -24,6 +24,10 @@ interface CommitPanelActionDeps {
  */
 export type CommitPanelGitOperation = "fetch" | "pull" | "push" | "sync";
 
+interface GitOperationOptions {
+    skipDirtyCheck?: boolean;
+}
+
 /** Returns whether the current local branch has already been published upstream. */
 async function currentBranchIsPublished(gitOps: GitOps): Promise<boolean> {
     const branches = await gitOps.getBranches();
@@ -72,7 +76,7 @@ export async function commitSelectedFromPanel(
     });
     if (push) {
         try {
-            await runGitOperationFromPanel(deps, "push");
+            await runGitOperationFromPanel(deps, "push", { skipDirtyCheck: true });
         } catch (err) {
             postCommitted();
             await refreshData();
@@ -130,7 +134,7 @@ export async function commitAndPushFromPanel(
     await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
         await deps.gitOps.commit(message, amend);
     });
-    await runGitOperationFromPanel(deps, "push");
+    await runGitOperationFromPanel(deps, "push", { skipDirtyCheck: true });
     deps.postCommitted();
 }
 
@@ -154,8 +158,13 @@ export async function runGitOperationFromPanel(
         "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged"
     >,
     operation: CommitPanelGitOperation,
+    options: GitOperationOptions = {},
 ): Promise<void> {
-    if (operation !== "fetch" && (await warnIfUncommittedChanges(deps.gitOps))) {
+    if (
+        !options.skipDirtyCheck &&
+        operation !== "fetch" &&
+        (await warnIfUncommittedChanges(deps.gitOps))
+    ) {
         return;
     }
 

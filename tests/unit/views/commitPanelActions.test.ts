@@ -222,4 +222,25 @@ describe("runGitOperationFromPanel", () => {
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(deps.postCommitted).toHaveBeenCalledTimes(1);
     });
+
+    it("pushes after a selected-file commit even when other files remain dirty", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.hasUncommittedChanges).mockResolvedValueOnce(true);
+
+        await commitSelectedFromPanel(deps, {
+            message: "feat: partial commit",
+            amend: false,
+            push: true,
+            paths: ["src/a.ts"],
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: partial commit", false);
+        expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
+            "There are uncommitted changes, please commit or stash them first.",
+        );
+    });
 });

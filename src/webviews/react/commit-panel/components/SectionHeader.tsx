@@ -68,7 +68,6 @@ export function SectionHeader({
             }
             outline={isDragOver ? "2px solid var(--intelligit-pycharm-blue)" : "none"}
             outlineOffset="-1px"
-            _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleOpen();

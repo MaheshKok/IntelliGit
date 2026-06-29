@@ -12,6 +12,7 @@ import { isValidBranchName } from "../utils/gitRefs";
 // ---------------------------------------------------------------------------
 
 type PublishProvider = "github" | "gitlab";
+const DEFAULT_PUBLISHED_BRANCH = "main";
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface CreatedRepo {
@@ -70,7 +71,7 @@ export async function runPublishBranchFlow(
     const remotePlan = await pickRemotePlan(remotes, branchName);
     if (!remotePlan) return;
 
-    let remoteBranchName = remotePlan.remoteBranchName ?? branchName;
+    let remoteBranchName = remotePlan.remoteBranchName ?? DEFAULT_PUBLISHED_BRANCH;
     if (remotePlan.kind === "existing") {
         try {
             await vscode.window.withProgress(
