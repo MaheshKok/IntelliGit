@@ -108,7 +108,7 @@ describe("runGitOperationFromPanel", () => {
         expect(gitOps.fetch).toHaveBeenCalledTimes(1);
     });
 
-    it.each<Exclude<CommitPanelGitOperation, "fetch">>(["pull", "push", "sync"])(
+    it.each<CommitPanelGitOperation>(["pull", "sync"])(
         "warns instead of running %s when the working tree is dirty",
         async (operation) => {
             const gitOps = makeGitOps("origin/main");
@@ -129,18 +129,21 @@ describe("runGitOperationFromPanel", () => {
         },
     );
 
-    it("warns instead of publishing an unpublished branch when the working tree is dirty", async () => {
+    it("publishes an unpublished branch even when the working tree is dirty", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
-        vi.mocked(gitOps.hasUncommittedChanges).mockResolvedValueOnce(true);
+        vi.mocked(gitOps.hasUncommittedChanges).mockRejectedValueOnce(
+            new Error("status should not run"),
+        );
 
         await runGitOperationFromPanel(deps, "push");
 
-        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+        expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
             "There are uncommitted changes, please commit or stash them first.",
         );
-        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
-        expect(deps.refreshData).not.toHaveBeenCalled();
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
     });
 
     it.each<CommitPanelGitOperation>(["pull", "sync"])(
@@ -171,6 +174,24 @@ describe("runGitOperationFromPanel", () => {
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
         expect(gitOps.push).not.toHaveBeenCalled();
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it("pushes a published branch even when the working tree is dirty", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.hasUncommittedChanges).mockRejectedValueOnce(
+            new Error("status should not run"),
+        );
+
+        await runGitOperationFromPanel(deps, "push");
+
+        expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
+        expect(gitOps.push).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
+            "There are uncommitted changes, please commit or stash them first.",
+        );
         expect(deps.refreshData).toHaveBeenCalledTimes(1);
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
     });
@@ -226,7 +247,9 @@ describe("runGitOperationFromPanel", () => {
     it("pushes after a selected-file commit even when other files remain dirty", async () => {
         const gitOps = makeGitOps("origin/main");
         const deps = makeDeps(gitOps);
-        vi.mocked(gitOps.hasUncommittedChanges).mockResolvedValueOnce(true);
+        vi.mocked(gitOps.hasUncommittedChanges).mockRejectedValueOnce(
+            new Error("status should not run"),
+        );
 
         await commitSelectedFromPanel(deps, {
             message: "feat: partial commit",

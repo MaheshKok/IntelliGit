@@ -27,7 +27,6 @@ import {
 } from "../utils/notifications";
 import {
     runGitOperationFromPanel,
-    warnIfUncommittedChanges,
     type CommitPanelGitOperation,
 } from "../views/commitPanelActions";
 import type { RefreshService } from "../views/RefreshService";
@@ -176,7 +175,6 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                 );
                 return;
             }
-            if (await warnIfUncommittedChanges(gitOps)) return;
             const currentBranch = getCurrentBranches().find((b) => b.isCurrent);
             if (!currentBranch) {
                 vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
