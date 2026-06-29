@@ -21,7 +21,6 @@ interface Props {
     onFetch: () => void;
     onPull: () => void;
     onPush: () => void;
-    hasUncommittedChanges: boolean;
     commitContent: React.ReactNode;
     shelfContent: React.ReactNode;
 }
@@ -182,13 +181,14 @@ function GitActionButton({
             <IconButton
                 aria-label={label}
                 aria-disabled={disabled || undefined}
+                isDisabled={disabled}
                 variant="toolbarGhost"
                 size="sm"
                 alignSelf="center"
                 mx="4px"
                 opacity={disabled ? 0.55 : undefined}
                 cursor={disabled ? "default" : undefined}
-                onClick={onClick}
+                onClick={disabled ? undefined : onClick}
                 icon={
                     <svg
                         width="16"

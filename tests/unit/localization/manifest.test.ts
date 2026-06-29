@@ -161,14 +161,20 @@ describe("extension manifest", () => {
         ] as const;
 
         for (const icon of icons) {
+            const labelNeedle = `<GitActionButton label={t("common.${icon.name}")}`;
+            const start = tabBarSource.indexOf(labelNeedle);
+            expect(start).toBeGreaterThanOrEqual(0);
+            const end = tabBarSource.indexOf("</GitActionButton>", start);
+            expect(end).toBeGreaterThan(start);
+            const iconBlock = tabBarSource.slice(start, end);
             const svg = readFileSync(
                 path.join(process.cwd(), `media/icons/git-${icon.name}-color.svg`),
                 "utf8",
             );
-            expect(tabBarSource).toContain(`color="${icon.color}"`);
+            expect(iconBlock).toContain(`color="${icon.color}"`);
             expect(svg).toContain(icon.color);
             for (const pathData of icon.paths) {
-                expect(tabBarSource).toContain(`d="${pathData}"`);
+                expect(iconBlock).toContain(`d="${pathData}"`);
                 expect(svg).toContain(`d="${pathData}"`);
             }
         }

@@ -182,6 +182,16 @@ describe("tree model", () => {
         ]);
     });
 
+    it("does not promote a folder because a child branch is current", () => {
+        const tree = buildPrefixTree([
+            makeBranch({ name: "codex/current", isCurrent: true, committerDate: 10 }),
+            makeBranch({ name: "feature/newer", committerDate: 30 }),
+        ]);
+
+        expect(tree.map((node) => node.label)).toEqual(["feature", "codex"]);
+        expect(tree.find((node) => node.label === "codex")?.children[0]?.label).toBe("current");
+    });
+
     it("pins remote default branches at the top of each remote group", () => {
         const groups = buildRemoteGroups([
             makeBranch({

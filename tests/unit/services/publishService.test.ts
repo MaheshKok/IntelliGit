@@ -173,6 +173,29 @@ function mockCreateRepoResponse(statusCode: number, body: string): void {
     });
 }
 
+function mockCreateRepoResponseEvent(event: "error" | "aborted", err?: Error): void {
+    mocks.httpsRequest.mockImplementation((_url, _options, callback) => {
+        const handlers = new Map<string, (arg?: unknown) => void>();
+        const res = {
+            statusCode: 200,
+            on: vi.fn((event: string, handler: (arg?: unknown) => void) => {
+                handlers.set(event, handler);
+                return res;
+            }),
+        };
+        return {
+            on: vi.fn(),
+            setTimeout: vi.fn(),
+            destroy: vi.fn(),
+            write: vi.fn(),
+            end: vi.fn(() => {
+                callback(res);
+                handlers.get(event)?.(err);
+            }),
+        };
+    });
+}
+
 function mockCreateRepoTimeout(): void {
     mocks.httpsRequest.mockImplementation((_url, _options, _callback) => {
         let timeoutHandler: (() => void) | undefined;
@@ -469,6 +492,49 @@ describe("publishService phase 5", () => {
             "origin",
             "https://bitbucket.example.com/scm/prj/repo.git",
         );
+    });
+
+    it("reports Bitbucket Cloud response stream errors", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "bitbucket-cloud" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox
+            .mockResolvedValueOnce("repo")
+            .mockResolvedValueOnce("workspace")
+            .mockResolvedValueOnce("main")
+            .mockResolvedValueOnce("bb-user")
+            .mockResolvedValueOnce("bb-token");
+        mockCreateRepoResponseEvent("error", new Error("socket closed"));
+
+        await runPublishBranchFlow(gitOps, "main", "/repo");
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to create repository: socket closed",
+        );
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
+    });
+
+    it("reports Bitbucket Server aborted responses", async () => {
+        const gitOps = makeGitOps([]);
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "bitbucket-server" })
+            .mockResolvedValueOnce({ value: "private" });
+        mocks.showInputBox
+            .mockResolvedValueOnce("repo")
+            .mockResolvedValueOnce("https://bitbucket.example.com/")
+            .mockResolvedValueOnce("PRJ")
+            .mockResolvedValueOnce("main")
+            .mockResolvedValueOnce("bb-user")
+            .mockResolvedValueOnce("bb-token");
+        mockCreateRepoResponseEvent("aborted");
+
+        await runPublishBranchFlow(gitOps, "main", "/repo");
+
+        expect(mocks.showErrorMessage).toHaveBeenCalledWith(
+            "Failed to create repository: Response aborted while creating repository",
+        );
+        expect(gitOps.addRemote).not.toHaveBeenCalled();
     });
 
     it("surfaces a clear error when GitHub repository creation times out", async () => {

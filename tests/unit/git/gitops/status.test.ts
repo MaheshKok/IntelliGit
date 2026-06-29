@@ -144,6 +144,15 @@ describe("GitOps", () => {
             );
         });
 
+        it("leaves missing branch tip dates undefined", async () => {
+            const output = "refs/heads/main\tmain\tabc1234\torigin/main\t\t*\t\t\n";
+            const executor = createMockExecutor({ branch: output });
+            const ops = new GitOps(executor);
+            const branches = await ops.getBranches();
+
+            expect(branches[0].committerDate).toBeUndefined();
+        });
+
         it("does not pin main when Git reports a different default branch", async () => {
             const output = [
                 "refs/remotes/origin/HEAD\torigin\tabc1234\t\t\t \torigin/trunk\t1700000000",

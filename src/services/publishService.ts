@@ -799,6 +799,14 @@ async function createBitbucketCloudRepo(
             },
             (res) => {
                 let data = "";
+                res.on("error", (err) => {
+                    req.setTimeout(0);
+                    fail(getErrorMessage(err));
+                });
+                res.on("aborted", () => {
+                    req.setTimeout(0);
+                    fail("Response aborted while creating repository");
+                });
                 res.on("data", (chunk: Buffer) => (data += chunk.toString()));
                 res.on("end", () => {
                     req.setTimeout(0);
@@ -876,6 +884,14 @@ async function createBitbucketServerRepo(
             },
             (res) => {
                 let data = "";
+                res.on("error", (err) => {
+                    req.setTimeout(0);
+                    fail(getErrorMessage(err));
+                });
+                res.on("aborted", () => {
+                    req.setTimeout(0);
+                    fail("Response aborted while creating repository");
+                });
                 res.on("data", (chunk: Buffer) => (data += chunk.toString()));
                 res.on("end", () => {
                     req.setTimeout(0);

@@ -16,7 +16,6 @@ interface Props {
     onPush: () => void;
     canCommit: boolean;
     canPush: boolean;
-    pushBlockedByUncommittedChanges: boolean;
     pushLabel: string;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;

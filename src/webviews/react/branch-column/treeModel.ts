@@ -79,20 +79,20 @@ export function buildRemoteGroups(remotes: Branch[]): Map<string, RemoteGroup> {
 interface TreeSortMeta {
     isDefault: boolean;
     isCurrent: boolean;
-    newestCommitterDate: number;
+    newestCommitterDate?: number;
 }
 
 function getTreeSortMeta(node: TreeNode): TreeSortMeta {
     const childMeta = node.children.map(getTreeSortMeta);
-    const branchDate = node.branch?.committerDate ?? 0;
+    const branchDate = node.branch?.committerDate;
+    const childDates = childMeta
+        .map((meta) => meta.newestCommitterDate)
+        .filter((date): date is number => date !== undefined);
+    const dates = branchDate === undefined ? childDates : [branchDate, ...childDates];
     return {
         isDefault: node.branch?.isDefault === true || childMeta.some((meta) => meta.isDefault),
-        isCurrent: node.branch?.isCurrent === true || childMeta.some((meta) => meta.isCurrent),
-        newestCommitterDate: Math.max(
-            branchDate,
-            ...childMeta.map((meta) => meta.newestCommitterDate),
-            0,
-        ),
+        isCurrent: node.branch?.isCurrent === true,
+        newestCommitterDate: dates.length > 0 ? Math.max(...dates) : undefined,
     };
 }
 
@@ -105,8 +105,15 @@ function compareTreeNodes(
     const rightMeta = sortMetaByNode.get(right)!;
     if (leftMeta.isDefault !== rightMeta.isDefault) return leftMeta.isDefault ? -1 : 1;
     if (leftMeta.isCurrent !== rightMeta.isCurrent) return leftMeta.isCurrent ? -1 : 1;
-    if (leftMeta.newestCommitterDate !== rightMeta.newestCommitterDate) {
+    if (
+        leftMeta.newestCommitterDate !== undefined &&
+        rightMeta.newestCommitterDate !== undefined &&
+        leftMeta.newestCommitterDate !== rightMeta.newestCommitterDate
+    ) {
         return rightMeta.newestCommitterDate - leftMeta.newestCommitterDate;
+    }
+    if (leftMeta.newestCommitterDate !== rightMeta.newestCommitterDate) {
+        return leftMeta.newestCommitterDate === undefined ? 1 : -1;
     }
     return left.label.localeCompare(right.label);
 }

@@ -24,7 +24,6 @@ interface CommitPanelPaneProps {
     onPull: () => void;
     onPush: () => void;
     canPush: boolean;
-    hasUncommittedChanges: boolean;
     pushLabel: string;
     groupByDir: boolean;
     onToggleGroupBy: () => void;
@@ -54,7 +53,6 @@ export function CommitPanelPane({
     onPull,
     onPush,
     canPush,
-    hasUncommittedChanges,
     pushLabel,
     groupByDir,
     onToggleGroupBy,
@@ -75,7 +73,6 @@ export function CommitPanelPane({
                     onFetch={onFetch}
                     onPull={onPull}
                     onPush={onPush}
-                    hasUncommittedChanges={hasUncommittedChanges}
                     commitContent={
                         <CommitTab
                             files={cpState.files}
@@ -96,7 +93,6 @@ export function CommitPanelPane({
                             canCommit={canCommit}
                             onPush={onPush}
                             canPush={canPush}
-                            pushBlockedByUncommittedChanges={hasUncommittedChanges}
                             pushLabel={pushLabel}
                             currentBranchName={cpState.currentBranchName}
                             currentBranchUpstream={cpState.currentBranchUpstream}

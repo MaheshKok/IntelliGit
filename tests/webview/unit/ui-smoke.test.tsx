@@ -36,6 +36,16 @@ function renderUi(node: React.ReactElement): string {
     return renderToStaticMarkup(<ChakraProvider theme={theme}>{node}</ChakraProvider>);
 }
 
+function getButtonByText(html: string, text: string): HTMLButtonElement {
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const button = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === text,
+    );
+    expect(button).toBeDefined();
+    return button as HTMLButtonElement;
+}
+
 /** Builds a branch fixture with defaults shared by branch-column smoke tests. */
 function branch(overrides: Partial<Branch> = {}): Branch {
     return {
@@ -491,7 +501,6 @@ describe("webview ui smoke", () => {
                     onFetch={noop}
                     onPull={noop}
                     onPush={noop}
-                    hasUncommittedChanges={true}
                     commitContent={<div>Commit tab</div>}
                     shelfContent={<div>Shelf tab</div>}
                 />
@@ -541,14 +550,13 @@ describe("webview ui smoke", () => {
                     onPush={noop}
                     canCommit={true}
                     canPush={false}
-                    pushBlockedByUncommittedChanges={true}
                     pushLabel="common.push"
                     currentBranchName="main"
                     currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
-        expect(blockedUnavailablePushHtml).toContain("disabled");
+        expect(getButtonByText(blockedUnavailablePushHtml, "Push").disabled).toBe(true);
 
         const dirtyPushableHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>
@@ -561,20 +569,15 @@ describe("webview ui smoke", () => {
                     onPush={noop}
                     canCommit={true}
                     canPush={true}
-                    pushBlockedByUncommittedChanges={true}
                     pushLabel="common.push"
                     currentBranchName="main"
                     currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
-        const dirtyPushableContainer = document.createElement("div");
-        dirtyPushableContainer.innerHTML = dirtyPushableHtml;
-        const dirtyPushButton = Array.from(dirtyPushableContainer.querySelectorAll("button")).find(
-            (button) => button.textContent === "Push",
-        );
-        expect(dirtyPushButton?.disabled).toBe(false);
-        expect(dirtyPushButton?.getAttribute("aria-disabled")).toBeNull();
+        const dirtyPushButton = getButtonByText(dirtyPushableHtml, "Push");
+        expect(dirtyPushButton.disabled).toBe(false);
+        expect(dirtyPushButton.getAttribute("aria-disabled")).toBeNull();
 
         const localOnlyCommitHtml = renderUi(
             <CommitArea
