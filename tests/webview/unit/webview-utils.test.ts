@@ -77,6 +77,14 @@ describe("branch menu", () => {
         expect(actions).toContain("pushBranch");
         expect(actions).toContain("renameBranch");
         expect(actions).not.toContain("deleteBranch");
+
+        const iconMarkup = (action: string): string => {
+            const item = items.find((item) => item.action === action);
+            expect(item?.icon).toBeDefined();
+            return renderToStaticMarkup(item?.icon as React.ReactElement);
+        };
+        expect(iconMarkup("updateBranch")).toContain("M7.5 1h1v8.1");
+        expect(iconMarkup("pushBranch")).toContain("M8 1l3.35 3.35");
     });
 
     it("builds remote-branch menu with delete and without rename/push", () => {
@@ -88,6 +96,7 @@ describe("branch menu", () => {
         expect(actions).toContain("deleteBranch");
         expect(actions).not.toContain("pushBranch");
         expect(actions).not.toContain("renameBranch");
+        expect(actions[actions.length - 1]).toBe("createWorktreeFromBranch");
     });
 
     it("shows Open Worktree only for branches checked out in another worktree", () => {
@@ -136,6 +145,7 @@ describe("branch menu", () => {
             .map((item) => item.action);
 
         expect(freeBranch).toContain("createWorktreeFromBranch");
+        expect(freeBranch[freeBranch.length - 1]).toBe("createWorktreeFromBranch");
         expect(checkedOutElsewhere).not.toContain("createWorktreeFromBranch");
     });
 
