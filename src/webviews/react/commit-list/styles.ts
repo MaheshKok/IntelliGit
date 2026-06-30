@@ -16,8 +16,8 @@ export const ROOT_STYLE: CSSProperties = {
 };
 
 export const FILTER_BAR_STYLE: CSSProperties = {
-    minHeight: JETBRAINS_UI.size.toolbarHeight,
-    padding: "4px 8px",
+    minHeight: 30,
+    padding: "3px 8px",
     borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
     background: JETBRAINS_UI.color.toolbar,
     display: "flex",
@@ -40,7 +40,7 @@ export const FILTER_INPUT_WRAP_STYLE: CSSProperties = {
 
 export const FILTER_INPUT_STYLE: CSSProperties = {
     width: "100%",
-    height: 22,
+    height: 20,
     padding: "0 22px 0 8px",
     background: JETBRAINS_UI.color.input,
     color: "var(--vscode-input-foreground)",
