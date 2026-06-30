@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Flex, Box, Button, Tooltip } from "@chakra-ui/react";
-import { getSettings } from "../../shared/settings";
+import { getSettings, resolveIconColor } from "../../shared/settings";
 import type { StashEntry } from "../../../../types";
 import { formatDateTime } from "../../shared/date";
 import { t } from "../../shared/i18n";
@@ -18,9 +18,8 @@ interface Props {
 const STANDARD_STASH_ICON_COLOR = "var(--vscode-icon-foreground)";
 
 function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactElement {
-    const { hoverDelay, iconStyle, tooltipsEnabled } = getSettings();
-    const iconColor = (color: string) =>
-        iconStyle === "color" ? color : STANDARD_STASH_ICON_COLOR;
+    const { hoverDelay, tooltipsEnabled } = getSettings();
+    const iconColor = (color: string) => resolveIconColor(color, STANDARD_STASH_ICON_COLOR);
 
     return (
         <Flex

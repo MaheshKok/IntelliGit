@@ -5,15 +5,11 @@ import type { Commit } from "../../../types";
 import type { CommitAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
-import { getSettings } from "../shared/settings";
+import { resolveIconColor } from "../shared/settings";
 
 type SeparatorAction = `sep-${string}`;
 type CommitMenuItem = Omit<MenuItem, "action"> & { action: CommitAction | SeparatorAction };
 const STANDARD_MENU_ICON_COLOR = "var(--vscode-menu-foreground, var(--vscode-icon-foreground))";
-
-function commitMenuIconColor(color: string): string {
-    return getSettings().iconStyle === "color" ? color : STANDARD_MENU_ICON_COLOR;
-}
 
 function commitMenuIcon(color: string, path: React.ReactNode): React.ReactElement {
     return (
@@ -22,7 +18,7 @@ function commitMenuIcon(color: string, path: React.ReactNode): React.ReactElemen
             height="14"
             viewBox="0 0 16 16"
             aria-hidden
-            style={{ color: commitMenuIconColor(color) }}
+            style={{ color: resolveIconColor(color, STANDARD_MENU_ICON_COLOR) }}
         >
             {path}
         </svg>
@@ -131,7 +127,7 @@ function iconCherry(): React.ReactElement {
             aria-hidden
             focusable="false"
             size={14}
-            style={{ color: commitMenuIconColor("#ff4d4f") }}
+            style={{ color: resolveIconColor("#ff4d4f", STANDARD_MENU_ICON_COLOR) }}
         />
     );
 }
@@ -142,7 +138,7 @@ function iconReset(): React.ReactElement {
             aria-hidden
             focusable="false"
             size={14}
-            style={{ color: commitMenuIconColor("#ff9e64") }}
+            style={{ color: resolveIconColor("#ff9e64", STANDARD_MENU_ICON_COLOR) }}
         />
     );
 }

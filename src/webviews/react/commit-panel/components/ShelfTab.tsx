@@ -7,7 +7,7 @@ import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { ShelfStashList } from "./ShelfStashList";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import { getSettings } from "../../shared/settings";
+import { getSettings, resolveIconColor } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
@@ -316,13 +316,13 @@ export function ShelfTab({
                             disabled:
                                 selectedIndex !== contextMenu.index || shelfFiles.length === 0,
                             hint: "⌘D",
-                            icon: <DiffIcon iconStyle={iconStyle} />,
+                            icon: <DiffIcon />,
                         },
                         {
                             label: t("shelf.action.showDiffNewTab"),
                             action: "showDiffNewTab",
                             disabled: true,
-                            icon: <DiffIcon iconStyle={iconStyle} />,
+                            icon: <DiffIcon />,
                         },
                     ]}
                 />
@@ -331,11 +331,11 @@ export function ShelfTab({
     );
 }
 
-function DiffIcon({ iconStyle }: { iconStyle: "color" | "standard" }): React.ReactElement {
-    const color =
-        iconStyle === "color"
-            ? "#8fd5ff"
-            : "var(--vscode-menu-foreground, var(--vscode-icon-foreground))";
+function DiffIcon(): React.ReactElement {
+    const color = resolveIconColor(
+        "#8fd5ff",
+        "var(--vscode-menu-foreground, var(--vscode-icon-foreground))",
+    );
 
     return (
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden style={{ color }}>

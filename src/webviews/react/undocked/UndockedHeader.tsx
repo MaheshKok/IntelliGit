@@ -1,7 +1,7 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import { t } from "../shared/i18n";
-import { getSettings } from "../shared/settings";
+import { resolveIconColor } from "../shared/settings";
 
 interface UndockedHeaderProps {
     onDock: () => void;
@@ -25,8 +25,7 @@ const COLOR_DOCK_ICON_COLOR = "#8fd5ff";
 
 /** Renders the undocked editor-tab header and invokes the dock callback. */
 export function UndockedHeader({ onDock }: UndockedHeaderProps): React.ReactElement {
-    const dockIconColor =
-        getSettings().iconStyle === "color" ? COLOR_DOCK_ICON_COLOR : STANDARD_DOCK_ICON_COLOR;
+    const dockIconColor = resolveIconColor(COLOR_DOCK_ICON_COLOR, STANDARD_DOCK_ICON_COLOR);
 
     return (
         <Box
