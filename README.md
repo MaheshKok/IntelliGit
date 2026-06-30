@@ -102,6 +102,8 @@ guarded by context and confirmations.
 
 ### Unified IntelliGit Workbench
 
+![IntelliGit Undock picker with editor-tab and new-window options](media/screenshots/undock-workflow.png)
+
 ![Undocked IntelliGit workbench with commit panel, branch tree, graph, changed files, and details](media/screenshots/intelligit-workbench.png)
 
 When you need room, IntelliGit can run as a unified workbench tab. The `Undock`
