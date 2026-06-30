@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <img src="image.png" alt="IntelliGit commit panel and graph" />
+  <img src="media/screenshots/commit-actions.png" alt="IntelliGit commit action menu" />
 </p>
 
 IntelliGit brings the best Git workflow ideas from PyCharm, VS Code, and Visual Studio IDE into one VS Code extension: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
@@ -51,83 +51,86 @@ IntelliGit pulls those workflows into one JetBrains-inspired surface:
 - Handle risky history operations with availability rules and confirmations.
 - Open conflicts in IntelliGit's native merge flow, VS Code, or an optional JetBrains merge tool.
 
-## Product Highlights
+## Feature Gallery
 
-### Commit Without Losing The Thread
+### Commit Panel
 
-The commit panel gives you a file tree, selective staging, diff-on-click, rollback, shelve, amend, commit, and commit-and-push in one place. It is built for making intentional commits, not just dumping everything into `git commit -am`.
+![IntelliGit commit panel with staged, changed, and unversioned files](media/screenshots/commit-panel.png)
 
-### A Graph You Can Work From
+The commit panel keeps the daily commit loop in one focused view. Stage by file,
+folder, or whole section; keep tracked changes and unversioned files separated;
+review per-file status and line deltas; then commit, push, or amend without
+leaving the Git surface. File context actions cover rollback, jump to source,
+delete, shelve changes, show history, and refresh.
 
-The bottom panel combines branch list, commit graph, and commit details. Select a commit to see metadata and changed files. Filter by branch or search by text/hash. Use the same surface to checkout, rebase, merge, update, push, rename, delete, or create branches from commits.
+### Shelf Workflow
 
-### Safer History Actions
+![IntelliGit shelf workflow with apply, pop, drop, and show diff actions](media/screenshots/shelf-workflow.png)
 
-Advanced actions are available where you need them: cherry-pick, create patch, checkout revision, reset current branch, revert, undo commit, edit commit message, drop commit, interactive rebase, new branch, and new tag. Destructive or history-rewriting actions are guarded by context, pushed/merge-commit checks, and confirmations.
+The Shelf/Stash tab is built for interrupted work. Park partial or full changes,
+preview the files inside a shelved entry, show a diff before restoring it, then
+apply, pop, or drop the entry from the same panel. This gives VS Code a workflow
+closer to JetBrains shelf handling than raw terminal stash juggling.
 
-### Shelf-Style Parking
+### Commit Graph, Changed Files, And CI Checks
 
-Need to switch context before a change is ready? Use the Shelf tab to stash full or partial work, then apply, pop, or delete it later. It feels closer to the JetBrains shelf workflow than raw stash juggling.
+![IntelliGit commit graph with branch lanes, changed files, and commit check popover](media/screenshots/commit-checks.png)
 
-### Merge Conflict Flow
-
-IntelliGit detects merge conflicts, lets you open conflict sessions, accept yours/theirs, refresh the conflict tree, and optionally launch a JetBrains IDE merge tool. If no external tool is configured, it falls back to the native editor flow.
-
-### Localized Product Surface
-
-IntelliGit localizes command names, settings, host notifications, prompts, errors, and webview UI strings. Supported languages: English, German, Spanish, French, Japanese, Korean, Polish, Portuguese (Brazil), Portuguese (Portugal), Russian, Simplified Chinese, and Traditional Chinese.
-
-## Core Workflows
-
-### Commit And Shelf
-
-- Stage by section, folder, or file.
-- Open diffs from the file tree.
-- Roll back selected files.
-- Group by directory.
-- Show diff previews.
-- Expand or collapse the tree.
-- Commit, commit and push, or amend.
-- Shelve full or partial changes.
-- Apply, pop, or delete shelved entries.
-
-### Commit Graph And History
-
-- Three-pane layout: branch column, commit graph/list, and commit details.
-- Canvas-based lane graph with pagination for large histories.
-- Text/hash search.
-- Branch filtering.
-- Changed files, file stats, and commit metadata.
-- Workspace changed-file badge in the activity bar.
+The graph view combines branch search, branch lanes, commit search, changed
+files, commit metadata, and CI/CD checks. Commit check badges show provider
+status directly in history, and the popover exposes individual GitHub, GitLab,
+Bitbucket Cloud, or Bitbucket Server checks with links back to the provider.
 
 ### Branch Actions
 
-| Action                           | Applies To             |
-| -------------------------------- | ---------------------- |
-| Checkout                         | Local, Remote          |
-| New Branch from...               | Current, Local, Remote |
-| Checkout and Rebase onto Current | Local, Remote          |
-| Rebase Current onto Selected     | Local, Remote          |
-| Merge into Current               | Local, Remote          |
-| Update                           | Current, Local         |
-| Push                             | Current, Local         |
-| Rename...                        | Current, Local         |
-| Delete                           | Local, Remote          |
+![IntelliGit branch action menu in the commit graph](media/screenshots/branch-actions.png)
+
+Branch actions live where branch decisions happen. The branch tree groups
+current, local, remote, and worktree branches, then exposes context-aware actions
+such as checkout, new branch, checkout-and-rebase, rebase, merge, update, push,
+rename, delete, and worktree creation.
 
 ### Commit Actions
 
-- Copy Revision Number
-- Create Patch
-- Cherry-Pick
-- Checkout Revision
-- Reset Current Branch to Here
-- Revert Commit
-- Undo Commit
-- Edit Commit Message
-- Drop Commit
-- Interactively Rebase from Here
-- New Branch
-- New Tag
+![IntelliGit commit action menu with patch, cherry-pick, reset, revert, rebase, branch, and tag actions](media/screenshots/commit-actions.png)
+
+Commit history is actionable, not read-only. Right-click a commit to copy its
+hash, create a patch, cherry-pick, checkout the revision, reset the current
+branch, revert, push up to that commit, undo, edit the message, squash, drop,
+start an interactive rebase, create a branch, or create a tag. Risky actions are
+guarded by context and confirmations.
+
+### Unified IntelliGit Workbench
+
+![Undocked IntelliGit workbench with commit panel, branch tree, graph, changed files, and details](media/screenshots/intelligit-workbench.png)
+
+When you need room, IntelliGit can run as a unified workbench tab. The commit
+panel, branch tree, graph lanes, changed-file tree, and commit details stay in
+one layout, with dock/undock support for monitor-heavy workflows.
+
+### Publish Branch
+
+![IntelliGit publish branch provider picker for GitHub, GitLab, Bitbucket Cloud, and Bitbucket Server](media/screenshots/publish-branch.png)
+
+Publishing is not limited to pushing an existing remote. IntelliGit can create a
+repository or project on GitHub, GitLab, Bitbucket Cloud, or Bitbucket Server,
+add the remote, and push the selected branch through one guided flow.
+
+## Feature Support
+
+| Area              | Supported                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Commit workflow   | Staging by section, folder, or file; rollback; delete; jump to source; amend; commit; push                                                                         |
+| Shelf/Stash       | Shelve changes, preview files, show diff, apply, pop, drop                                                                                                         |
+| Graph and history | Branch lanes, branch search, commit search, branch filter, pagination, changed files, commit metadata                                                              |
+| Branches          | Checkout, new branch, checkout-and-rebase, rebase, merge, update, push, rename, delete                                                                             |
+| Commits           | Copy hash, create patch, cherry-pick, checkout revision, reset, revert, push up to here, undo, edit message, squash, drop, interactive rebase, new branch, new tag |
+| Worktrees         | Create, create from branch, delete, lock, unlock, move, prune, repair                                                                                              |
+| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, VS Code/native merge, optional JetBrains merge tool                                                          |
+| Hosting           | Clone repository, initialize repository, publish branch, create remote repositories/projects                                                                       |
+| Commit checks     | GitHub, GitLab, Bitbucket Cloud, Bitbucket Server, self-hosted host mapping, CI/CD status popovers                                                                 |
+| Layout            | Activity bar view, bottom graph panel, unified undocked workbench tab                                                                                              |
+| Localization      | English, German, Spanish, French, Japanese, Korean, Polish, Portuguese, Russian, Simplified Chinese, Traditional Chinese                                           |
 
 ## Quick Start
 
