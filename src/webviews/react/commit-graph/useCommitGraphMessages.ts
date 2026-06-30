@@ -2,7 +2,7 @@
 // The hook stays separate from render logic so the root component remains small.
 // It preserves the existing VS Code webview message contract without changing dispatch behavior.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type React from "react";
 import type { CommitGraphInbound } from "../../protocol/commitGraphTypes";
 import type { CommitGraphPanelAction } from "./types";
@@ -18,8 +18,12 @@ export function useCommitGraphMessages(params: {
     dispatch: React.Dispatch<CommitGraphPanelAction>;
     sendReady: boolean;
     loadingMore: React.MutableRefObject<boolean>;
+    selectedHash: string | null;
 }): void {
-    const { vscode, dispatch, sendReady, loadingMore } = params;
+    const { vscode, dispatch, sendReady, loadingMore, selectedHash } = params;
+    const selectedHashRef = useRef<string | null>(selectedHash);
+    const selectFirstOnNextLoadRef = useRef(false);
+    selectedHashRef.current = selectedHash;
 
     useEffect(() => {
         if (sendReady) {
@@ -36,22 +40,46 @@ export function useCommitGraphMessages(params: {
                 return;
             }
             switch (data.type) {
-                case "loadCommits":
+                case "loadCommits": {
                     loadingMore.current = false;
+                    const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
+                    const previousSelectedHash = selectedHashRef.current;
+                    const firstCommitHash = data.commits[0]?.hash ?? null;
+                    const preservesSelectedHash =
+                        !data.append &&
+                        previousSelectedHash !== null &&
+                        data.commits.some((commit) => commit.hash === previousSelectedHash);
+                    const nextSelectedHash = forceFirstCommit
+                        ? firstCommitHash
+                        : preservesSelectedHash
+                          ? previousSelectedHash
+                          : !data.append
+                            ? firstCommitHash
+                            : previousSelectedHash;
+                    if (!data.append) {
+                        selectFirstOnNextLoadRef.current = false;
+                    }
+                    selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
                         commits: data.commits,
                         append: Boolean(data.append),
                         hasMore: data.hasMore,
+                        selectedHash: nextSelectedHash,
                         unpushedHashes: data.unpushedHashes,
                     });
-                    if (!data.append && data.commits.length > 0) {
+                    if (
+                        !data.append &&
+                        nextSelectedHash !== null &&
+                        (forceFirstCommit || nextSelectedHash !== previousSelectedHash)
+                    ) {
                         vscode.postMessage({
                             type: "selectCommit",
-                            hash: data.commits[0].hash,
+                            hash: nextSelectedHash,
                         });
                     }
                     break;
+                }
                 case "setBranches":
                     dispatch({
                         type: "setBranches",
@@ -65,6 +93,7 @@ export function useCommitGraphMessages(params: {
                     });
                     break;
                 case "setSelectedBranch":
+                    selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;
                 case "setCommitDetail":
@@ -78,12 +107,13 @@ export function useCommitGraphMessages(params: {
                     });
                     break;
                 case "clearCommitDetail":
-                    dispatch({ type: "clearCommitDetail" });
+                    dispatch({ type: "clearCommitDetail", loading: data.loading ?? false });
                     break;
                 case "setCommitChecks":
                     dispatch({ type: "setCommitChecks", snapshot: data.snapshot });
                     break;
                 case "loadError":
+                    selectFirstOnNextLoadRef.current = false;
                     dispatch({ type: "loadError", clearCommits: !loadingMore.current });
                     loadingMore.current = false;
                     console.error("[IntelliGit] Load error:", data.message);

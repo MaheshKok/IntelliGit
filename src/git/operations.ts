@@ -195,7 +195,8 @@ export class GitOps {
             // Skip symbolic refs like origin/HEAD (refname:short resolves to just "origin")
             if (refname.endsWith("/HEAD")) continue;
             if (!isValidBranchName(name)) continue;
-            const committerDate = Number(committerDateRaw);
+            const trimmedCommitterDate = committerDateRaw?.trim();
+            const committerDate = trimmedCommitterDate ? Number(trimmedCommitterDate) : undefined;
             let remote: string | undefined;
             if (isRemote) {
                 // refname:short for remote is "origin/main", first segment is the remote name
@@ -228,7 +229,10 @@ export class GitOps {
                 isRemote,
                 isCurrent: head === "*",
                 isDefault: isDefault || undefined,
-                committerDate: Number.isFinite(committerDate) ? committerDate : undefined,
+                committerDate:
+                    committerDate !== undefined && Number.isFinite(committerDate)
+                        ? committerDate
+                        : undefined,
                 upstream: upstream || undefined,
                 remote,
                 ahead,

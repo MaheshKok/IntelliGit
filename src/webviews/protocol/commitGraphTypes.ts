@@ -278,6 +278,8 @@ export type CommitGraphInbound =
     | {
           /** Event clearing commit detail panes after branch/filter changes or no selection. */
           type: "clearCommitDetail";
+          /** True while branch filtering is expected to auto-select the first loaded commit. */
+          loading?: boolean;
       }
     | {
           /** Response for a failed Git log request; graph panes may clear stale rows. */

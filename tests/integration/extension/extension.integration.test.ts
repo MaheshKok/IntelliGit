@@ -1178,6 +1178,7 @@ describe("extension integration", () => {
         await activate(context);
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
+        expect(registeredCommands.has("intelligit.refresh.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.fetch")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.fetch.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.pull")).toBe(true);
@@ -1186,6 +1187,8 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.graph.push.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.sync")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.sync.color")).toBe(true);
+        expect(registeredCommands.has("intelligit.selectRepository.color")).toBe(true);
+        expect(registeredCommands.has("intelligit.openUndocked.color")).toBe(true);
         expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
         expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);
@@ -2951,7 +2954,7 @@ describe("extension integration", () => {
         expect(createTerminal).toHaveBeenCalled();
     });
 
-    it("clears docked commit panel details during explicit repository refresh", async () => {
+    it("preserves selected commit details during explicit repository refresh", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -2961,14 +2964,60 @@ describe("extension integration", () => {
         await activate(context);
         await waitForAsync();
 
+        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
+        if (!latestSidebarGraphProvider) throw new Error("Expected sidebar graph provider");
         if (!latestCommitPanelProvider) throw new Error("Expected commit panel provider");
+
+        latestCommitGraphProvider.emitCommitSelected("a1b2c3d4");
+        await waitForAsync();
+
+        latestCommitGraphProvider.clearCommitDetail.mockClear();
+        latestSidebarGraphProvider.clearCommitDetail.mockClear();
         latestCommitPanelProvider.clearCommitDetail.mockClear();
 
         const refresh = registeredCommands.get("intelligit.refresh");
         if (!refresh) throw new Error("Missing intelligit.refresh command");
         await refresh();
 
-        expect(latestCommitPanelProvider.clearCommitDetail).toHaveBeenCalledTimes(1);
+        expect(latestCommitGraphProvider.clearCommitDetail).not.toHaveBeenCalled();
+        expect(latestSidebarGraphProvider.clearCommitDetail).not.toHaveBeenCalled();
+        expect(latestCommitPanelProvider.clearCommitDetail).not.toHaveBeenCalled();
+        expect(latestCommitPanelProvider.setCommitDetail).toHaveBeenCalledWith(
+            expect.objectContaining({ hash: "a1b2c3d4" }),
+        );
+    });
+
+    it("clears selected commit details before applying a branch filter command", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await waitForAsync();
+
+        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
+        if (!latestSidebarGraphProvider) throw new Error("Expected sidebar graph provider");
+        const filterByBranch = registeredCommands.get("intelligit.filterByBranch");
+        if (!filterByBranch) throw new Error("Missing intelligit.filterByBranch command");
+
+        await filterByBranch("main");
+
+        expect(latestCommitGraphProvider.clearCommitDetail).toHaveBeenCalledWith({
+            loading: true,
+        });
+        expect(latestSidebarGraphProvider.clearCommitDetail).toHaveBeenCalledWith({
+            loading: true,
+        });
+        expect(latestCommitGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
+        expect(latestSidebarGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
+        expect(
+            latestCommitGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
+        ).toBeLessThan(latestCommitGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
+        expect(
+            latestSidebarGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
+        ).toBeLessThan(latestSidebarGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
     });
 
     it("suppresses stale commit detail errors after the selection is cleared", async () => {

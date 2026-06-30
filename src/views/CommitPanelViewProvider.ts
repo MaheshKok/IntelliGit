@@ -83,6 +83,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
+    private commitDetailLoading = false;
     private commitDetailFolderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -185,6 +186,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
+        this.commitDetailLoading = false;
         this.commitDetailFolderIconsByName = {};
         this.postGraphCommitDetailState();
         this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
@@ -198,11 +200,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Clears the embedded graph detail pane and invalidates pending decoration work.
      */
-    clearCommitDetail(): void {
+    clearCommitDetail(options?: { loading?: boolean }): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
+        this.commitDetailLoading = options?.loading ?? false;
         this.commitDetailFolderIconsByName = {};
-        this.postToWebview({ type: "clearCommitDetail" });
+        this.postToWebview(
+            this.commitDetailLoading
+                ? { type: "clearCommitDetail", loading: true }
+                : { type: "clearCommitDetail" },
+        );
     }
     /**
      * Resolves the Changes webview, binds message handling, and replays cached file state.
@@ -760,7 +767,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             });
             return;
         }
-        this.postToWebview({ type: "clearCommitDetail" });
+        this.postToWebview(
+            this.commitDetailLoading
+                ? { type: "clearCommitDetail", loading: true }
+                : { type: "clearCommitDetail" },
+        );
     }
     /**
      * Decorates commit detail file rows and stores them only if the request is still current.

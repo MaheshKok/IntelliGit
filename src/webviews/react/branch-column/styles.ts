@@ -7,6 +7,7 @@ export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;
 export const BRANCH_TREE_INDENT_BASE = 18;
 export const BRANCH_TREE_INDENT_STEP = 14;
 export const BRANCH_TREE_GUIDE_BASE = 23;
+export const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
 export const BRANCH_ROW_CLASS_CSS = `
     .branch-row:hover {
@@ -52,20 +53,21 @@ export const PANEL_STYLE: CSSProperties = {
 };
 
 export const SEARCH_CONTAINER_STYLE: CSSProperties = {
-    minHeight: 22,
+    minHeight: 30,
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "1px 8px",
+    padding: "3px 8px",
     color: JETBRAINS_UI.color.muted,
     background: JETBRAINS_UI.color.toolbar,
     borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
+    flexShrink: 0,
 };
 
 export const SEARCH_INPUT_STYLE: CSSProperties = {
     flex: 1,
     minWidth: 0,
-    height: 18,
+    height: 20,
     borderRadius: JETBRAINS_UI.size.radius,
     border: `1px solid ${JETBRAINS_UI.color.inputBorder}`,
     background: JETBRAINS_UI.color.input,
@@ -168,13 +170,9 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
 };
 
 export const WORKTREE_BADGE_STYLE: CSSProperties = {
-    width: 8,
-    height: 8,
     marginLeft: 6,
-    borderRadius: 2,
-    border: "1px solid var(--vscode-charts-blue, #3794ff)",
-    background: "var(--vscode-gitDecoration-modifiedResourceForeground, #3794ff)",
-    boxSizing: "border-box",
+    display: "inline-flex",
+    alignItems: "center",
     flexShrink: 0,
 };
 

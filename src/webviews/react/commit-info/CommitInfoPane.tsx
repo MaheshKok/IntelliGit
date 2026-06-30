@@ -39,6 +39,18 @@ const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
 const INFO_SECTION_GUIDE = 7;
+const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+    border: 0,
+};
 
 function CommitRefRow({
     kind,
@@ -78,12 +90,14 @@ function CommitRefRow({
  */
 export function CommitInfoPane({
     detail,
+    loading = false,
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
     onOpenDiff,
 }: {
     detail: CommitDetail | null;
+    loading?: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -148,6 +162,79 @@ export function CommitInfoPane({
     );
 
     if (!detail) {
+        if (loading) {
+            return (
+                <Flex
+                    direction="column"
+                    h="100%"
+                    overflow="hidden"
+                    bg={JETBRAINS_UI.color.panel}
+                    color="var(--vscode-descriptionForeground)"
+                    fontFamily={SYSTEM_FONT_STACK}
+                    fontSize="13px"
+                >
+                    <style>{SPIN_KEYFRAMES}</style>
+                    <Box
+                        display="flex"
+                        alignItems="center"
+                        px="8px"
+                        py="4px"
+                        fontWeight={600}
+                        fontSize="12px"
+                        color={JETBRAINS_UI.color.muted}
+                        bg={JETBRAINS_UI.color.toolbar}
+                        borderBottom={`1px solid ${JETBRAINS_UI.color.border}`}
+                    >
+                        <ChevronIcon expanded={true} /> {t("commitInfo.changedFiles")}
+                    </Box>
+                    <Box
+                        flex="1 1 auto"
+                        minH="40px"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        position="relative"
+                        role="status"
+                        aria-live="polite"
+                    >
+                        <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
+                            {t("common.loading")} {t("commitInfo.changedFiles")}
+                        </Box>
+                        <LoadingSpinner />
+                    </Box>
+                    <Box flex="0 0 5px" bg={JETBRAINS_UI.color.divider} />
+                    <Box flexShrink={0} h={`${bottomHeight}px`} overflow="hidden">
+                        <Box
+                            display="flex"
+                            alignItems="center"
+                            px="8px"
+                            py="4px"
+                            fontWeight={600}
+                            fontSize="12px"
+                            color={JETBRAINS_UI.color.muted}
+                            bg={JETBRAINS_UI.color.toolbar}
+                        >
+                            <ChevronIcon expanded={true} /> {t("commitInfo.details")}
+                        </Box>
+                        <Box
+                            h={`calc(100% - 28px)`}
+                            display="flex"
+                            alignItems="center"
+                            justifyContent="center"
+                            position="relative"
+                            role="status"
+                            aria-live="polite"
+                        >
+                            <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
+                                {t("common.loading")} {t("commitInfo.details")}
+                            </Box>
+                            <LoadingSpinner />
+                        </Box>
+                    </Box>
+                </Flex>
+            );
+        }
+
         return (
             <Box
                 p="8px 12px"
@@ -156,6 +243,9 @@ export function CommitInfoPane({
                 fontSize="13px"
                 h="100%"
                 overflow="auto"
+                display="flex"
+                alignItems="flex-start"
+                justifyContent="flex-start"
             >
                 {t("commitInfo.noSelection")}
             </Box>
@@ -360,6 +450,29 @@ export function CommitInfoPane({
                 )}
             </Box>
         </Flex>
+    );
+}
+
+function LoadingSpinner(): React.ReactElement {
+    return (
+        <svg
+            width={18}
+            height={18}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            style={{
+                animation: "intelligit-spin 0.8s linear infinite",
+                color: "var(--vscode-charts-yellow, #e5c07b)",
+                transformBox: "fill-box",
+                transformOrigin: "center",
+                willChange: "transform",
+            }}
+        >
+            <path
+                fill="currentColor"
+                d="M12,23a9.63,9.63,0,0,1-8-9.5,9.51,9.51,0,0,1,6.79-9.1A1.66,1.66,0,0,0,12,2.81h0a1.67,1.67,0,0,0-1.94-1.64A11,11,0,0,0,12,23Z"
+            />
+        </svg>
     );
 }
 

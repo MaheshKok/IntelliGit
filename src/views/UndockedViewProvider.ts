@@ -132,6 +132,7 @@ export class UndockedViewProvider {
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
+    private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
     private commitChecksGeneration = 0;
     private folderIconsByName: ThemeFolderIconMap = {};
@@ -282,6 +283,7 @@ export class UndockedViewProvider {
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
+        this.commitDetailLoading = false;
         this.folderIconsByName = {};
         this.postCommitDetailState();
         this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
@@ -295,11 +297,16 @@ export class UndockedViewProvider {
     /**
      * Clears the selected commit detail and invalidates pending decoration requests.
      */
-    clearCommitDetail(): void {
+    clearCommitDetail(options?: { loading?: boolean }): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
+        this.commitDetailLoading = options?.loading ?? false;
         this.folderIconsByName = {};
-        this.postToWebview({ type: "clearCommitDetail" });
+        this.postToWebview(
+            this.commitDetailLoading
+                ? { type: "clearCommitDetail", loading: true }
+                : { type: "clearCommitDetail" },
+        );
     }
     /**
      * Refreshes graph branches/commits and commit-panel data for the current repository.
@@ -933,7 +940,11 @@ export class UndockedViewProvider {
             });
             return;
         }
-        this.postToWebview({ type: "clearCommitDetail" });
+        this.postToWebview(
+            this.commitDetailLoading
+                ? { type: "clearCommitDetail", loading: true }
+                : { type: "clearCommitDetail" },
+        );
     }
     /**
      * Decorates commit detail rows and stores them only if the request is still current.

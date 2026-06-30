@@ -32,7 +32,7 @@ async function currentBranchIsPublished(gitOps: GitOps): Promise<boolean> {
 }
 
 /** Warns when repository-modifying actions should wait for a clean working tree. */
-export async function warnIfUncommittedChanges(gitOps: GitOps): Promise<boolean> {
+async function warnIfUncommittedChanges(gitOps: GitOps): Promise<boolean> {
     if (!(await gitOps.hasUncommittedChanges())) return false;
     showTimedWarningMessage(
         vscode.l10n.t("There are uncommitted changes, please commit or stash them first."),
@@ -155,7 +155,10 @@ export async function runGitOperationFromPanel(
     >,
     operation: CommitPanelGitOperation,
 ): Promise<void> {
-    if (operation !== "fetch" && (await warnIfUncommittedChanges(deps.gitOps))) {
+    if (
+        (operation === "pull" || operation === "sync") &&
+        (await warnIfUncommittedChanges(deps.gitOps))
+    ) {
         return;
     }
 

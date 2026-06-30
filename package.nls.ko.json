@@ -1,6 +1,6 @@
 {
     "intelligit": "인텔리깃",
-    "extension.description": "커밋 그래프, 커밋 세부 정보, 보류 워크플로, 파일 변경 탐색기를 제공하는 VS Code용 IntelliJ 스타일 Git UI입니다.",
+    "extension.description": "The best Git features from PyCharm, VS Code, and Visual Studio IDE.",
     "view.commit": "커밋",
     "view.graph": "그래프",
     "view.mergeConflicts": "병합 충돌",

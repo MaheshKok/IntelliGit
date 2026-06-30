@@ -19,6 +19,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
 
     private view?: vscode.WebviewView;
     private detail?: CommitDetail;
+    private loading = false;
     private ready = false;
     private folderIconsByName: ThemeFolderIconMap = {};
     private requestSeq = 0;
@@ -114,6 +115,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.requestSeq;
         this.detail = detail;
+        this.loading = false;
         this.folderIconsByName = {};
         this.postCurrentState();
         this.decorateAndStoreDetail(detail, requestId).catch((err) => {
@@ -128,12 +130,13 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
     /**
      * Clears cached commit detail state and tells a ready webview to remove file rows.
      */
-    clear(): void {
+    clear(options?: { loading?: boolean }): void {
         this.requestSeq += 1;
         this.detail = undefined;
+        this.loading = options?.loading ?? false;
         this.folderIconsByName = {};
         if (this.ready) {
-            this.postToWebview({ type: "clear" });
+            this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
         }
     }
 
@@ -147,7 +150,7 @@ export class CommitInfoViewProvider implements vscode.WebviewViewProvider {
         if (!this.ready) return;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         if (!this.detail) {
-            this.postToWebview({ type: "clear" });
+            this.postToWebview(this.loading ? { type: "clear", loading: true } : { type: "clear" });
             return;
         }
         this.postToWebview({

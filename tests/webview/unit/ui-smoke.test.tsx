@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Branch, CommitChecksSnapshot } from "../../../src/types";
+import type { Branch, CommitChecksSnapshot, WorkingFile } from "../../../src/types";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { renderHighlightedLabel } from "../../../src/webviews/react/branch-column/highlight";
 import { BranchSearchBar } from "../../../src/webviews/react/branch-column/components/BranchSearchBar";
@@ -18,6 +18,7 @@ import {
     TagIcon,
 } from "../../../src/webviews/react/branch-column/icons";
 import { CommitArea } from "../../../src/webviews/react/commit-panel/components/CommitArea";
+import { FileTree } from "../../../src/webviews/react/commit-panel/components/FileTree";
 import { FileTypeIcon } from "../../../src/webviews/react/commit-panel/components/FileTypeIcon";
 import { FolderRow } from "../../../src/webviews/react/commit-panel/components/FolderRow";
 import { IndentGuides } from "../../../src/webviews/react/commit-panel/components/IndentGuides";
@@ -34,6 +35,16 @@ import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 /** Renders Chakra-wrapped UI into static markup for smoke assertions. */
 function renderUi(node: React.ReactElement): string {
     return renderToStaticMarkup(<ChakraProvider theme={theme}>{node}</ChakraProvider>);
+}
+
+function getButtonByText(html: string, text: string): HTMLButtonElement {
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const button = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === text,
+    );
+    expect(button).toBeDefined();
+    return button as HTMLButtonElement;
 }
 
 /** Builds a branch fixture with defaults shared by branch-column smoke tests. */
@@ -252,6 +263,8 @@ describe("webview ui smoke", () => {
         );
         expect(panel?.style.transform).toBe("translateY(-100%)");
         expect(panel?.style.width).toBe("max-content");
+        expect(panel?.style.minWidth).toBe("310px");
+        expect(panel?.style.minHeight).toBe("190px");
         expect(Number.parseFloat(panel?.style.top ?? "0")).toBeGreaterThanOrEqual(312);
         const description = Array.from(document.querySelectorAll("span")).find(
             (node) => node.textContent === "No secrets detected",
@@ -445,6 +458,7 @@ describe("webview ui smoke", () => {
                 <SectionHeader
                     label="Changes"
                     count={2}
+                    stats={{ additions: 5, deletions: 1 }}
                     isOpen={true}
                     isAllChecked={true}
                     isSomeChecked={false}
@@ -491,7 +505,6 @@ describe("webview ui smoke", () => {
                     onFetch={noop}
                     onPull={noop}
                     onPush={noop}
-                    hasUncommittedChanges={true}
                     commitContent={<div>Commit tab</div>}
                     shelfContent={<div>Shelf tab</div>}
                 />
@@ -499,6 +512,8 @@ describe("webview ui smoke", () => {
         );
 
         expect(html).toContain("Changes");
+        expect(html).toContain("+5");
+        expect(html).toContain("-1");
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("Branch: main -&gt; origin/main");
@@ -541,14 +556,13 @@ describe("webview ui smoke", () => {
                     onPush={noop}
                     canCommit={true}
                     canPush={false}
-                    pushBlockedByUncommittedChanges={true}
                     pushLabel="common.push"
                     currentBranchName="main"
                     currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
-        expect(blockedUnavailablePushHtml).toContain("disabled");
+        expect(getButtonByText(blockedUnavailablePushHtml, "Push").disabled).toBe(true);
 
         const dirtyPushableHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>
@@ -561,20 +575,15 @@ describe("webview ui smoke", () => {
                     onPush={noop}
                     canCommit={true}
                     canPush={true}
-                    pushBlockedByUncommittedChanges={true}
                     pushLabel="common.push"
                     currentBranchName="main"
                     currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
-        const dirtyPushableContainer = document.createElement("div");
-        dirtyPushableContainer.innerHTML = dirtyPushableHtml;
-        const dirtyPushButton = Array.from(dirtyPushableContainer.querySelectorAll("button")).find(
-            (button) => button.textContent === "Push",
-        );
-        expect(dirtyPushButton?.disabled).toBe(false);
-        expect(dirtyPushButton?.getAttribute("aria-disabled")).toBeNull();
+        const dirtyPushButton = getButtonByText(dirtyPushableHtml, "Push");
+        expect(dirtyPushButton.disabled).toBe(false);
+        expect(dirtyPushButton.getAttribute("aria-disabled")).toBeNull();
 
         const localOnlyCommitHtml = renderUi(
             <CommitArea
@@ -624,5 +633,43 @@ describe("webview ui smoke", () => {
         );
         expect(refreshingToolbarHtml).toContain('data-refreshing="true"');
         expect(refreshingToolbarHtml).toContain("intelligit-spin");
+    });
+
+    it("shows aggregate change counts in file section headers", () => {
+        const noop = vi.fn();
+        const files: WorkingFile[] = [
+            { path: "src/a.ts", status: "M", staged: false, additions: 2, deletions: 1 },
+            { path: "src/b.ts", status: "A", staged: false, additions: 3, deletions: 0 },
+            { path: "notes.txt", status: "?", staged: false, additions: 4, deletions: 0 },
+            { path: "todo.txt", status: "?", staged: false, additions: 5, deletions: 0 },
+        ];
+        const html = renderUi(
+            <FileTree
+                files={files}
+                groupByDir={false}
+                checkedPaths={new Set()}
+                onToggleFile={noop}
+                onToggleFolder={noop}
+                onToggleSection={noop}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={noop}
+                onTrackUnversionedFiles={noop}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+            />,
+        );
+        const container = document.createElement("div");
+        container.innerHTML = html;
+        const headerText = (label: string): string | undefined =>
+            Array.from(container.querySelectorAll("div"))
+                .filter((node) => node.textContent?.includes(label) ?? false)
+                .sort((a, b) => (a.textContent ?? "").length - (b.textContent ?? "").length)[0]
+                ?.textContent;
+
+        expect(headerText("Changes")).toContain("+5");
+        expect(headerText("Changes")).toContain("-1");
+        expect(headerText("Unversioned Files")).toContain("+9");
+        expect(headerText("Unversioned Files")).not.toContain("-");
     });
 });

@@ -9,10 +9,11 @@ import { renderHighlightedLabel } from "./highlight";
 import type { RemoteGroup, TreeNode } from "./types";
 import { BranchTreeNodeRow } from "./components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./components/BranchSectionHeader";
-import { GitBranchIcon, RepoIcon, TagRightIcon } from "../shared/components/Icons";
+import { RepoIcon, TagRightIcon, WorktreeSmallIcon } from "../shared/components/Icons";
 import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
 import {
+    DEFAULT_BRANCH_ICON_YELLOW,
     HEAD_LABEL_STYLE,
     HEAD_ROW_STYLE,
     HEAD_WRAPPER_STYLE,
@@ -103,7 +104,7 @@ export function BranchColumnSections({
                         }}
                         style={HEAD_ROW_STYLE}
                     >
-                        <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
+                        <TagRightIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
                         <span style={HEAD_LABEL_STYLE}>
                             {t("branch.head.label", { name: current.name })}
                         </span>
@@ -265,11 +266,9 @@ function WorktreeRow({
             }}
             style={{ ...ROW_STYLE, paddingLeft: TREE_INDENT_STEP }}
         >
-            {worktree.isCurrent ? (
-                <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
-            ) : (
-                <GitBranchIcon />
-            )}
+            <WorktreeSmallIcon
+                color={worktree.isCurrent ? DEFAULT_BRANCH_ICON_YELLOW : JETBRAINS_UI.color.branch}
+            />
             {/* Pure label highlighter, not a component invocation. */}
             {/* react-doctor-disable-next-line react-doctor/no-render-in-render */}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(label, filterNeedle)}</span>

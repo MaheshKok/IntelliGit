@@ -11,7 +11,7 @@ import { isValidBranchName } from "../utils/gitRefs";
 // Types
 // ---------------------------------------------------------------------------
 
-type PublishProvider = "github" | "gitlab";
+type PublishProvider = "github" | "gitlab" | "bitbucket-cloud" | "bitbucket-server";
 const REQUEST_TIMEOUT_MS = 30_000;
 
 interface CreatedRepo {
@@ -47,6 +47,11 @@ type RemotePlan =
 interface RemoteChoice extends vscode.QuickPickItem {
     action: "existing" | "create";
 }
+
+type PublishTarget =
+    | { provider: "github" | "gitlab" }
+    | { provider: "bitbucket-cloud"; workspace: string }
+    | { provider: "bitbucket-server"; baseUrl: string; projectKey: string };
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -127,6 +132,9 @@ export async function runPublishBranchFlow(
     });
     if (!repoName) return;
 
+    const target = await pickPublishTarget(provider);
+    if (!target) return;
+
     // 5. Published branch name is the last user input before auth and provider writes.
     if (!remotePlan.remoteBranchName) {
         const publishedBranchName = await vscode.window.showInputBox({
@@ -164,7 +172,22 @@ export async function runPublishBranchFlow(
                 if (provider === "github") {
                     return createGitHubRepo(auth.token, repoName, visibility);
                 }
-                return createGitLabRepo(auth.token, repoName, visibility);
+                if (provider === "gitlab") {
+                    return createGitLabRepo(auth.token, repoName, visibility);
+                }
+                if (target.provider === "bitbucket-cloud") {
+                    return createBitbucketCloudRepo(auth, target.workspace, repoName, visibility);
+                }
+                if (target.provider === "bitbucket-server") {
+                    return createBitbucketServerRepo(
+                        auth,
+                        target.baseUrl,
+                        target.projectKey,
+                        repoName,
+                        visibility,
+                    );
+                }
+                throw new Error("Unsupported publish provider");
             },
         );
     } catch (err) {
@@ -356,11 +379,43 @@ async function acquireAuth(
         };
     }
 
-    const token = await getGitLabToken(secrets);
+    if (provider === "gitlab") {
+        const token = await getGitLabToken(secrets);
+        if (!token) return undefined;
+        return {
+            token,
+            gitUsername: "oauth2",
+        };
+    }
+
+    return getBitbucketAuth(provider);
+}
+
+async function getBitbucketAuth(
+    provider: Extract<PublishProvider, "bitbucket-cloud" | "bitbucket-server">,
+): Promise<PublishAuth | undefined> {
+    const label = providerLabel(provider);
+    const username = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("{provider} username", { provider: label }),
+        validateInput: (value) => {
+            if (!value.trim()) return vscode.l10n.t("Username is required");
+            return undefined;
+        },
+    });
+    if (!username) return undefined;
+
+    const token = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("{provider} app password or access token", { provider: label }),
+        password: true,
+        validateInput: (value) => {
+            if (!value.trim()) return vscode.l10n.t("Token is required");
+            return undefined;
+        },
+    });
     if (!token) return undefined;
     return {
-        token,
-        gitUsername: "oauth2",
+        token: token.trim(),
+        gitUsername: username.trim(),
     };
 }
 
@@ -381,10 +436,53 @@ async function pickPublishProvider(): Promise<PublishProvider | undefined> {
                 description: vscode.l10n.t("Create a project on GitLab and push"),
                 provider: "gitlab" as const,
             },
+            {
+                label: vscode.l10n.t("$(cloud) Bitbucket Cloud"),
+                description: vscode.l10n.t("Create a repository on Bitbucket Cloud and push"),
+                provider: "bitbucket-cloud" as const,
+            },
+            {
+                label: vscode.l10n.t("$(server) Bitbucket Server"),
+                description: vscode.l10n.t(
+                    "Create a repository on Bitbucket Server or Data Center and push",
+                ),
+                provider: "bitbucket-server" as const,
+            },
         ],
         { placeHolder: vscode.l10n.t("Where do you want to publish this branch?") },
     );
     return picked?.provider;
+}
+
+async function pickPublishTarget(provider: PublishProvider): Promise<PublishTarget | undefined> {
+    if (provider === "github" || provider === "gitlab") return { provider };
+    if (provider === "bitbucket-cloud") {
+        const workspace = await vscode.window.showInputBox({
+            prompt: vscode.l10n.t("Bitbucket workspace"),
+            validateInput: (value) => {
+                if (!value.trim()) return vscode.l10n.t("Workspace is required");
+                return undefined;
+            },
+        });
+        return workspace ? { provider, workspace: workspace.trim() } : undefined;
+    }
+
+    const baseUrl = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Bitbucket Server URL"),
+        placeHolder: "https://bitbucket.example.com",
+        validateInput: (value) => validateHttpBaseUrl(value) ?? undefined,
+    });
+    if (!baseUrl) return undefined;
+    const projectKey = await vscode.window.showInputBox({
+        prompt: vscode.l10n.t("Bitbucket project key"),
+        validateInput: (value) => {
+            if (!value.trim()) return vscode.l10n.t("Project key is required");
+            return undefined;
+        },
+    });
+    return projectKey
+        ? { provider, baseUrl: normalizeHttpBaseUrl(baseUrl), projectKey: projectKey.trim() }
+        : undefined;
 }
 
 async function pickVisibility(): Promise<"private" | "public" | undefined> {
@@ -407,7 +505,16 @@ async function pickVisibility(): Promise<"private" | "public" | undefined> {
 }
 
 function providerLabel(provider: PublishProvider): string {
-    return provider === "github" ? "GitHub" : "GitLab";
+    switch (provider) {
+        case "github":
+            return "GitHub";
+        case "gitlab":
+            return "GitLab";
+        case "bitbucket-cloud":
+            return "Bitbucket Cloud";
+        case "bitbucket-server":
+            return "Bitbucket Server";
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -652,9 +759,236 @@ async function createGitLabRepo(
     });
 }
 
+async function createBitbucketCloudRepo(
+    auth: PublishAuth,
+    workspace: string,
+    name: string,
+    visibility: "private" | "public",
+): Promise<CreatedRepo> {
+    const body = JSON.stringify({
+        name,
+        scm: "git",
+        is_private: visibility === "private",
+    });
+    const encodedWorkspace = encodeURIComponent(workspace);
+    const encodedName = encodeURIComponent(name);
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const fail = (message: string): void => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(message));
+        };
+        const succeed = (repo: CreatedRepo): void => {
+            if (settled) return;
+            settled = true;
+            resolve(repo);
+        };
+        const req = https.request(
+            `https://api.bitbucket.org/2.0/repositories/${encodedWorkspace}/${encodedName}`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: basicAuthHeader(auth),
+                    "User-Agent": "vscode-intelligit",
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    "Content-Length": Buffer.byteLength(body),
+                },
+            },
+            (res) => {
+                let data = "";
+                res.on("error", (err) => {
+                    req.setTimeout(0);
+                    fail(getErrorMessage(err));
+                });
+                res.on("aborted", () => {
+                    req.setTimeout(0);
+                    fail("Response aborted while creating repository");
+                });
+                res.on("data", (chunk: Buffer) => (data += chunk.toString()));
+                res.on("end", () => {
+                    req.setTimeout(0);
+                    if (settled) return;
+                    if (res.statusCode === 200 || res.statusCode === 201) {
+                        try {
+                            const repo = parseJsonObject(data);
+                            const cloneUrl = repo ? readCloneLink(repo) : undefined;
+                            const htmlUrl = repo ? readLinkHref(repo, "html") : undefined;
+                            if (!cloneUrl || !htmlUrl) {
+                                fail("Invalid Bitbucket Cloud API response");
+                                return;
+                            }
+                            succeed({ cloneUrl, sshUrl: "", htmlUrl });
+                        } catch {
+                            fail("Invalid Bitbucket Cloud API response");
+                        }
+                    } else {
+                        const msg = tryExtractApiError(data);
+                        fail(msg || `Bitbucket Cloud API returned ${res.statusCode}`);
+                    }
+                });
+            },
+        );
+        req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+            req.destroy();
+            fail("Request timed out while creating repository");
+        });
+        req.on("error", (err) => {
+            req.setTimeout(0);
+            fail(getErrorMessage(err));
+        });
+        req.write(body);
+        req.end();
+    });
+}
+
+async function createBitbucketServerRepo(
+    auth: PublishAuth,
+    baseUrl: string,
+    projectKey: string,
+    name: string,
+    visibility: "private" | "public",
+): Promise<CreatedRepo> {
+    const body = JSON.stringify({
+        name,
+        scmId: "git",
+        forkable: true,
+        public: visibility === "public",
+    });
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const fail = (message: string): void => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(message));
+        };
+        const succeed = (repo: CreatedRepo): void => {
+            if (settled) return;
+            settled = true;
+            resolve(repo);
+        };
+        const req = https.request(
+            `${baseUrl}/rest/api/1.0/projects/${encodeURIComponent(projectKey)}/repos`,
+            {
+                method: "POST",
+                headers: {
+                    Authorization: basicAuthHeader(auth),
+                    "User-Agent": "vscode-intelligit",
+                    Accept: "application/json",
+                    "Content-Type": "application/json",
+                    "Content-Length": Buffer.byteLength(body),
+                },
+            },
+            (res) => {
+                let data = "";
+                res.on("error", (err) => {
+                    req.setTimeout(0);
+                    fail(getErrorMessage(err));
+                });
+                res.on("aborted", () => {
+                    req.setTimeout(0);
+                    fail("Response aborted while creating repository");
+                });
+                res.on("data", (chunk: Buffer) => (data += chunk.toString()));
+                res.on("end", () => {
+                    req.setTimeout(0);
+                    if (settled) return;
+                    if (res.statusCode === 201) {
+                        try {
+                            const repo = parseJsonObject(data);
+                            const cloneUrl = repo ? readCloneLink(repo) : undefined;
+                            const htmlUrl = repo ? readLinkHref(repo, "self") : undefined;
+                            if (!cloneUrl || !htmlUrl) {
+                                fail("Invalid Bitbucket Server API response");
+                                return;
+                            }
+                            succeed({ cloneUrl, sshUrl: "", htmlUrl });
+                        } catch {
+                            fail("Invalid Bitbucket Server API response");
+                        }
+                    } else {
+                        const msg = tryExtractApiError(data);
+                        fail(msg || `Bitbucket Server API returned ${res.statusCode}`);
+                    }
+                });
+            },
+        );
+        req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+            req.destroy();
+            fail("Request timed out while creating repository");
+        });
+        req.on("error", (err) => {
+            req.setTimeout(0);
+            fail(getErrorMessage(err));
+        });
+        req.write(body);
+        req.end();
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function basicAuthHeader(auth: PublishAuth): string {
+    return `Basic ${Buffer.from(`${auth.gitUsername}:${auth.token}`).toString("base64")}`;
+}
+
+function normalizeHttpBaseUrl(value: string): string {
+    const url = new URL(value.trim());
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+}
+
+function validateHttpBaseUrl(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed) return vscode.l10n.t("URL is required");
+    try {
+        const url = new URL(trimmed);
+        if (url.protocol !== "https:") return vscode.l10n.t("URL must start with https://");
+        if (url.username || url.password)
+            return vscode.l10n.t("Do not include credentials in the URL");
+        return null;
+    } catch {
+        return vscode.l10n.t("Enter a valid URL");
+    }
+}
+
+function readLinkHref(record: Record<string, unknown>, name: string): string | undefined {
+    const links = record.links;
+    if (!isRecord(links)) return undefined;
+    const link = links[name];
+    if (Array.isArray(link)) {
+        for (const entry of link) {
+            if (!isRecord(entry)) continue;
+            const href = readString(entry, "href");
+            if (href) return href;
+        }
+        return undefined;
+    }
+    return isRecord(link) ? readString(link, "href") : undefined;
+}
+
+function readCloneLink(record: Record<string, unknown>): string | undefined {
+    const links = record.links;
+    if (!isRecord(links) || !Array.isArray(links.clone)) return undefined;
+    let fallback: string | undefined;
+    for (const entry of links.clone) {
+        if (!isRecord(entry)) continue;
+        const href = readString(entry, "href");
+        if (!href) continue;
+        fallback ??= href;
+        const name = readString(entry, "name");
+        if (name === "https" || name === "http") return href;
+    }
+    return fallback;
+}
 
 function tryExtractApiError(raw: string): string | null {
     try {

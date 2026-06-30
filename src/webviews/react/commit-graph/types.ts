@@ -20,6 +20,7 @@ export type CommitGraphPanelAction =
           commits: Commit[];
           append: boolean;
           hasMore: boolean;
+          selectedHash: string | null;
           unpushedHashes?: string[];
       }
     | {
@@ -41,7 +42,7 @@ export type CommitGraphPanelAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
-    | { type: "clearCommitDetail" }
+    | { type: "clearCommitDetail"; loading?: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
     | { type: "loadError"; clearCommits: boolean }

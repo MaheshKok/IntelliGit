@@ -29,3 +29,5 @@ AGENTS.md
 .gitnexus
 
 .hermes/
+
+.ruff_cache/

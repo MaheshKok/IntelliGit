@@ -49,4 +49,6 @@ export type CommitInfoInbound =
     | {
           /** Event clearing the pane when no commit is selected or selection became stale. */
           type: "clear";
+          /** True while the host expects an automatic replacement selection to arrive. */
+          loading?: boolean;
       };

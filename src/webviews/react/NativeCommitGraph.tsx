@@ -41,6 +41,7 @@ type NativeCommitGraphAction =
           commits: Commit[];
           append: boolean;
           hasMore: boolean;
+          selectedHash: string | null;
           unpushedHashes?: string[];
       }
     | { type: "setSelectedBranch"; branch: string | null }
@@ -72,10 +73,7 @@ function nativeCommitGraphReducer(
             return {
                 ...state,
                 commits: action.append ? [...state.commits, ...action.commits] : action.commits,
-                selectedHash:
-                    !action.append && action.commits.length > 0
-                        ? action.commits[0].hash
-                        : state.selectedHash,
+                selectedHash: action.selectedHash,
                 hasMore: action.hasMore,
                 unpushedHashes: new Set(action.unpushedHashes ?? []),
             };
@@ -137,6 +135,9 @@ export function NativeCommitGraph({
         commitChecksEnabled,
     } = state;
     const loadingMore = useRef(false);
+    const selectedHashRef = useRef<string | null>(selectedHash);
+    const selectFirstOnNextLoadRef = useRef(false);
+    selectedHashRef.current = selectedHash;
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
         [branches],
@@ -157,23 +158,48 @@ export function NativeCommitGraph({
                 return;
             }
             switch (data.type) {
-                case "loadCommits":
+                case "loadCommits": {
                     loadingMore.current = false;
+                    const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
+                    const previousSelectedHash = selectedHashRef.current;
+                    const firstCommitHash = data.commits[0]?.hash ?? null;
+                    const preservesSelectedHash =
+                        !data.append &&
+                        previousSelectedHash !== null &&
+                        data.commits.some((commit) => commit.hash === previousSelectedHash);
+                    const nextSelectedHash = forceFirstCommit
+                        ? firstCommitHash
+                        : preservesSelectedHash
+                          ? previousSelectedHash
+                          : !data.append
+                            ? firstCommitHash
+                            : previousSelectedHash;
+                    if (!data.append) {
+                        selectFirstOnNextLoadRef.current = false;
+                    }
+                    selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
                         commits: data.commits,
                         append: Boolean(data.append),
                         hasMore: data.hasMore,
+                        selectedHash: nextSelectedHash,
                         unpushedHashes: data.unpushedHashes,
                     });
-                    if (!data.append && data.commits.length > 0) {
+                    if (
+                        !data.append &&
+                        nextSelectedHash !== null &&
+                        (forceFirstCommit || nextSelectedHash !== previousSelectedHash)
+                    ) {
                         vscode.postMessage({
                             type: "selectCommit",
-                            hash: data.commits[0].hash,
+                            hash: nextSelectedHash,
                         });
                     }
                     break;
+                }
                 case "setSelectedBranch":
+                    selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;
                 case "setBranches":
@@ -184,6 +210,7 @@ export function NativeCommitGraph({
                     });
                     break;
                 case "loadError":
+                    selectFirstOnNextLoadRef.current = false;
                     dispatch({ type: "loadError", clearCommits: !loadingMore.current });
                     loadingMore.current = false;
                     break;

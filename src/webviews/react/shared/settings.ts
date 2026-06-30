@@ -45,3 +45,8 @@ export const getSettings = (): IntelligitSettings => {
     }
     return defaultSettings;
 };
+
+/** Resolves an icon accent color through the shared color-icon setting. */
+export function resolveIconColor(accentColor: string, standardColor: string): string {
+    return getSettings().iconStyle === "color" ? accentColor : standardColor;
+}

@@ -115,6 +115,7 @@ interface CommitGraphPanelState {
     hasMore: boolean;
     filterText: string;
     selectedDetail: CommitDetail | null;
+    commitDetailLoading: boolean;
     commitChecks: Map<string, CommitChecksValue>;
     branchFolderIcon?: ThemeTreeIcon;
     branchFolderExpandedIcon?: ThemeTreeIcon;
@@ -136,6 +137,7 @@ const initialCommitGraphPanelState: CommitGraphPanelState = {
     hasMore: false,
     filterText: "",
     selectedDetail: null,
+    commitDetailLoading: false,
     commitChecks: new Map(),
     iconFonts: [],
     unpushedHashes: new Set(),
@@ -151,10 +153,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 commits: action.append ? [...state.commits, ...action.commits] : action.commits,
-                selectedHash:
-                    !action.append && action.commits.length > 0
-                        ? action.commits[0].hash
-                        : state.selectedHash,
+                selectedHash: action.selectedHash,
                 hasMore: action.hasMore,
                 unpushedHashes: new Set(action.unpushedHashes ?? []),
             };
@@ -175,6 +174,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 selectedDetail: action.detail,
+                commitDetailLoading: false,
                 commitFolderIcon: action.folderIcon,
                 commitFolderExpandedIcon: action.folderExpandedIcon,
                 commitFolderIconsByName: action.folderIconsByName,
@@ -184,6 +184,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 selectedDetail: null,
+                commitDetailLoading: action.loading ?? false,
                 commitFolderIcon: undefined,
                 commitFolderExpandedIcon: undefined,
                 commitFolderIconsByName: undefined,
@@ -203,6 +204,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 commits: action.clearCommits ? [] : state.commits,
+                commitDetailLoading: false,
                 hasMore: false,
             };
         case "selectCommit":
@@ -286,7 +288,7 @@ export function CommitGraphPanel({
         true,
     );
 
-    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore });
+    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore, selectedHash });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -510,6 +512,7 @@ export function CommitGraphPanel({
                     >
                         <CommitInfoPane
                             detail={selectedDetail}
+                            loading={state.commitDetailLoading}
                             folderIcon={commitFolderIcon}
                             folderExpandedIcon={commitFolderExpandedIcon}
                             folderIconsByName={commitFolderIconsByName}
