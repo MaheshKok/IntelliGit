@@ -121,9 +121,7 @@ describe("registerRepositoryCommands", () => {
 
         expect(gitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
         expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
-        expect(mocks.showWarningMessage).not.toHaveBeenCalledWith(
-            "There are uncommitted changes, please commit or stash them first.",
-        );
+        expect(mocks.showWarningMessage).not.toHaveBeenCalled();
         expect(mocks.runPublishBranchFlow).toHaveBeenCalledWith(
             gitOps,
             "feature/publish",
