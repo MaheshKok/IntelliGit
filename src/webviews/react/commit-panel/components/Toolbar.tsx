@@ -2,6 +2,7 @@
 
 import React from "react";
 import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
+import { IoMdRefresh } from "react-icons/io";
 import { getSettings } from "../../shared/settings";
 import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
@@ -55,12 +56,8 @@ export function Toolbar({
                 color="#4ec7d6"
                 spin={isRefreshing}
                 disabled={isRefreshing}
-            >
-                <path
-                    fill="currentColor"
-                    d="M13.451 5.609l-.579-.939-1.068.812-.076.094c.335.57.528 1.236.528 1.949a4.093 4.093 0 0 1-4.09 4.09 4.093 4.093 0 0 1-4.09-4.09 4.088 4.088 0 0 1 3.354-4.027v1.938l4.308-2.906L7.43.002v1.906a5.593 5.593 0 0 0-4.856 5.617A5.594 5.594 0 0 0 8.166 13.1a5.594 5.594 0 0 0 5.592-5.575c0-1.755-.461-2.381-1.307-3.416l1-.5z"
-                />
-            </ToolbarButton>
+                icon={<IoMdRefresh size={16} />}
+            />
             <ToolbarButton label={t("common.rollback")} onClick={onRollback} color="#b8adff">
                 <path
                     fill="currentColor"
@@ -105,6 +102,7 @@ function ToolbarButton({
     color,
     spin,
     disabled,
+    icon,
     children,
 }: {
     label: string;
@@ -112,7 +110,12 @@ function ToolbarButton({
     color?: string;
     spin?: boolean;
     disabled?: boolean;
-    children: React.ReactNode;
+    icon?: React.ReactElement<{
+        "aria-hidden"?: boolean;
+        focusable?: string | boolean;
+        style?: React.CSSProperties;
+    }>;
+    children?: React.ReactNode;
 }): React.ReactElement {
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
     const resolvedColor = disabled
@@ -131,6 +134,17 @@ function ToolbarButton({
               }
             : {}),
     };
+    const renderedIcon = icon ? (
+        React.cloneElement(icon, {
+            "aria-hidden": true,
+            focusable: "false",
+            style: { ...svgStyle, ...(icon.props.style ?? {}) },
+        })
+    ) : (
+        <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>
+            {children}
+        </svg>
+    );
     return (
         <Tooltip
             label={label}
@@ -152,11 +166,7 @@ function ToolbarButton({
                     opacity: 0.55,
                 }}
                 data-refreshing={spin ? "true" : undefined}
-                icon={
-                    <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>
-                        {children}
-                    </svg>
-                }
+                icon={renderedIcon}
             />
         </Tooltip>
     );

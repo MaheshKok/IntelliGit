@@ -39,9 +39,13 @@
     "activationEvents": [
         "workspaceContains:.git",
         "workspaceContains:**/.git/config",
+        "onCommand:intelligit.refresh",
+        "onCommand:intelligit.refresh.color",
         "onCommand:intelligit.selectRepository",
+        "onCommand:intelligit.selectRepository.color",
         "onCommand:intelligit.showGitLog",
         "onCommand:intelligit.openUndocked",
+        "onCommand:intelligit.openUndocked.color",
         "onCommand:intelligit.dockWindow",
         "onCommand:intelligit.toggleUndocked",
         "onWebviewPanel:intelligit.undocked",

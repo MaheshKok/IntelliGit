@@ -1,4 +1,6 @@
 import React from "react";
+import { IoMdRefresh } from "react-icons/io";
+import { TbCherryFilled } from "react-icons/tb";
 import type { Commit } from "../../../types";
 import type { CommitAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
@@ -124,19 +126,24 @@ function iconPatch(): React.ReactElement {
 }
 
 function iconCherry(): React.ReactElement {
-    return commitMenuIcon(
-        "#ff7ab2",
-        <path
-            fill="currentColor"
-            d="M8.2 3.2a2.2 2.2 0 1 0-2.4-2.2h1a1.2 1.2 0 1 1 1.2 1.2H6.9c-2.6 0-4.7 2-4.7 4.6 0 2.2 1.8 4 4 4a3.9 3.9 0 0 0 2-7.2V3.2zm-2 6.6a2.9 2.9 0 1 1 0-5.8 2.9 2.9 0 0 1 0 5.8zm4.6-5.2a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8z"
-        />,
+    return (
+        <TbCherryFilled
+            aria-hidden
+            focusable="false"
+            size={14}
+            style={{ color: commitMenuIconColor("#ff4d4f") }}
+        />
     );
 }
 
 function iconReset(): React.ReactElement {
-    return commitMenuIcon(
-        "#ff9e64",
-        <path fill="currentColor" d="M8 2a6 6 0 1 1-4.8 2.4L1 6.6V2h4.6L4 3.6A5 5 0 1 0 8 3v-1z" />,
+    return (
+        <IoMdRefresh
+            aria-hidden
+            focusable="false"
+            size={14}
+            style={{ color: commitMenuIconColor("#ff9e64") }}
+        />
     );
 }
 

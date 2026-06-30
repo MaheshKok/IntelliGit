@@ -14,6 +14,7 @@ type CommandContribution = {
 };
 
 type ExtensionManifest = {
+    activationEvents?: string[];
     contributes?: {
         commands?: CommandContribution[];
         menus?: {
@@ -126,6 +127,7 @@ describe("extension manifest", () => {
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
         ) as ExtensionManifest;
         const commands = manifest.contributes?.commands ?? [];
+        const activationEvents = manifest.activationEvents ?? [];
         const commandPalette = manifest.contributes?.menus?.commandPalette ?? [];
         const titleMenu = manifest.contributes?.menus?.["view/title"] ?? [];
 
@@ -169,6 +171,8 @@ describe("extension manifest", () => {
             expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
             expect(colorCommandContribution?.icon).toEqual({ light: colorIcon, dark: colorIcon });
             expect(colorPaletteItem?.when).toBe("false");
+            expect(activationEvents).toContain(`onCommand:${command}`);
+            expect(activationEvents).toContain(`onCommand:${colorCommand}`);
         }
     });
 

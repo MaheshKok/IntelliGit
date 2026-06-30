@@ -307,7 +307,7 @@ describe("commit menu", () => {
 
         expect(iconMarkup("copyRevision")).toContain("color:#8fd5ff");
         expect(iconMarkup("createPatch")).toContain("color:#c8a2ff");
-        expect(iconMarkup("cherryPick")).toContain("color:#ff7ab2");
+        expect(iconMarkup("cherryPick")).toContain("color:#ff4d4f");
         expect(iconMarkup("resetCurrentToHere")).toContain("color:#ff9e64");
         expect(iconMarkup("pushAllUpToHere")).toContain("color:#a6e3a1");
     });
