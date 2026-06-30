@@ -5,17 +5,22 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.9] - 2026-06-30
+
+### Changed
+
+- Documented the Undock workflow in the README feature gallery.
+
+### Fixed
+
+- Defaulted new remote publication from local `master` to remote `main`.
+
 ## [0.14.8] - 2026-06-30
 
 ### Changed
 
 - Moved the branch `Create Worktree` context-menu action to the bottom of the branch menu.
 - Reused the commit-panel pull and push glyphs for branch update and push menu actions.
-- Documented the Undock workflow in the README feature gallery.
-
-### Fixed
-
-- Defaulted new remote publication from local `master` to remote `main`.
 
 ## [0.14.7] - 2026-06-30
 
