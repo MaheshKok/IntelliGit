@@ -121,6 +121,57 @@ describe("extension manifest", () => {
         }
     });
 
+    it("contributes color variants for native commit graph title actions", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const commands = manifest.contributes?.commands ?? [];
+        const commandPalette = manifest.contributes?.menus?.commandPalette ?? [];
+        const titleMenu = manifest.contributes?.menus?.["view/title"] ?? [];
+
+        const actions = [
+            [
+                "intelligit.refresh",
+                "intelligit.refresh.color",
+                "view == intelligit.commitGraph",
+                "media/icons/refresh-white.svg",
+                "media/icons/refresh-color.svg",
+            ],
+            [
+                "intelligit.selectRepository",
+                "intelligit.selectRepository.color",
+                "view == intelligit.commitGraph",
+                "media/icons/select-repository-white.svg",
+                "media/icons/select-repository-color.svg",
+            ],
+            [
+                "intelligit.openUndocked",
+                "intelligit.openUndocked.color",
+                "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
+                "media/icons/undock-white.svg",
+                "media/icons/undock-color.svg",
+            ],
+        ] as const;
+
+        for (const [command, colorCommand, baseWhen, icon, colorIcon] of actions) {
+            const item = titleMenu.find((entry) => entry.command === command);
+            const colorItem = titleMenu.find((entry) => entry.command === colorCommand);
+            const commandContribution = commands.find((entry) => entry.command === command);
+            const colorCommandContribution = commands.find(
+                (entry) => entry.command === colorCommand,
+            );
+            const colorPaletteItem = commandPalette.find((entry) => entry.command === colorCommand);
+
+            expect(item?.when).toBe(`${baseWhen} && config.intelligit.icons != color`);
+            expect(colorItem?.when).toBe(`${baseWhen} && config.intelligit.icons == color`);
+            expect(item?.group).toBe("navigation");
+            expect(colorItem?.group).toBe("navigation");
+            expect(commandContribution?.icon).toEqual({ light: icon, dark: icon });
+            expect(colorCommandContribution?.icon).toEqual({ light: colorIcon, dark: colorIcon });
+            expect(colorPaletteItem?.when).toBe("false");
+        }
+    });
+
     it("keeps native sidebar color icons matching the commit tab toolbar icons", () => {
         const tabBarSource = readFileSync(
             path.join(process.cwd(), "src/webviews/react/commit-panel/components/TabBar.tsx"),
@@ -282,6 +333,9 @@ describe("extension manifest", () => {
                 "intelligit.undockableWindowButtonVisability"
             ];
         const undockButton = titleMenu.find((entry) => entry.command === "intelligit.openUndocked");
+        const colorUndockButton = titleMenu.find(
+            (entry) => entry.command === "intelligit.openUndocked.color",
+        );
 
         expect(setting?.type).toBe("boolean");
         expect(setting?.default).toBe(true);
@@ -289,7 +343,10 @@ describe("extension manifest", () => {
             "%configuration.undockableWindowButtonVisability.markdownDescription%",
         );
         expect(undockButton?.when).toBe(
-            "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
+            "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons != color",
+        );
+        expect(colorUndockButton?.when).toBe(
+            "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons == color",
         );
     });
 });

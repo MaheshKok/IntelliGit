@@ -1,6 +1,7 @@
 import React from "react";
 import { Box } from "@chakra-ui/react";
 import { t } from "../shared/i18n";
+import { getSettings } from "../shared/settings";
 
 interface UndockedHeaderProps {
     onDock: () => void;
@@ -19,9 +20,14 @@ const DOCK_BUTTON_STYLE: React.CSSProperties = {
     font: "inherit",
     cursor: "pointer",
 };
+const STANDARD_DOCK_ICON_COLOR = "var(--vscode-button-foreground)";
+const COLOR_DOCK_ICON_COLOR = "#8fd5ff";
 
 /** Renders the undocked editor-tab header and invokes the dock callback. */
 export function UndockedHeader({ onDock }: UndockedHeaderProps): React.ReactElement {
+    const dockIconColor =
+        getSettings().iconStyle === "color" ? COLOR_DOCK_ICON_COLOR : STANDARD_DOCK_ICON_COLOR;
+
     return (
         <Box
             as="header"
@@ -45,7 +51,13 @@ export function UndockedHeader({ onDock }: UndockedHeaderProps): React.ReactElem
                 aria-label={t("common.dockIntelliGit")}
                 style={DOCK_BUTTON_STYLE}
             >
-                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+                <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    aria-hidden
+                    style={{ color: dockIconColor }}
+                >
                     <path
                         fill="currentColor"
                         d="M2 3h12v10H2V3zm1 1v8h10V4H3zm1 1h3v6H4V5zm4 0h4v2H8V5z"

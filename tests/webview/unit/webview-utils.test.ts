@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Branch, Commit } from "../../../src/types";
 import { renderHighlightedLabel } from "../../../src/webviews/react/branch-column/highlight";
 import { getBranchMenuItems } from "../../../src/webviews/react/branch-column/menu";
@@ -21,6 +21,24 @@ import {
     collectDirPaths,
     countFiles,
 } from "../../../src/webviews/react/shared/fileTree";
+
+const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+
+afterEach(() => {
+    if (originalWindowDescriptor) {
+        Object.defineProperty(globalThis, "window", originalWindowDescriptor);
+        return;
+    }
+    Reflect.deleteProperty(globalThis, "window");
+});
+
+function stubWindowSettings(intelligitSettings: unknown): void {
+    Object.defineProperty(globalThis, "window", {
+        configurable: true,
+        value: { intelligitSettings },
+        writable: true,
+    });
+}
 
 /** Builds a branch fixture for menu and branch-scope utility tests. */
 function makeBranch(overrides: Partial<Branch> = {}): Branch {
@@ -276,6 +294,22 @@ describe("commit menu", () => {
         expect(pushUpToHere).toBeDefined();
         expect(squash).toBeDefined();
         expect(items.some((item) => item.action === "checkoutMain")).toBe(false);
+    });
+
+    it("colors commit action icons when color icons are enabled", () => {
+        stubWindowSettings({ iconStyle: "color" });
+        const items = getCommitMenuItems(makeCommit(), true, true);
+        const iconMarkup = (action: string): string => {
+            const item = items.find((item) => item.action === action);
+            expect(item?.icon).toBeDefined();
+            return renderToStaticMarkup(item?.icon as React.ReactElement);
+        };
+
+        expect(iconMarkup("copyRevision")).toContain("color:#8fd5ff");
+        expect(iconMarkup("createPatch")).toContain("color:#c8a2ff");
+        expect(iconMarkup("cherryPick")).toContain("color:#ff7ab2");
+        expect(iconMarkup("resetCurrentToHere")).toContain("color:#ff9e64");
+        expect(iconMarkup("pushAllUpToHere")).toContain("color:#a6e3a1");
     });
 
     it("only enables cherry-pick when the selected graph scope can be cherry-picked", () => {

@@ -134,16 +134,36 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             operation,
         );
     };
+    const refreshRepository = async (): Promise<void> => {
+        await vscode.window.withProgress(
+            { location: { viewId: "intelligit.commitPanel" } },
+            async () => {
+                await refreshActiveRepository();
+            },
+        );
+    };
+    const selectRepository = async (): Promise<void> => {
+        const repositories = await discoverGitRepositories(workspaceRoots());
+        setRepositories(repositories);
+        if (repositories.length === 0) {
+            showTimedInformationMessage(NO_REPOSITORY_MESSAGE);
+            return;
+        }
+        const picked = await vscode.window.showQuickPick(
+            repositories.map((repo) => ({
+                label: repo.label,
+                description: repo.root === getRepoRoot() ? "Active" : repo.root,
+                repository: repo,
+            })),
+            { placeHolder: vscode.l10n.t("Select IntelliGit repository") },
+        );
+        if (!picked) return;
+        await setActiveRepository(picked.repository);
+    };
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("intelligit.refresh", async () => {
-            await vscode.window.withProgress(
-                { location: { viewId: "intelligit.commitPanel" } },
-                async () => {
-                    await refreshActiveRepository();
-                },
-            );
-        }),
+        vscode.commands.registerCommand("intelligit.refresh", refreshRepository),
+        vscode.commands.registerCommand("intelligit.refresh.color", refreshRepository),
         vscode.commands.registerCommand("intelligit.graph.fetch", async () => {
             await runGraphGitOperation("fetch");
         }),
@@ -288,24 +308,8 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
                 );
             }
         }),
-        vscode.commands.registerCommand("intelligit.selectRepository", async () => {
-            const repositories = await discoverGitRepositories(workspaceRoots());
-            setRepositories(repositories);
-            if (repositories.length === 0) {
-                showTimedInformationMessage(NO_REPOSITORY_MESSAGE);
-                return;
-            }
-            const picked = await vscode.window.showQuickPick(
-                repositories.map((repo) => ({
-                    label: repo.label,
-                    description: repo.root === getRepoRoot() ? "Active" : repo.root,
-                    repository: repo,
-                })),
-                { placeHolder: vscode.l10n.t("Select IntelliGit repository") },
-            );
-            if (!picked) return;
-            await setActiveRepository(picked.repository);
-        }),
+        vscode.commands.registerCommand("intelligit.selectRepository", selectRepository),
+        vscode.commands.registerCommand("intelligit.selectRepository.color", selectRepository),
         vscode.commands.registerCommand(
             "intelligit.filterByBranch",
             async (branchName?: string) => {
@@ -327,6 +331,7 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             await vscode.commands.executeCommand("intelligit.commitGraph.focus");
         }),
         vscode.commands.registerCommand("intelligit.openUndocked", pickUndockTargetAndOpen),
+        vscode.commands.registerCommand("intelligit.openUndocked.color", pickUndockTargetAndOpen),
         vscode.commands.registerCommand("intelligit.dockWindow", dockIntelliGit),
         vscode.commands.registerCommand("intelligit.mergeConflictsRefresh", async () => {
             await refreshService().refreshMergeConflicts();

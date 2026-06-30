@@ -123,7 +123,19 @@
                 "command": "intelligit.openUndocked",
                 "title": "%command.undock%",
                 "category": "%intelligit%",
-                "icon": "$(multiple-windows)"
+                "icon": {
+                    "light": "media/icons/undock-white.svg",
+                    "dark": "media/icons/undock-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.openUndocked.color",
+                "title": "%command.undock%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/undock-color.svg",
+                    "dark": "media/icons/undock-color.svg"
+                }
             },
             {
                 "command": "intelligit.dockWindow",
@@ -135,7 +147,19 @@
                 "command": "intelligit.refresh",
                 "title": "%command.refresh%",
                 "category": "%intelligit%",
-                "icon": "$(refresh)"
+                "icon": {
+                    "light": "media/icons/refresh-white.svg",
+                    "dark": "media/icons/refresh-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.refresh.color",
+                "title": "%command.refresh%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/refresh-color.svg",
+                    "dark": "media/icons/refresh-color.svg"
+                }
             },
             {
                 "command": "intelligit.graph.sync",
@@ -218,7 +242,19 @@
                 "command": "intelligit.selectRepository",
                 "title": "%command.selectRepository%",
                 "category": "%intelligit%",
-                "icon": "$(repo)"
+                "icon": {
+                    "light": "media/icons/select-repository-white.svg",
+                    "dark": "media/icons/select-repository-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.selectRepository.color",
+                "title": "%command.selectRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/select-repository-color.svg",
+                    "dark": "media/icons/select-repository-color.svg"
+                }
             },
             {
                 "command": "intelligit.checkout",
@@ -475,6 +511,18 @@
         "menus": {
             "commandPalette": [
                 {
+                    "command": "intelligit.refresh.color",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.selectRepository.color",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.openUndocked.color",
+                    "when": "false"
+                },
+                {
                     "command": "intelligit.graph.sync",
                     "when": "false"
                 },
@@ -529,17 +577,32 @@
             "view/title": [
                 {
                     "command": "intelligit.refresh",
-                    "when": "view == intelligit.commitGraph",
+                    "when": "view == intelligit.commitGraph && config.intelligit.icons != color",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.refresh.color",
+                    "when": "view == intelligit.commitGraph && config.intelligit.icons == color",
                     "group": "navigation"
                 },
                 {
                     "command": "intelligit.selectRepository",
-                    "when": "view == intelligit.commitGraph",
+                    "when": "view == intelligit.commitGraph && config.intelligit.icons != color",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.selectRepository.color",
+                    "when": "view == intelligit.commitGraph && config.intelligit.icons == color",
                     "group": "navigation"
                 },
                 {
                     "command": "intelligit.openUndocked",
-                    "when": "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability",
+                    "when": "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons != color",
+                    "group": "navigation"
+                },
+                {
+                    "command": "intelligit.openUndocked.color",
+                    "when": "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons == color",
                     "group": "navigation"
                 },
                 {

@@ -1178,6 +1178,7 @@ describe("extension integration", () => {
         await activate(context);
 
         expect(registeredCommands.has("intelligit.refresh")).toBe(true);
+        expect(registeredCommands.has("intelligit.refresh.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.fetch")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.fetch.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.pull")).toBe(true);
@@ -1186,6 +1187,8 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.graph.push.color")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.sync")).toBe(true);
         expect(registeredCommands.has("intelligit.graph.sync.color")).toBe(true);
+        expect(registeredCommands.has("intelligit.selectRepository.color")).toBe(true);
+        expect(registeredCommands.has("intelligit.openUndocked.color")).toBe(true);
         expect(registeredCommands.has("intelligit.openWorktree")).toBe(true);
         expect(registeredCommands.has("intelligit.createWorktreeFromBranch")).toBe(true);
         expect(registeredCommands.has("intelligit.worktree.create")).toBe(true);
