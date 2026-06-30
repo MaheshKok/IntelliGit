@@ -102,11 +102,14 @@ guarded by context and confirmations.
 
 ### Unified IntelliGit Workbench
 
+![IntelliGit Undock picker with editor-tab and new-window options](media/screenshots/undock-workflow.png)
+
 ![Undocked IntelliGit workbench with commit panel, branch tree, graph, changed files, and details](media/screenshots/intelligit-workbench.png)
 
-When you need room, IntelliGit can run as a unified workbench tab. The commit
-panel, branch tree, graph lanes, changed-file tree, and commit details stay in
-one layout, with dock/undock support for monitor-heavy workflows.
+When you need room, IntelliGit can run as a unified workbench tab. The `Undock`
+feature allows you to undock the Git window and move it to another screen. The
+commit panel, branch tree, graph lanes, changed-file tree, and commit details
+stay in one layout, with dock/undock support for monitor-heavy workflows.
 
 ### Publish Branch
 
