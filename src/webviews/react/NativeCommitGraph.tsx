@@ -157,7 +157,7 @@ export function NativeCommitGraph({
                 return;
             }
             switch (data.type) {
-                case "loadCommits":
+                case "loadCommits": {
                     loadingMore.current = false;
                     const previousSelectedHash = selectedHashRef.current;
                     const nextSelectedHash =
@@ -188,6 +188,7 @@ export function NativeCommitGraph({
                         });
                     }
                     break;
+                }
                 case "setSelectedBranch":
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;

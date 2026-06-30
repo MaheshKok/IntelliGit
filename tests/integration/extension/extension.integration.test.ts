@@ -2951,7 +2951,7 @@ describe("extension integration", () => {
         expect(createTerminal).toHaveBeenCalled();
     });
 
-    it("clears docked commit panel details during explicit repository refresh", async () => {
+    it("preserves selected commit details during explicit repository refresh", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -2961,14 +2961,27 @@ describe("extension integration", () => {
         await activate(context);
         await waitForAsync();
 
+        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
+        if (!latestSidebarGraphProvider) throw new Error("Expected sidebar graph provider");
         if (!latestCommitPanelProvider) throw new Error("Expected commit panel provider");
+
+        latestCommitGraphProvider.emitCommitSelected("a1b2c3d4");
+        await waitForAsync();
+
+        latestCommitGraphProvider.clearCommitDetail.mockClear();
+        latestSidebarGraphProvider.clearCommitDetail.mockClear();
         latestCommitPanelProvider.clearCommitDetail.mockClear();
 
         const refresh = registeredCommands.get("intelligit.refresh");
         if (!refresh) throw new Error("Missing intelligit.refresh command");
         await refresh();
 
-        expect(latestCommitPanelProvider.clearCommitDetail).toHaveBeenCalledTimes(1);
+        expect(latestCommitGraphProvider.clearCommitDetail).not.toHaveBeenCalled();
+        expect(latestSidebarGraphProvider.clearCommitDetail).not.toHaveBeenCalled();
+        expect(latestCommitPanelProvider.clearCommitDetail).not.toHaveBeenCalled();
+        expect(latestCommitPanelProvider.setCommitDetail).toHaveBeenCalledWith(
+            expect.objectContaining({ hash: "a1b2c3d4" }),
+        );
     });
 
     it("suppresses stale commit detail errors after the selection is cleared", async () => {

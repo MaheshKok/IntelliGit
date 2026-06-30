@@ -52,20 +52,21 @@ export const PANEL_STYLE: CSSProperties = {
 };
 
 export const SEARCH_CONTAINER_STYLE: CSSProperties = {
-    minHeight: 22,
+    minHeight: JETBRAINS_UI.size.toolbarHeight,
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "1px 8px",
+    padding: "4px 8px",
     color: JETBRAINS_UI.color.muted,
     background: JETBRAINS_UI.color.toolbar,
     borderBottom: `1px solid ${JETBRAINS_UI.color.border}`,
+    flexShrink: 0,
 };
 
 export const SEARCH_INPUT_STYLE: CSSProperties = {
     flex: 1,
     minWidth: 0,
-    height: 18,
+    height: 22,
     borderRadius: JETBRAINS_UI.size.radius,
     border: `1px solid ${JETBRAINS_UI.color.inputBorder}`,
     background: JETBRAINS_UI.color.input,

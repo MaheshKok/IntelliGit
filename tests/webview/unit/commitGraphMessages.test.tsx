@@ -56,41 +56,43 @@ describe("useCommitGraphMessages", () => {
         const dispatch = vi.fn();
         const postMessage = vi.fn();
 
-        await act(async () => {
-            root.render(
-                <Harness dispatch={dispatch} postMessage={postMessage} selectedHash="bb22" />,
-            );
-        });
+        try {
+            await act(async () => {
+                root.render(
+                    <Harness dispatch={dispatch} postMessage={postMessage} selectedHash="bb22" />,
+                );
+            });
 
-        act(() => {
-            window.dispatchEvent(
-                new MessageEvent("message", {
-                    data: {
-                        type: "loadCommits",
-                        append: false,
-                        hasMore: false,
-                        commits: [
-                            makeCommit("aa11", "feat: first commit"),
-                            makeCommit("bb22", "fix: selected commit"),
-                        ],
-                    },
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "loadCommits",
+                            append: false,
+                            hasMore: false,
+                            commits: [
+                                makeCommit("aa11", "feat: first commit"),
+                                makeCommit("bb22", "fix: selected commit"),
+                            ],
+                        },
+                    }),
+                );
+            });
+
+            expect(dispatch).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "loadCommits",
+                    selectedHash: "bb22",
                 }),
             );
-        });
-
-        expect(dispatch).toHaveBeenCalledWith(
-            expect.objectContaining({
-                type: "loadCommits",
-                selectedHash: "bb22",
-            }),
-        );
-        expect(postMessage).not.toHaveBeenCalledWith(
-            expect.objectContaining({ type: "selectCommit" }),
-        );
-
-        await act(async () => {
-            root.unmount();
-        });
-        host.remove();
+            expect(postMessage).not.toHaveBeenCalledWith(
+                expect.objectContaining({ type: "selectCommit" }),
+            );
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            host.remove();
+        }
     });
 });

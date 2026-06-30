@@ -198,9 +198,9 @@ export async function activateRepositoryMode(
     };
 
     /**
-     * Refreshes branch-dependent providers and clears stale selection state.
+     * Refreshes branch-dependent providers while preserving current commit selection.
      *
-     * Used by explicit refreshes and repository switches. Failures propagate to
+     * Repository switches clear selection before calling this. Failures propagate to
      * the caller; background initial refreshes attach their own logging handlers.
      */
     const refreshActiveRepository = async (): Promise<void> => {
@@ -227,7 +227,6 @@ export async function activateRepositoryMode(
             refreshes.push(undocked.refresh());
         }
         await Promise.all(refreshes);
-        clearSelection();
     };
 
     /**
@@ -257,6 +256,7 @@ export async function activateRepositoryMode(
         refreshService = createRefreshService(repoRoot);
         refreshService.registerFileWatchers();
         await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+        clearSelection();
         await refreshActiveRepository();
     };
 
