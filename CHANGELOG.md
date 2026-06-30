@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Moved the branch `Create Worktree` context-menu action to the bottom of the branch menu.
 - Reused the commit-panel pull and push glyphs for branch update and push menu actions.
+- Documented the Undock workflow in the README feature gallery.
+
+### Fixed
+
+- Defaulted new remote publication from local `master` to remote `main`.
 
 ## [0.14.7] - 2026-06-30
 

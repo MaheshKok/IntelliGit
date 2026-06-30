@@ -75,7 +75,7 @@ export async function runPublishBranchFlow(
     const remotePlan = await pickRemotePlan(remotes, branchName);
     if (!remotePlan) return;
 
-    let remoteBranchName = remotePlan.remoteBranchName ?? branchName;
+    let remoteBranchName = remotePlan.remoteBranchName ?? defaultPublishedBranchName(branchName);
     if (remotePlan.kind === "existing") {
         try {
             await vscode.window.withProgress(
@@ -246,6 +246,11 @@ export async function runPublishBranchFlow(
             vscode.l10n.t("Failed to publish branch: {message}", { message }),
         );
     }
+}
+
+/** Uses the modern default branch name when publishing a new remote from local master. */
+function defaultPublishedBranchName(branchName: string): string {
+    return branchName === "master" ? "main" : branchName;
 }
 
 function parseRemoteRefInput(
