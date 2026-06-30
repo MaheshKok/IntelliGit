@@ -977,5 +977,11 @@ describe("CommitInfoApp integration", () => {
             svg.style.animation.includes("intelligit-spin"),
         );
         expect(loadingSpinners).toHaveLength(2);
+        const loadingStatuses = Array.from(document.querySelectorAll('[role="status"]'));
+        expect(loadingStatuses).toHaveLength(2);
+        expect(loadingStatuses[0].textContent).toContain("Loading...");
+        expect(loadingStatuses[0].textContent).toContain("Changed Files");
+        expect(loadingStatuses[1].textContent).toContain("Loading...");
+        expect(loadingStatuses[1].textContent).toContain("Commit Details");
     });
 });

@@ -40,6 +40,17 @@ const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
 const INFO_SECTION_GUIDE = 7;
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0, 0, 0, 0)",
+    whiteSpace: "nowrap",
+    border: 0,
+};
 
 function CommitRefRow({
     kind,
@@ -182,7 +193,13 @@ export function CommitInfoPane({
                         display="flex"
                         alignItems="center"
                         justifyContent="center"
+                        position="relative"
+                        role="status"
+                        aria-live="polite"
                     >
+                        <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
+                            {t("common.loading")} {t("commitInfo.changedFiles")}
+                        </Box>
                         <LoadingSpinner />
                     </Box>
                     <Box flex="0 0 5px" bg={JETBRAINS_UI.color.divider} />
@@ -204,7 +221,13 @@ export function CommitInfoPane({
                             display="flex"
                             alignItems="center"
                             justifyContent="center"
+                            position="relative"
+                            role="status"
+                            aria-live="polite"
                         >
+                            <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
+                                {t("common.loading")} {t("commitInfo.details")}
+                            </Box>
                             <LoadingSpinner />
                         </Box>
                     </Box>
