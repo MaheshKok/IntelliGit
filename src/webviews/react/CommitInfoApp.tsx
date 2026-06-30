@@ -12,6 +12,7 @@ const vscode = getVsCodeApi<CommitInfoOutbound, unknown>();
 
 interface CommitInfoState {
     detail: CommitDetail | null;
+    loading: boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -19,7 +20,7 @@ interface CommitInfoState {
 }
 
 type CommitInfoAction =
-    | { type: "clear" }
+    | { type: "clear"; loading?: boolean }
     | {
           type: "setCommitDetail";
           detail: CommitDetail;
@@ -31,16 +32,18 @@ type CommitInfoAction =
 
 const initialCommitInfoState: CommitInfoState = {
     detail: null,
+    loading: false,
     iconFonts: [],
 };
 
 function commitInfoReducer(_state: CommitInfoState, action: CommitInfoAction): CommitInfoState {
     switch (action.type) {
         case "clear":
-            return initialCommitInfoState;
+            return { ...initialCommitInfoState, loading: action.loading ?? false };
         case "setCommitDetail":
             return {
                 detail: action.detail,
+                loading: false,
                 folderIcon: action.folderIcon,
                 folderExpandedIcon: action.folderExpandedIcon,
                 folderIconsByName: action.folderIconsByName,
@@ -67,7 +70,7 @@ function App(): React.ReactElement {
             const msg = event.data;
             switch (msg.type) {
                 case "clear":
-                    dispatch({ type: "clear" });
+                    dispatch({ type: "clear", loading: msg.loading ?? false });
                     return;
                 case "setCommitDetail":
                     dispatch({
@@ -101,6 +104,7 @@ function App(): React.ReactElement {
             <ThemeIconFontFaces fonts={state.iconFonts} />
             <CommitInfoPane
                 detail={state.detail}
+                loading={state.loading}
                 folderIcon={state.folderIcon}
                 folderExpandedIcon={state.folderExpandedIcon}
                 folderIconsByName={state.folderIconsByName}

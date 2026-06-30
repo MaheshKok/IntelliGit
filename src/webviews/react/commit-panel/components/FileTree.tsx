@@ -80,6 +80,25 @@ export function FileTree({
         () => new Set(unversioned.map((f) => f.path)).size,
         [unversioned],
     );
+    const trackedStats = useMemo(
+        () =>
+            tracked.reduce(
+                (totals, file) => {
+                    totals.additions += file.additions;
+                    totals.deletions += file.deletions;
+                    return totals;
+                },
+                { additions: 0, deletions: 0 },
+            ),
+        [tracked],
+    );
+    const unversionedStats = useMemo(
+        () => ({
+            additions: unversioned.reduce((total, file) => total + file.additions, 0),
+            deletions: 0,
+        }),
+        [unversioned],
+    );
 
     // react-doctor-disable-next-line react-doctor/no-event-handler
     const trackedTree = useFileTree(tracked, groupByDir);
@@ -186,6 +205,7 @@ export function FileTree({
                     <SectionHeader
                         label={t("commitPanel.changes")}
                         count={trackedUniqueCount}
+                        stats={trackedStats}
                         isOpen={changesOpen}
                         isAllChecked={isAllChecked(tracked)}
                         isSomeChecked={isSomeChecked(tracked)}
@@ -223,6 +243,7 @@ export function FileTree({
                     <SectionHeader
                         label={t("commitPanel.unversionedFiles")}
                         count={unversionedUniqueCount}
+                        stats={unversionedStats}
                         isOpen={unversionedOpen}
                         isAllChecked={isAllChecked(unversioned)}
                         isSomeChecked={isSomeChecked(unversioned)}

@@ -2984,6 +2984,39 @@ describe("extension integration", () => {
         );
     });
 
+    it("clears selected commit details before applying a branch filter command", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: mockDisposables,
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        await waitForAsync();
+
+        if (!latestCommitGraphProvider) throw new Error("Expected commit graph provider");
+        if (!latestSidebarGraphProvider) throw new Error("Expected sidebar graph provider");
+        const filterByBranch = registeredCommands.get("intelligit.filterByBranch");
+        if (!filterByBranch) throw new Error("Missing intelligit.filterByBranch command");
+
+        await filterByBranch("main");
+
+        expect(latestCommitGraphProvider.clearCommitDetail).toHaveBeenCalledWith({
+            loading: true,
+        });
+        expect(latestSidebarGraphProvider.clearCommitDetail).toHaveBeenCalledWith({
+            loading: true,
+        });
+        expect(latestCommitGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
+        expect(latestSidebarGraphProvider.filterByBranch).toHaveBeenCalledWith("main");
+        expect(
+            latestCommitGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
+        ).toBeLessThan(latestCommitGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
+        expect(
+            latestSidebarGraphProvider.clearCommitDetail.mock.invocationCallOrder[0],
+        ).toBeLessThan(latestSidebarGraphProvider.filterByBranch.mock.invocationCallOrder[0]);
+    });
+
     it("suppresses stale commit detail errors after the selection is cleared", async () => {
         const { activate } = await import("../../../src/extension");
         const context = {

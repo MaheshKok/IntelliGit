@@ -44,7 +44,7 @@ export type GraphAction =
           folderIconsByName?: ThemeFolderIconMap;
           iconFonts?: ThemeIconFont[];
       }
-    | { type: "clearCommitDetail" }
+    | { type: "clearCommitDetail"; loading?: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
     | { type: "loadError"; clearCommits: boolean }

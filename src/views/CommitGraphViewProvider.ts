@@ -62,6 +62,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
+    private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
@@ -347,6 +348,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     setCommitDetail(detail: CommitDetail): void {
         const requestId = ++this.commitDetailSeq;
         this.selectedCommitDetail = detail;
+        this.commitDetailLoading = false;
         this.folderIconsByName = {};
         this.postCommitDetailState();
         this.decorateAndStoreCommitDetail(detail, requestId).catch((err) => {
@@ -361,9 +363,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     /**
      * Clears the selected commit detail and invalidates any in-flight decoration request.
      */
-    clearCommitDetail(): void {
+    clearCommitDetail(options?: { loading?: boolean }): void {
         this.commitDetailSeq += 1;
         this.selectedCommitDetail = null;
+        this.commitDetailLoading = options?.loading ?? false;
         this.folderIconsByName = {};
         this.postCommitDetailState();
     }
@@ -621,7 +624,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             });
             return;
         }
-        this.postToWebview({ type: "clearCommitDetail" });
+        this.postToWebview(
+            this.commitDetailLoading
+                ? { type: "clearCommitDetail", loading: true }
+                : { type: "clearCommitDetail" },
+        );
     }
 
     /**

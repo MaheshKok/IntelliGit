@@ -807,15 +807,13 @@ describe("UndockedApp integration", () => {
         expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1788);
 
         act(() => {
-            document
-                .querySelector('[data-testid="undocked-branch-divider"]')
-                ?.dispatchEvent(
-                    new MouseEvent("mousedown", {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: 400,
-                    }),
-                );
+            document.querySelector('[data-testid="undocked-branch-divider"]')?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 400,
+                }),
+            );
             document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 450 }));
             document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         });
@@ -879,15 +877,13 @@ describe("UndockedApp integration", () => {
         );
 
         act(() => {
-            document
-                .querySelector('[data-testid="undocked-branch-divider"]')
-                ?.dispatchEvent(
-                    new MouseEvent("mousedown", {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: 400,
-                    }),
-                );
+            document.querySelector('[data-testid="undocked-branch-divider"]')?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 400,
+                }),
+            );
             document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 450 }));
             document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         });
@@ -967,5 +963,19 @@ describe("CommitInfoApp integration", () => {
         });
         await flush();
         expect(document.body.textContent).toContain("No commit selected");
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", { data: { type: "clear", loading: true } }),
+            );
+        });
+        await flush();
+        expect(document.body.textContent).not.toContain("No commit selected");
+        expect(document.body.textContent).toContain("Changed Files");
+        expect(document.body.textContent).toContain("Commit Details");
+        const loadingSpinners = Array.from(document.querySelectorAll("svg")).filter((svg) =>
+            svg.style.animation.includes("intelligit-spin"),
+        );
+        expect(loadingSpinners).toHaveLength(2);
     });
 });

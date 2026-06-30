@@ -190,11 +190,11 @@ export async function activateRepositoryMode(
         currentBranches.find((b) => b.isCurrent)?.name;
 
     /** Clears selected commit state from every visible IntelliGit surface at once. */
-    const clearSelection = (): void => {
-        commitGraph.clearCommitDetail();
-        sidebarGraph.clearCommitDetail();
-        commitPanel.clearCommitDetail();
-        commitInfo.clear();
+    const clearSelection = (options?: { loading?: boolean }): void => {
+        commitGraph.clearCommitDetail(options);
+        sidebarGraph.clearCommitDetail(options);
+        commitPanel.clearCommitDetail(options);
+        commitInfo.clear(options);
     };
 
     /**

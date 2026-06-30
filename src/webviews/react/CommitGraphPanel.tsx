@@ -115,6 +115,7 @@ interface CommitGraphPanelState {
     hasMore: boolean;
     filterText: string;
     selectedDetail: CommitDetail | null;
+    commitDetailLoading: boolean;
     commitChecks: Map<string, CommitChecksValue>;
     branchFolderIcon?: ThemeTreeIcon;
     branchFolderExpandedIcon?: ThemeTreeIcon;
@@ -136,6 +137,7 @@ const initialCommitGraphPanelState: CommitGraphPanelState = {
     hasMore: false,
     filterText: "",
     selectedDetail: null,
+    commitDetailLoading: false,
     commitChecks: new Map(),
     iconFonts: [],
     unpushedHashes: new Set(),
@@ -172,6 +174,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 selectedDetail: action.detail,
+                commitDetailLoading: false,
                 commitFolderIcon: action.folderIcon,
                 commitFolderExpandedIcon: action.folderExpandedIcon,
                 commitFolderIconsByName: action.folderIconsByName,
@@ -181,6 +184,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 selectedDetail: null,
+                commitDetailLoading: action.loading ?? false,
                 commitFolderIcon: undefined,
                 commitFolderExpandedIcon: undefined,
                 commitFolderIconsByName: undefined,
@@ -200,6 +204,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 commits: action.clearCommits ? [] : state.commits,
+                commitDetailLoading: false,
                 hasMore: false,
             };
         case "selectCommit":
@@ -507,6 +512,7 @@ export function CommitGraphPanel({
                     >
                         <CommitInfoPane
                             detail={selectedDetail}
+                            loading={state.commitDetailLoading}
                             folderIcon={commitFolderIcon}
                             folderExpandedIcon={commitFolderExpandedIcon}
                             folderIconsByName={commitFolderIconsByName}

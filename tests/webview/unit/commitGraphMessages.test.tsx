@@ -95,4 +95,117 @@ describe("useCommitGraphMessages", () => {
             host.remove();
         }
     });
+
+    it("selects the first commit after a branch change", async () => {
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        const dispatch = vi.fn();
+        const postMessage = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <Harness dispatch={dispatch} postMessage={postMessage} selectedHash="bb22" />,
+                );
+            });
+
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "setSelectedBranch",
+                            branch: "main",
+                        },
+                    }),
+                );
+            });
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "loadCommits",
+                            append: false,
+                            hasMore: false,
+                            commits: [
+                                makeCommit("aa11", "feat: first commit"),
+                                makeCommit("bb22", "fix: previously selected commit"),
+                            ],
+                        },
+                    }),
+                );
+            });
+
+            expect(dispatch).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "loadCommits",
+                    selectedHash: "aa11",
+                }),
+            );
+            expect(postMessage).toHaveBeenCalledWith({
+                type: "selectCommit",
+                hash: "aa11",
+            });
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            host.remove();
+        }
+    });
+
+    it("reposts the first commit after a branch change when the hash is unchanged", async () => {
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        const dispatch = vi.fn();
+        const postMessage = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <Harness dispatch={dispatch} postMessage={postMessage} selectedHash="aa11" />,
+                );
+            });
+
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "setSelectedBranch",
+                            branch: "main",
+                        },
+                    }),
+                );
+            });
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "loadCommits",
+                            append: false,
+                            hasMore: false,
+                            commits: [makeCommit("aa11", "feat: first commit")],
+                        },
+                    }),
+                );
+            });
+
+            expect(dispatch).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: "loadCommits",
+                    selectedHash: "aa11",
+                }),
+            );
+            expect(postMessage).toHaveBeenCalledWith({
+                type: "selectCommit",
+                hash: "aa11",
+            });
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            host.remove();
+        }
+    });
 });

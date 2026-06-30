@@ -52,6 +52,7 @@ export interface UndockedLayoutProps {
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
     selectedDetail: CommitDetail | null;
+    commitDetailLoading: boolean;
     branchFolderIcon?: ThemeTreeIcon;
     branchFolderExpandedIcon?: ThemeTreeIcon;
     branchFolderIconsByName?: ThemeFolderIconMap;
@@ -127,6 +128,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         commitChecks,
         commitChecksEnabled,
         selectedDetail,
+        commitDetailLoading,
         branchFolderIcon,
         branchFolderExpandedIcon,
         branchFolderIconsByName,
@@ -334,6 +336,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                             >
                                 <CommitInfoPane
                                     detail={selectedDetail}
+                                    loading={commitDetailLoading}
                                     folderIcon={commitFolderIcon}
                                     folderExpandedIcon={commitFolderExpandedIcon}
                                     folderIconsByName={commitFolderIconsByName}

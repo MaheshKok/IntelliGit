@@ -11,6 +11,10 @@ import { t } from "../../shared/i18n";
 interface Props {
     label: string;
     count: number;
+    stats?: {
+        additions: number;
+        deletions: number;
+    };
     isOpen: boolean;
     isAllChecked: boolean;
     isSomeChecked: boolean;
@@ -34,6 +38,7 @@ interface Props {
 export function SectionHeader({
     label,
     count,
+    stats,
     isOpen,
     isAllChecked,
     isSomeChecked,
@@ -93,6 +98,24 @@ export function SectionHeader({
             >
                 {t("common.fileCount", { count })}
             </Box>
+            {stats && (stats.additions > 0 || stats.deletions > 0) && (
+                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                    {stats.additions > 0 && (
+                        <Box
+                            as="span"
+                            color="var(--intelligit-pycharm-added)"
+                            mr={stats.deletions > 0 ? "3px" : "0"}
+                        >
+                            +{stats.additions}
+                        </Box>
+                    )}
+                    {stats.deletions > 0 && (
+                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                            -{stats.deletions}
+                        </Box>
+                    )}
+                </Box>
+            )}
         </Flex>
     );
 }

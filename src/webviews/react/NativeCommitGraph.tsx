@@ -136,6 +136,7 @@ export function NativeCommitGraph({
     } = state;
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
+    const selectFirstOnNextLoadRef = useRef(false);
     selectedHashRef.current = selectedHash;
     const currentBranchName = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
@@ -159,15 +160,23 @@ export function NativeCommitGraph({
             switch (data.type) {
                 case "loadCommits": {
                     loadingMore.current = false;
+                    const forceFirstCommit = !data.append && selectFirstOnNextLoadRef.current;
                     const previousSelectedHash = selectedHashRef.current;
-                    const nextSelectedHash =
+                    const firstCommitHash = data.commits[0]?.hash ?? null;
+                    const preservesSelectedHash =
                         !data.append &&
                         previousSelectedHash !== null &&
-                        data.commits.some((commit) => commit.hash === previousSelectedHash)
-                            ? previousSelectedHash
-                            : !data.append
-                              ? (data.commits[0]?.hash ?? null)
-                              : previousSelectedHash;
+                        data.commits.some((commit) => commit.hash === previousSelectedHash);
+                    const nextSelectedHash = forceFirstCommit
+                        ? firstCommitHash
+                        : preservesSelectedHash
+                          ? previousSelectedHash
+                          : !data.append
+                            ? firstCommitHash
+                            : previousSelectedHash;
+                    if (!data.append) {
+                        selectFirstOnNextLoadRef.current = false;
+                    }
                     selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
@@ -180,7 +189,7 @@ export function NativeCommitGraph({
                     if (
                         !data.append &&
                         nextSelectedHash !== null &&
-                        nextSelectedHash !== previousSelectedHash
+                        (forceFirstCommit || nextSelectedHash !== previousSelectedHash)
                     ) {
                         vscode.postMessage({
                             type: "selectCommit",
@@ -190,6 +199,7 @@ export function NativeCommitGraph({
                     break;
                 }
                 case "setSelectedBranch":
+                    selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;
                 case "setBranches":
@@ -200,6 +210,7 @@ export function NativeCommitGraph({
                     });
                     break;
                 case "loadError":
+                    selectFirstOnNextLoadRef.current = false;
                     dispatch({ type: "loadError", clearCommits: !loadingMore.current });
                     loadingMore.current = false;
                     break;

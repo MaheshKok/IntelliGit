@@ -116,7 +116,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
                     return;
 
                 case "clearCommitDetail":
-                    graphDispatch({ type: "clearCommitDetail" });
+                    graphDispatch({ type: "clearCommitDetail", loading: data.loading ?? false });
                     return;
 
                 case "setCommitChecks":

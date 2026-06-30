@@ -19,6 +19,8 @@ interface Props {
 }
 
 const PANEL_MAX_WIDTH = 420;
+const PANEL_MIN_WIDTH = 310;
+const PANEL_MIN_HEIGHT = 190;
 const PANEL_TEXT_MAX_WIDTH = 340;
 const PANEL_MAX_HEIGHT = 360;
 
@@ -270,6 +272,8 @@ const buttonStyle: React.CSSProperties = {
 const panelStyle: React.CSSProperties = {
     position: "fixed",
     width: "max-content",
+    minWidth: PANEL_MIN_WIDTH,
+    minHeight: PANEL_MIN_HEIGHT,
     maxWidth: `min(${PANEL_MAX_WIDTH}px, calc(100vw - 16px))`,
     maxHeight: `min(${PANEL_MAX_HEIGHT}px, calc(100vh - 16px))`,
     overflow: "hidden",

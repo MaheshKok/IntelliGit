@@ -148,10 +148,10 @@ export function registerRepositoryViewEvents(
      */
     const clearCommitDetail = (): void => {
         commitDetailRequestSeq += 1;
-        commitGraph.clearCommitDetail();
-        sidebarGraph.clearCommitDetail();
-        commitPanel.clearCommitDetail();
-        commitInfo.clear();
+        commitGraph.clearCommitDetail({ loading: true });
+        sidebarGraph.clearCommitDetail({ loading: true });
+        commitPanel.clearCommitDetail({ loading: true });
+        commitInfo.clear({ loading: true });
     };
 
     /**

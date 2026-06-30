@@ -51,6 +51,7 @@ interface GraphState {
     hasMore: boolean;
     filterText: string;
     selectedDetail: CommitDetail | null;
+    commitDetailLoading: boolean;
     branchFolderIcon?: ThemeTreeIcon;
     branchFolderExpandedIcon?: ThemeTreeIcon;
     commitFolderIcon?: ThemeTreeIcon;
@@ -72,6 +73,7 @@ const initialGraphState: GraphState = {
     hasMore: false,
     filterText: "",
     selectedDetail: null,
+    commitDetailLoading: false,
     iconFonts: [],
     unpushedHashes: new Set(),
     commitChecks: new Map(),
@@ -105,6 +107,7 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
             return {
                 ...state,
                 selectedDetail: action.detail,
+                commitDetailLoading: false,
                 commitFolderIcon: action.folderIcon,
                 commitFolderExpandedIcon: action.folderExpandedIcon,
                 commitFolderIconsByName: action.folderIconsByName,
@@ -114,6 +117,7 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
             return {
                 ...state,
                 selectedDetail: null,
+                commitDetailLoading: action.loading ?? false,
                 commitFolderIcon: undefined,
                 commitFolderExpandedIcon: undefined,
                 commitFolderIconsByName: undefined,
@@ -133,6 +137,7 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
             return {
                 ...state,
                 commits: action.clearCommits ? [] : state.commits,
+                commitDetailLoading: false,
                 hasMore: false,
             };
         case "selectCommit":
@@ -175,6 +180,7 @@ function App(): React.ReactElement {
         hasMore,
         filterText,
         selectedDetail,
+        commitDetailLoading,
         branchFolderIcon,
         branchFolderExpandedIcon,
         commitFolderIcon,
@@ -417,6 +423,7 @@ function App(): React.ReactElement {
             commitChecks={commitChecks}
             commitChecksEnabled={commitChecksEnabled}
             selectedDetail={selectedDetail}
+            commitDetailLoading={commitDetailLoading}
             branchFolderIcon={branchFolderIcon}
             branchFolderExpandedIcon={branchFolderExpandedIcon}
             branchFolderIconsByName={branchFolderIconsByName}
