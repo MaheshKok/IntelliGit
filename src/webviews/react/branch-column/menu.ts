@@ -1,7 +1,10 @@
+import { createElement } from "react";
+
 import type { Branch, GitWorktree } from "../../../types";
 import type { BranchAction, WorktreeAction } from "../../protocol/commitGraphTypes";
 import type { MenuItem } from "../shared/components/ContextMenu";
 import { t } from "../shared/i18n";
+import { resolveIconColor } from "../shared/settings";
 
 /** Sentinel action namespace for visual separators in branch context menus. */
 type SeparatorAction = `sep-${string}`;
@@ -9,6 +12,46 @@ type SeparatorAction = `sep-${string}`;
 type BranchMenuItem = Omit<MenuItem, "action"> & { action: BranchAction | SeparatorAction };
 /** Worktree menu entry type that allows separators without widening executable actions. */
 type WorktreeMenuItem = Omit<MenuItem, "action"> & { action: WorktreeAction | SeparatorAction };
+
+const STANDARD_MENU_ICON_COLOR = "var(--vscode-menu-foreground, var(--vscode-icon-foreground))";
+
+/** Builds the branch menu pull icon from the commit panel's pull glyph. */
+function pullBranchIcon() {
+    return createElement(
+        "svg",
+        {
+            width: "14",
+            height: "14",
+            viewBox: "0 0 16 16",
+            "aria-hidden": true,
+            style: { color: resolveIconColor("#8fd5ff", STANDARD_MENU_ICON_COLOR) },
+        },
+        createElement("path", {
+            fill: "currentColor",
+            d: "M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z",
+        }),
+        createElement("path", { fill: "currentColor", d: "M3 13h10v1H3v-1z" }),
+    );
+}
+
+/** Builds the branch menu push icon from the commit panel's push glyph. */
+function pushBranchIcon() {
+    return createElement(
+        "svg",
+        {
+            width: "14",
+            height: "14",
+            viewBox: "0 0 16 16",
+            "aria-hidden": true,
+            style: { color: resolveIconColor("#a6e3a1", STANDARD_MENU_ICON_COLOR) },
+        },
+        createElement("path", {
+            fill: "currentColor",
+            d: "M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z",
+        }),
+        createElement("path", { fill: "currentColor", d: "M3 13h10v1H3v-1z" }),
+    );
+}
 
 /** Shortens branch names for menu labels while preserving the distinguishing suffix. */
 function trim(name: string, max = 40): string {
@@ -89,8 +132,8 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
             : [];
     const createWorktreeItems: BranchMenuItem[] = !branch.isCheckedOutInWorktree
         ? [
-              { label: t("branch.menu.createWorktree"), action: "createWorktreeFromBranch" },
               separator("sep-worktree-create-1"),
+              { label: t("branch.menu.createWorktree"), action: "createWorktreeFromBranch" },
           ]
         : [];
 
@@ -98,8 +141,8 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
         return [
             { label: t("branch.menu.newBranchFrom", { branch: current }), action: "newBranchFrom" },
             separator("sep-current-1"),
-            { label: t("branch.menu.update"), action: "updateBranch" },
-            { label: t("branch.menu.push"), action: "pushBranch" },
+            { label: t("branch.menu.update"), action: "updateBranch", icon: pullBranchIcon() },
+            { label: t("branch.menu.push"), action: "pushBranch", icon: pushBranchIcon() },
             separator("sep-current-2"),
             { label: t("branch.menu.rename"), action: "renameBranch" },
         ];
@@ -107,7 +150,6 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
 
     const nonCurrentBase: BranchMenuItem[] = [
         ...openWorktreeItems,
-        ...createWorktreeItems,
         { label: t("branch.menu.checkout"), action: "checkout" },
         { label: t("branch.menu.newBranchFrom", { branch: selected }), action: "newBranchFrom" },
         {
@@ -124,7 +166,7 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
             action: "mergeIntoCurrent",
         },
         separator("sep-shared-2"),
-        { label: t("branch.menu.update"), action: "updateBranch" },
+        { label: t("branch.menu.update"), action: "updateBranch", icon: pullBranchIcon() },
     ];
 
     if (branch.isRemote) {
@@ -132,14 +174,16 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
             ...nonCurrentBase,
             separator("sep-remote-1"),
             { label: t("branch.menu.delete"), action: "deleteBranch" },
+            ...createWorktreeItems,
         ];
     }
 
     return [
         ...nonCurrentBase,
-        { label: t("branch.menu.push"), action: "pushBranch" },
+        { label: t("branch.menu.push"), action: "pushBranch", icon: pushBranchIcon() },
         separator("sep-local-1"),
         { label: t("branch.menu.rename"), action: "renameBranch" },
         { label: t("branch.menu.delete"), action: "deleteBranch" },
+        ...createWorktreeItems,
     ];
 }
