@@ -35,6 +35,15 @@ interface CommitScopedSelection {
     path: string | null;
 }
 
+interface CommitInfoPaneProps {
+    detail: CommitDetail | null;
+    loading?: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+    onOpenDiff?: (commitHash: string, filePath: string) => void;
+}
+
 const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
 const INFO_GUIDE_BASE = 23;
@@ -95,14 +104,7 @@ export function CommitInfoPane({
     folderExpandedIcon,
     folderIconsByName,
     onOpenDiff,
-}: {
-    detail: CommitDetail | null;
-    loading?: boolean;
-    folderIcon?: ThemeTreeIcon;
-    folderExpandedIcon?: ThemeTreeIcon;
-    folderIconsByName?: ThemeFolderIconMap;
-    onOpenDiff?: (commitHash: string, filePath: string) => void;
-}): React.ReactElement {
+}: CommitInfoPaneProps): React.ReactElement {
     const [expandedDirsState, setExpandedDirsState] = useState<CommitScopedExpandedDirs>({
         commitHash: null,
         dirs: new Set(),
@@ -161,94 +163,19 @@ export function CommitInfoPane({
         [detailHash],
     );
 
-    if (!detail) {
-        if (loading) {
-            return (
-                <Flex
-                    direction="column"
-                    h="100%"
-                    overflow="hidden"
-                    bg={JETBRAINS_UI.color.panel}
-                    color="var(--vscode-descriptionForeground)"
-                    fontFamily={SYSTEM_FONT_STACK}
-                    fontSize="13px"
-                >
-                    <style>{SPIN_KEYFRAMES}</style>
-                    <Box
-                        display="flex"
-                        alignItems="center"
-                        px="8px"
-                        py="4px"
-                        fontWeight={600}
-                        fontSize="12px"
-                        color={JETBRAINS_UI.color.muted}
-                        bg={JETBRAINS_UI.color.toolbar}
-                        borderBottom={`1px solid ${JETBRAINS_UI.color.border}`}
-                    >
-                        <ChevronIcon expanded={true} /> {t("commitInfo.changedFiles")}
-                    </Box>
-                    <Box
-                        flex="1 1 auto"
-                        minH="40px"
-                        display="flex"
-                        alignItems="center"
-                        justifyContent="center"
-                        position="relative"
-                        role="status"
-                        aria-live="polite"
-                    >
-                        <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
-                            {t("common.loading")} {t("commitInfo.changedFiles")}
-                        </Box>
-                        <LoadingSpinner />
-                    </Box>
-                    <Box flex="0 0 5px" bg={JETBRAINS_UI.color.divider} />
-                    <Box flexShrink={0} h={`${bottomHeight}px`} overflow="hidden">
-                        <Box
-                            display="flex"
-                            alignItems="center"
-                            px="8px"
-                            py="4px"
-                            fontWeight={600}
-                            fontSize="12px"
-                            color={JETBRAINS_UI.color.muted}
-                            bg={JETBRAINS_UI.color.toolbar}
-                        >
-                            <ChevronIcon expanded={true} /> {t("commitInfo.details")}
-                        </Box>
-                        <Box
-                            h={`calc(100% - 28px)`}
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                            position="relative"
-                            role="status"
-                            aria-live="polite"
-                        >
-                            <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
-                                {t("common.loading")} {t("commitInfo.details")}
-                            </Box>
-                            <LoadingSpinner />
-                        </Box>
-                    </Box>
-                </Flex>
-            );
-        }
+    const toggleFilesCollapsed = useCallback(() => {
+        setFilesCollapsed((value) => !value);
+    }, []);
 
-        return (
-            <Box
-                p="8px 12px"
-                color="var(--vscode-descriptionForeground)"
-                fontFamily={SYSTEM_FONT_STACK}
-                fontSize="13px"
-                h="100%"
-                overflow="auto"
-                display="flex"
-                alignItems="flex-start"
-                justifyContent="flex-start"
-            >
-                {t("commitInfo.noSelection")}
-            </Box>
+    const toggleDetailCollapsed = useCallback(() => {
+        setDetailCollapsed((value) => !value);
+    }, []);
+
+    if (!detail) {
+        return loading ? (
+            <CommitInfoLoadingPane bottomHeight={bottomHeight} />
+        ) : (
+            <NoCommitSelection />
         );
     }
 
@@ -260,30 +187,193 @@ export function CommitInfoPane({
             overflow="hidden"
             bg={JETBRAINS_UI.color.panel}
         >
-            <Box
-                display="flex"
-                alignItems="center"
-                px="8px"
-                py="4px"
-                fontWeight={600}
-                fontSize="12px"
-                color={JETBRAINS_UI.color.muted}
-                bg={JETBRAINS_UI.color.toolbar}
-                borderBottom={`1px solid ${JETBRAINS_UI.color.border}`}
-                cursor="pointer"
-                tabIndex={0}
-                role="button"
-                aria-expanded={!filesCollapsed}
-                onClick={() => setFilesCollapsed((v) => !v)}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setFilesCollapsed((v) => !v);
-                    }
-                }}
-            >
-                <ChevronIcon expanded={!filesCollapsed} /> {t("commitInfo.changedFiles")}
+            <CommitChangedFilesPanel
+                detail={detail}
+                tree={tree}
+                expandedDirs={expandedDirs}
+                selectedFilePath={selectedFilePath}
+                filesCollapsed={filesCollapsed}
+                folderIcon={folderIcon}
+                folderExpandedIcon={folderExpandedIcon}
+                folderIconsByName={folderIconsByName}
+                onToggleFiles={toggleFilesCollapsed}
+                onToggleDir={toggleDir}
+                onSelectFile={selectFile}
+                onOpenDiff={onOpenDiff}
+            />
+            <CommitResizeDivider
+                visible={!filesCollapsed && !detailCollapsed}
+                onMouseDown={onResizeStart}
+            />
+            <CommitDetailsPanel
+                detail={detail}
+                branchRefs={branchRefs}
+                tagRefs={tagRefs}
+                filesCollapsed={filesCollapsed}
+                detailCollapsed={detailCollapsed}
+                bottomHeight={bottomHeight}
+                onToggleDetail={toggleDetailCollapsed}
+            />
+        </Flex>
+    );
+}
+
+function CommitInfoLoadingPane({ bottomHeight }: { bottomHeight: number }): React.ReactElement {
+    return (
+        <Flex
+            direction="column"
+            h="100%"
+            overflow="hidden"
+            bg={JETBRAINS_UI.color.panel}
+            color="var(--vscode-descriptionForeground)"
+            fontFamily={SYSTEM_FONT_STACK}
+            fontSize="13px"
+        >
+            <style>{SPIN_KEYFRAMES}</style>
+            <SectionHeader
+                label={t("commitInfo.changedFiles")}
+                expanded={true}
+                borderBottom={true}
+            />
+            <LoadingSection label={`${t("common.loading")} ${t("commitInfo.changedFiles")}`} />
+            <Box flex="0 0 5px" bg={JETBRAINS_UI.color.divider} />
+            <Box flexShrink={0} h={`${bottomHeight}px`} overflow="hidden">
+                <SectionHeader label={t("commitInfo.details")} expanded={true} />
+                <LoadingSection
+                    label={`${t("common.loading")} ${t("commitInfo.details")}`}
+                    h={`calc(100% - 28px)`}
+                    flex="0 0 auto"
+                />
             </Box>
+        </Flex>
+    );
+}
+
+function NoCommitSelection(): React.ReactElement {
+    return (
+        <Box
+            p="8px 12px"
+            color="var(--vscode-descriptionForeground)"
+            fontFamily={SYSTEM_FONT_STACK}
+            fontSize="13px"
+            h="100%"
+            overflow="auto"
+            display="flex"
+            alignItems="flex-start"
+            justifyContent="flex-start"
+        >
+            {t("commitInfo.noSelection")}
+        </Box>
+    );
+}
+
+function LoadingSection({
+    label,
+    flex = "1 1 auto",
+    h,
+}: {
+    label: string;
+    flex?: string;
+    h?: string;
+}): React.ReactElement {
+    return (
+        <Box
+            flex={flex}
+            h={h}
+            minH="40px"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            position="relative"
+            role="status"
+            aria-live="polite"
+        >
+            <Box as="span" style={VISUALLY_HIDDEN_STYLE}>
+                {label}
+            </Box>
+            <LoadingSpinner />
+        </Box>
+    );
+}
+
+function SectionHeader({
+    label,
+    expanded,
+    onToggle,
+    borderBottom = false,
+}: {
+    label: string;
+    expanded: boolean;
+    onToggle?: () => void;
+    borderBottom?: boolean;
+}): React.ReactElement {
+    return (
+        <Box
+            display="flex"
+            alignItems="center"
+            px="8px"
+            py="4px"
+            fontWeight={600}
+            fontSize="12px"
+            color={JETBRAINS_UI.color.muted}
+            bg={JETBRAINS_UI.color.toolbar}
+            borderBottom={borderBottom ? `1px solid ${JETBRAINS_UI.color.border}` : undefined}
+            cursor={onToggle ? "pointer" : undefined}
+            tabIndex={onToggle ? 0 : undefined}
+            role={onToggle ? "button" : undefined}
+            aria-expanded={onToggle ? expanded : undefined}
+            onClick={onToggle}
+            onKeyDown={
+                onToggle
+                    ? (event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              onToggle();
+                          }
+                      }
+                    : undefined
+            }
+        >
+            <ChevronIcon expanded={expanded} /> {label}
+        </Box>
+    );
+}
+
+function CommitChangedFilesPanel({
+    detail,
+    tree,
+    expandedDirs,
+    selectedFilePath,
+    filesCollapsed,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
+    onToggleFiles,
+    onToggleDir,
+    onSelectFile,
+    onOpenDiff,
+}: {
+    detail: CommitDetail;
+    tree: TreeEntry[];
+    expandedDirs: Set<string>;
+    selectedFilePath: string | null;
+    filesCollapsed: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+    onToggleFiles: () => void;
+    onToggleDir: (path: string) => void;
+    onSelectFile: (path: string) => void;
+    onOpenDiff?: (commitHash: string, filePath: string) => void;
+}): React.ReactElement {
+    return (
+        <>
+            <SectionHeader
+                label={t("commitInfo.changedFiles")}
+                expanded={!filesCollapsed}
+                onToggle={onToggleFiles}
+                borderBottom={true}
+            />
             {!filesCollapsed && (
                 <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
                     <TreeRows
@@ -296,160 +386,197 @@ export function CommitInfoPane({
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
                         folderIconsByName={folderIconsByName}
-                        onToggleDir={toggleDir}
-                        onSelectFile={selectFile}
+                        onToggleDir={onToggleDir}
+                        onSelectFile={onSelectFile}
                         onOpenDiff={onOpenDiff}
                     />
                 </Box>
             )}
+        </>
+    );
+}
 
-            {!filesCollapsed && !detailCollapsed && (
-                <Box
-                    flex="0 0 5px"
-                    cursor="row-resize"
-                    bg={JETBRAINS_UI.color.divider}
-                    position="relative"
-                    _hover={{ bg: JETBRAINS_UI.color.focus }}
-                    onMouseDown={onResizeStart}
-                    _after={{
-                        content: '""',
-                        position: "absolute",
-                        left: "50%",
-                        top: "50%",
-                        transform: "translate(-50%, -50%)",
-                        w: "30px",
-                        h: "2px",
-                        bg: "var(--vscode-descriptionForeground)",
-                        opacity: 0.4,
-                        borderRadius: "1px",
-                    }}
-                />
+function CommitResizeDivider({
+    visible,
+    onMouseDown,
+}: {
+    visible: boolean;
+    onMouseDown: React.MouseEventHandler<HTMLDivElement>;
+}): React.ReactElement | null {
+    if (!visible) return null;
+
+    return (
+        <Box
+            flex="0 0 5px"
+            cursor="row-resize"
+            bg={JETBRAINS_UI.color.divider}
+            position="relative"
+            _hover={{ bg: JETBRAINS_UI.color.focus }}
+            onMouseDown={onMouseDown}
+            _after={{
+                content: '""',
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -50%)",
+                w: "30px",
+                h: "2px",
+                bg: "var(--vscode-descriptionForeground)",
+                opacity: 0.4,
+                borderRadius: "1px",
+            }}
+        />
+    );
+}
+
+function CommitDetailsPanel({
+    detail,
+    branchRefs,
+    tagRefs,
+    filesCollapsed,
+    detailCollapsed,
+    bottomHeight,
+    onToggleDetail,
+}: {
+    detail: CommitDetail;
+    branchRefs: string[];
+    tagRefs: string[];
+    filesCollapsed: boolean;
+    detailCollapsed: boolean;
+    bottomHeight: number;
+    onToggleDetail: () => void;
+}): React.ReactElement {
+    return (
+        <Box
+            flexShrink={filesCollapsed ? 1 : 0}
+            flexGrow={filesCollapsed ? 1 : 0}
+            minH={filesCollapsed ? 0 : undefined}
+            h={filesCollapsed ? undefined : detailCollapsed ? "30px" : `${bottomHeight}px`}
+            overflow="hidden"
+        >
+            <SectionHeader
+                label={t("commitInfo.details")}
+                expanded={!detailCollapsed}
+                onToggle={onToggleDetail}
+            />
+            {!detailCollapsed && (
+                <CommitDetailsBody detail={detail} branchRefs={branchRefs} tagRefs={tagRefs} />
             )}
+        </Box>
+    );
+}
 
-            <Box
-                flexShrink={filesCollapsed ? 1 : 0}
-                flexGrow={filesCollapsed ? 1 : 0}
-                minH={filesCollapsed ? 0 : undefined}
-                h={filesCollapsed ? undefined : detailCollapsed ? "30px" : `${bottomHeight}px`}
-                overflow="hidden"
-            >
+function CommitDetailsBody({
+    detail,
+    branchRefs,
+    tagRefs,
+}: {
+    detail: CommitDetail;
+    branchRefs: string[];
+    tagRefs: string[];
+}): React.ReactElement {
+    return (
+        <Box px="12px" py="6px" overflowY="auto" h={`calc(100% - 28px)`}>
+            <Box fontWeight={600} whiteSpace="pre-wrap" lineHeight="1.4" mb="6px">
+                {detail.message}
+            </Box>
+            {detail.body && (
                 <Box
-                    display="flex"
-                    alignItems="center"
-                    px="8px"
-                    py="4px"
-                    fontWeight={600}
-                    fontSize="12px"
-                    color={JETBRAINS_UI.color.muted}
-                    bg={JETBRAINS_UI.color.toolbar}
-                    cursor="pointer"
-                    tabIndex={0}
-                    role="button"
-                    aria-expanded={!detailCollapsed}
-                    onClick={() => setDetailCollapsed((v) => !v)}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setDetailCollapsed((v) => !v);
-                        }
+                    color="var(--vscode-descriptionForeground)"
+                    whiteSpace="pre-wrap"
+                    lineHeight="1.4"
+                    mb="6px"
+                >
+                    {detail.body}
+                </Box>
+            )}
+            <Box color="var(--vscode-descriptionForeground)" fontSize="12px" lineHeight="1.5">
+                <span
+                    style={{
+                        fontFamily: "var(--vscode-editor-font-family, monospace)",
+                        color: "var(--vscode-textLink-foreground)",
                     }}
                 >
-                    <ChevronIcon expanded={!detailCollapsed} /> {t("commitInfo.details")}
-                </Box>
-                {!detailCollapsed && (
-                    <Box px="12px" py="6px" overflowY="auto" h={`calc(100% - 28px)`}>
-                        <Box fontWeight={600} whiteSpace="pre-wrap" lineHeight="1.4" mb="6px">
-                            {detail.message}
-                        </Box>
-                        {detail.body && (
-                            <Box
-                                color="var(--vscode-descriptionForeground)"
-                                whiteSpace="pre-wrap"
-                                lineHeight="1.4"
-                                mb="6px"
-                            >
-                                {detail.body}
-                            </Box>
-                        )}
-                        <Box
-                            color="var(--vscode-descriptionForeground)"
-                            fontSize="12px"
-                            lineHeight="1.5"
-                        >
-                            <span
-                                style={{
-                                    fontFamily: "var(--vscode-editor-font-family, monospace)",
-                                    color: "var(--vscode-textLink-foreground)",
-                                }}
-                            >
-                                {detail.shortHash}
-                            </span>{" "}
-                            {t("commitInfo.byAuthor", { author: detail.author })}
-                        </Box>
-                        <Box
-                            color="var(--vscode-descriptionForeground)"
-                            fontSize="12px"
-                            lineHeight="1.5"
-                        >
-                            {t("commitInfo.emailOnDate", {
-                                email: detail.email,
-                                date: formatDateTime(detail.date),
-                            })}
-                        </Box>
-                        {(branchRefs.length > 0 || tagRefs.length > 0) && (
-                            <Box mt="14px">
-                                {branchRefs.length > 0 && (
-                                    <Box mb={tagRefs.length > 0 ? "10px" : "0"}>
-                                        <Box
-                                            color="var(--vscode-descriptionForeground)"
-                                            fontSize="11px"
-                                            mb="4px"
-                                            opacity={0.85}
-                                        >
-                                            {t("common.branches")}
-                                        </Box>
-                                        <Flex direction="column" gap="3px">
-                                            {branchRefs.map((ref) => (
-                                                <CommitRefRow key={ref} kind="branch" name={ref} />
-                                            ))}
-                                        </Flex>
-                                    </Box>
-                                )}
-                                {tagRefs.length > 0 && (
-                                    <Box>
-                                        <Box
-                                            color="var(--vscode-descriptionForeground)"
-                                            fontSize="11px"
-                                            mb="4px"
-                                            opacity={0.85}
-                                        >
-                                            {t("common.tags")}
-                                        </Box>
-                                        <Flex direction="column" gap="3px">
-                                            {tagRefs.map((tag) => (
-                                                <CommitRefRow
-                                                    key={`tag:${tag}`}
-                                                    kind="tag"
-                                                    name={tag}
-                                                />
-                                            ))}
-                                        </Flex>
-                                    </Box>
-                                )}
-                            </Box>
-                        )}
-                        <Box
-                            color="var(--vscode-descriptionForeground)"
-                            fontSize="12px"
-                            lineHeight="1.5"
-                            mt="4px"
-                        >
-                            {t("commitInfo.filesChanged", { count: detail.files.length })}
-                        </Box>
-                    </Box>
-                )}
+                    {detail.shortHash}
+                </span>{" "}
+                {t("commitInfo.byAuthor", { author: detail.author })}
             </Box>
-        </Flex>
+            <Box color="var(--vscode-descriptionForeground)" fontSize="12px" lineHeight="1.5">
+                {t("commitInfo.emailOnDate", {
+                    email: detail.email,
+                    date: formatDateTime(detail.date),
+                })}
+            </Box>
+            <CommitRefsSection branchRefs={branchRefs} tagRefs={tagRefs} />
+            <Box
+                color="var(--vscode-descriptionForeground)"
+                fontSize="12px"
+                lineHeight="1.5"
+                mt="4px"
+            >
+                {t("commitInfo.filesChanged", { count: detail.files.length })}
+            </Box>
+        </Box>
+    );
+}
+
+function CommitRefsSection({
+    branchRefs,
+    tagRefs,
+}: {
+    branchRefs: string[];
+    tagRefs: string[];
+}): React.ReactElement | null {
+    if (branchRefs.length === 0 && tagRefs.length === 0) return null;
+
+    return (
+        <Box mt="14px">
+            {branchRefs.length > 0 && (
+                <CommitRefGroup
+                    kind="branch"
+                    label={t("common.branches")}
+                    refs={branchRefs}
+                    mb={tagRefs.length > 0 ? "10px" : "0"}
+                />
+            )}
+            {tagRefs.length > 0 && (
+                <CommitRefGroup kind="tag" label={t("common.tags")} refs={tagRefs} />
+            )}
+        </Box>
+    );
+}
+
+function CommitRefGroup({
+    kind,
+    label,
+    refs,
+    mb,
+}: {
+    kind: "branch" | "tag";
+    label: string;
+    refs: string[];
+    mb?: string;
+}): React.ReactElement {
+    return (
+        <Box mb={mb}>
+            <Box
+                color="var(--vscode-descriptionForeground)"
+                fontSize="11px"
+                mb="4px"
+                opacity={0.85}
+            >
+                {label}
+            </Box>
+            <Flex direction="column" gap="3px">
+                {refs.map((ref) => (
+                    <CommitRefRow
+                        key={kind === "tag" ? `tag:${ref}` : ref}
+                        kind={kind}
+                        name={ref}
+                    />
+                ))}
+            </Flex>
+        </Box>
     );
 }
 
@@ -465,7 +592,6 @@ function LoadingSpinner(): React.ReactElement {
                 color: "var(--vscode-charts-yellow, #e5c07b)",
                 transformBox: "fill-box",
                 transformOrigin: "center",
-                willChange: "transform",
             }}
         >
             <path

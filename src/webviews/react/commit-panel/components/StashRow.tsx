@@ -17,9 +17,11 @@ interface Props {
 
 const STANDARD_STASH_ICON_COLOR = "var(--vscode-icon-foreground)";
 
+const stashIconColor = (color: string): string =>
+    resolveIconColor(color, STANDARD_STASH_ICON_COLOR);
+
 function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactElement {
     const { hoverDelay, tooltipsEnabled } = getSettings();
-    const iconColor = (color: string) => resolveIconColor(color, STANDARD_STASH_ICON_COLOR);
 
     return (
         <Flex
@@ -38,7 +40,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                 flexShrink={0}
                 opacity={0.7}
                 viewBox="0 0 16 16"
-                color={iconColor("#c8a2ff")}
+                color={stashIconColor("#c8a2ff")}
             >
                 <path
                     fill="currentColor"
@@ -67,7 +69,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             width="12"
                             height="12"
                             viewBox="0 0 16 16"
-                            style={{ color: iconColor("#a6e3a1") }}
+                            style={{ color: stashIconColor("#a6e3a1") }}
                         >
                             <path
                                 fill="currentColor"
@@ -98,7 +100,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             width="12"
                             height="12"
                             viewBox="0 0 16 16"
-                            style={{ color: iconColor("#8fd5ff") }}
+                            style={{ color: stashIconColor("#8fd5ff") }}
                         >
                             <path
                                 fill="currentColor"
@@ -130,7 +132,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                             width="12"
                             height="12"
                             viewBox="0 0 16 16"
-                            style={{ color: iconColor("#ff736d") }}
+                            style={{ color: stashIconColor("#ff736d") }}
                         >
                             <path
                                 fill="currentColor"
