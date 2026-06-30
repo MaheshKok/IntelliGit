@@ -8,6 +8,7 @@ import {
     PushArrowIcon,
     StarIcon,
     TagRightIcon,
+    WorktreeSmallIcon,
 } from "../../shared/components/Icons";
 import { TreeFolderIcon } from "../../shared/components/TreeIcons";
 import { JETBRAINS_UI } from "../../shared/tokens";
@@ -18,6 +19,7 @@ import {
     BRANCH_TREE_GUIDE_BASE,
     BRANCH_TREE_INDENT_BASE,
     BRANCH_TREE_INDENT_STEP,
+    DEFAULT_BRANCH_ICON_YELLOW,
     INDENT_GUIDE_STYLE,
     NODE_LABEL_STYLE,
     ROW_STYLE,
@@ -28,7 +30,6 @@ import {
 } from "../styles";
 import type { TreeNode } from "../types";
 
-const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 const TRACKING_TOOLTIP_BASE_STYLE: React.CSSProperties = {
     position: "fixed",
     transform: "translate(-50%, -100%)",
@@ -167,7 +168,18 @@ function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | nul
     const label = branch.isCurrentWorktree
         ? t("branch.worktreeBadge.current")
         : t("branch.worktreeBadge.other");
-    return <span aria-label={label} title={label} style={WORKTREE_BADGE_STYLE} />;
+    return (
+        <span aria-label={label} title={label} style={WORKTREE_BADGE_STYLE}>
+            <WorktreeSmallIcon
+                color={
+                    branch.isCurrentWorktree
+                        ? DEFAULT_BRANCH_ICON_YELLOW
+                        : JETBRAINS_UI.color.branch
+                }
+                style={{ marginRight: 0 }}
+            />
+        </span>
+    );
 }
 
 /** Draws branch tree indentation guides without adding focusable elements to the row. */
@@ -310,7 +322,7 @@ export function BranchTreeNodeRow({
             <BranchIndentGuides depth={depth} />
             <span style={BRANCH_ICON_SPACER_STYLE} />
             {isCurrent ? (
-                <TagRightIcon color={JETBRAINS_UI.color.currentBranch} />
+                <TagRightIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
             ) : isMainLike ? (
                 <StarIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
             ) : (
