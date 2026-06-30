@@ -84,10 +84,7 @@ function graphReducer(state: GraphState, action: GraphAction): GraphState {
             return {
                 ...state,
                 commits: action.append ? [...state.commits, ...action.commits] : action.commits,
-                selectedHash:
-                    !action.append && action.commits.length > 0
-                        ? action.commits[0].hash
-                        : state.selectedHash,
+                selectedHash: action.selectedHash,
                 hasMore: action.hasMore,
                 unpushedHashes: new Set(action.unpushedHashes ?? []),
             };
@@ -367,6 +364,7 @@ function App(): React.ReactElement {
         graphDispatch,
         cpDispatch,
         loadingMore,
+        selectedHash,
         markWidthsHydrated,
         setSectionWidths,
         layoutRef,

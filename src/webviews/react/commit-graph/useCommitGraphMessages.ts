@@ -2,7 +2,7 @@
 // The hook stays separate from render logic so the root component remains small.
 // It preserves the existing VS Code webview message contract without changing dispatch behavior.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type React from "react";
 import type { CommitGraphInbound } from "../../protocol/commitGraphTypes";
 import type { CommitGraphPanelAction } from "./types";
@@ -18,8 +18,11 @@ export function useCommitGraphMessages(params: {
     dispatch: React.Dispatch<CommitGraphPanelAction>;
     sendReady: boolean;
     loadingMore: React.MutableRefObject<boolean>;
+    selectedHash: string | null;
 }): void {
-    const { vscode, dispatch, sendReady, loadingMore } = params;
+    const { vscode, dispatch, sendReady, loadingMore, selectedHash } = params;
+    const selectedHashRef = useRef<string | null>(selectedHash);
+    selectedHashRef.current = selectedHash;
 
     useEffect(() => {
         if (sendReady) {
@@ -38,17 +41,32 @@ export function useCommitGraphMessages(params: {
             switch (data.type) {
                 case "loadCommits":
                     loadingMore.current = false;
+                    const previousSelectedHash = selectedHashRef.current;
+                    const nextSelectedHash =
+                        !data.append &&
+                        previousSelectedHash !== null &&
+                        data.commits.some((commit) => commit.hash === previousSelectedHash)
+                            ? previousSelectedHash
+                            : !data.append
+                              ? (data.commits[0]?.hash ?? null)
+                              : previousSelectedHash;
+                    selectedHashRef.current = nextSelectedHash;
                     dispatch({
                         type: "loadCommits",
                         commits: data.commits,
                         append: Boolean(data.append),
                         hasMore: data.hasMore,
+                        selectedHash: nextSelectedHash,
                         unpushedHashes: data.unpushedHashes,
                     });
-                    if (!data.append && data.commits.length > 0) {
+                    if (
+                        !data.append &&
+                        nextSelectedHash !== null &&
+                        nextSelectedHash !== previousSelectedHash
+                    ) {
                         vscode.postMessage({
                             type: "selectCommit",
-                            hash: data.commits[0].hash,
+                            hash: nextSelectedHash,
                         });
                     }
                     break;

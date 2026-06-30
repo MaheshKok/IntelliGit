@@ -654,6 +654,89 @@ describe("CommitGraphApp integration", () => {
             }),
         );
     });
+
+    it("preserves the selected commit when a full refresh still contains it", async () => {
+        vi.resetModules();
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await import("../../../src/webviews/react/CommitGraphApp");
+        await flush();
+
+        const commits = [
+            {
+                hash: "aa11",
+                shortHash: "aa11",
+                message: "feat: first commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: ["p1"],
+                refs: ["HEAD -> main"],
+            },
+            {
+                hash: "bb22",
+                shortHash: "bb22",
+                message: "fix: selected commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-18T00:00:00Z",
+                parentHashes: ["p1"],
+                refs: [],
+            },
+        ];
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "loadCommits",
+                        append: false,
+                        hasMore: false,
+                        unpushedHashes: [],
+                        commits,
+                    },
+                }),
+            );
+        });
+        await flush();
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "selectCommit", hash: "aa11" }),
+        );
+
+        const selectedCommitRow = Array.from(document.querySelectorAll('[role="button"]')).find(
+            (row) => row.textContent?.includes("fix: selected commit"),
+        );
+        fireClick(selectedCommitRow ?? null);
+        await flush();
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "selectCommit", hash: "bb22" }),
+        );
+
+        vscode.postMessage.mockClear();
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "loadCommits",
+                        append: false,
+                        hasMore: false,
+                        unpushedHashes: [],
+                        commits: commits.map((commit) => ({ ...commit })),
+                    },
+                }),
+            );
+        });
+        await flush();
+
+        const selectCommitMessages = vscode.postMessage.mock.calls.filter(
+            ([message]) => (message as { type?: string }).type === "selectCommit",
+        );
+        expect(selectCommitMessages).toHaveLength(0);
+        const selectedRowAfterRefresh = Array.from(
+            document.querySelectorAll('[role="button"][aria-current="true"]'),
+        ).find((row) => row.textContent?.includes("fix: selected commit"));
+        expect(selectedRowAfterRefresh).toBeTruthy();
+    });
 });
 
 describe("UndockedApp integration", () => {

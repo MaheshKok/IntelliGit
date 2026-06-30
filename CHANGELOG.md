@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Allowed push and publish actions to run when the working tree has uncommitted changes, while keeping the dirty-tree warning for pull and sync operations that can merge remote changes into local work.
 - Kept Git warning and error notifications manually dismissible instead of auto-closing the dirty-tree warning after a timeout.
+- Preserved the selected commit and Changed Files detail pane across graph refreshes when the selected commit is still present in the refreshed list.
 - Hardened branch ordering by validating remote default-branch symrefs while preserving default-branch pinning and current `codex/...` branch ordering.
 - Used the computed branch name as the publish prompt default while keeping the branch-name prompt at the end of the repository creation flow.
 - Kept the push button disabled only for actual non-pushable states, not simply because the working tree is dirty.

@@ -4,7 +4,7 @@
 
 /* eslint-disable react-hooks/exhaustive-deps -- Dependency array intentionally matches the pre-extraction effect. */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type React from "react";
 import type { UnifiedInbound, UnifiedOutbound } from "../../protocol/undockedMessages";
 import { getVsCodeApi } from "../shared/vscodeApi";
@@ -23,6 +23,7 @@ export interface UseUnifiedMessagesParams {
     graphDispatch: React.Dispatch<GraphAction>;
     cpDispatch: React.Dispatch<CommitPanelAction>;
     loadingMore: React.MutableRefObject<boolean>;
+    selectedHash: string | null;
     markWidthsHydrated: () => void;
     setSectionWidths: (next: SectionWidths) => void;
     layoutRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -39,11 +40,14 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         graphDispatch,
         cpDispatch,
         loadingMore,
+        selectedHash,
         markWidthsHydrated,
         setSectionWidths,
         layoutRef,
         setCommitPanelPosition,
     } = params;
+    const selectedHashRef = useRef<string | null>(selectedHash);
+    selectedHashRef.current = selectedHash;
 
     useEffect(() => {
         const handler = (event: MessageEvent<UnifiedInbound>) => {
@@ -53,17 +57,32 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
                 // --- Graph-side messages ---
                 case "loadCommits":
                     loadingMore.current = false;
+                    const previousSelectedHash = selectedHashRef.current;
+                    const nextSelectedHash =
+                        !data.append &&
+                        previousSelectedHash !== null &&
+                        data.commits.some((commit) => commit.hash === previousSelectedHash)
+                            ? previousSelectedHash
+                            : !data.append
+                              ? (data.commits[0]?.hash ?? null)
+                              : previousSelectedHash;
+                    selectedHashRef.current = nextSelectedHash;
                     graphDispatch({
                         type: "loadCommits",
                         commits: data.commits,
                         append: Boolean(data.append),
                         hasMore: data.hasMore,
+                        selectedHash: nextSelectedHash,
                         unpushedHashes: data.unpushedHashes,
                     });
-                    if (!data.append && data.commits.length > 0) {
+                    if (
+                        !data.append &&
+                        nextSelectedHash !== null &&
+                        nextSelectedHash !== previousSelectedHash
+                    ) {
                         vscode.postMessage({
                             type: "selectCommit",
-                            hash: data.commits[0].hash,
+                            hash: nextSelectedHash,
                         });
                     }
                     return;

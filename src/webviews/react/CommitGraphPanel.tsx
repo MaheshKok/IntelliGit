@@ -151,10 +151,7 @@ function commitGraphPanelReducer(
             return {
                 ...state,
                 commits: action.append ? [...state.commits, ...action.commits] : action.commits,
-                selectedHash:
-                    !action.append && action.commits.length > 0
-                        ? action.commits[0].hash
-                        : state.selectedHash,
+                selectedHash: action.selectedHash,
                 hasMore: action.hasMore,
                 unpushedHashes: new Set(action.unpushedHashes ?? []),
             };
@@ -286,7 +283,7 @@ export function CommitGraphPanel({
         true,
     );
 
-    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore });
+    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore, selectedHash });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;

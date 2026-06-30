@@ -20,6 +20,7 @@ export type CommitGraphPanelAction =
           commits: Commit[];
           append: boolean;
           hasMore: boolean;
+          selectedHash: string | null;
           unpushedHashes?: string[];
       }
     | {
