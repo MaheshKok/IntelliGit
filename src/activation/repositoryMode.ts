@@ -569,8 +569,9 @@ export async function activateRepositoryMode(
      *
      * Fired by the sign-in/sign-out commands after a credential change. A stored
      * "unavailable" snapshot is a terminal state the coordinator never re-fetches,
-     * so badges would stay stuck after the user signs in unless the cache is cleared
-     * and the graphs re-render (which makes the webview re-request checks).
+     * and GitHub's silent session lookup returns "none" when signed out. Badges would
+     * stay stuck after auth changes unless the cache is cleared and the graphs
+     * re-render, which makes the webview re-request checks.
      */
     const refreshCommitCheckBadges = async (): Promise<void> => {
         commitGraph.clearChecksCache();
@@ -586,6 +587,12 @@ export async function activateRepositoryMode(
             "intelligit.commitChecks.refreshBadges",
             refreshCommitCheckBadges,
         ),
+        vscode.authentication.onDidChangeSessions((event) => {
+            if (event.provider.id !== "github") return;
+            refreshCommitCheckBadges().catch((err) => {
+                console.error("[IntelliGit] GitHub commit-check refresh failed:", err);
+            });
+        }),
         commitPanel.onDidChangeWorkingTree(() => {
             undocked?.refreshSilent().catch((err) => {
                 console.error("[IntelliGit] Undocked commit panel refresh failed:", err);

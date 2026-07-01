@@ -59,6 +59,7 @@ const saveDocListeners: Array<() => void> = [];
 const createFileListeners: Array<() => void> = [];
 const deleteFileListeners: Array<() => void> = [];
 const renameFileListeners: Array<() => void> = [];
+const authSessionListeners: Array<(event: { provider: { id: string } }) => void> = [];
 const configurationValues = new Map<string, unknown>();
 const configurationUpdate = vi.fn(async (key: string, value: unknown) => {
     configurationValues.set(key, value);
@@ -299,6 +300,7 @@ class MockCommitGraphViewProvider {
     onOpenCommitFileDiff = this.openCommitFileDiffEmitter.event;
     setBranches = vi.fn();
     refresh = vi.fn(async () => undefined);
+    clearChecksCache = vi.fn();
     filterByBranch = vi.fn(async () => undefined);
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
@@ -450,6 +452,7 @@ class MockUndockedViewProvider {
     open = vi.fn(async () => undefined);
     refresh = vi.fn(async () => undefined);
     refreshSilent = vi.fn(async () => undefined);
+    clearChecksCache = vi.fn();
     reveal = vi.fn();
     dispose = vi.fn(() => {
         this.disposeEmitter.fire(undefined);
@@ -606,6 +609,12 @@ vi.mock("vscode", () => ({
         }),
         onDidRenameFiles: vi.fn((listener: () => void) => {
             renameFileListeners.push(listener);
+            return { dispose: vi.fn() };
+        }),
+    },
+    authentication: {
+        onDidChangeSessions: vi.fn((listener: (event: { provider: { id: string } }) => void) => {
+            authSessionListeners.push(listener);
             return { dispose: vi.fn() };
         }),
     },
@@ -817,6 +826,7 @@ describe("extension integration", () => {
         createFileListeners.length = 0;
         deleteFileListeners.length = 0;
         renameFileListeners.length = 0;
+        authSessionListeners.length = 0;
         fsWatchCallbacks.length = 0;
         createdTreeViews.clear();
         initialTreeViewBadges.clear();
@@ -1016,6 +1026,38 @@ describe("extension integration", () => {
         expect(latestCommitPanelProvider).toBeDefined();
         expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
         expect(latestCommitPanelProvider!.setRepositoryLabel).toHaveBeenCalledWith("repo");
+    });
+
+    it("refreshes commit-check badges when the GitHub auth session changes", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+
+        await activate(context);
+        expect(latestCommitGraphProvider).toBeDefined();
+        expect(latestSidebarGraphProvider).toBeDefined();
+        expect(authSessionListeners).toHaveLength(1);
+
+        latestCommitGraphProvider!.clearChecksCache.mockClear();
+        latestSidebarGraphProvider!.clearChecksCache.mockClear();
+        latestCommitGraphProvider!.refresh.mockClear();
+        latestSidebarGraphProvider!.refresh.mockClear();
+
+        authSessionListeners[0]({ provider: { id: "gitlab" } });
+        await Promise.resolve();
+
+        expect(latestCommitGraphProvider!.clearChecksCache).not.toHaveBeenCalled();
+        expect(latestSidebarGraphProvider!.clearChecksCache).not.toHaveBeenCalled();
+
+        authSessionListeners[0]({ provider: { id: "github" } });
+        await Promise.resolve();
+
+        expect(latestCommitGraphProvider!.clearChecksCache).toHaveBeenCalledTimes(1);
+        expect(latestSidebarGraphProvider!.clearChecksCache).toHaveBeenCalledTimes(1);
+        expect(latestCommitGraphProvider!.refresh).toHaveBeenCalledTimes(1);
+        expect(latestSidebarGraphProvider!.refresh).toHaveBeenCalledTimes(1);
     });
 
     it("clears the activity bar changed-files badge when the refreshed count reaches zero", async () => {

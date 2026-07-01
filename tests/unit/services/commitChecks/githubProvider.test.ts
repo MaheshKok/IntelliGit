@@ -200,7 +200,7 @@ describe("GitHubProvider", () => {
         const snapshot = await provider.getChecks(githubRef, "abc1234");
 
         expect(snapshot.state).toBe("none");
-        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { createIfNone: true });
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { silent: true });
         expect(fetchJson).toHaveBeenCalledTimes(2);
         const calledUrls = (fetchJson as ReturnType<typeof vi.fn>).mock.calls.map(
             (call) => call[0] as string,
@@ -215,6 +215,19 @@ describe("GitHubProvider", () => {
             const headers = call[1] as Record<string, string>;
             expect(headers.Authorization).toBe("Bearer gh-token");
         }
+    });
+
+    it("does not prompt or fetch when no GitHub session already exists", async () => {
+        mocks.getSession.mockResolvedValue(undefined);
+        const fetchJson = vi.fn();
+        const provider = new GitHubProvider(fetchJson);
+
+        const snapshot = await provider.getChecks(githubRef, "abc1234");
+
+        expect(snapshot.state).toBe("none");
+        expect(snapshot.items).toEqual([]);
+        expect(mocks.getSession).toHaveBeenCalledWith("github", ["repo"], { silent: true });
+        expect(fetchJson).not.toHaveBeenCalled();
     });
 
     it("treats unexpected API shapes (no check_runs / non-array statuses) as none", async () => {

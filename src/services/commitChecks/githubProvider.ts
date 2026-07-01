@@ -12,6 +12,7 @@ import {
     compactText,
     isCiCdCheckItem,
     readString,
+    summaryForState,
     summaryForItems,
     unavailableSnapshot,
 } from "./normalize";
@@ -101,10 +102,10 @@ export class GitHubProvider implements CommitChecksProvider {
     async getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot> {
         const { owner, repo } = ref as GitHubRepoRef;
 
-        let session: vscode.AuthenticationSession;
+        let session: vscode.AuthenticationSession | undefined;
         try {
             session = await vscode.authentication.getSession("github", ["repo"], {
-                createIfNone: true,
+                silent: true,
             });
         } catch (err) {
             return unavailableSnapshot(
@@ -113,6 +114,9 @@ export class GitHubProvider implements CommitChecksProvider {
                     message: getErrorMessage(err),
                 }),
             );
+        }
+        if (!session) {
+            return { hash, state: "none", summary: summaryForState("none"), items: [] };
         }
 
         const headers = {
