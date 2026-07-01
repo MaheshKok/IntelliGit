@@ -32,7 +32,7 @@ enabled.
 
 | Provider | Credential | How to provide it | Scope / permission |
 |----------|------------|-------------------|--------------------|
-| GitHub (`github.com`) | Built-in VS Code GitHub session | Automatic — VS Code prompts for the GitHub sign-in on first use | `repo` |
+| GitHub (`github.com`) | Built-in VS Code GitHub session | Existing VS Code session only — automatic checks do not open a GitHub sign-in prompt | `repo` |
 | GitLab (`gitlab.com` + self-hosted) | Personal access token | `IntelliGit: Sign in to Commit Checks Provider` command | `read_api` |
 | Bitbucket Cloud (`bitbucket.org`) | Access token or OAuth Bearer token (app passwords are not supported) | `IntelliGit: Sign in to Commit Checks Provider` command | `repository` (read) |
 | Bitbucket Server / Data Center (self-hosted) | HTTP access token | `IntelliGit: Sign in to Commit Checks Provider` command | Repository read |
