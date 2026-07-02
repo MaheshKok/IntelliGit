@@ -28,6 +28,12 @@ export type OutboundMessage =
           type: "refresh";
       }
     | {
+          /** View option controlling whether ignored files are included in working-tree snapshots. */
+          type: "setShowIgnoredFiles";
+          /** True asks the host to include `git status --ignored` rows; false restores the default. */
+          showIgnoredFiles: boolean;
+      }
+    | {
           /** Command fetching remote refs without changing the current working tree. */
           type: "fetch";
       }

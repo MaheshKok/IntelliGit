@@ -273,6 +273,36 @@ describe("GitOps", () => {
             expect(files[0].status).toBe("R");
             expect(files[0].staged).toBe(true);
         });
+
+        it("parses ignored files only when requested", async () => {
+            const statusOutput = "!! dist/bundle.js\0";
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.includes("--porcelain=v1")) return statusOutput;
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+
+            const ops = new GitOps(executor);
+            const files = await ops.getStatus({ includeIgnored: true });
+
+            expect(executor.run).toHaveBeenCalledWith([
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "-unormal",
+                "--ignored",
+            ]);
+            expect(files).toEqual([
+                {
+                    path: "dist/bundle.js",
+                    status: "!",
+                    staged: false,
+                    additions: 0,
+                    deletions: 0,
+                },
+            ]);
+        });
     });
     describe("real git file-operation matrix", () => {
         it("stages modified, unstaged deleted, and already staged deleted files without pathspec errors", async () => {

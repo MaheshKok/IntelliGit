@@ -386,10 +386,18 @@ export class GitOps {
      * Reads porcelain working-tree status and augments staged and unstaged entries with numstat data.
      *
      * Status parsing uses NUL-delimited output for paths, and numstat failures produce warnings rather
-     * than blocking the status view.
+     * than blocking the status view. Ignored files are included only when callers opt in because Git
+     * can return large ignored directories.
      */
-    async getStatus(): Promise<WorkingFile[]> {
-        const result = await this.executor.run(["status", "--porcelain=v1", "-z", "-uall"]);
+    async getStatus(options: { includeIgnored?: boolean } = {}): Promise<WorkingFile[]> {
+        const statusArgs = [
+            "status",
+            "--porcelain=v1",
+            "-z",
+            options.includeIgnored ? "-unormal" : "-uall",
+        ];
+        if (options.includeIgnored) statusArgs.push("--ignored");
+        const result = await this.executor.run(statusArgs);
         const files = parseWorkingTreeStatus(result);
         const applyNumstat = (
             output: string,

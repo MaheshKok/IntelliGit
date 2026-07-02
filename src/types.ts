@@ -196,11 +196,11 @@ export interface CommitDetail {
  *
  * Paths are repository-relative action identifiers. `staged` describes whether the
  * entry came from the index side of Git status, not whether every change for that
- * path is staged.
+ * path is staged. Ignored files use status `!` and are never considered staged.
  */
 export interface WorkingFile {
     path: string;
-    status: "M" | "A" | "D" | "U" | "?" | "R" | "C";
+    status: "M" | "A" | "D" | "U" | "?" | "!" | "R" | "C";
     staged: boolean;
     additions: number;
     deletions: number;

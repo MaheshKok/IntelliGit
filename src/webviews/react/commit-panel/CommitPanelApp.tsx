@@ -1,7 +1,7 @@
 // Entry point for the commit panel React webview. Wraps the app in
 // ChakraProvider with the VS Code theme and composes all panels.
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ChakraProvider, Box } from "@chakra-ui/react";
 import theme from "./theme";
@@ -33,6 +33,11 @@ function App(): React.ReactElement {
         const saved = vscode.getState?.();
         return typeof saved?.groupByDir === "boolean" ? saved.groupByDir : true;
     });
+    const [showIgnoredFiles, setShowIgnoredFiles] = useState<boolean>(() => {
+        const saved = vscode.getState?.();
+        return saved?.showIgnoredFiles === true;
+    });
+    const showIgnoredFilesPostedRef = useRef(false);
 
     useEffect(() => {
         if (!state.isAmend) return;
@@ -42,8 +47,15 @@ function App(): React.ReactElement {
 
     useEffect(() => {
         const prev = vscode.getState?.() ?? {};
-        vscode.setState({ ...prev, groupByDir });
-    }, [groupByDir, vscode]);
+        vscode.setState({ ...prev, groupByDir, showIgnoredFiles });
+    }, [groupByDir, showIgnoredFiles, vscode]);
+
+    useEffect(() => {
+        const shouldPost = showIgnoredFilesPostedRef.current || showIgnoredFiles;
+        showIgnoredFilesPostedRef.current = true;
+        if (!shouldPost) return;
+        vscode.postMessage({ type: "setShowIgnoredFiles", showIgnoredFiles });
+    }, [showIgnoredFiles, vscode]);
 
     const handleMessageChange = useCallback(
         (message: string) => {
@@ -133,7 +145,9 @@ function App(): React.ReactElement {
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}
                         groupByDir={groupByDir}
+                        showIgnoredFiles={showIgnoredFiles}
                         onToggleGroupBy={() => setGroupByDir((g) => !g)}
+                        onToggleShowIgnoredFiles={() => setShowIgnoredFiles((show) => !show)}
                     />
                 }
                 shelfContent={

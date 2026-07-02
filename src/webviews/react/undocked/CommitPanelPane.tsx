@@ -26,7 +26,9 @@ interface CommitPanelPaneProps {
     canPush: boolean;
     pushLabel: string;
     groupByDir: boolean;
+    showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
+    onToggleShowIgnoredFiles: () => void;
 }
 
 /**
@@ -55,7 +57,9 @@ export function CommitPanelPane({
     canPush,
     pushLabel,
     groupByDir,
+    showIgnoredFiles,
     onToggleGroupBy,
+    onToggleShowIgnoredFiles,
 }: CommitPanelPaneProps): React.ReactElement {
     return (
         <Box
@@ -100,7 +104,9 @@ export function CommitPanelPane({
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}
                             groupByDir={groupByDir}
+                            showIgnoredFiles={showIgnoredFiles}
                             onToggleGroupBy={onToggleGroupBy}
+                            onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
                         />
                     }
                     shelfContent={

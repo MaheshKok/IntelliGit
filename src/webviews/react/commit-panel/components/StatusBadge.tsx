@@ -18,6 +18,7 @@ const PYCHARM_STATUS_COLORS: Record<string, string> = {
     R: "var(--vscode-gitDecoration-renamedResourceForeground, #a371f7)",
     U: "var(--vscode-gitDecoration-conflictingResourceForeground, #e5c07b)",
     "?": "var(--intelligit-pycharm-added)",
+    "!": "var(--intelligit-pycharm-muted)",
     C: "var(--intelligit-pycharm-added)",
     T: "var(--intelligit-pycharm-modified)",
 };
@@ -28,6 +29,7 @@ const STATUS_LABEL_KEYS: Record<string, string> = {
     R: "status.renamed",
     U: "status.conflicting",
     "?": "status.unversioned",
+    "!": "status.ignored",
     C: "status.copied",
     T: "status.typeChanged",
 };
@@ -40,7 +42,7 @@ function StatusBadgeInner({ status }: Props): React.ReactElement {
             : (PYCHARM_STATUS_COLORS[status] ?? GIT_STATUS_COLORS[status] ?? "#888");
     const labelKey = STATUS_LABEL_KEYS[status];
     const label = labelKey ? t(labelKey) : (GIT_STATUS_LABELS[status] ?? status);
-    const letter = status === "?" ? "U" : status;
+    const letter = status === "?" ? "U" : status === "!" ? "I" : status;
 
     return (
         <Box

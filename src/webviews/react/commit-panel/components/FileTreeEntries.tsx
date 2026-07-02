@@ -27,6 +27,7 @@ export interface TreeEntriesProps {
     onFileClick: (event: React.MouseEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragEnd?: () => void;
+    checkboxVisibility?: "visible" | "hidden";
 }
 
 /** Renders file and folder rows recursively from prepared tree entries. */
@@ -48,6 +49,7 @@ export function TreeEntries({
     onFileClick,
     onFileDragStart,
     onFileDragEnd,
+    checkboxVisibility = "visible",
 }: TreeEntriesProps): React.ReactElement {
     return (
         <>
@@ -68,6 +70,7 @@ export function TreeEntries({
                             draggable={entry.file.status === "?"}
                             onDragStart={onFileDragStart}
                             onDragEnd={onFileDragEnd}
+                            checkboxVisibility={checkboxVisibility}
                         />
                     );
                 }
@@ -90,6 +93,7 @@ export function TreeEntries({
                             isSomeChecked={isSomeChecked(dirFiles)}
                             onToggleExpand={onToggleDir}
                             onToggleCheck={() => onToggleFolder(dirFiles)}
+                            checkboxVisibility={checkboxVisibility}
                         />
                         {isExpanded && (
                             <TreeEntries
@@ -110,6 +114,7 @@ export function TreeEntries({
                                 onFileClick={onFileClick}
                                 onFileDragStart={onFileDragStart}
                                 onFileDragEnd={onFileDragEnd}
+                                checkboxVisibility={checkboxVisibility}
                             />
                         )}
                     </React.Fragment>

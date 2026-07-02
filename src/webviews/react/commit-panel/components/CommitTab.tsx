@@ -44,7 +44,9 @@ interface Props {
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
     groupByDir: boolean;
+    showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
+    onToggleShowIgnoredFiles: () => void;
 }
 
 /**
@@ -82,7 +84,9 @@ export function CommitTab({
     currentBranchName,
     currentBranchUpstream,
     groupByDir,
+    showIgnoredFiles,
     onToggleGroupBy,
+    onToggleShowIgnoredFiles,
 }: Props): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
@@ -166,8 +170,11 @@ export function CommitTab({
             <Toolbar
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing || isRefreshFeedbackActive}
+                groupByDir={groupByDir}
+                showIgnoredFiles={showIgnoredFiles}
                 onRollback={handleRollback}
                 onToggleGroupBy={onToggleGroupBy}
+                onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
                 onShelve={handleShelve}
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
@@ -185,6 +192,7 @@ export function CommitTab({
                 <FileTree
                     files={files}
                     groupByDir={groupByDir}
+                    showIgnoredFiles={showIgnoredFiles}
                     folderIcon={folderIcon}
                     folderExpandedIcon={folderExpandedIcon}
                     folderIconsByName={folderIconsByName}

@@ -22,6 +22,14 @@ function pruneToKnownPaths(paths: Set<string>, validPaths: Set<string>): Set<str
     return next.size === paths.size ? paths : next;
 }
 
+function buildSelectablePathSet(files: WorkingFile[]): Set<string> {
+    const paths = new Set<string>();
+    for (const file of files) {
+        if (file.status !== "!") paths.add(file.path);
+    }
+    return paths;
+}
+
 /**
  * Tracks selected working-tree paths for commit, rollback, shelve, and diff actions.
  *
@@ -36,7 +44,7 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
         const arr = (saved as { checked?: string[] } | undefined)?.checked;
         return new Set(arr ?? []);
     });
-    const validPaths = useMemo(() => new Set(allFiles.map((file) => file.path)), [allFiles]);
+    const validPaths = useMemo(() => buildSelectablePathSet(allFiles), [allFiles]);
     const currentCheckedPaths = useMemo(
         () => pruneToKnownPaths(checkedPaths, validPaths),
         [checkedPaths, validPaths],

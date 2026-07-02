@@ -65,6 +65,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private shelfFiles: WorkingFile[] = [];
     private folderIconsByName: ThemeFolderIconMap = {};
     private lastFileCount = 0;
+    private showIgnoredFiles = false;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
     // Embedded commit graph state
@@ -337,7 +338,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         try {
             const [status, stashes, currentBranchStatus] = await Promise.all([
-                this.gitOps.getStatus(),
+                this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
                 this.gitOps.listShelved(),
                 this.currentBranchStatus(),
                 this.iconTheme.initIconThemeData(),
@@ -375,7 +376,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 this.currentBranchBehindCache = currentBranchStatus.behind;
                 this.currentBranchNameCache = currentBranchStatus.name;
                 this.currentBranchUpstreamCache = currentBranchStatus.upstream;
-                const uniquePaths = new Set(files.map((f) => f.path));
+                const uniquePaths = new Set<string>();
+                for (const file of files) {
+                    if (file.status !== "!") uniquePaths.add(file.path);
+                }
                 const count = uniquePaths.size;
                 this._onDidChangeFileCount.fire(count);
                 this.updateViewCount(count);
@@ -571,6 +575,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "refresh":
                 await this.refreshFromUserAction();
+                break;
+            case "setShowIgnoredFiles":
+                this.showIgnoredFiles = msg.showIgnoredFiles === true;
+                await this.refreshData(true);
                 break;
             case "fetch":
                 await runGitOperationFromPanel(actionDeps, "fetch");

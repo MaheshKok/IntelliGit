@@ -22,6 +22,7 @@ interface Props {
     draggable?: boolean;
     onDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onDragEnd?: () => void;
+    checkboxVisibility?: "visible" | "hidden";
 }
 
 function FileRowInner({
@@ -35,6 +36,7 @@ function FileRowInner({
     draggable,
     onDragStart,
     onDragEnd,
+    checkboxVisibility = "visible",
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = getLeafName(file.path);
@@ -80,11 +82,13 @@ function FileRowInner({
         >
             <IndentGuides treeDepth={depth} />
             <Box as="span" w={`${INDENT_STEP}px`} flexShrink={0} />
-            <VscCheckbox
-                isChecked={isChecked}
-                onChange={() => onToggle(file.path)}
-                ariaLabel={file.path}
-            />
+            {checkboxVisibility !== "hidden" && (
+                <VscCheckbox
+                    isChecked={isChecked}
+                    onChange={() => onToggle(file.path)}
+                    ariaLabel={file.path}
+                />
+            )}
             <FileTypeIcon status={file.status} icon={file.icon} />
             <Flex as="span" align="baseline" gap="4px" flex={1} minW={0} overflow="hidden">
                 <Box

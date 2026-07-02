@@ -25,6 +25,7 @@ interface Props {
     isSomeChecked: boolean;
     onToggleExpand: (dirPath: string) => void;
     onToggleCheck: (dirPath: string) => void;
+    checkboxVisibility?: "visible" | "hidden";
 }
 
 function FolderRowInner({
@@ -40,6 +41,7 @@ function FolderRowInner({
     isSomeChecked,
     onToggleExpand,
     onToggleCheck,
+    checkboxVisibility = "visible",
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const resolvedIcon = resolveFolderIcon(
@@ -73,12 +75,14 @@ function FolderRowInner({
         >
             <IndentGuides treeDepth={depth} />
             <ChevronIcon expanded={isExpanded} />
-            <VscCheckbox
-                isChecked={isAllChecked}
-                isIndeterminate={isSomeChecked}
-                onChange={() => onToggleCheck(dirPath)}
-                ariaLabel={dirPath}
-            />
+            {checkboxVisibility !== "hidden" && (
+                <VscCheckbox
+                    isChecked={isAllChecked}
+                    isIndeterminate={isSomeChecked}
+                    onChange={() => onToggleCheck(dirPath)}
+                    ariaLabel={dirPath}
+                />
+            )}
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.82}>
                 {name}

@@ -262,6 +262,15 @@ function App(): React.ReactElement {
             return true;
         }
     });
+    const [showIgnoredFiles, setShowIgnoredFiles] = useState<boolean>(() => {
+        try {
+            const saved = vscode.getState?.();
+            return saved?.showIgnoredFiles === true;
+        } catch {
+            return false;
+        }
+    });
+    const showIgnoredFilesPostedRef = useRef(false);
 
     const [commitPanelPosition, setCommitPanelPosition] = useState<"left" | "right">(
         () => getSettings().commitWindowPosition,
@@ -353,11 +362,18 @@ function App(): React.ReactElement {
         };
     }, [branchWidth, graphWidth, infoWidth, commitPanelWidth]);
 
-    // --- Persist groupByDir ---
+    // --- Persist commit-panel view options ---
     useEffect(() => {
         const prev = vscode.getState?.() ?? {};
-        vscode.setState({ ...prev, groupByDir });
-    }, [groupByDir]);
+        vscode.setState({ ...prev, groupByDir, showIgnoredFiles });
+    }, [groupByDir, showIgnoredFiles]);
+
+    useEffect(() => {
+        const shouldPost = showIgnoredFilesPostedRef.current || showIgnoredFiles;
+        showIgnoredFilesPostedRef.current = true;
+        if (!shouldPost) return;
+        vscode.postMessage({ type: "setShowIgnoredFiles", showIgnoredFiles });
+    }, [showIgnoredFiles]);
 
     // --- Amend auto-fetch ---
     useEffect(() => {
@@ -400,6 +416,10 @@ function App(): React.ReactElement {
         setGroupByDir((g) => !g);
     }, []);
 
+    const onToggleShowIgnoredFiles = useCallback(() => {
+        setShowIgnoredFiles((show) => !show);
+    }, []);
+
     // --- Render ---
     return (
         <UndockedLayout
@@ -431,6 +451,7 @@ function App(): React.ReactElement {
             commitFolderExpandedIcon={commitFolderExpandedIcon}
             commitFolderIconsByName={commitFolderIconsByName}
             groupByDir={groupByDir}
+            showIgnoredFiles={showIgnoredFiles}
             canCommit={canCommit}
             canPush={canPush}
             pushLabel={pushLabel}
@@ -469,6 +490,7 @@ function App(): React.ReactElement {
             toggleFolder={toggleFolder}
             toggleSection={toggleSection}
             onToggleGroupBy={onToggleGroupBy}
+            onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
             onDock={actions.handleDock}
         />
     );

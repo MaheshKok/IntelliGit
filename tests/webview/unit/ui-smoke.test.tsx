@@ -480,7 +480,10 @@ describe("webview ui smoke", () => {
                 <Toolbar
                     onRefresh={noop}
                     onRollback={noop}
+                    groupByDir={true}
+                    showIgnoredFiles={false}
                     onToggleGroupBy={noop}
+                    onToggleShowIgnoredFiles={noop}
                     onShelve={noop}
                     onShowDiff={noop}
                     onExpandAll={noop}
@@ -516,6 +519,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("-1");
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
+        expect(html).toContain("View Options");
         expect(html).toContain("Branch: main -&gt; origin/main");
         expect(html).not.toContain("Commit and Push");
         const commitActionIndex = html.indexOf("Commit");
@@ -624,7 +628,10 @@ describe("webview ui smoke", () => {
                 isRefreshing={true}
                 onRefresh={noop}
                 onRollback={noop}
+                groupByDir={true}
+                showIgnoredFiles={false}
                 onToggleGroupBy={noop}
+                onToggleShowIgnoredFiles={noop}
                 onShelve={noop}
                 onShowDiff={noop}
                 onExpandAll={noop}
@@ -647,6 +654,7 @@ describe("webview ui smoke", () => {
             <FileTree
                 files={files}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={new Set()}
                 onToggleFile={noop}
                 onToggleFolder={noop}
@@ -673,6 +681,45 @@ describe("webview ui smoke", () => {
         expect(headerText("Unversioned Files")).not.toContain("-");
     });
 
+    it("shows ignored files only when view option is enabled", () => {
+        const noop = vi.fn();
+        const files: WorkingFile[] = [
+            { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            { path: "dist/bundle.js", status: "!", staged: false, additions: 0, deletions: 0 },
+        ];
+        const renderTree = (showIgnoredFiles: boolean) =>
+            renderUi(
+                <FileTree
+                    files={files}
+                    groupByDir={false}
+                    showIgnoredFiles={showIgnoredFiles}
+                    checkedPaths={new Set()}
+                    onToggleFile={noop}
+                    onToggleFolder={noop}
+                    onToggleSection={noop}
+                    isAllChecked={() => false}
+                    isSomeChecked={() => false}
+                    onFileClick={noop}
+                    onTrackUnversionedFiles={noop}
+                    expandAllSignal={0}
+                    collapseAllSignal={0}
+                />,
+            );
+
+        const hiddenHtml = renderTree(false);
+        expect(hiddenHtml).not.toContain("Ignored Files");
+        expect(hiddenHtml).not.toContain("bundle.js");
+
+        const shownHtml = renderTree(true);
+        expect(shownHtml).toContain("Ignored Files");
+        expect(shownHtml).toContain("bundle.js");
+        expect(shownHtml).toContain("Ignored");
+        const container = document.createElement("div");
+        container.innerHTML = shownHtml;
+        expect(container.querySelector('input[aria-label="dist/bundle.js"]')).toBeNull();
+        expect(container.querySelector('input[aria-label="Ignored Files"]')).toBeNull();
+    });
+
     it("shows parent paths after prioritized file names in flat file rows", () => {
         const noop = vi.fn();
         const fullPath =
@@ -683,6 +730,7 @@ describe("webview ui smoke", () => {
             <FileTree
                 files={[{ path: fullPath, status: "?", staged: false, additions: 0, deletions: 0 }]}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={new Set()}
                 onToggleFile={noop}
                 onToggleFolder={noop}

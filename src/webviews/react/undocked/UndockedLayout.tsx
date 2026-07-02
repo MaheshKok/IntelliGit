@@ -60,6 +60,7 @@ export interface UndockedLayoutProps {
     commitFolderExpandedIcon?: ThemeTreeIcon;
     commitFolderIconsByName?: ThemeFolderIconMap;
     groupByDir: boolean;
+    showIgnoredFiles: boolean;
     canCommit: boolean;
     canPush: boolean;
     pushLabel: string;
@@ -98,6 +99,7 @@ export interface UndockedLayoutProps {
     toggleFolder: (files: WorkingFile[]) => void;
     toggleSection: (files: WorkingFile[]) => void;
     onToggleGroupBy: () => void;
+    onToggleShowIgnoredFiles: () => void;
     onDock: () => void;
 }
 
@@ -136,6 +138,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         commitFolderExpandedIcon,
         commitFolderIconsByName,
         groupByDir,
+        showIgnoredFiles,
         canCommit,
         canPush,
         pushLabel,
@@ -174,6 +177,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         toggleFolder,
         toggleSection,
         onToggleGroupBy,
+        onToggleShowIgnoredFiles,
         onDock,
     } = props;
 
@@ -206,7 +210,9 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 canPush={canPush}
                                 pushLabel={pushLabel}
                                 groupByDir={groupByDir}
+                                showIgnoredFiles={showIgnoredFiles}
                                 onToggleGroupBy={onToggleGroupBy}
+                                onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
                             />
 
                             <Box
@@ -388,7 +394,9 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                 canPush={canPush}
                                 pushLabel={pushLabel}
                                 groupByDir={groupByDir}
+                                showIgnoredFiles={showIgnoredFiles}
                                 onToggleGroupBy={onToggleGroupBy}
+                                onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
                             />
                         </>
                     )}
