@@ -672,4 +672,36 @@ describe("webview ui smoke", () => {
         expect(headerText("Unversioned Files")).toContain("+9");
         expect(headerText("Unversioned Files")).not.toContain("-");
     });
+
+    it("shows parent paths after prioritized file names in flat file rows", () => {
+        const noop = vi.fn();
+        const fullPath =
+            "client/modules/invoices/templates/jasper-templates-debt-collection-auto-processor.md";
+        const fileName = "jasper-templates-debt-collection-auto-processor.md";
+        const parentPath = "client/modules/invoices/templates";
+        const html = renderUi(
+            <FileTree
+                files={[{ path: fullPath, status: "?", staged: false, additions: 0, deletions: 0 }]}
+                groupByDir={false}
+                checkedPaths={new Set()}
+                onToggleFile={noop}
+                onToggleFolder={noop}
+                onToggleSection={noop}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={noop}
+                onTrackUnversionedFiles={noop}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+            />,
+        );
+        const container = document.createElement("div");
+        container.innerHTML = html;
+        const row = container.querySelector(`[title="${fullPath}"]`);
+        const rowText = row?.textContent ?? "";
+
+        expect(rowText).toContain(fileName);
+        expect(rowText).toContain(parentPath);
+        expect(rowText.indexOf(fileName)).toBeLessThan(rowText.indexOf(parentPath));
+    });
 });

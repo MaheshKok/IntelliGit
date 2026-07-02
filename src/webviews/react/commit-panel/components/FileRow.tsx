@@ -86,21 +86,33 @@ function FileRowInner({
                 ariaLabel={file.path}
             />
             <FileTypeIcon status={file.status} icon={file.icon} />
-            <Box
-                as="span"
-                flex={1}
-                overflow="hidden"
-                textOverflow="ellipsis"
-                whiteSpace="nowrap"
-                textDecoration={file.status === "D" ? "line-through" : undefined}
-            >
-                {fileName}
-            </Box>
-            {!groupByDir && dir && (
-                <Box as="span" color="var(--intelligit-pycharm-muted)" fontSize="11px" ml="3px">
-                    {dir}
+            <Flex as="span" align="baseline" gap="4px" flex={1} minW={0} overflow="hidden">
+                <Box
+                    as="span"
+                    flexShrink={0}
+                    maxW="100%"
+                    overflow="hidden"
+                    textOverflow="ellipsis"
+                    whiteSpace="nowrap"
+                    textDecoration={file.status === "D" ? "line-through" : undefined}
+                >
+                    {fileName}
                 </Box>
-            )}
+                {!groupByDir && dir && (
+                    <Box
+                        as="span"
+                        color="var(--intelligit-pycharm-muted)"
+                        fontSize="11px"
+                        flex={1}
+                        minW={0}
+                        overflow="hidden"
+                        textOverflow="ellipsis"
+                        whiteSpace="nowrap"
+                    >
+                        {dir}
+                    </Box>
+                )}
+            </Flex>
             {(file.additions > 0 || file.deletions > 0) && (
                 <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
                     {file.additions > 0 && (
@@ -124,6 +136,6 @@ function FileRowInner({
  * Memoized file row for working-tree entries.
  *
  * The row opens diffs when clicked, leaves checkbox changes to the selection
- * hook, and shows parent directories only when directory grouping is disabled.
+ * hook, and gives the leaf filename priority over its parent path.
  */
 export const FileRow = React.memo(FileRowInner);
