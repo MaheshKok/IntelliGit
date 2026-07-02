@@ -11,6 +11,8 @@ import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
 import { getLeafName, getParentPath } from "../../shared/utils/path";
 
+const CHECKBOX_SLOT_SIZE = 14;
+
 interface Props {
     file: WorkingFile;
     depth: number;
@@ -84,7 +86,14 @@ function FileRowInner({
         >
             <IndentGuides treeDepth={depth} />
             <Box as="span" w={`${INDENT_STEP}px`} flexShrink={0} />
-            {checkboxVisibility !== "hidden" && (
+            {checkboxVisibility === "hidden" ? (
+                <Box
+                    as="span"
+                    w={`${CHECKBOX_SLOT_SIZE}px`}
+                    h={`${CHECKBOX_SLOT_SIZE}px`}
+                    flexShrink={0}
+                />
+            ) : (
                 <VscCheckbox
                     isChecked={isChecked}
                     onChange={() => onToggle(file.path)}

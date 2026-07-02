@@ -290,7 +290,7 @@ describe("GitOps", () => {
                 "status",
                 "--porcelain=v1",
                 "-z",
-                "-unormal",
+                "-uall",
                 "--ignored",
             ]);
             expect(files).toEqual([

@@ -70,6 +70,9 @@ describe("extension manifest", () => {
         expect(commands.some((entry) => entry.command === "intelligit.fileShowHistory")).toBe(
             false,
         );
+        expect(commands.some((entry) => entry.command === "intelligit.fileRefreshing")).toBe(
+            false,
+        );
         expect(itemFor("intelligit.fileShowHistory")).toBeUndefined();
         expect(itemFor("intelligit.fileDelete")?.when).toBe(
             "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",

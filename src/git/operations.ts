@@ -390,12 +390,7 @@ export class GitOps {
      * can return large ignored directories.
      */
     async getStatus(options: { includeIgnored?: boolean } = {}): Promise<WorkingFile[]> {
-        const statusArgs = [
-            "status",
-            "--porcelain=v1",
-            "-z",
-            options.includeIgnored ? "-unormal" : "-uall",
-        ];
+        const statusArgs = ["status", "--porcelain=v1", "-z", "-uall"];
         if (options.includeIgnored) statusArgs.push("--ignored");
         const result = await this.executor.run(statusArgs);
         const files = parseWorkingTreeStatus(result);
