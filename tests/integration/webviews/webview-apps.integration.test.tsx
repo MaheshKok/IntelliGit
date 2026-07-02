@@ -183,7 +183,13 @@ describe("CommitPanelApp integration", () => {
 
         fireClick(document.querySelector('button[aria-label="Refresh"]'));
         fireClick(document.querySelector('button[aria-label="Rollback"]'));
-        fireClick(document.querySelector('button[aria-label="Group by Directory"]'));
+        fireClick(document.querySelector('button[aria-label="View Options"]'));
+        await flush();
+        fireClick(
+            Array.from(document.querySelectorAll('[role="menuitem"]')).find(
+                (item) => item.textContent?.trim() === "Directory",
+            ) ?? null,
+        );
         fireClick(document.querySelector('button[aria-label="Show Diff Preview"]'));
         fireClick(document.querySelector('button[aria-label="Expand All"]'));
         fireClick(document.querySelector('button[aria-label="Collapse All"]'));

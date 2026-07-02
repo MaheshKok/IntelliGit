@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.14.10",
+    "version": "0.14.11",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -373,11 +373,6 @@
                 "category": "%intelligit%"
             },
             {
-                "command": "intelligit.fileShowHistory",
-                "title": "%command.showHistory%",
-                "category": "%intelligit%"
-            },
-            {
                 "command": "intelligit.compareWithRevision",
                 "title": "%command.compareWithRevision%",
                 "category": "%intelligit%",
@@ -412,13 +407,6 @@
                 "title": "%command.refresh%",
                 "category": "%intelligit%",
                 "icon": "$(refresh)"
-            },
-            {
-                "command": "intelligit.fileRefreshing",
-                "title": "%command.refreshing%",
-                "category": "%intelligit%",
-                "icon": "$(sync~spin)",
-                "enablement": "false"
             },
             {
                 "command": "intelligit.openMergeConflict",
@@ -695,12 +683,12 @@
             "webview/context": [
                 {
                     "command": "intelligit.fileRollback",
-                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file' && !webviewIgnoredFile",
                     "group": "1_actions@1"
                 },
                 {
                     "command": "intelligit.fileJumpToSource",
-                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file' && !webviewIgnoredFile",
                     "group": "1_actions@2"
                 },
                 {
@@ -710,22 +698,12 @@
                 },
                 {
                     "command": "intelligit.fileShelve",
-                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file' && !webviewIgnoredFile",
                     "group": "2_destructive@2"
                 },
                 {
-                    "command": "intelligit.fileShowHistory",
-                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
-                    "group": "3_info@1"
-                },
-                {
                     "command": "intelligit.fileRefresh",
-                    "when": "webviewId == 'intelligit.commitPanel' && !intelligit.commitPanel.refreshing",
-                    "group": "3_info@2"
-                },
-                {
-                    "command": "intelligit.fileRefreshing",
-                    "when": "webviewId == 'intelligit.commitPanel' && intelligit.commitPanel.refreshing",
+                    "when": "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
                     "group": "3_info@2"
                 },
                 {

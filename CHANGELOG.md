@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.11] - 2026-07-02
+
+### Added
+
+- Added commit-panel view options for grouping files by directory and showing ignored files on demand.
+
+### Changed
+
+- Render ignored files as read-only commit-panel entries without selection checkboxes.
+- Limit ignored-file context menus to Delete and Refresh, and remove the old Show History file action pending a rebuilt history workflow.
+
+### Fixed
+
+- Prevented the Show Ignored Files view option from hanging on large ignored directories by listing ignored directories instead of every ignored file.
+
 ## [0.14.10] - 2026-07-01
 
 ### Fixed

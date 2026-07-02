@@ -62,7 +62,6 @@ import {
     publishBranchFromPanel,
     selectShelfFromPanel,
     showDiffFromPanel,
-    showHistoryFromPanel,
     showShelfDiffFromPanel,
     stageFilesFromPanel,
     unstageFilesFromPanel,
@@ -145,6 +144,7 @@ export class UndockedViewProvider {
     private selectedShelfIndex: number | null = null;
     private shelfFiles: WorkingFile[] = [];
     private lastFileCount = 0;
+    private showIgnoredFiles = false;
     // Event emitters
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
@@ -526,6 +526,10 @@ export class UndockedViewProvider {
             case "refresh":
                 await this.refreshCommitPanelData(false);
                 break;
+            case "setShowIgnoredFiles":
+                this.showIgnoredFiles = msg.showIgnoredFiles === true;
+                await this.refreshCommitPanelData(true);
+                break;
             case "saveCommitDraft": {
                 const message = assertString(msg.message, "message");
                 await this.workspaceState?.update(
@@ -635,9 +639,6 @@ export class UndockedViewProvider {
                 break;
             case "deleteFile":
                 await deleteFileFromPanel(fileActionDeps, msg.path);
-                break;
-            case "showHistory":
-                await showHistoryFromPanel(fileActionDeps, msg.path);
                 break;
         }
     }
@@ -816,7 +817,9 @@ export class UndockedViewProvider {
             // Theme initialization must finish before decorated working-tree files are built.
             // react-doctor-disable-next-line react-doctor/async-parallel
             await this.iconTheme.initIconThemeData();
-            const files = await this.iconTheme.decorateWorkingFiles(await this.gitOps.getStatus());
+            const files = await this.iconTheme.decorateWorkingFiles(
+                await this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
+            );
             const stashes = await this.gitOps.listShelved();
             const currentBranchStatus = await this.currentBranchStatus();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
@@ -842,7 +845,10 @@ export class UndockedViewProvider {
             this.stashes = stashes;
             this.selectedShelfIndex = selectedShelfIndex;
             this.shelfFiles = shelfFiles;
-            const uniquePaths = new Set(files.map((f) => f.path));
+            const uniquePaths = new Set<string>();
+            for (const file of files) {
+                if (file.status !== "!") uniquePaths.add(file.path);
+            }
             const count = uniquePaths.size;
             this._onDidChangeFileCount.fire(count);
             this.lastFileCount = count;

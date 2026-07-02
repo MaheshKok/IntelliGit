@@ -480,7 +480,10 @@ describe("webview ui smoke", () => {
                 <Toolbar
                     onRefresh={noop}
                     onRollback={noop}
+                    groupByDir={true}
+                    showIgnoredFiles={false}
                     onToggleGroupBy={noop}
+                    onToggleShowIgnoredFiles={noop}
                     onShelve={noop}
                     onShowDiff={noop}
                     onExpandAll={noop}
@@ -516,6 +519,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("-1");
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
+        expect(html).toContain("View Options");
         expect(html).toContain("Branch: main -&gt; origin/main");
         expect(html).not.toContain("Commit and Push");
         const commitActionIndex = html.indexOf("Commit");
@@ -624,7 +628,10 @@ describe("webview ui smoke", () => {
                 isRefreshing={true}
                 onRefresh={noop}
                 onRollback={noop}
+                groupByDir={true}
+                showIgnoredFiles={false}
                 onToggleGroupBy={noop}
+                onToggleShowIgnoredFiles={noop}
                 onShelve={noop}
                 onShowDiff={noop}
                 onExpandAll={noop}
@@ -647,6 +654,7 @@ describe("webview ui smoke", () => {
             <FileTree
                 files={files}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={new Set()}
                 onToggleFile={noop}
                 onToggleFolder={noop}
@@ -671,5 +679,92 @@ describe("webview ui smoke", () => {
         expect(headerText("Changes")).toContain("-1");
         expect(headerText("Unversioned Files")).toContain("+9");
         expect(headerText("Unversioned Files")).not.toContain("-");
+    });
+
+    it("shows ignored files only when view option is enabled", () => {
+        const noop = vi.fn();
+        const files: WorkingFile[] = [
+            { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            { path: "dist/bundle.js", status: "!", staged: false, additions: 0, deletions: 0 },
+        ];
+        const renderTree = (showIgnoredFiles: boolean) =>
+            renderUi(
+                <FileTree
+                    files={files}
+                    groupByDir={false}
+                    showIgnoredFiles={showIgnoredFiles}
+                    checkedPaths={new Set()}
+                    onToggleFile={noop}
+                    onToggleFolder={noop}
+                    onToggleSection={noop}
+                    isAllChecked={() => false}
+                    isSomeChecked={() => false}
+                    onFileClick={noop}
+                    onTrackUnversionedFiles={noop}
+                    expandAllSignal={0}
+                    collapseAllSignal={0}
+                />,
+            );
+
+        const hiddenHtml = renderTree(false);
+        expect(hiddenHtml).not.toContain("Ignored Files");
+        expect(hiddenHtml).not.toContain("bundle.js");
+
+        const shownHtml = renderTree(true);
+        expect(shownHtml).toContain("Ignored Files");
+        expect(shownHtml).toContain("bundle.js");
+        expect(shownHtml).toContain("Ignored");
+        const container = document.createElement("div");
+        container.innerHTML = shownHtml;
+        expect(container.querySelector('input[aria-label="dist/bundle.js"]')).toBeNull();
+        expect(container.querySelector('input[aria-label="Ignored Files"]')).toBeNull();
+        const contexts = Array.from(
+            container.querySelectorAll<HTMLElement>("[data-vscode-context]"),
+        ).map((row) => JSON.parse(row.dataset.vscodeContext ?? "{}") as Record<string, unknown>);
+        expect(contexts).toContainEqual(
+            expect.objectContaining({
+                filePath: "src/a.ts",
+                webviewIgnoredFile: false,
+            }),
+        );
+        expect(contexts).toContainEqual(
+            expect.objectContaining({
+                filePath: "dist/bundle.js",
+                webviewIgnoredFile: true,
+            }),
+        );
+    });
+
+    it("shows parent paths after prioritized file names in flat file rows", () => {
+        const noop = vi.fn();
+        const fullPath =
+            "client/modules/invoices/templates/jasper-templates-debt-collection-auto-processor.md";
+        const fileName = "jasper-templates-debt-collection-auto-processor.md";
+        const parentPath = "client/modules/invoices/templates";
+        const html = renderUi(
+            <FileTree
+                files={[{ path: fullPath, status: "?", staged: false, additions: 0, deletions: 0 }]}
+                groupByDir={false}
+                showIgnoredFiles={false}
+                checkedPaths={new Set()}
+                onToggleFile={noop}
+                onToggleFolder={noop}
+                onToggleSection={noop}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={noop}
+                onTrackUnversionedFiles={noop}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+            />,
+        );
+        const container = document.createElement("div");
+        container.innerHTML = html;
+        const row = container.querySelector(`[title="${fullPath}"]`);
+        const rowText = row?.textContent ?? "";
+
+        expect(rowText).toContain(fileName);
+        expect(rowText).toContain(parentPath);
+        expect(rowText.indexOf(fileName)).toBeLessThan(rowText.indexOf(parentPath));
     });
 });

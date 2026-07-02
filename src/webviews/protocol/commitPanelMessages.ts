@@ -28,6 +28,12 @@ export type OutboundMessage =
           type: "refresh";
       }
     | {
+          /** View option controlling whether ignored files are included in working-tree snapshots. */
+          type: "setShowIgnoredFiles";
+          /** True asks the host to include `git status --ignored` rows; false restores the default. */
+          showIgnoredFiles: boolean;
+      }
+    | {
           /** Command fetching remote refs without changing the current working tree. */
           type: "fetch";
       }
@@ -169,12 +175,6 @@ export type OutboundMessage =
           /** Command deleting a working-tree file after host confirmation. */
           type: "deleteFile";
           /** Repository-relative path from the working-tree snapshot. */
-          path: string;
-      }
-    | {
-          /** Command opening a text view of Git history for a working-tree file. */
-          type: "showHistory";
-          /** Repository-relative path passed to `git log --follow`. */
           path: string;
       };
 

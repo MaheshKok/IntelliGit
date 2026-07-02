@@ -24,6 +24,7 @@ interface Props {
     onDragLeave?: React.DragEventHandler<HTMLDivElement>;
     onDrop?: React.DragEventHandler<HTMLDivElement>;
     isDragOver?: boolean;
+    checkboxVisibility?: "visible" | "hidden";
 }
 
 /**
@@ -48,6 +49,7 @@ export function SectionHeader({
     onDragLeave,
     onDrop,
     isDragOver = false,
+    checkboxVisibility = "visible",
 }: Props): React.ReactElement {
     return (
         <Flex
@@ -82,12 +84,14 @@ export function SectionHeader({
             onDrop={onDrop}
         >
             <ChevronIcon expanded={isOpen} />
-            <VscCheckbox
-                isChecked={isAllChecked}
-                isIndeterminate={isSomeChecked}
-                onChange={onToggleCheck}
-                ariaLabel={label}
-            />
+            {checkboxVisibility !== "hidden" && (
+                <VscCheckbox
+                    isChecked={isAllChecked}
+                    isIndeterminate={isSomeChecked}
+                    onChange={onToggleCheck}
+                    ariaLabel={label}
+                />
+            )}
             <Box as="span">{label}</Box>
             <Box
                 as="span"

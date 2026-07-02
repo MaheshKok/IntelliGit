@@ -217,5 +217,11 @@
     "a11y.resizeCommitDetailsPane": "Resize commit details pane",
     "a11y.resizeCommitList": "Resize commit list",
     "a11y.resizeCommitPanel": "Resize commit panel",
-    "merge.hunk.groupAria": "Conflict hunk #{ordinal}"
+    "merge.hunk.groupAria": "Conflict hunk #{ordinal}",
+    "common.viewOptions": "视图选项",
+    "common.groupBy": "分组依据",
+    "common.directory": "目录",
+    "common.show": "显示",
+    "status.ignored": "已忽略",
+    "commitPanel.ignoredFiles": "已忽略文件"
 }

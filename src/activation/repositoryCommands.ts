@@ -608,32 +608,8 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 }
             },
         ),
-        vscode.commands.registerCommand(
-            "intelligit.fileShowHistory",
-            async (ctx: { filePath?: string }) => {
-                if (!ctx?.filePath) return;
-                try {
-                    const safePath = assertRepoRelativePath(ctx.filePath);
-                    const history = await gitOps.getFileHistory(safePath);
-                    const doc = await vscode.workspace.openTextDocument({
-                        content: history || vscode.l10n.t("No history found."),
-                        language: "git-commit",
-                    });
-                    await vscode.window.showTextDocument(doc, { preview: true });
-                } catch (error) {
-                    const message = getErrorMessage(error);
-                    console.error("Failed to load file history:", error);
-                    vscode.window.showErrorMessage(
-                        vscode.l10n.t("Show history failed: {message}", { message }),
-                    );
-                }
-            },
-        ),
         vscode.commands.registerCommand("intelligit.fileRefresh", async () => {
             await refreshService().refreshCommitPanels();
-        }),
-        vscode.commands.registerCommand("intelligit.fileRefreshing", () => {
-            // No-op: visual-only command shown while refreshing (disabled via enablement).
         }),
     );
 }

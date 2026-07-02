@@ -797,7 +797,6 @@ describe("view providers integration", () => {
         await send({ type: "openFile", path: "src/a.ts" });
         showWarningMessage.mockResolvedValueOnce("Delete");
         await send({ type: "deleteFile", path: "src/a.ts" });
-        await send({ type: "showHistory", path: "src/a.ts" });
 
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
@@ -824,7 +823,6 @@ describe("view providers integration", () => {
         expect(gitOps.shelveApply).toHaveBeenCalledWith(0);
         expect(gitOps.shelveDelete).toHaveBeenCalledWith(0);
         expect(gitOps.getShelvedFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
-        expect(gitOps.getFileHistory).toHaveBeenCalledWith("src/a.ts");
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
         expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
         expect(fileCounts.length).toBeGreaterThan(0);
@@ -1846,13 +1844,11 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider handles diff/open/history actions", async () => {
+    it("CommitPanelViewProvider handles diff/open actions", async () => {
         const { provider, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "showDiff", path: "src/a.ts" });
         expect(executeCommand).toHaveBeenCalledWith("git.openChange", expect.any(Object));
         await webview.send({ type: "openFile", path: "src/a.ts" });
-        await webview.send({ type: "showHistory", path: "src/a.ts" });
-        expect(openTextDocument).toHaveBeenCalled();
         expect(showTextDocument).toHaveBeenCalled();
         provider.dispose();
     });

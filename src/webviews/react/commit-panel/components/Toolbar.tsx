@@ -1,17 +1,22 @@
 // Toolbar with commit-view Git and file actions.
 
-import React from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { IoMdRefresh } from "react-icons/io";
+import { LuEye } from "react-icons/lu";
 import { getSettings } from "../../shared/settings";
 import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
+import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
 import { t } from "../../shared/i18n";
 
 interface Props {
     onRefresh: () => void;
     isRefreshing?: boolean;
+    groupByDir: boolean;
+    showIgnoredFiles: boolean;
     onRollback: () => void;
     onToggleGroupBy: () => void;
+    onToggleShowIgnoredFiles: () => void;
     onShelve: () => void;
     onShowDiff: () => void;
     onExpandAll: () => void;
@@ -24,19 +29,53 @@ const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0d
  * Renders commit-panel toolbar actions without owning repository state.
  *
  * Button callbacks are supplied by `CommitTab`, while this component handles
- * PyCharm-style icon coloring, tooltip labels, and the temporary refresh spinner
- * affordance.
+ * PyCharm-style icon coloring, tooltip labels, the view-options menu, and the
+ * temporary refresh spinner affordance.
  */
 export function Toolbar({
     onRefresh,
     isRefreshing,
+    groupByDir,
+    showIgnoredFiles,
     onRollback,
     onToggleGroupBy,
+    onToggleShowIgnoredFiles,
     onShelve,
     onShowDiff,
     onExpandAll,
     onCollapseAll,
 }: Props): React.ReactElement {
+    const [viewMenuPosition, setViewMenuPosition] = useState<{ x: number; y: number } | null>(null);
+    const viewMenuItems = useMemo<MenuItem[]>(
+        () => [
+            { label: t("common.groupBy"), action: "groupBy", disabled: true },
+            {
+                label: t("common.directory"),
+                action: "toggleGroupBy",
+                icon: groupByDir ? <CheckMark /> : undefined,
+            },
+            { label: "", action: "viewOptionsSeparator", separator: true },
+            { label: t("common.show"), action: "show", disabled: true },
+            {
+                label: t("commitPanel.ignoredFiles"),
+                action: "toggleIgnoredFiles",
+                icon: showIgnoredFiles ? <CheckMark /> : undefined,
+            },
+        ],
+        [groupByDir, showIgnoredFiles],
+    );
+    const handleOpenViewMenu = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        setViewMenuPosition({ x: rect.left, y: rect.bottom + 4 });
+    }, []);
+    const handleSelectViewMenuItem = useCallback(
+        (action: string) => {
+            if (action === "toggleGroupBy") onToggleGroupBy();
+            if (action === "toggleIgnoredFiles") onToggleShowIgnoredFiles();
+        },
+        [onToggleGroupBy, onToggleShowIgnoredFiles],
+    );
+
     return (
         <Flex
             align="center"
@@ -65,15 +104,21 @@ export function Toolbar({
                 />
             </ToolbarButton>
             <ToolbarButton
-                label={t("common.groupByDirectory")}
-                onClick={onToggleGroupBy}
-                color="#efc09a"
-            >
-                <path
-                    fill="currentColor"
-                    d="M14.5 3H7.71l-.85-.85A.5.5 0 0 0 6.5 2H1.5A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 14.5 4V3zM1.5 3h4.79l.85.85a.5.5 0 0 0 .36.15h7a.5.5 0 0 1 .5.5v.5H1V3.5a.5.5 0 0 1 .5-.5zM1 12.5V6h14v6.5a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5z"
+                label={t("common.viewOptions")}
+                onClick={handleOpenViewMenu}
+                color="#8fd5ff"
+                icon={<LuEye size={16} />}
+            />
+            {viewMenuPosition && (
+                <ContextMenu
+                    x={viewMenuPosition.x}
+                    y={viewMenuPosition.y}
+                    minWidth={190}
+                    items={viewMenuItems}
+                    onSelect={handleSelectViewMenuItem}
+                    onClose={() => setViewMenuPosition(null)}
                 />
-            </ToolbarButton>
+            )}
             <ToolbarButton label={t("common.shelveChanges")} onClick={onShelve} color="#ea8fb3">
                 <path
                     fill="currentColor"
@@ -93,6 +138,21 @@ export function Toolbar({
                 <CollapseAllIconGlyph />
             </ToolbarButton>
         </Flex>
+    );
+}
+
+function CheckMark(): React.ReactElement {
+    return (
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+            <path
+                d="M10 3.25 4.7 8.45 2.2 6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+        </svg>
     );
 }
 

@@ -210,6 +210,8 @@ export function mapStatusCode(code: string): WorkingFile["status"] | null {
             return "C";
         case "?":
             return "?";
+        case "!":
+            return "!";
         case "U":
             return "U";
         case " ":

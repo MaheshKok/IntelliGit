@@ -18,7 +18,8 @@ export interface RollbackPlan {
  * Parses NUL-delimited porcelain status into IntelliGit working-file rows.
  *
  * Rename and copy source paths are consumed from the following NUL field, staged and unstaged states
- * are split into separate rows, and staged adds avoid duplicate modified rows for edited new files.
+ * are split into separate rows, ignored `!!` paths stay unstaged, and staged adds avoid duplicate
+ * modified rows for edited new files.
  */
 export function parseWorkingTreeStatus(result: string): WorkingFile[] {
     const files: WorkingFile[] = [];
@@ -30,7 +31,7 @@ export function parseWorkingTreeStatus(result: string): WorkingFile[] {
 
         const index = entry.charAt(0);
         const worktree = entry.charAt(1);
-        const hasStaged = index !== " " && index !== "?";
+        const hasStaged = index !== " " && index !== "?" && index !== "!";
         const hasUnstaged = worktree !== " ";
 
         const stagedStatus = mapStatusCode(index);

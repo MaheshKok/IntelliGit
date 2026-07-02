@@ -517,6 +517,7 @@ describe("FileTree drag-to-track integration", () => {
             <FileTree
                 files={treeFiles}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={checkedPaths}
                 onToggleFile={vi.fn()}
                 onToggleFolder={vi.fn()}
@@ -610,6 +611,7 @@ describe("FileTree drag-to-track integration", () => {
                     { path: "second.txt", status: "?", staged: false, additions: 0, deletions: 0 },
                 ]}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={new Set()}
                 onToggleFile={vi.fn()}
                 onToggleFolder={vi.fn()}
@@ -644,6 +646,7 @@ describe("FileTree drag-to-track integration", () => {
                     { path: "second.txt", status: "?", staged: false, additions: 0, deletions: 0 },
                 ]}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={new Set()}
                 onToggleFile={vi.fn()}
                 onToggleFolder={vi.fn()}
@@ -680,6 +683,7 @@ describe("FileTree drag-to-track integration", () => {
                     { path: "third.txt", status: "?", staged: false, additions: 0, deletions: 0 },
                 ]}
                 groupByDir={false}
+                showIgnoredFiles={false}
                 checkedPaths={checkedPaths}
                 onToggleFile={vi.fn()}
                 onToggleFolder={vi.fn()}

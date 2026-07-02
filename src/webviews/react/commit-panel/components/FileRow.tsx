@@ -11,6 +11,8 @@ import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
 import { getLeafName, getParentPath } from "../../shared/utils/path";
 
+const CHECKBOX_SLOT_SIZE = 14;
+
 interface Props {
     file: WorkingFile;
     depth: number;
@@ -22,6 +24,7 @@ interface Props {
     draggable?: boolean;
     onDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onDragEnd?: () => void;
+    checkboxVisibility?: "visible" | "hidden";
 }
 
 function FileRowInner({
@@ -35,10 +38,12 @@ function FileRowInner({
     draggable,
     onDragStart,
     onDragEnd,
+    checkboxVisibility = "visible",
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = getLeafName(file.path);
     const dir = getParentPath(file.path);
+    const isIgnoredFile = file.status === "!";
 
     return (
         <Flex
@@ -67,6 +72,7 @@ function FileRowInner({
             data-vscode-context={JSON.stringify({
                 webviewSection: "file",
                 filePath: file.path,
+                webviewIgnoredFile: isIgnoredFile,
                 preventDefaultContextMenuItems: true,
             })}
             onClick={(e) => {
@@ -80,27 +86,48 @@ function FileRowInner({
         >
             <IndentGuides treeDepth={depth} />
             <Box as="span" w={`${INDENT_STEP}px`} flexShrink={0} />
-            <VscCheckbox
-                isChecked={isChecked}
-                onChange={() => onToggle(file.path)}
-                ariaLabel={file.path}
-            />
-            <FileTypeIcon status={file.status} icon={file.icon} />
-            <Box
-                as="span"
-                flex={1}
-                overflow="hidden"
-                textOverflow="ellipsis"
-                whiteSpace="nowrap"
-                textDecoration={file.status === "D" ? "line-through" : undefined}
-            >
-                {fileName}
-            </Box>
-            {!groupByDir && dir && (
-                <Box as="span" color="var(--intelligit-pycharm-muted)" fontSize="11px" ml="3px">
-                    {dir}
-                </Box>
+            {checkboxVisibility === "hidden" ? (
+                <Box
+                    as="span"
+                    w={`${CHECKBOX_SLOT_SIZE}px`}
+                    h={`${CHECKBOX_SLOT_SIZE}px`}
+                    flexShrink={0}
+                />
+            ) : (
+                <VscCheckbox
+                    isChecked={isChecked}
+                    onChange={() => onToggle(file.path)}
+                    ariaLabel={file.path}
+                />
             )}
+            <FileTypeIcon status={file.status} icon={file.icon} />
+            <Flex as="span" align="baseline" gap="4px" flex={1} minW={0} overflow="hidden">
+                <Box
+                    as="span"
+                    flexShrink={0}
+                    maxW="100%"
+                    overflow="hidden"
+                    textOverflow="ellipsis"
+                    whiteSpace="nowrap"
+                    textDecoration={file.status === "D" ? "line-through" : undefined}
+                >
+                    {fileName}
+                </Box>
+                {!groupByDir && dir && (
+                    <Box
+                        as="span"
+                        color="var(--intelligit-pycharm-muted)"
+                        fontSize="11px"
+                        flex={1}
+                        minW={0}
+                        overflow="hidden"
+                        textOverflow="ellipsis"
+                        whiteSpace="nowrap"
+                    >
+                        {dir}
+                    </Box>
+                )}
+            </Flex>
             {(file.additions > 0 || file.deletions > 0) && (
                 <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
                     {file.additions > 0 && (
@@ -124,6 +151,6 @@ function FileRowInner({
  * Memoized file row for working-tree entries.
  *
  * The row opens diffs when clicked, leaves checkbox changes to the selection
- * hook, and shows parent directories only when directory grouping is disabled.
+ * hook, and gives the leaf filename priority over its parent path.
  */
 export const FileRow = React.memo(FileRowInner);
