@@ -350,26 +350,6 @@ describe("GitOps", () => {
             ]);
         });
 
-        it("returns file history with expected git args", async () => {
-            const executor = createMockExecutor({
-                "log --max-count=25": "a1b2c3  author  date  msg",
-            });
-            const ops = new GitOps(executor);
-
-            await expect(ops.getFileHistory("src/a.ts", 25)).resolves.toContain("a1b2c3");
-            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                [
-                    "--literal-pathspecs",
-                    "log",
-                    "--max-count=25",
-                    "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
-                    "--follow",
-                    "--",
-                    "src/a.ts",
-                ],
-            ]);
-        });
-
         it("reads file content at a ref for option-like repo-relative paths", async () => {
             const executor = createMockExecutor({
                 "show HEAD:--weird.txt": "content",

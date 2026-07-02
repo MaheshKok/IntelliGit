@@ -176,12 +176,6 @@ export type OutboundMessage =
           type: "deleteFile";
           /** Repository-relative path from the working-tree snapshot. */
           path: string;
-      }
-    | {
-          /** Command opening a text view of Git history for a working-tree file. */
-          type: "showHistory";
-          /** Repository-relative path passed to `git log --follow`. */
-          path: string;
       };
 
 /**

@@ -41,6 +41,7 @@ function FileRowInner({
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = getLeafName(file.path);
     const dir = getParentPath(file.path);
+    const isIgnoredFile = file.status === "!";
 
     return (
         <Flex
@@ -69,6 +70,7 @@ function FileRowInner({
             data-vscode-context={JSON.stringify({
                 webviewSection: "file",
                 filePath: file.path,
+                webviewIgnoredFile: isIgnoredFile,
                 preventDefaultContextMenuItems: true,
             })}
             onClick={(e) => {

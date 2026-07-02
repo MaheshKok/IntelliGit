@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Render ignored files as read-only commit-panel entries without selection checkboxes.
+- Limit ignored-file context menus to Delete and Refresh, and remove the old Show History file action pending a rebuilt history workflow.
 
 ### Fixed
 

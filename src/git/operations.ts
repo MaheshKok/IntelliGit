@@ -760,19 +760,6 @@ export class GitOps {
         const ref = `stash@{${index}}`;
         return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));
     }
-    /** Returns a formatted, follow-renames history listing for a literal repository path. */
-    async getFileHistory(filePath: string, maxCount: number = 50): Promise<string> {
-        return this.executor.run(
-            withLiteralPathspecs([
-                "log",
-                `--max-count=${maxCount}`,
-                "--pretty=format:%h  %<(12,trunc)%an  %<(20)%ai  %s",
-                "--follow",
-                "--",
-                filePath,
-            ]),
-        );
-    }
     /** Returns parsed file-history entries for a literal repository path, following renames. */
     async getFileHistoryEntries(
         filePath: string,

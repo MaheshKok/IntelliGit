@@ -58,6 +58,36 @@ describe("extension manifest", () => {
         }
     });
 
+    it("limits ignored commit-panel file context actions to delete and refresh", () => {
+        const manifest = JSON.parse(
+            readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+        ) as ExtensionManifest;
+        const commands = manifest.contributes?.commands ?? [];
+        const contextMenu = manifest.contributes?.menus?.["webview/context"] ?? [];
+        const itemFor = (command: string): WebviewContextMenuItem | undefined =>
+            contextMenu.find((entry) => entry.command === command);
+
+        expect(commands.some((entry) => entry.command === "intelligit.fileShowHistory")).toBe(
+            false,
+        );
+        expect(itemFor("intelligit.fileShowHistory")).toBeUndefined();
+        expect(itemFor("intelligit.fileDelete")?.when).toBe(
+            "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+        );
+        expect(itemFor("intelligit.fileRefresh")?.when).toBe(
+            "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
+        );
+        expect(itemFor("intelligit.fileRefreshing")).toBeUndefined();
+
+        for (const command of [
+            "intelligit.fileRollback",
+            "intelligit.fileJumpToSource",
+            "intelligit.fileShelve",
+        ]) {
+            expect(itemFor(command)?.when).toContain("&& !webviewIgnoredFile");
+        }
+    });
+
     it("contributes graph git actions to the native sidebar view title", () => {
         const manifest = JSON.parse(
             readFileSync(path.join(process.cwd(), "package.json"), "utf8"),

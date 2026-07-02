@@ -40,7 +40,6 @@ import {
     publishBranchFromPanel,
     selectShelfFromPanel,
     showDiffFromPanel,
-    showHistoryFromPanel,
     showShelfDiffFromPanel,
     stageFilesFromPanel,
     trackUnversionedFilesFromPanel,
@@ -746,9 +745,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "deleteFile":
                 await deleteFileFromPanel(fileActionDeps, msg.path);
-                break;
-            case "showHistory":
-                await showHistoryFromPanel(fileActionDeps, msg.path);
                 break;
         }
     }

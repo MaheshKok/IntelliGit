@@ -1361,7 +1361,6 @@ describe("extension integration", () => {
         await getCommand("intelligit.fileJumpToSource")({ filePath: "src/a.ts" });
         await getCommand("intelligit.fileDelete")({ filePath: "src/a.ts" });
         await getCommand("intelligit.fileShelve")({ filePath: "src/a.ts" });
-        await getCommand("intelligit.fileShowHistory")({ filePath: "src/a.ts" });
         await getCommand("intelligit.fileRefresh")();
         await getCommand("intelligit.openMergeConflict")({
             filePath: "src/conflicted.ts",
@@ -3132,23 +3131,16 @@ describe("extension integration", () => {
 
         await registeredCommands.get("intelligit.fileRollback")?.({ filePath: "../secret.txt" });
         await registeredCommands.get("intelligit.fileShelve")?.({ filePath: "../secret.txt" });
-        await registeredCommands.get("intelligit.fileShowHistory")?.({
-            filePath: "../secret.txt",
-        });
         await registeredCommands.get("intelligit.fileDelete")?.({ filePath: "../secret.txt" });
 
         expect(gitOpsState.rollbackFiles).not.toHaveBeenCalled();
         expect(gitOpsState.shelveSave).not.toHaveBeenCalled();
-        expect(gitOpsState.getFileHistory).not.toHaveBeenCalled();
         expect(deleteFileWithFallback).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Rollback failed: Rejected path escaping repo root"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Shelve failed: Rejected path escaping repo root"),
-        );
-        expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Show history failed: Rejected path escaping repo root"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining(
@@ -3275,8 +3267,6 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.fileRollback")?.({ filePath: "src/a.ts" });
         gitOpsState.shelveSave.mockRejectedValueOnce(new Error("shelve failed"));
         await registeredCommands.get("intelligit.fileShelve")?.({ filePath: "src/a.ts" });
-        gitOpsState.getFileHistory.mockRejectedValueOnce(new Error("history failed"));
-        await registeredCommands.get("intelligit.fileShowHistory")?.({ filePath: "src/a.ts" });
         deleteFileWithFallback.mockResolvedValueOnce(false);
         await registeredCommands.get("intelligit.fileDelete")?.({ filePath: "src/a.ts" });
 
@@ -3305,9 +3295,6 @@ describe("extension integration", () => {
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Shelve failed: shelve failed"),
-        );
-        expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Show history failed: history failed"),
         );
     });
 

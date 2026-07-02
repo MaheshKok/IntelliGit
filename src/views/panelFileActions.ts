@@ -201,25 +201,6 @@ export async function deleteFileFromPanel(
 }
 
 /**
- * Opens a read-only history document for a validated repository-relative file path.
- *
- * History content comes from Git and is shown as a preview editor; an empty Git result becomes a
- * stable fallback message instead of an empty buffer.
- */
-export async function showHistoryFromPanel(
-    deps: PanelFileActionDeps,
-    pathValue: unknown,
-): Promise<void> {
-    const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
-    const history = await deps.gitOps.getFileHistory(filePath);
-    const doc = await vscode.workspace.openTextDocument({
-        content: history || "No history found.",
-        language: "git-commit",
-    });
-    await vscode.window.showTextDocument(doc, { preview: true });
-}
-
-/**
  * Loads a shelf selection, decorates its files, and posts a full panel update.
  *
  * Selecting a shelf does not mutate the repository. It refreshes provider-held shelf state and

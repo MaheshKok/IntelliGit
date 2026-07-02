@@ -718,6 +718,21 @@ describe("webview ui smoke", () => {
         container.innerHTML = shownHtml;
         expect(container.querySelector('input[aria-label="dist/bundle.js"]')).toBeNull();
         expect(container.querySelector('input[aria-label="Ignored Files"]')).toBeNull();
+        const contexts = Array.from(
+            container.querySelectorAll<HTMLElement>("[data-vscode-context]"),
+        ).map((row) => JSON.parse(row.dataset.vscodeContext ?? "{}") as Record<string, unknown>);
+        expect(contexts).toContainEqual(
+            expect.objectContaining({
+                filePath: "src/a.ts",
+                webviewIgnoredFile: false,
+            }),
+        );
+        expect(contexts).toContainEqual(
+            expect.objectContaining({
+                filePath: "dist/bundle.js",
+                webviewIgnoredFile: true,
+            }),
+        );
     });
 
     it("shows parent paths after prioritized file names in flat file rows", () => {
