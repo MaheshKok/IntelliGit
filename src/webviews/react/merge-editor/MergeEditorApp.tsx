@@ -85,7 +85,7 @@ function App() {
             if (segment.type === "conflict") {
                 alignments.set(
                     segment.id,
-                    alignConflictRows(segment.oursLines, segment.theirsLines),
+                    alignConflictRows(segment.oursLines, segment.theirsLines, segment.baseLines),
                 );
             }
         }

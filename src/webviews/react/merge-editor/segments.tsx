@@ -682,9 +682,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lineNumbers={lineNumbers.left}
                         className="conflict-ours"
                         wordHighlight={highlightWords}
-                        compareLines={segment.theirsLines}
+                        compareLines={segment.baseLines}
                         alignedRows={alignment?.ours}
-                        compareRows={alignment?.theirs}
+                        compareRows={alignment?.base}
                     />
                     <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -751,9 +751,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lineNumbers={lineNumbers.right}
                         className="conflict-theirs"
                         wordHighlight={highlightWords}
-                        compareLines={segment.oursLines}
+                        compareLines={segment.baseLines}
                         alignedRows={alignment?.theirs}
-                        compareRows={alignment?.ours}
+                        compareRows={alignment?.base}
                     />
                 </div>
             </div>

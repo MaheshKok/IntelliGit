@@ -1,8 +1,21 @@
 // Parses three file versions (base, ours, theirs) into aligned segments
-// for display in a 3-way merge editor. Uses a simple line-based diff to
-// identify common regions and conflict hunks.
+// for display in a 3-way merge editor. Each side is diffed against the base
+// with an IntelliJ-style line diff (see lineDiff.ts), and the two pairwise
+// diffs are intersected along the base axis to form merge ranges, matching
+// how PyCharm groups changes.
+//
+// Merge grouping follows JetBrains intellij-community
+// (ComparisonMergeUtil.kt FairMergeBuilder), Apache License 2.0.
 
 import { tryAutoMergeLines } from "./autoMerge";
+import {
+    diffLinesFair,
+    normalizeLineForDiff,
+    type EqualRange,
+    type MergeDiffOptions,
+} from "./lineDiff";
+
+export type { MergeDiffOptions } from "./lineDiff";
 
 /**
  * A contiguous span that both sides resolve to the same content.
@@ -27,10 +40,12 @@ export interface ConflictSegment {
     theirsLines: string[];
     baseLines: string[];
     /**
-     * Merged result lines when both sides' token-level edits compose without
-     * touching the same base region (IntelliJ-style "magic resolve"). Present
-     * only on `changeKind === "conflict"` hunks; such hunks default to this
-     * merged result, do not block Apply, and remain user-overridable.
+     * Merged result lines the hunk defaults to without user action: the
+     * token-level composition when both sides' edits touch disjoint base
+     * regions (IntelliJ-style "magic resolve"), or the ours-side text when
+     * both sides made the same change differing only under the comparison
+     * policy (e.g. whitespace). Present only on `changeKind === "conflict"`
+     * hunks; such hunks do not block Apply and remain user-overridable.
      */
     autoResolvedLines?: string[];
 }
@@ -55,13 +70,6 @@ export interface MergeEditorData {
 }
 
 /**
- * Options that alter line comparison without mutating the original displayed lines.
- */
-export interface MergeDiffOptions {
-    ignoreWhitespace?: boolean;
-}
-
-/**
  * Parse three file versions into merge segments by comparing each side against the base version.
  * Equal side output becomes a common segment; any side divergence is emitted as a conflict segment.
  */
@@ -75,10 +83,18 @@ export function parseConflictVersions(
     const oursLines = splitLines(ours);
     const theirsLines = splitLines(theirs);
 
-    const oursEdits = diffLines(baseLines, oursLines, options);
-    const theirsEdits = diffLines(baseLines, theirsLines, options);
+    const oursEqual = diffLinesFair(baseLines, oursLines, options);
+    const theirsEqual = diffLinesFair(baseLines, theirsLines, options);
 
-    return buildSegments(baseLines, oursLines, theirsLines, oursEdits, theirsEdits, options);
+    const ranges = buildMergeRanges(
+        oursEqual,
+        theirsEqual,
+        oursLines.length,
+        baseLines.length,
+        theirsLines.length,
+    );
+    const segments = buildSegments(baseLines, oursLines, theirsLines, ranges, options);
+    return mergeAdjacentCommon(segments);
 }
 
 function splitLines(text: string): string[] {
@@ -112,118 +128,101 @@ export function detectEolMetadata(...versions: string[]): {
     };
 }
 
-// --- Simple LCS-based diff ---
+// --- Merge range construction (FairMergeBuilder port) ---
 
-interface EditRange {
+/**
+ * One divergent region across the three versions, expressed as half-open
+ * spans into each version's line array. Base-equal regions live between
+ * consecutive merge ranges.
+ */
+interface MergeRange {
+    oursStart: number;
+    oursEnd: number;
     baseStart: number;
     baseEnd: number;
-    modStart: number;
-    modEnd: number;
+    theirsStart: number;
+    theirsEnd: number;
 }
 
-function normalizeLineForDiff(line: string, options: MergeDiffOptions): string {
-    if (options.ignoreWhitespace) {
-        // Match editor "ignore whitespace" behavior approximately by collapsing
-        // all whitespace runs and trimming line ends for line-level comparisons.
-        return line.replace(/\s+/g, " ").trim();
-    }
-    return line;
-}
+/**
+ * Intersect the unchanged blocks of both pairwise diffs along the base axis.
+ * Every base region not covered by an intersection becomes one merge range;
+ * side spans are derived from how far each side's cursor advanced.
+ */
+function buildMergeRanges(
+    oursEqual: EqualRange[],
+    theirsEqual: EqualRange[],
+    oursLen: number,
+    baseLen: number,
+    theirsLen: number,
+): MergeRange[] {
+    const ranges: MergeRange[] = [];
+    let processedOurs = 0;
+    let processedBase = 0;
+    let processedTheirs = 0;
 
-function diffLines(base: string[], modified: string[], options: MergeDiffOptions): EditRange[] {
-    const baseComparable = base.map((line) => normalizeLineForDiff(line, options));
-    const modifiedComparable = modified.map((line) => normalizeLineForDiff(line, options));
-    const lcs = computeLCS(baseComparable, modifiedComparable);
-    const edits: EditRange[] = [];
-    let bi = 0;
-    let mi = 0;
-
-    for (const [lb, lm] of lcs) {
-        if (bi < lb || mi < lm) {
-            edits.push({ baseStart: bi, baseEnd: lb, modStart: mi, modEnd: lm });
+    const markEqual = (
+        oursStart: number,
+        baseStart: number,
+        theirsStart: number,
+        count: number,
+    ): void => {
+        if (count === 0) return;
+        if (
+            oursStart !== processedOurs ||
+            baseStart !== processedBase ||
+            theirsStart !== processedTheirs
+        ) {
+            ranges.push({
+                oursStart: processedOurs,
+                oursEnd: oursStart,
+                baseStart: processedBase,
+                baseEnd: baseStart,
+                theirsStart: processedTheirs,
+                theirsEnd: theirsStart,
+            });
         }
-        bi = lb + 1;
-        mi = lm + 1;
-    }
+        processedOurs = oursStart + count;
+        processedBase = baseStart + count;
+        processedTheirs = theirsStart + count;
+    };
 
-    if (bi < base.length || mi < modified.length) {
-        edits.push({ baseStart: bi, baseEnd: base.length, modStart: mi, modEnd: modified.length });
-    }
-
-    return edits;
-}
-
-function computeLCS(a: string[], b: string[]): Array<[number, number]> {
-    const m = a.length;
-    const n = b.length;
-
-    // For very large files, fall back to a simpler approach
-    if (m * n > 10_000_000) {
-        return greedyMonotonicLineMatch(a, b);
-    }
-
-    const stride = n + 1;
-    const dp = new Int32Array((m + 1) * stride);
-    for (let i = m - 1; i >= 0; i--) {
-        for (let j = n - 1; j >= 0; j--) {
-            const idx = i * stride + j;
-            dp[idx] =
-                a[i] === b[j]
-                    ? dp[(i + 1) * stride + (j + 1)] + 1
-                    : Math.max(dp[(i + 1) * stride + j], dp[i * stride + (j + 1)]);
-        }
-    }
-
-    const result: Array<[number, number]> = [];
     let i = 0;
     let j = 0;
-    while (i < m && j < n) {
-        if (a[i] === b[j]) {
-            result.push([i, j]);
+    while (i < oursEqual.length && j < theirsEqual.length) {
+        const r1 = oursEqual[i]; // start1/end1 = base coords, start2/end2 = ours coords
+        const r2 = theirsEqual[j]; // start1/end1 = base coords, start2/end2 = theirs coords
+        if (r1.end1 <= r2.start1) {
             i++;
-            j++;
-        } else if (dp[(i + 1) * stride + j] >= dp[i * stride + (j + 1)]) {
-            i++;
-        } else {
-            j++;
+            continue;
         }
-    }
-    return result;
-}
-
-// This is a fast greedy matcher, not a true LCS. It preserves increasing
-// order and returns a useful approximation for very large inputs.
-function greedyMonotonicLineMatch(a: string[], b: string[]): Array<[number, number]> {
-    const bIndex = new Map<string, number[]>();
-    for (let j = 0; j < b.length; j++) {
-        const list = bIndex.get(b[j]);
-        if (list) list.push(j);
-        else bIndex.set(b[j], [j]);
-    }
-
-    const result: Array<[number, number]> = [];
-    let lastJ = -1;
-    for (let i = 0; i < a.length; i++) {
-        const candidates = bIndex.get(a[i]);
-        if (!candidates) continue;
-        const idx = binarySearchFirstGT(candidates, lastJ);
-        if (idx < candidates.length) {
-            lastJ = candidates[idx];
-            result.push([i, lastJ]);
+        if (r2.end1 <= r1.start1) {
+            j++;
+            continue;
         }
+        const baseStart = Math.max(r1.start1, r2.start1);
+        const baseEnd = Math.min(r1.end1, r2.end1);
+        markEqual(
+            r1.start2 + (baseStart - r1.start1),
+            baseStart,
+            r2.start2 + (baseStart - r2.start1),
+            baseEnd - baseStart,
+        );
+        if (r1.end1 <= r2.end1) i++;
+        else j++;
     }
-    return result;
-}
 
-function binarySearchFirstGT(arr: number[], target: number): number {
-    let lo = 0;
-    let hi = arr.length;
-    while (lo < hi) {
-        const mid = (lo + hi) >>> 1;
-        if (arr[mid] <= target) lo = mid + 1;
-        else hi = mid;
+    if (processedOurs !== oursLen || processedBase !== baseLen || processedTheirs !== theirsLen) {
+        ranges.push({
+            oursStart: processedOurs,
+            oursEnd: oursLen,
+            baseStart: processedBase,
+            baseEnd: baseLen,
+            theirsStart: processedTheirs,
+            theirsEnd: theirsLen,
+        });
     }
-    return lo;
+    return ranges;
 }
 
 // --- Segment builder ---
@@ -232,244 +231,151 @@ function buildSegments(
     baseLines: string[],
     oursLines: string[],
     theirsLines: string[],
-    oursEdits: EditRange[],
-    theirsEdits: EditRange[],
+    ranges: MergeRange[],
     options: MergeDiffOptions,
 ): MergeSegment[] {
-    // Build a per-base-line edit map for each side
-    const baseLen = baseLines.length;
-    const oursMap = buildBaseEditMap(oursEdits);
-    const theirsMap = buildBaseEditMap(theirsEdits);
-
     const segments: MergeSegment[] = [];
     let conflictId = 0;
-    let bi = 0;
+    let baseCursor = 0;
 
-    while (bi <= baseLen) {
-        const cursor = bi;
-        const oursEdit = oursMap.get(bi);
-        const theirsEdit = theirsMap.get(bi);
-
-        if (!oursEdit && !theirsEdit) {
-            // Both sides match base at this line
-            if (bi < baseLen) {
-                const commonStart = bi;
-                while (bi < baseLen && !oursMap.has(bi) && !theirsMap.has(bi)) {
-                    bi++;
-                }
-                segments.push({ type: "common", lines: baseLines.slice(commonStart, bi) });
-            } else {
-                bi++;
-            }
-            continue;
+    for (const range of ranges) {
+        if (range.baseStart > baseCursor) {
+            segments.push({ type: "common", lines: baseLines.slice(baseCursor, range.baseStart) });
         }
-
-        const { endBase, overlappingOurs, overlappingTheirs, hasOursEdit, hasTheirsEdit } =
-            collectCoalescedEdits(oursMap, theirsMap, bi);
-
-        const oLines = buildSideLinesForBaseSpan(
-            baseLines,
-            oursLines,
-            bi,
-            endBase,
-            overlappingOurs,
-        );
-        const tLines = buildSideLinesForBaseSpan(
-            baseLines,
-            theirsLines,
-            bi,
-            endBase,
-            overlappingTheirs,
-        );
-
-        conflictId = appendResolvedSegment(
+        conflictId = appendChangeSegments(
             segments,
-            {
-                baseLines: baseLines.slice(bi, endBase),
-                oursLines: oLines,
-                theirsLines: tLines,
-                hasOursEdit,
-                hasTheirsEdit,
-            },
+            baseLines.slice(range.baseStart, range.baseEnd),
+            oursLines.slice(range.oursStart, range.oursEnd),
+            theirsLines.slice(range.theirsStart, range.theirsEnd),
             conflictId,
             options,
         );
-
-        if (endBase === cursor) {
-            // Pure insertion hunks do not consume base lines. Mark this position as
-            // processed so the loop can continue with the same base cursor.
-            for (const edit of overlappingOurs) oursMap.delete(edit.baseStart);
-            for (const edit of overlappingTheirs) theirsMap.delete(edit.baseStart);
-            // Unconditionally delete the cursor key to guarantee forward progress.
-            // Without this, when both sides have pure-insertion hunks at the same
-            // base position, the while loop could spin indefinitely.
-            oursMap.delete(cursor);
-            theirsMap.delete(cursor);
-        } else {
-            for (const edit of overlappingOurs) oursMap.delete(edit.baseStart);
-            for (const edit of overlappingTheirs) theirsMap.delete(edit.baseStart);
-            bi = endBase;
-        }
+        baseCursor = range.baseEnd;
     }
-
-    return mergeAdjacentCommon(segments);
-}
-
-interface CoalescedEdits {
-    endBase: number;
-    overlappingOurs: EditRange[];
-    overlappingTheirs: EditRange[];
-    hasOursEdit: boolean;
-    hasTheirsEdit: boolean;
-}
-
-function collectCoalescedEdits(
-    oursMap: Map<number, EditRange>,
-    theirsMap: Map<number, EditRange>,
-    baseIndex: number,
-): CoalescedEdits {
-    // Coalesce overlapping edits across both sides so we do not skip a later
-    // edit whose baseStart falls inside the range already expanded by the
-    // opposite side.
-    let endBase = Math.max(
-        oursMap.get(baseIndex)?.baseEnd ?? baseIndex,
-        theirsMap.get(baseIndex)?.baseEnd ?? baseIndex,
-    );
-    let overlappingOurs = collectOverlappingEdits(oursMap, baseIndex, endBase);
-    let overlappingTheirs = collectOverlappingEdits(theirsMap, baseIndex, endBase);
-    while (true) {
-        const nextEndBase = Math.max(
-            endBase,
-            ...overlappingOurs.map((edit) => edit.baseEnd),
-            ...overlappingTheirs.map((edit) => edit.baseEnd),
-        );
-        if (nextEndBase === endBase) break;
-        endBase = nextEndBase;
-        overlappingOurs = collectOverlappingEdits(oursMap, baseIndex, endBase);
-        overlappingTheirs = collectOverlappingEdits(theirsMap, baseIndex, endBase);
+    if (baseCursor < baseLines.length) {
+        segments.push({ type: "common", lines: baseLines.slice(baseCursor) });
     }
-
-    return {
-        endBase,
-        overlappingOurs,
-        overlappingTheirs,
-        hasOursEdit: overlappingOurs.length > 0,
-        hasTheirsEdit: overlappingTheirs.length > 0,
-    };
+    return segments;
 }
 
-interface SegmentResolution {
-    baseLines: string[];
-    oursLines: string[];
-    theirsLines: string[];
-    hasOursEdit: boolean;
-    hasTheirsEdit: boolean;
-}
-
-function appendResolvedSegment(
+/**
+ * Emit segments for one merge range. Byte-identical side spans become common
+ * segments; spans equal only under the comparison policy (ignoreWhitespace)
+ * stay user-overridable as auto-resolved hunks defaulting to ours (IntelliJ
+ * applies the left side for equal changes). For true conflicts,
+ * byte-identical ours/theirs lines at the hunk edges are split off as common
+ * segments (PyCharm-style resolvable trim), keeping only the genuinely
+ * divergent core in the conflict.
+ */
+function appendChangeSegments(
     segments: MergeSegment[],
-    resolution: SegmentResolution,
+    baseSpan: string[],
+    oursSpan: string[],
+    theirsSpan: string[],
     conflictId: number,
     options: MergeDiffOptions,
 ): number {
-    // If both sides made the same change, it's not a conflict
-    if (arraysEqual(resolution.oursLines, resolution.theirsLines, options)) {
-        if (resolution.oursLines.length > 0) {
-            segments.push({ type: "common", lines: resolution.oursLines });
+    // Both sides made the byte-identical change: not a conflict at all.
+    if (arraysEqualStrict(oursSpan, theirsSpan)) {
+        if (oursSpan.length > 0) {
+            segments.push({ type: "common", lines: oursSpan });
         }
         return conflictId;
     }
 
-    const changeKind = getConflictChangeKind(resolution.hasOursEdit, resolution.hasTheirsEdit);
+    const oursChanged = !arraysEqual(oursSpan, baseSpan, options);
+    const theirsChanged = !arraysEqual(theirsSpan, baseSpan, options);
+
+    // Equal under the comparison policy but byte-different (only reachable
+    // with ignoreWhitespace). Never silently drop one side's bytes: keep the
+    // hunk user-overridable and default it to the ours representation.
+    if (arraysEqual(oursSpan, theirsSpan, options)) {
+        if (!oursChanged && !theirsChanged) {
+            // Whitespace-only drift on every side: keep base's formatting,
+            // matching how base-equal regions outside merge ranges render.
+            if (baseSpan.length > 0) {
+                segments.push({ type: "common", lines: baseSpan });
+            }
+            return conflictId;
+        }
+        const changeKind = getConflictChangeKind(oursChanged, theirsChanged);
+        segments.push({
+            type: "conflict",
+            id: conflictId,
+            changeKind,
+            oursLines: oursSpan,
+            theirsLines: theirsSpan,
+            baseLines: baseSpan,
+            ...(changeKind === "conflict" ? { autoResolvedLines: oursSpan } : {}),
+        });
+        return conflictId + 1;
+    }
+
+    let prefix = 0;
+    let suffix = 0;
+    if (oursChanged && theirsChanged) {
+        ({ prefix, suffix } = computeEqualEnds(oursSpan, theirsSpan));
+    }
+
+    if (prefix > 0) {
+        segments.push({ type: "common", lines: oursSpan.slice(0, prefix) });
+    }
+
+    const coreOurs = oursSpan.slice(prefix, oursSpan.length - suffix);
+    const coreTheirs = theirsSpan.slice(prefix, theirsSpan.length - suffix);
+    // Re-derive the kind after trimming: a shared insertion prefix/suffix can
+    // reduce a conflict to a one-sided change (the base span stays with the core).
+    const changeKind = getConflictChangeKind(
+        !arraysEqual(coreOurs, baseSpan, options),
+        !arraysEqual(coreTheirs, baseSpan, options),
+    );
     const autoResolvedLines =
         changeKind === "conflict"
-            ? (tryAutoMergeLines(
-                  resolution.baseLines,
-                  resolution.oursLines,
-                  resolution.theirsLines,
-              ) ?? undefined)
+            ? (tryAutoMergeLines(baseSpan, coreOurs, coreTheirs) ?? undefined)
             : undefined;
 
     segments.push({
         type: "conflict",
         id: conflictId,
         changeKind,
-        oursLines: resolution.oursLines,
-        theirsLines: resolution.theirsLines,
-        baseLines: resolution.baseLines,
+        oursLines: coreOurs,
+        theirsLines: coreTheirs,
+        baseLines: baseSpan,
         ...(autoResolvedLines !== undefined ? { autoResolvedLines } : {}),
     });
+
+    if (suffix > 0) {
+        segments.push({ type: "common", lines: oursSpan.slice(oursSpan.length - suffix) });
+    }
     return conflictId + 1;
+}
+
+/**
+ * Longest byte-identical common prefix/suffix (in lines) between ours and
+ * theirs, without overlap. Used to trim identical edges out of a conflict
+ * hunk. Deliberately byte-strict even under ignoreWhitespace: policy-equal
+ * but byte-different lines stay inside the conflict core so a "theirs"
+ * resolution keeps theirs' exact bytes.
+ */
+function computeEqualEnds(ours: string[], theirs: string[]): { prefix: number; suffix: number } {
+    const maxTrim = Math.min(ours.length, theirs.length);
+    let prefix = 0;
+    while (prefix < maxTrim && ours[prefix] === theirs[prefix]) {
+        prefix++;
+    }
+    let suffix = 0;
+    while (
+        suffix < maxTrim - prefix &&
+        ours[ours.length - 1 - suffix] === theirs[theirs.length - 1 - suffix]
+    ) {
+        suffix++;
+    }
+    return { prefix, suffix };
 }
 
 function getConflictChangeKind(hasOursEdit: boolean, hasTheirsEdit: boolean): ConflictChangeKind {
     if (hasOursEdit && hasTheirsEdit) return "conflict";
     return hasOursEdit ? "ours-only" : "theirs-only";
-}
-
-function buildBaseEditMap(edits: EditRange[]): Map<number, EditRange> {
-    const map = new Map<number, EditRange>();
-    for (const edit of edits) {
-        // Map the edit to the base line where it starts.
-        // Insertions (baseStart === baseEnd) are mapped to the insertion point.
-        map.set(edit.baseStart, edit);
-    }
-    return map;
-}
-
-function editTouchesSpan(edit: EditRange, spanStart: number, spanEnd: number): boolean {
-    if (edit.baseStart === edit.baseEnd) {
-        if (spanEnd === spanStart) return edit.baseStart === spanStart;
-        return edit.baseStart >= spanStart && edit.baseStart < spanEnd;
-    }
-    if (spanEnd === spanStart) return edit.baseStart === spanStart;
-    return edit.baseStart < spanEnd && edit.baseEnd > spanStart;
-}
-
-function collectOverlappingEdits(
-    editMap: Map<number, EditRange>,
-    spanStart: number,
-    spanEnd: number,
-): EditRange[] {
-    const edits: EditRange[] = [];
-    for (const edit of editMap.values()) {
-        if (editTouchesSpan(edit, spanStart, spanEnd)) {
-            edits.push(edit);
-        }
-    }
-    edits.sort((a, b) => a.baseStart - b.baseStart || a.modStart - b.modStart);
-    return edits;
-}
-
-function buildSideLinesForBaseSpan(
-    baseLines: string[],
-    modifiedLines: string[],
-    spanStart: number,
-    spanEnd: number,
-    edits: EditRange[],
-): string[] {
-    if (edits.length === 0) {
-        return baseLines.slice(spanStart, spanEnd);
-    }
-
-    const lines: string[] = [];
-    let baseCursor = spanStart;
-
-    for (const edit of edits) {
-        if (edit.baseStart > baseCursor) {
-            lines.push(...baseLines.slice(baseCursor, Math.min(edit.baseStart, spanEnd)));
-        }
-        lines.push(...modifiedLines.slice(edit.modStart, edit.modEnd));
-        if (edit.baseEnd > baseCursor) {
-            baseCursor = edit.baseEnd;
-        }
-    }
-
-    if (baseCursor < spanEnd) {
-        lines.push(...baseLines.slice(baseCursor, spanEnd));
-    }
-
-    return lines;
 }
 
 function arraysEqual(a: string[], b: string[], options: MergeDiffOptions): boolean {
@@ -481,15 +387,16 @@ function arraysEqual(a: string[], b: string[], options: MergeDiffOptions): boole
     return true;
 }
 
+function arraysEqualStrict(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((line, i) => line === b[i]);
+}
+
 function mergeAdjacentCommon(segments: MergeSegment[]): MergeSegment[] {
     const result: MergeSegment[] = [];
     for (const seg of segments) {
-        if (
-            seg.type === "common" &&
-            result.length > 0 &&
-            result[result.length - 1].type === "common"
-        ) {
-            (result[result.length - 1] as CommonSegment).lines.push(...seg.lines);
+        const last = result[result.length - 1];
+        if (seg.type === "common" && last && last.type === "common") {
+            result[result.length - 1] = { type: "common", lines: [...last.lines, ...seg.lines] };
         } else {
             result.push(seg);
         }
