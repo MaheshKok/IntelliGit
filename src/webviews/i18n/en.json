@@ -181,6 +181,7 @@
     "merge.kind.leftOnly": "Left only",
     "merge.kind.rightOnly": "Right only",
     "merge.kind.conflict": "Conflict",
+    "merge.action.abortMerge": "Abort Merge",
     "merge.hunk.detail": "L:{left} R:{right} Result: {result}",
     "merge.hunk.useLeft": "Use left block",
     "merge.hunk.left": "Left",

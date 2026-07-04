@@ -423,5 +423,9 @@
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "Introduza apenas um nome de anfitrião, como gitlab.example.com (sem https:// ou caminho).",
     "Could not clear the saved token.": "Não foi possível limpar o token guardado.",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
-    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
+    "Abort Merge": "Abort Merge",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
+    "Aborting merge...": "Aborting merge...",
+    "Merge aborted.": "Merge aborted."
 }

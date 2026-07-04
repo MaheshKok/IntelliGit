@@ -28,6 +28,10 @@ export type OutboundMessage =
           type: "refresh";
       }
     | {
+          /** Command aborting the active merge after host confirmation. */
+          type: "abortMerge";
+      }
+    | {
           /** View option controlling whether ignored files are included in working-tree snapshots. */
           type: "setShowIgnoredFiles";
           /** True asks the host to include `git status --ignored` rows; false restores the default. */

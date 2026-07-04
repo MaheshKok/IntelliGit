@@ -180,6 +180,7 @@ describe("CommitPanelApp integration", () => {
             (tab) => tab.textContent?.trim() ?? "",
         );
         expect(tabListLabels).toEqual(["Commit", "Stash (1)"]);
+        expect(document.querySelector('button[aria-label="Abort Merge"]')).toBeNull();
 
         fireClick(document.querySelector('button[aria-label="Refresh"]'));
         fireClick(document.querySelector('button[aria-label="Rollback"]'));
@@ -220,6 +221,45 @@ describe("CommitPanelApp integration", () => {
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "update",
+                        files: [
+                            {
+                                path: "src/conflicted.ts",
+                                status: "U",
+                                staged: false,
+                                additions: 1,
+                                deletions: 1,
+                            },
+                        ],
+                        stashes: [
+                            {
+                                index: 0,
+                                message: "On main: shelf-work",
+                                date: "2026-02-19T00:00:00Z",
+                                hash: "stashhash",
+                            },
+                        ],
+                        shelfFiles: [
+                            {
+                                path: "src/webviews/react/CommitPanelApp.tsx",
+                                status: "M",
+                                staged: false,
+                                additions: 3,
+                                deletions: 1,
+                            },
+                        ],
+                        selectedShelfIndex: 0,
+                    },
+                }),
+            );
+        });
+        await flush();
+        fireClick(document.querySelector('button[aria-label="Abort Merge"]'));
 
         act(() => {
             window.dispatchEvent(
@@ -302,6 +342,7 @@ describe("CommitPanelApp integration", () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "push" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "shelfApply", index: 0 }),
         );

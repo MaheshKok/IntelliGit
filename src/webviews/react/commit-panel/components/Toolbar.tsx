@@ -1,7 +1,7 @@
 // Toolbar with commit-view Git and file actions.
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
+import { Button, Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { IoMdRefresh } from "react-icons/io";
 import { LuEye } from "react-icons/lu";
 import { getSettings } from "../../shared/settings";
@@ -21,6 +21,8 @@ interface Props {
     onShowDiff: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
+    showAbortMerge: boolean;
+    onAbortMerge: () => void;
 }
 
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
@@ -44,6 +46,8 @@ export function Toolbar({
     onShowDiff,
     onExpandAll,
     onCollapseAll,
+    showAbortMerge,
+    onAbortMerge,
 }: Props): React.ReactElement {
     const [viewMenuPosition, setViewMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const viewMenuItems = useMemo<MenuItem[]>(
@@ -137,6 +141,16 @@ export function Toolbar({
             <ToolbarButton label={t("common.collapseAll")} onClick={onCollapseAll} color="#f3b1cf">
                 <CollapseAllIconGlyph />
             </ToolbarButton>
+            {showAbortMerge ? (
+                <ToolbarButton
+                    label={t("merge.action.abortMerge")}
+                    onClick={onAbortMerge}
+                    color="#ff6b6b"
+                    showLabel
+                >
+                    <path fill="currentColor" d="M4 4h8v8H4z" />
+                </ToolbarButton>
+            ) : null}
         </Flex>
     );
 }
@@ -162,6 +176,7 @@ function ToolbarButton({
     color,
     spin,
     disabled,
+    showLabel,
     icon,
     children,
 }: {
@@ -170,6 +185,7 @@ function ToolbarButton({
     color?: string;
     spin?: boolean;
     disabled?: boolean;
+    showLabel?: boolean;
     icon?: React.ReactElement<{
         "aria-hidden"?: boolean;
         focusable?: string | boolean;
@@ -213,21 +229,47 @@ function ToolbarButton({
             openDelay={hoverDelay}
             isDisabled={!tooltipsEnabled}
         >
-            <IconButton
-                aria-label={label}
-                variant="toolbarGhost"
-                size="sm"
-                onClick={disabled ? undefined : onClick}
-                isDisabled={disabled}
-                _disabled={{
-                    bg: "rgba(255,255,255,0.03)",
-                    color: "var(--vscode-disabledForeground)",
-                    cursor: "default",
-                    opacity: 0.55,
-                }}
-                data-refreshing={spin ? "true" : undefined}
-                icon={renderedIcon}
-            />
+            {showLabel ? (
+                <Button
+                    aria-label={label}
+                    variant="toolbarGhost"
+                    size="sm"
+                    onClick={disabled ? undefined : onClick}
+                    isDisabled={disabled}
+                    _disabled={{
+                        bg: "rgba(255,255,255,0.03)",
+                        color: "var(--vscode-disabledForeground)",
+                        cursor: "default",
+                        opacity: 0.55,
+                    }}
+                    data-refreshing={spin ? "true" : undefined}
+                    leftIcon={renderedIcon}
+                    minW="auto"
+                    h="26px"
+                    px="8px"
+                    fontSize="12px"
+                    fontWeight={600}
+                    color={resolvedColor}
+                >
+                    {label}
+                </Button>
+            ) : (
+                <IconButton
+                    aria-label={label}
+                    variant="toolbarGhost"
+                    size="sm"
+                    onClick={disabled ? undefined : onClick}
+                    isDisabled={disabled}
+                    _disabled={{
+                        bg: "rgba(255,255,255,0.03)",
+                        color: "var(--vscode-disabledForeground)",
+                        cursor: "default",
+                        opacity: 0.55,
+                    }}
+                    data-refreshing={spin ? "true" : undefined}
+                    icon={renderedIcon}
+                />
+            )}
         </Tooltip>
     );
 }

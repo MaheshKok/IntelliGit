@@ -423,5 +423,9 @@
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "仅输入主机名，例如 gitlab.example.com（不要 https:// 或路径）。",
     "Could not clear the saved token.": "无法清除已保存的令牌。",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
-    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
+    "Abort Merge": "Abort Merge",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
+    "Aborting merge...": "Aborting merge...",
+    "Merge aborted.": "Merge aborted."
 }

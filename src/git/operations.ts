@@ -504,6 +504,12 @@ export class GitOps {
     async pullRebase(): Promise<string> {
         return this.executor.run(["pull", "--rebase"]);
     }
+
+    /** Aborts the active merge and restores Git's pre-merge index and working tree state. */
+    async abortMerge(): Promise<string> {
+        return this.executor.run(["merge", "--abort"]);
+    }
+
     /**
      * Fetches remote refs for the current repository without changing local checkout state.
      *

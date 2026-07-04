@@ -488,6 +488,8 @@ describe("webview ui smoke", () => {
                     onShowDiff={noop}
                     onExpandAll={noop}
                     onCollapseAll={noop}
+                    showAbortMerge={true}
+                    onAbortMerge={noop}
                 />
                 <CommitArea
                     commitMessage="feat: message"
@@ -520,6 +522,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
+        expect(html).toContain("Abort Merge");
         expect(html).toContain("Branch: main -&gt; origin/main");
         expect(html).not.toContain("Commit and Push");
         const commitActionIndex = html.indexOf("Commit");
@@ -636,6 +639,8 @@ describe("webview ui smoke", () => {
                 onShowDiff={noop}
                 onExpandAll={noop}
                 onCollapseAll={noop}
+                showAbortMerge={false}
+                onAbortMerge={noop}
             />,
         );
         expect(refreshingToolbarHtml).toContain('data-refreshing="true"');

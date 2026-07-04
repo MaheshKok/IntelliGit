@@ -223,5 +223,6 @@
     "common.directory": "目录",
     "common.show": "显示",
     "status.ignored": "已忽略",
-    "commitPanel.ignoredFiles": "已忽略文件"
+    "commitPanel.ignoredFiles": "已忽略文件",
+    "merge.action.abortMerge": "Abort Merge"
 }

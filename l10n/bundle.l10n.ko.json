@@ -423,5 +423,9 @@
     "Enter a host name only, like gitlab.example.com (no https:// or path).": "gitlab.example.com처럼 호스트 이름만 입력하세요 (https://나 경로 제외).",
     "Could not clear the saved token.": "저장된 토큰을 지울 수 없습니다.",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
-    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter."
+    "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
+    "Abort Merge": "Abort Merge",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
+    "Aborting merge...": "Aborting merge...",
+    "Merge aborted.": "Merge aborted."
 }

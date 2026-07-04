@@ -99,6 +99,7 @@ export function CommitTab({
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
     const [isRefreshFeedbackActive, setIsRefreshFeedbackActive] = useState(false);
     const refreshFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const hasMergeConflicts = files.some((file) => file.status === "U");
 
     const clearRefreshFeedbackTimer = useCallback(() => {
         if (refreshFeedbackTimerRef.current) {
@@ -151,6 +152,10 @@ export function CommitTab({
         }
     }, [vscode, checkedPaths]);
 
+    const handleAbortMerge = useCallback(() => {
+        vscode.postMessage({ type: "abortMerge" });
+    }, [vscode]);
+
     const handleFileClick = useCallback(
         (path: string) => {
             vscode.postMessage({ type: "showDiff", path });
@@ -179,6 +184,8 @@ export function CommitTab({
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
                 onCollapseAll={() => setCollapseAllSignal((s) => s + 1)}
+                showAbortMerge={hasMergeConflicts}
+                onAbortMerge={handleAbortMerge}
             />
 
             {isAmend ? (

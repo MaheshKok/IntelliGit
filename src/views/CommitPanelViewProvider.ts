@@ -8,6 +8,7 @@ import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile, StashEntry 
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
+import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import type { InboundMessage } from "../webviews/protocol/commitPanelMessages";
 import type {
     BranchAction,
@@ -575,6 +576,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "refresh":
                 await this.refreshFromUserAction();
                 break;
+            case "abortMerge":
+                await this.abortMerge();
+                break;
             case "setShowIgnoredFiles":
                 this.showIgnoredFiles = msg.showIgnoredFiles === true;
                 await this.refreshData(true);
@@ -748,6 +752,27 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
         }
     }
+
+    /** Confirms and aborts an active merge, then refreshes all conflict and working-tree surfaces. */
+    private async abortMerge(): Promise<void> {
+        const abortAction = vscode.l10n.t("Abort Merge");
+        const selected = await vscode.window.showWarningMessage(
+            vscode.l10n.t("Abort the current merge? Local conflict resolutions will be discarded."),
+            { modal: true },
+            abortAction,
+        );
+        if (selected !== abortAction) return;
+
+        await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
+            await this.gitOps.abortMerge();
+        });
+        showTimedInformationMessage(vscode.l10n.t("Merge aborted."));
+        await this.refreshData(false);
+        await this.refreshGraphData();
+        this._onDidChangeWorkingTree.fire();
+        await vscode.commands.executeCommand("intelligit.mergeConflictsRefresh");
+    }
+
     /** Updates cached file count while branch info remains owned by the webview header. */
     private updateViewCount(count: number): void {
         this.lastFileCount = count;
