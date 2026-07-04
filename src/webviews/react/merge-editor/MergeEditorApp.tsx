@@ -40,8 +40,7 @@ import {
     type SegmentPaneLineNumbers,
     type OverviewMarker,
 } from "./segments";
-import { buildAlignedLineNumberValues, buildLineNumberValues } from "./lineNumbers";
-import { alignConflictRows, type AlignedHunkRows } from "./rowAlignment";
+import { buildLineNumberValues } from "./lineNumbers";
 import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
@@ -77,20 +76,45 @@ function App() {
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
-    // Row alignments depend only on the hunk contents, never on resolutions or
-    // edits, so they are computed once per data load and shared by reference.
-    const hunkAlignments = useMemo(() => {
-        const alignments = new Map<number, AlignedHunkRows>();
-        for (const segment of segments) {
-            if (segment.type === "conflict") {
-                alignments.set(
-                    segment.id,
-                    alignConflictRows(segment.oursLines, segment.theirsLines, segment.baseLines),
-                );
-            }
+    // Every code block is its own horizontal scroll container; mirror the
+    // scrolled offset onto all blocks so the three panes move together like
+    // PyCharm's synchronized editors. Vertical scrolls reapply the shared
+    // offset too: segments use content-visibility auto, so blocks revealed
+    // by scrolling come back at scrollLeft 0 and must be caught up.
+    const scrollSyncRef = useRef<{ raf: number; left: number }>({ raf: 0, left: 0 });
+    const handlePaneScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement | null;
+        if (!target) return;
+        const sync = scrollSyncRef.current;
+        if (target.classList.contains("code-lines")) {
+            const left = target.scrollLeft;
+            // A pane already at the shared offset is a programmatic echo of
+            // a previous sync pass; a pane clamped at its own max while the
+            // shared offset lies further right is a clamped echo. Adopting
+            // either as the new offset would yank wider panes back.
+            if (Math.abs(left - sync.left) < 1) return;
+            const max = target.scrollWidth - target.clientWidth;
+            if (left > max - 1 && sync.left > max - 1) return;
+            sync.left = left;
+        } else if (sync.left === 0) {
+            return;
         }
-        return alignments;
-    }, [segments]);
+        if (sync.raf) return;
+        sync.raf = requestAnimationFrame(() => {
+            sync.raf = 0;
+            const left = sync.left;
+            const panes = document.querySelectorAll<HTMLElement>(".merge-content .code-lines");
+            for (const pane of panes) {
+                if (Math.abs(pane.scrollLeft - left) >= 1) pane.scrollLeft = left;
+            }
+        });
+    }, []);
+    useEffect(() => {
+        const sync = scrollSyncRef.current;
+        return () => {
+            if (sync.raf) cancelAnimationFrame(sync.raf);
+        };
+    }, []);
 
     const renderedSegments = useMemo(() => {
         let visualLineCursor = 1;
@@ -105,7 +129,6 @@ function App() {
             let lineCount: number;
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
-            let alignment: AlignedHunkRows | undefined;
             let renderKey: string;
 
             if (segment.type === "common") {
@@ -141,19 +164,14 @@ function App() {
                 const theirsLen = segment.theirsLines.length;
                 const baseLen = segment.baseLines.length;
                 const resultLen = resultLines.length;
-                alignment = hunkAlignments.get(segment.id);
 
-                lineCount = Math.max(alignment?.rowCount ?? 0, resultLen, 1);
+                // Panes render contiguously from the hunk top (PyCharm-style),
+                // so the hunk height is simply the tallest pane.
+                lineCount = Math.max(oursLen, theirsLen, resultLen, 1);
                 startLine = visualLineCursor;
                 lineNumbers = {
                     left: {
-                        primary: alignment
-                            ? buildAlignedLineNumberValues(
-                                  oursCursor,
-                                  alignment.oursLineIndex,
-                                  lineCount,
-                              )
-                            : buildLineNumberValues(oursCursor, oursLen, lineCount),
+                        primary: buildLineNumberValues(oursCursor, oursLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     middle: {
@@ -161,13 +179,7 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     right: {
-                        primary: alignment
-                            ? buildAlignedLineNumberValues(
-                                  theirsCursor,
-                                  alignment.theirsLineIndex,
-                                  lineCount,
-                              )
-                            : buildLineNumberValues(theirsCursor, theirsLen, lineCount),
+                        primary: buildLineNumberValues(theirsCursor, theirsLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                 };
@@ -198,12 +210,11 @@ function App() {
                 startLine,
                 lineCount,
                 lineNumbers,
-                alignment,
                 conflictOrdinal: computedConflictOrdinal,
                 trueConflictOrdinal: computedTrueConflictOrdinal,
             };
         });
-    }, [segments, state.resolutions, state.edits, hunkAlignments]);
+    }, [segments, state.resolutions, state.edits]);
 
     const conflictSegments = useMemo(
         () => segments.filter((seg): seg is ConflictSegment => seg.type === "conflict"),
@@ -702,14 +713,13 @@ function App() {
             </div>
 
             <div className="merge-content-shell">
-                <div className="merge-content">
+                <div className="merge-content" onScrollCapture={handlePaneScroll}>
                     {renderedSegments.map(
                         ({
                             segment,
                             renderKey,
                             lineCount,
                             lineNumbers,
-                            alignment,
                             conflictOrdinal,
                             trueConflictOrdinal,
                         }) =>
@@ -729,7 +739,6 @@ function App() {
                                     editedLines={state.edits[segment.id]}
                                     lineCount={lineCount}
                                     lineNumbers={lineNumbers}
-                                    alignment={alignment}
                                     onResolve={handleResolve}
                                     onEditResult={handleEditResult}
                                     onSelect={setActiveConflictId}

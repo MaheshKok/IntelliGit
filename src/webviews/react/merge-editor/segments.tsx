@@ -23,7 +23,6 @@ import {
 } from "../../../mergeEditor/wordDiff";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
-import type { AlignedHunkRows } from "./rowAlignment";
 import type { LineNumberValue } from "./lineNumbers";
 import { t } from "../shared/i18n";
 
@@ -185,31 +184,12 @@ interface CodeBlockProps {
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
-    /**
-     * Pre-aligned rows for this pane where `null` marks an intra-hunk spacer
-     * row. When present these take precedence over `lines` for layout, so
-     * similar lines sit on the same row as the opposite pane.
-     */
-    alignedRows?: Array<string | null>;
-    /**
-     * Opposite-pane rows on the same row grid as `alignedRows`. Row `i`
-     * compares directly against `compareRows[i]`, replacing the heuristic
-     * compare-line alignment used for unaligned blocks.
-     */
-    compareRows?: Array<string | null>;
 }
 
-/** Pads an aligned row array with trailing spacer rows up to `count`. */
-function padAlignedRows(rows: Array<string | null>, count: number): Array<string | null> {
-    const padded = [...rows];
-    while (padded.length < count) padded.push(null);
-    return padded;
-}
-
-function rowKey(lineNumbers: LineNumberSpec, line: string | null, row: number): string {
+function rowKey(lineNumbers: LineNumberSpec, line: string, row: number): string {
     const primary = lineNumbers.primary[row] ?? "gap";
     const secondary = lineNumbers.secondary?.[row] ?? "gap";
-    return `${primary}-${secondary}-${row}-${line ?? "spacer"}`;
+    return `${primary}-${secondary}-${row}-${line}`;
 }
 
 const CodeBlock = React.memo(
@@ -220,22 +200,16 @@ const CodeBlock = React.memo(
         className,
         wordHighlight,
         compareLines,
-        alignedRows,
-        compareRows,
     }: CodeBlockProps) {
-        const padded = useMemo<Array<string | null>>(
-            () =>
-                alignedRows ? padAlignedRows(alignedRows, lineCount) : padLines(lines, lineCount),
-            [alignedRows, lines, lineCount],
-        );
+        // PyCharm keeps each pane's hunk content contiguous from the top; the
+        // block highlight stretches over trailing filler rows instead of
+        // scattering lines to match the opposite pane.
+        const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
         const paddedCompare = useMemo(() => {
-            if (alignedRows && compareRows) {
-                return padAlignedRows(compareRows, lineCount).map((row) => row ?? "");
-            }
             if (!compareLines) return undefined;
             const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
             return padLines(alignedCompare, lineCount);
-        }, [alignedRows, compareRows, compareLines, lineCount, lines]);
+        }, [compareLines, lineCount, lines]);
 
         return (
             <div
@@ -243,24 +217,15 @@ const CodeBlock = React.memo(
             >
                 <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
                 <div className="code-lines">
-                    {padded.map((line, i) =>
-                        line === null ? (
-                            <div
-                                key={rowKey(lineNumbers, line, i)}
-                                className="code-line spacer-line"
-                            >
-                                {" "}
-                            </div>
-                        ) : (
-                            <div key={rowKey(lineNumbers, line, i)} className="code-line">
-                                {wordHighlight && paddedCompare ? (
-                                    <WordDiffLine line={line} compareLine={paddedCompare[i]} />
-                                ) : (
-                                    <HighlightedLine line={line} />
-                                )}
-                            </div>
-                        ),
-                    )}
+                    {padded.map((line, i) => (
+                        <div key={rowKey(lineNumbers, line, i)} className="code-line">
+                            {wordHighlight && paddedCompare ? (
+                                <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                            ) : (
+                                <HighlightedLine line={line} />
+                            )}
+                        </div>
+                    ))}
                 </div>
             </div>
         );
@@ -271,8 +236,6 @@ const CodeBlock = React.memo(
         prev.className === next.className &&
         prev.wordHighlight === next.wordHighlight &&
         prev.compareLines === next.compareLines &&
-        prev.alignedRows === next.alignedRows &&
-        prev.compareRows === next.compareRows &&
         lineNumberSpecEqual(prev.lineNumbers, next.lineNumbers),
 );
 
@@ -499,11 +462,6 @@ export interface ConflictSectionProps {
     editedLines: string[] | undefined;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
-    /**
-     * Intra-hunk row alignment shared by the ours and theirs panes. Optional
-     * so callers without alignment data fall back to top-aligned columns.
-     */
-    alignment?: AlignedHunkRows;
     onResolve: (id: number, resolution: HunkResolution) => void;
     onEditResult: (id: number, lines: string[]) => void;
     onSelect: (id: number) => void;
@@ -527,7 +485,6 @@ export const ConflictSection = React.memo(function ConflictSection({
     editedLines,
     lineCount,
     lineNumbers,
-    alignment,
     onResolve,
     onEditResult,
     onSelect,
@@ -576,6 +533,19 @@ export const ConflictSection = React.memo(function ConflictSection({
             : resolution === "theirs"
               ? segment.oursLines
               : segment.baseLines;
+    // PyCharm colors one-sided hunks by what happened to the base region:
+    // pure insertions are green, deletions gray, and modifications blue.
+    // True conflicts stay red regardless, so they carry no variant class.
+    const changedSideLines =
+        segment.changeKind === "ours-only" ? segment.oursLines : segment.theirsLines;
+    const sideVariant =
+        segment.changeKind === "conflict"
+            ? ""
+            : segment.baseLines.length === 0
+              ? "variant-insertion"
+              : changedSideLines.length === 0
+                ? "variant-deletion"
+                : "variant-modification";
 
     return (
         <div
@@ -592,6 +562,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 "segment",
                 "segment-conflict",
                 `change-${segment.changeKind}`,
+                sideVariant,
                 isResolved ? "resolved" : "unresolved",
                 isAutoMerged ? "auto-merged" : "",
                 isActive ? "active" : "",
@@ -683,8 +654,6 @@ export const ConflictSection = React.memo(function ConflictSection({
                         className="conflict-ours"
                         wordHighlight={highlightWords}
                         compareLines={segment.baseLines}
-                        alignedRows={alignment?.ours}
-                        compareRows={alignment?.base}
                     />
                     <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                         <button
@@ -752,8 +721,6 @@ export const ConflictSection = React.memo(function ConflictSection({
                         className="conflict-theirs"
                         wordHighlight={highlightWords}
                         compareLines={segment.baseLines}
-                        alignedRows={alignment?.theirs}
-                        compareRows={alignment?.base}
                     />
                 </div>
             </div>
@@ -774,7 +741,6 @@ function conflictSectionPropsEqual(
         prev.resolution === next.resolution &&
         prev.editedLines === next.editedLines &&
         prev.lineCount === next.lineCount &&
-        prev.alignment === next.alignment &&
         prev.onResolve === next.onResolve &&
         prev.onEditResult === next.onEditResult &&
         prev.onSelect === next.onSelect &&

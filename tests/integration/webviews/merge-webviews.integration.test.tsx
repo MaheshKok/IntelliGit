@@ -639,7 +639,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector('[data-conflict-id="1"]')?.className).toContain("active");
     });
 
-    it("aligns shared hunk lines across panes with spacer rows", async () => {
+    it("keeps hunk pane content contiguous with filler rows only at the bottom", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -662,7 +662,7 @@ describe("MergeEditorApp", () => {
                         id: 0,
                         changeKind: "conflict",
                         oursLines: ["added_a();", "shared();"],
-                        theirsLines: ["shared();", "added_b();"],
+                        theirsLines: ["shared();", "added_b();", "tail();"],
                         baseLines: ["shared();"],
                     },
                 ],
@@ -677,22 +677,28 @@ describe("MergeEditorApp", () => {
             document.querySelectorAll(".conflict-theirs .code-lines .code-line"),
         );
 
-        // Both panes render the same 3-row grid: the shared line pairs up and
-        // each one-sided addition pushes a spacer into the opposite pane.
+        // PyCharm-style layout: each pane renders its own lines contiguously
+        // from the hunk top; the shorter side pads with plain filler rows at
+        // the bottom so the change block stretches to the hunk height. Lines
+        // are never scattered mid-hunk to line up with the opposite pane.
         expect(oursRows).toHaveLength(3);
         expect(theirsRows).toHaveLength(3);
         expect(oursRows[0].textContent).toContain("added_a();");
         expect(oursRows[1].textContent).toContain("shared();");
-        expect(oursRows[2].className).toContain("spacer-line");
-        expect(theirsRows[0].className).toContain("spacer-line");
-        expect(theirsRows[1].textContent).toContain("shared();");
-        expect(theirsRows[2].textContent).toContain("added_b();");
+        expect(oursRows[2].textContent?.trim()).toBe("");
+        expect(theirsRows[0].textContent).toContain("shared();");
+        expect(theirsRows[1].textContent).toContain("added_b();");
+        expect(theirsRows[2].textContent).toContain("tail();");
 
-        // Line numbers skip spacer rows instead of counting them.
+        // Line numbers stay sequential; filler rows render blank numbers.
+        const oursNumbers = Array.from(
+            document.querySelectorAll(".conflict-ours .line-number-primary"),
+        ).map((el) => el.textContent?.trim());
+        expect(oursNumbers).toEqual(["1", "2", ""]);
         const theirsNumbers = Array.from(
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
-        expect(theirsNumbers).toEqual(["", "1", "2"]);
+        expect(theirsNumbers).toEqual(["1", "2", "3"]);
     });
 
     it("treats auto-merged hunks as resolved and applies the merged lines", async () => {

@@ -19,20 +19,3 @@ export function buildLineNumberValues(
     }
     return values;
 }
-
-/**
- * Builds displayed line numbers from an intra-hunk row alignment: rows mapped
- * to a source line get sequential numbers while spacer rows render blank.
- */
-export function buildAlignedLineNumberValues(
-    startAt: number,
-    lineIndex: Array<number | null>,
-    rowCount: number,
-): LineNumberValue[] {
-    const values: LineNumberValue[] = [];
-    for (let i = 0; i < rowCount; i++) {
-        const sourceIndex = i < lineIndex.length ? lineIndex[i] : null;
-        values.push(sourceIndex === null ? null : startAt + sourceIndex);
-    }
-    return values;
-}

@@ -8,31 +8,34 @@
     --merge-warning: #f2c572;
     --merge-danger: #d86c6c;
     --merge-ok: #79c18d;
-    --merge-current-content-bg: var(
-        --vscode-merge-currentContentBackground,
-        rgba(116, 46, 53, 0.25)
-    );
-    --merge-incoming-content-bg: var(
-        --vscode-merge-incomingContentBackground,
-        rgba(116, 46, 53, 0.25)
-    );
-    --merge-common-content-bg: var(
-        --vscode-merge-commonContentBackground,
-        rgba(47, 79, 130, 0.2)
-    );
-    --merge-result-conflict-bg: color-mix(
+    /* PyCharm Darcula diff palette (JetBrains DIFF_CONFLICT / DIFF_INSERTED /
+       DIFF_MODIFIED / DIFF_DELETED). Changed words get the full color while
+       whole-block backgrounds use a faded mix toward the editor background,
+       matching how IntelliJ dims line backgrounds when word-level fragments
+       are highlighted — red section, darker red word. */
+    --pycharm-conflict: #45302b;
+    --pycharm-inserted: #294436;
+    --pycharm-modified: #385570;
+    --pycharm-deleted: #484a4a;
+    --merge-conflict-block-bg: color-mix(
         in srgb,
-        var(--merge-current-content-bg) 45%,
-        var(--merge-incoming-content-bg) 55%
+        var(--pycharm-conflict) 60%,
+        var(--vscode-editor-background)
     );
-    --merge-result-nonconflict-bg: color-mix(
+    --merge-inserted-block-bg: color-mix(
         in srgb,
-        var(--merge-common-content-bg) 65%,
-        transparent
+        var(--pycharm-inserted) 60%,
+        var(--vscode-editor-background)
     );
-    --merge-result-resolved-bg: var(
-        --vscode-diffEditor-insertedTextBackground,
-        rgba(56, 118, 66, 0.35)
+    --merge-modified-block-bg: color-mix(
+        in srgb,
+        var(--pycharm-modified) 60%,
+        var(--vscode-editor-background)
+    );
+    --merge-deleted-block-bg: color-mix(
+        in srgb,
+        var(--pycharm-deleted) 60%,
+        var(--vscode-editor-background)
     );
 
     display: flex;
@@ -426,37 +429,31 @@
 .code-lines {
     min-width: 0;
     position: relative;
+    /* Single-column grid whose track grows to the widest line, so per-line
+       background highlights span the full scrolled width in every row. */
+    display: grid;
+    grid-template-columns: minmax(100%, max-content);
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+.code-lines::-webkit-scrollbar {
+    height: 7px;
+}
+.code-lines::-webkit-scrollbar-track {
+    background: transparent;
+}
+.code-lines::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 4px;
 }
 .code-line {
     padding: 0 10px;
     white-space: pre;
     line-height: 20px;
     min-height: 20px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-/* Intra-hunk spacer rows: hatched like IntelliJ's alignment gaps so users can
-   tell "nothing here" apart from an actual empty source line. */
-.code-line.spacer-line {
-    background: repeating-linear-gradient(
-        -45deg,
-        transparent,
-        transparent 4px,
-        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 4px,
-        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 5px
-    );
 }
 .segment-common .code-line {
     color: color-mix(in srgb, var(--vscode-editor-foreground) 90%, transparent);
-}
-.words-highlighted .segment-conflict .word-highlight .code-line {
-    background-image: linear-gradient(
-        180deg,
-        transparent 0,
-        transparent calc(100% - 1px),
-        rgba(255, 221, 120, 0.08) calc(100% - 1px),
-        rgba(255, 221, 120, 0.08) 100%
-    );
 }
 
 .segment-conflict {
@@ -639,50 +636,44 @@
     color: var(--vscode-errorForeground, #f48771);
 }
 
-.conflict-ours .code-lines,
-.conflict-theirs .code-lines,
-.conflict-result .code-lines {
-    position: relative;
+/* Block backgrounds are painted per row (including trailing filler rows) so
+   the highlight stretches over the whole hunk and follows horizontal scroll.
+   True conflicts are red on every pane; one-sided hunks color only the
+   changed side by what happened to base: insertion green, modification blue,
+   deletion gray — exactly PyCharm's merge palette. */
+.change-conflict .conflict-ours .code-line,
+.change-conflict .conflict-theirs .code-line,
+.change-conflict .conflict-result.unresolved .code-line {
+    background: var(--merge-conflict-block-bg);
 }
-.conflict-ours .code-lines::before,
-.conflict-theirs .code-lines::before,
-.conflict-result .code-lines::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
+.variant-insertion .conflict-ours .code-line,
+.variant-insertion .conflict-theirs .code-line {
+    background: var(--merge-inserted-block-bg);
 }
-.conflict-result .code-lines::before {
-    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+.variant-modification .conflict-ours .code-line,
+.variant-modification .conflict-theirs .code-line {
+    background: var(--merge-modified-block-bg);
 }
-
-.change-conflict .conflict-ours .code-lines::before,
-.change-conflict .conflict-theirs .code-lines::before {
+.variant-deletion .conflict-ours .code-line,
+.variant-deletion .conflict-theirs .code-line {
+    background: var(--merge-deleted-block-bg);
+}
+.change-ours-only .conflict-theirs .code-line,
+.change-theirs-only .conflict-ours .code-line {
     background: transparent;
 }
-.change-conflict .conflict-ours .code-lines::before {
-    background: var(--merge-current-content-bg);
+.conflict-result.resolved .code-line {
+    background: var(--merge-inserted-block-bg);
 }
-.change-conflict .conflict-theirs .code-lines::before {
-    background: var(--merge-incoming-content-bg);
+/* One-sided hunks are auto-resolved, so their result pane is always
+   "resolved"; keep the variant color instead of the generic green (a
+   deletion's empty result must not read as an insertion). User edits win
+   via the .edited tint below. */
+.variant-modification .conflict-result.resolved:not(.edited) .code-line {
+    background: var(--merge-modified-block-bg);
 }
-.change-conflict .conflict-result.unresolved .code-lines::before {
-    background: var(
-        --vscode-mergeEditor-conflict-unhandledUnfocusedMinimapOverViewRuler,
-        var(--merge-result-conflict-bg)
-    );
-    opacity: 0.7;
-}
-.change-ours-only .conflict-ours .code-lines::before,
-.change-theirs-only .conflict-theirs .code-lines::before {
-    background: var(--merge-common-content-bg);
-}
-.change-ours-only .conflict-result.unresolved .code-lines::before,
-.change-theirs-only .conflict-result.unresolved .code-lines::before {
-    background: var(--merge-result-nonconflict-bg);
-}
-.conflict-result.resolved .code-lines::before {
-    background: var(--merge-result-resolved-bg);
+.variant-deletion .conflict-result.resolved:not(.edited) .code-line {
+    background: var(--merge-deleted-block-bg);
 }
 
 .result-editable {
@@ -710,18 +701,16 @@
     white-space: pre;
     overflow-x: auto;
 }
-.conflict-result.edited .code-lines::before {
-    background: color-mix(in srgb, var(--merge-result-resolved-bg) 70%, #4ea1ff 30%);
+.conflict-result.edited .code-line {
+    background: color-mix(in srgb, var(--merge-inserted-block-bg) 70%, #4ea1ff 30%);
 }
 
 .conflict-ours .code-line,
 .conflict-theirs .code-line,
 .conflict-result .code-line {
-    position: relative;
-    z-index: 1;
     color: var(--vscode-editor-foreground);
 }
-.segment-conflict.active .conflict-result.unresolved .code-lines::before {
+.segment-conflict.active .conflict-result.unresolved .code-lines {
     box-shadow:
         inset 0 0 0 1px rgba(78, 161, 255, 0.14),
         inset 0 0 18px rgba(78, 161, 255, 0.05);
@@ -859,14 +848,36 @@
 .tok-constant {
     color: var(--vscode-symbolIcon-constantForeground, #4fc1ff);
 }
+/* Changed words carry the full PyCharm color on top of the faded block
+   background: dark red words in red conflict sections, dark green words in
+   green insertions, and so on. */
 .word-diff-change {
-    background: rgba(255, 208, 97, 0.16);
+    background: var(--pycharm-modified);
     border-radius: 2px;
-    box-shadow: inset 0 0 0 1px rgba(255, 208, 97, 0.12);
+}
+.change-conflict .word-diff-change {
+    background: var(--pycharm-conflict);
+}
+.variant-insertion .word-diff-change {
+    background: var(--pycharm-inserted);
+}
+.variant-modification .word-diff-change {
+    background: var(--pycharm-modified);
+}
+.variant-deletion .word-diff-change {
+    background: var(--pycharm-deleted);
+}
+.conflict-result.resolved .word-diff-change,
+.conflict-result.edited .word-diff-change {
+    background: var(--pycharm-inserted);
+}
+/* Keep result-pane word color matched to the block variant (see the
+   block-background rules above). */
+.variant-modification .conflict-result.resolved:not(.edited) .word-diff-change {
+    background: var(--pycharm-modified);
 }
 .word-diff-change.word-diff-whitespace {
-    background: rgba(255, 208, 97, 0.07);
-    box-shadow: inset 0 0 0 1px rgba(255, 208, 97, 0.06);
+    background: color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 10%, transparent);
 }
 
 @media (max-width: 1200px) {
