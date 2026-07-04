@@ -41,6 +41,9 @@ const MAX_LCS_CELLS = 10_000_000;
 // choices when candidate common runs cross and tie on plain match count.
 const MAX_ANCHOR_WEIGHT = 20;
 
+/**
+ * Normalizes a displayed line for equality checks while preserving the original rendered text.
+ */
 export function normalizeLineForDiff(line: string, options: MergeDiffOptions): string {
     if (options.ignoreWhitespace) {
         // Match editor "ignore whitespace" behavior approximately by collapsing
