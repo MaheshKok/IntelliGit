@@ -40,7 +40,10 @@ function dispatchHostMessage(data: unknown): void {
 
 function clickButton(label: string): void {
     const button = Array.from(document.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.trim() === label,
+        (candidate) =>
+            candidate.textContent?.trim() === label ||
+            candidate.getAttribute("aria-label") === label ||
+            candidate.getAttribute("title") === label,
     );
     if (!button) throw new Error(`Expected button labeled ${label}`);
     act(() => {
@@ -50,7 +53,10 @@ function clickButton(label: string): void {
 
 function findButton(label: string): HTMLButtonElement {
     const button = Array.from(document.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.trim() === label,
+        (candidate) =>
+            candidate.textContent?.trim() === label ||
+            candidate.getAttribute("aria-label") === label ||
+            candidate.getAttribute("title") === label,
     );
     if (!button) throw new Error(`Expected button labeled ${label}`);
     return button;
@@ -281,8 +287,8 @@ describe("MergeEditorApp", () => {
         });
         await flush();
 
-        // The manual edit resolves the conflict and shows the Edited status.
-        expect(document.body.textContent).toContain("Edited");
+        // The manual edit resolves the conflict and marks the result block edited.
+        expect(document.querySelector(".conflict-result.edited")).not.toBeNull();
         expect(document.body.textContent).toContain("0 unresolved");
 
         clickButton("Apply (1/1)");
@@ -406,12 +412,12 @@ describe("MergeEditorApp", () => {
             textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
         });
         await flush();
-        expect(document.body.textContent).toContain("Edited");
+        expect(document.querySelector(".conflict-result.edited")).not.toBeNull();
 
         // Choosing a side afterwards replaces the manual edit.
-        clickButton("Right");
+        clickButton("Accept right block");
         await flush();
-        expect(document.body.textContent).not.toContain("Edited");
+        expect(document.querySelector(".conflict-result.edited")).toBeNull();
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -588,8 +594,8 @@ describe("MergeEditorApp", () => {
         pressKey("b");
         await flush();
 
-        // "Both" is meaningless for a one-sided change and must be ignored.
-        expect(document.body.textContent).toContain("Left-only change");
+        // "Both" is meaningless for a one-sided change and must not render.
+        expect(oneSided.querySelector('button[aria-label="Both"]')).toBeNull();
         expect(document.body.textContent).not.toContain("Use both");
     });
 
@@ -694,7 +700,7 @@ describe("MergeEditorApp", () => {
         expect(oursRows[2].className).toContain("padding-code-line");
         expect(theirsRows.every((row) => row.className.includes("real-code-line"))).toBe(true);
 
-        // Line numbers stay sequential; filler rows render blank numbers.
+        // Line numbers stay at pane intersections only; the outer-left pane has no gutter.
         const oursNumberRows = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-row"),
         );
@@ -704,14 +710,12 @@ describe("MergeEditorApp", () => {
         const oursNumbers = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-primary"),
         ).map((el) => el.textContent?.trim());
-        expect(oursNumbers).toEqual(["1", "2", ""]);
+        expect(oursNumbers).toEqual([]);
         const theirsNumbers = Array.from(
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
         expect(theirsNumbers).toEqual(["1", "2", "3"]);
-        expect(oursNumberRows[0].className).toContain("real-line-row");
-        expect(oursNumberRows[1].className).toContain("real-line-row");
-        expect(oursNumberRows[2].className).toContain("padding-line-row");
+        expect(oursNumberRows).toHaveLength(0);
         expect(theirsNumberRows.every((row) => row.className.includes("real-line-row"))).toBe(true);
     });
 
@@ -796,7 +800,6 @@ describe("MergeEditorApp", () => {
         // No human decision is pending: the auto-merge counts as resolved.
         expect(document.body.textContent).toContain("0 unresolved");
         expect(document.body.textContent).toContain("1 auto-resolved");
-        expect(document.body.textContent).toContain("Auto-resolved");
         expect(document.querySelector('[data-conflict-id="0"]')?.className).toContain(
             "auto-merged",
         );
@@ -845,14 +848,13 @@ describe("MergeEditorApp", () => {
         });
         await flush();
 
-        clickButton("Left");
+        clickButton("Accept left block");
         await flush();
 
-        // The explicit choice replaces the auto-merge in result and badge.
+        // The explicit choice replaces the auto-merge in result and hunk state.
         expect(document.querySelector(".conflict-result")?.textContent).toContain(
             "const total = step;",
         );
-        expect(document.body.textContent).not.toContain("Auto-resolved");
         expect(document.querySelector('[data-conflict-id="0"]')?.className).not.toContain(
             "auto-merged",
         );

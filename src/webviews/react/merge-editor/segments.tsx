@@ -7,15 +7,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import type { CommonSegment, ConflictSegment, HunkResolution } from "./types";
 import {
-    IconArrowRight,
-    IconArrowLeft,
-    IconClose,
-    IconSplitBoth,
-    IconWarning,
-    IconCheck,
-    IconDot,
-} from "./icons";
-import {
     tokenSimilarityRatio,
     buildWordDiffMask,
     tokenizeWordDiff,
@@ -206,6 +197,7 @@ interface CodeBlockProps {
     lines: string[];
     lineCount: number;
     lineNumbers: LineNumberSpec;
+    showLineNumbers?: boolean;
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
@@ -222,6 +214,7 @@ const CodeBlock = React.memo(
         lines,
         lineCount,
         lineNumbers,
+        showLineNumbers = true,
         className,
         wordHighlight,
         compareLines,
@@ -242,13 +235,15 @@ const CodeBlock = React.memo(
 
         return (
             <div
-                className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
+                className={`code-block ${showLineNumbers ? "" : "no-line-numbers"} ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
             >
-                <LineNumbers
-                    primary={lineNumbers.primary}
-                    secondary={lineNumbers.secondary}
-                    rowIsReal={rowIsReal}
-                />
+                {showLineNumbers ? (
+                    <LineNumbers
+                        primary={lineNumbers.primary}
+                        secondary={lineNumbers.secondary}
+                        rowIsReal={rowIsReal}
+                    />
+                ) : null}
                 <div className="code-lines">
                     {padded.map((line, i) => {
                         const isReal = rowIsReal[i] ?? false;
@@ -276,6 +271,7 @@ const CodeBlock = React.memo(
     (prev, next) =>
         prev.lines === next.lines &&
         prev.lineCount === next.lineCount &&
+        prev.showLineNumbers === next.showLineNumbers &&
         prev.className === next.className &&
         prev.wordHighlight === next.wordHighlight &&
         prev.compareLines === next.compareLines &&
@@ -384,52 +380,12 @@ export interface SegmentPaneLineNumbers {
     right: LineNumberSpec;
 }
 
-function getHunkStatus(
-    segment: ConflictSegment,
-    resolution: HunkResolution | undefined,
-    isEdited: boolean,
-): {
-    label: string;
-    tone: "warn" | "ok" | "muted";
-} {
-    if (isEdited) return { label: t("merge.status.edited"), tone: "ok" };
-    if (segment.changeKind === "ours-only") {
-        return resolution === "none"
-            ? { label: t("merge.status.droppedLeftOnly"), tone: "muted" }
-            : { label: t("merge.status.leftOnly"), tone: "muted" };
-    }
-    if (segment.changeKind === "theirs-only") {
-        return resolution === "none"
-            ? { label: t("merge.status.droppedRightOnly"), tone: "muted" }
-            : { label: t("merge.status.rightOnly"), tone: "muted" };
-    }
-
-    if (resolution === undefined) {
-        // Token-level merged hunks default to the composed result; surface that
-        // instead of "Unresolved" so the user knows no action is required.
-        if (segment.autoResolvedLines !== undefined) {
-            return { label: t("merge.status.autoResolved"), tone: "ok" };
-        }
-        return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
-    }
-    if (resolution === "ours") return { label: t("merge.status.useLeft"), tone: "ok" };
-    if (resolution === "theirs") return { label: t("merge.status.useRight"), tone: "ok" };
-    if (resolution === "both") return { label: t("merge.status.useBoth"), tone: "ok" };
-    return { label: t("merge.status.removeBlock"), tone: "muted" };
-}
-
-function getHunkKindLabel(segment: ConflictSegment): string {
-    if (segment.changeKind === "ours-only") return t("merge.kind.leftOnly");
-    if (segment.changeKind === "theirs-only") return t("merge.kind.rightOnly");
-    return t("merge.kind.conflict");
-}
-
 // --- Section components ---
 
 /** Editor row height in pixels, matched to the .code-line CSS line-height. */
 const LINE_HEIGHT_PX = 20;
-/** Estimated hunk-header plus margin overhead used for offscreen size hints. */
-const CONFLICT_CHROME_PX = 30;
+/** Estimated border/margin overhead used for offscreen conflict size hints. */
+const CONFLICT_CHROME_PX = 4;
 
 /**
  * Size hint that lets `content-visibility: auto` skip layout of offscreen
@@ -465,6 +421,7 @@ export const CommonSection = React.memo(
                         lines={segment.lines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
+                        showLineNumbers={false}
                         wordHighlight={highlightWords}
                     />
                 </div>
@@ -533,19 +490,15 @@ export const ConflictSection = React.memo(function ConflictSection({
     onSelect,
     onSectionRef,
     isActive,
-    showDetails,
     highlightWords,
     conflictOrdinal,
     trueConflictOrdinal,
 }: ConflictSectionProps) {
     const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
     const isEdited = editedLines !== undefined;
-    const status = getHunkStatus(segment, resolution, isEdited);
 
     const isOurs = !isEdited && resolution === "ours";
     const isTheirs = !isEdited && resolution === "theirs";
-    const isBoth = !isEdited && resolution === "both";
-    const isNone = !isEdited && resolution === "none";
     const isAutoMerged =
         segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
     const isResolved =
@@ -553,7 +506,6 @@ export const ConflictSection = React.memo(function ConflictSection({
         segment.autoResolvedLines !== undefined ||
         resolution !== undefined ||
         isEdited;
-    const kindLabel = getHunkKindLabel(segment);
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
@@ -616,84 +568,13 @@ export const ConflictSection = React.memo(function ConflictSection({
             onClick={handleSectionSelect}
             onKeyDown={handleSectionKeyDown}
         >
-            <div className="hunk-header">
-                <div className="hunk-header-left">
-                    <span className={`hunk-badge hunk-kind-${segment.changeKind}`}>
-                        {trueConflictOrdinal !== undefined
-                            ? `#${trueConflictOrdinal}`
-                            : `#${conflictOrdinal}`}
-                    </span>
-                    <span className="hunk-kind-label">{kindLabel}</span>
-                    {showDetails ? (
-                        <span className="hunk-detail-lines">
-                            {t("merge.hunk.detail", {
-                                left: segment.oursLines.length,
-                                right: segment.theirsLines.length,
-                                result: resultLines.length,
-                            })}
-                        </span>
-                    ) : null}
-                </div>
-                <div className="hunk-header-center" onClick={(e) => e.stopPropagation()}>
-                    <button
-                        type="button"
-                        className={`hunk-choice ${isOurs ? "active" : ""}`}
-                        onClick={() => onResolve(segment.id, "ours")}
-                        title={t("merge.hunk.useLeft")}
-                    >
-                        <IconArrowRight />
-                        {t("merge.hunk.left")}
-                    </button>
-                    {segment.changeKind === "conflict" ? (
-                        <button
-                            type="button"
-                            className={`hunk-choice ${isBoth ? "active" : ""}`}
-                            onClick={() => onResolve(segment.id, "both")}
-                            title={t("merge.hunk.useBoth")}
-                        >
-                            <IconSplitBoth />
-                            {t("merge.hunk.both")}
-                        </button>
-                    ) : null}
-                    <button
-                        type="button"
-                        className={`hunk-choice ${isTheirs ? "active" : ""}`}
-                        onClick={() => onResolve(segment.id, "theirs")}
-                        title={t("merge.hunk.useRight")}
-                    >
-                        <IconArrowLeft />
-                        {t("merge.hunk.right")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`hunk-choice danger ${isNone ? "active" : ""}`}
-                        onClick={() => onResolve(segment.id, "none")}
-                        title={t("merge.hunk.dropTitle")}
-                    >
-                        <IconClose />
-                        {t("merge.hunk.drop")}
-                    </button>
-                </div>
-                <div className={`hunk-status tone-${status.tone}`}>
-                    <span className="toolbar-icon status-icon">
-                        {status.tone === "warn" ? (
-                            <IconWarning />
-                        ) : status.tone === "ok" ? (
-                            <IconCheck />
-                        ) : (
-                            <IconDot />
-                        )}
-                    </span>
-                    {status.label}
-                </div>
-            </div>
-
             <div className="hunk-columns">
                 <div className={`column column-left conflict-column ${isOurs ? "accepted" : ""}`}>
                     <CodeBlock
                         lines={segment.oursLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
+                        showLineNumbers={false}
                         className="conflict-ours"
                         wordHighlight={highlightWords}
                         compareLines={segment.baseLines}
@@ -706,7 +587,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                             title={t("merge.hunk.ignoreLeft")}
                             aria-label={t("merge.hunk.ignoreLeft")}
                         >
-                            <IconClose />
+                            <span className="hunk-action-glyph" aria-hidden="true">
+                                X
+                            </span>
                         </button>
                         <button
                             type="button"
@@ -716,7 +599,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                             aria-label={t("merge.hunk.acceptLeft")}
                             aria-current={isOurs ? "true" : undefined}
                         >
-                            <IconArrowRight />
+                            <span className="hunk-action-glyph" aria-hidden="true">
+                                &gt;&gt;
+                            </span>
                         </button>
                     </div>
                 </div>
@@ -745,7 +630,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                             aria-label={t("merge.hunk.acceptRight")}
                             aria-current={isTheirs ? "true" : undefined}
                         >
-                            <IconArrowLeft />
+                            <span className="hunk-action-glyph" aria-hidden="true">
+                                &lt;&lt;
+                            </span>
                         </button>
                         <button
                             type="button"
@@ -754,7 +641,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                             title={t("merge.hunk.ignoreRight")}
                             aria-label={t("merge.hunk.ignoreRight")}
                         >
-                            <IconClose />
+                            <span className="hunk-action-glyph" aria-hidden="true">
+                                X
+                            </span>
                         </button>
                     </div>
                     <CodeBlock
