@@ -13,11 +13,11 @@
     --merge-ok: #79c18d;
     /* PyCharm Darcula merge palette: strong changed-region bands, with word
        fragments using the same family at full intensity. */
-    --pycharm-conflict: #641f1f;
+    --pycharm-conflict: #4b1515;
     --pycharm-inserted: #3d6f4e;
     --pycharm-modified: #1c6978;
     --pycharm-deleted: #565b62;
-    --merge-conflict-block-bg: #4b1515;
+    --merge-conflict-block-bg: #3a2a32;
     --merge-inserted-block-bg: #264b33;
     --merge-modified-block-bg: #13404b;
     --merge-deleted-block-bg: #3f444b;
