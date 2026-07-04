@@ -857,6 +857,7 @@
         "vscode:prepublish": "bun scripts/build.js --production",
         "build": "bun scripts/build.js",
         "build:prod": "bun scripts/build.js --production",
+        "preview:merge-editor": "bun run build && bun scripts/preview-merge-editor.js",
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",

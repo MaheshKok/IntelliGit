@@ -639,7 +639,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector('[data-conflict-id="1"]')?.className).toContain("active");
     });
 
-    it("keeps hunk pane content contiguous with filler rows only at the bottom", async () => {
+    it("keeps hunk pane content contiguous while leaving filler rows unpainted", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -679,8 +679,8 @@ describe("MergeEditorApp", () => {
 
         // PyCharm-style layout: each pane renders its own lines contiguously
         // from the hunk top; the shorter side pads with plain filler rows at
-        // the bottom so the change block stretches to the hunk height. Lines
-        // are never scattered mid-hunk to line up with the opposite pane.
+        // the bottom. Lines are never scattered mid-hunk to line up with the
+        // opposite pane, and padding rows must not inherit changed-line color.
         expect(oursRows).toHaveLength(3);
         expect(theirsRows).toHaveLength(3);
         expect(oursRows[0].textContent).toContain("added_a();");
@@ -689,8 +689,18 @@ describe("MergeEditorApp", () => {
         expect(theirsRows[0].textContent).toContain("shared();");
         expect(theirsRows[1].textContent).toContain("added_b();");
         expect(theirsRows[2].textContent).toContain("tail();");
+        expect(oursRows[0].className).toContain("real-code-line");
+        expect(oursRows[1].className).toContain("real-code-line");
+        expect(oursRows[2].className).toContain("padding-code-line");
+        expect(theirsRows.every((row) => row.className.includes("real-code-line"))).toBe(true);
 
         // Line numbers stay sequential; filler rows render blank numbers.
+        const oursNumberRows = Array.from(
+            document.querySelectorAll(".conflict-ours .line-number-row"),
+        );
+        const theirsNumberRows = Array.from(
+            document.querySelectorAll(".conflict-theirs .line-number-row"),
+        );
         const oursNumbers = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-primary"),
         ).map((el) => el.textContent?.trim());
@@ -699,6 +709,55 @@ describe("MergeEditorApp", () => {
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
         expect(theirsNumbers).toEqual(["1", "2", "3"]);
+        expect(oursNumberRows[0].className).toContain("real-line-row");
+        expect(oursNumberRows[1].className).toContain("real-line-row");
+        expect(oursNumberRows[2].className).toContain("padding-line-row");
+        expect(theirsNumberRows.every((row) => row.className.includes("real-line-row"))).toBe(true);
+    });
+
+    it("uses one shared horizontal scroll container for merge rows", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: [
+                            "const oursValue = reallyLongExpression + anotherLongExpression;",
+                        ],
+                        theirsLines: [
+                            "const theirsValue = reallyLongExpression + incomingLongExpression;",
+                        ],
+                        baseLines: ["const value = reallyLongExpression;"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        const mergeContent = document.querySelector<HTMLElement>(".merge-content");
+        const scrollWidth = document.querySelector<HTMLElement>(".merge-scroll-width");
+        const bottomScroll = document.querySelector<HTMLElement>(".merge-horizontal-scroll");
+
+        expect(scrollWidth?.parentElement).toBe(mergeContent);
+        expect(scrollWidth?.querySelectorAll(":scope > .segment")).toHaveLength(1);
+        expect(mergeContent?.querySelector(":scope > .code-lines")).toBeNull();
+        expect(bottomScroll?.parentElement).toBe(document.querySelector(".merge-content-shell"));
     });
 
     it("treats auto-merged hunks as resolved and applies the merged lines", async () => {

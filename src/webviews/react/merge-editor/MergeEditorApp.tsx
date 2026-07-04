@@ -75,47 +75,78 @@ function App() {
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    const mergeContentRef = useRef<HTMLDivElement | null>(null);
+    const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
+    const horizontalScrollInnerRef = useRef<HTMLDivElement | null>(null);
+    const updateHorizontalScrollWidthRef = useRef<() => void>(() => undefined);
 
-    // Every code block is its own horizontal scroll container; mirror the
-    // scrolled offset onto all blocks so the three panes move together like
-    // PyCharm's synchronized editors. Vertical scrolls reapply the shared
-    // offset too: segments use content-visibility auto, so blocks revealed
-    // by scrolling come back at scrollLeft 0 and must be caught up.
     const scrollSyncRef = useRef<{ raf: number; left: number }>({ raf: 0, left: 0 });
-    const handlePaneScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
-        const target = event.target as HTMLElement | null;
-        if (!target) return;
+    const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
         const sync = scrollSyncRef.current;
-        if (target.classList.contains("code-lines")) {
-            const left = target.scrollLeft;
-            // A pane already at the shared offset is a programmatic echo of
-            // a previous sync pass; a pane clamped at its own max while the
-            // shared offset lies further right is a clamped echo. Adopting
-            // either as the new offset would yank wider panes back.
-            if (Math.abs(left - sync.left) < 1) return;
-            const max = target.scrollWidth - target.clientWidth;
-            if (left > max - 1 && sync.left > max - 1) return;
-            sync.left = left;
-        } else if (sync.left === 0) {
-            return;
-        }
+        sync.left = left;
         if (sync.raf) return;
         sync.raf = requestAnimationFrame(() => {
             sync.raf = 0;
-            const left = sync.left;
-            const panes = document.querySelectorAll<HTMLElement>(".merge-content .code-lines");
+            const targetLeft = sync.left;
+            const panes =
+                mergeContentRef.current?.querySelectorAll<HTMLElement>(".code-lines") ?? [];
             for (const pane of panes) {
-                if (Math.abs(pane.scrollLeft - left) >= 1) pane.scrollLeft = left;
+                if (pane === source) continue;
+                const max = Math.max(0, pane.scrollWidth - pane.clientWidth);
+                const paneLeft = Math.min(targetLeft, max);
+                if (Math.abs(pane.scrollLeft - paneLeft) >= 1) pane.scrollLeft = paneLeft;
+            }
+            const bar = horizontalScrollRef.current;
+            if (bar && bar !== source && Math.abs(bar.scrollLeft - targetLeft) >= 1) {
+                bar.scrollLeft = targetLeft;
             }
         });
     }, []);
-    useEffect(() => {
-        const sync = scrollSyncRef.current;
-        return () => {
-            if (sync.raf) cancelAnimationFrame(sync.raf);
-        };
-    }, []);
 
+    const handlePaneScroll = useCallback(
+        (event: React.UIEvent<HTMLDivElement>) => {
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+            if (target.classList.contains("code-lines")) {
+                const left = target.scrollLeft;
+                const sharedLeft = scrollSyncRef.current.left;
+                if (Math.abs(left - sharedLeft) < 1) return;
+                const max = target.scrollWidth - target.clientWidth;
+                if (left > max - 1 && sharedLeft > max - 1) return;
+                syncHorizontalScroll(left, target);
+                return;
+            }
+            if (scrollSyncRef.current.left > 0) {
+                syncHorizontalScroll(scrollSyncRef.current.left, target);
+            }
+        },
+        [syncHorizontalScroll],
+    );
+    const handleHorizontalScroll = useCallback(
+        (event: React.UIEvent<HTMLDivElement>) => {
+            syncHorizontalScroll(event.currentTarget.scrollLeft, event.currentTarget);
+        },
+        [syncHorizontalScroll],
+    );
+    const updateHorizontalScrollWidth = useCallback(() => {
+        const bar = horizontalScrollRef.current;
+        const inner = horizontalScrollInnerRef.current;
+        const content = mergeContentRef.current;
+        if (!bar || !inner || !content) return;
+        let maxScroll = 0;
+        for (const pane of content.querySelectorAll<HTMLElement>(".code-lines")) {
+            maxScroll = Math.max(maxScroll, pane.scrollWidth - pane.clientWidth);
+        }
+        const barWidth = bar.clientWidth || content.clientWidth;
+        inner.style.width = `${barWidth + Math.max(0, maxScroll)}px`;
+        bar.hidden = maxScroll < 1;
+        if (scrollSyncRef.current.left > maxScroll) {
+            syncHorizontalScroll(Math.max(0, maxScroll));
+        }
+    }, [syncHorizontalScroll]);
+    useEffect(() => {
+        updateHorizontalScrollWidthRef.current = updateHorizontalScrollWidth;
+    }, [updateHorizontalScrollWidth]);
     const renderedSegments = useMemo(() => {
         let visualLineCursor = 1;
         let oursCursor = 1;
@@ -215,6 +246,21 @@ function App() {
             };
         });
     }, [segments, state.resolutions, state.edits]);
+
+    useEffect(() => {
+        const raf = requestAnimationFrame(updateHorizontalScrollWidth);
+        return () => cancelAnimationFrame(raf);
+    }, [renderedSegments, updateHorizontalScrollWidth]);
+
+    useEffect(() => {
+        const handleResize = () => updateHorizontalScrollWidthRef.current();
+        window.addEventListener("resize", handleResize);
+        const sync = scrollSyncRef.current;
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            if (sync.raf) cancelAnimationFrame(sync.raf);
+        };
+    }, []);
 
     const conflictSegments = useMemo(
         () => segments.filter((seg): seg is ConflictSegment => seg.type === "conflict"),
@@ -713,44 +759,58 @@ function App() {
             </div>
 
             <div className="merge-content-shell">
-                <div className="merge-content" onScrollCapture={handlePaneScroll}>
-                    {renderedSegments.map(
-                        ({
-                            segment,
-                            renderKey,
-                            lineCount,
-                            lineNumbers,
-                            conflictOrdinal,
-                            trueConflictOrdinal,
-                        }) =>
-                            segment.type === "common" ? (
-                                <CommonSection
-                                    key={renderKey}
-                                    segment={segment}
-                                    lineCount={lineCount}
-                                    lineNumbers={lineNumbers}
-                                    highlightWords={highlightWords}
-                                />
-                            ) : (
-                                <ConflictSection
-                                    key={renderKey}
-                                    segment={segment}
-                                    resolution={state.resolutions[segment.id]}
-                                    editedLines={state.edits[segment.id]}
-                                    lineCount={lineCount}
-                                    lineNumbers={lineNumbers}
-                                    onResolve={handleResolve}
-                                    onEditResult={handleEditResult}
-                                    onSelect={setActiveConflictId}
-                                    onSectionRef={registerConflictSectionRef}
-                                    isActive={activeConflictId === segment.id}
-                                    showDetails={showDetails}
-                                    highlightWords={highlightWords}
-                                    conflictOrdinal={conflictOrdinal ?? segment.id + 1}
-                                    trueConflictOrdinal={trueConflictOrdinal}
-                                />
-                            ),
-                    )}
+                <div
+                    ref={mergeContentRef}
+                    className="merge-content"
+                    onScrollCapture={handlePaneScroll}
+                >
+                    <div className="merge-scroll-width">
+                        {renderedSegments.map(
+                            ({
+                                segment,
+                                renderKey,
+                                lineCount,
+                                lineNumbers,
+                                conflictOrdinal,
+                                trueConflictOrdinal,
+                            }) =>
+                                segment.type === "common" ? (
+                                    <CommonSection
+                                        key={renderKey}
+                                        segment={segment}
+                                        lineCount={lineCount}
+                                        lineNumbers={lineNumbers}
+                                        highlightWords={highlightWords}
+                                    />
+                                ) : (
+                                    <ConflictSection
+                                        key={renderKey}
+                                        segment={segment}
+                                        resolution={state.resolutions[segment.id]}
+                                        editedLines={state.edits[segment.id]}
+                                        lineCount={lineCount}
+                                        lineNumbers={lineNumbers}
+                                        onResolve={handleResolve}
+                                        onEditResult={handleEditResult}
+                                        onSelect={setActiveConflictId}
+                                        onSectionRef={registerConflictSectionRef}
+                                        isActive={activeConflictId === segment.id}
+                                        showDetails={showDetails}
+                                        highlightWords={highlightWords}
+                                        conflictOrdinal={conflictOrdinal ?? segment.id + 1}
+                                        trueConflictOrdinal={trueConflictOrdinal}
+                                    />
+                                ),
+                        )}
+                    </div>
+                </div>
+                <div
+                    ref={horizontalScrollRef}
+                    className="merge-horizontal-scroll"
+                    aria-hidden="true"
+                    onScroll={handleHorizontalScroll}
+                >
+                    <div ref={horizontalScrollInnerRef} className="merge-horizontal-scroll-inner" />
                 </div>
                 <OverviewRail
                     markers={overviewMarkers}

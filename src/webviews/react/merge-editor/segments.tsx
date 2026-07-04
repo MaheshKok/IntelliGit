@@ -117,6 +117,10 @@ interface LineNumberSpec {
     secondary?: LineNumberValue[];
 }
 
+interface LineNumbersProps extends LineNumberSpec {
+    rowIsReal?: boolean[];
+}
+
 function padLines(lines: string[], count: number): string[] {
     const padded = [...lines];
     while (padded.length < count) padded.push("");
@@ -140,6 +144,16 @@ function lineNumberSpecEqual(a: LineNumberSpec, b: LineNumberSpec): boolean {
     return lineNumberValuesEqual(a.secondary, b.secondary);
 }
 
+function rowPresenceEqual(a: boolean[] | undefined, b: boolean[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
 /**
  * Value-compares the three pane line-number specs so memoized segments skip
  * re-rendering when an unrelated hunk resolution rebuilds equal number arrays.
@@ -153,26 +167,37 @@ function paneLineNumbersEqual(a: SegmentPaneLineNumbers, b: SegmentPaneLineNumbe
 }
 
 const LineNumbers = React.memo(
-    function LineNumbers({ primary, secondary }: LineNumberSpec) {
+    function LineNumbers({ primary, secondary, rowIsReal }: LineNumbersProps) {
         const rowCount = Math.max(primary.length, secondary?.length ?? 0);
         const hasSecondary = Boolean(secondary);
 
         return (
             <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
-                {Array.from({ length: rowCount }, (_, i) => (
-                    <div key={i} className="line-number-row">
-                        {hasSecondary ? (
-                            <div className="line-number line-number-secondary">
-                                {secondary?.[i] ?? ""}
+                {Array.from({ length: rowCount }, (_, i) => {
+                    const isReal = rowIsReal?.[i] ?? true;
+                    return (
+                        <div
+                            key={i}
+                            className={`line-number-row ${
+                                isReal ? "real-line-row" : "padding-line-row"
+                            }`}
+                        >
+                            {hasSecondary ? (
+                                <div className="line-number line-number-secondary">
+                                    {secondary?.[i] ?? ""}
+                                </div>
+                            ) : null}
+                            <div className="line-number line-number-primary">
+                                {primary[i] ?? ""}
                             </div>
-                        ) : null}
-                        <div className="line-number line-number-primary">{primary[i] ?? ""}</div>
-                    </div>
-                ))}
+                        </div>
+                    );
+                })}
             </div>
         );
     },
-    (prev, next) => lineNumberSpecEqual(prev, next),
+    (prev, next) =>
+        lineNumberSpecEqual(prev, next) && rowPresenceEqual(prev.rowIsReal, next.rowIsReal),
 );
 
 // --- Code block ---
@@ -201,31 +226,49 @@ const CodeBlock = React.memo(
         wordHighlight,
         compareLines,
     }: CodeBlockProps) {
-        // PyCharm keeps each pane's hunk content contiguous from the top; the
-        // block highlight stretches over trailing filler rows instead of
-        // scattering lines to match the opposite pane.
-        const padded = useMemo(() => padLines(lines, lineCount), [lines, lineCount]);
+        // Padding rows align panes to the tallest side; only source-backed rows
+        // should receive diff coloring.
+        const rowCount = Math.max(lineCount, lines.length);
+        const rowIsReal = useMemo(
+            () => Array.from({ length: rowCount }, (_, i) => i < lines.length),
+            [lines.length, rowCount],
+        );
+        const padded = useMemo(() => padLines(lines, rowCount), [lines, rowCount]);
         const paddedCompare = useMemo(() => {
             if (!compareLines) return undefined;
             const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
-            return padLines(alignedCompare, lineCount);
-        }, [compareLines, lineCount, lines]);
+            return padLines(alignedCompare, rowCount);
+        }, [compareLines, lines, rowCount]);
 
         return (
             <div
                 className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
             >
-                <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+                <LineNumbers
+                    primary={lineNumbers.primary}
+                    secondary={lineNumbers.secondary}
+                    rowIsReal={rowIsReal}
+                />
                 <div className="code-lines">
-                    {padded.map((line, i) => (
-                        <div key={rowKey(lineNumbers, line, i)} className="code-line">
-                            {wordHighlight && paddedCompare ? (
-                                <WordDiffLine line={line} compareLine={paddedCompare[i]} />
-                            ) : (
-                                <HighlightedLine line={line} />
-                            )}
-                        </div>
-                    ))}
+                    {padded.map((line, i) => {
+                        const isReal = rowIsReal[i] ?? false;
+                        return (
+                            <div
+                                key={rowKey(lineNumbers, line, i)}
+                                className={`code-line ${
+                                    isReal ? "real-code-line" : "padding-code-line"
+                                }`}
+                            >
+                                <span className="code-line-content">
+                                    {wordHighlight && paddedCompare ? (
+                                        <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                                    ) : (
+                                        <HighlightedLine line={line} />
+                                    )}
+                                </span>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
