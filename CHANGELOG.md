@@ -5,6 +5,25 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.12] - 2026-07-05
+
+### Added
+
+- Added a commit-panel Abort Merge action that is visible only while unresolved merge-conflict files are present.
+- Added a local merge-editor preview command for visual validation of merge editor changes.
+
+### Changed
+
+- Reworked the merge editor diff pipeline to group conflicts more like PyCharm/IntelliJ, using base-anchored line comparison, weighted important-line matching, gap re-diffing, and chunk-boundary cleanup.
+- Updated the merge editor to render PyCharm-style contiguous hunks, synchronized horizontal scrolling, and simplified in-hunk controls.
+- Tuned merge editor conflict and word-highlight colors to the requested PyCharm-style palette.
+
+### Fixed
+
+- Colored only the changed rows inside merge conflicts instead of expanding the color zone across filler lines used to align panes.
+- Kept merge editor conflict backgrounds and word highlights spanning horizontally scrolled content.
+- Refreshed the commit panel, commit graph, and conflict views after aborting a merge from the commit panel.
+
 ## [0.14.11] - 2026-07-02
 
 ### Added
