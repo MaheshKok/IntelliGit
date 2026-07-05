@@ -546,12 +546,14 @@ describe("MergeEditorApp", () => {
         // Accept right first, then append left below it: theirs comes before ours.
         clickButton("Accept right block");
         await flush();
+        expect(document.querySelector(".result-insertion-marker.variant-insertion")).not.toBeNull();
         clickButton("Append left block below the result");
         await flush();
 
         expect(document.body.textContent).toContain("0 unresolved");
         expect(document.querySelector(".conflict-actions-left")).toBeNull();
         expect(document.querySelector(".conflict-actions-right")).toBeNull();
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
         expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
         expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
 

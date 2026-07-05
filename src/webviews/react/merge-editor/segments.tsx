@@ -895,6 +895,12 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
 }: ResultConflictBlockProps) {
     const view = deriveConflictView(segment, resolution, editedLines, dismissed);
     const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
+    const showPendingAppendTarget =
+        !view.isEdited &&
+        segment.autoResolvedLines === undefined &&
+        resultLines.length > 0 &&
+        ((view.leftAppend && view.showLeftActions && segment.oursLines.length > 0) ||
+            (view.rightAppend && view.showRightActions && segment.theirsLines.length > 0));
     const handleSelect = useCallback(() => onSelect(segment.id), [onSelect, segment.id]);
     const handleKeyDown = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -930,6 +936,13 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
                     compareLines={view.resultCompareLines}
                     onCommit={(lines) => onEditResult(segment.id, lines)}
                 />
+                {showPendingAppendTarget ? (
+                    <div
+                        className="result-insertion-marker variant-insertion"
+                        style={{ top: `${resultLines.length * LINE_HEIGHT_PX}px` }}
+                        aria-hidden="true"
+                    />
+                ) : null}
             </div>
         </div>
     );
