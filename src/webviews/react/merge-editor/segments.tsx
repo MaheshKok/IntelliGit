@@ -501,6 +501,10 @@ export const ConflictSection = React.memo(function ConflictSection({
 
     const isOurs = !isEdited && resolution === "ours";
     const isTheirs = !isEdited && resolution === "theirs";
+    // Both orders stack the two sides; the order only differs in getResultLines.
+    const isBoth = !isEdited && (resolution === "both" || resolution === "both-reversed");
+    const oursInResult = isOurs || isBoth;
+    const theirsInResult = isTheirs || isBoth;
     const isAutoMerged =
         segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
     const isResolved =
@@ -508,8 +512,16 @@ export const ConflictSection = React.memo(function ConflictSection({
         segment.autoResolvedLines !== undefined ||
         resolution !== undefined ||
         isEdited;
-    const showLeftActions = resolution === undefined || isTheirs;
-    const showRightActions = resolution === undefined || isOurs;
+    // A side's controls show only while that side is not yet in the result, so
+    // accepting one side leaves the other side's accept button available to
+    // append (stack) below it. Once both are stacked, all controls hide. A
+    // manual edit puts neither side "in result", so both controls reappear.
+    const showLeftActions = !oursInResult;
+    const showRightActions = !theirsInResult;
+    // When one side is already in the result, the opposite accept button
+    // appends the second side below it instead of replacing the result.
+    const leftAppend = theirsInResult;
+    const rightAppend = oursInResult;
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
@@ -527,7 +539,7 @@ export const ConflictSection = React.memo(function ConflictSection({
         [handleSectionSelect],
     );
     const resultCompareLines =
-        isOurs || isTheirs
+        oursInResult || theirsInResult
             ? undefined
             : resolution === "ours"
               ? segment.theirsLines
@@ -575,15 +587,17 @@ export const ConflictSection = React.memo(function ConflictSection({
             onKeyDown={handleSectionKeyDown}
         >
             <div className="hunk-columns">
-                <div className={`column column-left conflict-column ${isOurs ? "accepted" : ""}`}>
+                <div
+                    className={`column column-left conflict-column ${oursInResult ? "accepted" : ""}`}
+                >
                     <CodeBlock
                         lines={segment.oursLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
                         lineNumberSide="right"
-                        className={`conflict-ours ${isOurs ? "accepted-pane" : ""}`}
+                        className={`conflict-ours ${oursInResult ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
-                        compareLines={isOurs ? undefined : segment.baseLines}
+                        compareLines={oursInResult ? undefined : segment.baseLines}
                     />
                     {showLeftActions ? (
                         <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
@@ -600,14 +614,20 @@ export const ConflictSection = React.memo(function ConflictSection({
                             </button>
                             <button
                                 type="button"
-                                className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
-                                onClick={() => onResolve(segment.id, "ours")}
-                                title={t("merge.hunk.acceptLeft")}
-                                aria-label={t("merge.hunk.acceptLeft")}
+                                className={`action-btn accept-btn ${leftAppend ? "append-btn" : ""} ${isOurs ? "active" : ""}`}
+                                onClick={() =>
+                                    onResolve(segment.id, leftAppend ? "both-reversed" : "ours")
+                                }
+                                title={t(
+                                    leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft",
+                                )}
+                                aria-label={t(
+                                    leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft",
+                                )}
                                 aria-current={isOurs ? "true" : undefined}
                             >
                                 <span className="hunk-action-glyph" aria-hidden="true">
-                                    &gt;&gt;
+                                    {leftAppend ? "»+" : ">>"}
                                 </span>
                             </button>
                         </div>
@@ -619,7 +639,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lines={resultLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.middle}
-                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""} ${isOurs || isTheirs ? "accepted-pane" : ""}`}
+                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""} ${oursInResult || theirsInResult ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
                         compareLines={resultCompareLines}
                         onCommit={(lines) => onEditResult(segment.id, lines)}
@@ -627,7 +647,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 </div>
 
                 <div
-                    className={`column column-right conflict-column ${isTheirs ? "accepted" : ""}`}
+                    className={`column column-right conflict-column ${theirsInResult ? "accepted" : ""}`}
                 >
                     {showRightActions ? (
                         <div
@@ -636,14 +656,24 @@ export const ConflictSection = React.memo(function ConflictSection({
                         >
                             <button
                                 type="button"
-                                className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
-                                onClick={() => onResolve(segment.id, "theirs")}
-                                title={t("merge.hunk.acceptRight")}
-                                aria-label={t("merge.hunk.acceptRight")}
+                                className={`action-btn accept-btn ${rightAppend ? "append-btn" : ""} ${isTheirs ? "active" : ""}`}
+                                onClick={() =>
+                                    onResolve(segment.id, rightAppend ? "both" : "theirs")
+                                }
+                                title={t(
+                                    rightAppend
+                                        ? "merge.hunk.appendRight"
+                                        : "merge.hunk.acceptRight",
+                                )}
+                                aria-label={t(
+                                    rightAppend
+                                        ? "merge.hunk.appendRight"
+                                        : "merge.hunk.acceptRight",
+                                )}
                                 aria-current={isTheirs ? "true" : undefined}
                             >
                                 <span className="hunk-action-glyph" aria-hidden="true">
-                                    &lt;&lt;
+                                    {rightAppend ? "«+" : "<<"}
                                 </span>
                             </button>
                             <button
@@ -663,9 +693,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lines={segment.theirsLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.right}
-                        className={`conflict-theirs ${isTheirs ? "accepted-pane" : ""}`}
+                        className={`conflict-theirs ${theirsInResult ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
-                        compareLines={isTheirs ? undefined : segment.baseLines}
+                        compareLines={theirsInResult ? undefined : segment.baseLines}
                     />
                 </div>
             </div>

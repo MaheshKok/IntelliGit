@@ -448,6 +448,113 @@ describe("MergeEditorApp", () => {
         });
     });
 
+    it("stacks both sides ours-first when appending right after accepting left", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Accept left, then the right button becomes an append that stacks theirs below.
+        clickButton("Accept left block");
+        await flush();
+        clickButton("Append right block below the result");
+        await flush();
+
+        // Both sides are now in the result: every side control disappears and
+        // both source panes plus the result read as accepted.
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\nours();\ntheirs();\n",
+        });
+    });
+
+    it("stacks both sides theirs-first when appending left after accepting right", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Accept right first, then append left below it: theirs comes before ours.
+        clickButton("Accept right block");
+        await flush();
+        clickButton("Append left block below the result");
+        await flush();
+
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\ntheirs();\nours();\n",
+        });
+    });
+
     it("resolves conflicts with Ctrl+Arrow side shortcuts, auto-advances, and applies with Ctrl+Enter", async () => {
         const vscode = installVsCodeMock();
         createRootHost();

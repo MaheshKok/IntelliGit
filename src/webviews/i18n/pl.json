@@ -172,6 +172,8 @@
     "merge.hunk.ignoreLeft": "Zignoruj ​​lewy blok",
     "merge.hunk.acceptLeft": "Zaakceptuj lewy blok",
     "merge.hunk.acceptRight": "Zaakceptuj prawy blok",
+    "merge.hunk.appendLeft": "Dołącz lewy blok pod wynikiem",
+    "merge.hunk.appendRight": "Dołącz prawy blok pod wynikiem",
     "merge.hunk.ignoreRight": "Zignoruj ​​prawy blok",
     "merge.status.droppedLeftOnly": "Usunięto zmianę tylko po lewej stronie",
     "merge.status.leftOnly": "Zmiana tylko po lewej stronie",

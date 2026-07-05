@@ -608,6 +608,12 @@
 .action-btn.accept-btn {
     color: var(--merge-ok);
 }
+/* Append mode stacks the second side below the first; a faint tint sets it
+   apart from a plain accept so the "»+"/"«+" glyph reads as add, not replace. */
+.action-btn.append-btn {
+    color: var(--merge-ok);
+    background: color-mix(in srgb, var(--merge-ok) 16%, transparent);
+}
 .action-btn.discard-btn {
     color: var(--merge-danger);
 }
@@ -663,8 +669,14 @@
 .variant-deletion .conflict-result.resolved:not(.edited) .real-line-row {
     background: var(--merge-deleted-block-bg);
 }
-.accepted-pane .real-code-line::before,
-.accepted-pane .real-line-row {
+/* An accepted source pane drops its conflict band (the choice now lives in the
+   result), including when both sides are stacked and both columns are accepted.
+   Scoped to the accepted column and specific enough (0-4-0) to beat the 0-3-0
+   change-/variant- band rules above; the middle result keeps its resolved fill. */
+.conflict-column.accepted .conflict-ours .real-code-line::before,
+.conflict-column.accepted .conflict-theirs .real-code-line::before,
+.conflict-column.accepted .conflict-ours .real-line-row,
+.conflict-column.accepted .conflict-theirs .real-line-row {
     background: transparent;
 }
 

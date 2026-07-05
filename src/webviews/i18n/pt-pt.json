@@ -166,6 +166,8 @@
     "merge.hunk.ignoreLeft": "Ignore o bloco esquerdo",
     "merge.hunk.acceptLeft": "Aceitar bloco esquerdo",
     "merge.hunk.acceptRight": "Aceitar bloco direito",
+    "merge.hunk.appendLeft": "Anexar bloco esquerdo abaixo do resultado",
+    "merge.hunk.appendRight": "Anexar bloco direito abaixo do resultado",
     "merge.hunk.ignoreRight": "Ignore o bloco direito",
     "merge.status.droppedLeftOnly": "Alteração apenas da esquerda descartada",
     "merge.status.leftOnly": "Alteração apenas para a esquerda",

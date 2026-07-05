@@ -116,6 +116,10 @@ describe("getResultLines", () => {
         expect(getResultLines(segment, "both")).toEqual(["ours", "theirs"]);
     });
 
+    it("returns theirs-then-ours for 'both-reversed' resolution", () => {
+        expect(getResultLines(segment, "both-reversed")).toEqual(["theirs", "ours"]);
+    });
+
     it("returns empty for 'none' resolution", () => {
         expect(getResultLines(segment, "none")).toEqual([]);
     });

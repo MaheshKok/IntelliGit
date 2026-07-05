@@ -21,5 +21,11 @@ export type InboundMessage =
     | { type: "setConflictData"; data: MergeEditorData }
     | { type: "loadError"; message: string };
 
-/** Resolution choice for a single conflict hunk. */
-export type HunkResolution = "ours" | "theirs" | "both" | "none";
+/**
+ * Resolution choice for a single conflict hunk.
+ *
+ * `both` stacks ours above theirs; `both-reversed` stacks theirs above ours.
+ * The two orders let the result reflect the order the user accepted the sides
+ * in (PyCharm-style sequential accept).
+ */
+export type HunkResolution = "ours" | "theirs" | "both" | "both-reversed" | "none";

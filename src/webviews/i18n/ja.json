@@ -154,6 +154,8 @@
     "merge.hunk.ignoreLeft": "左ブロックを無視する",
     "merge.hunk.acceptLeft": "左ブロックを受け入れる",
     "merge.hunk.acceptRight": "右ブロックを受け入れる",
+    "merge.hunk.appendLeft": "左ブロックを結果の下に追加する",
+    "merge.hunk.appendRight": "右ブロックを結果の下に追加する",
     "merge.hunk.ignoreRight": "右側のブロックを無視する",
     "merge.status.droppedLeftOnly": "左側のみの変更を破棄しました",
     "merge.status.leftOnly": "左側のみの変更",

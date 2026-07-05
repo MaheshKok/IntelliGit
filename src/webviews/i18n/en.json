@@ -194,6 +194,8 @@
     "merge.hunk.ignoreLeft": "Ignore left block",
     "merge.hunk.acceptLeft": "Accept left block",
     "merge.hunk.acceptRight": "Accept right block",
+    "merge.hunk.appendLeft": "Append left block below the result",
+    "merge.hunk.appendRight": "Append right block below the result",
     "merge.hunk.ignoreRight": "Ignore right block",
     "merge.hunk.groupAria": "Conflict hunk #{ordinal}",
     "merge.status.droppedLeftOnly": "Dropped left-only change",

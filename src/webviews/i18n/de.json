@@ -160,6 +160,8 @@
     "merge.hunk.ignoreLeft": "Linken Block ignorieren",
     "merge.hunk.acceptLeft": "Linken Block akzeptieren",
     "merge.hunk.acceptRight": "Rechten Block akzeptieren",
+    "merge.hunk.appendLeft": "Linken Block unter dem Ergebnis anhängen",
+    "merge.hunk.appendRight": "Rechten Block unter dem Ergebnis anhängen",
     "merge.hunk.ignoreRight": "Rechten Block ignorieren",
     "merge.status.droppedLeftOnly": "Änderung nur auf der linken Seite verworfen",
     "merge.status.leftOnly": "Änderung nur links",

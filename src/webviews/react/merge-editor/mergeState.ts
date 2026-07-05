@@ -96,6 +96,8 @@ export function getResultLines(
             return segment.theirsLines;
         case "both":
             return [...segment.oursLines, ...segment.theirsLines];
+        case "both-reversed":
+            return [...segment.theirsLines, ...segment.oursLines];
         case "none":
             return [];
         default:

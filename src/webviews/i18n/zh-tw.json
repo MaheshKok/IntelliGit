@@ -154,6 +154,8 @@
     "merge.hunk.ignoreLeft": "忽略左側區塊",
     "merge.hunk.acceptLeft": "接受左側區塊",
     "merge.hunk.acceptRight": "接受右側方塊",
+    "merge.hunk.appendLeft": "在結果下方附加左側方塊",
+    "merge.hunk.appendRight": "在結果下方附加右側方塊",
     "merge.hunk.ignoreRight": "忽略右側區塊",
     "merge.status.droppedLeftOnly": "已丟棄僅左側的變更",
     "merge.status.leftOnly": "僅左側變更",

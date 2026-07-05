@@ -470,8 +470,13 @@ function App() {
                 (seg): seg is ConflictSegment => seg.type === "conflict" && seg.id === targetId,
             );
             if (!segment) return;
-            // "Both" only makes sense when both sides changed the same region.
-            if (resolution === "both" && segment.changeKind !== "conflict") return;
+            // Stacking both sides (in either order) only makes sense when both
+            // sides changed the same region.
+            if (
+                (resolution === "both" || resolution === "both-reversed") &&
+                segment.changeKind !== "conflict"
+            )
+                return;
             handleResolve(targetId, resolution);
             // IntelliJ-style: move on to the next unresolved conflict after applying.
             const targetIndex = trueConflicts.findIndex((seg) => seg.id === targetId);
