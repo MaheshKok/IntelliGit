@@ -663,6 +663,10 @@
 .variant-deletion .conflict-result.resolved:not(.edited) .real-line-row {
     background: var(--merge-deleted-block-bg);
 }
+.accepted-pane .real-code-line::before,
+.accepted-pane .real-line-row {
+    background: transparent;
+}
 
 .result-editable {
     cursor: text;

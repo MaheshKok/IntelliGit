@@ -228,9 +228,12 @@ describe("MergeEditorApp", () => {
         clickButton("Accept left block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
-        expect(
-            document.querySelector('[data-conflict-id="0"]')?.querySelectorAll(".action-btn"),
-        ).toHaveLength(0);
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
         clickButton("Apply (1/1)");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
@@ -431,6 +434,12 @@ describe("MergeEditorApp", () => {
         clickButton("Accept right block");
         await flush();
         expect(document.querySelector(".conflict-result.edited")).toBeNull();
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelectorAll(".conflict-actions-left .action-btn")).toHaveLength(2);
+        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-ours")?.className).not.toContain("accepted-pane");
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({

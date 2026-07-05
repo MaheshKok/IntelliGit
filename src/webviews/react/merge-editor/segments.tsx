@@ -508,7 +508,8 @@ export const ConflictSection = React.memo(function ConflictSection({
         segment.autoResolvedLines !== undefined ||
         resolution !== undefined ||
         isEdited;
-    const showActions = resolution === undefined;
+    const showLeftActions = resolution === undefined || isTheirs;
+    const showRightActions = resolution === undefined || isOurs;
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
@@ -526,11 +527,13 @@ export const ConflictSection = React.memo(function ConflictSection({
         [handleSectionSelect],
     );
     const resultCompareLines =
-        resolution === "ours"
-            ? segment.theirsLines
-            : resolution === "theirs"
-              ? segment.oursLines
-              : segment.baseLines;
+        isOurs || isTheirs
+            ? undefined
+            : resolution === "ours"
+              ? segment.theirsLines
+              : resolution === "theirs"
+                ? segment.oursLines
+                : segment.baseLines;
     // PyCharm colors one-sided hunks by what happened to the base region:
     // pure insertions are green, deletions gray, and modifications blue.
     // True conflicts stay red regardless, so they carry no variant class.
@@ -578,11 +581,11 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
                         lineNumberSide="right"
-                        className="conflict-ours"
+                        className={`conflict-ours ${isOurs ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
-                        compareLines={segment.baseLines}
+                        compareLines={isOurs ? undefined : segment.baseLines}
                     />
-                    {showActions ? (
+                    {showLeftActions ? (
                         <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
                             <button
                                 type="button"
@@ -616,7 +619,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lines={resultLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.middle}
-                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""}`}
+                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""} ${isOurs || isTheirs ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
                         compareLines={resultCompareLines}
                         onCommit={(lines) => onEditResult(segment.id, lines)}
@@ -626,7 +629,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 <div
                     className={`column column-right conflict-column ${isTheirs ? "accepted" : ""}`}
                 >
-                    {showActions ? (
+                    {showRightActions ? (
                         <div
                             className="conflict-actions-right"
                             onClick={(e) => e.stopPropagation()}
@@ -660,9 +663,9 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lines={segment.theirsLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.right}
-                        className="conflict-theirs"
+                        className={`conflict-theirs ${isTheirs ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
-                        compareLines={segment.baseLines}
+                        compareLines={isTheirs ? undefined : segment.baseLines}
                     />
                 </div>
             </div>
