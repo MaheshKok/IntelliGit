@@ -152,7 +152,7 @@ export async function squashCommits(ctx: CommitActionContext): Promise<void> {
     if (status) {
         vscode.window.showErrorMessage(
             vscode.l10n.t(
-                "Squash Commits requires a clean working tree. Commit, shelve, or rollback local changes first.",
+                "Squash Commits requires a clean working tree. Commit, stash, or rollback local changes first.",
             ),
         );
         return;

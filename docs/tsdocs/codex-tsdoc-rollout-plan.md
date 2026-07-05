@@ -903,7 +903,7 @@ Document the largest user-facing React feature area without adding boilerplate c
 - Exported components with behavioral responsibilities.
 - Props interfaces when fields have non-obvious behavior.
 - Message-sending helpers.
-- Selection, staging, shelf, and stash state logic.
+- Selection, staging, and stash state logic.
 
 ### Content to capture
 
@@ -912,7 +912,7 @@ Document the largest user-facing React feature area without adding boilerplate c
 - Whether it controls staging or unstaging.
 - Whether it depends on tree grouping.
 - Whether it assumes stable file paths.
-- Whether it works with stash or shelf state.
+- Whether it works with stash state.
 - Whether it owns local UI-only state.
 
 ### Ratchet update

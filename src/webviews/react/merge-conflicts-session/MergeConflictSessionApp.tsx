@@ -147,6 +147,10 @@ function App() {
         getVsCodeApi().postMessage({ type: "refresh" });
     }, []);
 
+    const abortMerge = useCallback(() => {
+        getVsCodeApi().postMessage({ type: "abortMerge" });
+    }, []);
+
     const close = useCallback(() => {
         getVsCodeApi().postMessage({ type: "close" });
     }, []);
@@ -248,6 +252,9 @@ function App() {
                     </button>
                     <button type="button" className="action-btn" onClick={refresh}>
                         {t("common.refresh")}
+                    </button>
+                    <button type="button" className="action-btn danger" onClick={abortMerge}>
+                        {t("merge.action.abortMerge")}
                     </button>
                 </div>
             </div>

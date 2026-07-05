@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.14.11",
+    "version": "0.15.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -369,7 +369,7 @@
             },
             {
                 "command": "intelligit.fileShelve",
-                "title": "%command.shelveChanges%",
+                "title": "%command.stashChanges%",
                 "category": "%intelligit%"
             },
             {
@@ -857,6 +857,7 @@
         "vscode:prepublish": "bun scripts/build.js --production",
         "build": "bun scripts/build.js",
         "build:prod": "bun scripts/build.js --production",
+        "preview:merge-editor": "bun run build && bun scripts/preview-merge-editor.js",
         "watch": "bun scripts/watch.js",
         "format": "prettier --write \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"scripts/**/*.js\"",
@@ -885,6 +886,8 @@
         "@emotion/react": "^11.11.3",
         "@emotion/styled": "^11.11.0",
         "@eslint/js": "^10.0.1",
+        "@shikijs/langs": "4.3.1",
+        "@shikijs/themes": "4.3.1",
         "@types/node": "^20.11.0",
         "@types/react": "^18.2.48",
         "@types/react-dom": "^18.2.18",
@@ -908,6 +911,7 @@
         "react-doctor": "^0.2.16",
         "react-dom": "^18.2.0",
         "react-icons": "^5.5.0",
+        "shiki": "4.3.1",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.59.4",
         "vitest": "^1.2.0"

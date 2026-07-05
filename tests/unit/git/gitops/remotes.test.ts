@@ -199,11 +199,11 @@ describe("GitOps", () => {
             expect(call).toEqual(["pull", "--rebase"]);
         });
     });
-    describe("shelveSave", () => {
+    describe("stashSave", () => {
         it("calls git stash push with message", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
-            await ops.shelveSave(undefined, "my stash");
+            await ops.stashSave(undefined, "my stash");
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "push", "--include-untracked", "-m", "my stash"]);
@@ -212,7 +212,7 @@ describe("GitOps", () => {
         it("includes paths when provided", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
-            await ops.shelveSave(["src/a.ts", "src/b.ts"], "partial");
+            await ops.stashSave(["src/a.ts", "src/b.ts"], "partial");
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual([
@@ -228,37 +228,37 @@ describe("GitOps", () => {
             ]);
         });
     });
-    describe("shelveDelete", () => {
+    describe("stashDelete", () => {
         it("calls git stash drop with index", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
-            await ops.shelveDelete(0);
+            await ops.stashDelete(0);
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "drop", "stash@{0}"]);
         });
     });
-    describe("shelveApply", () => {
+    describe("stashApply", () => {
         it("calls git stash apply with index", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
-            await ops.shelveApply(1);
+            await ops.stashApply(1);
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "apply", "stash@{1}"]);
         });
     });
-    describe("shelvePop", () => {
+    describe("stashPop", () => {
         it("calls git stash pop with index", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
-            await ops.shelvePop(2);
+            await ops.stashPop(2);
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "pop", "stash@{2}"]);
         });
     });
-    describe("listShelved", () => {
+    describe("listStashes", () => {
         it("parses stash list output", async () => {
             const output = [
                 "aaa111\tstash@{0}\tOn main: WIP\t2024-01-15T10:30:00Z",
@@ -267,7 +267,7 @@ describe("GitOps", () => {
 
             const executor = createMockExecutor({ stash: output });
             const ops = new GitOps(executor);
-            const stashes = await ops.listShelved();
+            const stashes = await ops.listStashes();
 
             expect(stashes).toHaveLength(2);
             expect(stashes[0].index).toBe(0);
@@ -284,12 +284,12 @@ describe("GitOps", () => {
                 }),
             } as unknown as GitExecutor;
             const ops = new GitOps(executor);
-            const stashes = await ops.listShelved();
+            const stashes = await ops.listStashes();
             expect(stashes).toEqual([]);
         });
     });
-    describe("shelved files helpers", () => {
-        it("parses shelved file status and numstat", async () => {
+    describe("stashed files helpers", () => {
+        it("parses stashed file status and numstat", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     if (args.join(" ") === "stash show --name-status stash@{1}") {
@@ -302,7 +302,7 @@ describe("GitOps", () => {
                 }),
             } as unknown as GitExecutor;
             const ops = new GitOps(executor);
-            const files = await ops.getShelvedFiles(1);
+            const files = await ops.getStashFiles(1);
 
             expect(files).toEqual([
                 {
@@ -335,16 +335,16 @@ describe("GitOps", () => {
                 }),
             } as unknown as GitExecutor;
             const ops = new GitOps(executor);
-            await expect(ops.getShelvedFiles(0)).resolves.toEqual([]);
+            await expect(ops.getStashFiles(0)).resolves.toEqual([]);
         });
 
-        it("returns shelved patch with expected git args", async () => {
+        it("returns stashed patch with expected git args", async () => {
             const executor = createMockExecutor({
                 "diff stash@{0}^ stash@{0} -- src/a.ts": "diff --git a/src/a.ts b/src/a.ts",
             });
             const ops = new GitOps(executor);
 
-            await expect(ops.getShelvedFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
+            await expect(ops.getStashFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
                 ["--literal-pathspecs", "diff", "stash@{0}^", "stash@{0}", "--", "src/a.ts"],
             ]);
@@ -372,13 +372,13 @@ describe("GitOps", () => {
             expect(executor.run).not.toHaveBeenCalled();
         });
 
-        it("runs shelve pop/apply/delete commands for valid indexes", async () => {
+        it("runs stash pop/apply/delete commands for valid indexes", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
 
-            await expect(ops.shelvePop(0)).resolves.toBe("");
-            await expect(ops.shelveApply(0)).resolves.toBe("");
-            await expect(ops.shelveDelete(0)).resolves.toBe("");
+            await expect(ops.stashPop(0)).resolves.toBe("");
+            await expect(ops.stashApply(0)).resolves.toBe("");
+            await expect(ops.stashDelete(0)).resolves.toBe("");
 
             const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
             expect(calls).toContainEqual(["stash", "pop", "stash@{0}"]);
@@ -402,11 +402,11 @@ describe("GitOps", () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);
 
-            await expect(ops.shelvePop(-1)).rejects.toThrow("Invalid stash index");
-            await expect(ops.shelveApply(-1)).rejects.toThrow("Invalid stash index");
-            await expect(ops.shelveDelete(-1)).rejects.toThrow("Invalid stash index");
-            await expect(ops.getShelvedFiles(-1)).rejects.toThrow("Invalid stash index");
-            await expect(ops.getShelvedFilePatch(-1, "x")).rejects.toThrow("Invalid stash index");
+            await expect(ops.stashPop(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.stashApply(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.stashDelete(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.getStashFiles(-1)).rejects.toThrow("Invalid stash index");
+            await expect(ops.getStashFilePatch(-1, "x")).rejects.toThrow("Invalid stash index");
         });
     });
 });

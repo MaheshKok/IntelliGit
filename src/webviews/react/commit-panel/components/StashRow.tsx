@@ -1,4 +1,4 @@
-// Single stash entry row in the Shelf tab. Shows the stash message,
+// Single stash entry row in the Stash tab. Shows the stash message,
 // date, and action buttons (apply, pop, delete).
 
 import React from "react";
@@ -85,7 +85,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
                 </Button>
             </Tooltip>
             <Tooltip
-                label={t("shelf.action.popDescription")}
+                label={t("stash.action.popDescription")}
                 fontSize="11px"
                 openDelay={hoverDelay}
                 isDisabled={!tooltipsEnabled}
@@ -154,7 +154,7 @@ function StashRowInner({ stash, onApply, onPop, onDrop }: Props): React.ReactEle
 /**
  * Memoized stash entry row with inline apply, pop, and delete actions.
  *
- * Action callbacks receive the stash index from host data so the shelf tab can
+ * Action callbacks receive the stash index from host data so the stash tab can
  * send the matching command without deriving identity from the display label.
  */
 export const StashRow = React.memo(StashRowInner);

@@ -424,7 +424,7 @@ Implicit refreshes should update data silently:
 - filesystem watcher refresh
 - Git index/refs watcher refresh
 - VS Code Git repository state refresh
-- refresh after staging, unstaging, drag/drop, rollback, shelve, commit, branch
+- refresh after staging, unstaging, drag/drop, rollback, stash, commit, branch
   mutation, or repository activation
 
 #### Implementation
@@ -470,8 +470,8 @@ Add a commit-panel snapshot replay path:
 private postCurrentCommitPanelSnapshot(): void
 ```
 
-This should post the provider's cached `files`, `stashes`, `shelfFiles`,
-`selectedShelfIndex`, icon data, and upstream state if any snapshot has been
+This should post the provider's cached `files`, `stashes`, `stashFiles`,
+`selectedStashIndex`, icon data, and upstream state if any snapshot has been
 loaded.
 
 Change lifecycle:
@@ -523,9 +523,9 @@ This prevents older refreshes from overwriting newer status snapshots.
 1. initializes icon theme data
 2. runs `getStatus`
 3. decorates working files
-4. lists shelves
+4. lists stashes
 5. checks current branch upstream by calling `getBranches`
-6. loads selected shelf files
+6. loads selected stash files
 7. calculates folder icons
 8. updates count badges
 9. posts the whole snapshot
@@ -548,7 +548,7 @@ Concrete changes:
   be in that path unless the command is the global extension refresh.
 - Parallelize independent work inside `refreshData`:
   - `getStatus`
-  - `listShelved`
+  - `listStashes`
   - upstream check
 - Avoid full `getBranches` for every status refresh when branch data was already
   loaded by the refresh service. Prefer cached branch metadata or a narrower
@@ -558,14 +558,14 @@ Concrete changes:
   if the theme fingerprint is unchanged.
 - Consider a two-phase update only if measurements justify it:
   - phase 1 posts changed files as soon as status and icons are ready
-  - phase 2 updates shelves/upstream metadata
+  - phase 2 updates stashes/upstream metadata
 
 Add development-only timing logs behind a setting or existing debug channel:
 
 ```text
 status: 42 ms
 decorateWorkingFiles: 8 ms
-listShelved: 14 ms
+listStashes: 14 ms
 currentBranchHasUpstream: 35 ms
 folderIcons: 6 ms
 postMessage: 1 ms

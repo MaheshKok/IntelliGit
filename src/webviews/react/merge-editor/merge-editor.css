@@ -1,46 +1,38 @@
-
 .merge-editor {
-    --merge-border: color-mix(in srgb, var(--vscode-panel-border, #3f4654) 70%, transparent);
+    --merge-editor-bg: var(--vscode-editor-background, #2b3240);
+    --merge-editor-fg: var(--vscode-editor-foreground, #bfc7d5);
+    --merge-gutter-bg: var(--vscode-editorGutter-background, var(--merge-editor-bg));
+    --merge-border: color-mix(in srgb, var(--merge-editor-fg) 14%, transparent);
     --merge-toolbar-bg: color-mix(in srgb, var(--vscode-sideBar-background, #2b2d30) 82%, #000 18%);
-    --merge-header-bg: color-mix(in srgb, var(--vscode-editorGroupHeader-tabsBackground, #31343a) 88%, #000 12%);
+    --merge-header-bg: color-mix(
+        in srgb,
+        var(--vscode-editorGroupHeader-tabsBackground, #31343a) 88%,
+        #000 12%
+    );
     --merge-muted: var(--vscode-descriptionForeground, #9ca3af);
     --merge-accent: var(--vscode-textLink-foreground, #4ea1ff);
     --merge-warning: #f2c572;
     --merge-danger: #d86c6c;
     --merge-ok: #79c18d;
-    --merge-current-content-bg: var(
-        --vscode-merge-currentContentBackground,
-        rgba(116, 46, 53, 0.25)
-    );
-    --merge-incoming-content-bg: var(
-        --vscode-merge-incomingContentBackground,
-        rgba(116, 46, 53, 0.25)
-    );
-    --merge-common-content-bg: var(
-        --vscode-merge-commonContentBackground,
-        rgba(47, 79, 130, 0.2)
-    );
-    --merge-result-conflict-bg: color-mix(
-        in srgb,
-        var(--merge-current-content-bg) 45%,
-        var(--merge-incoming-content-bg) 55%
-    );
-    --merge-result-nonconflict-bg: color-mix(
-        in srgb,
-        var(--merge-common-content-bg) 65%,
-        transparent
-    );
-    --merge-result-resolved-bg: var(
-        --vscode-diffEditor-insertedTextBackground,
-        rgba(56, 118, 66, 0.35)
-    );
+    /* PyCharm Darcula merge palette: strong changed-region bands, with word
+       fragments using the same family at full intensity. */
+    --pycharm-conflict: #4b1515;
+    --pycharm-inserted: #3d6f4e;
+    --pycharm-modified: #1c6978;
+    --pycharm-deleted: #565b62;
+    --merge-conflict-block-bg: #3a2a32;
+    --merge-inserted-block-bg: #264b33;
+    --merge-modified-block-bg: #13404b;
+    --merge-deleted-block-bg: #3f444b;
+    --merge-line-number-gutter: 37px;
+    --merge-action-gutter: 44px;
 
     display: flex;
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
     color: var(--vscode-foreground);
-    background: var(--vscode-editor-background);
+    background: var(--merge-editor-bg);
     font-family: var(--vscode-font-family, sans-serif);
     font-size: var(--vscode-font-size, 13px);
 }
@@ -79,12 +71,11 @@
     gap: 8px;
     min-height: 30px;
     padding: 2px 8px;
-    background:
-        linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--merge-toolbar-bg) 90%, white 10%),
-            var(--merge-toolbar-bg)
-        );
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--merge-toolbar-bg) 90%, white 10%),
+        var(--merge-toolbar-bg)
+    );
     border-bottom: 1px solid var(--merge-border);
     box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25);
     flex-shrink: 0;
@@ -273,9 +264,9 @@
 
 .pane-meta-row {
     display: flex;
-    border-bottom: 1px solid var(--merge-border);
-    background: color-mix(in srgb, var(--merge-header-bg) 82%, #000 18%);
-    min-height: 28px;
+    border-bottom: 1px solid color-mix(in srgb, var(--merge-border) 72%, transparent);
+    background: color-mix(in srgb, var(--merge-editor-bg) 92%, #000 8%);
+    min-height: 24px;
     flex-shrink: 0;
 }
 .pane-meta {
@@ -285,8 +276,8 @@
     justify-content: space-between;
     gap: 8px;
     min-width: 0;
-    padding: 4px 10px;
-    color: var(--merge-muted);
+    padding: 2px 8px;
+    color: color-mix(in srgb, var(--merge-editor-fg) 76%, transparent);
     font-size: 11px;
     border-right: 1px solid var(--merge-border);
 }
@@ -300,7 +291,7 @@
     text-overflow: ellipsis;
 }
 .pane-lock {
-    opacity: 0.75;
+    opacity: 0.64;
 }
 .pane-meta-right-group {
     display: inline-flex;
@@ -308,12 +299,12 @@
     gap: 8px;
 }
 .pane-meta-counts {
-    color: color-mix(in srgb, var(--merge-muted) 88%, transparent);
+    color: color-mix(in srgb, var(--merge-editor-fg) 62%, transparent);
     white-space: nowrap;
 }
 .pane-meta-center {
     justify-content: center;
-    color: var(--vscode-foreground);
+    color: color-mix(in srgb, var(--merge-editor-fg) 82%, transparent);
     font-weight: 500;
 }
 .pane-meta-right {
@@ -338,31 +329,40 @@
     position: relative;
     flex: 1;
     min-height: 0;
-    background: var(--vscode-editor-background);
+    background: var(--merge-editor-bg);
 }
 .merge-content {
     height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: var(--vscode-editor-font-size, 12px);
+    font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
     line-height: 20px;
-    background: var(--vscode-editor-background);
+    background: var(--merge-editor-bg);
     padding-right: 14px;
+    padding-bottom: 10px;
+    color: var(--merge-editor-fg);
+}
+.merge-scroll-width {
+    min-width: 100%;
 }
 .merge-content::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
+}
+.merge-content::-webkit-scrollbar-track {
+    background: transparent;
 }
 .merge-content::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
+    background: color-mix(in srgb, var(--merge-editor-fg) 22%, transparent);
+    border-radius: 6px;
     border: 2px solid transparent;
     background-clip: padding-box;
 }
 
 .segment {
     display: flex;
+    width: 100%;
     /* Browser-level virtualization: offscreen segments skip rendering work
        while the inline contain-intrinsic-size keeps scrollbar geometry stable
        for very large conflict files. */
@@ -372,7 +372,7 @@
     flex: 1;
     min-width: 0;
     border-right: 1px solid var(--merge-border);
-    background: color-mix(in srgb, var(--vscode-editor-background) 95%, #0b0d11 5%);
+    background: var(--merge-editor-bg);
 }
 .column-right {
     border-right: none;
@@ -383,38 +383,56 @@
 }
 .code-block {
     display: grid;
-    grid-template-columns: 74px 1fr;
+    grid-template-columns: var(--merge-line-number-gutter) minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
 }
+.code-block.line-numbers-right {
+    grid-template-columns:
+        minmax(0, 1fr)
+        calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
+}
+.conflict-theirs.code-block {
+    grid-template-columns:
+        calc(var(--merge-line-number-gutter) + var(--merge-action-gutter))
+        minmax(0, 1fr);
+}
+.code-block.no-line-numbers {
+    grid-template-columns: minmax(0, 1fr);
+}
 .line-numbers {
-    background: color-mix(
-        in srgb,
-        var(--vscode-editorGutter-background, var(--vscode-sideBar-background, transparent)) 82%,
-        #111 18%
-    );
+    background: var(--merge-gutter-bg);
     border-right: 1px solid var(--merge-border);
     color: var(--vscode-editorLineNumber-foreground, var(--merge-muted));
+}
+.code-block.line-numbers-right .line-numbers {
+    border-right: none;
+    border-left: 1px solid var(--merge-border);
 }
 .line-number-row {
     display: grid;
     grid-template-columns: 1fr;
+    box-sizing: border-box;
+}
+.code-block.line-numbers-right .line-number-row {
+    padding-left: var(--merge-action-gutter);
+}
+.conflict-theirs .line-number-row {
+    padding-right: var(--merge-action-gutter);
 }
 .line-numbers.has-secondary .line-number-row {
     grid-template-columns: 1fr 1fr;
 }
 .line-number {
-    padding: 0 8px 0 4px;
+    padding: 0 7px 0 3px;
     text-align: right;
     min-height: 20px;
     line-height: 20px;
-    font-size: 11px;
-    opacity: 0.92;
     border-left: 1px solid transparent;
 }
 .line-number-secondary {
-    color: color-mix(in srgb, var(--merge-muted) 72%, transparent);
-    font-size: 10px;
+    color: color-mix(in srgb, var(--merge-muted) 58%, transparent);
+    font-size: 11px;
     padding-right: 4px;
 }
 .line-number-primary {
@@ -426,167 +444,84 @@
 .code-lines {
     min-width: 0;
     position: relative;
+    /* Single-column grid keeps line rows and token overflow in one horizontal
+       scroll plane. The lower bound is the widest line across ALL panes
+       (--merge-line-min-width), so every pane shares one scroll extent and moves
+       in lockstep — PyCharm-style — instead of each pane sizing to its own
+       content and short panes (a conflict side/result) refusing to scroll. Row
+       color is painted by the sticky real-code-line layer. */
+    display: grid;
+    grid-template-columns: minmax(max(100%, var(--merge-line-min-width, 0px)), max-content);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+}
+.code-lines::-webkit-scrollbar {
+    width: 0;
+    height: 0;
 }
 .code-line {
-    padding: 0 10px;
+    padding: 0 9px;
     white-space: pre;
     line-height: 20px;
     min-height: 20px;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
-/* Intra-hunk spacer rows: hatched like IntelliJ's alignment gaps so users can
-   tell "nothing here" apart from an actual empty source line. */
-.code-line.spacer-line {
-    background: repeating-linear-gradient(
-        -45deg,
-        transparent,
-        transparent 4px,
-        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 4px,
-        color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 7%, transparent) 5px
-    );
+.real-code-line {
+    position: relative;
+}
+.real-code-line::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 20px;
+    pointer-events: none;
+}
+.code-line-content {
+    position: relative;
 }
 .segment-common .code-line {
-    color: color-mix(in srgb, var(--vscode-editor-foreground) 90%, transparent);
-}
-.words-highlighted .segment-conflict .word-highlight .code-line {
-    background-image: linear-gradient(
-        180deg,
-        transparent 0,
-        transparent calc(100% - 1px),
-        rgba(255, 221, 120, 0.08) calc(100% - 1px),
-        rgba(255, 221, 120, 0.08) 100%
-    );
+    color: var(--vscode-editor-foreground);
 }
 
 .segment-conflict {
     display: block;
-    margin: 2px 0 3px;
-    border-top: 1px solid color-mix(in srgb, var(--merge-border) 92%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--merge-border) 92%, transparent);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+    margin: 1px 0 2px;
+    border-top: 1px solid color-mix(in srgb, var(--merge-border) 72%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--merge-border) 72%, transparent);
+    box-shadow: none;
 }
 .segment-conflict.active {
-    border-top-color: rgba(78, 161, 255, 0.55);
-    border-bottom-color: rgba(78, 161, 255, 0.55);
-    box-shadow:
-        inset 0 0 0 1px rgba(78, 161, 255, 0.18),
-        0 0 0 1px rgba(78, 161, 255, 0.08);
+    border-top-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 58%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 58%, transparent);
+    box-shadow: inset 0 0 0 1px
+        color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
 }
 .segment-conflict.auto-merged {
-    border-top-color: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%, transparent);
-    border-bottom-color: color-mix(in srgb, var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%, transparent);
+    border-top-color: color-mix(
+        in srgb,
+        var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%,
+        transparent
+    );
+    border-bottom-color: color-mix(
+        in srgb,
+        var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%,
+        transparent
+    );
 }
-.hunk-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    min-height: 24px;
-    padding: 2px 8px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.06));
-    border-bottom: 1px solid color-mix(in srgb, var(--merge-border) 80%, transparent);
-}
-.hunk-header-left,
-.hunk-header-center {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-}
-.hunk-header-left {
-    flex: 1 1 auto;
-}
-.hunk-header-center {
-    flex: 0 0 auto;
-    flex-wrap: wrap;
-    justify-content: center;
-}
-.hunk-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 26px;
-    height: 16px;
-    padding: 0 5px;
-    border-radius: 10px;
-    font-size: 10px;
+.hunk-action-glyph {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 13px;
     font-weight: 700;
-    letter-spacing: 0.02em;
-    border: 1px solid color-mix(in srgb, var(--merge-border) 85%, transparent);
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--merge-muted);
+    line-height: 1;
 }
-.hunk-badge.hunk-kind-conflict {
-    color: #f0b3b3;
-    border-color: rgba(216, 108, 108, 0.35);
-    background: rgba(216, 108, 108, 0.10);
-}
-.hunk-badge.hunk-kind-ours-only,
-.hunk-badge.hunk-kind-theirs-only {
-    color: #9ec3ff;
-    border-color: rgba(91, 137, 214, 0.35);
-    background: rgba(91, 137, 214, 0.08);
-}
-.hunk-kind-label {
-    font-size: 11px;
-    color: var(--vscode-foreground);
-    white-space: nowrap;
-}
-.hunk-detail-lines {
-    font-size: 10px;
-    color: var(--merge-muted);
-    white-space: nowrap;
-}
-.hunk-choice {
-    height: 19px;
-    padding: 0 6px;
-    border: 1px solid color-mix(in srgb, var(--merge-border) 78%, transparent);
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.01);
-    color: var(--merge-muted);
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 10px;
-    cursor: pointer;
-}
-.hunk-choice:hover {
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--vscode-foreground);
-}
-.hunk-choice.active {
-    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 26%, transparent);
-    border-color: color-mix(in srgb, var(--vscode-button-background, #0e639c) 58%, transparent);
-    color: var(--vscode-button-foreground, #fff);
-}
-.hunk-choice.danger.active {
-    background: rgba(216, 108, 108, 0.18);
-    border-color: rgba(216, 108, 108, 0.45);
-}
-.hunk-status {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    max-width: 180px;
-    color: var(--merge-muted);
-    font-size: 10px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.hunk-status.tone-warn {
-    color: var(--merge-warning);
-}
-.hunk-status.tone-ok {
+.accept-btn {
     color: var(--merge-ok);
 }
-.hunk-status .status-icon {
-    width: 10px;
-    height: 10px;
+.discard-btn {
+    color: var(--merge-danger);
 }
-
 .conflict-column {
     position: relative;
     overflow: visible;
@@ -594,95 +529,166 @@
 .hunk-columns {
     display: flex;
 }
+.merge-horizontal-scroll {
+    position: absolute;
+    right: 14px;
+    bottom: 0;
+    left: 0;
+    height: 9px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    z-index: 6;
+    background: var(--merge-editor-bg);
+}
+.merge-horizontal-scroll-inner {
+    height: 1px;
+    /* Match the code font so the `ch` unit used to size this spacer equals one
+       monospace glyph in the panes. */
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
+}
+.merge-horizontal-scroll::-webkit-scrollbar {
+    height: 9px;
+}
+.merge-horizontal-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+.merge-horizontal-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--merge-editor-fg) 24%, transparent);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
 .conflict-actions-left {
     position: absolute;
-    top: 2px;
-    right: -1px;
+    top: 1px;
+    right: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
     z-index: 5;
 }
 .conflict-actions-right {
     position: absolute;
-    top: 2px;
-    left: -1px;
+    top: 1px;
+    left: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
     z-index: 5;
 }
 .action-btn {
-    width: 18px;
-    height: 18px;
-    border: 1px solid color-mix(in srgb, var(--merge-border) 80%, transparent);
+    width: 20px;
+    height: 20px;
+    border: 1px solid transparent;
+    border-radius: 3px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
-    background: color-mix(in srgb, var(--merge-header-bg) 86%, #000 14%);
-    color: var(--vscode-foreground);
-    opacity: 0.95;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+    background: transparent;
+    color: color-mix(in srgb, var(--merge-editor-fg) 84%, transparent);
+    opacity: 0.92;
+    box-shadow: none;
 }
 .action-btn:hover {
-    background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.1));
+    background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
     opacity: 1;
 }
 .accept-btn.active {
     border-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 70%, transparent);
-    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 78%, #000 22%);
-    color: var(--vscode-button-foreground, #ffffff);
+    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 42%, transparent);
+    color: var(--merge-ok);
 }
 .discard-btn:hover {
     background: rgba(216, 108, 108, 0.15);
     color: var(--vscode-errorForeground, #f48771);
 }
-
-.conflict-ours .code-lines,
-.conflict-theirs .code-lines,
-.conflict-result .code-lines {
-    position: relative;
+.action-btn.accept-btn {
+    color: var(--merge-ok);
 }
-.conflict-ours .code-lines::before,
-.conflict-theirs .code-lines::before,
-.conflict-result .code-lines::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
+/* Append mode stacks the second side below the first; a faint tint sets it
+   apart from a plain accept so the "»+"/"«+" glyph reads as add, not replace. */
+.action-btn.append-btn {
+    color: var(--merge-ok);
+    background: color-mix(in srgb, var(--merge-ok) 16%, transparent);
 }
-.conflict-result .code-lines::before {
-    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+.action-btn.discard-btn {
+    color: var(--merge-danger);
 }
 
-.change-conflict .conflict-ours .code-lines::before,
-.change-conflict .conflict-theirs .code-lines::before {
+/* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
+   filler rows align panes but stay neutral. Code rows use a sticky background
+   layer so color stays pinned to the visible pane while text scrolls. */
+.change-conflict .conflict-ours .real-code-line::before,
+.change-conflict .conflict-theirs .real-code-line::before,
+.change-conflict .conflict-result.unresolved .real-code-line::before,
+.change-conflict .conflict-ours .real-line-row,
+.change-conflict .conflict-theirs .real-line-row,
+.change-conflict .conflict-result.unresolved .real-line-row {
+    background: var(--merge-conflict-block-bg);
+}
+.variant-insertion .conflict-ours .real-code-line::before,
+.variant-insertion .conflict-theirs .real-code-line::before,
+.variant-insertion .conflict-ours .real-line-row,
+.variant-insertion .conflict-theirs .real-line-row {
+    background: var(--merge-inserted-block-bg);
+}
+.variant-modification .conflict-ours .real-code-line::before,
+.variant-modification .conflict-theirs .real-code-line::before,
+.variant-modification .conflict-ours .real-line-row,
+.variant-modification .conflict-theirs .real-line-row {
+    background: var(--merge-modified-block-bg);
+}
+.variant-deletion .conflict-ours .real-code-line::before,
+.variant-deletion .conflict-theirs .real-code-line::before,
+.variant-deletion .conflict-ours .real-line-row,
+.variant-deletion .conflict-theirs .real-line-row {
+    background: var(--merge-deleted-block-bg);
+}
+.change-ours-only .conflict-theirs .real-code-line::before,
+.change-theirs-only .conflict-ours .real-code-line::before,
+.change-ours-only .conflict-theirs .real-line-row,
+.change-theirs-only .conflict-ours .real-line-row {
     background: transparent;
 }
-.change-conflict .conflict-ours .code-lines::before {
-    background: var(--merge-current-content-bg);
+.conflict-result.resolved .real-code-line::before,
+.conflict-result.resolved .real-line-row {
+    background: var(--merge-inserted-block-bg);
 }
-.change-conflict .conflict-theirs .code-lines::before {
-    background: var(--merge-incoming-content-bg);
+/* One-sided hunks are auto-resolved, so their result pane is always
+   "resolved"; keep the variant color instead of the generic green (a
+   deletion's empty result must not read as an insertion). User edits win
+   via the .edited tint below. */
+.variant-modification .conflict-result.resolved:not(.edited) .real-code-line::before,
+.variant-modification .conflict-result.resolved:not(.edited) .real-line-row {
+    background: var(--merge-modified-block-bg);
 }
-.change-conflict .conflict-result.unresolved .code-lines::before {
-    background: var(
-        --vscode-mergeEditor-conflict-unhandledUnfocusedMinimapOverViewRuler,
-        var(--merge-result-conflict-bg)
-    );
-    opacity: 0.7;
+.variant-deletion .conflict-result.resolved:not(.edited) .real-code-line::before,
+.variant-deletion .conflict-result.resolved:not(.edited) .real-line-row {
+    background: var(--merge-deleted-block-bg);
 }
-.change-ours-only .conflict-ours .code-lines::before,
-.change-theirs-only .conflict-theirs .code-lines::before {
-    background: var(--merge-common-content-bg);
+/* An accepted source pane drops its conflict band (the choice now lives in the
+   result), including when both sides are stacked and both columns are accepted.
+   Scoped to the accepted column and specific enough (0-4-0) to beat the 0-3-0
+   change-/variant- band rules above; the middle result keeps its resolved fill. */
+.conflict-column.accepted .conflict-ours .real-code-line::before,
+.conflict-column.accepted .conflict-theirs .real-code-line::before,
+.conflict-column.accepted .conflict-ours .real-line-row,
+.conflict-column.accepted .conflict-theirs .real-line-row {
+    background: transparent;
 }
-.change-ours-only .conflict-result.unresolved .code-lines::before,
-.change-theirs-only .conflict-result.unresolved .code-lines::before {
-    background: var(--merge-result-nonconflict-bg);
+/* A dismissed source pane was rejected via its discard (X) control without
+   accepting the opposite side. Drop its conflict band and dim it so it reads as
+   discarded rather than a live suggestion; the opposite side stays offered. */
+.conflict-column.dismissed .conflict-ours .real-code-line::before,
+.conflict-column.dismissed .conflict-theirs .real-code-line::before,
+.conflict-column.dismissed .conflict-ours .real-line-row,
+.conflict-column.dismissed .conflict-theirs .real-line-row {
+    background: transparent;
 }
-.conflict-result.resolved .code-lines::before {
-    background: var(--merge-result-resolved-bg);
+.conflict-column.dismissed {
+    opacity: 0.5;
 }
 
 .result-editable {
@@ -705,23 +711,22 @@
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: var(--vscode-editor-font-size, 12px);
+    font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 12px));
     line-height: 20px;
     white-space: pre;
     overflow-x: auto;
 }
-.conflict-result.edited .code-lines::before {
-    background: color-mix(in srgb, var(--merge-result-resolved-bg) 70%, #4ea1ff 30%);
+.conflict-result.edited .real-code-line::before,
+.conflict-result.edited .real-line-row {
+    background: color-mix(in srgb, var(--merge-inserted-block-bg) 70%, #4ea1ff 30%);
 }
 
 .conflict-ours .code-line,
 .conflict-theirs .code-line,
 .conflict-result .code-line {
-    position: relative;
-    z-index: 1;
     color: var(--vscode-editor-foreground);
 }
-.segment-conflict.active .conflict-result.unresolved .code-lines::before {
+.segment-conflict.active .conflict-result.unresolved .code-lines {
     box-shadow:
         inset 0 0 0 1px rgba(78, 161, 255, 0.14),
         inset 0 0 18px rgba(78, 161, 255, 0.05);
@@ -732,18 +737,18 @@
     top: 0;
     right: 0;
     bottom: 0;
-    width: 12px;
+    width: 10px;
     pointer-events: none;
 }
 .overview-track {
     position: absolute;
     top: 3px;
-    right: 1px;
+    right: 2px;
     bottom: 3px;
-    width: 6px;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.03);
+    width: 4px;
+    border-radius: 3px;
+    background: transparent;
+    border: none;
     pointer-events: auto;
 }
 .overview-marker {
@@ -754,24 +759,24 @@
     border: none;
     padding: 0;
     margin: 0;
-    border-radius: 3px;
+    border-radius: 2px;
     cursor: pointer;
-    opacity: 0.95;
+    opacity: 0.82;
 }
 .overview-marker.marker-conflict.unresolved {
-    background: rgba(216, 108, 108, 0.9);
+    background: rgba(216, 108, 108, 0.86);
 }
 .overview-marker.marker-conflict.resolved {
-    background: rgba(121, 193, 141, 0.8);
+    background: rgba(121, 193, 141, 0.76);
 }
 .overview-marker.marker-ours-only,
 .overview-marker.marker-theirs-only {
-    background: rgba(91, 137, 214, 0.85);
+    background: rgba(91, 137, 214, 0.78);
 }
 .overview-marker.active {
-    outline: 1px solid rgba(255, 255, 255, 0.65);
+    outline: 1px solid color-mix(in srgb, var(--merge-editor-fg) 48%, transparent);
     outline-offset: 0;
-    box-shadow: 0 0 0 1px rgba(78, 161, 255, 0.6);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 42%, transparent);
 }
 .overview-marker:hover {
     filter: brightness(1.1);
@@ -835,6 +840,14 @@
 .footer-btn.secondary.ghost:hover {
     color: var(--vscode-foreground);
 }
+.footer-btn.danger {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
+    color: var(--vscode-errorForeground, #f48771);
+}
+.footer-btn.danger:hover {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);
+}
 .footer-hint {
     color: var(--merge-muted);
     font-size: 10px;
@@ -844,7 +857,7 @@
 }
 
 .tok-comment {
-    color: var(--vscode-editorLineNumber-foreground, #6e7681);
+    color: color-mix(in srgb, var(--vscode-editorLineNumber-foreground, #6e7681) 74%, transparent);
     font-style: italic;
 }
 .tok-keyword {
@@ -859,14 +872,36 @@
 .tok-constant {
     color: var(--vscode-symbolIcon-constantForeground, #4fc1ff);
 }
+/* Changed words carry the full PyCharm color on top of the faded block
+   background: dark red words in red conflict sections, dark green words in
+   green insertions, and so on. */
 .word-diff-change {
-    background: rgba(255, 208, 97, 0.16);
+    background: var(--pycharm-modified);
     border-radius: 2px;
-    box-shadow: inset 0 0 0 1px rgba(255, 208, 97, 0.12);
+}
+.change-conflict .word-diff-change {
+    background: var(--pycharm-conflict);
+}
+.variant-insertion .word-diff-change {
+    background: var(--pycharm-inserted);
+}
+.variant-modification .word-diff-change {
+    background: var(--pycharm-modified);
+}
+.variant-deletion .word-diff-change {
+    background: var(--pycharm-deleted);
+}
+.conflict-result.resolved .word-diff-change,
+.conflict-result.edited .word-diff-change {
+    background: var(--pycharm-inserted);
+}
+/* Keep result-pane word color matched to the block variant (see the
+   block-background rules above). */
+.variant-modification .conflict-result.resolved:not(.edited) .word-diff-change {
+    background: var(--pycharm-modified);
 }
 .word-diff-change.word-diff-whitespace {
-    background: rgba(255, 208, 97, 0.07);
-    box-shadow: inset 0 0 0 1px rgba(255, 208, 97, 0.06);
+    background: color-mix(in srgb, var(--vscode-editor-foreground, #ccc) 10%, transparent);
 }
 
 @media (max-width: 1200px) {
@@ -876,22 +911,9 @@
     .pane-meta-counts {
         display: none;
     }
-    .hunk-status {
-        display: none;
-    }
 }
 
 @media (max-width: 980px) {
-    .hunk-header {
-        flex-wrap: wrap;
-        align-items: center;
-    }
-    .hunk-header-center {
-        order: 3;
-        width: 100%;
-        justify-content: flex-start;
-        padding-bottom: 2px;
-    }
     .footer-hint {
         display: none;
     }

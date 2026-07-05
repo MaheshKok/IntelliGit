@@ -75,6 +75,54 @@ describe("GitOps", () => {
             expect(await ops.isRepository()).toBe(false);
         });
     });
+    describe("abortMerge", () => {
+        it.each([
+            ["MERGE_HEAD", ["merge", "--abort"]],
+            ["REBASE_HEAD", ["rebase", "--abort"]],
+            ["CHERRY_PICK_HEAD", ["cherry-pick", "--abort"]],
+        ])("uses the abort command for %s", async (activeRef, expectedCommand) => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key.startsWith("rev-parse --verify --quiet ")) {
+                        if (key.endsWith(activeRef)) return "";
+                        throw new Error("missing ref");
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await ops.abortMerge();
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual(
+                expectedCommand,
+            );
+        });
+
+        it("resets unmerged index conflicts left by stash apply", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key.startsWith("rev-parse --verify --quiet ")) {
+                        throw new Error("missing ref");
+                    }
+                    if (key === "ls-files -u") {
+                        return "100644 abc 1\tfile.ts\n100644 def 2\tfile.ts\n";
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await ops.abortMerge();
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual([
+                "reset",
+                "--merge",
+            ]);
+        });
+    });
     describe("getBranches", () => {
         it("parses local and remote branches", async () => {
             const output = [
@@ -519,7 +567,7 @@ describe("GitOps", () => {
             }
         });
 
-        it("shelves and restores files with option-like and spaces-in-names", async () => {
+        it("stashes and restores files with option-like and spaces-in-names", async () => {
             const repo = await createTempGitRepo();
             try {
                 const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
@@ -527,16 +575,16 @@ describe("GitOps", () => {
                 await writeFile(path.join(repo, "space file.txt"), "space content\n", "utf8");
                 await writeFile(path.join(repo, "nested", "tracked.txt"), "modified\n", "utf8");
 
-                await ops.shelveSave(
+                await ops.stashSave(
                     ["--dash.txt", "space file.txt", "nested/tracked.txt"],
-                    "shelve test",
+                    "stash test",
                 );
 
-                // Working tree should be clean after shelving
+                // Working tree should be clean after stashing
                 expect(await status(repo)).toBe("");
 
-                // Pop the shelve back
-                await ops.shelvePop(0);
+                // Pop the stash back
+                await ops.stashPop(0);
                 const rawStatus = await status(repo);
                 expect(rawStatus).toContain("--dash.txt");
                 expect(rawStatus).toContain("space file.txt");

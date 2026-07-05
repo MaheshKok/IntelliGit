@@ -113,6 +113,56 @@ describe("merge conflict parser", () => {
         ).toEqual(["function x() {", "return 1;", "}"]);
     });
 
+    it("auto-resolves whitespace-differing identical changes while preserving both sides' bytes", () => {
+        // Both sides replace the same base line with the same code but
+        // different indentation. With ignoreWhitespace the hunk must not
+        // demand a decision, yet neither side's exact bytes may be lost.
+        const base = "keep();\nold();\ntail();";
+        const ours = "keep();\n  fresh();\ntail();";
+        const theirs = "keep();\n\tfresh();\ntail();";
+
+        const segments = parseConflictVersions(base, ours, theirs, { ignoreWhitespace: true });
+        const conflict = segments.find((seg) => seg.type === "conflict");
+        expect(conflict).toMatchObject({
+            changeKind: "conflict",
+            oursLines: ["  fresh();"],
+            theirsLines: ["\tfresh();"],
+            baseLines: ["old();"],
+            autoResolvedLines: ["  fresh();"],
+        });
+    });
+
+    it("trims byte-identical conflict edges into common segments when ignoring whitespace", () => {
+        const base = "start();\nmiddle();\nfinish();";
+        const ours = "start();\nours_core();\nshared_tail();\nfinish();";
+        const theirs = "start();\ntheirs_core();\nshared_tail();\nfinish();";
+
+        const segments = parseConflictVersions(base, ours, theirs, { ignoreWhitespace: true });
+        const conflict = segments.find((seg) => seg.type === "conflict");
+        expect(conflict).toMatchObject({
+            changeKind: "conflict",
+            oursLines: ["ours_core();"],
+            theirsLines: ["theirs_core();"],
+            baseLines: ["middle();"],
+        });
+        const commonLines = segments.flatMap((seg) => (seg.type === "common" ? seg.lines : []));
+        expect(commonLines).toContain("shared_tail();");
+    });
+
+    it("keeps whitespace-differing shared edges inside the conflict so resolving theirs keeps its bytes", () => {
+        const base = "start();\nmiddle();\nfinish();";
+        const ours = "start();\nours_core();\n  shared_tail();\nfinish();";
+        const theirs = "start();\ntheirs_core();\n\tshared_tail();\nfinish();";
+
+        const segments = parseConflictVersions(base, ours, theirs, { ignoreWhitespace: true });
+        const conflict = segments.find((seg) => seg.type === "conflict");
+        expect(conflict).toMatchObject({
+            changeKind: "conflict",
+            oursLines: ["ours_core();", "  shared_tail();"],
+            theirsLines: ["theirs_core();", "\tshared_tail();"],
+        });
+    });
+
     it("does not create a synthetic empty line for trailing newlines", () => {
         const text = "a\nb\n";
         const segments = parseConflictVersions(text, text, text);

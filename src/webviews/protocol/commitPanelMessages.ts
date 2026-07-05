@@ -14,18 +14,22 @@ import type {
  * Commit panel messages sent from the webview to the extension host.
  *
  * Commands that carry paths use repository-relative Git paths originally
- * supplied in `WorkingFile.path` or shelved file entries. The host treats every
+ * supplied in `WorkingFile.path` or stashed file entries. The host treats every
  * path and stash index as untrusted webview input and revalidates before Git or
  * filesystem operations.
  */
 export type OutboundMessage =
     | {
-          /** Lifecycle event requesting working-tree, shelf, graph, and draft state. */
+          /** Lifecycle event requesting working-tree, stash, graph, and draft state. */
           type: "ready";
       }
     | {
-          /** User event requesting a fresh working-tree and shelf snapshot. */
+          /** User event requesting a fresh working-tree and stash snapshot. */
           type: "refresh";
+      }
+    | {
+          /** Command aborting the active merge after host confirmation. */
+          type: "abortMerge";
       }
     | {
           /** View option controlling whether ignored files are included in working-tree snapshots. */
@@ -126,43 +130,43 @@ export type OutboundMessage =
           path: string;
       }
     | {
-          /** Command saving selected or all changes to Git stash-backed IntelliGit shelf. */
-          type: "shelveSave";
-          /** Optional stash message; host defaults to a generic shelf name when absent. */
+          /** Command saving selected or all changes to the Git stash. */
+          type: "stashSave";
+          /** Optional stash message; host defaults to a generic stash name when absent. */
           name?: string;
-          /** Repository-relative paths to shelve; omitted means shelve all tracked/untracked changes. */
+          /** Repository-relative paths to stash; omitted means stash all tracked/untracked changes. */
           paths?: string[];
       }
     | {
-          /** Command applying and dropping a shelved change via `git stash pop`. */
-          type: "shelfPop";
+          /** Command applying and dropping a stashed change via `git stash pop`. */
+          type: "stashPop";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
       }
     | {
-          /** Command applying a shelved change without dropping it. */
-          type: "shelfApply";
+          /** Command applying a stashed change without dropping it. */
+          type: "stashApply";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
       }
     | {
-          /** Command deleting a shelved change after host confirmation. */
-          type: "shelfDelete";
+          /** Command deleting a stashed change after host confirmation. */
+          type: "stashDelete";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
       }
     | {
-          /** Request loading the file list for one shelved change. */
-          type: "shelfSelect";
-          /** Current `stash@{n}` index whose files should populate `shelfFiles`. */
+          /** Request loading the file list for one stashed change. */
+          type: "stashSelect";
+          /** Current `stash@{n}` index whose files should populate `stashFiles`. */
           index: number;
       }
     | {
-          /** Command opening a preview diff for one file inside a shelved change. */
-          type: "showShelfDiff";
+          /** Command opening a preview diff for one file inside a stashed change. */
+          type: "showStashDiff";
           /** Current `stash@{n}` index containing the file. */
           index: number;
-          /** Repository-relative path from the selected shelf file list. */
+          /** Repository-relative path from the selected stash file list. */
           path: string;
       }
     | {
@@ -188,16 +192,16 @@ export type OutboundMessage =
  */
 export type InboundMessage =
     | {
-          /** State update for working-tree files, shelves, and render-only icon metadata. */
+          /** State update for working-tree files, stashes, and render-only icon metadata. */
           type: "update";
           /** Working-tree and index entries parsed from `git status` and numstat output. */
           files: WorkingFile[];
-          /** Shelved changes parsed from `git stash list`; indices are not stable after refresh. */
+          /** Stashed changes parsed from `git stash list`; indices are not stable after refresh. */
           stashes: StashEntry[];
-          /** Files for `selectedShelfIndex`, parsed from `git stash show` output. */
-          shelfFiles: WorkingFile[];
-          /** Selected `stash@{n}` index, or `null` when no shelf entry is available. */
-          selectedShelfIndex: number | null;
+          /** Files for `selectedStashIndex`, parsed from `git stash show` output. */
+          stashFiles: WorkingFile[];
+          /** Selected `stash@{n}` index, or `null` when no stash entry is available. */
+          selectedStashIndex: number | null;
           /** Default collapsed folder icon for file trees when the theme resolves one. */
           folderIcon?: ThemeTreeIcon;
           /** Default expanded folder icon for file trees when the theme resolves one. */

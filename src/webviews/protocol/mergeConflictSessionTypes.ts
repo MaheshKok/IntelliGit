@@ -53,6 +53,10 @@ export type OutboundMessage =
           filePath: string;
       }
     | {
+          /** Command aborting the in-progress merge after host-side confirmation. */
+          type: "abortMerge";
+      }
+    | {
           /** Command closing the merge-conflict session panel. */
           type: "close";
       };

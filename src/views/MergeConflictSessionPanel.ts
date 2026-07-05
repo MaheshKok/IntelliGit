@@ -3,8 +3,13 @@ import { GitOps } from "../git/operations";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
-import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedInformationMessage,
+    showTimedWarningMessage,
+} from "../utils/notifications";
 import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
+import { abortMergeWithConfirmation } from "./mergeAbort";
 
 /**
  * Branch labels shown in the merge-conflict session panel header.
@@ -215,6 +220,10 @@ export class MergeConflictSessionPanel {
                 return;
             }
 
+            case "abortMerge":
+                await this.abortMerge();
+                return;
+
             case "close":
                 this.panel.dispose();
                 return;
@@ -230,6 +239,32 @@ export class MergeConflictSessionPanel {
     private getFilePath(value: unknown): string | null {
         if (typeof value !== "string") return null;
         return value.trim().length > 0 ? value : null;
+    }
+
+    /** Confirms and aborts the active merge represented by this conflict session. */
+    private async abortMerge(): Promise<void> {
+        await abortMergeWithConfirmation({
+            gitOps: this.gitOps,
+            onConflictStateChanged: () => this.notifyConflictStateChanged(),
+            disposePanel: () => {
+                if (this.isAlive()) this.panel.dispose();
+            },
+        });
+    }
+
+    /**
+     * Notifies conflict listeners without letting refresh failures mask a successful abort.
+     */
+    private async notifyConflictStateChanged(): Promise<void> {
+        try {
+            await this.callbacks.onConflictStateChanged();
+        } catch (error) {
+            showTimedWarningMessage(
+                vscode.l10n.t("Failed to refresh conflict UI: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
     }
 
     private isAlive(): boolean {

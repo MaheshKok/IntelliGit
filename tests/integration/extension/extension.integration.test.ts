@@ -224,15 +224,16 @@ const gitOpsState = {
     getUnpushedCommitHashes: vi.fn(async () => ["a1b2c3d4", "feed1234", "deadbee"]),
     getFileContentAtRef: vi.fn(async (_filePath: string, ref: string) => `content:${ref}`),
     rollbackFiles: vi.fn(async () => undefined),
-    shelveSave: vi.fn(async () => "saved"),
+    stashSave: vi.fn(async () => "saved"),
     getFileHistory: vi.fn(async () => "history"),
     hasUncommittedChanges: vi.fn(async () => false),
     getStatus: vi.fn(async () => []),
-    listShelved: vi.fn(async () => []),
-    getShelvedFiles: vi.fn(async () => []),
+    listStashes: vi.fn(async () => []),
+    getStashFiles: vi.fn(async () => []),
     getConflictedFiles: vi.fn(async () => []),
     getConflictFilesDetailed: vi.fn(async () => []),
     acceptConflictSide: vi.fn(async () => undefined),
+    abortMerge: vi.fn(async () => undefined),
     getConflictFileVersions: vi.fn(async () => ({ base: "", ours: "", theirs: "" })),
     stageFile: vi.fn(async () => undefined),
     push: vi.fn(async () => ""),
@@ -674,14 +675,15 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;
             getFileContentAtRef = gitOpsState.getFileContentAtRef;
             rollbackFiles = gitOpsState.rollbackFiles;
-            shelveSave = gitOpsState.shelveSave;
+            stashSave = gitOpsState.stashSave;
             getFileHistory = gitOpsState.getFileHistory;
             getStatus = gitOpsState.getStatus;
-            listShelved = gitOpsState.listShelved;
-            getShelvedFiles = gitOpsState.getShelvedFiles;
+            listStashes = gitOpsState.listStashes;
+            getStashFiles = gitOpsState.getStashFiles;
             getConflictedFiles = gitOpsState.getConflictedFiles;
             getConflictFilesDetailed = gitOpsState.getConflictFilesDetailed;
             acceptConflictSide = gitOpsState.acceptConflictSide;
+            abortMerge = gitOpsState.abortMerge;
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
@@ -911,11 +913,12 @@ describe("extension integration", () => {
             async (_filePath: string, ref: string) => `content:${ref}`,
         );
         gitOpsState.rollbackFiles.mockResolvedValue(undefined);
-        gitOpsState.shelveSave.mockResolvedValue("saved");
+        gitOpsState.stashSave.mockResolvedValue("saved");
         gitOpsState.getFileHistory.mockResolvedValue("history");
         gitOpsState.getConflictedFiles.mockResolvedValue([]);
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
         gitOpsState.acceptConflictSide.mockResolvedValue(undefined);
+        gitOpsState.abortMerge.mockResolvedValue(undefined);
         deleteFileWithFallback.mockResolvedValue(true);
 
         showWarningMessage.mockImplementation(
@@ -1379,6 +1382,11 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalled();
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "ours");
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "theirs");
+        // Opening a merge conflict must not float the active editor into a new
+        // window; that side effect belongs to the undock flow alone.
+        expect(executeCommandFallback).not.toHaveBeenCalledWith(
+            "workbench.action.moveEditorToNewWindow",
+        );
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
                 location: 15,
@@ -2250,6 +2258,48 @@ describe("extension integration", () => {
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts ", "ours");
         expect(showErrorMessage).not.toHaveBeenCalled();
         panelResult?.dispose?.();
+    });
+
+    it("aborts merge from conflict session after confirmation", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        await registeredCommands.get("intelligit.openConflictSession")?.();
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        type CreatedPanel = {
+            webview: {
+                onDidReceiveMessage: ReturnType<typeof vi.fn>;
+            };
+            dispose: ReturnType<typeof vi.fn>;
+        };
+        const panelResult = createWebviewPanelMock.mock.results[0]?.value as
+            | CreatedPanel
+            | undefined;
+        const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
+            | ((msg: unknown) => Promise<void>)
+            | undefined;
+        expect(handler).toBeDefined();
+
+        gitOpsState.abortMerge.mockClear();
+        await handler?.({ type: "abortMerge" });
+
+        expect(gitOpsState.abortMerge).toHaveBeenCalledTimes(1);
+        expect(panelResult?.dispose).toHaveBeenCalled();
+        expect(showInformationMessage).toHaveBeenCalledWith("Merge aborted.");
     });
 
     it("does not open conflict session for current-branch update fetch failures", async () => {
@@ -3134,13 +3184,13 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.fileDelete")?.({ filePath: "../secret.txt" });
 
         expect(gitOpsState.rollbackFiles).not.toHaveBeenCalled();
-        expect(gitOpsState.shelveSave).not.toHaveBeenCalled();
+        expect(gitOpsState.stashSave).not.toHaveBeenCalled();
         expect(deleteFileWithFallback).not.toHaveBeenCalled();
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining("Rollback failed: Rejected path escaping repo root"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Shelve failed: Rejected path escaping repo root"),
+            expect.stringContaining("Stash failed: Rejected path escaping repo root"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
             expect.stringContaining(
@@ -3265,7 +3315,7 @@ describe("extension integration", () => {
 
         gitOpsState.rollbackFiles.mockRejectedValueOnce(new Error("rollback failed"));
         await registeredCommands.get("intelligit.fileRollback")?.({ filePath: "src/a.ts" });
-        gitOpsState.shelveSave.mockRejectedValueOnce(new Error("shelve failed"));
+        gitOpsState.stashSave.mockRejectedValueOnce(new Error("stash failed"));
         await registeredCommands.get("intelligit.fileShelve")?.({ filePath: "src/a.ts" });
         deleteFileWithFallback.mockResolvedValueOnce(false);
         await registeredCommands.get("intelligit.fileDelete")?.({ filePath: "src/a.ts" });
@@ -3294,7 +3344,7 @@ describe("extension integration", () => {
             expect.stringContaining("Rollback failed: rollback failed"),
         );
         expect(showErrorMessage).toHaveBeenCalledWith(
-            expect.stringContaining("Shelve failed: shelve failed"),
+            expect.stringContaining("Stash failed: stash failed"),
         );
     });
 

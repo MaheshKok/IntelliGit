@@ -5,16 +5,7 @@
 // OverviewRail provides a minimap of conflict locations for quick navigation.
 
 import React, { useCallback, useMemo, useState } from "react";
-import type { CommonSegment, ConflictSegment, HunkResolution } from "./types";
-import {
-    IconArrowRight,
-    IconArrowLeft,
-    IconClose,
-    IconSplitBoth,
-    IconWarning,
-    IconCheck,
-    IconDot,
-} from "./icons";
+import type { CommonSegment, ConflictSegment, HunkResolution, HunkSideDismissal } from "./types";
 import {
     tokenSimilarityRatio,
     buildWordDiffMask,
@@ -23,7 +14,8 @@ import {
 } from "../../../mergeEditor/wordDiff";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
-import type { AlignedHunkRows } from "./rowAlignment";
+import { highlightLine } from "./shikiHighlighter";
+import { useSyntaxHighlightState, type SyntaxHighlightState } from "./syntaxHighlightContext";
 import type { LineNumberValue } from "./lineNumbers";
 import { t } from "../shared/i18n";
 
@@ -38,15 +30,53 @@ const TOKEN_CLASS: Record<SyntaxTokenKind, string | undefined> = {
     number: "tok-number",
 };
 
-function renderSyntaxHighlightedNodes(line: string, keyPrefix: string): React.ReactNode[] {
-    if (!line) return [<React.Fragment key={`${keyPrefix}-nbsp`}>{`\u00A0`}</React.Fragment>];
+/** A single colored run of text: Shiki tokens carry an inline style, fallback tokens carry a className. */
+interface ColoredSpan {
+    text: string;
+    style?: React.CSSProperties;
+    className?: string;
+}
+
+// Shiki `fontStyle` bitmask bits (see @shikijs/core ThemedToken).
+const FONT_STYLE_ITALIC = 1;
+const FONT_STYLE_BOLD = 2;
+const FONT_STYLE_UNDERLINE = 4;
+
+/**
+ * Tokenizes a line into colored spans. Uses Shiki's grammar-accurate tokens
+ * when the highlighter is ready and the file's language is registered;
+ * otherwise falls back to the hand-rolled five-category tokenizer.
+ */
+function coloredSpansForLine(line: string, ctx: SyntaxHighlightState): ColoredSpan[] {
+    if (ctx.ready && ctx.lang) {
+        const shikiTokens = highlightLine(line, ctx.lang, ctx.theme);
+        if (shikiTokens) {
+            return shikiTokens.map((tok) => {
+                const style: React.CSSProperties = {};
+                if (tok.color) style.color = tok.color;
+                if (tok.fontStyle) {
+                    if (tok.fontStyle & FONT_STYLE_ITALIC) style.fontStyle = "italic";
+                    if (tok.fontStyle & FONT_STYLE_BOLD) style.fontWeight = "bold";
+                    if (tok.fontStyle & FONT_STYLE_UNDERLINE) style.textDecoration = "underline";
+                }
+                return { text: tok.text, style: Object.keys(style).length ? style : undefined };
+            });
+        }
+    }
+    return tokenizeSyntaxLine(line).map((token) => ({
+        text: token.text,
+        className: TOKEN_CLASS[token.kind],
+    }));
+}
+
+function renderColoredSpans(spans: ColoredSpan[], keyPrefix: string): React.ReactNode[] {
     let offset = 0;
-    return tokenizeSyntaxLine(line).map((token) => {
-        const key = `${keyPrefix}-${offset}-${token.text}`;
-        offset += token.text.length;
+    return spans.map((span) => {
+        const key = `${keyPrefix}-${offset}-${span.text}`;
+        offset += span.text.length;
         return (
-            <span key={key} className={TOKEN_CLASS[token.kind]}>
-                {token.text}
+            <span key={key} className={span.className} style={span.style}>
+                {span.text}
             </span>
         );
     });
@@ -57,11 +87,87 @@ const HighlightedLine = React.memo(function HighlightedLine({
 }: {
     line: string;
 }): React.ReactElement {
-    if (!line) return <>{`\u00A0`}</>;
+    const ctx = useSyntaxHighlightState();
+    if (!line) return <>{` `}</>;
     // Pure syntax-token helper, not a component invocation.
     // react-doctor-disable-next-line react-doctor/no-render-in-render
-    return <>{renderSyntaxHighlightedNodes(line, "line")}</>;
+    return <>{renderColoredSpans(coloredSpansForLine(line, ctx), "line")}</>;
 });
+
+/**
+ * Expands a token-level word-diff mask into per-character changed/whitespace
+ * masks aligned to `line`. This lets the change overlay be intersected with
+ * Shiki's full-line colored spans without re-tokenizing fragments (which
+ * would lose surrounding grammar context, e.g. a string opened before the
+ * changed run).
+ */
+function buildChangedCharMasks(
+    line: string,
+    compareLine: string,
+): { changed: boolean[]; whitespace: boolean[] } {
+    const tokens = tokenizeWordDiff(line);
+    const changedMask = buildWordDiffMask(line, compareLine);
+    const changed: boolean[] = [];
+    const whitespace: boolean[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const isChanged = changedMask[i];
+        const isWhitespace = /^\s+$/.test(token);
+        for (let c = 0; c < token.length; c++) {
+            changed.push(isChanged);
+            whitespace.push(isWhitespace);
+        }
+    }
+    return { changed, whitespace };
+}
+
+/**
+ * Renders colored spans with a word-diff overlay: each colored span is split
+ * at change-boundary offsets so the underlying grammar coloring is preserved
+ * beneath the `.word-diff-change` background instead of being replaced by it.
+ */
+function renderColoredSpansWithWordDiff(
+    spans: ColoredSpan[],
+    changed: boolean[],
+    whitespace: boolean[],
+    keyPrefix: string,
+): React.ReactNode[] {
+    const nodes: React.ReactNode[] = [];
+    let offset = 0;
+    for (const span of spans) {
+        let runStart = 0;
+        while (runStart < span.text.length) {
+            const runChanged = changed[offset + runStart];
+            let runEnd = runStart + 1;
+            while (runEnd < span.text.length && changed[offset + runEnd] === runChanged) {
+                runEnd++;
+            }
+            const runText = span.text.slice(runStart, runEnd);
+            const key = `${keyPrefix}-${offset + runStart}`;
+            const coloredNode = (
+                <span key={key} className={span.className} style={span.style}>
+                    {runText}
+                </span>
+            );
+            if (runChanged) {
+                const runIsWhitespace = whitespace[offset + runStart];
+                nodes.push(
+                    <span
+                        key={`chg-${key}`}
+                        className={`word-diff-change ${runIsWhitespace ? "word-diff-whitespace" : ""}`}
+                    >
+                        {coloredNode}
+                    </span>,
+                );
+            } else {
+                nodes.push(coloredNode);
+            }
+            runStart = runEnd;
+        }
+        offset += span.text.length;
+    }
+    return nodes;
+}
 
 const WordDiffLine = React.memo(function WordDiffLine({
     line,
@@ -70,7 +176,8 @@ const WordDiffLine = React.memo(function WordDiffLine({
     line: string;
     compareLine: string;
 }): React.ReactElement {
-    if (!line) return <>{`\u00A0`}</>;
+    const ctx = useSyntaxHighlightState();
+    if (!line) return <>{` `}</>;
     if (line === compareLine) return <HighlightedLine line={line} />;
     if (!compareLine) return <HighlightedLine line={line} />;
 
@@ -79,36 +186,12 @@ const WordDiffLine = React.memo(function WordDiffLine({
         return <HighlightedLine line={line} />;
     }
 
-    const tokens = tokenizeWordDiff(line);
-    if (tokens.length === 0) return <>{`\u00A0`}</>;
+    const spans = coloredSpansForLine(line, ctx);
+    if (spans.length === 0) return <>{` `}</>;
 
-    const changedMask = buildWordDiffMask(line, compareLine);
-    const nodes: React.ReactNode[] = [];
-    let offset = 0;
+    const { changed, whitespace } = buildChangedCharMasks(line, compareLine);
 
-    for (let i = 0; i < tokens.length; i++) {
-        const token = tokens[i];
-        const keyOffset = offset;
-        offset += token.length;
-        const changed = changedMask[i];
-        const syntaxNodes = renderSyntaxHighlightedNodes(token, `wd-${keyOffset}`);
-        if (!changed) {
-            nodes.push(<React.Fragment key={`same-${keyOffset}`}>{syntaxNodes}</React.Fragment>);
-            continue;
-        }
-
-        const isWhitespace = /^\s+$/.test(token);
-        nodes.push(
-            <span
-                key={`chg-${keyOffset}`}
-                className={`word-diff-change ${isWhitespace ? "word-diff-whitespace" : ""}`}
-            >
-                {syntaxNodes}
-            </span>,
-        );
-    }
-
-    return <>{nodes}</>;
+    return <>{renderColoredSpansWithWordDiff(spans, changed, whitespace, "wd")}</>;
 });
 
 // --- Line numbers ---
@@ -116,6 +199,10 @@ const WordDiffLine = React.memo(function WordDiffLine({
 interface LineNumberSpec {
     primary: LineNumberValue[];
     secondary?: LineNumberValue[];
+}
+
+interface LineNumbersProps extends LineNumberSpec {
+    rowIsReal?: boolean[];
 }
 
 function padLines(lines: string[], count: number): string[] {
@@ -141,6 +228,16 @@ function lineNumberSpecEqual(a: LineNumberSpec, b: LineNumberSpec): boolean {
     return lineNumberValuesEqual(a.secondary, b.secondary);
 }
 
+function rowPresenceEqual(a: boolean[] | undefined, b: boolean[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
 /**
  * Value-compares the three pane line-number specs so memoized segments skip
  * re-rendering when an unrelated hunk resolution rebuilds equal number arrays.
@@ -154,26 +251,29 @@ function paneLineNumbersEqual(a: SegmentPaneLineNumbers, b: SegmentPaneLineNumbe
 }
 
 const LineNumbers = React.memo(
-    function LineNumbers({ primary, secondary }: LineNumberSpec) {
-        const rowCount = Math.max(primary.length, secondary?.length ?? 0);
-        const hasSecondary = Boolean(secondary);
-
+    function LineNumbers({ primary, rowIsReal }: LineNumbersProps) {
         return (
-            <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
-                {Array.from({ length: rowCount }, (_, i) => (
-                    <div key={i} className="line-number-row">
-                        {hasSecondary ? (
-                            <div className="line-number line-number-secondary">
-                                {secondary?.[i] ?? ""}
+            <div className="line-numbers">
+                {Array.from({ length: primary.length }, (_, i) => {
+                    const isReal = rowIsReal?.[i] ?? true;
+                    return (
+                        <div
+                            key={i}
+                            className={`line-number-row ${
+                                isReal ? "real-line-row" : "padding-line-row"
+                            }`}
+                        >
+                            <div className="line-number line-number-primary">
+                                {primary[i] ?? ""}
                             </div>
-                        ) : null}
-                        <div className="line-number line-number-primary">{primary[i] ?? ""}</div>
-                    </div>
-                ))}
+                        </div>
+                    );
+                })}
             </div>
         );
     },
-    (prev, next) => lineNumberSpecEqual(prev, next),
+    (prev, next) =>
+        lineNumberSpecEqual(prev, next) && rowPresenceEqual(prev.rowIsReal, next.rowIsReal),
 );
 
 // --- Code block ---
@@ -182,34 +282,17 @@ interface CodeBlockProps {
     lines: string[];
     lineCount: number;
     lineNumbers: LineNumberSpec;
+    showLineNumbers?: boolean;
+    lineNumberSide?: "left" | "right";
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
-    /**
-     * Pre-aligned rows for this pane where `null` marks an intra-hunk spacer
-     * row. When present these take precedence over `lines` for layout, so
-     * similar lines sit on the same row as the opposite pane.
-     */
-    alignedRows?: Array<string | null>;
-    /**
-     * Opposite-pane rows on the same row grid as `alignedRows`. Row `i`
-     * compares directly against `compareRows[i]`, replacing the heuristic
-     * compare-line alignment used for unaligned blocks.
-     */
-    compareRows?: Array<string | null>;
 }
 
-/** Pads an aligned row array with trailing spacer rows up to `count`. */
-function padAlignedRows(rows: Array<string | null>, count: number): Array<string | null> {
-    const padded = [...rows];
-    while (padded.length < count) padded.push(null);
-    return padded;
-}
-
-function rowKey(lineNumbers: LineNumberSpec, line: string | null, row: number): string {
+function rowKey(lineNumbers: LineNumberSpec, line: string, row: number): string {
     const primary = lineNumbers.primary[row] ?? "gap";
     const secondary = lineNumbers.secondary?.[row] ?? "gap";
-    return `${primary}-${secondary}-${row}-${line ?? "spacer"}`;
+    return `${primary}-${secondary}-${row}-${line}`;
 }
 
 const CodeBlock = React.memo(
@@ -217,62 +300,76 @@ const CodeBlock = React.memo(
         lines,
         lineCount,
         lineNumbers,
+        showLineNumbers = true,
+        lineNumberSide = "left",
         className,
         wordHighlight,
         compareLines,
-        alignedRows,
-        compareRows,
     }: CodeBlockProps) {
-        const padded = useMemo<Array<string | null>>(
-            () =>
-                alignedRows ? padAlignedRows(alignedRows, lineCount) : padLines(lines, lineCount),
-            [alignedRows, lines, lineCount],
+        // Padding rows align panes to the tallest side; only source-backed rows
+        // should receive diff coloring.
+        const rowCount = Math.max(lineCount, lines.length);
+        const rowIsReal = useMemo(
+            () => Array.from({ length: rowCount }, (_, i) => i < lines.length),
+            [lines.length, rowCount],
         );
+        const padded = useMemo(() => padLines(lines, rowCount), [lines, rowCount]);
         const paddedCompare = useMemo(() => {
-            if (alignedRows && compareRows) {
-                return padAlignedRows(compareRows, lineCount).map((row) => row ?? "");
-            }
             if (!compareLines) return undefined;
             const alignedCompare = alignCompareLinesForWordDiff(lines, compareLines);
-            return padLines(alignedCompare, lineCount);
-        }, [alignedRows, compareRows, compareLines, lineCount, lines]);
+            return padLines(alignedCompare, rowCount);
+        }, [compareLines, lines, rowCount]);
 
         return (
             <div
-                className={`code-block ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
+                className={`code-block ${showLineNumbers ? `line-numbers-${lineNumberSide}` : "no-line-numbers"} ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
             >
-                <LineNumbers primary={lineNumbers.primary} secondary={lineNumbers.secondary} />
+                {showLineNumbers && lineNumberSide === "left" ? (
+                    <LineNumbers
+                        primary={lineNumbers.primary}
+                        secondary={lineNumbers.secondary}
+                        rowIsReal={rowIsReal}
+                    />
+                ) : null}
                 <div className="code-lines">
-                    {padded.map((line, i) =>
-                        line === null ? (
+                    {padded.map((line, i) => {
+                        const isReal = rowIsReal[i] ?? false;
+                        return (
                             <div
                                 key={rowKey(lineNumbers, line, i)}
-                                className="code-line spacer-line"
+                                className={`code-line ${
+                                    isReal ? "real-code-line" : "padding-code-line"
+                                }`}
                             >
-                                {" "}
+                                <span className="code-line-content">
+                                    {wordHighlight && paddedCompare ? (
+                                        <WordDiffLine line={line} compareLine={paddedCompare[i]} />
+                                    ) : (
+                                        <HighlightedLine line={line} />
+                                    )}
+                                </span>
                             </div>
-                        ) : (
-                            <div key={rowKey(lineNumbers, line, i)} className="code-line">
-                                {wordHighlight && paddedCompare ? (
-                                    <WordDiffLine line={line} compareLine={paddedCompare[i]} />
-                                ) : (
-                                    <HighlightedLine line={line} />
-                                )}
-                            </div>
-                        ),
-                    )}
+                        );
+                    })}
                 </div>
+                {showLineNumbers && lineNumberSide === "right" ? (
+                    <LineNumbers
+                        primary={lineNumbers.primary}
+                        secondary={lineNumbers.secondary}
+                        rowIsReal={rowIsReal}
+                    />
+                ) : null}
             </div>
         );
     },
     (prev, next) =>
         prev.lines === next.lines &&
         prev.lineCount === next.lineCount &&
+        prev.showLineNumbers === next.showLineNumbers &&
+        prev.lineNumberSide === next.lineNumberSide &&
         prev.className === next.className &&
         prev.wordHighlight === next.wordHighlight &&
         prev.compareLines === next.compareLines &&
-        prev.alignedRows === next.alignedRows &&
-        prev.compareRows === next.compareRows &&
         lineNumberSpecEqual(prev.lineNumbers, next.lineNumbers),
 );
 
@@ -378,52 +475,12 @@ export interface SegmentPaneLineNumbers {
     right: LineNumberSpec;
 }
 
-function getHunkStatus(
-    segment: ConflictSegment,
-    resolution: HunkResolution | undefined,
-    isEdited: boolean,
-): {
-    label: string;
-    tone: "warn" | "ok" | "muted";
-} {
-    if (isEdited) return { label: t("merge.status.edited"), tone: "ok" };
-    if (segment.changeKind === "ours-only") {
-        return resolution === "none"
-            ? { label: t("merge.status.droppedLeftOnly"), tone: "muted" }
-            : { label: t("merge.status.leftOnly"), tone: "muted" };
-    }
-    if (segment.changeKind === "theirs-only") {
-        return resolution === "none"
-            ? { label: t("merge.status.droppedRightOnly"), tone: "muted" }
-            : { label: t("merge.status.rightOnly"), tone: "muted" };
-    }
-
-    if (resolution === undefined) {
-        // Token-level merged hunks default to the composed result; surface that
-        // instead of "Unresolved" so the user knows no action is required.
-        if (segment.autoResolvedLines !== undefined) {
-            return { label: t("merge.status.autoResolved"), tone: "ok" };
-        }
-        return { label: t("merge.status.unresolvedLabel"), tone: "warn" };
-    }
-    if (resolution === "ours") return { label: t("merge.status.useLeft"), tone: "ok" };
-    if (resolution === "theirs") return { label: t("merge.status.useRight"), tone: "ok" };
-    if (resolution === "both") return { label: t("merge.status.useBoth"), tone: "ok" };
-    return { label: t("merge.status.removeBlock"), tone: "muted" };
-}
-
-function getHunkKindLabel(segment: ConflictSegment): string {
-    if (segment.changeKind === "ours-only") return t("merge.kind.leftOnly");
-    if (segment.changeKind === "theirs-only") return t("merge.kind.rightOnly");
-    return t("merge.kind.conflict");
-}
-
 // --- Section components ---
 
 /** Editor row height in pixels, matched to the .code-line CSS line-height. */
 const LINE_HEIGHT_PX = 20;
-/** Estimated hunk-header plus margin overhead used for offscreen size hints. */
-const CONFLICT_CHROME_PX = 30;
+/** Estimated border/margin overhead used for offscreen conflict size hints. */
+const CONFLICT_CHROME_PX = 4;
 
 /**
  * Size hint that lets `content-visibility: auto` skip layout of offscreen
@@ -459,6 +516,7 @@ export const CommonSection = React.memo(
                         lines={segment.lines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
+                        lineNumberSide="right"
                         wordHighlight={highlightWords}
                     />
                 </div>
@@ -497,15 +555,12 @@ export interface ConflictSectionProps {
     segment: ConflictSegment;
     resolution: HunkResolution | undefined;
     editedLines: string[] | undefined;
+    dismissed: HunkSideDismissal | undefined;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
-    /**
-     * Intra-hunk row alignment shared by the ours and theirs panes. Optional
-     * so callers without alignment data fall back to top-aligned columns.
-     */
-    alignment?: AlignedHunkRows;
     onResolve: (id: number, resolution: HunkResolution) => void;
     onEditResult: (id: number, lines: string[]) => void;
+    onDismiss: (id: number, side: "ours" | "theirs") => void;
     onSelect: (id: number) => void;
     onSectionRef: (id: number, el: HTMLDivElement | null) => void;
     isActive: boolean;
@@ -513,6 +568,210 @@ export interface ConflictSectionProps {
     highlightWords: boolean;
     conflictOrdinal: number;
     trueConflictOrdinal?: number;
+}
+
+/** Derived render flags for one conflict hunk: which sides are in the result,
+ * which controls to show, and how the result/side panes compare against base. */
+interface ConflictView {
+    isEdited: boolean;
+    isOurs: boolean;
+    isTheirs: boolean;
+    oursInResult: boolean;
+    theirsInResult: boolean;
+    oursDismissed: boolean;
+    theirsDismissed: boolean;
+    isAutoMerged: boolean;
+    isResolved: boolean;
+    showLeftActions: boolean;
+    showRightActions: boolean;
+    leftAppend: boolean;
+    rightAppend: boolean;
+    resultCompareLines: string[] | undefined;
+    sideVariant: string;
+}
+
+/**
+ * Determines the lines the result pane diffs against: nothing once a side is
+ * accepted, otherwise the opposite side (single accept) or base (unresolved).
+ */
+function resultCompareBaseline(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    oursInResult: boolean,
+    theirsInResult: boolean,
+): string[] | undefined {
+    if (oursInResult || theirsInResult) return undefined;
+    if (resolution === "ours") return segment.theirsLines;
+    if (resolution === "theirs") return segment.oursLines;
+    return segment.baseLines;
+}
+
+/**
+ * PyCharm-style color class for a one-sided hunk: pure insertions green,
+ * deletions gray, modifications blue. True conflicts carry no variant class.
+ */
+function sideVariantClass(segment: ConflictSegment): string {
+    if (segment.changeKind === "conflict") return "";
+    if (segment.baseLines.length === 0) return "variant-insertion";
+    const changedSideLines =
+        segment.changeKind === "ours-only" ? segment.oursLines : segment.theirsLines;
+    if (changedSideLines.length === 0) return "variant-deletion";
+    return "variant-modification";
+}
+
+/**
+ * Computes the render flags for a conflict hunk from its resolution, manual
+ * edits, and per-side dismissals. Pure helper so ConflictSection stays a thin
+ * view over these derived values.
+ */
+function deriveConflictView(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+    dismissed: HunkSideDismissal | undefined,
+): ConflictView {
+    const isEdited = editedLines !== undefined;
+    const isOurs = !isEdited && resolution === "ours";
+    const isTheirs = !isEdited && resolution === "theirs";
+    // Both orders stack the two sides; the order only differs in getResultLines.
+    const isBoth = !isEdited && (resolution === "both" || resolution === "both-reversed");
+    const oursInResult = isOurs || isBoth;
+    const theirsInResult = isTheirs || isBoth;
+    // A side is "dismissed" when the user discarded it (X) without accepting the
+    // opposite side. Acceptance overrides dismissal, so a side in the result is
+    // never treated as dismissed. A manual edit supersedes both.
+    const oursDismissed = !isEdited && !oursInResult && dismissed?.ours === true;
+    const theirsDismissed = !isEdited && !theirsInResult && dismissed?.theirs === true;
+    const isAutoMerged =
+        segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
+    const isResolved =
+        segment.changeKind !== "conflict" ||
+        segment.autoResolvedLines !== undefined ||
+        resolution !== undefined ||
+        isEdited;
+    return {
+        isEdited,
+        isOurs,
+        isTheirs,
+        oursInResult,
+        theirsInResult,
+        oursDismissed,
+        theirsDismissed,
+        isAutoMerged,
+        isResolved,
+        // A side's controls show only while that side is still pending: not yet
+        // in the result and not discarded. Accepting one side leaves the other
+        // side's accept button available to append (stack) below it; discarding
+        // the other side hides its controls. Once both are stacked, all controls
+        // hide. A manual edit puts neither side "in result", so both reappear.
+        showLeftActions: !oursInResult && !oursDismissed,
+        showRightActions: !theirsInResult && !theirsDismissed,
+        // When one side is already in the result, the opposite accept button
+        // appends the second side below it instead of replacing the result.
+        leftAppend: theirsInResult,
+        rightAppend: oursInResult,
+        resultCompareLines: resultCompareBaseline(
+            segment,
+            resolution,
+            oursInResult,
+            theirsInResult,
+        ),
+        sideVariant: sideVariantClass(segment),
+    };
+}
+
+/** Left-column controls for a pending "ours" side: discard and accept-or-append. */
+function LeftHunkActions({
+    segmentId,
+    leftAppend,
+    isOurs,
+    theirsDismissed,
+    onResolve,
+    onDismiss,
+}: {
+    segmentId: number;
+    leftAppend: boolean;
+    isOurs: boolean;
+    theirsDismissed: boolean;
+    onResolve: (id: number, resolution: HunkResolution) => void;
+    onDismiss: (id: number, side: "ours" | "theirs") => void;
+}) {
+    return (
+        <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
+            <button
+                type="button"
+                className="action-btn discard-btn"
+                onClick={() =>
+                    theirsDismissed ? onResolve(segmentId, "none") : onDismiss(segmentId, "ours")
+                }
+                title={t("merge.hunk.ignoreLeft")}
+                aria-label={t("merge.hunk.ignoreLeft")}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    X
+                </span>
+            </button>
+            <button
+                type="button"
+                className={`action-btn accept-btn ${leftAppend ? "append-btn" : ""} ${isOurs ? "active" : ""}`}
+                onClick={() => onResolve(segmentId, leftAppend ? "both-reversed" : "ours")}
+                title={t(leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft")}
+                aria-label={t(leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft")}
+                aria-current={isOurs ? "true" : undefined}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    {leftAppend ? "»+" : ">>"}
+                </span>
+            </button>
+        </div>
+    );
+}
+
+/** Right-column controls for a pending "theirs" side: accept-or-append and discard. */
+function RightHunkActions({
+    segmentId,
+    rightAppend,
+    isTheirs,
+    oursDismissed,
+    onResolve,
+    onDismiss,
+}: {
+    segmentId: number;
+    rightAppend: boolean;
+    isTheirs: boolean;
+    oursDismissed: boolean;
+    onResolve: (id: number, resolution: HunkResolution) => void;
+    onDismiss: (id: number, side: "ours" | "theirs") => void;
+}) {
+    return (
+        <div className="conflict-actions-right" onClick={(e) => e.stopPropagation()}>
+            <button
+                type="button"
+                className={`action-btn accept-btn ${rightAppend ? "append-btn" : ""} ${isTheirs ? "active" : ""}`}
+                onClick={() => onResolve(segmentId, rightAppend ? "both" : "theirs")}
+                title={t(rightAppend ? "merge.hunk.appendRight" : "merge.hunk.acceptRight")}
+                aria-label={t(rightAppend ? "merge.hunk.appendRight" : "merge.hunk.acceptRight")}
+                aria-current={isTheirs ? "true" : undefined}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    {rightAppend ? "«+" : "<<"}
+                </span>
+            </button>
+            <button
+                type="button"
+                className="action-btn discard-btn"
+                onClick={() =>
+                    oursDismissed ? onResolve(segmentId, "none") : onDismiss(segmentId, "theirs")
+                }
+                title={t("merge.hunk.ignoreRight")}
+                aria-label={t("merge.hunk.ignoreRight")}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    X
+                </span>
+            </button>
+        </div>
+    );
 }
 
 /**
@@ -525,35 +784,37 @@ export const ConflictSection = React.memo(function ConflictSection({
     segment,
     resolution,
     editedLines,
+    dismissed,
     lineCount,
     lineNumbers,
-    alignment,
     onResolve,
     onEditResult,
+    onDismiss,
     onSelect,
     onSectionRef,
     isActive,
-    showDetails,
     highlightWords,
     conflictOrdinal,
     trueConflictOrdinal,
 }: ConflictSectionProps) {
     const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
-    const isEdited = editedLines !== undefined;
-    const status = getHunkStatus(segment, resolution, isEdited);
-
-    const isOurs = !isEdited && resolution === "ours";
-    const isTheirs = !isEdited && resolution === "theirs";
-    const isBoth = !isEdited && resolution === "both";
-    const isNone = !isEdited && resolution === "none";
-    const isAutoMerged =
-        segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
-    const isResolved =
-        segment.changeKind !== "conflict" ||
-        segment.autoResolvedLines !== undefined ||
-        resolution !== undefined ||
-        isEdited;
-    const kindLabel = getHunkKindLabel(segment);
+    const {
+        isEdited,
+        isOurs,
+        isTheirs,
+        oursInResult,
+        theirsInResult,
+        oursDismissed,
+        theirsDismissed,
+        isAutoMerged,
+        isResolved,
+        showLeftActions,
+        showRightActions,
+        leftAppend,
+        rightAppend,
+        resultCompareLines,
+        sideVariant,
+    } = deriveConflictView(segment, resolution, editedLines, dismissed);
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
@@ -570,12 +831,6 @@ export const ConflictSection = React.memo(function ConflictSection({
         },
         [handleSectionSelect],
     );
-    const resultCompareLines =
-        resolution === "ours"
-            ? segment.theirsLines
-            : resolution === "theirs"
-              ? segment.oursLines
-              : segment.baseLines;
 
     return (
         <div
@@ -592,6 +847,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 "segment",
                 "segment-conflict",
                 `change-${segment.changeKind}`,
+                sideVariant,
                 isResolved ? "resolved" : "unresolved",
                 isAutoMerged ? "auto-merged" : "",
                 isActive ? "active" : "",
@@ -602,111 +858,29 @@ export const ConflictSection = React.memo(function ConflictSection({
             onClick={handleSectionSelect}
             onKeyDown={handleSectionKeyDown}
         >
-            <div className="hunk-header">
-                <div className="hunk-header-left">
-                    <span className={`hunk-badge hunk-kind-${segment.changeKind}`}>
-                        {trueConflictOrdinal !== undefined
-                            ? `#${trueConflictOrdinal}`
-                            : `#${conflictOrdinal}`}
-                    </span>
-                    <span className="hunk-kind-label">{kindLabel}</span>
-                    {showDetails ? (
-                        <span className="hunk-detail-lines">
-                            {t("merge.hunk.detail", {
-                                left: segment.oursLines.length,
-                                right: segment.theirsLines.length,
-                                result: resultLines.length,
-                            })}
-                        </span>
-                    ) : null}
-                </div>
-                <div className="hunk-header-center" onClick={(e) => e.stopPropagation()}>
-                    <button
-                        type="button"
-                        className={`hunk-choice ${isOurs ? "active" : ""}`}
-                        onClick={() => onResolve(segment.id, "ours")}
-                        title={t("merge.hunk.useLeft")}
-                    >
-                        <IconArrowRight />
-                        {t("merge.hunk.left")}
-                    </button>
-                    {segment.changeKind === "conflict" ? (
-                        <button
-                            type="button"
-                            className={`hunk-choice ${isBoth ? "active" : ""}`}
-                            onClick={() => onResolve(segment.id, "both")}
-                            title={t("merge.hunk.useBoth")}
-                        >
-                            <IconSplitBoth />
-                            {t("merge.hunk.both")}
-                        </button>
-                    ) : null}
-                    <button
-                        type="button"
-                        className={`hunk-choice ${isTheirs ? "active" : ""}`}
-                        onClick={() => onResolve(segment.id, "theirs")}
-                        title={t("merge.hunk.useRight")}
-                    >
-                        <IconArrowLeft />
-                        {t("merge.hunk.right")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`hunk-choice danger ${isNone ? "active" : ""}`}
-                        onClick={() => onResolve(segment.id, "none")}
-                        title={t("merge.hunk.dropTitle")}
-                    >
-                        <IconClose />
-                        {t("merge.hunk.drop")}
-                    </button>
-                </div>
-                <div className={`hunk-status tone-${status.tone}`}>
-                    <span className="toolbar-icon status-icon">
-                        {status.tone === "warn" ? (
-                            <IconWarning />
-                        ) : status.tone === "ok" ? (
-                            <IconCheck />
-                        ) : (
-                            <IconDot />
-                        )}
-                    </span>
-                    {status.label}
-                </div>
-            </div>
-
             <div className="hunk-columns">
-                <div className={`column column-left conflict-column ${isOurs ? "accepted" : ""}`}>
+                <div
+                    className={`column column-left conflict-column ${oursInResult ? "accepted" : ""} ${oursDismissed ? "dismissed" : ""}`}
+                >
                     <CodeBlock
                         lines={segment.oursLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
-                        className="conflict-ours"
+                        lineNumberSide="right"
+                        className={`conflict-ours ${oursInResult ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
-                        compareLines={segment.theirsLines}
-                        alignedRows={alignment?.ours}
-                        compareRows={alignment?.theirs}
+                        compareLines={oursInResult ? undefined : segment.baseLines}
                     />
-                    <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            className="action-btn discard-btn"
-                            onClick={() => onResolve(segment.id, "theirs")}
-                            title={t("merge.hunk.ignoreLeft")}
-                            aria-label={t("merge.hunk.ignoreLeft")}
-                        >
-                            <IconClose />
-                        </button>
-                        <button
-                            type="button"
-                            className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
-                            onClick={() => onResolve(segment.id, "ours")}
-                            title={t("merge.hunk.acceptLeft")}
-                            aria-label={t("merge.hunk.acceptLeft")}
-                            aria-current={isOurs ? "true" : undefined}
-                        >
-                            <IconArrowRight />
-                        </button>
-                    </div>
+                    {showLeftActions ? (
+                        <LeftHunkActions
+                            segmentId={segment.id}
+                            leftAppend={leftAppend}
+                            isOurs={isOurs}
+                            theirsDismissed={theirsDismissed}
+                            onResolve={onResolve}
+                            onDismiss={onDismiss}
+                        />
+                    ) : null}
                 </div>
 
                 <div className="column column-middle conflict-column result-column">
@@ -714,7 +888,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lines={resultLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.middle}
-                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""}`}
+                        className={`conflict-result ${isResolved ? "resolved" : "unresolved"} ${isEdited ? "edited" : ""} ${oursInResult || theirsInResult ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
                         compareLines={resultCompareLines}
                         onCommit={(lines) => onEditResult(segment.id, lines)}
@@ -722,38 +896,25 @@ export const ConflictSection = React.memo(function ConflictSection({
                 </div>
 
                 <div
-                    className={`column column-right conflict-column ${isTheirs ? "accepted" : ""}`}
+                    className={`column column-right conflict-column ${theirsInResult ? "accepted" : ""} ${theirsDismissed ? "dismissed" : ""}`}
                 >
-                    <div className="conflict-actions-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
-                            onClick={() => onResolve(segment.id, "theirs")}
-                            title={t("merge.hunk.acceptRight")}
-                            aria-label={t("merge.hunk.acceptRight")}
-                            aria-current={isTheirs ? "true" : undefined}
-                        >
-                            <IconArrowLeft />
-                        </button>
-                        <button
-                            type="button"
-                            className="action-btn discard-btn"
-                            onClick={() => onResolve(segment.id, "ours")}
-                            title={t("merge.hunk.ignoreRight")}
-                            aria-label={t("merge.hunk.ignoreRight")}
-                        >
-                            <IconClose />
-                        </button>
-                    </div>
+                    {showRightActions ? (
+                        <RightHunkActions
+                            segmentId={segment.id}
+                            rightAppend={rightAppend}
+                            isTheirs={isTheirs}
+                            oursDismissed={oursDismissed}
+                            onResolve={onResolve}
+                            onDismiss={onDismiss}
+                        />
+                    ) : null}
                     <CodeBlock
                         lines={segment.theirsLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.right}
-                        className="conflict-theirs"
+                        className={`conflict-theirs ${theirsInResult ? "accepted-pane" : ""}`}
                         wordHighlight={highlightWords}
-                        compareLines={segment.oursLines}
-                        alignedRows={alignment?.theirs}
-                        compareRows={alignment?.ours}
+                        compareLines={theirsInResult ? undefined : segment.baseLines}
                     />
                 </div>
             </div>
@@ -773,10 +934,11 @@ function conflictSectionPropsEqual(
         prev.segment === next.segment &&
         prev.resolution === next.resolution &&
         prev.editedLines === next.editedLines &&
+        prev.dismissed === next.dismissed &&
         prev.lineCount === next.lineCount &&
-        prev.alignment === next.alignment &&
         prev.onResolve === next.onResolve &&
         prev.onEditResult === next.onEditResult &&
+        prev.onDismiss === next.onDismiss &&
         prev.onSelect === next.onSelect &&
         prev.onSectionRef === next.onSectionRef &&
         prev.isActive === next.isActive &&

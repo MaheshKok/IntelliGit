@@ -3,7 +3,7 @@
     "common.refreshing": "正在重新整理…",
     "common.rollback": "復原",
     "common.groupByDirectory": "按目錄分組",
-    "common.shelveChanges": "擱置變更",
+    "common.stashChanges": "儲藏變更",
     "common.showDiffPreview": "顯示差異預覽",
     "common.expandAll": "全部展開",
     "common.collapseAll": "全部收起",
@@ -100,12 +100,12 @@
     "commitPanel.noChanges": "無變化",
     "commitPanel.changes": "變更",
     "commitPanel.unversionedFiles": "未追蹤的檔案",
-    "shelf.empty": "沒有擱置的變更",
-    "shelf.noFiles": "此次擱置變更中沒有文件。",
-    "shelf.defaultTitle": "擱置的變更",
-    "shelf.action.unstash": "取消儲藏...",
-    "shelf.action.showDiffNewTab": "在新分頁中顯示差異",
-    "shelf.action.popDescription": "彈出（應用和移除）",
+    "stash.empty": "沒有儲藏的變更",
+    "stash.noFiles": "此儲藏中沒有檔案。",
+    "stash.defaultTitle": "儲藏的變更",
+    "stash.action.unstash": "取消儲藏...",
+    "stash.action.showDiffNewTab": "在新分頁中顯示差異",
+    "stash.action.popDescription": "彈出（應用和移除）",
     "merge.count.changes": {
         "other": "{count} 次更改"
     },
@@ -154,6 +154,8 @@
     "merge.hunk.ignoreLeft": "忽略左側區塊",
     "merge.hunk.acceptLeft": "接受左側區塊",
     "merge.hunk.acceptRight": "接受右側方塊",
+    "merge.hunk.appendLeft": "在結果下方附加左側方塊",
+    "merge.hunk.appendRight": "在結果下方附加右側方塊",
     "merge.hunk.ignoreRight": "忽略右側區塊",
     "merge.status.droppedLeftOnly": "已丟棄僅左側的變更",
     "merge.status.leftOnly": "僅左側變更",
@@ -223,5 +225,6 @@
     "common.directory": "目錄",
     "common.show": "顯示",
     "status.ignored": "已忽略",
-    "commitPanel.ignoredFiles": "已忽略檔案"
+    "commitPanel.ignoredFiles": "已忽略檔案",
+    "merge.action.abortMerge": "中止合併"
 }

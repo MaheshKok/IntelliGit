@@ -2,7 +2,13 @@
 // Contains the reducer, conflict resolution logic, manual result edits,
 // and the final merged-content builder.
 
-import type { MergeEditorData, MergeSegment, ConflictSegment, HunkResolution } from "./types";
+import type {
+    MergeEditorData,
+    MergeSegment,
+    ConflictSegment,
+    HunkResolution,
+    HunkSideDismissal,
+} from "./types";
 
 /**
  * Reducer state for the merge editor, keeping immutable conflict input separate
@@ -10,13 +16,16 @@ import type { MergeEditorData, MergeSegment, ConflictSegment, HunkResolution } f
  *
  * `edits` maps a conflict segment id to user-typed result lines. An empty array
  * is a meaningful edit (the block was deleted), so presence is tested with
- * `!== undefined` rather than truthiness.
+ * `!== undefined` rather than truthiness. `dismissals` records sides the user
+ * rejected with the discard (X) control without accepting the opposite side;
+ * choosing a side resolution clears that hunk's dismissals.
  */
 export interface State {
     data: MergeEditorData | null;
     error: string | null;
     resolutions: Record<number, HunkResolution>;
     edits: Record<number, string[]>;
+    dismissals: Record<number, HunkSideDismissal>;
 }
 
 /** Message-shaped reducer actions emitted by the merge editor app shell. */
@@ -25,7 +34,8 @@ export type Action =
     | { type: "SET_ERROR"; message: string }
     | { type: "RESOLVE_HUNK"; id: number; resolution: HunkResolution }
     | { type: "EDIT_HUNK_RESULT"; id: number; lines: string[] }
-    | { type: "CLEAR_HUNK_EDIT"; id: number };
+    | { type: "CLEAR_HUNK_EDIT"; id: number }
+    | { type: "DISMISS_SIDE"; id: number; side: "ours" | "theirs" };
 
 /**
  * Applies merge-editor state transitions.
@@ -37,15 +47,24 @@ export type Action =
 export function reducer(state: State, action: Action): State {
     switch (action.type) {
         case "SET_DATA":
-            return { ...state, data: action.data, error: null, resolutions: {}, edits: {} };
+            return {
+                ...state,
+                data: action.data,
+                error: null,
+                resolutions: {},
+                edits: {},
+                dismissals: {},
+            };
         case "SET_ERROR":
             return { ...state, error: action.message };
         case "RESOLVE_HUNK": {
-            const edits = removeKey(state.edits, action.id);
+            // A side choice supersedes any prior discard on this hunk, so the
+            // opposite side becomes appendable again.
             return {
                 ...state,
                 resolutions: { ...state.resolutions, [action.id]: action.resolution },
-                edits,
+                edits: removeKey(state.edits, action.id),
+                dismissals: removeKey(state.dismissals, action.id),
             };
         }
         case "EDIT_HUNK_RESULT":
@@ -55,14 +74,24 @@ export function reducer(state: State, action: Action): State {
             };
         case "CLEAR_HUNK_EDIT":
             return { ...state, edits: removeKey(state.edits, action.id) };
+        case "DISMISS_SIDE": {
+            const current = state.dismissals[action.id] ?? {};
+            return {
+                ...state,
+                dismissals: {
+                    ...state.dismissals,
+                    [action.id]: { ...current, [action.side]: true },
+                },
+            };
+        }
         default:
             return state;
     }
 }
 
-function removeKey(edits: Record<number, string[]>, id: number): Record<number, string[]> {
-    if (edits[id] === undefined) return edits;
-    const next = { ...edits };
+function removeKey<T>(map: Record<number, T>, id: number): Record<number, T> {
+    if (map[id] === undefined) return map;
+    const next = { ...map };
     delete next[id];
     return next;
 }
@@ -96,6 +125,8 @@ export function getResultLines(
             return segment.theirsLines;
         case "both":
             return [...segment.oursLines, ...segment.theirsLines];
+        case "both-reversed":
+            return [...segment.theirsLines, ...segment.oursLines];
         case "none":
             return [];
         default:

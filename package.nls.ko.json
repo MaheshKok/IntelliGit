@@ -24,7 +24,7 @@
     "command.delete": "삭제",
     "command.rollback": "롤백",
     "command.jumpToSource": "소스로 이동",
-    "command.shelveChanges": "변경 내용 보류",
+    "command.stashChanges": "변경 내용 스태시",
     "command.compareWithRevision": "리비전과 비교",
     "command.compareWithBranch": "브랜치와 비교",
     "command.compareWithLocal": "로컬 데이터와 비교",

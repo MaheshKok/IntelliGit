@@ -243,8 +243,8 @@ describe("app logic coverage", () => {
                         },
                     ],
                     stashes: [],
-                    shelfFiles: [],
-                    selectedShelfIndex: null,
+                    stashFiles: [],
+                    selectedStashIndex: null,
                     commitMessage: "feat: message",
                     isAmend: false,
                     amendBranchCommits: [],
@@ -301,14 +301,14 @@ describe("app logic coverage", () => {
                 </div>
             ),
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
-            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+            TabBar: (props: { commitContent: React.ReactNode; stashContent: React.ReactNode }) => (
                 <div>
                     <div>{props.commitContent}</div>
-                    <div>{props.shelfContent}</div>
+                    <div>{props.stashContent}</div>
                 </div>
             ),
         }));
@@ -319,7 +319,7 @@ describe("app logic coverage", () => {
         expect(document.querySelector('[data-testid="commit-panel-changes-body"]')).toBeNull();
         expect(document.querySelector('[data-testid="commit-panel-resize-handle"]')).toBeNull();
         expect(document.querySelector('[data-testid="commit-panel-graph-body"]')).toBeNull();
-        expect(document.body.textContent).toContain("Shelf");
+        expect(document.body.textContent).toContain("Stash");
 
         const msg = document.getElementById("msg");
         const amend = document.getElementById("amend");
@@ -367,8 +367,8 @@ describe("app logic coverage", () => {
                 {
                     files: [],
                     stashes: [],
-                    shelfFiles: [],
-                    selectedShelfIndex: null,
+                    stashFiles: [],
+                    selectedStashIndex: null,
                     commitMessage: "",
                     isAmend: false,
                     amendBranchCommits: [],
@@ -414,14 +414,14 @@ describe("app logic coverage", () => {
                 </div>
             ),
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
-            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+            TabBar: (props: { commitContent: React.ReactNode; stashContent: React.ReactNode }) => (
                 <div>
                     <div>{props.commitContent}</div>
-                    <div>{props.shelfContent}</div>
+                    <div>{props.stashContent}</div>
                 </div>
             ),
         }));
@@ -452,8 +452,8 @@ describe("app logic coverage", () => {
                 {
                     files: [],
                     stashes: [],
-                    shelfFiles: [],
-                    selectedShelfIndex: null,
+                    stashFiles: [],
+                    selectedStashIndex: null,
                     commitMessage: "",
                     isAmend: false,
                     amendBranchCommits: [],
@@ -490,14 +490,14 @@ describe("app logic coverage", () => {
                 return <div>CommitTab</div>;
             },
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
-            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+            TabBar: (props: { commitContent: React.ReactNode; stashContent: React.ReactNode }) => (
                 <div>
                     <div>{props.commitContent}</div>
-                    <div>{props.shelfContent}</div>
+                    <div>{props.stashContent}</div>
                 </div>
             ),
         }));
@@ -524,8 +524,8 @@ describe("app logic coverage", () => {
                         },
                     ],
                     stashes: [],
-                    shelfFiles: [],
-                    selectedShelfIndex: null,
+                    stashFiles: [],
+                    selectedStashIndex: null,
                     commitMessage: "   ",
                     isAmend: false,
                     amendBranchCommits: [],
@@ -567,14 +567,14 @@ describe("app logic coverage", () => {
                 </div>
             ),
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
         }));
         vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
-            TabBar: (props: { commitContent: React.ReactNode; shelfContent: React.ReactNode }) => (
+            TabBar: (props: { commitContent: React.ReactNode; stashContent: React.ReactNode }) => (
                 <div>
                     <div>{props.commitContent}</div>
-                    <div>{props.shelfContent}</div>
+                    <div>{props.stashContent}</div>
                 </div>
             ),
         }));

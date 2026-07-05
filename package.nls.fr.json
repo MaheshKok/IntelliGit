@@ -24,7 +24,7 @@
     "command.delete": "Supprimer",
     "command.rollback": "Annulation",
     "command.jumpToSource": "Aller à la source",
-    "command.shelveChanges": "Mettre les changements de côté",
+    "command.stashChanges": "Remiser les modifications",
     "command.compareWithRevision": "Comparer avec la révision",
     "command.compareWithBranch": "Comparer avec une branche",
     "command.compareWithLocal": "Comparer avec le local",

@@ -40,11 +40,15 @@ import {
     type SegmentPaneLineNumbers,
     type OverviewMarker,
 } from "./segments";
-import { buildAlignedLineNumberValues, buildLineNumberValues } from "./lineNumbers";
-import { alignConflictRows, type AlignedHunkRows } from "./rowAlignment";
+import { buildLineNumberValues } from "./lineNumbers";
+import { initShiki, isShikiReady, langForPath, detectTheme } from "./shikiHighlighter";
+import { SyntaxHighlightProvider } from "./syntaxHighlightContext";
 import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
+
+/** Horizontal padding of a `.code-line` (0 9px), added to the content width. */
+const LINE_PADDING_PX = 18;
 
 // --- VS Code API ---
 
@@ -68,30 +72,150 @@ function App() {
         error: null,
         resolutions: {},
         edits: {},
+        dismissals: {},
     });
     const [showDetails, setShowDetails] = useState(false);
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
+    const [shikiReady, setShikiReady] = useState(isShikiReady());
+    // ponytail: theme sampled once at mount. VS Code reloads the webview on a
+    // live theme switch, so re-reading the body class on every render buys
+    // nothing — reopen the merge editor to pick up a changed theme.
+    const [shikiTheme] = useState(detectTheme());
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
+    const filePath = state.data?.filePath;
+    const syntaxHighlightState = useMemo(
+        () => ({
+            ready: shikiReady,
+            lang: filePath ? langForPath(filePath) : null,
+            theme: shikiTheme,
+        }),
+        [shikiReady, filePath, shikiTheme],
+    );
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+    const mergeContentRef = useRef<HTMLDivElement | null>(null);
+    const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
+    const horizontalScrollInnerRef = useRef<HTMLDivElement | null>(null);
+    const updateHorizontalScrollWidthRef = useRef<() => void>(() => undefined);
+    const lastPaneClientWidthRef = useRef(0);
 
-    // Row alignments depend only on the hunk contents, never on resolutions or
-    // edits, so they are computed once per data load and shared by reference.
-    const hunkAlignments = useMemo(() => {
-        const alignments = new Map<number, AlignedHunkRows>();
+    const scrollSyncRef = useRef<{ raf: number; left: number }>({ raf: 0, left: 0 });
+    const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
+        const sync = scrollSyncRef.current;
+        sync.left = left;
+        if (sync.raf) return;
+        sync.raf = requestAnimationFrame(() => {
+            sync.raf = 0;
+            const targetLeft = sync.left;
+            const panes =
+                mergeContentRef.current?.querySelectorAll<HTMLElement>(".code-lines") ?? [];
+            for (const pane of panes) {
+                if (pane === source) continue;
+                const max = Math.max(0, pane.scrollWidth - pane.clientWidth);
+                const paneLeft = Math.min(targetLeft, max);
+                if (Math.abs(pane.scrollLeft - paneLeft) >= 1) pane.scrollLeft = paneLeft;
+            }
+            const bar = horizontalScrollRef.current;
+            if (bar && bar !== source && Math.abs(bar.scrollLeft - targetLeft) >= 1) {
+                bar.scrollLeft = targetLeft;
+            }
+        });
+    }, []);
+
+    const handlePaneScroll = useCallback(
+        (event: React.UIEvent<HTMLDivElement>) => {
+            const target = event.target as HTMLElement | null;
+            if (!target) return;
+            if (target.classList.contains("code-lines")) {
+                const left = target.scrollLeft;
+                const sharedLeft = scrollSyncRef.current.left;
+                if (Math.abs(left - sharedLeft) < 1) return;
+                const max = target.scrollWidth - target.clientWidth;
+                if (left > max - 1 && sharedLeft > max - 1) return;
+                syncHorizontalScroll(left, target);
+                return;
+            }
+            if (scrollSyncRef.current.left > 0) {
+                syncHorizontalScroll(scrollSyncRef.current.left, target);
+            }
+        },
+        [syncHorizontalScroll],
+    );
+    const handleHorizontalScroll = useCallback(
+        (event: React.UIEvent<HTMLDivElement>) => {
+            syncHorizontalScroll(event.currentTarget.scrollLeft, event.currentTarget);
+        },
+        [syncHorizontalScroll],
+    );
+    // Widest line across every pane, derived from the data rather than the DOM.
+    // The monospace editor font makes 1ch == one glyph, so this length sizes the
+    // synthetic scrollbar without measuring each pane — and it counts lines in
+    // offscreen segments whose content-visibility-collapsed scrollWidth would
+    // otherwise read short.
+    const maxLineLength = useMemo(() => {
+        let max = 1;
         for (const segment of segments) {
-            if (segment.type === "conflict") {
-                alignments.set(
-                    segment.id,
-                    alignConflictRows(segment.oursLines, segment.theirsLines),
-                );
+            if (segment.type === "common") {
+                for (const line of segment.lines) max = Math.max(max, line.length);
+            } else {
+                for (const line of segment.oursLines) max = Math.max(max, line.length);
+                for (const line of segment.theirsLines) max = Math.max(max, line.length);
+                for (const line of segment.baseLines) max = Math.max(max, line.length);
+                // Auto-merged lines splice both sides together, so a merged line
+                // can be longer than any single side.
+                for (const line of segment.autoResolvedLines ?? []) {
+                    max = Math.max(max, line.length);
+                }
             }
         }
-        return alignments;
-    }, [segments]);
-
+        for (const lines of Object.values(state.edits)) {
+            for (const line of lines) max = Math.max(max, line.length);
+        }
+        return max;
+    }, [segments, state.edits]);
+    const updateHorizontalScrollWidth = useCallback(() => {
+        const bar = horizontalScrollRef.current;
+        const inner = horizontalScrollInnerRef.current;
+        const content = mergeContentRef.current;
+        if (!bar || !inner || !content) return;
+        // The narrowest pane overflows first, so it sets the shared scroll extent.
+        // Column widths follow normal flow even under content-visibility (only
+        // height collapses), so one segment's panes give the right clientWidth
+        // without walking every segment.
+        const firstPanes = content
+            .querySelector(".segment")
+            ?.querySelectorAll<HTMLElement>(".code-lines");
+        let minClientWidth = Infinity;
+        for (const pane of firstPanes ?? []) {
+            // A skipped (content-visibility) segment's panes report 0; ignore
+            // those and fall back to the last real width below.
+            if (pane.clientWidth > 0) {
+                minClientWidth = Math.min(minClientWidth, pane.clientWidth);
+            }
+        }
+        // ponytail: reuse the last real width when the first segment is offscreen
+        // and layout-skipped. It only drifts if the window is resized while
+        // scrolled past segment 0, and self-corrects on the next render tick.
+        if (minClientWidth === Infinity) {
+            minClientWidth = lastPaneClientWidthRef.current;
+        } else {
+            lastPaneClientWidthRef.current = minClientWidth;
+        }
+        // 100% == bar width; the ch term is the content width (monospace) and the
+        // px terms add the line padding and subtract the visible pane, leaving
+        // exactly the overflow the bar must cover.
+        inner.style.width = `calc(100% + ${maxLineLength}ch + ${LINE_PADDING_PX}px - ${minClientWidth}px)`;
+        const maxScroll = Math.max(0, inner.offsetWidth - bar.clientWidth);
+        bar.hidden = maxScroll < 1;
+        if (scrollSyncRef.current.left > maxScroll) {
+            syncHorizontalScroll(maxScroll);
+        }
+    }, [maxLineLength, syncHorizontalScroll]);
+    useEffect(() => {
+        updateHorizontalScrollWidthRef.current = updateHorizontalScrollWidth;
+    }, [updateHorizontalScrollWidth]);
     const renderedSegments = useMemo(() => {
         let visualLineCursor = 1;
         let oursCursor = 1;
@@ -105,7 +229,6 @@ function App() {
             let lineCount: number;
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
-            let alignment: AlignedHunkRows | undefined;
             let renderKey: string;
 
             if (segment.type === "common") {
@@ -141,19 +264,14 @@ function App() {
                 const theirsLen = segment.theirsLines.length;
                 const baseLen = segment.baseLines.length;
                 const resultLen = resultLines.length;
-                alignment = hunkAlignments.get(segment.id);
 
-                lineCount = Math.max(alignment?.rowCount ?? 0, resultLen, 1);
+                // Panes render contiguously from the hunk top (PyCharm-style),
+                // so the hunk height is simply the tallest pane.
+                lineCount = Math.max(oursLen, theirsLen, resultLen, 1);
                 startLine = visualLineCursor;
                 lineNumbers = {
                     left: {
-                        primary: alignment
-                            ? buildAlignedLineNumberValues(
-                                  oursCursor,
-                                  alignment.oursLineIndex,
-                                  lineCount,
-                              )
-                            : buildLineNumberValues(oursCursor, oursLen, lineCount),
+                        primary: buildLineNumberValues(oursCursor, oursLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     middle: {
@@ -161,13 +279,7 @@ function App() {
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                     right: {
-                        primary: alignment
-                            ? buildAlignedLineNumberValues(
-                                  theirsCursor,
-                                  alignment.theirsLineIndex,
-                                  lineCount,
-                              )
-                            : buildLineNumberValues(theirsCursor, theirsLen, lineCount),
+                        primary: buildLineNumberValues(theirsCursor, theirsLen, lineCount),
                         secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
                     },
                 };
@@ -198,12 +310,26 @@ function App() {
                 startLine,
                 lineCount,
                 lineNumbers,
-                alignment,
                 conflictOrdinal: computedConflictOrdinal,
                 trueConflictOrdinal: computedTrueConflictOrdinal,
             };
         });
-    }, [segments, state.resolutions, state.edits, hunkAlignments]);
+    }, [segments, state.resolutions, state.edits]);
+
+    useEffect(() => {
+        const raf = requestAnimationFrame(updateHorizontalScrollWidth);
+        return () => cancelAnimationFrame(raf);
+    }, [renderedSegments, updateHorizontalScrollWidth]);
+
+    useEffect(() => {
+        const handleResize = () => updateHorizontalScrollWidthRef.current();
+        window.addEventListener("resize", handleResize);
+        const sync = scrollSyncRef.current;
+        return () => {
+            window.removeEventListener("resize", handleResize);
+            if (sync.raf) cancelAnimationFrame(sync.raf);
+        };
+    }, []);
 
     const conflictSegments = useMemo(
         () => segments.filter((seg): seg is ConflictSegment => seg.type === "conflict"),
@@ -232,6 +358,22 @@ function App() {
         return () => window.removeEventListener("message", handler);
     }, []);
 
+    // Lazily initialize the Shiki highlighter off the critical render path so the
+    // first paint isn't blocked by grammar/theme compilation; flip ready so
+    // consumers switch from the fallback tokenizer to grammar-accurate colors.
+    useEffect(() => {
+        if (shikiReady) return;
+        const runInit = (): void => {
+            if (initShiki()) setShikiReady(true);
+        };
+        if (typeof window.requestIdleCallback === "function") {
+            const handle = window.requestIdleCallback(runInit);
+            return () => window.cancelIdleCallback(handle);
+        }
+        const timer = window.setTimeout(runInit, 0);
+        return () => window.clearTimeout(timer);
+    }, [shikiReady]);
+
     useEffect(() => {
         setActiveConflictId((prev) => {
             if (trueConflictIds.length === 0) return null;
@@ -252,6 +394,11 @@ function App() {
     const handleEditResult = useCallback((id: number, lines: string[]) => {
         setActiveConflictId(id);
         dispatch({ type: "EDIT_HUNK_RESULT", id, lines });
+    }, []);
+
+    const handleDismissSide = useCallback((id: number, side: "ours" | "theirs") => {
+        setActiveConflictId(id);
+        dispatch({ type: "DISMISS_SIDE", id, side });
     }, []);
 
     const registerConflictSectionRef = useCallback((id: number, el: HTMLDivElement | null) => {
@@ -299,6 +446,14 @@ function App() {
 
     const handleBulkAcceptTheirs = useCallback(() => {
         getVsCodeApi().postMessage({ type: "acceptTheirs" });
+    }, []);
+
+    const handleOpenConflictSession = useCallback(() => {
+        getVsCodeApi().postMessage({ type: "openConflictSession" });
+    }, []);
+
+    const handleAbortMerge = useCallback(() => {
+        getVsCodeApi().postMessage({ type: "abortMerge" });
     }, []);
 
     const handleRetry = useCallback(() => {
@@ -353,8 +508,13 @@ function App() {
                 (seg): seg is ConflictSegment => seg.type === "conflict" && seg.id === targetId,
             );
             if (!segment) return;
-            // "Both" only makes sense when both sides changed the same region.
-            if (resolution === "both" && segment.changeKind !== "conflict") return;
+            // Stacking both sides (in either order) only makes sense when both
+            // sides changed the same region.
+            if (
+                (resolution === "both" || resolution === "both-reversed") &&
+                segment.changeKind !== "conflict"
+            )
+                return;
             handleResolve(targetId, resolution);
             // IntelliJ-style: move on to the next unresolved conflict after applying.
             const targetIndex = trueConflicts.findIndex((seg) => seg.id === targetId);
@@ -490,299 +650,353 @@ function App() {
             : unresolvedTrueConflictIds[0];
     })();
 
+    // Widen the line-number gutter with the largest line number so editor-size
+    // digits never clip, floored at the base width for small files. When the
+    // host supplied editor.fontSize, use it as the code size, overriding the
+    // unreliable --vscode-editor-font-size webview variable.
+    const gutterDigits = Math.max(String(totalVisualLines).length, 2);
+    const rootStyle = {
+        "--merge-line-number-gutter": `max(37px, calc(${gutterDigits}ch + 14px))`,
+        // Shared minimum content width for every pane so all code-lines panes
+        // scroll in lockstep (see .code-lines in merge-editor.css). Monospace
+        // editor font makes 1ch == one glyph, matching the synthetic scrollbar.
+        "--merge-line-min-width": `calc(${maxLineLength}ch + ${LINE_PADDING_PX}px)`,
+        ...(state.data.editorFontSize
+            ? { "--merge-code-font-size": `${state.data.editorFontSize}px` }
+            : {}),
+    } as React.CSSProperties;
+
     return (
-        <div
-            className={[
-                "merge-editor",
-                highlightWords ? "words-highlighted" : "",
-                showDetails ? "details-expanded" : "",
-            ]
-                .filter(Boolean)
-                .join(" ")}
-        >
-            <div className="merge-toolbar">
-                <div className="toolbar-left">
-                    <button
-                        type="button"
-                        className="toolbar-btn subtle"
-                        onClick={handleApplyNonConflicting}
-                        disabled={autoResolvedCount === 0}
-                    >
-                        <span className="toolbar-icon">
-                            <IconSpark />
-                        </span>
-                        {t("merge.toolbar.applyNonConflicting")}
-                    </button>
-                    <div className="toolbar-nav-group">
+        <SyntaxHighlightProvider value={syntaxHighlightState}>
+            <div
+                style={rootStyle}
+                className={[
+                    "merge-editor",
+                    highlightWords ? "words-highlighted" : "",
+                    showDetails ? "details-expanded" : "",
+                ]
+                    .filter(Boolean)
+                    .join(" ")}
+            >
+                <div className="merge-toolbar">
+                    <div className="toolbar-left">
                         <button
                             type="button"
-                            className="toolbar-icon-btn"
-                            onClick={() => moveActiveConflict(-1)}
-                            title={t("merge.toolbar.prevConflict.title")}
-                            aria-label={t("merge.toolbar.prevConflict.label")}
-                            disabled={total === 0}
+                            className="toolbar-btn subtle"
+                            onClick={handleApplyNonConflicting}
+                            disabled={autoResolvedCount === 0}
                         >
-                            <IconChevronUp />
+                            <span className="toolbar-icon">
+                                <IconSpark />
+                            </span>
+                            {t("merge.toolbar.applyNonConflicting")}
+                        </button>
+                        <div className="toolbar-nav-group">
+                            <button
+                                type="button"
+                                className="toolbar-icon-btn"
+                                onClick={() => moveActiveConflict(-1)}
+                                title={t("merge.toolbar.prevConflict.title")}
+                                aria-label={t("merge.toolbar.prevConflict.label")}
+                                disabled={total === 0}
+                            >
+                                <IconChevronUp />
+                            </button>
+                            <button
+                                type="button"
+                                className="toolbar-icon-btn"
+                                onClick={() => moveActiveConflict(1)}
+                                title={t("merge.toolbar.nextConflict.title")}
+                                aria-label={t("merge.toolbar.nextConflict.label")}
+                                disabled={total === 0}
+                            >
+                                <IconChevronDown />
+                            </button>
+                        </div>
+                        <div className="toolbar-separator" />
+                        <button
+                            type="button"
+                            className="toolbar-btn subtle dropdown"
+                            onClick={handleToggleIgnoreMode}
+                            title={t("merge.toolbar.ignoreMode.title")}
+                        >
+                            <span className="toolbar-icon">
+                                <IconFilter />
+                            </span>
+                            {ignoreMode === "none"
+                                ? t("merge.toolbar.ignoreMode.none")
+                                : t("merge.toolbar.ignoreMode.whitespace")}
+                            <span className="toolbar-icon dropdown-icon">
+                                <IconChevronDown />
+                            </span>
                         </button>
                         <button
                             type="button"
-                            className="toolbar-icon-btn"
-                            onClick={() => moveActiveConflict(1)}
-                            title={t("merge.toolbar.nextConflict.title")}
-                            aria-label={t("merge.toolbar.nextConflict.label")}
-                            disabled={total === 0}
+                            className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
+                            onClick={() => setHighlightWords((v) => !v)}
+                            aria-pressed={highlightWords}
                         >
-                            <IconChevronDown />
+                            <span className="toolbar-icon">
+                                <IconEye />
+                            </span>
+                            {t("merge.toolbar.highlightWords")}
+                        </button>
+                        <button
+                            type="button"
+                            className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
+                            onClick={() => setShowDetails((v) => !v)}
+                            aria-pressed={showDetails}
+                        >
+                            {t("merge.toolbar.showDetails")}
                         </button>
                     </div>
-                    <div className="toolbar-separator" />
-                    <button
-                        type="button"
-                        className="toolbar-btn subtle dropdown"
-                        onClick={handleToggleIgnoreMode}
-                        title={t("merge.toolbar.ignoreMode.title")}
-                    >
-                        <span className="toolbar-icon">
-                            <IconFilter />
-                        </span>
-                        {ignoreMode === "none"
-                            ? t("merge.toolbar.ignoreMode.none")
-                            : t("merge.toolbar.ignoreMode.whitespace")}
-                        <span className="toolbar-icon dropdown-icon">
-                            <IconChevronDown />
-                        </span>
-                    </button>
-                    <button
-                        type="button"
-                        className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
-                        onClick={() => setHighlightWords((v) => !v)}
-                        aria-pressed={highlightWords}
-                    >
-                        <span className="toolbar-icon">
-                            <IconEye />
-                        </span>
-                        {t("merge.toolbar.highlightWords")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
-                        onClick={() => setShowDetails((v) => !v)}
-                        aria-pressed={showDetails}
-                    >
-                        {t("merge.toolbar.showDetails")}
-                    </button>
-                </div>
 
-                <div className="toolbar-center">
-                    <span className="toolbar-status-pill">
-                        <span className="toolbar-icon">
-                            <IconWarning />
+                    <div className="toolbar-center">
+                        <span className="toolbar-status-pill">
+                            <span className="toolbar-icon">
+                                <IconWarning />
+                            </span>
+                            {t("merge.status.unresolved", { count: unresolved })}
                         </span>
-                        {t("merge.status.unresolved", { count: unresolved })}
-                    </span>
-                    <span className="toolbar-status-pill muted">
-                        {t("merge.status.resolved", { resolved, total })}
-                    </span>
-                    <span className="toolbar-status-pill muted">
-                        {t("merge.count.changes", { count: changeCount })}
-                    </span>
-                    {currentConflictIndex > 0 ? (
+                        <span className="toolbar-status-pill muted">
+                            {t("merge.status.resolved", { resolved, total })}
+                        </span>
+                        <span className="toolbar-status-pill muted">
+                            {t("merge.count.changes", { count: changeCount })}
+                        </span>
+                        {currentConflictIndex > 0 ? (
+                            <button
+                                type="button"
+                                className="toolbar-inline-link"
+                                onClick={() => {
+                                    if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
+                                }}
+                                disabled={nextUnresolvedId === null}
+                                title={t("merge.toolbar.jumpUnresolved.title")}
+                            >
+                                {t("merge.status.hunk", { current: currentConflictIndex, total })}
+                            </button>
+                        ) : null}
+                    </div>
+
+                    <div className="toolbar-right">
                         <button
                             type="button"
-                            className="toolbar-inline-link"
-                            onClick={() => {
-                                if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
-                            }}
-                            disabled={nextUnresolvedId === null}
-                            title={t("merge.toolbar.jumpUnresolved.title")}
+                            className="toolbar-btn"
+                            onClick={handleAcceptAllYours}
+                            title={t("merge.toolbar.acceptAllYours.title")}
                         >
-                            {t("merge.status.hunk", { current: currentConflictIndex, total })}
+                            <span className="toolbar-icon">
+                                <IconArrowRight />
+                            </span>
+                            {t("merge.toolbar.acceptAllYours.label")}
                         </button>
-                    ) : null}
-                </div>
-
-                <div className="toolbar-right">
-                    <button
-                        type="button"
-                        className="toolbar-btn"
-                        onClick={handleAcceptAllYours}
-                        title={t("merge.toolbar.acceptAllYours.title")}
-                    >
-                        <span className="toolbar-icon">
-                            <IconArrowRight />
-                        </span>
-                        {t("merge.toolbar.acceptAllYours.label")}
-                    </button>
-                    <button
-                        type="button"
-                        className="toolbar-btn"
-                        onClick={handleAcceptAllTheirs}
-                        title={t("merge.toolbar.acceptAllTheirs.title")}
-                    >
-                        <span className="toolbar-icon">
-                            <IconArrowLeft />
-                        </span>
-                        {t("merge.toolbar.acceptAllTheirs.label")}
-                    </button>
-                </div>
-            </div>
-
-            <div className="merge-header">
-                <div className="merge-title">
-                    <span className="file-path">{state.data.filePath}</span>
-                    <span className="conflict-counter">
-                        {t("merge.header.conflictsResolved", { resolved, total })}
-                    </span>
-                </div>
-                <div className="merge-stats">
-                    <span className="merge-stat-pill">
-                        {t("merge.count.changes", { count: changeCount })}
-                    </span>
-                    {autoResolvedCount > 0 ? (
-                        <span className="merge-stat-pill ok">
-                            {t("merge.header.autoResolved", { count: autoResolvedCount })}
-                        </span>
-                    ) : null}
-                    <span className={`merge-stat-pill ${unresolved > 0 ? "warn" : "ok"}`}>
-                        {t("merge.count.conflicts", { count: unresolved })}
-                    </span>
-                </div>
-            </div>
-
-            <div className="pane-meta-row">
-                <div className="pane-meta">
-                    <span className="pane-meta-label">
-                        <span className="toolbar-icon pane-lock">
-                            <IconLock />
-                        </span>
-                        {t("merge.pane.changesFrom", { label: state.data.oursLabel })}
-                    </span>
-                    <span className="pane-meta-right-group">
-                        <span className="pane-meta-counts">
-                            {t("merge.count.changes", { count: oursChanges })},{" "}
-                            {t("merge.count.conflicts", { count: total })}
-                        </span>
                         <button
                             type="button"
-                            className="show-details"
-                            onClick={() => setShowDetails((v) => !v)}
+                            className="toolbar-btn"
+                            onClick={handleAcceptAllTheirs}
+                            title={t("merge.toolbar.acceptAllTheirs.title")}
                         >
-                            {showDetails
-                                ? t("merge.toolbar.hideDetails")
-                                : t("merge.toolbar.showDetails")}
+                            <span className="toolbar-icon">
+                                <IconArrowLeft />
+                            </span>
+                            {t("merge.toolbar.acceptAllTheirs.label")}
                         </button>
-                    </span>
+                    </div>
                 </div>
-                <div className="pane-meta pane-meta-center">
-                    <span>{t("merge.pane.result", { path: state.data.filePath })}</span>
+
+                <div className="merge-header">
+                    <div className="merge-title">
+                        <span className="file-path">{state.data.filePath}</span>
+                        <span className="conflict-counter">
+                            {t("merge.header.conflictsResolved", { resolved, total })}
+                        </span>
+                    </div>
+                    <div className="merge-stats">
+                        <span className="merge-stat-pill">
+                            {t("merge.count.changes", { count: changeCount })}
+                        </span>
+                        {autoResolvedCount > 0 ? (
+                            <span className="merge-stat-pill ok">
+                                {t("merge.header.autoResolved", { count: autoResolvedCount })}
+                            </span>
+                        ) : null}
+                        <span className={`merge-stat-pill ${unresolved > 0 ? "warn" : "ok"}`}>
+                            {t("merge.count.conflicts", { count: unresolved })}
+                        </span>
+                    </div>
                 </div>
-                <div className="pane-meta pane-meta-right">
-                    <span className="pane-meta-label">
-                        <span className="toolbar-icon pane-lock">
-                            <IconLock />
+
+                <div className="pane-meta-row">
+                    <div className="pane-meta">
+                        <span className="pane-meta-label">
+                            <span className="toolbar-icon pane-lock">
+                                <IconLock />
+                            </span>
+                            {t("merge.pane.changesFrom", { label: state.data.oursLabel })}
                         </span>
-                        {t("merge.pane.changesFrom", { label: state.data.theirsLabel })}
-                    </span>
-                    <span className="pane-meta-right-group">
-                        <span className="pane-meta-counts">
-                            {t("merge.count.changes", { count: theirsChanges })},{" "}
-                            {t("merge.count.conflicts", { count: total })}
+                        <span className="pane-meta-right-group">
+                            <span className="pane-meta-counts">
+                                {t("merge.count.changes", { count: oursChanges })},{" "}
+                                {t("merge.count.conflicts", { count: total })}
+                            </span>
+                            <button
+                                type="button"
+                                className="show-details"
+                                onClick={() => setShowDetails((v) => !v)}
+                            >
+                                {showDetails
+                                    ? t("merge.toolbar.hideDetails")
+                                    : t("merge.toolbar.showDetails")}
+                            </button>
                         </span>
+                    </div>
+                    <div className="pane-meta pane-meta-center">
+                        <span>{t("merge.pane.result", { path: state.data.filePath })}</span>
+                    </div>
+                    <div className="pane-meta pane-meta-right">
+                        <span className="pane-meta-label">
+                            <span className="toolbar-icon pane-lock">
+                                <IconLock />
+                            </span>
+                            {t("merge.pane.changesFrom", { label: state.data.theirsLabel })}
+                        </span>
+                        <span className="pane-meta-right-group">
+                            <span className="pane-meta-counts">
+                                {t("merge.count.changes", { count: theirsChanges })},{" "}
+                                {t("merge.count.conflicts", { count: total })}
+                            </span>
+                            <button
+                                type="button"
+                                className="show-details"
+                                onClick={() => setShowDetails((v) => !v)}
+                            >
+                                {showDetails
+                                    ? t("merge.toolbar.hideDetails")
+                                    : t("merge.toolbar.showDetails")}
+                            </button>
+                        </span>
+                    </div>
+                </div>
+
+                <div className="merge-content-shell">
+                    <div
+                        ref={mergeContentRef}
+                        className="merge-content"
+                        onScrollCapture={handlePaneScroll}
+                    >
+                        <div className="merge-scroll-width">
+                            {renderedSegments.map(
+                                ({
+                                    segment,
+                                    renderKey,
+                                    lineCount,
+                                    lineNumbers,
+                                    conflictOrdinal,
+                                    trueConflictOrdinal,
+                                }) =>
+                                    segment.type === "common" ? (
+                                        <CommonSection
+                                            key={renderKey}
+                                            segment={segment}
+                                            lineCount={lineCount}
+                                            lineNumbers={lineNumbers}
+                                            highlightWords={highlightWords}
+                                        />
+                                    ) : (
+                                        <ConflictSection
+                                            key={renderKey}
+                                            segment={segment}
+                                            resolution={state.resolutions[segment.id]}
+                                            editedLines={state.edits[segment.id]}
+                                            dismissed={state.dismissals[segment.id]}
+                                            lineCount={lineCount}
+                                            lineNumbers={lineNumbers}
+                                            onResolve={handleResolve}
+                                            onEditResult={handleEditResult}
+                                            onDismiss={handleDismissSide}
+                                            onSelect={setActiveConflictId}
+                                            onSectionRef={registerConflictSectionRef}
+                                            isActive={activeConflictId === segment.id}
+                                            showDetails={showDetails}
+                                            highlightWords={highlightWords}
+                                            conflictOrdinal={conflictOrdinal ?? segment.id + 1}
+                                            trueConflictOrdinal={trueConflictOrdinal}
+                                        />
+                                    ),
+                            )}
+                        </div>
+                    </div>
+                    <div
+                        ref={horizontalScrollRef}
+                        className="merge-horizontal-scroll"
+                        aria-hidden="true"
+                        onScroll={handleHorizontalScroll}
+                    >
+                        <div
+                            ref={horizontalScrollInnerRef}
+                            className="merge-horizontal-scroll-inner"
+                        />
+                    </div>
+                    <OverviewRail
+                        markers={overviewMarkers}
+                        activeConflictId={activeConflictId}
+                        onJump={jumpToConflict}
+                    />
+                </div>
+
+                <div className="merge-footer">
+                    <div className="footer-left">
                         <button
                             type="button"
-                            className="show-details"
-                            onClick={() => setShowDetails((v) => !v)}
+                            className="footer-btn secondary ghost"
+                            onClick={handleBulkAcceptYours}
                         >
-                            {showDetails
-                                ? t("merge.toolbar.hideDetails")
-                                : t("merge.toolbar.showDetails")}
+                            {t("merge.footer.useFileOurs")}
                         </button>
-                    </span>
+                        <button
+                            type="button"
+                            className="footer-btn secondary ghost"
+                            onClick={handleBulkAcceptTheirs}
+                        >
+                            {t("merge.footer.useFileTheirs")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary ghost"
+                            onClick={handleOpenConflictSession}
+                        >
+                            {t("mergeSession.title")}
+                        </button>
+                        <span className="footer-hint">{t("merge.footer.hint")}</span>
+                    </div>
+                    <div className="footer-right">
+                        <button
+                            type="button"
+                            className="footer-btn danger"
+                            onClick={handleAbortMerge}
+                        >
+                            {t("merge.action.abortMerge")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary"
+                            onClick={handleClose}
+                        >
+                            {t("common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            className={`footer-btn primary ${canApply ? "" : "disabled"}`}
+                            onClick={handleApply}
+                            disabled={!canApply}
+                        >
+                            {t("merge.footer.apply", { resolved, total })}
+                        </button>
+                    </div>
                 </div>
             </div>
-
-            <div className="merge-content-shell">
-                <div className="merge-content">
-                    {renderedSegments.map(
-                        ({
-                            segment,
-                            renderKey,
-                            lineCount,
-                            lineNumbers,
-                            alignment,
-                            conflictOrdinal,
-                            trueConflictOrdinal,
-                        }) =>
-                            segment.type === "common" ? (
-                                <CommonSection
-                                    key={renderKey}
-                                    segment={segment}
-                                    lineCount={lineCount}
-                                    lineNumbers={lineNumbers}
-                                    highlightWords={highlightWords}
-                                />
-                            ) : (
-                                <ConflictSection
-                                    key={renderKey}
-                                    segment={segment}
-                                    resolution={state.resolutions[segment.id]}
-                                    editedLines={state.edits[segment.id]}
-                                    lineCount={lineCount}
-                                    lineNumbers={lineNumbers}
-                                    alignment={alignment}
-                                    onResolve={handleResolve}
-                                    onEditResult={handleEditResult}
-                                    onSelect={setActiveConflictId}
-                                    onSectionRef={registerConflictSectionRef}
-                                    isActive={activeConflictId === segment.id}
-                                    showDetails={showDetails}
-                                    highlightWords={highlightWords}
-                                    conflictOrdinal={conflictOrdinal ?? segment.id + 1}
-                                    trueConflictOrdinal={trueConflictOrdinal}
-                                />
-                            ),
-                    )}
-                </div>
-                <OverviewRail
-                    markers={overviewMarkers}
-                    activeConflictId={activeConflictId}
-                    onJump={jumpToConflict}
-                />
-            </div>
-
-            <div className="merge-footer">
-                <div className="footer-left">
-                    <button
-                        type="button"
-                        className="footer-btn secondary ghost"
-                        onClick={handleBulkAcceptYours}
-                    >
-                        {t("merge.footer.useFileOurs")}
-                    </button>
-                    <button
-                        type="button"
-                        className="footer-btn secondary ghost"
-                        onClick={handleBulkAcceptTheirs}
-                    >
-                        {t("merge.footer.useFileTheirs")}
-                    </button>
-                    <span className="footer-hint">{t("merge.footer.hint")}</span>
-                </div>
-                <div className="footer-right">
-                    <button type="button" className="footer-btn secondary" onClick={handleClose}>
-                        {t("common.cancel")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`footer-btn primary ${canApply ? "" : "disabled"}`}
-                        onClick={handleApply}
-                        disabled={!canApply}
-                    >
-                        {t("merge.footer.apply", { resolved, total })}
-                    </button>
-                </div>
-            </div>
-        </div>
+        </SyntaxHighlightProvider>
     );
 }
 

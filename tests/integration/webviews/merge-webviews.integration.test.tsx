@@ -40,7 +40,10 @@ function dispatchHostMessage(data: unknown): void {
 
 function clickButton(label: string): void {
     const button = Array.from(document.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.trim() === label,
+        (candidate) =>
+            candidate.textContent?.trim() === label ||
+            candidate.getAttribute("aria-label") === label ||
+            candidate.getAttribute("title") === label,
     );
     if (!button) throw new Error(`Expected button labeled ${label}`);
     act(() => {
@@ -50,7 +53,10 @@ function clickButton(label: string): void {
 
 function findButton(label: string): HTMLButtonElement {
     const button = Array.from(document.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.trim() === label,
+        (candidate) =>
+            candidate.textContent?.trim() === label ||
+            candidate.getAttribute("aria-label") === label ||
+            candidate.getAttribute("title") === label,
     );
     if (!button) throw new Error(`Expected button labeled ${label}`);
     return button;
@@ -61,6 +67,17 @@ function pressKey(key: string, init: KeyboardEventInit = {}): void {
         window.dispatchEvent(
             new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init }),
         );
+    });
+}
+
+/**
+ * Advances past a macrotask so the deferred Shiki init (requestIdleCallback with
+ * a setTimeout fallback) runs; jsdom lacks requestIdleCallback, so the fallback
+ * timer fires here. The microtask-only `flush()` cannot observe it.
+ */
+async function flushShikiInit(): Promise<void> {
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
     });
 }
 
@@ -152,6 +169,7 @@ describe("MergeConflictSessionApp", () => {
         clickButton("Accept Theirs");
         clickButton("Merge...");
         clickButton("Refresh");
+        clickButton("Abort Merge");
         clickButton("Close");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -167,6 +185,7 @@ describe("MergeConflictSessionApp", () => {
             filePath: "src/conflict.ts",
         });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "refresh" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "close" });
     });
 });
@@ -211,11 +230,25 @@ describe("MergeEditorApp", () => {
 
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
+        expect(
+            document.querySelector('[data-conflict-id="0"]')?.querySelectorAll(".action-btn"),
+        ).toHaveLength(4);
 
-        clickButton("Accept All Yours");
+        clickButton("Conflicts");
+        clickButton("Abort Merge");
+        clickButton("Accept left block");
         await flush();
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
         clickButton("Apply (1/1)");
 
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\nours();\n",
@@ -281,8 +314,8 @@ describe("MergeEditorApp", () => {
         });
         await flush();
 
-        // The manual edit resolves the conflict and shows the Edited status.
-        expect(document.body.textContent).toContain("Edited");
+        // The manual edit resolves the conflict and marks the result block edited.
+        expect(document.querySelector(".conflict-result.edited")).not.toBeNull();
         expect(document.body.textContent).toContain("0 unresolved");
 
         clickButton("Apply (1/1)");
@@ -406,17 +439,290 @@ describe("MergeEditorApp", () => {
             textarea.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
         });
         await flush();
-        expect(document.body.textContent).toContain("Edited");
+        expect(document.querySelector(".conflict-result.edited")).not.toBeNull();
 
         // Choosing a side afterwards replaces the manual edit.
-        clickButton("Right");
+        clickButton("Accept right block");
         await flush();
-        expect(document.body.textContent).not.toContain("Edited");
+        expect(document.querySelector(".conflict-result.edited")).toBeNull();
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelectorAll(".conflict-actions-left .action-btn")).toHaveLength(2);
+        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-ours")?.className).not.toContain("accepted-pane");
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "theirs();\n",
+        });
+    });
+
+    it("stacks both sides ours-first when appending right after accepting left", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Accept left, then the right button becomes an append that stacks theirs below.
+        clickButton("Accept left block");
+        await flush();
+        clickButton("Append right block below the result");
+        await flush();
+
+        // Both sides are now in the result: every side control disappears and
+        // both source panes plus the result read as accepted.
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\nours();\ntheirs();\n",
+        });
+    });
+
+    it("stacks both sides theirs-first when appending left after accepting right", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Accept right first, then append left below it: theirs comes before ours.
+        clickButton("Accept right block");
+        await flush();
+        clickButton("Append left block below the result");
+        await flush();
+
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\ntheirs();\nours();\n",
+        });
+    });
+
+    it("discards only the left side on left X and leaves the right suggestion offered", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Discarding the left side must NOT apply the right side (the old bug):
+        // the hunk stays unresolved and the right suggestion is still offered.
+        clickButton("Ignore left block");
+        await flush();
+        expect(document.body.textContent).toContain("1 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
+        expect(hunk?.querySelector(".column-left.conflict-column")?.className).toContain(
+            "dismissed",
+        );
+        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+
+        // The right side only enters the result when the user explicitly accepts it.
+        clickButton("Accept right block");
+        await flush();
+        expect(document.body.textContent).toContain("0 unresolved");
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\ntheirs();\n",
+        });
+    });
+
+    it("discards the right side after accepting the left, keeping only ours", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Accept left, then discard the still-offered right side. Previously the
+        // right X re-emitted "ours" and did nothing; now it dismisses the right
+        // suggestion and hides its controls while the result stays ours-only.
+        clickButton("Accept left block");
+        await flush();
+        clickButton("Ignore right block");
+        await flush();
+
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelector(".column-right.conflict-column")?.className).toContain(
+            "dismissed",
+        );
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\nours();\n",
+        });
+    });
+
+    it("drops the block when both sides are discarded", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Discard both sides: the second discard drops the block entirely.
+        clickButton("Ignore left block");
+        await flush();
+        expect(document.body.textContent).toContain("1 unresolved");
+        clickButton("Ignore right block");
+        await flush();
+        expect(document.body.textContent).toContain("0 unresolved");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\n",
         });
     });
 
@@ -588,8 +894,8 @@ describe("MergeEditorApp", () => {
         pressKey("b");
         await flush();
 
-        // "Both" is meaningless for a one-sided change and must be ignored.
-        expect(document.body.textContent).toContain("Left-only change");
+        // "Both" is meaningless for a one-sided change and must not render.
+        expect(oneSided.querySelector('button[aria-label="Both"]')).toBeNull();
         expect(document.body.textContent).not.toContain("Use both");
     });
 
@@ -639,7 +945,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector('[data-conflict-id="1"]')?.className).toContain("active");
     });
 
-    it("aligns shared hunk lines across panes with spacer rows", async () => {
+    it("keeps hunk pane content contiguous while leaving filler rows unpainted", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -662,7 +968,7 @@ describe("MergeEditorApp", () => {
                         id: 0,
                         changeKind: "conflict",
                         oursLines: ["added_a();", "shared();"],
-                        theirsLines: ["shared();", "added_b();"],
+                        theirsLines: ["shared();", "added_b();", "tail();"],
                         baseLines: ["shared();"],
                     },
                 ],
@@ -677,22 +983,90 @@ describe("MergeEditorApp", () => {
             document.querySelectorAll(".conflict-theirs .code-lines .code-line"),
         );
 
-        // Both panes render the same 3-row grid: the shared line pairs up and
-        // each one-sided addition pushes a spacer into the opposite pane.
+        // PyCharm-style layout: each pane renders its own lines contiguously
+        // from the hunk top; the shorter side pads with plain filler rows at
+        // the bottom. Lines are never scattered mid-hunk to line up with the
+        // opposite pane, and padding rows must not inherit changed-line color.
         expect(oursRows).toHaveLength(3);
         expect(theirsRows).toHaveLength(3);
         expect(oursRows[0].textContent).toContain("added_a();");
         expect(oursRows[1].textContent).toContain("shared();");
-        expect(oursRows[2].className).toContain("spacer-line");
-        expect(theirsRows[0].className).toContain("spacer-line");
-        expect(theirsRows[1].textContent).toContain("shared();");
-        expect(theirsRows[2].textContent).toContain("added_b();");
+        expect(oursRows[2].textContent?.trim()).toBe("");
+        expect(theirsRows[0].textContent).toContain("shared();");
+        expect(theirsRows[1].textContent).toContain("added_b();");
+        expect(theirsRows[2].textContent).toContain("tail();");
+        expect(oursRows[0].className).toContain("real-code-line");
+        expect(oursRows[1].className).toContain("real-code-line");
+        expect(oursRows[2].className).toContain("padding-code-line");
+        expect(theirsRows.every((row) => row.className.includes("real-code-line"))).toBe(true);
 
-        // Line numbers skip spacer rows instead of counting them.
+        // Line numbers stay at pane intersections: left pane numbers render on
+        // the right edge, while right pane numbers render on the left edge.
+        const oursNumberRows = Array.from(
+            document.querySelectorAll(".conflict-ours .line-number-row"),
+        );
+        const theirsNumberRows = Array.from(
+            document.querySelectorAll(".conflict-theirs .line-number-row"),
+        );
+        const oursNumbers = Array.from(
+            document.querySelectorAll(".conflict-ours .line-number-primary"),
+        ).map((el) => el.textContent?.trim());
+        expect(oursNumbers).toEqual(["1", "2", ""]);
         const theirsNumbers = Array.from(
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
-        expect(theirsNumbers).toEqual(["", "1", "2"]);
+        expect(theirsNumbers).toEqual(["1", "2", "3"]);
+        expect(document.querySelectorAll(".line-number-secondary")).toHaveLength(0);
+        expect(oursNumberRows).toHaveLength(3);
+        expect(
+            document.querySelector(".conflict-ours")?.className.includes("line-numbers-right"),
+        ).toBe(true);
+        expect(theirsNumberRows.every((row) => row.className.includes("real-line-row"))).toBe(true);
+    });
+
+    it("uses one shared horizontal scroll container for merge rows", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: [
+                            "const oursValue = reallyLongExpression + anotherLongExpression;",
+                        ],
+                        theirsLines: [
+                            "const theirsValue = reallyLongExpression + incomingLongExpression;",
+                        ],
+                        baseLines: ["const value = reallyLongExpression;"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        const mergeContent = document.querySelector<HTMLElement>(".merge-content");
+        const scrollWidth = document.querySelector<HTMLElement>(".merge-scroll-width");
+        const bottomScroll = document.querySelector<HTMLElement>(".merge-horizontal-scroll");
+
+        expect(scrollWidth?.parentElement).toBe(mergeContent);
+        expect(scrollWidth?.querySelectorAll(":scope > .segment")).toHaveLength(1);
+        expect(mergeContent?.querySelector(":scope > .code-lines")).toBeNull();
+        expect(bottomScroll?.parentElement).toBe(document.querySelector(".merge-content-shell"));
     });
 
     it("treats auto-merged hunks as resolved and applies the merged lines", async () => {
@@ -731,7 +1105,6 @@ describe("MergeEditorApp", () => {
         // No human decision is pending: the auto-merge counts as resolved.
         expect(document.body.textContent).toContain("0 unresolved");
         expect(document.body.textContent).toContain("1 auto-resolved");
-        expect(document.body.textContent).toContain("Auto-resolved");
         expect(document.querySelector('[data-conflict-id="0"]')?.className).toContain(
             "auto-merged",
         );
@@ -780,14 +1153,13 @@ describe("MergeEditorApp", () => {
         });
         await flush();
 
-        clickButton("Left");
+        clickButton("Accept left block");
         await flush();
 
-        // The explicit choice replaces the auto-merge in result and badge.
+        // The explicit choice replaces the auto-merge in result and hunk state.
         expect(document.querySelector(".conflict-result")?.textContent).toContain(
             "const total = step;",
         );
-        expect(document.body.textContent).not.toContain("Auto-resolved");
         expect(document.querySelector('[data-conflict-id="0"]')?.className).not.toContain(
             "auto-merged",
         );
@@ -799,7 +1171,7 @@ describe("MergeEditorApp", () => {
         });
     });
 
-    it("renders theme-colored syntax tokens in all three panes", async () => {
+    it("renders Shiki theme-colored syntax tokens in all three panes for a bundled language", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -817,7 +1189,7 @@ describe("MergeEditorApp", () => {
                 eol: "\n",
                 hasTrailingNewline: true,
                 segments: [
-                    { type: "common", lines: ['const greeting = "hi"; // welcome 42'] },
+                    { type: "common", lines: ['const greeting = "hi";'] },
                     {
                         type: "conflict",
                         id: 0,
@@ -829,26 +1201,122 @@ describe("MergeEditorApp", () => {
                 ],
             },
         });
+        // Shiki initializes asynchronously relative to the first render; run the
+        // deferred init timer, then flush its ready state update before asserting.
+        await flushShikiInit();
         await flush();
 
-        // The common line renders in left, result, and right panes; each pane
-        // must classify the keyword, string, comment, and number tokens.
+        // Shiki now owns .ts highlighting: no hand-rolled tok-* classes should
+        // remain for a bundled language.
+        expect(document.querySelectorAll(".tok-keyword").length).toBe(0);
+        expect(document.querySelectorAll(".tok-string").length).toBe(0);
+
+        // The common line renders in left, result, and right panes; each pane's
+        // "const" span must carry an inline Shiki color.
+        const spans = Array.from(document.querySelectorAll(".code-line span"));
+        const constSpans = spans.filter((el) => el.textContent === "const");
+        expect(constSpans.length).toBe(3);
+        for (const span of constSpans) {
+            expect((span as HTMLElement).style.color).not.toBe("");
+        }
+
+        // String tokens get a different color than keyword tokens under the
+        // same theme (grammar-accurate categorization, not a single fallback color).
+        const stringSpan = spans.find((el) => el.textContent === '"hi"');
+        expect(stringSpan).toBeDefined();
+        const stringColor = (stringSpan as HTMLElement).style.color;
+        expect(stringColor).not.toBe("");
+        expect(stringColor).not.toBe((constSpans[0] as HTMLElement).style.color);
+
+        // Conflict pane lines are colored too.
+        const conflictPanes = document.querySelectorAll('[data-conflict-id="0"] .code-block');
+        for (const pane of Array.from(conflictPanes)) {
+            const returnSpan = Array.from(pane.querySelectorAll("span")).find(
+                (el) => el.textContent === "return",
+            );
+            expect(returnSpan).toBeDefined();
+            expect((returnSpan as HTMLElement).style.color).not.toBe("");
+        }
+    });
+
+    it("falls back to the hand-rolled tokenizer for a file type with no bundled Shiki grammar", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/notes.unsupportedext",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [{ type: "common", lines: ['const greeting = "hi"; // welcome 42'] }],
+            },
+        });
+        await flushShikiInit();
+        await flush();
+
         const keywordSpans = Array.from(document.querySelectorAll(".tok-keyword"));
         expect(keywordSpans.filter((el) => el.textContent === "const").length).toBe(3);
 
         const stringSpans = Array.from(document.querySelectorAll(".tok-string"));
         expect(stringSpans.filter((el) => el.textContent === '"hi"').length).toBe(3);
 
-        // Trailing comments after code are highlighted, and the number inside
-        // the comment stays part of the comment token.
         const commentSpans = Array.from(document.querySelectorAll(".tok-comment"));
         expect(commentSpans.filter((el) => el.textContent === "// welcome 42").length).toBe(3);
+    });
 
-        // Conflict pane lines are highlighted too (keyword + number per pane).
-        const conflictPanes = document.querySelectorAll('[data-conflict-id="0"] .code-block');
-        for (const pane of Array.from(conflictPanes)) {
-            expect(pane.querySelector(".tok-keyword")?.textContent).toBe("return");
-            expect(pane.querySelector(".tok-number")).not.toBeNull();
-        }
+    it("overlays the word-diff change highlight on top of Shiki-colored spans", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["const total = 100;"],
+                        theirsLines: ["const total = 200;"],
+                        baseLines: ["const total = 300;"],
+                    },
+                ],
+            },
+        });
+        await flushShikiInit();
+        await flush();
+
+        const wrappers = Array.from(document.querySelectorAll(".word-diff-change"));
+        expect(wrappers.length).toBeGreaterThan(0);
+
+        // At least one change wrapper must contain a Shiki-colored inner span,
+        // proving the overlay sits on top of (not instead of) grammar coloring.
+        const wrapperWithColor = wrappers.find((wrapper) => {
+            const inner = wrapper.querySelector("span");
+            return inner && (inner as HTMLElement).style.color !== "";
+        });
+        expect(wrapperWithColor).toBeDefined();
+
+        // The ours pane line must still reconstruct exactly from its spans.
+        const oursPane = document.querySelector('[data-conflict-id="0"] .code-block');
+        expect(oursPane?.textContent).toContain("const total = 100;");
     });
 });

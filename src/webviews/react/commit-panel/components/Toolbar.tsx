@@ -1,7 +1,7 @@
 // Toolbar with commit-view Git and file actions.
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Flex, IconButton, Tooltip } from "@chakra-ui/react";
+import { Button, Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { IoMdRefresh } from "react-icons/io";
 import { LuEye } from "react-icons/lu";
 import { getSettings } from "../../shared/settings";
@@ -17,10 +17,12 @@ interface Props {
     onRollback: () => void;
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
-    onShelve: () => void;
+    onStash: () => void;
     onShowDiff: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
+    showAbortMerge: boolean;
+    onAbortMerge: () => void;
 }
 
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
@@ -40,10 +42,12 @@ export function Toolbar({
     onRollback,
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
-    onShelve,
+    onStash,
     onShowDiff,
     onExpandAll,
     onCollapseAll,
+    showAbortMerge,
+    onAbortMerge,
 }: Props): React.ReactElement {
     const [viewMenuPosition, setViewMenuPosition] = useState<{ x: number; y: number } | null>(null);
     const viewMenuItems = useMemo<MenuItem[]>(
@@ -119,7 +123,7 @@ export function Toolbar({
                     onClose={() => setViewMenuPosition(null)}
                 />
             )}
-            <ToolbarButton label={t("common.shelveChanges")} onClick={onShelve} color="#ea8fb3">
+            <ToolbarButton label={t("common.stashChanges")} onClick={onStash} color="#ea8fb3">
                 <path
                     fill="currentColor"
                     d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"
@@ -137,6 +141,16 @@ export function Toolbar({
             <ToolbarButton label={t("common.collapseAll")} onClick={onCollapseAll} color="#f3b1cf">
                 <CollapseAllIconGlyph />
             </ToolbarButton>
+            {showAbortMerge ? (
+                <ToolbarButton
+                    label={t("merge.action.abortMerge")}
+                    onClick={onAbortMerge}
+                    showLabel
+                    prominent
+                >
+                    <path fill="currentColor" d="M4 4h8v8H4z" />
+                </ToolbarButton>
+            ) : null}
         </Flex>
     );
 }
@@ -162,6 +176,8 @@ function ToolbarButton({
     color,
     spin,
     disabled,
+    showLabel,
+    prominent,
     icon,
     children,
 }: {
@@ -170,6 +186,8 @@ function ToolbarButton({
     color?: string;
     spin?: boolean;
     disabled?: boolean;
+    showLabel?: boolean;
+    prominent?: boolean;
     icon?: React.ReactElement<{
         "aria-hidden"?: boolean;
         focusable?: string | boolean;
@@ -183,8 +201,10 @@ function ToolbarButton({
         : iconStyle === "standard"
           ? "var(--vscode-icon-foreground)"
           : (color ?? undefined);
+    // Prominent (danger) buttons let the variant own every color — border, tint,
+    // text, and glyph — so the icon inherits the button's currentColor.
     const svgStyle: React.CSSProperties = {
-        ...(resolvedColor ? { color: resolvedColor } : {}),
+        ...(resolvedColor && !prominent ? { color: resolvedColor } : {}),
         ...(spin
             ? {
                   animation: "intelligit-spin 0.8s linear infinite",
@@ -213,21 +233,46 @@ function ToolbarButton({
             openDelay={hoverDelay}
             isDisabled={!tooltipsEnabled}
         >
-            <IconButton
-                aria-label={label}
-                variant="toolbarGhost"
-                size="sm"
-                onClick={disabled ? undefined : onClick}
-                isDisabled={disabled}
-                _disabled={{
-                    bg: "rgba(255,255,255,0.03)",
-                    color: "var(--vscode-disabledForeground)",
-                    cursor: "default",
-                    opacity: 0.55,
-                }}
-                data-refreshing={spin ? "true" : undefined}
-                icon={renderedIcon}
-            />
+            {showLabel ? (
+                <Button
+                    variant={prominent ? "danger" : "toolbarGhost"}
+                    size="sm"
+                    onClick={disabled ? undefined : onClick}
+                    isDisabled={disabled}
+                    _disabled={{
+                        bg: "rgba(255,255,255,0.03)",
+                        color: "var(--vscode-disabledForeground)",
+                        cursor: "default",
+                        opacity: 0.55,
+                    }}
+                    data-refreshing={spin ? "true" : undefined}
+                    leftIcon={renderedIcon}
+                    minW="auto"
+                    h="26px"
+                    px="8px"
+                    fontSize="12px"
+                    fontWeight={600}
+                    color={prominent ? undefined : resolvedColor}
+                >
+                    {label}
+                </Button>
+            ) : (
+                <IconButton
+                    aria-label={label}
+                    variant="toolbarGhost"
+                    size="sm"
+                    onClick={disabled ? undefined : onClick}
+                    isDisabled={disabled}
+                    _disabled={{
+                        bg: "rgba(255,255,255,0.03)",
+                        color: "var(--vscode-disabledForeground)",
+                        cursor: "default",
+                        opacity: 0.55,
+                    }}
+                    data-refreshing={spin ? "true" : undefined}
+                    icon={renderedIcon}
+                />
+            )}
         </Tooltip>
     );
 }

@@ -196,7 +196,7 @@ describe("MergeEditorApp large document flow", () => {
         const conflict = document.querySelector<HTMLElement>(".segment-conflict");
         // 3 common lines * 20px row height.
         expect(common?.style.containIntrinsicSize).toBe("auto 60px");
-        // 1 result row * 20px + header/margin chrome.
-        expect(conflict?.style.containIntrinsicSize).toBe("auto 50px");
+        // 1 result row * 20px + simplified hunk chrome.
+        expect(conflict?.style.containIntrinsicSize).toBe("auto 24px");
     });
 });

@@ -593,15 +593,15 @@ function registerCommitFileCommands(deps: RepositoryCommandsDeps): void {
                 if (!ctx?.filePath) return;
                 try {
                     const safePath = assertRepoRelativePath(ctx.filePath);
-                    await gitOps.shelveSave([safePath]);
+                    await gitOps.stashSave([safePath]);
                     showTimedInformationMessage(
-                        vscode.l10n.t("Shelved {path}.", { path: safePath }),
+                        vscode.l10n.t("Stashed {path}.", { path: safePath }),
                     );
                 } catch (error) {
                     const message = getErrorMessage(error);
-                    console.error("Failed to shelve file:", error);
+                    console.error("Failed to stash file:", error);
                     vscode.window.showErrorMessage(
-                        vscode.l10n.t("Shelve failed: {message}", { message }),
+                        vscode.l10n.t("Stash failed: {message}", { message }),
                     );
                 } finally {
                     await refreshService().refreshCommitPanels();

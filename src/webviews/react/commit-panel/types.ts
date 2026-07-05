@@ -26,8 +26,8 @@ export type { InboundMessage, OutboundMessage } from "../../protocol/commitPanel
 export interface CommitPanelState {
     files: WorkingFile[];
     stashes: StashEntry[];
-    shelfFiles: WorkingFile[];
-    selectedShelfIndex: number | null;
+    stashFiles: WorkingFile[];
+    selectedStashIndex: number | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -59,8 +59,8 @@ export type CommitPanelAction =
           type: "SET_FILES_AND_STASHES";
           files: WorkingFile[];
           stashes: StashEntry[];
-          shelfFiles: WorkingFile[];
-          selectedShelfIndex: number | null;
+          stashFiles: WorkingFile[];
+          selectedStashIndex: number | null;
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;

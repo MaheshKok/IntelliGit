@@ -28,6 +28,16 @@ function fireClick(el: Element | null): void {
     });
 }
 
+/** Locates a button by accessible name (aria-label or visible text). */
+function findButtonByName(name: string): HTMLButtonElement | null {
+    return (
+        Array.from(document.querySelectorAll("button")).find(
+            (button) =>
+                (button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "") === name,
+        ) ?? null
+    );
+}
+
 function fireInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
     act(() => {
         el.value = value;
@@ -105,13 +115,13 @@ afterEach(() => {
     vi.doUnmock("../../../src/webviews/react/commit-info/CommitInfoPane");
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/TabBar");
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/CommitTab");
-    vi.doUnmock("../../../src/webviews/react/commit-panel/components/ShelfTab");
+    vi.doUnmock("../../../src/webviews/react/commit-panel/components/StashTab");
     document.body.innerHTML = "";
     vi.clearAllMocks();
 });
 
 describe("CommitPanelApp integration", () => {
-    it("handles extension messages and commit/shelf interactions", async () => {
+    it("handles extension messages and commit/stash interactions", async () => {
         vi.resetModules();
         const vscode = installVsCodeMock({ checked: [] });
         const rootHost = createRootHost();
@@ -145,12 +155,12 @@ describe("CommitPanelApp integration", () => {
                         stashes: [
                             {
                                 index: 0,
-                                message: "On main: shelf-work",
+                                message: "On main: stash-work",
                                 date: "2026-02-19T00:00:00Z",
                                 hash: "stashhash",
                             },
                         ],
-                        shelfFiles: [
+                        stashFiles: [
                             {
                                 path: "src/webviews/react/CommitPanelApp.tsx",
                                 status: "M",
@@ -159,7 +169,7 @@ describe("CommitPanelApp integration", () => {
                                 deletions: 1,
                             },
                         ],
-                        selectedShelfIndex: 0,
+                        selectedStashIndex: 0,
                     },
                 }),
             );
@@ -180,6 +190,7 @@ describe("CommitPanelApp integration", () => {
             (tab) => tab.textContent?.trim() ?? "",
         );
         expect(tabListLabels).toEqual(["Commit", "Stash (1)"]);
+        expect(findButtonByName("Abort Merge")).toBeNull();
 
         fireClick(document.querySelector('button[aria-label="Refresh"]'));
         fireClick(document.querySelector('button[aria-label="Rollback"]'));
@@ -193,6 +204,48 @@ describe("CommitPanelApp integration", () => {
         fireClick(document.querySelector('button[aria-label="Show Diff Preview"]'));
         fireClick(document.querySelector('button[aria-label="Expand All"]'));
         fireClick(document.querySelector('button[aria-label="Collapse All"]'));
+        expect(findButtonByName("Abort Merge")).toBeNull();
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "update",
+                        files: [
+                            {
+                                path: "src/conflicted.ts",
+                                status: "U",
+                                staged: false,
+                                additions: 1,
+                                deletions: 1,
+                            },
+                        ],
+                        stashes: [
+                            {
+                                index: 0,
+                                message: "On main: stash-work",
+                                date: "2026-02-19T00:00:00Z",
+                                hash: "stashhash",
+                            },
+                        ],
+                        stashFiles: [
+                            {
+                                path: "src/webviews/react/CommitPanelApp.tsx",
+                                status: "M",
+                                staged: false,
+                                additions: 3,
+                                deletions: 1,
+                            },
+                        ],
+                        selectedStashIndex: 0,
+                        currentBranchHasUpstream: true,
+                        currentBranchAhead: 0,
+                        currentBranchBehind: 0,
+                    },
+                }),
+            );
+        });
+        await flush();
+        fireClick(findButtonByName("Abort Merge"));
         fireClick(document.querySelector('button[aria-label="Sync"]'));
         fireClick(document.querySelector('button[aria-label="Fetch"]'));
         fireClick(document.querySelector('button[aria-label="Pull"]'));
@@ -220,6 +273,45 @@ describe("CommitPanelApp integration", () => {
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: {
+                        type: "update",
+                        files: [
+                            {
+                                path: "src/conflicted.ts",
+                                status: "U",
+                                staged: false,
+                                additions: 1,
+                                deletions: 1,
+                            },
+                        ],
+                        stashes: [
+                            {
+                                index: 0,
+                                message: "On main: stash-work",
+                                date: "2026-02-19T00:00:00Z",
+                                hash: "stashhash",
+                            },
+                        ],
+                        stashFiles: [
+                            {
+                                path: "src/webviews/react/CommitPanelApp.tsx",
+                                status: "M",
+                                staged: false,
+                                additions: 3,
+                                deletions: 1,
+                            },
+                        ],
+                        selectedStashIndex: 0,
+                    },
+                }),
+            );
+        });
+        await flush();
+        fireClick(findButtonByName("Abort Merge"));
 
         act(() => {
             window.dispatchEvent(
@@ -264,7 +356,7 @@ describe("CommitPanelApp integration", () => {
                 b.textContent?.includes("Stash"),
             ),
         );
-        fireClick(document.querySelector('[title="On main: shelf-work"]'));
+        fireClick(document.querySelector('[title="On main: stash-work"]'));
         fireClick(
             Array.from(document.querySelectorAll("button")).find(
                 (b) => b.textContent?.trim() === "Apply",
@@ -275,7 +367,7 @@ describe("CommitPanelApp integration", () => {
                 (b) => b.textContent?.trim() === "Pop",
             ),
         );
-        const stashRow = document.querySelector('[title="On main: shelf-work"]');
+        const stashRow = document.querySelector('[title="On main: stash-work"]');
         act(() => {
             stashRow?.dispatchEvent(
                 new MouseEvent("contextmenu", {
@@ -300,16 +392,18 @@ describe("CommitPanelApp integration", () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "fetch" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "pull" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "push" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "shelfApply", index: 0 }),
+            expect.objectContaining({ type: "stashApply", index: 0 }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "shelfPop", index: 0 }),
+            expect.objectContaining({ type: "stashPop", index: 0 }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "shelfDelete", index: 0 }),
+            expect.objectContaining({ type: "stashDelete", index: 0 }),
         );
         expect(vscode.setState).toHaveBeenCalled();
     });
@@ -349,8 +443,8 @@ describe("CommitPanelApp integration", () => {
                         type: "update",
                         files,
                         stashes: [],
-                        shelfFiles: [],
-                        selectedShelfIndex: null,
+                        stashFiles: [],
+                        selectedStashIndex: null,
                         currentBranchHasUpstream: true,
                     },
                 }),
@@ -391,8 +485,8 @@ describe("CommitPanelApp integration", () => {
                         type: "update",
                         files,
                         stashes: [],
-                        shelfFiles: [],
-                        selectedShelfIndex: null,
+                        stashFiles: [],
+                        selectedStashIndex: null,
                         currentBranchHasUpstream: true,
                     },
                 }),
@@ -762,8 +856,8 @@ describe("UndockedApp integration", () => {
         vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
             CommitTab: () => <div>Commit</div>,
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
         }));
     }
 

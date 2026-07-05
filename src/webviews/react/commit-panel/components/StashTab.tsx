@@ -1,11 +1,11 @@
-// Shelf tab with selectable shelved entries, changed-file preview, and
+// Stash tab with selectable stashed entries, changed-file preview, and
 // bottom Apply/Pop/Delete actions.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Flex, Button } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
-import { ShelfStashList } from "./ShelfStashList";
-import { ShelfToolbar } from "./ShelfToolbar";
+import { StashList } from "./StashList";
+import { StashToolbar } from "./StashToolbar";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { getSettings, resolveIconColor } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
@@ -16,7 +16,7 @@ import { t } from "../../shared/i18n";
 
 interface Props {
     stashes: StashEntry[];
-    shelfFiles: WorkingFile[];
+    stashFiles: WorkingFile[];
     selectedIndex: number | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
@@ -25,7 +25,7 @@ interface Props {
     onToggleGroupBy: () => void;
 }
 
-type ShelfActionKind = "apply" | "pop" | "delete" | "showDiff";
+type StashActionKind = "apply" | "pop" | "delete" | "showDiff";
 
 interface ExpansionOverride {
     selectedIndex: number | null;
@@ -39,16 +39,16 @@ interface ExpandedDirsState {
 }
 
 /**
- * Renders stash/shelf entries and the selected shelf file preview.
+ * Renders stash entries and the selected stash file preview.
  *
- * The tab sends shelf select/apply/pop/delete/diff messages to the extension,
+ * The tab sends stash select/apply/pop/delete/diff messages to the extension,
  * keeps optimistic local expansion/loading state for clicked stash rows, and
  * renders the preview tree with the shared grouping preference, and owns
  * directory expansion, context menu, and drag-to-resize state.
  */
-export function ShelfTab({
+export function StashTab({
     stashes,
-    shelfFiles,
+    stashFiles,
     selectedIndex,
     folderIcon,
     folderExpandedIcon,
@@ -58,7 +58,7 @@ export function ShelfTab({
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const tree = useFileTree(shelfFiles, groupByDir);
+    const tree = useFileTree(stashFiles, groupByDir);
     const allDirPaths = useMemo(() => collectAllDirPaths(tree), [tree]);
     const [expandedDirsState, setExpandedDirsState] = useState<ExpandedDirsState>(() => ({
         tree,
@@ -102,39 +102,39 @@ export function ShelfTab({
                 setLocalExpansion(null, false);
             } else {
                 setLocalExpansion(index, true);
-                vscode.postMessage({ type: "shelfSelect", index });
+                vscode.postMessage({ type: "stashSelect", index });
             }
         },
         [expandedIndex, setLocalExpansion, vscode],
     );
 
-    const handleShelfAction = useCallback(
-        (index: number | null, kind: ShelfActionKind) => {
+    const handleStashAction = useCallback(
+        (index: number | null, kind: StashActionKind) => {
             if (index === null) return;
             switch (kind) {
                 case "apply":
-                    vscode.postMessage({ type: "shelfApply", index });
+                    vscode.postMessage({ type: "stashApply", index });
                     return;
                 case "pop":
-                    vscode.postMessage({ type: "shelfPop", index });
+                    vscode.postMessage({ type: "stashPop", index });
                     return;
                 case "delete":
-                    vscode.postMessage({ type: "shelfDelete", index });
+                    vscode.postMessage({ type: "stashDelete", index });
                     return;
                 case "showDiff": {
-                    const firstFile = selectedIndex === index ? shelfFiles[0]?.path : undefined;
+                    const firstFile = selectedIndex === index ? stashFiles[0]?.path : undefined;
                     if (firstFile) {
-                        vscode.postMessage({ type: "showShelfDiff", index, path: firstFile });
+                        vscode.postMessage({ type: "showStashDiff", index, path: firstFile });
                     }
                     return;
                 }
                 default: {
                     const exhaustive: never = kind;
-                    throw new Error(`Unhandled shelf action: ${String(exhaustive)}`);
+                    throw new Error(`Unhandled stash action: ${String(exhaustive)}`);
                 }
             }
         },
-        [selectedIndex, shelfFiles, vscode],
+        [selectedIndex, stashFiles, vscode],
     );
 
     const toggleDir = useCallback(
@@ -158,12 +158,12 @@ export function ShelfTab({
     }, [tree]);
 
     const handleShowSelectedDiff = useCallback(() => {
-        handleShelfAction(selectedIndex, "showDiff");
-    }, [handleShelfAction, selectedIndex]);
+        handleStashAction(selectedIndex, "showDiff");
+    }, [handleStashAction, selectedIndex]);
 
-    const handleShowShelfDiff = useCallback(
+    const handleShowStashDiff = useCallback(
         (index: number, path: string) => {
-            vscode.postMessage({ type: "showShelfDiff", index, path });
+            vscode.postMessage({ type: "showStashDiff", index, path });
         },
         [vscode],
     );
@@ -174,7 +174,7 @@ export function ShelfTab({
             event.stopPropagation();
             if (expandedIndex !== index) {
                 setLocalExpansion(index, true);
-                vscode.postMessage({ type: "shelfSelect", index });
+                vscode.postMessage({ type: "stashSelect", index });
             }
             setContextMenu({ x: event.clientX, y: event.clientY, index });
         },
@@ -230,9 +230,9 @@ export function ShelfTab({
             bg="var(--intelligit-pycharm-panel)"
             color="var(--intelligit-pycharm-foreground)"
         >
-            <ShelfToolbar
+            <StashToolbar
                 selectedIndex={selectedIndex}
-                shelfFilesLength={shelfFiles.length}
+                stashFilesLength={stashFiles.length}
                 groupByDir={groupByDir}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
@@ -242,9 +242,9 @@ export function ShelfTab({
                 onCollapseAll={collapseAll}
             />
 
-            <ShelfStashList
+            <StashList
                 stashes={stashes}
-                shelfFiles={shelfFiles}
+                stashFiles={stashFiles}
                 selectedIndex={selectedIndex}
                 expandedIndex={expandedIndex}
                 isLoading={isLoading}
@@ -258,7 +258,7 @@ export function ShelfTab({
                 onStashClick={handleStashClick}
                 onStashContextMenu={handleStashContextMenu}
                 onToggleDir={toggleDir}
-                onShowShelfDiff={handleShowShelfDiff}
+                onShowStashDiff={handleShowStashDiff}
                 onFileTreeDragStart={handleFileTreeDragStart}
             />
 
@@ -273,7 +273,7 @@ export function ShelfTab({
                 <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => handleShelfAction(selectedIndex, "apply")}
+                    onClick={() => handleStashAction(selectedIndex, "apply")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
@@ -283,7 +283,7 @@ export function ShelfTab({
                 <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => handleShelfAction(selectedIndex, "pop")}
+                    onClick={() => handleStashAction(selectedIndex, "pop")}
                     isDisabled={selectedIndex === null}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
@@ -298,15 +298,15 @@ export function ShelfTab({
                     minWidth={300}
                     onClose={() => setContextMenu(null)}
                     onSelect={(action) => {
-                        if (action === "apply") handleShelfAction(contextMenu.index, "apply");
-                        if (action === "pop") handleShelfAction(contextMenu.index, "pop");
-                        if (action === "drop") handleShelfAction(contextMenu.index, "delete");
-                        if (action === "showDiff") handleShelfAction(contextMenu.index, "showDiff");
+                        if (action === "apply") handleStashAction(contextMenu.index, "apply");
+                        if (action === "pop") handleStashAction(contextMenu.index, "pop");
+                        if (action === "drop") handleStashAction(contextMenu.index, "delete");
+                        if (action === "showDiff") handleStashAction(contextMenu.index, "showDiff");
                     }}
                     items={[
                         { label: t("common.pop"), action: "pop" },
                         { label: t("common.apply"), action: "apply" },
-                        { label: t("shelf.action.unstash"), action: "unstash", disabled: true },
+                        { label: t("stash.action.unstash"), action: "unstash", disabled: true },
                         { label: t("common.drop"), action: "drop" },
                         { label: t("common.clear"), action: "clear", disabled: true },
                         { label: "", action: "sep-1", separator: true },
@@ -314,12 +314,12 @@ export function ShelfTab({
                             label: t("common.showDiff"),
                             action: "showDiff",
                             disabled:
-                                selectedIndex !== contextMenu.index || shelfFiles.length === 0,
+                                selectedIndex !== contextMenu.index || stashFiles.length === 0,
                             hint: "⌘D",
                             icon: <DiffIcon />,
                         },
                         {
-                            label: t("shelf.action.showDiffNewTab"),
+                            label: t("stash.action.showDiffNewTab"),
                             action: "showDiffNewTab",
                             disabled: true,
                             icon: <DiffIcon />,

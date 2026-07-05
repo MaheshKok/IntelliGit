@@ -444,7 +444,7 @@ describe("webview ui smoke", () => {
         unmount(terminal.root, terminal.container);
     });
 
-    it("renders section/folder/shelf/toolbar/tab and commit area layouts", () => {
+    it("renders section/folder/stash/toolbar/tab and commit area layouts", () => {
         const noop = vi.fn();
         const stash = {
             index: 1,
@@ -484,10 +484,12 @@ describe("webview ui smoke", () => {
                     showIgnoredFiles={false}
                     onToggleGroupBy={noop}
                     onToggleShowIgnoredFiles={noop}
-                    onShelve={noop}
+                    onStash={noop}
                     onShowDiff={noop}
                     onExpandAll={noop}
                     onCollapseAll={noop}
+                    showAbortMerge={true}
+                    onAbortMerge={noop}
                 />
                 <CommitArea
                     commitMessage="feat: message"
@@ -509,7 +511,7 @@ describe("webview ui smoke", () => {
                     onPull={noop}
                     onPush={noop}
                     commitContent={<div>Commit tab</div>}
-                    shelfContent={<div>Shelf tab</div>}
+                    stashContent={<div>Stash tab</div>}
                 />
             </>,
         );
@@ -520,6 +522,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
+        expect(html).toContain("Abort Merge");
         expect(html).toContain("Branch: main -&gt; origin/main");
         expect(html).not.toContain("Commit and Push");
         const commitActionIndex = html.indexOf("Commit");
@@ -632,10 +635,12 @@ describe("webview ui smoke", () => {
                 showIgnoredFiles={false}
                 onToggleGroupBy={noop}
                 onToggleShowIgnoredFiles={noop}
-                onShelve={noop}
+                onStash={noop}
                 onShowDiff={noop}
                 onExpandAll={noop}
                 onCollapseAll={noop}
+                showAbortMerge={false}
+                onAbortMerge={noop}
             />,
         );
         expect(refreshingToolbarHtml).toContain('data-refreshing="true"');

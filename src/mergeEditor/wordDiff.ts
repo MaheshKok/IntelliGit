@@ -17,7 +17,7 @@ export function normalizeLineForWordDiff(line: string): string {
 }
 
 /** One step of a line-alignment path: pair both cursors, or skip one side. */
-export type AlignmentTraceAction = "pair" | "skipA" | "skipB";
+type AlignmentTraceAction = "pair" | "skipA" | "skipB";
 
 /** Gap penalty shared by every line-alignment consumer. */
 const LINE_ALIGNMENT_GAP_PENALTY = -0.8;
@@ -26,7 +26,7 @@ const LINE_ALIGNMENT_GAP_PENALTY = -0.8;
  * Upper bound on dynamic-programming cells for line alignment. Hunks above
  * this size fall back to cheaper strategies to keep the webview responsive.
  */
-export const MAX_LINE_ALIGNMENT_CELLS = 50_000;
+const MAX_LINE_ALIGNMENT_CELLS = 50_000;
 
 /**
  * Computes the full Needleman-Wunsch alignment path between two line arrays
@@ -34,7 +34,7 @@ export const MAX_LINE_ALIGNMENT_CELLS = 50_000;
  * both inputs to exhaustion, so consumers can derive padded row layouts or
  * compare-line mappings from the same path.
  */
-export function computeLineAlignmentActions(
+function computeLineAlignmentActions(
     lines: string[],
     compareLines: string[],
 ): AlignmentTraceAction[] {

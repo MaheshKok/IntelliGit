@@ -12,6 +12,7 @@ import {
     paneChangeCount,
     splitEditedText,
     isTrueConflict,
+    type State,
 } from "../../../src/webviews/react/merge-editor/mergeState";
 import type {
     MergeEditorData,
@@ -43,18 +44,24 @@ function makeData(segments: MergeSegment[]): MergeEditorData {
 }
 
 describe("reducer", () => {
-    const initial = { data: null, error: null, resolutions: {}, edits: {} };
+    const initial: State = { data: null, error: null, resolutions: {}, edits: {}, dismissals: {} };
 
-    it("SET_DATA replaces data and clears resolutions and edits", () => {
+    it("SET_DATA replaces data and clears resolutions, edits, and dismissals", () => {
         const data = makeData([]);
         const state = reducer(
-            { ...initial, resolutions: { 0: "ours" }, edits: { 0: ["custom"] } },
+            {
+                ...initial,
+                resolutions: { 0: "ours" },
+                edits: { 0: ["custom"] },
+                dismissals: { 0: { theirs: true } },
+            },
             { type: "SET_DATA", data },
         );
         expect(state.data).toBe(data);
         expect(state.error).toBeNull();
         expect(state.resolutions).toEqual({});
         expect(state.edits).toEqual({});
+        expect(state.dismissals).toEqual({});
     });
 
     it("SET_ERROR sets error message", () => {
@@ -99,6 +106,33 @@ describe("reducer", () => {
         expect(state.edits[1]).toBeUndefined();
         expect(state.edits[2]).toEqual(["y"]);
     });
+
+    it("DISMISS_SIDE flags one side without touching the other side or hunks", () => {
+        const state = reducer(initial, { type: "DISMISS_SIDE", id: 1, side: "ours" });
+        expect(state.dismissals[1]).toEqual({ ours: true });
+        expect(state.dismissals[1].theirs).toBeUndefined();
+        expect(state.dismissals[2]).toBeUndefined();
+        expect(initial.dismissals).toEqual({});
+    });
+
+    it("DISMISS_SIDE accumulates both sides on the same hunk", () => {
+        let state = reducer(initial, { type: "DISMISS_SIDE", id: 1, side: "ours" });
+        state = reducer(state, { type: "DISMISS_SIDE", id: 1, side: "theirs" });
+        expect(state.dismissals[1]).toEqual({ ours: true, theirs: true });
+    });
+
+    it("RESOLVE_HUNK clears a prior dismissal on the same hunk", () => {
+        const dismissed = reducer(initial, { type: "DISMISS_SIDE", id: 1, side: "theirs" });
+        const state = reducer(dismissed, { type: "RESOLVE_HUNK", id: 1, resolution: "ours" });
+        expect(state.dismissals[1]).toBeUndefined();
+        expect(state.resolutions[1]).toBe("ours");
+    });
+
+    it("RESOLVE_HUNK keeps dismissals on other hunks", () => {
+        const dismissed = reducer(initial, { type: "DISMISS_SIDE", id: 2, side: "ours" });
+        const state = reducer(dismissed, { type: "RESOLVE_HUNK", id: 1, resolution: "ours" });
+        expect(state.dismissals[2]).toEqual({ ours: true });
+    });
 });
 
 describe("getResultLines", () => {
@@ -114,6 +148,10 @@ describe("getResultLines", () => {
 
     it("returns both for 'both' resolution", () => {
         expect(getResultLines(segment, "both")).toEqual(["ours", "theirs"]);
+    });
+
+    it("returns theirs-then-ours for 'both-reversed' resolution", () => {
+        expect(getResultLines(segment, "both-reversed")).toEqual(["theirs", "ours"]);
     });
 
     it("returns empty for 'none' resolution", () => {

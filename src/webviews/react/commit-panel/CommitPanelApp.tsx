@@ -7,7 +7,7 @@ import { ChakraProvider, Box } from "@chakra-ui/react";
 import theme from "./theme";
 import { TabBar } from "./components/TabBar";
 import { CommitTab } from "./components/CommitTab";
-import { ShelfTab } from "./components/ShelfTab";
+import { StashTab } from "./components/StashTab";
 import { useExtensionMessages } from "./hooks/useExtensionMessages";
 import { useCheckedFiles } from "./hooks/useCheckedFiles";
 import { getVsCodeApi } from "./hooks/useVsCodeApi";
@@ -19,7 +19,7 @@ import { canRunCommitAction } from "./commitEligibility";
  *
  * This component owns panel-level message sending for commit, push, publish,
  * amend-message loading, draft persistence, and the local group-by-directory
- * preference shared by the commit and shelf tabs.
+ * preference shared by the commit and stash tabs.
  */
 // Webview entrypoint owns root render side effects; Fast Refresh component-export rule is not applicable here.
 // react-doctor-disable-next-line react-doctor/only-export-components
@@ -150,11 +150,11 @@ function App(): React.ReactElement {
                         onToggleShowIgnoredFiles={() => setShowIgnoredFiles((show) => !show)}
                     />
                 }
-                shelfContent={
-                    <ShelfTab
+                stashContent={
+                    <StashTab
                         stashes={state.stashes}
-                        shelfFiles={state.shelfFiles}
-                        selectedIndex={state.selectedShelfIndex}
+                        stashFiles={state.stashFiles}
+                        selectedIndex={state.selectedStashIndex}
                         folderIcon={state.folderIcon}
                         folderExpandedIcon={state.folderExpandedIcon}
                         folderIconsByName={state.folderIconsByName}
