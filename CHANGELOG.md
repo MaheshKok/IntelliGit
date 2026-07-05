@@ -5,6 +5,21 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.1] - 2026-07-05
+
+### Changed
+
+- Renamed all user-facing "shelve"/"shelf" terminology to "stash" across the commit panel, menus, and messages to match Git's own vocabulary and remove confusion with PyCharm's separate shelve feature.
+- Updated localized strings for the stash terminology across all 11 locales (de, es, fr, ja, ko, pl, pt-br, pt-pt, ru, zh-cn, zh-tw).
+
+### Fixed
+
+- Corrected the Squash Commits error message to instruct users to commit, stash, or rollback local changes.
+
+### Notes
+
+- The public command ID `intelligit.fileShelve` is intentionally unchanged so existing user keybindings keep working; only its display title was updated to "Stash Changes".
+
 ## [0.14.12] - 2026-07-05
 
 ### Added
