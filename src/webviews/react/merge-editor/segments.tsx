@@ -570,6 +570,210 @@ export interface ConflictSectionProps {
     trueConflictOrdinal?: number;
 }
 
+/** Derived render flags for one conflict hunk: which sides are in the result,
+ * which controls to show, and how the result/side panes compare against base. */
+interface ConflictView {
+    isEdited: boolean;
+    isOurs: boolean;
+    isTheirs: boolean;
+    oursInResult: boolean;
+    theirsInResult: boolean;
+    oursDismissed: boolean;
+    theirsDismissed: boolean;
+    isAutoMerged: boolean;
+    isResolved: boolean;
+    showLeftActions: boolean;
+    showRightActions: boolean;
+    leftAppend: boolean;
+    rightAppend: boolean;
+    resultCompareLines: string[] | undefined;
+    sideVariant: string;
+}
+
+/**
+ * Determines the lines the result pane diffs against: nothing once a side is
+ * accepted, otherwise the opposite side (single accept) or base (unresolved).
+ */
+function resultCompareBaseline(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    oursInResult: boolean,
+    theirsInResult: boolean,
+): string[] | undefined {
+    if (oursInResult || theirsInResult) return undefined;
+    if (resolution === "ours") return segment.theirsLines;
+    if (resolution === "theirs") return segment.oursLines;
+    return segment.baseLines;
+}
+
+/**
+ * PyCharm-style color class for a one-sided hunk: pure insertions green,
+ * deletions gray, modifications blue. True conflicts carry no variant class.
+ */
+function sideVariantClass(segment: ConflictSegment): string {
+    if (segment.changeKind === "conflict") return "";
+    if (segment.baseLines.length === 0) return "variant-insertion";
+    const changedSideLines =
+        segment.changeKind === "ours-only" ? segment.oursLines : segment.theirsLines;
+    if (changedSideLines.length === 0) return "variant-deletion";
+    return "variant-modification";
+}
+
+/**
+ * Computes the render flags for a conflict hunk from its resolution, manual
+ * edits, and per-side dismissals. Pure helper so ConflictSection stays a thin
+ * view over these derived values.
+ */
+function deriveConflictView(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+    dismissed: HunkSideDismissal | undefined,
+): ConflictView {
+    const isEdited = editedLines !== undefined;
+    const isOurs = !isEdited && resolution === "ours";
+    const isTheirs = !isEdited && resolution === "theirs";
+    // Both orders stack the two sides; the order only differs in getResultLines.
+    const isBoth = !isEdited && (resolution === "both" || resolution === "both-reversed");
+    const oursInResult = isOurs || isBoth;
+    const theirsInResult = isTheirs || isBoth;
+    // A side is "dismissed" when the user discarded it (X) without accepting the
+    // opposite side. Acceptance overrides dismissal, so a side in the result is
+    // never treated as dismissed. A manual edit supersedes both.
+    const oursDismissed = !isEdited && !oursInResult && dismissed?.ours === true;
+    const theirsDismissed = !isEdited && !theirsInResult && dismissed?.theirs === true;
+    const isAutoMerged =
+        segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
+    const isResolved =
+        segment.changeKind !== "conflict" ||
+        segment.autoResolvedLines !== undefined ||
+        resolution !== undefined ||
+        isEdited;
+    return {
+        isEdited,
+        isOurs,
+        isTheirs,
+        oursInResult,
+        theirsInResult,
+        oursDismissed,
+        theirsDismissed,
+        isAutoMerged,
+        isResolved,
+        // A side's controls show only while that side is still pending: not yet
+        // in the result and not discarded. Accepting one side leaves the other
+        // side's accept button available to append (stack) below it; discarding
+        // the other side hides its controls. Once both are stacked, all controls
+        // hide. A manual edit puts neither side "in result", so both reappear.
+        showLeftActions: !oursInResult && !oursDismissed,
+        showRightActions: !theirsInResult && !theirsDismissed,
+        // When one side is already in the result, the opposite accept button
+        // appends the second side below it instead of replacing the result.
+        leftAppend: theirsInResult,
+        rightAppend: oursInResult,
+        resultCompareLines: resultCompareBaseline(
+            segment,
+            resolution,
+            oursInResult,
+            theirsInResult,
+        ),
+        sideVariant: sideVariantClass(segment),
+    };
+}
+
+/** Left-column controls for a pending "ours" side: discard and accept-or-append. */
+function LeftHunkActions({
+    segmentId,
+    leftAppend,
+    isOurs,
+    theirsDismissed,
+    onResolve,
+    onDismiss,
+}: {
+    segmentId: number;
+    leftAppend: boolean;
+    isOurs: boolean;
+    theirsDismissed: boolean;
+    onResolve: (id: number, resolution: HunkResolution) => void;
+    onDismiss: (id: number, side: "ours" | "theirs") => void;
+}) {
+    return (
+        <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
+            <button
+                type="button"
+                className="action-btn discard-btn"
+                onClick={() =>
+                    theirsDismissed ? onResolve(segmentId, "none") : onDismiss(segmentId, "ours")
+                }
+                title={t("merge.hunk.ignoreLeft")}
+                aria-label={t("merge.hunk.ignoreLeft")}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    X
+                </span>
+            </button>
+            <button
+                type="button"
+                className={`action-btn accept-btn ${leftAppend ? "append-btn" : ""} ${isOurs ? "active" : ""}`}
+                onClick={() => onResolve(segmentId, leftAppend ? "both-reversed" : "ours")}
+                title={t(leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft")}
+                aria-label={t(leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft")}
+                aria-current={isOurs ? "true" : undefined}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    {leftAppend ? "»+" : ">>"}
+                </span>
+            </button>
+        </div>
+    );
+}
+
+/** Right-column controls for a pending "theirs" side: accept-or-append and discard. */
+function RightHunkActions({
+    segmentId,
+    rightAppend,
+    isTheirs,
+    oursDismissed,
+    onResolve,
+    onDismiss,
+}: {
+    segmentId: number;
+    rightAppend: boolean;
+    isTheirs: boolean;
+    oursDismissed: boolean;
+    onResolve: (id: number, resolution: HunkResolution) => void;
+    onDismiss: (id: number, side: "ours" | "theirs") => void;
+}) {
+    return (
+        <div className="conflict-actions-right" onClick={(e) => e.stopPropagation()}>
+            <button
+                type="button"
+                className={`action-btn accept-btn ${rightAppend ? "append-btn" : ""} ${isTheirs ? "active" : ""}`}
+                onClick={() => onResolve(segmentId, rightAppend ? "both" : "theirs")}
+                title={t(rightAppend ? "merge.hunk.appendRight" : "merge.hunk.acceptRight")}
+                aria-label={t(rightAppend ? "merge.hunk.appendRight" : "merge.hunk.acceptRight")}
+                aria-current={isTheirs ? "true" : undefined}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    {rightAppend ? "«+" : "<<"}
+                </span>
+            </button>
+            <button
+                type="button"
+                className="action-btn discard-btn"
+                onClick={() =>
+                    oursDismissed ? onResolve(segmentId, "none") : onDismiss(segmentId, "theirs")
+                }
+                title={t("merge.hunk.ignoreRight")}
+                aria-label={t("merge.hunk.ignoreRight")}
+            >
+                <span className="hunk-action-glyph" aria-hidden="true">
+                    X
+                </span>
+            </button>
+        </div>
+    );
+}
+
 /**
  * Renders one merge-editor hunk with ours/result/theirs columns, resolution
  * controls, status badges, and per-pane word-diff highlighting. Memoized with
@@ -594,38 +798,23 @@ export const ConflictSection = React.memo(function ConflictSection({
     trueConflictOrdinal,
 }: ConflictSectionProps) {
     const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
-    const isEdited = editedLines !== undefined;
-
-    const isOurs = !isEdited && resolution === "ours";
-    const isTheirs = !isEdited && resolution === "theirs";
-    // Both orders stack the two sides; the order only differs in getResultLines.
-    const isBoth = !isEdited && (resolution === "both" || resolution === "both-reversed");
-    const oursInResult = isOurs || isBoth;
-    const theirsInResult = isTheirs || isBoth;
-    // A side is "dismissed" when the user discarded it (X) without accepting the
-    // opposite side. Acceptance overrides dismissal, so a side in the result is
-    // never treated as dismissed. A manual edit supersedes both.
-    const oursDismissed = !isEdited && !oursInResult && dismissed?.ours === true;
-    const theirsDismissed = !isEdited && !theirsInResult && dismissed?.theirs === true;
-    const isAutoMerged =
-        segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
-    const isResolved =
-        segment.changeKind !== "conflict" ||
-        segment.autoResolvedLines !== undefined ||
-        resolution !== undefined ||
-        isEdited;
-    // A side's controls show only while that side is still pending: not yet in
-    // the result and not discarded. Accepting one side leaves the other side's
-    // accept button available to append (stack) below it; discarding the other
-    // side hides its controls without touching the accepted side. Once both are
-    // stacked, all controls hide. A manual edit puts neither side "in result",
-    // so both controls reappear.
-    const showLeftActions = !oursInResult && !oursDismissed;
-    const showRightActions = !theirsInResult && !theirsDismissed;
-    // When one side is already in the result, the opposite accept button
-    // appends the second side below it instead of replacing the result.
-    const leftAppend = theirsInResult;
-    const rightAppend = oursInResult;
+    const {
+        isEdited,
+        isOurs,
+        isTheirs,
+        oursInResult,
+        theirsInResult,
+        oursDismissed,
+        theirsDismissed,
+        isAutoMerged,
+        isResolved,
+        showLeftActions,
+        showRightActions,
+        leftAppend,
+        rightAppend,
+        resultCompareLines,
+        sideVariant,
+    } = deriveConflictView(segment, resolution, editedLines, dismissed);
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
@@ -642,27 +831,6 @@ export const ConflictSection = React.memo(function ConflictSection({
         },
         [handleSectionSelect],
     );
-    const resultCompareLines =
-        oursInResult || theirsInResult
-            ? undefined
-            : resolution === "ours"
-              ? segment.theirsLines
-              : resolution === "theirs"
-                ? segment.oursLines
-                : segment.baseLines;
-    // PyCharm colors one-sided hunks by what happened to the base region:
-    // pure insertions are green, deletions gray, and modifications blue.
-    // True conflicts stay red regardless, so they carry no variant class.
-    const changedSideLines =
-        segment.changeKind === "ours-only" ? segment.oursLines : segment.theirsLines;
-    const sideVariant =
-        segment.changeKind === "conflict"
-            ? ""
-            : segment.baseLines.length === 0
-              ? "variant-insertion"
-              : changedSideLines.length === 0
-                ? "variant-deletion"
-                : "variant-modification";
 
     return (
         <div
@@ -704,41 +872,14 @@ export const ConflictSection = React.memo(function ConflictSection({
                         compareLines={oursInResult ? undefined : segment.baseLines}
                     />
                     {showLeftActions ? (
-                        <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                type="button"
-                                className="action-btn discard-btn"
-                                onClick={() =>
-                                    theirsDismissed
-                                        ? onResolve(segment.id, "none")
-                                        : onDismiss(segment.id, "ours")
-                                }
-                                title={t("merge.hunk.ignoreLeft")}
-                                aria-label={t("merge.hunk.ignoreLeft")}
-                            >
-                                <span className="hunk-action-glyph" aria-hidden="true">
-                                    X
-                                </span>
-                            </button>
-                            <button
-                                type="button"
-                                className={`action-btn accept-btn ${leftAppend ? "append-btn" : ""} ${isOurs ? "active" : ""}`}
-                                onClick={() =>
-                                    onResolve(segment.id, leftAppend ? "both-reversed" : "ours")
-                                }
-                                title={t(
-                                    leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft",
-                                )}
-                                aria-label={t(
-                                    leftAppend ? "merge.hunk.appendLeft" : "merge.hunk.acceptLeft",
-                                )}
-                                aria-current={isOurs ? "true" : undefined}
-                            >
-                                <span className="hunk-action-glyph" aria-hidden="true">
-                                    {leftAppend ? "»+" : ">>"}
-                                </span>
-                            </button>
-                        </div>
+                        <LeftHunkActions
+                            segmentId={segment.id}
+                            leftAppend={leftAppend}
+                            isOurs={isOurs}
+                            theirsDismissed={theirsDismissed}
+                            onResolve={onResolve}
+                            onDismiss={onDismiss}
+                        />
                     ) : null}
                 </div>
 
@@ -758,48 +899,14 @@ export const ConflictSection = React.memo(function ConflictSection({
                     className={`column column-right conflict-column ${theirsInResult ? "accepted" : ""} ${theirsDismissed ? "dismissed" : ""}`}
                 >
                     {showRightActions ? (
-                        <div
-                            className="conflict-actions-right"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <button
-                                type="button"
-                                className={`action-btn accept-btn ${rightAppend ? "append-btn" : ""} ${isTheirs ? "active" : ""}`}
-                                onClick={() =>
-                                    onResolve(segment.id, rightAppend ? "both" : "theirs")
-                                }
-                                title={t(
-                                    rightAppend
-                                        ? "merge.hunk.appendRight"
-                                        : "merge.hunk.acceptRight",
-                                )}
-                                aria-label={t(
-                                    rightAppend
-                                        ? "merge.hunk.appendRight"
-                                        : "merge.hunk.acceptRight",
-                                )}
-                                aria-current={isTheirs ? "true" : undefined}
-                            >
-                                <span className="hunk-action-glyph" aria-hidden="true">
-                                    {rightAppend ? "«+" : "<<"}
-                                </span>
-                            </button>
-                            <button
-                                type="button"
-                                className="action-btn discard-btn"
-                                onClick={() =>
-                                    oursDismissed
-                                        ? onResolve(segment.id, "none")
-                                        : onDismiss(segment.id, "theirs")
-                                }
-                                title={t("merge.hunk.ignoreRight")}
-                                aria-label={t("merge.hunk.ignoreRight")}
-                            >
-                                <span className="hunk-action-glyph" aria-hidden="true">
-                                    X
-                                </span>
-                            </button>
-                        </div>
+                        <RightHunkActions
+                            segmentId={segment.id}
+                            rightAppend={rightAppend}
+                            isTheirs={isTheirs}
+                            oursDismissed={oursDismissed}
+                            onResolve={onResolve}
+                            onDismiss={onDismiss}
+                        />
                     ) : null}
                     <CodeBlock
                         lines={segment.theirsLines}
