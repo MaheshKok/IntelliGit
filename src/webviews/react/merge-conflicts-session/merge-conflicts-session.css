@@ -164,6 +164,16 @@
     background: var(--vscode-button-hoverBackground);
 }
 
+.action-btn.danger {
+    color: var(--vscode-errorForeground, #f48771);
+    border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
+}
+
+.action-btn.danger:hover {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);
+}
+
 .action-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;

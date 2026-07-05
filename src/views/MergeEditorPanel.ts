@@ -181,6 +181,14 @@ export class MergeEditorPanel {
                 await this.acceptSide("theirs");
                 return;
 
+            case "openConflictSession":
+                await vscode.commands.executeCommand("intelligit.openConflictSession");
+                return;
+
+            case "abortMerge":
+                await this.abortMerge();
+                return;
+
             case "close":
                 this.panel.dispose();
                 return;
@@ -208,6 +216,24 @@ export class MergeEditorPanel {
         showTimedInformationMessage(
             vscode.l10n.t("Merged and staged: {path}", { path: this.safePath }),
         );
+        await this.notifyConflictStateChanged();
+        if (this.isAlive()) this.panel.dispose();
+    }
+
+    /** Confirms and aborts the repository merge backing this editor panel. */
+    private async abortMerge(): Promise<void> {
+        const abortAction = vscode.l10n.t("Abort Merge");
+        const confirmed = await vscode.window.showWarningMessage(
+            vscode.l10n.t("Abort the current merge? Local conflict resolutions will be discarded."),
+            { modal: true },
+            abortAction,
+        );
+        if (confirmed !== abortAction) return;
+
+        await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
+            await this.gitOps.abortMerge();
+        });
+        showTimedInformationMessage(vscode.l10n.t("Merge aborted."));
         await this.notifyConflictStateChanged();
         if (this.isAlive()) this.panel.dispose();
     }

@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => {
         showInformationMessage: vi.fn(async () => undefined),
         showErrorMessage: vi.fn(async () => undefined),
         showWarningMessage: vi.fn(async () => undefined),
+        executeCommand: vi.fn(async () => undefined),
     };
 });
 
@@ -55,6 +56,9 @@ vi.mock("vscode", () => {
             file: (p: string) => makeUri(p),
             joinPath: (base: { fsPath: string }, ...segments: string[]) =>
                 makeUri([base.fsPath, ...segments].join("/")),
+        },
+        commands: {
+            executeCommand: mocks.executeCommand,
         },
         env: { language: "en" },
         workspace: {
@@ -297,6 +301,27 @@ describe("MergeEditorPanel end-to-end merge flow", () => {
         expect(written).toBe("function shared() {\n    return 3;\n}\n");
         expect(git(["ls-files", "-u"]).trim()).toBe("");
         expect(panel.disposed).toBe(true);
+    });
+
+    it("opens the conflict list and aborts the backing merge after confirmation", async () => {
+        await createConflictRepo();
+        const gitOps = new GitOps(new GitExecutor(repoRoot));
+        const onConflictStateChanged = vi.fn(async () => undefined);
+
+        await MergeEditorPanel.open(makeOptions(gitOps, { onConflictStateChanged }));
+        const panel = lastPanel();
+        await fireMessage(panel, { type: "ready" });
+
+        await fireMessage(panel, { type: "openConflictSession" });
+        expect(mocks.executeCommand).toHaveBeenCalledWith("intelligit.openConflictSession");
+
+        mocks.showWarningMessage.mockResolvedValueOnce("Abort Merge");
+        await fireMessage(panel, { type: "abortMerge" });
+
+        expect(git(["ls-files", "-u"]).trim()).toBe("");
+        expect(onConflictStateChanged).toHaveBeenCalledTimes(1);
+        expect(panel.disposed).toBe(true);
+        expect(mocks.showInformationMessage).toHaveBeenCalledWith("Merge aborted.");
     });
 
     it("re-parses with whitespace ignoring when the webview switches ignore mode", async () => {

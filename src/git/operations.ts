@@ -505,11 +505,6 @@ export class GitOps {
         return this.executor.run(["pull", "--rebase"]);
     }
 
-    /** Aborts the active merge and restores Git's pre-merge index and working tree state. */
-    async abortMerge(): Promise<string> {
-        return this.executor.run(["merge", "--abort"]);
-    }
-
     /**
      * Fetches remote refs for the current repository without changing local checkout state.
      *
@@ -917,6 +912,30 @@ export class GitOps {
         const sideArg = side === "ours" ? "--ours" : "--theirs";
         await this.executor.run(withLiteralPathspecs(["checkout", sideArg, "--", filePath]));
         await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
+    }
+    /** Aborts the active merge-like operation Git is currently recording. */
+    async abortMerge(): Promise<void> {
+        const hasRef = async (ref: string): Promise<boolean> => {
+            try {
+                await this.executor.run(["rev-parse", "--verify", "--quiet", ref]);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+        if (await hasRef("MERGE_HEAD")) {
+            await this.executor.run(["merge", "--abort"]);
+            return;
+        }
+        if (await hasRef("REBASE_HEAD")) {
+            await this.executor.run(["rebase", "--abort"]);
+            return;
+        }
+        if (await hasRef("CHERRY_PICK_HEAD")) {
+            await this.executor.run(["cherry-pick", "--abort"]);
+            return;
+        }
+        throw new Error("No active merge, rebase, or cherry-pick operation to abort.");
     }
     /** Removes a literal repository path through Git, optionally forcing removal of missing or staged files. */
     async deleteFile(filePath: string, force: boolean = false): Promise<void> {

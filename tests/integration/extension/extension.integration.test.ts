@@ -233,6 +233,7 @@ const gitOpsState = {
     getConflictedFiles: vi.fn(async () => []),
     getConflictFilesDetailed: vi.fn(async () => []),
     acceptConflictSide: vi.fn(async () => undefined),
+    abortMerge: vi.fn(async () => undefined),
     getConflictFileVersions: vi.fn(async () => ({ base: "", ours: "", theirs: "" })),
     stageFile: vi.fn(async () => undefined),
     push: vi.fn(async () => ""),
@@ -682,6 +683,7 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             getConflictedFiles = gitOpsState.getConflictedFiles;
             getConflictFilesDetailed = gitOpsState.getConflictFilesDetailed;
             acceptConflictSide = gitOpsState.acceptConflictSide;
+            abortMerge = gitOpsState.abortMerge;
             getConflictFileVersions = gitOpsState.getConflictFileVersions;
             stageFile = gitOpsState.stageFile;
             push = gitOpsState.push;
@@ -916,6 +918,7 @@ describe("extension integration", () => {
         gitOpsState.getConflictedFiles.mockResolvedValue([]);
         gitOpsState.getConflictFilesDetailed.mockResolvedValue([]);
         gitOpsState.acceptConflictSide.mockResolvedValue(undefined);
+        gitOpsState.abortMerge.mockResolvedValue(undefined);
         deleteFileWithFallback.mockResolvedValue(true);
 
         showWarningMessage.mockImplementation(
@@ -1379,6 +1382,9 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalled();
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "ours");
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "theirs");
+        expect(executeCommandFallback).toHaveBeenCalledWith(
+            "workbench.action.moveEditorToNewWindow",
+        );
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
                 location: 15,
@@ -2250,6 +2256,48 @@ describe("extension integration", () => {
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts ", "ours");
         expect(showErrorMessage).not.toHaveBeenCalled();
         panelResult?.dispose?.();
+    });
+
+    it("aborts merge from conflict session after confirmation", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+        gitOpsState.getConflictFilesDetailed.mockResolvedValue([
+            {
+                path: "src/conflicted.ts",
+                code: "UU",
+                ours: "Modified",
+                theirs: "Modified",
+            },
+        ]);
+
+        await registeredCommands.get("intelligit.openConflictSession")?.();
+
+        const vscode = await import("vscode");
+        const createWebviewPanelMock = vi.mocked(vscode.window.createWebviewPanel);
+        type CreatedPanel = {
+            webview: {
+                onDidReceiveMessage: ReturnType<typeof vi.fn>;
+            };
+            dispose: ReturnType<typeof vi.fn>;
+        };
+        const panelResult = createWebviewPanelMock.mock.results[0]?.value as
+            | CreatedPanel
+            | undefined;
+        const handler = panelResult?.webview.onDidReceiveMessage.mock.calls[0]?.[0] as
+            | ((msg: unknown) => Promise<void>)
+            | undefined;
+        expect(handler).toBeDefined();
+
+        gitOpsState.abortMerge.mockClear();
+        await handler?.({ type: "abortMerge" });
+
+        expect(gitOpsState.abortMerge).toHaveBeenCalledTimes(1);
+        expect(panelResult?.dispose).toHaveBeenCalled();
+        expect(showInformationMessage).toHaveBeenCalledWith("Merge aborted.");
     });
 
     it("does not open conflict session for current-branch update fetch failures", async () => {

@@ -158,6 +158,7 @@ describe("MergeConflictSessionApp", () => {
         clickButton("Accept Theirs");
         clickButton("Merge...");
         clickButton("Refresh");
+        clickButton("Abort Merge");
         clickButton("Close");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -173,6 +174,7 @@ describe("MergeConflictSessionApp", () => {
             filePath: "src/conflict.ts",
         });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "refresh" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "close" });
     });
 });
@@ -218,10 +220,14 @@ describe("MergeEditorApp", () => {
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
 
+        clickButton("Conflicts");
+        clickButton("Abort Merge");
         clickButton("Accept All Yours");
         await flush();
         clickButton("Apply (1/1)");
 
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
+        expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\nours();\n",
@@ -700,7 +706,8 @@ describe("MergeEditorApp", () => {
         expect(oursRows[2].className).toContain("padding-code-line");
         expect(theirsRows.every((row) => row.className.includes("real-code-line"))).toBe(true);
 
-        // Line numbers stay at pane intersections only; the outer-left pane has no gutter.
+        // Line numbers stay at pane intersections: left pane numbers render on
+        // the right edge, while right pane numbers render on the left edge.
         const oursNumberRows = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-row"),
         );
@@ -710,12 +717,18 @@ describe("MergeEditorApp", () => {
         const oursNumbers = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-primary"),
         ).map((el) => el.textContent?.trim());
-        expect(oursNumbers).toEqual([]);
+        expect(oursNumbers).toEqual(["1", "2", ""]);
         const theirsNumbers = Array.from(
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
         expect(theirsNumbers).toEqual(["1", "2", "3"]);
-        expect(oursNumberRows).toHaveLength(0);
+        expect(document.querySelectorAll(".line-number-secondary")).toHaveLength(0);
+        expect(oursNumberRows).toHaveLength(3);
+        expect(
+            document
+                .querySelector(".conflict-ours")
+                ?.className.includes("line-numbers-right"),
+        ).toBe(true);
         expect(theirsNumberRows.every((row) => row.className.includes("real-line-row"))).toBe(true);
     });
 

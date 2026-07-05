@@ -158,13 +158,10 @@ function paneLineNumbersEqual(a: SegmentPaneLineNumbers, b: SegmentPaneLineNumbe
 }
 
 const LineNumbers = React.memo(
-    function LineNumbers({ primary, secondary, rowIsReal }: LineNumbersProps) {
-        const rowCount = Math.max(primary.length, secondary?.length ?? 0);
-        const hasSecondary = Boolean(secondary);
-
+    function LineNumbers({ primary, rowIsReal }: LineNumbersProps) {
         return (
-            <div className={`line-numbers ${hasSecondary ? "has-secondary" : ""}`}>
-                {Array.from({ length: rowCount }, (_, i) => {
+            <div className="line-numbers">
+                {Array.from({ length: primary.length }, (_, i) => {
                     const isReal = rowIsReal?.[i] ?? true;
                     return (
                         <div
@@ -173,11 +170,6 @@ const LineNumbers = React.memo(
                                 isReal ? "real-line-row" : "padding-line-row"
                             }`}
                         >
-                            {hasSecondary ? (
-                                <div className="line-number line-number-secondary">
-                                    {secondary?.[i] ?? ""}
-                                </div>
-                            ) : null}
                             <div className="line-number line-number-primary">
                                 {primary[i] ?? ""}
                             </div>
@@ -198,6 +190,7 @@ interface CodeBlockProps {
     lineCount: number;
     lineNumbers: LineNumberSpec;
     showLineNumbers?: boolean;
+    lineNumberSide?: "left" | "right";
     className?: string;
     wordHighlight?: boolean;
     compareLines?: string[];
@@ -215,6 +208,7 @@ const CodeBlock = React.memo(
         lineCount,
         lineNumbers,
         showLineNumbers = true,
+        lineNumberSide = "left",
         className,
         wordHighlight,
         compareLines,
@@ -235,9 +229,9 @@ const CodeBlock = React.memo(
 
         return (
             <div
-                className={`code-block ${showLineNumbers ? "" : "no-line-numbers"} ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
+                className={`code-block ${showLineNumbers ? `line-numbers-${lineNumberSide}` : "no-line-numbers"} ${className ?? ""} ${wordHighlight ? "word-highlight" : ""}`}
             >
-                {showLineNumbers ? (
+                {showLineNumbers && lineNumberSide === "left" ? (
                     <LineNumbers
                         primary={lineNumbers.primary}
                         secondary={lineNumbers.secondary}
@@ -265,6 +259,13 @@ const CodeBlock = React.memo(
                         );
                     })}
                 </div>
+                {showLineNumbers && lineNumberSide === "right" ? (
+                    <LineNumbers
+                        primary={lineNumbers.primary}
+                        secondary={lineNumbers.secondary}
+                        rowIsReal={rowIsReal}
+                    />
+                ) : null}
             </div>
         );
     },
@@ -272,6 +273,7 @@ const CodeBlock = React.memo(
         prev.lines === next.lines &&
         prev.lineCount === next.lineCount &&
         prev.showLineNumbers === next.showLineNumbers &&
+        prev.lineNumberSide === next.lineNumberSide &&
         prev.className === next.className &&
         prev.wordHighlight === next.wordHighlight &&
         prev.compareLines === next.compareLines &&
@@ -421,7 +423,7 @@ export const CommonSection = React.memo(
                         lines={segment.lines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
-                        showLineNumbers={false}
+                        lineNumberSide="right"
                         wordHighlight={highlightWords}
                     />
                 </div>
@@ -574,7 +576,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                         lines={segment.oursLines}
                         lineCount={lineCount}
                         lineNumbers={lineNumbers.left}
-                        showLineNumbers={false}
+                        lineNumberSide="right"
                         className="conflict-ours"
                         wordHighlight={highlightWords}
                         compareLines={segment.baseLines}

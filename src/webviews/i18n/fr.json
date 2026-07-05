@@ -180,6 +180,7 @@
     "merge.error.load": "Échec du chargement des données de conflit : {error}",
     "merge.error.retry": "Réessayer",
     "merge.loading": "Chargement des données de conflit...",
+    "merge.action.abortMerge": "Abort Merge",
     "mergeSession.title": "Conflits",
     "mergeSession.subtitle.pre": "Fusion de la branche ",
     "mergeSession.subtitle.mid": " dans la branche ",

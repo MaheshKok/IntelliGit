@@ -38,18 +38,6 @@ export function IconChevronDown(): React.ReactElement {
     );
 }
 
-/** Close glyph used for drop/discard hunk actions. */
-export function IconClose(): React.ReactElement {
-    return (
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-            <path
-                fill="currentColor"
-                d="M4.7 4L8 7.3 11.3 4l.7.7L8.7 8l3.3 3.3-.7.7L8 8.7 4.7 12l-.7-.7L7.3 8 4 4.7z"
-            />
-        </svg>
-    );
-}
-
 /** Spark glyph used for the apply-non-conflicting-changes action. */
 export function IconSpark(): React.ReactElement {
     return (
@@ -103,36 +91,6 @@ export function IconWarning(): React.ReactElement {
                 fill="currentColor"
                 d="M8 1.6l6.5 11.3H1.5L8 1.6zm0 2L3.2 12h9.6L8 3.6zm-.7 2.1h1.4v3.7H7.3V5.7zm0 4.8h1.4v1.4H7.3v-1.4z"
             />
-        </svg>
-    );
-}
-
-/** Check glyph used for resolved-conflict status badges. */
-export function IconCheck(): React.ReactElement {
-    return (
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-            <path fill="currentColor" d="M6.3 11.2L2.8 7.7l1-1 2.5 2.5 5.9-5.9 1 1z" />
-        </svg>
-    );
-}
-
-/** Split-arrows glyph used for accepting both sides of a true conflict. */
-export function IconSplitBoth(): React.ReactElement {
-    return (
-        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
-            <path
-                fill="currentColor"
-                d="M1.5 8l4-4 .9.9L4 7.4h8L9.6 4.9l.9-.9 4 4-4 4-.9-.9 2.4-2.5H4l2.4 2.5-.9.9z"
-            />
-        </svg>
-    );
-}
-
-/** Small neutral status dot used for muted merge hunk states. */
-export function IconDot(): React.ReactElement {
-    return (
-        <svg viewBox="0 0 16 16" width="8" height="8" aria-hidden="true">
-            <circle cx="8" cy="8" r="4" fill="currentColor" />
         </svg>
     );
 }

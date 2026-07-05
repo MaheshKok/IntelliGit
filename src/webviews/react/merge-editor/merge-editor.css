@@ -24,6 +24,8 @@
     --merge-inserted-block-bg: #264b33;
     --merge-modified-block-bg: #13404b;
     --merge-deleted-block-bg: #3f444b;
+    --merge-line-number-gutter: 37px;
+    --merge-action-gutter: 38px;
 
     display: flex;
     flex-direction: column;
@@ -381,9 +383,19 @@
 }
 .code-block {
     display: grid;
-    grid-template-columns: 74px 1fr;
+    grid-template-columns: var(--merge-line-number-gutter) minmax(0, 1fr);
     min-height: 0;
     overflow: hidden;
+}
+.code-block.line-numbers-right {
+    grid-template-columns:
+        minmax(0, 1fr)
+        calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
+}
+.conflict-theirs.code-block {
+    grid-template-columns:
+        calc(var(--merge-line-number-gutter) + var(--merge-action-gutter))
+        minmax(0, 1fr);
 }
 .code-block.no-line-numbers {
     grid-template-columns: minmax(0, 1fr);
@@ -397,9 +409,20 @@
         transparent
     );
 }
+.code-block.line-numbers-right .line-numbers {
+    border-right: none;
+    border-left: 1px solid var(--merge-border);
+}
 .line-number-row {
     display: grid;
     grid-template-columns: 1fr;
+    box-sizing: border-box;
+}
+.code-block.line-numbers-right .line-number-row {
+    padding-left: var(--merge-action-gutter);
+}
+.conflict-theirs .line-number-row {
+    padding-right: var(--merge-action-gutter);
 }
 .line-numbers.has-secondary .line-number-row {
     grid-template-columns: 1fr 1fr;
@@ -445,14 +468,16 @@
     line-height: 20px;
     min-height: 20px;
 }
+.real-code-line {
+    position: relative;
+}
 .real-code-line::before {
     content: "";
-    position: sticky;
+    position: absolute;
+    top: 0;
     left: 0;
-    display: block;
-    width: 100vw;
+    width: 100%;
     height: 20px;
-    margin-bottom: -20px;
     pointer-events: none;
 }
 .code-line-content {
@@ -538,16 +563,16 @@
 }
 .conflict-actions-left {
     position: absolute;
-    top: 2px;
-    right: -1px;
+    top: 1px;
+    right: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
     z-index: 5;
 }
 .conflict-actions-right {
     position: absolute;
-    top: 2px;
-    left: -1px;
+    top: 1px;
+    left: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
     z-index: 5;
@@ -555,26 +580,26 @@
 .action-btn {
     width: 17px;
     height: 17px;
-    border: 1px solid color-mix(in srgb, var(--merge-border) 60%, transparent);
+    border: 1px solid transparent;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 10px;
     line-height: 1;
-    background: color-mix(in srgb, var(--merge-editor-bg) 78%, #000 22%);
+    background: transparent;
     color: color-mix(in srgb, var(--merge-editor-fg) 84%, transparent);
-    opacity: 0.82;
+    opacity: 0.92;
     box-shadow: none;
 }
 .action-btn:hover {
-    background: color-mix(in srgb, var(--merge-editor-fg) 12%, var(--merge-editor-bg));
+    background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
     opacity: 1;
 }
 .accept-btn.active {
     border-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 70%, transparent);
-    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 78%, #000 22%);
-    color: var(--vscode-button-foreground, #ffffff);
+    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 42%, transparent);
+    color: var(--merge-ok);
 }
 .discard-btn:hover {
     background: rgba(216, 108, 108, 0.15);
@@ -787,6 +812,14 @@
 }
 .footer-btn.secondary.ghost:hover {
     color: var(--vscode-foreground);
+}
+.footer-btn.danger {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 10%, transparent);
+    border-color: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 34%, transparent);
+    color: var(--vscode-errorForeground, #f48771);
+}
+.footer-btn.danger:hover {
+    background: color-mix(in srgb, var(--vscode-errorForeground, #f48771) 18%, transparent);
 }
 .footer-hint {
     color: var(--merge-muted);

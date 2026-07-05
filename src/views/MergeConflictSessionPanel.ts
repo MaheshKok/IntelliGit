@@ -215,6 +215,10 @@ export class MergeConflictSessionPanel {
                 return;
             }
 
+            case "abortMerge":
+                await this.abortMerge();
+                return;
+
             case "close":
                 this.panel.dispose();
                 return;
@@ -230,6 +234,24 @@ export class MergeConflictSessionPanel {
     private getFilePath(value: unknown): string | null {
         if (typeof value !== "string") return null;
         return value.trim().length > 0 ? value : null;
+    }
+
+    /** Confirms and aborts the active merge represented by this conflict session. */
+    private async abortMerge(): Promise<void> {
+        const abortAction = vscode.l10n.t("Abort Merge");
+        const confirmed = await vscode.window.showWarningMessage(
+            vscode.l10n.t("Abort the current merge? Local conflict resolutions will be discarded."),
+            { modal: true },
+            abortAction,
+        );
+        if (confirmed !== abortAction) return;
+
+        await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
+            await this.gitOps.abortMerge();
+        });
+        showTimedInformationMessage(vscode.l10n.t("Merge aborted."));
+        await this.callbacks.onConflictStateChanged();
+        if (this.isAlive()) this.panel.dispose();
     }
 
     private isAlive(): boolean {

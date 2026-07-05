@@ -75,6 +75,31 @@ describe("GitOps", () => {
             expect(await ops.isRepository()).toBe(false);
         });
     });
+    describe("abortMerge", () => {
+        it.each([
+            ["MERGE_HEAD", ["merge", "--abort"]],
+            ["REBASE_HEAD", ["rebase", "--abort"]],
+            ["CHERRY_PICK_HEAD", ["cherry-pick", "--abort"]],
+        ])("uses the abort command for %s", async (activeRef, expectedCommand) => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key.startsWith("rev-parse --verify --quiet ")) {
+                        if (key.endsWith(activeRef)) return "";
+                        throw new Error("missing ref");
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await ops.abortMerge();
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual(
+                expectedCommand,
+            );
+        });
+    });
     describe("getBranches", () => {
         it("parses local and remote branches", async () => {
             const output = [

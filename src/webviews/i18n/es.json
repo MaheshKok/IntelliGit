@@ -180,6 +180,7 @@
     "merge.error.load": "Error al cargar los datos de conflicto: {error}",
     "merge.error.retry": "Rever",
     "merge.loading": "Cargando datos de conflicto...",
+    "merge.action.abortMerge": "Abort Merge",
     "mergeSession.title": "Conflictos",
     "mergeSession.subtitle.pre": "Fusionando rama ",
     "mergeSession.subtitle.mid": " en rama ",

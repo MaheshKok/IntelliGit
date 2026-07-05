@@ -410,6 +410,14 @@ function App() {
         getVsCodeApi().postMessage({ type: "acceptTheirs" });
     }, []);
 
+    const handleOpenConflictSession = useCallback(() => {
+        getVsCodeApi().postMessage({ type: "openConflictSession" });
+    }, []);
+
+    const handleAbortMerge = useCallback(() => {
+        getVsCodeApi().postMessage({ type: "abortMerge" });
+    }, []);
+
     const handleRetry = useCallback(() => {
         dispatch({ type: "SET_ERROR", message: "" });
         getVsCodeApi().postMessage({ type: "ready" });
@@ -887,9 +895,19 @@ function App() {
                     >
                         {t("merge.footer.useFileTheirs")}
                     </button>
+                    <button
+                        type="button"
+                        className="footer-btn secondary ghost"
+                        onClick={handleOpenConflictSession}
+                    >
+                        {t("mergeSession.title")}
+                    </button>
                     <span className="footer-hint">{t("merge.footer.hint")}</span>
                 </div>
                 <div className="footer-right">
+                    <button type="button" className="footer-btn danger" onClick={handleAbortMerge}>
+                        {t("merge.action.abortMerge")}
+                    </button>
                     <button type="button" className="footer-btn secondary" onClick={handleClose}>
                         {t("common.cancel")}
                     </button>

@@ -12,6 +12,8 @@ export type OutboundMessage =
     | { type: "applyResolution"; content: string }
     | { type: "acceptYours" }
     | { type: "acceptTheirs" }
+    | { type: "openConflictSession" }
+    | { type: "abortMerge" }
     | { type: "close" };
 
 /** Messages the extension host sends to initialize conflict data or report load failures. */
