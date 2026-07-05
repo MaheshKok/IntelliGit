@@ -648,6 +648,10 @@ function App() {
     const gutterDigits = Math.max(String(totalVisualLines).length, 2);
     const rootStyle = {
         "--merge-line-number-gutter": `max(37px, calc(${gutterDigits}ch + 14px))`,
+        // Shared minimum content width for every pane so all code-lines panes
+        // scroll in lockstep (see .code-lines in merge-editor.css). Monospace
+        // editor font makes 1ch == one glyph, matching the synthetic scrollbar.
+        "--merge-line-min-width": `calc(${maxLineLength}ch + ${LINE_PADDING_PX}px)`,
         ...(state.data.editorFontSize
             ? { "--merge-code-font-size": `${state.data.editorFontSize}px` }
             : {}),
