@@ -53,14 +53,14 @@ export type GraphAction =
     | { type: "setFilterText"; text: string };
 
 /**
- * Commit-panel slice owned by the undocked app, mirroring working-tree, shelf,
+ * Commit-panel slice owned by the undocked app, mirroring working-tree, stash,
  * amend, theme icon, and upstream state received from extension messages.
  */
 export interface CommitPanelState {
     files: WorkingFile[];
     stashes: StashEntry[];
-    shelfFiles: WorkingFile[];
-    selectedShelfIndex: number | null;
+    stashFiles: WorkingFile[];
+    selectedStashIndex: number | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -85,8 +85,8 @@ export type CommitPanelAction =
           type: "SET_FILES_AND_STASHES";
           files: WorkingFile[];
           stashes: StashEntry[];
-          shelfFiles: WorkingFile[];
-          selectedShelfIndex: number | null;
+          stashFiles: WorkingFile[];
+          selectedStashIndex: number | null;
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
@@ -111,8 +111,8 @@ export type CommitPanelAction =
 export const initialCommitPanelState: CommitPanelState = {
     files: [],
     stashes: [],
-    shelfFiles: [],
-    selectedShelfIndex: null,
+    stashFiles: [],
+    selectedStashIndex: null,
     folderIcon: undefined,
     folderExpandedIcon: undefined,
     folderIconsByName: undefined,
@@ -145,8 +145,8 @@ export function commitPanelReducer(
                 ...state,
                 files: action.files,
                 stashes: action.stashes,
-                shelfFiles: action.shelfFiles,
-                selectedShelfIndex: action.selectedShelfIndex,
+                stashFiles: action.stashFiles,
+                selectedStashIndex: action.selectedStashIndex,
                 folderIcon: action.folderIcon ?? state.folderIcon,
                 folderExpandedIcon: action.folderExpandedIcon ?? state.folderExpandedIcon,
                 folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,

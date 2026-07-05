@@ -567,7 +567,7 @@ describe("GitOps", () => {
             }
         });
 
-        it("shelves and restores files with option-like and spaces-in-names", async () => {
+        it("stashes and restores files with option-like and spaces-in-names", async () => {
             const repo = await createTempGitRepo();
             try {
                 const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
@@ -575,16 +575,16 @@ describe("GitOps", () => {
                 await writeFile(path.join(repo, "space file.txt"), "space content\n", "utf8");
                 await writeFile(path.join(repo, "nested", "tracked.txt"), "modified\n", "utf8");
 
-                await ops.shelveSave(
+                await ops.stashSave(
                     ["--dash.txt", "space file.txt", "nested/tracked.txt"],
-                    "shelve test",
+                    "stash test",
                 );
 
-                // Working tree should be clean after shelving
+                // Working tree should be clean after stashing
                 expect(await status(repo)).toBe("");
 
-                // Pop the shelve back
-                await ops.shelvePop(0);
+                // Pop the stash back
+                await ops.stashPop(0);
                 const rawStatus = await status(repo);
                 expect(rawStatus).toContain("--dash.txt");
                 expect(rawStatus).toContain("space file.txt");

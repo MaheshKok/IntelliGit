@@ -53,16 +53,16 @@ import {
     commitSelectedFromPanel,
     rollbackFromPanel,
     runGitOperationFromPanel,
-    shelfMutationFromPanel,
-    shelveSaveFromPanel,
+    stashMutationFromPanel,
+    stashSaveFromPanel,
 } from "./commitPanelActions";
 import {
     deleteFileFromPanel,
     openFileFromPanel,
     publishBranchFromPanel,
-    selectShelfFromPanel,
+    selectStashFromPanel,
     showDiffFromPanel,
-    showShelfDiffFromPanel,
+    showStashDiffFromPanel,
     stageFilesFromPanel,
     unstageFilesFromPanel,
 } from "./panelFileActions";
@@ -110,7 +110,7 @@ function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | u
  * Owns the undocked IntelliGit webview panel that combines graph, commit info, and Changes UI.
  *
  * The provider mirrors sidebar commit graph and commit-panel behavior for one active repository,
- * including pagination, branch filters, commit details, shelves, drafts, and persisted column
+ * including pagination, branch filters, commit details, stashes, drafts, and persisted column
  * widths. Webview messages are validated before Git operations or file actions run, and all
  * script/resources are loaded from the extension `dist` directory.
  */
@@ -141,8 +141,8 @@ export class UndockedViewProvider {
     // Commit-panel state
     private files: WorkingFile[] = [];
     private stashes: StashEntry[] = [];
-    private selectedShelfIndex: number | null = null;
-    private shelfFiles: WorkingFile[] = [];
+    private selectedStashIndex: number | null = null;
+    private stashFiles: WorkingFile[] = [];
     private lastFileCount = 0;
     private showIgnoredFiles = false;
     // Event emitters
@@ -237,7 +237,7 @@ export class UndockedViewProvider {
     /**
      * Switches the undocked panel to a new active repository and clears repository-scoped caches.
      *
-     * The panel keeps its VS Code window alive, but graph, working-tree, shelf, and detail caches
+     * The panel keeps its VS Code window alive, but graph, working-tree, stash, and detail caches
      * are reset so subsequent refreshes cannot display rows from the previous repository.
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
@@ -246,8 +246,8 @@ export class UndockedViewProvider {
         this.commitDetailSeq += 1;
         this.files = [];
         this.stashes = [];
-        this.selectedShelfIndex = null;
-        this.shelfFiles = [];
+        this.selectedStashIndex = null;
+        this.stashFiles = [];
         this.branches = [];
         this.worktrees = [];
         this.currentBranch = null;
@@ -405,7 +405,7 @@ export class UndockedViewProvider {
      * Dispatches the unified graph, commit-panel, layout, and dock messages from the webview.
      *
      * Readiness restores layout settings before expensive Git refreshes so persisted widths are not
-     * overwritten by default webview measurements. Path arrays, shelf indexes, commit hashes, and
+     * overwritten by default webview measurements. Path arrays, stash indexes, commit hashes, and
      * branch action names are validated before any Git or VS Code command boundary is crossed.
      */
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
@@ -590,9 +590,9 @@ export class UndockedViewProvider {
             case "showDiff":
                 await showDiffFromPanel(fileActionDeps, msg.path);
                 break;
-            case "shelveSave": {
-                await shelveSaveFromPanel(actionDeps, {
-                    name: typeof msg.name === "string" ? msg.name : "Shelved changes",
+            case "stashSave": {
+                await stashSaveFromPanel(actionDeps, {
+                    name: typeof msg.name === "string" ? msg.name : "Stashed changes",
                     paths:
                         msg.paths !== undefined
                             ? assertRepoPathArray(msg.paths, "paths")
@@ -600,30 +600,30 @@ export class UndockedViewProvider {
                 });
                 break;
             }
-            case "shelfPop":
-                await shelfMutationFromPanel(actionDeps, "pop", assertNumber(msg.index, "index"));
+            case "stashPop":
+                await stashMutationFromPanel(actionDeps, "pop", assertNumber(msg.index, "index"));
                 break;
-            case "shelfApply":
-                await shelfMutationFromPanel(actionDeps, "apply", assertNumber(msg.index, "index"));
+            case "stashApply":
+                await stashMutationFromPanel(actionDeps, "apply", assertNumber(msg.index, "index"));
                 break;
-            case "shelfDelete":
-                await shelfMutationFromPanel(
+            case "stashDelete":
+                await stashMutationFromPanel(
                     actionDeps,
                     "delete",
                     assertNumber(msg.index, "index"),
                 );
                 break;
-            case "shelfSelect": {
-                await selectShelfFromPanel(
+            case "stashSelect": {
+                await selectStashFromPanel(
                     {
                         ...fileActionDeps,
                         iconTheme: this.iconTheme,
                         getFiles: () => this.files,
                         getStashes: () => this.stashes,
                         currentBranchHasUpstream: () => this.currentBranchHasUpstream(),
-                        setShelfState: (state) => {
-                            this.selectedShelfIndex = state.selectedShelfIndex;
-                            this.shelfFiles = state.shelfFiles;
+                        setStashState: (state) => {
+                            this.selectedStashIndex = state.selectedStashIndex;
+                            this.stashFiles = state.stashFiles;
                         },
                         postUpdate: (message) => this.postToWebview(message),
                     },
@@ -631,8 +631,8 @@ export class UndockedViewProvider {
                 );
                 break;
             }
-            case "showShelfDiff":
-                await showShelfDiffFromPanel(fileActionDeps, msg.index, msg.path);
+            case "showStashDiff":
+                await showStashDiffFromPanel(fileActionDeps, msg.index, msg.path);
                 break;
             case "openFile":
                 await openFileFromPanel(fileActionDeps, msg.path);
@@ -806,9 +806,9 @@ export class UndockedViewProvider {
     }
 
     /**
-     * Reloads working-tree files, shelves, selected shelf contents, and upstream status.
+     * Reloads working-tree files, stashes, selected stash contents, and upstream status.
      *
-     * The selected shelf is preserved when still present; otherwise the first shelf is selected.
+     * The selected stash is preserved when still present; otherwise the first stash is selected.
      * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
      */
     private async refreshCommitPanelData(silent = false): Promise<void> {
@@ -820,31 +820,31 @@ export class UndockedViewProvider {
             const files = await this.iconTheme.decorateWorkingFiles(
                 await this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
             );
-            const stashes = await this.gitOps.listShelved();
+            const stashes = await this.gitOps.listStashes();
             const currentBranchStatus = await this.currentBranchStatus();
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
-                this.selectedShelfIndex !== null &&
-                stashes.some((entry) => entry.index === this.selectedShelfIndex);
-            const selectedShelfIndex = hasSelected
-                ? this.selectedShelfIndex
+                this.selectedStashIndex !== null &&
+                stashes.some((entry) => entry.index === this.selectedStashIndex);
+            const selectedStashIndex = hasSelected
+                ? this.selectedStashIndex
                 : stashes.length > 0
                   ? stashes[0].index
                   : null;
-            const shelfFiles =
-                selectedShelfIndex !== null
+            const stashFiles =
+                selectedStashIndex !== null
                     ? await this.iconTheme.decorateWorkingFiles(
-                          await this.gitOps.getShelvedFiles(selectedShelfIndex),
+                          await this.gitOps.getStashFiles(selectedStashIndex),
                       )
                     : [];
             const cpFolderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
                 ...files,
-                ...shelfFiles,
+                ...stashFiles,
             ]);
             this.files = files;
             this.stashes = stashes;
-            this.selectedShelfIndex = selectedShelfIndex;
-            this.shelfFiles = shelfFiles;
+            this.selectedStashIndex = selectedStashIndex;
+            this.stashFiles = stashFiles;
             const uniquePaths = new Set<string>();
             for (const file of files) {
                 if (file.status !== "!") uniquePaths.add(file.path);
@@ -856,8 +856,8 @@ export class UndockedViewProvider {
                 type: "update",
                 files,
                 stashes,
-                shelfFiles,
-                selectedShelfIndex,
+                stashFiles,
+                selectedStashIndex,
                 folderIcon: folderIcons.folderIcon,
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: cpFolderIconsByName,

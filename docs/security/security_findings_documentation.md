@@ -220,7 +220,7 @@ The scan showed that:
 
 - Use literal pathspec handling for user-selected paths, including selected commit-file patch generation.
 - Options include `git --literal-pathspecs`, `GIT_LITERAL_PATHSPECS=1` for path operations, or a verified literal pathspec encoding.
-- Add regression tests with filenames `:(glob)*`, sibling tracked files, and sibling untracked files across stage, unstage, rollback, shelve, delete, commit selected, and conflict accept actions.
+- Add regression tests with filenames `:(glob)*`, sibling tracked files, and sibling untracked files across stage, unstage, rollback, stash, delete, commit selected, and conflict accept actions.
 
 ## FIND-005: GitLab clone flow can send a GitLab token to arbitrary HTTPS clone hosts
 
@@ -454,7 +454,7 @@ After fixes, run focused regression tests before broad validation:
 | FIND-001 | Raw local refs named `-f` and `--exec=...` cannot be used by checkout/rebase/update actions |
 | FIND-002 | `remote.pushDefault=--receive-pack=...` cannot be replayed into `git push` |
 | FIND-003 | Workspace/folder configured JetBrains merge tool path is ignored or rejected; relative paths fail |
-| FIND-004 | Filename `:(glob)*` is treated as one literal file across stage/unstage/rollback/shelve/delete/commit/conflict actions |
+| FIND-004 | Filename `:(glob)*` is treated as one literal file across stage/unstage/rollback/stash/delete/commit/conflict actions |
 | FIND-005 | GitLab token is only used for the authenticated GitLab host |
 | FIND-006 | Commit subjects containing separator bytes cannot create synthetic parsed commits |
 | FIND-007 | `.git` worktree indirection outside workspace is rejected or explicitly confirmed |

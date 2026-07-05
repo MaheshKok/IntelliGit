@@ -1,5 +1,5 @@
-// Renders shelf entries and the selected stash file tree preview.
-// ShelfTab keeps selection, expansion, and VS Code postMessage ownership.
+// Renders stash entries and the selected stash file tree preview.
+// StashTab keeps selection, expansion, and VS Code postMessage ownership.
 // This component only maps current stash state into rows, loading text, and file tree nodes.
 
 import React from "react";
@@ -16,9 +16,9 @@ import { getLeafName } from "../../shared/utils/path";
 import { t } from "../../shared/i18n";
 
 /** Props for rendering stash rows, their preview files, and row-level callbacks. */
-export interface ShelfStashListProps {
+export interface StashListProps {
     stashes: StashEntry[];
-    shelfFiles: WorkingFile[];
+    stashFiles: WorkingFile[];
     selectedIndex: number | null;
     expandedIndex: number | null;
     isLoading: boolean;
@@ -32,14 +32,14 @@ export interface ShelfStashListProps {
     onStashClick: (index: number) => void;
     onStashContextMenu: (event: React.MouseEvent, index: number) => void;
     onToggleDir: (path: string) => void;
-    onShowShelfDiff: (index: number, path: string) => void;
+    onShowStashDiff: (index: number, path: string) => void;
     onFileTreeDragStart: (event: React.MouseEvent) => void;
 }
 
-/** Renders the scrollable shelf stash list and expanded file preview. */
-export function ShelfStashList({
+/** Renders the scrollable stash list and expanded file preview. */
+export function StashList({
     stashes,
-    shelfFiles,
+    stashFiles,
     selectedIndex,
     expandedIndex,
     isLoading,
@@ -53,9 +53,9 @@ export function ShelfStashList({
     onStashClick,
     onStashContextMenu,
     onToggleDir,
-    onShowShelfDiff,
+    onShowStashDiff,
     onFileTreeDragStart,
-}: ShelfStashListProps): React.ReactElement {
+}: StashListProps): React.ReactElement {
     return (
         <Box flex="1 1 auto" overflowY="auto" pt="1px" bg="var(--intelligit-pycharm-panel)">
             {stashes.length === 0 ? (
@@ -65,11 +65,11 @@ export function ShelfStashList({
                     p="12px"
                     textAlign="center"
                 >
-                    {t("shelf.empty")}
+                    {t("stash.empty")}
                 </Box>
             ) : (
                 stashes.map((stash) => {
-                    const parsed = parseShelfMessage(stash.message);
+                    const parsed = parseStashMessage(stash.message);
                     const isExpanded = expandedIndex === stash.index;
                     const hasFiles = isExpanded && selectedIndex === stash.index;
                     return (
@@ -170,8 +170,8 @@ export function ShelfStashList({
                             {hasFiles && (
                                 <>
                                     <Box h={`${fileTreeHeight}px`} overflowY="auto">
-                                        {shelfFiles.length > 0 ? (
-                                            <ShelfFileTree
+                                        {stashFiles.length > 0 ? (
+                                            <StashFileTree
                                                 entries={tree}
                                                 expandedDirs={expandedDirs}
                                                 folderIcon={folderIcon}
@@ -179,7 +179,7 @@ export function ShelfStashList({
                                                 folderIconsByName={folderIconsByName}
                                                 onToggleDir={onToggleDir}
                                                 onFileClick={(path) =>
-                                                    onShowShelfDiff(stash.index, path)
+                                                    onShowStashDiff(stash.index, path)
                                                 }
                                                 depth={1}
                                             />
@@ -190,7 +190,7 @@ export function ShelfStashList({
                                                 fontSize="12px"
                                                 color="var(--intelligit-pycharm-muted)"
                                             >
-                                                {t("shelf.noFiles")}
+                                                {t("stash.noFiles")}
                                             </Box>
                                         )}
                                     </Box>
@@ -214,17 +214,17 @@ export function ShelfStashList({
     );
 }
 
-function parseShelfMessage(message: string): { title: string; branch: string | null } {
+function parseStashMessage(message: string): { title: string; branch: string | null } {
     const trimmed = message.trim();
     const match = trimmed.match(/^On\s+([^:]+):\s*(.*)$/i);
-    if (!match) return { title: trimmed || t("shelf.defaultTitle"), branch: null };
+    if (!match) return { title: trimmed || t("stash.defaultTitle"), branch: null };
     return {
-        title: match[2]?.trim() || t("shelf.defaultTitle"),
+        title: match[2]?.trim() || t("stash.defaultTitle"),
         branch: match[1]?.trim() || null,
     };
 }
 
-function ShelfFileTree({
+function StashFileTree({
     entries,
     expandedDirs,
     folderIcon,
@@ -339,7 +339,7 @@ function ShelfFileTree({
                             </Box>
                         </Flex>
                         {isExpanded && (
-                            <ShelfFileTree
+                            <StashFileTree
                                 entries={entry.children}
                                 expandedDirs={expandedDirs}
                                 folderIcon={folderIcon}

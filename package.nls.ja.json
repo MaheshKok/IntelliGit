@@ -24,7 +24,7 @@
     "command.delete": "消去",
     "command.rollback": "ロールバック",
     "command.jumpToSource": "ソースへジャンプ",
-    "command.shelveChanges": "変更をシェルブ",
+    "command.stashChanges": "変更をスタッシュ",
     "command.compareWithRevision": "リビジョンと比較",
     "command.compareWithBranch": "ブランチと比較",
     "command.compareWithLocal": "ローカルと比較",

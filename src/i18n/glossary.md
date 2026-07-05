@@ -25,8 +25,7 @@ must recognize IntelliGit's German Git UI.
 | merge | Zusammenführen | fusión | fusion | マージ | 병합 | scalanie | mesclar | integrar | слияние | 合并 | 合併 |
 | merge conflict | Mergekonflikt | conflicto de fusión | conflit de fusion | マージ競合 | 병합 충돌 | konflikt scalania | conflito de mesclagem | conflito de integração | конфликт слияния | 合并冲突 | 合併衝突 |
 | rebase | Rebase | reorganizar | rebaser | リベース | 리베이스 | rebase | rebase | rebase | перебазирование | 变基 | 變基 |
-| stash | Stash | guardar (stash) | remiser | スタッシュ | 스태시 | schowek | stash | stash | спрятать | 储藏 | 收藏 |
-| shelf / shelve | Ablage / ablegen | estante / archivar | étagère / mettre de côté | シェルフ | 선반 | półka | prateleira | prateleira | полка | 搁置 | 擱置 |
+| stash | Stash | guardar (stash) | remiser | スタッシュ | 스태시 | schowek | stash | stash | спрятать | 储藏 | 儲藏 |
 | checkout | Auschecken | desprotección | extraire | チェックアウト | 체크아웃 | przełącz | fazer checkout | obter | переключение | 检出 | 簽出 |
 | remote | Remote | remoto | distant | リモート | 원격 | zdalne | remoto | remoto | удалённый | 远程 | 遠端 |
 | upstream | Upstream | upstream | en amont | アップストリーム | 업스트림 | upstream | upstream | upstream | вышестоящая ветка | 上游 | 上游 |

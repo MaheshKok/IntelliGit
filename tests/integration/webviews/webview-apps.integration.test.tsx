@@ -105,13 +105,13 @@ afterEach(() => {
     vi.doUnmock("../../../src/webviews/react/commit-info/CommitInfoPane");
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/TabBar");
     vi.doUnmock("../../../src/webviews/react/commit-panel/components/CommitTab");
-    vi.doUnmock("../../../src/webviews/react/commit-panel/components/ShelfTab");
+    vi.doUnmock("../../../src/webviews/react/commit-panel/components/StashTab");
     document.body.innerHTML = "";
     vi.clearAllMocks();
 });
 
 describe("CommitPanelApp integration", () => {
-    it("handles extension messages and commit/shelf interactions", async () => {
+    it("handles extension messages and commit/stash interactions", async () => {
         vi.resetModules();
         const vscode = installVsCodeMock({ checked: [] });
         const rootHost = createRootHost();
@@ -145,12 +145,12 @@ describe("CommitPanelApp integration", () => {
                         stashes: [
                             {
                                 index: 0,
-                                message: "On main: shelf-work",
+                                message: "On main: stash-work",
                                 date: "2026-02-19T00:00:00Z",
                                 hash: "stashhash",
                             },
                         ],
-                        shelfFiles: [
+                        stashFiles: [
                             {
                                 path: "src/webviews/react/CommitPanelApp.tsx",
                                 status: "M",
@@ -159,7 +159,7 @@ describe("CommitPanelApp integration", () => {
                                 deletions: 1,
                             },
                         ],
-                        selectedShelfIndex: 0,
+                        selectedStashIndex: 0,
                     },
                 }),
             );
@@ -212,12 +212,12 @@ describe("CommitPanelApp integration", () => {
                         stashes: [
                             {
                                 index: 0,
-                                message: "On main: shelf-work",
+                                message: "On main: stash-work",
                                 date: "2026-02-19T00:00:00Z",
                                 hash: "stashhash",
                             },
                         ],
-                        shelfFiles: [
+                        stashFiles: [
                             {
                                 path: "src/webviews/react/CommitPanelApp.tsx",
                                 status: "M",
@@ -226,7 +226,7 @@ describe("CommitPanelApp integration", () => {
                                 deletions: 1,
                             },
                         ],
-                        selectedShelfIndex: 0,
+                        selectedStashIndex: 0,
                         currentBranchHasUpstream: true,
                         currentBranchAhead: 0,
                         currentBranchBehind: 0,
@@ -281,12 +281,12 @@ describe("CommitPanelApp integration", () => {
                         stashes: [
                             {
                                 index: 0,
-                                message: "On main: shelf-work",
+                                message: "On main: stash-work",
                                 date: "2026-02-19T00:00:00Z",
                                 hash: "stashhash",
                             },
                         ],
-                        shelfFiles: [
+                        stashFiles: [
                             {
                                 path: "src/webviews/react/CommitPanelApp.tsx",
                                 status: "M",
@@ -295,7 +295,7 @@ describe("CommitPanelApp integration", () => {
                                 deletions: 1,
                             },
                         ],
-                        selectedShelfIndex: 0,
+                        selectedStashIndex: 0,
                     },
                 }),
             );
@@ -346,7 +346,7 @@ describe("CommitPanelApp integration", () => {
                 b.textContent?.includes("Stash"),
             ),
         );
-        fireClick(document.querySelector('[title="On main: shelf-work"]'));
+        fireClick(document.querySelector('[title="On main: stash-work"]'));
         fireClick(
             Array.from(document.querySelectorAll("button")).find(
                 (b) => b.textContent?.trim() === "Apply",
@@ -357,7 +357,7 @@ describe("CommitPanelApp integration", () => {
                 (b) => b.textContent?.trim() === "Pop",
             ),
         );
-        const stashRow = document.querySelector('[title="On main: shelf-work"]');
+        const stashRow = document.querySelector('[title="On main: stash-work"]');
         act(() => {
             stashRow?.dispatchEvent(
                 new MouseEvent("contextmenu", {
@@ -387,13 +387,13 @@ describe("CommitPanelApp integration", () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "shelfApply", index: 0 }),
+            expect.objectContaining({ type: "stashApply", index: 0 }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "shelfPop", index: 0 }),
+            expect.objectContaining({ type: "stashPop", index: 0 }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "shelfDelete", index: 0 }),
+            expect.objectContaining({ type: "stashDelete", index: 0 }),
         );
         expect(vscode.setState).toHaveBeenCalled();
     });
@@ -433,8 +433,8 @@ describe("CommitPanelApp integration", () => {
                         type: "update",
                         files,
                         stashes: [],
-                        shelfFiles: [],
-                        selectedShelfIndex: null,
+                        stashFiles: [],
+                        selectedStashIndex: null,
                         currentBranchHasUpstream: true,
                     },
                 }),
@@ -475,8 +475,8 @@ describe("CommitPanelApp integration", () => {
                         type: "update",
                         files,
                         stashes: [],
-                        shelfFiles: [],
-                        selectedShelfIndex: null,
+                        stashFiles: [],
+                        selectedStashIndex: null,
                         currentBranchHasUpstream: true,
                     },
                 }),
@@ -846,8 +846,8 @@ describe("UndockedApp integration", () => {
         vi.doMock("../../../src/webviews/react/commit-panel/components/CommitTab", () => ({
             CommitTab: () => <div>Commit</div>,
         }));
-        vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
-            ShelfTab: () => <div>Shelf</div>,
+        vi.doMock("../../../src/webviews/react/commit-panel/components/StashTab", () => ({
+            StashTab: () => <div>Stash</div>,
         }));
     }
 

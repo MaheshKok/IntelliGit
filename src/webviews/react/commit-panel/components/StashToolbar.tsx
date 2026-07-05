@@ -1,6 +1,6 @@
-// Renders the shelf tab toolbar controls for diff, grouping, and tree expansion.
+// Renders the stash tab toolbar controls for diff, grouping, and tree expansion.
 // The parent owns all state changes and passes stable command callbacks.
-// Keeping the toolbar presentational avoids changing shelf action behavior.
+// Keeping the toolbar presentational avoids changing stash action behavior.
 
 import React from "react";
 import { Box, Flex, IconButton, Tooltip } from "@chakra-ui/react";
@@ -8,10 +8,10 @@ import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/component
 import { getSettings } from "../../shared/settings";
 import { t } from "../../shared/i18n";
 
-/** Props for shelf toolbar command buttons and tooltip timing. */
-export interface ShelfToolbarProps {
+/** Props for stash toolbar command buttons and tooltip timing. */
+export interface StashToolbarProps {
     selectedIndex: number | null;
-    shelfFilesLength: number;
+    stashFilesLength: number;
     groupByDir: boolean;
     hoverDelay: number;
     tooltipsEnabled: boolean;
@@ -21,10 +21,10 @@ export interface ShelfToolbarProps {
     onCollapseAll: () => void;
 }
 
-/** Renders the shelf tab's compact toolbar buttons. */
-export function ShelfToolbar({
+/** Renders the stash tab's compact toolbar buttons. */
+export function StashToolbar({
     selectedIndex,
-    shelfFilesLength,
+    stashFilesLength,
     groupByDir,
     hoverDelay,
     tooltipsEnabled,
@@ -32,7 +32,7 @@ export function ShelfToolbar({
     onToggleGroupBy,
     onExpandAll,
     onCollapseAll,
-}: ShelfToolbarProps): React.ReactElement {
+}: StashToolbarProps): React.ReactElement {
     return (
         <Flex
             align="center"
@@ -46,7 +46,7 @@ export function ShelfToolbar({
                 label={t("common.showDiff")}
                 color="#ff736d"
                 onClick={onShowSelectedDiff}
-                isDisabled={selectedIndex === null || shelfFilesLength === 0}
+                isDisabled={selectedIndex === null || stashFilesLength === 0}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >

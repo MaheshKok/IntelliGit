@@ -444,7 +444,7 @@ describe("webview ui smoke", () => {
         unmount(terminal.root, terminal.container);
     });
 
-    it("renders section/folder/shelf/toolbar/tab and commit area layouts", () => {
+    it("renders section/folder/stash/toolbar/tab and commit area layouts", () => {
         const noop = vi.fn();
         const stash = {
             index: 1,
@@ -484,7 +484,7 @@ describe("webview ui smoke", () => {
                     showIgnoredFiles={false}
                     onToggleGroupBy={noop}
                     onToggleShowIgnoredFiles={noop}
-                    onShelve={noop}
+                    onStash={noop}
                     onShowDiff={noop}
                     onExpandAll={noop}
                     onCollapseAll={noop}
@@ -511,7 +511,7 @@ describe("webview ui smoke", () => {
                     onPull={noop}
                     onPush={noop}
                     commitContent={<div>Commit tab</div>}
-                    shelfContent={<div>Shelf tab</div>}
+                    stashContent={<div>Stash tab</div>}
                 />
             </>,
         );
@@ -635,7 +635,7 @@ describe("webview ui smoke", () => {
                 showIgnoredFiles={false}
                 onToggleGroupBy={noop}
                 onToggleShowIgnoredFiles={noop}
-                onShelve={noop}
+                onStash={noop}
                 onShowDiff={noop}
                 onExpandAll={noop}
                 onCollapseAll={noop}

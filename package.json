@@ -369,7 +369,7 @@
             },
             {
                 "command": "intelligit.fileShelve",
-                "title": "%command.shelveChanges%",
+                "title": "%command.stashChanges%",
                 "category": "%intelligit%"
             },
             {

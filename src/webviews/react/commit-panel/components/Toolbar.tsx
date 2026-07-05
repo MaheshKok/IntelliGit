@@ -17,7 +17,7 @@ interface Props {
     onRollback: () => void;
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
-    onShelve: () => void;
+    onStash: () => void;
     onShowDiff: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
@@ -42,7 +42,7 @@ export function Toolbar({
     onRollback,
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
-    onShelve,
+    onStash,
     onShowDiff,
     onExpandAll,
     onCollapseAll,
@@ -123,7 +123,7 @@ export function Toolbar({
                     onClose={() => setViewMenuPosition(null)}
                 />
             )}
-            <ToolbarButton label={t("common.shelveChanges")} onClick={onShelve} color="#ea8fb3">
+            <ToolbarButton label={t("common.stashChanges")} onClick={onStash} color="#ea8fb3">
                 <path
                     fill="currentColor"
                     d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"

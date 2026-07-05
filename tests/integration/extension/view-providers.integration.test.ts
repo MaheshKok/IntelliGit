@@ -284,10 +284,10 @@ function makeGitOpsMock() {
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
         ]),
-        listShelved: vi.fn(async () => [
+        listStashes: vi.fn(async () => [
             { index: 0, message: "On main: save", date: "2026-02-19T00:00:00Z", hash: "stashhash" },
         ]),
-        getShelvedFiles: vi.fn(async () => [
+        getStashFiles: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 2, deletions: 1 },
         ]),
         stageFiles: vi.fn(async () => undefined),
@@ -304,11 +304,11 @@ function makeGitOpsMock() {
         ]),
         rollbackAll: vi.fn(async () => undefined),
         rollbackFiles: vi.fn(async () => undefined),
-        shelveSave: vi.fn(async () => "saved"),
-        shelvePop: vi.fn(async () => "popped"),
-        shelveApply: vi.fn(async () => "applied"),
-        shelveDelete: vi.fn(async () => "deleted"),
-        getShelvedFilePatch: vi.fn(async () => "diff --git a b"),
+        stashSave: vi.fn(async () => "saved"),
+        stashPop: vi.fn(async () => "popped"),
+        stashApply: vi.fn(async () => "applied"),
+        stashDelete: vi.fn(async () => "deleted"),
+        getStashFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
     };
 }
@@ -726,13 +726,13 @@ describe("view providers integration", () => {
         });
 
         postMessageSpy.mockClear();
-        await send({ type: "shelfSelect", index: 0 });
-        expect(gitOps.getShelvedFiles).toHaveBeenLastCalledWith(0);
+        await send({ type: "stashSelect", index: 0 });
+        expect(gitOps.getStashFiles).toHaveBeenLastCalledWith(0);
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
-                selectedShelfIndex: 0,
-                shelfFiles: [expect.objectContaining({ path: "src/a.ts" })],
+                selectedStashIndex: 0,
+                stashFiles: [expect.objectContaining({ path: "src/a.ts" })],
             }),
         );
 
@@ -788,12 +788,12 @@ describe("view providers integration", () => {
         showWarningMessage.mockResolvedValueOnce("Rollback");
         await send({ type: "rollback", paths: ["src/a.ts"] });
         await send({ type: "showDiff", path: "src/a.ts" });
-        await send({ type: "shelveSave", name: "work", paths: ["src/a.ts"] });
-        await send({ type: "shelfPop", index: 0 });
-        await send({ type: "shelfApply", index: 0 });
+        await send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
+        await send({ type: "stashPop", index: 0 });
+        await send({ type: "stashApply", index: 0 });
         showWarningMessage.mockResolvedValueOnce("Delete");
-        await send({ type: "shelfDelete", index: 0 });
-        await send({ type: "showShelfDiff", index: 0, path: "src/a.ts" });
+        await send({ type: "stashDelete", index: 0 });
+        await send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
         await send({ type: "openFile", path: "src/a.ts" });
         showWarningMessage.mockResolvedValueOnce("Delete");
         await send({ type: "deleteFile", path: "src/a.ts" });
@@ -818,11 +818,11 @@ describe("view providers integration", () => {
         });
         expect(gitOps.rollbackFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(executeCommand).toHaveBeenCalledWith("git.openChange", expect.any(Object));
-        expect(gitOps.shelveSave).toHaveBeenCalledWith(["src/a.ts"], "work");
-        expect(gitOps.shelvePop).toHaveBeenCalledWith(0);
-        expect(gitOps.shelveApply).toHaveBeenCalledWith(0);
-        expect(gitOps.shelveDelete).toHaveBeenCalledWith(0);
-        expect(gitOps.getShelvedFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(gitOps.stashSave).toHaveBeenCalledWith(["src/a.ts"], "work");
+        expect(gitOps.stashPop).toHaveBeenCalledWith(0);
+        expect(gitOps.stashApply).toHaveBeenCalledWith(0);
+        expect(gitOps.stashDelete).toHaveBeenCalledWith(0);
+        expect(gitOps.getStashFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
         expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
         expect(fileCounts.length).toBeGreaterThan(0);
@@ -1808,7 +1808,7 @@ describe("view providers integration", () => {
             expect(view.description).toBe("");
 
             await flushVisibleRefresh(
-                webview.send({ type: "shelveSave", name: "work", paths: ["src/e.ts"] }),
+                webview.send({ type: "stashSave", name: "work", paths: ["src/e.ts"] }),
             );
             expect(view.description).toBe("");
 
@@ -1826,7 +1826,7 @@ describe("view providers integration", () => {
                 expect.any(Object),
                 "src/e.ts",
             );
-            expect(gitOps.shelveSave).toHaveBeenCalledWith(["src/e.ts"], "work");
+            expect(gitOps.stashSave).toHaveBeenCalledWith(["src/e.ts"], "work");
         } finally {
             provider.dispose();
             vi.useRealTimers();
@@ -1853,19 +1853,19 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider handles shelf operations", async () => {
+    it("CommitPanelViewProvider handles stash operations", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
-        await webview.send({ type: "shelveSave", name: "work", paths: ["src/a.ts"] });
-        await webview.send({ type: "shelfPop", index: 0 });
-        await webview.send({ type: "shelfApply", index: 0 });
+        await webview.send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
+        await webview.send({ type: "stashPop", index: 0 });
+        await webview.send({ type: "stashApply", index: 0 });
         showWarningMessage.mockResolvedValueOnce("Delete");
-        await webview.send({ type: "shelfDelete", index: 0 });
-        expect(gitOps.shelveSave).toHaveBeenCalled();
-        expect(gitOps.shelvePop).toHaveBeenCalledWith(0);
-        expect(gitOps.shelveApply).toHaveBeenCalledWith(0);
-        expect(gitOps.shelveDelete).toHaveBeenCalledWith(0);
+        await webview.send({ type: "stashDelete", index: 0 });
+        expect(gitOps.stashSave).toHaveBeenCalled();
+        expect(gitOps.stashPop).toHaveBeenCalledWith(0);
+        expect(gitOps.stashApply).toHaveBeenCalledWith(0);
+        expect(gitOps.stashDelete).toHaveBeenCalledWith(0);
 
-        await webview.send({ type: "shelfSelect", index: Number.NaN });
+        await webview.send({ type: "stashSelect", index: Number.NaN });
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "error",
@@ -1873,8 +1873,8 @@ describe("view providers integration", () => {
             }),
         );
 
-        await webview.send({ type: "showShelfDiff", index: 0, path: "src/a.ts" });
-        expect(gitOps.getShelvedFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
+        await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
+        expect(gitOps.getStashFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
         expect(openTextDocument).toHaveBeenCalledWith(
             expect.objectContaining({
                 content: "diff --git a b",

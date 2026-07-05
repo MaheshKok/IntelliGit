@@ -1,6 +1,6 @@
 // WebviewViewProvider for the Commit panel in the sidebar.
 // Shows working tree changes with checkboxes, commit message input,
-// commit/push buttons, amend toggle, and shelf (stash) management.
+// commit/push buttons, amend toggle, and stash management.
 // Frontend is a React + Chakra UI app loaded from dist/webview-commitpanel.js.
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
@@ -32,16 +32,16 @@ import {
     commitSelectedFromPanel,
     rollbackFromPanel,
     runGitOperationFromPanel,
-    shelfMutationFromPanel,
-    shelveSaveFromPanel,
+    stashMutationFromPanel,
+    stashSaveFromPanel,
 } from "./commitPanelActions";
 import {
     deleteFileFromPanel,
     openFileFromPanel,
     publishBranchFromPanel,
-    selectShelfFromPanel,
+    selectStashFromPanel,
     showDiffFromPanel,
-    showShelfDiffFromPanel,
+    showStashDiffFromPanel,
     stageFilesFromPanel,
     trackUnversionedFilesFromPanel,
     unstageFilesFromPanel,
@@ -51,7 +51,7 @@ const MIN_VISIBLE_REFRESH_MS = 600;
 /**
  * Hosts the sidebar Changes webview and its embedded commit graph protocol.
  *
- * The provider owns working-tree, shelf, commit-draft, branch-filter, pagination, and commit
+ * The provider owns working-tree, stash, commit-draft, branch-filter, pagination, and commit
  * detail caches for one active repository. All webview messages pass through a validation layer
  * before reaching Git operations, VS Code commands, or path-sensitive file actions.
  */
@@ -61,8 +61,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private files: WorkingFile[] = [];
     private stashes: StashEntry[] = [];
-    private selectedShelfIndex: number | null = null;
-    private shelfFiles: WorkingFile[] = [];
+    private selectedStashIndex: number | null = null;
+    private stashFiles: WorkingFile[] = [];
     private folderIconsByName: ThemeFolderIconMap = {};
     private lastFileCount = 0;
     private showIgnoredFiles = false;
@@ -135,10 +135,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
         this.repoRootUri = repoRootUri;
-        this.selectedShelfIndex = null;
+        this.selectedStashIndex = null;
         this.files = [];
         this.stashes = [];
-        this.shelfFiles = [];
+        this.stashFiles = [];
         this.currentBranch = null;
         this.currentBranchHasUpstreamCache = false;
         this.hasRemotesCache = false;
@@ -260,7 +260,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.updateViewCount(this.lastFileCount);
     }
     /**
-     * Refreshes working-tree/shelf data and then reloads embedded graph state.
+     * Refreshes working-tree/stash data and then reloads embedded graph state.
      */
     async refresh(): Promise<void> {
         await this.refreshData(false);
@@ -301,8 +301,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             type: "update",
             files: this.files,
             stashes: this.stashes,
-            selectedShelfIndex: this.selectedShelfIndex,
-            shelfFiles: this.shelfFiles,
+            selectedStashIndex: this.selectedStashIndex,
+            stashFiles: this.stashFiles,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.folderIconsByName,
@@ -317,11 +317,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Reloads working-tree files, shelves, selected shelf contents, and upstream state.
+     * Reloads working-tree files, stashes, selected stash contents, and upstream state.
      *
      * Non-silent refreshes set both a webview `refreshing` message and a VS Code context key, then
-     * keep the spinner visible for a short minimum duration to avoid flicker. The selected shelf is
-     * preserved when it still exists, otherwise the first available shelf becomes selected.
+     * keep the spinner visible for a short minimum duration to avoid flicker. The selected stash is
+     * preserved when it still exists, otherwise the first available stash becomes selected.
      */
     private async refreshData(silent = false): Promise<void> {
         const refreshStartedAt = Date.now();
@@ -339,37 +339,37 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         try {
             const [status, stashes, currentBranchStatus] = await Promise.all([
                 this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
-                this.gitOps.listShelved(),
+                this.gitOps.listStashes(),
                 this.currentBranchStatus(),
                 this.iconTheme.initIconThemeData(),
             ]);
             const files = await this.iconTheme.decorateWorkingFiles(status);
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
-                this.selectedShelfIndex !== null &&
-                stashes.some((entry) => entry.index === this.selectedShelfIndex);
-            let selectedShelfIndex: number | null;
+                this.selectedStashIndex !== null &&
+                stashes.some((entry) => entry.index === this.selectedStashIndex);
+            let selectedStashIndex: number | null;
             if (hasSelected) {
-                selectedShelfIndex = this.selectedShelfIndex;
+                selectedStashIndex = this.selectedStashIndex;
             } else {
-                selectedShelfIndex = stashes.length > 0 ? stashes[0].index : null;
+                selectedStashIndex = stashes.length > 0 ? stashes[0].index : null;
             }
-            const shelfFiles =
-                selectedShelfIndex !== null
+            const stashFiles =
+                selectedStashIndex !== null
                     ? await this.iconTheme.decorateWorkingFiles(
-                          await this.gitOps.getShelvedFiles(selectedShelfIndex),
+                          await this.gitOps.getStashFiles(selectedStashIndex),
                       )
                     : [];
             const folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
                 ...files,
-                ...shelfFiles,
+                ...stashFiles,
             ]);
             if (refreshRequestId === this.dataRefreshSeq) {
                 this.folderIconsByName = folderIconsByName;
                 this.files = files;
                 this.stashes = stashes;
-                this.selectedShelfIndex = selectedShelfIndex;
-                this.shelfFiles = shelfFiles;
+                this.selectedStashIndex = selectedStashIndex;
+                this.stashFiles = stashFiles;
                 this.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
                 this.hasRemotesCache = currentBranchStatus.hasRemotes;
                 this.currentBranchAheadCache = currentBranchStatus.ahead;
@@ -387,8 +387,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     type: "update",
                     files,
                     stashes,
-                    shelfFiles,
-                    selectedShelfIndex,
+                    stashFiles,
+                    selectedStashIndex,
                     folderIcon: folderIcons.folderIcon,
                     folderExpandedIcon: folderIcons.folderExpandedIcon,
                     folderIconsByName: this.folderIconsByName,
@@ -543,7 +543,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * Validates and dispatches every message accepted by the Changes webview.
      *
      * Accepted messages cover graph readiness/pagination/filtering, branch and commit actions,
-     * commit-file diffs, draft persistence, staging, committing, rollback, shelf mutations, and
+     * commit-file diffs, draft persistence, staging, committing, rollback, stash mutations, and
      * file actions. Paths and commit hashes are validated before Git or VS Code APIs are called;
      * unrecognized message types are ignored by the switch exhaustively falling through.
      */
@@ -696,9 +696,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "showDiff":
                 await showDiffFromPanel(fileActionDeps, msg.path);
                 break;
-            case "shelveSave": {
-                await shelveSaveFromPanel(actionDeps, {
-                    name: typeof msg.name === "string" ? msg.name : "Shelved changes",
+            case "stashSave": {
+                await stashSaveFromPanel(actionDeps, {
+                    name: typeof msg.name === "string" ? msg.name : "Stashed changes",
                     paths:
                         msg.paths !== undefined
                             ? assertRepoPathArray(msg.paths, "paths")
@@ -706,21 +706,21 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 });
                 break;
             }
-            case "shelfPop":
-                await shelfMutationFromPanel(actionDeps, "pop", assertNumber(msg.index, "index"));
+            case "stashPop":
+                await stashMutationFromPanel(actionDeps, "pop", assertNumber(msg.index, "index"));
                 break;
-            case "shelfApply":
-                await shelfMutationFromPanel(actionDeps, "apply", assertNumber(msg.index, "index"));
+            case "stashApply":
+                await stashMutationFromPanel(actionDeps, "apply", assertNumber(msg.index, "index"));
                 break;
-            case "shelfDelete":
-                await shelfMutationFromPanel(
+            case "stashDelete":
+                await stashMutationFromPanel(
                     actionDeps,
                     "delete",
                     assertNumber(msg.index, "index"),
                 );
                 break;
-            case "shelfSelect":
-                await selectShelfFromPanel(
+            case "stashSelect":
+                await selectStashFromPanel(
                     {
                         ...fileActionDeps,
                         iconTheme: this.iconTheme,
@@ -728,9 +728,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         getStashes: () => this.stashes,
                         currentBranchHasUpstream: async () =>
                             (await this.currentBranchStatus()).hasUpstream,
-                        setShelfState: (state) => {
-                            this.selectedShelfIndex = state.selectedShelfIndex;
-                            this.shelfFiles = state.shelfFiles;
+                        setStashState: (state) => {
+                            this.selectedStashIndex = state.selectedStashIndex;
+                            this.stashFiles = state.stashFiles;
                             this.folderIconsByName = state.folderIconsByName;
                         },
                         postUpdate: (message) => this.postToWebview(message),
@@ -741,8 +741,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "publishBranch":
                 await publishBranchFromPanel(fileActionDeps);
                 break;
-            case "showShelfDiff":
-                await showShelfDiffFromPanel(fileActionDeps, msg.index, msg.path);
+            case "showStashDiff":
+                await showStashDiffFromPanel(fileActionDeps, msg.index, msg.path);
                 break;
             case "openFile":
                 await openFileFromPanel(fileActionDeps, msg.path);

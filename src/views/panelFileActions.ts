@@ -19,22 +19,22 @@ interface PanelFileActionDeps {
     fireWorkingTreeChanged: () => void;
 }
 
-interface ShelfSelectionDeps extends PanelFileActionDeps {
+interface StashSelectionDeps extends PanelFileActionDeps {
     iconTheme: IconThemeService;
     getFiles: () => WorkingFile[];
     getStashes: () => StashEntry[];
     currentBranchHasUpstream: () => Promise<boolean>;
-    setShelfState: (state: {
-        selectedShelfIndex: number;
-        shelfFiles: WorkingFile[];
+    setStashState: (state: {
+        selectedStashIndex: number;
+        stashFiles: WorkingFile[];
         folderIconsByName: ThemeFolderIconMap;
     }) => void;
     postUpdate: (message: {
         type: "update";
         files: WorkingFile[];
         stashes: StashEntry[];
-        shelfFiles: WorkingFile[];
-        selectedShelfIndex: number;
+        stashFiles: WorkingFile[];
+        selectedStashIndex: number;
         folderIcon?: ThemeTreeIcon;
         folderExpandedIcon?: ThemeTreeIcon;
         folderIconsByName: ThemeFolderIconMap;
@@ -140,21 +140,21 @@ export async function showDiffFromPanel(
 }
 
 /**
- * Opens an untitled diff document for one file inside a shelved change.
+ * Opens an untitled diff document for one file inside a stashed change.
  *
- * The shelf index must be finite and the path repository-relative. Empty patch content is converted
+ * The stash index must be finite and the path repository-relative. Empty patch content is converted
  * into a visible fallback message so the panel action always produces understandable editor output.
  */
-export async function showShelfDiffFromPanel(
+export async function showStashDiffFromPanel(
     deps: Pick<PanelFileActionDeps, "gitOps">,
     indexValue: unknown,
     pathValue: unknown,
 ): Promise<void> {
     const index = assertNumber(indexValue, "index");
     const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
-    const patch = await deps.gitOps.getShelvedFilePatch(index, filePath);
+    const patch = await deps.gitOps.getStashFilePatch(index, filePath);
     const doc = await vscode.workspace.openTextDocument({
-        content: patch || `No shelved diff found for ${filePath}.`,
+        content: patch || `No stashed diff found for ${filePath}.`,
         language: "diff",
     });
     await vscode.window.showTextDocument(doc, { preview: true });
@@ -201,32 +201,32 @@ export async function deleteFileFromPanel(
 }
 
 /**
- * Loads a shelf selection, decorates its files, and posts a full panel update.
+ * Loads a stash selection, decorates its files, and posts a full panel update.
  *
- * Selecting a shelf does not mutate the repository. It refreshes provider-held shelf state and
+ * Selecting a stash does not mutate the repository. It refreshes provider-held stash state and
  * includes current branch upstream status so push-related UI stays consistent with working files.
  */
-export async function selectShelfFromPanel(
-    deps: ShelfSelectionDeps,
+export async function selectStashFromPanel(
+    deps: StashSelectionDeps,
     indexValue: unknown,
 ): Promise<void> {
-    const selectedShelfIndex = assertNumber(indexValue, "index");
+    const selectedStashIndex = assertNumber(indexValue, "index");
     const files = deps.getFiles();
-    const shelfFiles = await deps.iconTheme.decorateWorkingFiles(
-        await deps.gitOps.getShelvedFiles(selectedShelfIndex),
+    const stashFiles = await deps.iconTheme.decorateWorkingFiles(
+        await deps.gitOps.getStashFiles(selectedStashIndex),
     );
     const folderIconsByName = await deps.iconTheme.getFolderIconsByWorkingFiles([
         ...files,
-        ...shelfFiles,
+        ...stashFiles,
     ]);
-    deps.setShelfState({ selectedShelfIndex, shelfFiles, folderIconsByName });
+    deps.setStashState({ selectedStashIndex, stashFiles, folderIconsByName });
     const { folderIcons, iconFonts } = deps.iconTheme.getThemeData();
     deps.postUpdate({
         type: "update",
         files,
         stashes: deps.getStashes(),
-        shelfFiles,
-        selectedShelfIndex,
+        stashFiles,
+        selectedStashIndex,
         folderIcon: folderIcons.folderIcon,
         folderExpandedIcon: folderIcons.folderExpandedIcon,
         folderIconsByName,

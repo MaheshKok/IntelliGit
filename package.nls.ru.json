@@ -24,7 +24,7 @@
     "command.delete": "Удалить",
     "command.rollback": "Откатить",
     "command.jumpToSource": "Перейти к источнику",
-    "command.shelveChanges": "Отложить изменения",
+    "command.stashChanges": "Спрятать изменения",
     "command.compareWithRevision": "Сравнить с ревизией",
     "command.compareWithBranch": "Сравнить с веткой",
     "command.compareWithLocal": "Сравнить с локальной версией",

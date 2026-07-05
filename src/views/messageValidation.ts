@@ -15,7 +15,7 @@ function assertStringArray(value: unknown, field: string): string[] {
  * Validates a webview path array before any panel Git file operation consumes it.
  *
  * Every entry must be a string and must survive repository-relative path validation so a webview
- * payload cannot stage, rollback, or shelve files outside the active repository.
+ * payload cannot stage, rollback, or stash files outside the active repository.
  */
 export function assertRepoPathArray(value: unknown, field: string): string[] {
     const strings = assertStringArray(value, field);
@@ -61,9 +61,9 @@ export function assertGitHash(value: unknown, field: string): string {
 }
 
 /**
- * Validates finite numeric fields used for shelf indexes and persisted layout dimensions.
+ * Validates finite numeric fields used for stash indexes and persisted layout dimensions.
  *
- * Rejecting `NaN` and infinities keeps webview-originated state from reaching Git shelf commands or
+ * Rejecting `NaN` and infinities keeps webview-originated state from reaching Git stash commands or
  * being written back into VS Code workspace storage.
  */
 export function assertNumber(value: unknown, field: string): number {

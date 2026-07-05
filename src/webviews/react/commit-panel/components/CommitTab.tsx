@@ -53,7 +53,7 @@ interface Props {
  * Renders the working-tree commit workflow and sends toolbar actions to the host.
  *
  * The tab owns local refresh feedback, expand/collapse signals, file-row diff
- * requests, shelf/rollback commands, and the draggable commit-message area while
+ * requests, stash/rollback commands, and the draggable commit-message area while
  * delegating checked-path state to the root commit-panel app.
  */
 // Independent commit workflow flags come from different host state; grouping them would hide intent.
@@ -137,10 +137,10 @@ export function CommitTab({
         vscode.postMessage({ type: "rollback", paths: Array.from(checkedPaths) });
     }, [vscode, checkedPaths]);
 
-    const handleShelve = useCallback(() => {
+    const handleStash = useCallback(() => {
         const selected = Array.from(checkedPaths);
         vscode.postMessage({
-            type: "shelveSave",
+            type: "stashSave",
             paths: selected.length > 0 ? selected : undefined,
         });
     }, [vscode, checkedPaths]);
@@ -180,7 +180,7 @@ export function CommitTab({
                 onRollback={handleRollback}
                 onToggleGroupBy={onToggleGroupBy}
                 onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
-                onShelve={handleShelve}
+                onStash={handleStash}
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
                 onCollapseAll={() => setCollapseAllSignal((s) => s + 1)}

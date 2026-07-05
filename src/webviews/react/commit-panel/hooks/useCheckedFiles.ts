@@ -31,7 +31,7 @@ function buildSelectablePathSet(files: WorkingFile[]): Set<string> {
 }
 
 /**
- * Tracks selected working-tree paths for commit, rollback, shelve, and diff actions.
+ * Tracks selected working-tree paths for commit, rollback, stash, and diff actions.
  *
  * Selection is persisted in VS Code webview state, pruned when the host sends a
  * new file snapshot, and toggled by exact path so grouped folders and top-level

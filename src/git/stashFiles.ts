@@ -2,7 +2,7 @@ import type { WorkingFile } from "../types";
 import { normalizeGitNumstatPath } from "./numstat";
 import { mapStatusCode } from "./parsers";
 
-function upsertShelvedFile(
+function upsertStashFile(
     files: Map<string, WorkingFile>,
     path: string,
     status: WorkingFile["status"] = "M",
@@ -25,7 +25,7 @@ function applyNameStatus(files: Map<string, WorkingFile>, output: string): void 
                 ? (parts[2]?.trim() ?? parts[1]?.trim())
                 : parts[1]?.trim();
         if (!path) continue;
-        upsertShelvedFile(files, path, mapStatusCode(code[0]) ?? "M");
+        upsertStashFile(files, path, mapStatusCode(code[0]) ?? "M");
     }
 }
 
@@ -36,7 +36,7 @@ function applyNumstat(files: Map<string, WorkingFile>, output: string): void {
         if (parts.length < 3) continue;
         const path = normalizeGitNumstatPath(parts[2]);
         if (!path) continue;
-        const entry = upsertShelvedFile(files, path);
+        const entry = upsertStashFile(files, path);
         files.set(path, {
             ...entry,
             additions: parts[0] === "-" ? 0 : Number(parts[0]) || 0,
@@ -46,13 +46,13 @@ function applyNumstat(files: Map<string, WorkingFile>, output: string): void {
 }
 
 /**
- * Combines `git stash show --name-status` and `--numstat` output into shelved files.
+ * Combines `git stash show --name-status` and `--numstat` output into stashed files.
  *
  * Name-status supplies the file set and status codes, while numstat fills additions
  * and deletions. Missing or partial output is tolerated so callers can display the
  * data Git returned after logging warning-worthy failures.
  */
-export function parseShelvedFiles(nameStatus: string, numstat: string): WorkingFile[] {
+export function parseStashFiles(nameStatus: string, numstat: string): WorkingFile[] {
     const files = new Map<string, WorkingFile>();
     applyNameStatus(files, nameStatus);
     applyNumstat(files, numstat);

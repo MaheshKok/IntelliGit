@@ -266,28 +266,28 @@ export async function rollbackFromPanel(
 }
 
 /**
- * Saves the current or selected working-tree changes to a shelf entry from the panel.
+ * Saves the current or selected working-tree changes to a stash entry from the panel.
  *
- * The caller supplies the UI-derived shelf name and already validated optional paths; this helper
- * owns the success notification plus follow-up refresh/change events after Git mutates the shelf.
+ * The caller supplies the UI-derived stash name and already validated optional paths; this helper
+ * owns the success notification plus follow-up refresh/change events after Git mutates the stash.
  */
-export async function shelveSaveFromPanel(
+export async function stashSaveFromPanel(
     deps: Pick<CommitPanelActionDeps, "gitOps" | "refreshData" | "fireWorkingTreeChanged">,
     options: { name: string; paths?: string[] },
 ): Promise<void> {
-    await deps.gitOps.shelveSave(options.paths, options.name);
-    showTimedInformationMessage(vscode.l10n.t("Changes shelved."));
+    await deps.gitOps.stashSave(options.paths, options.name);
+    showTimedInformationMessage(vscode.l10n.t("Changes stashed."));
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
 
 /**
- * Applies, pops, or deletes a shelf entry selected in the panel.
+ * Applies, pops, or deletes a stash entry selected in the panel.
  *
- * Delete requests require a modal confirmation because they discard the saved shelf entry, while
+ * Delete requests require a modal confirmation because they discard the saved stash entry, while
  * apply/pop immediately mutate the working tree and then refresh both panel and host state.
  */
-export async function shelfMutationFromPanel(
+export async function stashMutationFromPanel(
     deps: Pick<CommitPanelActionDeps, "gitOps" | "refreshData" | "fireWorkingTreeChanged">,
     action: "pop" | "apply" | "delete",
     index: number,
@@ -295,19 +295,19 @@ export async function shelfMutationFromPanel(
     if (action === "delete") {
         const deleteAction = vscode.l10n.t("Delete");
         const confirm = await vscode.window.showWarningMessage(
-            vscode.l10n.t("Delete this shelved change?"),
+            vscode.l10n.t("Delete this stashed change?"),
             { modal: true },
             deleteAction,
         );
         if (confirm !== deleteAction) return;
-        await deps.gitOps.shelveDelete(index);
-        showTimedInformationMessage(vscode.l10n.t("Shelved change deleted."));
+        await deps.gitOps.stashDelete(index);
+        showTimedInformationMessage(vscode.l10n.t("Stashed change deleted."));
     } else if (action === "pop") {
-        await deps.gitOps.shelvePop(index);
-        showTimedInformationMessage(vscode.l10n.t("Unshelved changes."));
+        await deps.gitOps.stashPop(index);
+        showTimedInformationMessage(vscode.l10n.t("Unstashed changes."));
     } else {
-        await deps.gitOps.shelveApply(index);
-        showTimedInformationMessage(vscode.l10n.t("Applied shelved changes."));
+        await deps.gitOps.stashApply(index);
+        showTimedInformationMessage(vscode.l10n.t("Applied stashed changes."));
     }
     await deps.refreshData();
     deps.fireWorkingTreeChanged();

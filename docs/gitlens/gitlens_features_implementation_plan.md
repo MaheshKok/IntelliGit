@@ -16,7 +16,7 @@ This is a planning artifact; it does not change code.
 > **Positioning (DECIDED): IntelliGit is not "cheaper GitLens."** The wedge is
 > **"JetBrains-style Git for VS Code — free for private repos, safer history
 > editing, no forced Git SaaS account."** This repo already has a JetBrains-style
-> commit panel, shelf workflow, merge-conflict editor, and commit graph — a more
+> commit panel, stash workflow, merge-conflict editor, and commit graph — a more
 > defensible identity than a GitLens parity checklist. The
 > [`gitlens-feature-analysis.md`](./gitlens-feature-analysis.md) doc is **competitive
 > intelligence**, not the product blueprint. We selectively beat GitLens on a few
@@ -60,7 +60,7 @@ src/
 │   │                            #   maxConcurrentProcesses: 6
 │   └── operations.ts            # GitOps (1104 LOC): the git operations layer
 │                                #   getLog, getCommitDetail, getStatus, stage/
-│                                #   unstage, commit, push, pullRebase, shelve*,
+│                                #   unstage, commit, push, pullRebase, stash*,
 │                                #   getFileHistory, getFileHistoryEntries,
 │                                #   getFileContentAtRef, getBranches, ...
 ├── services/                    # cloneService, diffService, gitHelpers,
@@ -95,7 +95,7 @@ src/
 | Commit Graph                    | ✅ Have (React webview)           | ✅                 | Polish to parity      |
 | Commit details view             | ✅ Have                           | ✅                 | Reuse                 |
 | Staging / commit panel          | ✅ Have                           | partial (uses SCM) | Reuse                 |
-| Stash / shelf                   | ✅ Have (`shelve*`)               | ✅                 | Reuse                 |
+| Stash                            | ✅ Have (`stash*`)                | ✅                 | Reuse                 |
 | File history (data)             | ✅ Have (`getFileHistoryEntries`) | ✅                 | Build chart on top    |
 | 3-way merge editor              | ✅ Have (JetBrains-style)         | partial            | Differentiator — keep |
 | **Inline/line blame**           | ❌ **None**                       | ✅ signature       | **M1 — build**        |
@@ -213,7 +213,7 @@ a manual rollback (`:511`). **Gaps to close:**
   This generalizes squash's ad-hoc rollback to all ops and is a core
   differentiator: destructive actions are always reversible.
 - **Clean-tree precondition** consistently (squash already does this; apply to
-  reset-hard and drop, with an offer to auto-shelve).
+  reset-hard and drop, with an offer to auto-stash).
 - **Backup-ref retention** setting `intelligit.graph.backupRetention` (keep last
   N per branch); prune on a schedule.
 
@@ -704,7 +704,7 @@ the subscription (GitKraken AI / Copilot / BYOK).
 - **Features (each = build prompt from existing data → call provider → present):**
     - _Commit message_: diff of staged changes (`git diff --staged`) → prompt →
       prefill the existing commit panel input. Command in commit panel toolbar.
-    - _Stash description_: diff of working changes → prompt → prefill shelve dialog.
+    - _Stash description_: diff of working changes → prompt → prefill stash dialog.
     - _Commit explanation_: `getCommitDetail` diff → prompt → render in
       `CommitInfoView` as a Markdown "Explain" section.
     - _Changelog_: multi-commit selection in graph → prompt → new document.

@@ -24,7 +24,7 @@
     "command.delete": "删除",
     "command.rollback": "回滚",
     "command.jumpToSource": "跳转至源文件",
-    "command.shelveChanges": "搁置更改",
+    "command.stashChanges": "储藏更改",
     "command.compareWithRevision": "与修订版比较",
     "command.compareWithBranch": "与分支比较",
     "command.compareWithLocal": "与本地版本比较",

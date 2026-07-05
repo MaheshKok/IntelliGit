@@ -24,7 +24,7 @@
     "command.delete": "Usuwać",
     "command.rollback": "Cofnij",
     "command.jumpToSource": "Przejdź do źródła",
-    "command.shelveChanges": "Odłóż zmiany",
+    "command.stashChanges": "Schowaj zmiany",
     "command.compareWithRevision": "Porównaj z wersją",
     "command.compareWithBranch": "Porównaj z branchem",
     "command.compareWithLocal": "Porównaj z lokalnym",

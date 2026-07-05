@@ -32,7 +32,7 @@
     "command.repairWorktrees": "Repair Worktrees",
     "command.rollback": "Rollback",
     "command.jumpToSource": "Jump to Source",
-    "command.shelveChanges": "Shelve Changes",
+    "command.stashChanges": "Stash Changes",
     "command.compareWithRevision": "Compare with Revision",
     "command.compareWithBranch": "Compare with Branch",
     "command.compareWithLocal": "Compare with Local",

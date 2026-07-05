@@ -2,7 +2,7 @@ import React from "react";
 import { Box } from "@chakra-ui/react";
 import { TabBar } from "../commit-panel/components/TabBar";
 import { CommitTab } from "../commit-panel/components/CommitTab";
-import { ShelfTab } from "../commit-panel/components/ShelfTab";
+import { StashTab } from "../commit-panel/components/StashTab";
 import type { WorkingFile } from "../../../types";
 import type { CommitPanelState } from "./commitPanelState";
 
@@ -32,7 +32,7 @@ interface CommitPanelPaneProps {
 }
 
 /**
- * Embeds the shared commit/shelf tab UI inside the undocked layout while routing
+ * Embeds the shared commit/stash tab UI inside the undocked layout while routing
  * all selection, amend, commit, and grouping callbacks back to the app shell.
  */
 // Pass-through pane props mirror independent child controls, not a mutually exclusive variant.
@@ -109,11 +109,11 @@ export function CommitPanelPane({
                             onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
                         />
                     }
-                    shelfContent={
-                        <ShelfTab
+                    stashContent={
+                        <StashTab
                             stashes={cpState.stashes}
-                            shelfFiles={cpState.shelfFiles}
-                            selectedIndex={cpState.selectedShelfIndex}
+                            stashFiles={cpState.stashFiles}
+                            selectedIndex={cpState.selectedStashIndex}
                             folderIcon={cpState.folderIcon}
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}

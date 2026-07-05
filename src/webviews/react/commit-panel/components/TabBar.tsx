@@ -1,4 +1,4 @@
-// Tab switcher between Commit and Shelf tabs. Uses Chakra UI Tabs
+// Tab switcher between Commit and Stash tabs. Uses Chakra UI Tabs
 // with custom styling to match the VS Code sidebar appearance.
 
 import React from "react";
@@ -22,7 +22,7 @@ interface Props {
     onPull: () => void;
     onPush: () => void;
     commitContent: React.ReactNode;
-    shelfContent: React.ReactNode;
+    stashContent: React.ReactNode;
 }
 
 const sharedTabStyles = {
@@ -43,10 +43,10 @@ const sharedTabStyles = {
 } as const;
 
 /**
- * Hosts the Commit and Shelf tab panels with VS Code sidebar styling.
+ * Hosts the Commit and Stash tab panels with VS Code sidebar styling.
  *
  * Callers provide already-wired panel content, allowing the tab shell to stay
- * presentation-only while still reflecting the current stash count in the shelf
+ * presentation-only while still reflecting the current stash count in the stash
  * label.
  */
 export function TabBar({
@@ -56,17 +56,17 @@ export function TabBar({
     onPull,
     onPush,
     commitContent,
-    shelfContent,
+    stashContent,
 }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: t("commit.tab.commit"), content: commitContent },
         {
-            key: "shelf",
+            key: "stash",
             label:
                 stashCount > 0
                     ? t("commit.tab.stashWithCount", { count: stashCount })
                     : t("commit.tab.stash"),
-            content: shelfContent,
+            content: stashContent,
         },
     ];
 

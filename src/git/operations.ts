@@ -44,7 +44,7 @@ import {
     parseWorkingTreeStatus,
     planRollbackFiles,
 } from "./workingTree";
-import { parseShelvedFiles } from "./stashFiles";
+import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
 /**
@@ -695,9 +695,9 @@ export class GitOps {
         // Also clean untracked files
         await this.executor.run(["clean", "-fd"]);
     }
-    // --- Shelf operations (implemented via git stash) ---
+    // --- Stash operations ---
     /** Saves all changes or selected literal paths into a Git stash entry with untracked files included. */
-    async shelveSave(paths?: string[], message: string = "Shelved changes"): Promise<string> {
+    async stashSave(paths?: string[], message: string = "Stashed changes"): Promise<string> {
         const args = ["stash", "push", "--include-untracked", "-m", message];
         if (paths && paths.length > 0) {
             args.push("--", ...paths);
@@ -705,17 +705,17 @@ export class GitOps {
         return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args);
     }
     /** Pops a validated stash index back into the working tree. */
-    async shelvePop(index: number = 0): Promise<string> {
+    async stashPop(index: number = 0): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "pop", `stash@{${index}}`]);
     }
     /** Applies a validated stash index without dropping it. */
-    async shelveApply(index: number = 0): Promise<string> {
+    async stashApply(index: number = 0): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "apply", `stash@{${index}}`]);
     }
     /** Lists stash entries from formatted Git output, returning an empty list when stash inspection fails. */
-    async listShelved(): Promise<StashEntry[]> {
+    async listStashes(): Promise<StashEntry[]> {
         try {
             const result = await this.executor.run(["stash", "list", "--format=%H\t%gd\t%gs\t%aI"]);
             return parseStashEntries(result);
@@ -724,7 +724,7 @@ export class GitOps {
         }
     }
     /** Drops a validated stash index and returns Git output. */
-    async shelveDelete(index: number): Promise<string> {
+    async stashDelete(index: number): Promise<string> {
         assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
@@ -733,7 +733,7 @@ export class GitOps {
      *
      * Individual stash inspection failures are logged and converted to partial file metadata.
      */
-    async getShelvedFiles(index: number): Promise<WorkingFile[]> {
+    async getStashFiles(index: number): Promise<WorkingFile[]> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
         let nameStatus = "";
@@ -748,10 +748,10 @@ export class GitOps {
         } catch (err) {
             logGitOpsWarning(`Failed stash show --numstat for ${ref}`, err);
         }
-        return parseShelvedFiles(nameStatus, numstat);
+        return parseStashFiles(nameStatus, numstat);
     }
     /** Returns the patch for a literal repository path inside a validated stash entry. */
-    async getShelvedFilePatch(index: number, filePath: string): Promise<string> {
+    async getStashFilePatch(index: number, filePath: string): Promise<string> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
         return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));

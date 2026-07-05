@@ -109,7 +109,7 @@ Important attacker stories:
 
 ### Filesystem and workspace boundaries
 
-The extension opens, deletes, stages, rolls back, shelves, and diffs files inside the current repository. It also lets the user choose clone destinations and open folders.
+The extension opens, deletes, stages, rolls back, stashes, and diffs files inside the current repository. It also lets the user choose clone destinations and open folders.
 
 Relevant mitigations:
 
