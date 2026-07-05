@@ -655,323 +655,334 @@ function App() {
 
     return (
         <SyntaxHighlightProvider value={syntaxHighlightState}>
-        <div
-            style={rootStyle}
-            className={[
-                "merge-editor",
-                highlightWords ? "words-highlighted" : "",
-                showDetails ? "details-expanded" : "",
-            ]
-                .filter(Boolean)
-                .join(" ")}
-        >
-            <div className="merge-toolbar">
-                <div className="toolbar-left">
-                    <button
-                        type="button"
-                        className="toolbar-btn subtle"
-                        onClick={handleApplyNonConflicting}
-                        disabled={autoResolvedCount === 0}
-                    >
-                        <span className="toolbar-icon">
-                            <IconSpark />
-                        </span>
-                        {t("merge.toolbar.applyNonConflicting")}
-                    </button>
-                    <div className="toolbar-nav-group">
+            <div
+                style={rootStyle}
+                className={[
+                    "merge-editor",
+                    highlightWords ? "words-highlighted" : "",
+                    showDetails ? "details-expanded" : "",
+                ]
+                    .filter(Boolean)
+                    .join(" ")}
+            >
+                <div className="merge-toolbar">
+                    <div className="toolbar-left">
                         <button
                             type="button"
-                            className="toolbar-icon-btn"
-                            onClick={() => moveActiveConflict(-1)}
-                            title={t("merge.toolbar.prevConflict.title")}
-                            aria-label={t("merge.toolbar.prevConflict.label")}
-                            disabled={total === 0}
+                            className="toolbar-btn subtle"
+                            onClick={handleApplyNonConflicting}
+                            disabled={autoResolvedCount === 0}
                         >
-                            <IconChevronUp />
+                            <span className="toolbar-icon">
+                                <IconSpark />
+                            </span>
+                            {t("merge.toolbar.applyNonConflicting")}
+                        </button>
+                        <div className="toolbar-nav-group">
+                            <button
+                                type="button"
+                                className="toolbar-icon-btn"
+                                onClick={() => moveActiveConflict(-1)}
+                                title={t("merge.toolbar.prevConflict.title")}
+                                aria-label={t("merge.toolbar.prevConflict.label")}
+                                disabled={total === 0}
+                            >
+                                <IconChevronUp />
+                            </button>
+                            <button
+                                type="button"
+                                className="toolbar-icon-btn"
+                                onClick={() => moveActiveConflict(1)}
+                                title={t("merge.toolbar.nextConflict.title")}
+                                aria-label={t("merge.toolbar.nextConflict.label")}
+                                disabled={total === 0}
+                            >
+                                <IconChevronDown />
+                            </button>
+                        </div>
+                        <div className="toolbar-separator" />
+                        <button
+                            type="button"
+                            className="toolbar-btn subtle dropdown"
+                            onClick={handleToggleIgnoreMode}
+                            title={t("merge.toolbar.ignoreMode.title")}
+                        >
+                            <span className="toolbar-icon">
+                                <IconFilter />
+                            </span>
+                            {ignoreMode === "none"
+                                ? t("merge.toolbar.ignoreMode.none")
+                                : t("merge.toolbar.ignoreMode.whitespace")}
+                            <span className="toolbar-icon dropdown-icon">
+                                <IconChevronDown />
+                            </span>
                         </button>
                         <button
                             type="button"
-                            className="toolbar-icon-btn"
-                            onClick={() => moveActiveConflict(1)}
-                            title={t("merge.toolbar.nextConflict.title")}
-                            aria-label={t("merge.toolbar.nextConflict.label")}
-                            disabled={total === 0}
+                            className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
+                            onClick={() => setHighlightWords((v) => !v)}
+                            aria-pressed={highlightWords}
                         >
-                            <IconChevronDown />
+                            <span className="toolbar-icon">
+                                <IconEye />
+                            </span>
+                            {t("merge.toolbar.highlightWords")}
+                        </button>
+                        <button
+                            type="button"
+                            className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
+                            onClick={() => setShowDetails((v) => !v)}
+                            aria-pressed={showDetails}
+                        >
+                            {t("merge.toolbar.showDetails")}
                         </button>
                     </div>
-                    <div className="toolbar-separator" />
-                    <button
-                        type="button"
-                        className="toolbar-btn subtle dropdown"
-                        onClick={handleToggleIgnoreMode}
-                        title={t("merge.toolbar.ignoreMode.title")}
-                    >
-                        <span className="toolbar-icon">
-                            <IconFilter />
-                        </span>
-                        {ignoreMode === "none"
-                            ? t("merge.toolbar.ignoreMode.none")
-                            : t("merge.toolbar.ignoreMode.whitespace")}
-                        <span className="toolbar-icon dropdown-icon">
-                            <IconChevronDown />
-                        </span>
-                    </button>
-                    <button
-                        type="button"
-                        className={`toolbar-btn subtle ${highlightWords ? "active" : ""}`}
-                        onClick={() => setHighlightWords((v) => !v)}
-                        aria-pressed={highlightWords}
-                    >
-                        <span className="toolbar-icon">
-                            <IconEye />
-                        </span>
-                        {t("merge.toolbar.highlightWords")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`toolbar-btn subtle ${showDetails ? "active" : ""}`}
-                        onClick={() => setShowDetails((v) => !v)}
-                        aria-pressed={showDetails}
-                    >
-                        {t("merge.toolbar.showDetails")}
-                    </button>
-                </div>
 
-                <div className="toolbar-center">
-                    <span className="toolbar-status-pill">
-                        <span className="toolbar-icon">
-                            <IconWarning />
+                    <div className="toolbar-center">
+                        <span className="toolbar-status-pill">
+                            <span className="toolbar-icon">
+                                <IconWarning />
+                            </span>
+                            {t("merge.status.unresolved", { count: unresolved })}
                         </span>
-                        {t("merge.status.unresolved", { count: unresolved })}
-                    </span>
-                    <span className="toolbar-status-pill muted">
-                        {t("merge.status.resolved", { resolved, total })}
-                    </span>
-                    <span className="toolbar-status-pill muted">
-                        {t("merge.count.changes", { count: changeCount })}
-                    </span>
-                    {currentConflictIndex > 0 ? (
+                        <span className="toolbar-status-pill muted">
+                            {t("merge.status.resolved", { resolved, total })}
+                        </span>
+                        <span className="toolbar-status-pill muted">
+                            {t("merge.count.changes", { count: changeCount })}
+                        </span>
+                        {currentConflictIndex > 0 ? (
+                            <button
+                                type="button"
+                                className="toolbar-inline-link"
+                                onClick={() => {
+                                    if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
+                                }}
+                                disabled={nextUnresolvedId === null}
+                                title={t("merge.toolbar.jumpUnresolved.title")}
+                            >
+                                {t("merge.status.hunk", { current: currentConflictIndex, total })}
+                            </button>
+                        ) : null}
+                    </div>
+
+                    <div className="toolbar-right">
                         <button
                             type="button"
-                            className="toolbar-inline-link"
-                            onClick={() => {
-                                if (nextUnresolvedId !== null) jumpToConflict(nextUnresolvedId);
-                            }}
-                            disabled={nextUnresolvedId === null}
-                            title={t("merge.toolbar.jumpUnresolved.title")}
+                            className="toolbar-btn"
+                            onClick={handleAcceptAllYours}
+                            title={t("merge.toolbar.acceptAllYours.title")}
                         >
-                            {t("merge.status.hunk", { current: currentConflictIndex, total })}
+                            <span className="toolbar-icon">
+                                <IconArrowRight />
+                            </span>
+                            {t("merge.toolbar.acceptAllYours.label")}
                         </button>
-                    ) : null}
-                </div>
-
-                <div className="toolbar-right">
-                    <button
-                        type="button"
-                        className="toolbar-btn"
-                        onClick={handleAcceptAllYours}
-                        title={t("merge.toolbar.acceptAllYours.title")}
-                    >
-                        <span className="toolbar-icon">
-                            <IconArrowRight />
-                        </span>
-                        {t("merge.toolbar.acceptAllYours.label")}
-                    </button>
-                    <button
-                        type="button"
-                        className="toolbar-btn"
-                        onClick={handleAcceptAllTheirs}
-                        title={t("merge.toolbar.acceptAllTheirs.title")}
-                    >
-                        <span className="toolbar-icon">
-                            <IconArrowLeft />
-                        </span>
-                        {t("merge.toolbar.acceptAllTheirs.label")}
-                    </button>
-                </div>
-            </div>
-
-            <div className="merge-header">
-                <div className="merge-title">
-                    <span className="file-path">{state.data.filePath}</span>
-                    <span className="conflict-counter">
-                        {t("merge.header.conflictsResolved", { resolved, total })}
-                    </span>
-                </div>
-                <div className="merge-stats">
-                    <span className="merge-stat-pill">
-                        {t("merge.count.changes", { count: changeCount })}
-                    </span>
-                    {autoResolvedCount > 0 ? (
-                        <span className="merge-stat-pill ok">
-                            {t("merge.header.autoResolved", { count: autoResolvedCount })}
-                        </span>
-                    ) : null}
-                    <span className={`merge-stat-pill ${unresolved > 0 ? "warn" : "ok"}`}>
-                        {t("merge.count.conflicts", { count: unresolved })}
-                    </span>
-                </div>
-            </div>
-
-            <div className="pane-meta-row">
-                <div className="pane-meta">
-                    <span className="pane-meta-label">
-                        <span className="toolbar-icon pane-lock">
-                            <IconLock />
-                        </span>
-                        {t("merge.pane.changesFrom", { label: state.data.oursLabel })}
-                    </span>
-                    <span className="pane-meta-right-group">
-                        <span className="pane-meta-counts">
-                            {t("merge.count.changes", { count: oursChanges })},{" "}
-                            {t("merge.count.conflicts", { count: total })}
-                        </span>
                         <button
                             type="button"
-                            className="show-details"
-                            onClick={() => setShowDetails((v) => !v)}
+                            className="toolbar-btn"
+                            onClick={handleAcceptAllTheirs}
+                            title={t("merge.toolbar.acceptAllTheirs.title")}
                         >
-                            {showDetails
-                                ? t("merge.toolbar.hideDetails")
-                                : t("merge.toolbar.showDetails")}
+                            <span className="toolbar-icon">
+                                <IconArrowLeft />
+                            </span>
+                            {t("merge.toolbar.acceptAllTheirs.label")}
                         </button>
-                    </span>
-                </div>
-                <div className="pane-meta pane-meta-center">
-                    <span>{t("merge.pane.result", { path: state.data.filePath })}</span>
-                </div>
-                <div className="pane-meta pane-meta-right">
-                    <span className="pane-meta-label">
-                        <span className="toolbar-icon pane-lock">
-                            <IconLock />
-                        </span>
-                        {t("merge.pane.changesFrom", { label: state.data.theirsLabel })}
-                    </span>
-                    <span className="pane-meta-right-group">
-                        <span className="pane-meta-counts">
-                            {t("merge.count.changes", { count: theirsChanges })},{" "}
-                            {t("merge.count.conflicts", { count: total })}
-                        </span>
-                        <button
-                            type="button"
-                            className="show-details"
-                            onClick={() => setShowDetails((v) => !v)}
-                        >
-                            {showDetails
-                                ? t("merge.toolbar.hideDetails")
-                                : t("merge.toolbar.showDetails")}
-                        </button>
-                    </span>
-                </div>
-            </div>
-
-            <div className="merge-content-shell">
-                <div
-                    ref={mergeContentRef}
-                    className="merge-content"
-                    onScrollCapture={handlePaneScroll}
-                >
-                    <div className="merge-scroll-width">
-                        {renderedSegments.map(
-                            ({
-                                segment,
-                                renderKey,
-                                lineCount,
-                                lineNumbers,
-                                conflictOrdinal,
-                                trueConflictOrdinal,
-                            }) =>
-                                segment.type === "common" ? (
-                                    <CommonSection
-                                        key={renderKey}
-                                        segment={segment}
-                                        lineCount={lineCount}
-                                        lineNumbers={lineNumbers}
-                                        highlightWords={highlightWords}
-                                    />
-                                ) : (
-                                    <ConflictSection
-                                        key={renderKey}
-                                        segment={segment}
-                                        resolution={state.resolutions[segment.id]}
-                                        editedLines={state.edits[segment.id]}
-                                        dismissed={state.dismissals[segment.id]}
-                                        lineCount={lineCount}
-                                        lineNumbers={lineNumbers}
-                                        onResolve={handleResolve}
-                                        onEditResult={handleEditResult}
-                                        onDismiss={handleDismissSide}
-                                        onSelect={setActiveConflictId}
-                                        onSectionRef={registerConflictSectionRef}
-                                        isActive={activeConflictId === segment.id}
-                                        showDetails={showDetails}
-                                        highlightWords={highlightWords}
-                                        conflictOrdinal={conflictOrdinal ?? segment.id + 1}
-                                        trueConflictOrdinal={trueConflictOrdinal}
-                                    />
-                                ),
-                        )}
                     </div>
                 </div>
-                <div
-                    ref={horizontalScrollRef}
-                    className="merge-horizontal-scroll"
-                    aria-hidden="true"
-                    onScroll={handleHorizontalScroll}
-                >
-                    <div ref={horizontalScrollInnerRef} className="merge-horizontal-scroll-inner" />
-                </div>
-                <OverviewRail
-                    markers={overviewMarkers}
-                    activeConflictId={activeConflictId}
-                    onJump={jumpToConflict}
-                />
-            </div>
 
-            <div className="merge-footer">
-                <div className="footer-left">
-                    <button
-                        type="button"
-                        className="footer-btn secondary ghost"
-                        onClick={handleBulkAcceptYours}
-                    >
-                        {t("merge.footer.useFileOurs")}
-                    </button>
-                    <button
-                        type="button"
-                        className="footer-btn secondary ghost"
-                        onClick={handleBulkAcceptTheirs}
-                    >
-                        {t("merge.footer.useFileTheirs")}
-                    </button>
-                    <button
-                        type="button"
-                        className="footer-btn secondary ghost"
-                        onClick={handleOpenConflictSession}
-                    >
-                        {t("mergeSession.title")}
-                    </button>
-                    <span className="footer-hint">{t("merge.footer.hint")}</span>
+                <div className="merge-header">
+                    <div className="merge-title">
+                        <span className="file-path">{state.data.filePath}</span>
+                        <span className="conflict-counter">
+                            {t("merge.header.conflictsResolved", { resolved, total })}
+                        </span>
+                    </div>
+                    <div className="merge-stats">
+                        <span className="merge-stat-pill">
+                            {t("merge.count.changes", { count: changeCount })}
+                        </span>
+                        {autoResolvedCount > 0 ? (
+                            <span className="merge-stat-pill ok">
+                                {t("merge.header.autoResolved", { count: autoResolvedCount })}
+                            </span>
+                        ) : null}
+                        <span className={`merge-stat-pill ${unresolved > 0 ? "warn" : "ok"}`}>
+                            {t("merge.count.conflicts", { count: unresolved })}
+                        </span>
+                    </div>
                 </div>
-                <div className="footer-right">
-                    <button type="button" className="footer-btn danger" onClick={handleAbortMerge}>
-                        {t("merge.action.abortMerge")}
-                    </button>
-                    <button type="button" className="footer-btn secondary" onClick={handleClose}>
-                        {t("common.cancel")}
-                    </button>
-                    <button
-                        type="button"
-                        className={`footer-btn primary ${canApply ? "" : "disabled"}`}
-                        onClick={handleApply}
-                        disabled={!canApply}
+
+                <div className="pane-meta-row">
+                    <div className="pane-meta">
+                        <span className="pane-meta-label">
+                            <span className="toolbar-icon pane-lock">
+                                <IconLock />
+                            </span>
+                            {t("merge.pane.changesFrom", { label: state.data.oursLabel })}
+                        </span>
+                        <span className="pane-meta-right-group">
+                            <span className="pane-meta-counts">
+                                {t("merge.count.changes", { count: oursChanges })},{" "}
+                                {t("merge.count.conflicts", { count: total })}
+                            </span>
+                            <button
+                                type="button"
+                                className="show-details"
+                                onClick={() => setShowDetails((v) => !v)}
+                            >
+                                {showDetails
+                                    ? t("merge.toolbar.hideDetails")
+                                    : t("merge.toolbar.showDetails")}
+                            </button>
+                        </span>
+                    </div>
+                    <div className="pane-meta pane-meta-center">
+                        <span>{t("merge.pane.result", { path: state.data.filePath })}</span>
+                    </div>
+                    <div className="pane-meta pane-meta-right">
+                        <span className="pane-meta-label">
+                            <span className="toolbar-icon pane-lock">
+                                <IconLock />
+                            </span>
+                            {t("merge.pane.changesFrom", { label: state.data.theirsLabel })}
+                        </span>
+                        <span className="pane-meta-right-group">
+                            <span className="pane-meta-counts">
+                                {t("merge.count.changes", { count: theirsChanges })},{" "}
+                                {t("merge.count.conflicts", { count: total })}
+                            </span>
+                            <button
+                                type="button"
+                                className="show-details"
+                                onClick={() => setShowDetails((v) => !v)}
+                            >
+                                {showDetails
+                                    ? t("merge.toolbar.hideDetails")
+                                    : t("merge.toolbar.showDetails")}
+                            </button>
+                        </span>
+                    </div>
+                </div>
+
+                <div className="merge-content-shell">
+                    <div
+                        ref={mergeContentRef}
+                        className="merge-content"
+                        onScrollCapture={handlePaneScroll}
                     >
-                        {t("merge.footer.apply", { resolved, total })}
-                    </button>
+                        <div className="merge-scroll-width">
+                            {renderedSegments.map(
+                                ({
+                                    segment,
+                                    renderKey,
+                                    lineCount,
+                                    lineNumbers,
+                                    conflictOrdinal,
+                                    trueConflictOrdinal,
+                                }) =>
+                                    segment.type === "common" ? (
+                                        <CommonSection
+                                            key={renderKey}
+                                            segment={segment}
+                                            lineCount={lineCount}
+                                            lineNumbers={lineNumbers}
+                                            highlightWords={highlightWords}
+                                        />
+                                    ) : (
+                                        <ConflictSection
+                                            key={renderKey}
+                                            segment={segment}
+                                            resolution={state.resolutions[segment.id]}
+                                            editedLines={state.edits[segment.id]}
+                                            dismissed={state.dismissals[segment.id]}
+                                            lineCount={lineCount}
+                                            lineNumbers={lineNumbers}
+                                            onResolve={handleResolve}
+                                            onEditResult={handleEditResult}
+                                            onDismiss={handleDismissSide}
+                                            onSelect={setActiveConflictId}
+                                            onSectionRef={registerConflictSectionRef}
+                                            isActive={activeConflictId === segment.id}
+                                            showDetails={showDetails}
+                                            highlightWords={highlightWords}
+                                            conflictOrdinal={conflictOrdinal ?? segment.id + 1}
+                                            trueConflictOrdinal={trueConflictOrdinal}
+                                        />
+                                    ),
+                            )}
+                        </div>
+                    </div>
+                    <div
+                        ref={horizontalScrollRef}
+                        className="merge-horizontal-scroll"
+                        aria-hidden="true"
+                        onScroll={handleHorizontalScroll}
+                    >
+                        <div
+                            ref={horizontalScrollInnerRef}
+                            className="merge-horizontal-scroll-inner"
+                        />
+                    </div>
+                    <OverviewRail
+                        markers={overviewMarkers}
+                        activeConflictId={activeConflictId}
+                        onJump={jumpToConflict}
+                    />
+                </div>
+
+                <div className="merge-footer">
+                    <div className="footer-left">
+                        <button
+                            type="button"
+                            className="footer-btn secondary ghost"
+                            onClick={handleBulkAcceptYours}
+                        >
+                            {t("merge.footer.useFileOurs")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary ghost"
+                            onClick={handleBulkAcceptTheirs}
+                        >
+                            {t("merge.footer.useFileTheirs")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary ghost"
+                            onClick={handleOpenConflictSession}
+                        >
+                            {t("mergeSession.title")}
+                        </button>
+                        <span className="footer-hint">{t("merge.footer.hint")}</span>
+                    </div>
+                    <div className="footer-right">
+                        <button
+                            type="button"
+                            className="footer-btn danger"
+                            onClick={handleAbortMerge}
+                        >
+                            {t("merge.action.abortMerge")}
+                        </button>
+                        <button
+                            type="button"
+                            className="footer-btn secondary"
+                            onClick={handleClose}
+                        >
+                            {t("common.cancel")}
+                        </button>
+                        <button
+                            type="button"
+                            className={`footer-btn primary ${canApply ? "" : "disabled"}`}
+                            onClick={handleApply}
+                            disabled={!canApply}
+                        >
+                            {t("merge.footer.apply", { resolved, total })}
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
         </SyntaxHighlightProvider>
     );
 }

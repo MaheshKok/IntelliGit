@@ -25,30 +25,30 @@ export type ShikiTheme = "dark-plus" | "light-plus";
 
 /** One grammar-tokenized run of text with its resolved theme color and font-style bitmask. */
 export interface ShikiToken {
-	/** The token's literal text content. */
-	text: string;
-	/** Resolved foreground color from the active theme, if any. */
-	color?: string;
-	/** Font-style bitmask (1=italic, 2=bold, 4=underline), if any. */
-	fontStyle?: number;
+    /** The token's literal text content. */
+    text: string;
+    /** Resolved foreground color from the active theme, if any. */
+    color?: string;
+    /** Font-style bitmask (1=italic, 2=bold, 4=underline), if any. */
+    fontStyle?: number;
 }
 
 // Map file extensions to Shiki language identifiers.
 const extensionMap: Record<string, string> = {
-	js: "javascript",
-	ts: "typescript",
-	jsx: "jsx",
-	tsx: "tsx",
-	json: "json",
-	py: "python",
-	go: "go",
-	css: "css",
-	html: "html",
-	yaml: "yaml",
-	yml: "yaml",
-	sh: "shell",
-	bash: "shell",
-	md: "markdown",
+    js: "javascript",
+    ts: "typescript",
+    jsx: "jsx",
+    tsx: "tsx",
+    json: "json",
+    py: "python",
+    go: "go",
+    css: "css",
+    html: "html",
+    yaml: "yaml",
+    yml: "yaml",
+    sh: "shell",
+    bash: "shell",
+    md: "markdown",
 };
 
 // Lazy-initialized sync highlighter (singleton).
@@ -63,12 +63,12 @@ const CACHE_MAX = 5000;
  * Detect the user's theme preference from VS Code body classList.
  */
 export function detectTheme(): ShikiTheme {
-	if (typeof document === "undefined") return "light-plus";
-	const classes = document.body.classList;
-	if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
-		return "dark-plus";
-	}
-	return "light-plus";
+    if (typeof document === "undefined") return "light-plus";
+    const classes = document.body.classList;
+    if (classes.contains("vscode-dark") || classes.contains("vscode-high-contrast")) {
+        return "dark-plus";
+    }
+    return "light-plus";
 }
 
 /**
@@ -76,12 +76,12 @@ export function detectTheme(): ShikiTheme {
  * Returns null if no extension is found or the extension is not registered.
  */
 export function langForPath(filePath: string): string | null {
-	const lastDot = filePath.lastIndexOf(".");
-	if (lastDot === -1 || lastDot === filePath.length - 1) {
-		return null;
-	}
-	const ext = filePath.substring(lastDot + 1).toLowerCase();
-	return extensionMap[ext] ?? null;
+    const lastDot = filePath.lastIndexOf(".");
+    if (lastDot === -1 || lastDot === filePath.length - 1) {
+        return null;
+    }
+    const ext = filePath.substring(lastDot + 1).toLowerCase();
+    return extensionMap[ext] ?? null;
 }
 
 /**
@@ -90,28 +90,28 @@ export function langForPath(filePath: string): string | null {
  * Returns true if successfully initialized on this call.
  */
 export function initShiki(): boolean {
-	if (highlighterReady) {
-		return false;
-	}
-	try {
-		highlighter = createHighlighterCoreSync({
-			langs: [js, ts, jsx, tsx, json, python, go, css, html, yaml, shell, markdown],
-			themes: [darkPlus, lightPlus],
-			engine: createJavaScriptRegexEngine({ forgiving: true }),
-		});
-		highlighterReady = true;
-		return true;
-	} catch (err) {
-		console.error("Failed to initialize Shiki:", err);
-		return false;
-	}
+    if (highlighterReady) {
+        return false;
+    }
+    try {
+        highlighter = createHighlighterCoreSync({
+            langs: [js, ts, jsx, tsx, json, python, go, css, html, yaml, shell, markdown],
+            themes: [darkPlus, lightPlus],
+            engine: createJavaScriptRegexEngine({ forgiving: true }),
+        });
+        highlighterReady = true;
+        return true;
+    } catch (err) {
+        console.error("Failed to initialize Shiki:", err);
+        return false;
+    }
 }
 
 /**
  * Check if the Shiki highlighter is ready for tokenization.
  */
 export function isShikiReady(): boolean {
-	return highlighterReady && highlighter !== null;
+    return highlighterReady && highlighter !== null;
 }
 
 /**
@@ -122,44 +122,44 @@ export function isShikiReady(): boolean {
  * @param theme - The Shiki theme name (e.g., "dark-plus").
  */
 export function highlightLine(line: string, lang: string, theme: ShikiTheme): ShikiToken[] | null {
-	if (!isShikiReady() || !highlighter) {
-		return null;
-	}
+    if (!isShikiReady() || !highlighter) {
+        return null;
+    }
 
-	const cacheKey = `${line}|${lang}|${theme}`;
-	if (tokenCache.has(cacheKey)) {
-		return tokenCache.get(cacheKey) ?? null;
-	}
+    const cacheKey = `${line}|${lang}|${theme}`;
+    if (tokenCache.has(cacheKey)) {
+        return tokenCache.get(cacheKey) ?? null;
+    }
 
-	try {
-		// codeToTokensBase tokenizes a string into lines → tokens.
-		const lines = highlighter.codeToTokensBase(line, { lang, theme });
-		if (!lines || lines.length === 0) {
-			tokenCache.set(cacheKey, null);
-			return null;
-		}
+    try {
+        // codeToTokensBase tokenizes a string into lines → tokens.
+        const lines = highlighter.codeToTokensBase(line, { lang, theme });
+        if (!lines || lines.length === 0) {
+            tokenCache.set(cacheKey, null);
+            return null;
+        }
 
-		// Flatten tokens to ShikiToken array and memoize.
-		const tokens: ShikiToken[] = [];
-		for (const token of lines[0]) {
-			tokens.push({
-				text: token.content,
-				color: token.color,
-				fontStyle: token.fontStyle,
-			});
-		}
+        // Flatten tokens to ShikiToken array and memoize.
+        const tokens: ShikiToken[] = [];
+        for (const token of lines[0]) {
+            tokens.push({
+                text: token.content,
+                color: token.color,
+                fontStyle: token.fontStyle,
+            });
+        }
 
-		// Evict oldest entries if cache exceeds limit.
-		if (tokenCache.size >= CACHE_MAX) {
-			const firstKey = tokenCache.keys().next().value;
-			if (firstKey) tokenCache.delete(firstKey);
-		}
+        // Evict oldest entries if cache exceeds limit.
+        if (tokenCache.size >= CACHE_MAX) {
+            const firstKey = tokenCache.keys().next().value;
+            if (firstKey) tokenCache.delete(firstKey);
+        }
 
-		tokenCache.set(cacheKey, tokens);
-		return tokens;
-	} catch (err) {
-		console.warn(`Failed to highlight line with lang="${lang}":`, err);
-		tokenCache.set(cacheKey, null);
-		return null;
-	}
+        tokenCache.set(cacheKey, tokens);
+        return tokens;
+    } catch (err) {
+        console.warn(`Failed to highlight line with lang="${lang}":`, err);
+        tokenCache.set(cacheKey, null);
+        return null;
+    }
 }
