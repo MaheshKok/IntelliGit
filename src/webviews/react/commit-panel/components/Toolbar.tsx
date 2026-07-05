@@ -145,8 +145,8 @@ export function Toolbar({
                 <ToolbarButton
                     label={t("merge.action.abortMerge")}
                     onClick={onAbortMerge}
-                    color="#ff6b6b"
                     showLabel
+                    prominent
                 >
                     <path fill="currentColor" d="M4 4h8v8H4z" />
                 </ToolbarButton>
@@ -177,6 +177,7 @@ function ToolbarButton({
     spin,
     disabled,
     showLabel,
+    prominent,
     icon,
     children,
 }: {
@@ -186,6 +187,7 @@ function ToolbarButton({
     spin?: boolean;
     disabled?: boolean;
     showLabel?: boolean;
+    prominent?: boolean;
     icon?: React.ReactElement<{
         "aria-hidden"?: boolean;
         focusable?: string | boolean;
@@ -199,8 +201,10 @@ function ToolbarButton({
         : iconStyle === "standard"
           ? "var(--vscode-icon-foreground)"
           : (color ?? undefined);
+    // Prominent (danger) buttons let the variant own every color — border, tint,
+    // text, and glyph — so the icon inherits the button's currentColor.
     const svgStyle: React.CSSProperties = {
-        ...(resolvedColor ? { color: resolvedColor } : {}),
+        ...(resolvedColor && !prominent ? { color: resolvedColor } : {}),
         ...(spin
             ? {
                   animation: "intelligit-spin 0.8s linear infinite",
@@ -232,7 +236,7 @@ function ToolbarButton({
             {showLabel ? (
                 <Button
                     aria-label={label}
-                    variant="toolbarGhost"
+                    variant={prominent ? "danger" : "toolbarGhost"}
                     size="sm"
                     onClick={disabled ? undefined : onClick}
                     isDisabled={disabled}
@@ -249,7 +253,7 @@ function ToolbarButton({
                     px="8px"
                     fontSize="12px"
                     fontWeight={600}
-                    color={resolvedColor}
+                    color={prominent ? undefined : resolvedColor}
                 >
                     {label}
                 </Button>

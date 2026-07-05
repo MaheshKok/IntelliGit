@@ -25,7 +25,7 @@
     --merge-modified-block-bg: #13404b;
     --merge-deleted-block-bg: #3f444b;
     --merge-line-number-gutter: 37px;
-    --merge-action-gutter: 38px;
+    --merge-action-gutter: 44px;
 
     display: flex;
     flex-direction: column;
@@ -445,9 +445,13 @@
     min-width: 0;
     position: relative;
     /* Single-column grid keeps line rows and token overflow in one horizontal
-       scroll plane. Row color is painted by the sticky real-code-line layer. */
+       scroll plane. The lower bound is the widest line across ALL panes
+       (--merge-line-min-width), so every pane shares one scroll extent and moves
+       in lockstep — PyCharm-style — instead of each pane sizing to its own
+       content and short panes (a conflict side/result) refusing to scroll. Row
+       color is painted by the sticky real-code-line layer. */
     display: grid;
-    grid-template-columns: minmax(100%, max-content);
+    grid-template-columns: minmax(max(100%, var(--merge-line-min-width, 0px)), max-content);
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -508,7 +512,7 @@
 }
 .hunk-action-glyph {
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 700;
     line-height: 1;
 }
@@ -572,14 +576,15 @@
     z-index: 5;
 }
 .action-btn {
-    width: 17px;
-    height: 17px;
+    width: 20px;
+    height: 20px;
     border: 1px solid transparent;
+    border-radius: 3px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1;
     background: transparent;
     color: color-mix(in srgb, var(--merge-editor-fg) 84%, transparent);
