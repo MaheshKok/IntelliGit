@@ -1382,7 +1382,7 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalled();
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "ours");
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "theirs");
-        expect(executeCommandFallback).toHaveBeenCalledWith(
+        expect(executeCommandFallback).not.toHaveBeenCalledWith(
             "workbench.action.moveEditorToNewWindow",
         );
         expect(withProgress).toHaveBeenCalledWith(
