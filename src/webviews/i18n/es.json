@@ -238,6 +238,5 @@
     "common.directory": "Directory",
     "common.show": "Show",
     "status.ignored": "Ignored",
-    "commitPanel.ignoredFiles": "Ignored Files",
-    "merge.action.abortMerge": "Abort Merge"
+    "commitPanel.ignoredFiles": "Ignored Files"
 }
