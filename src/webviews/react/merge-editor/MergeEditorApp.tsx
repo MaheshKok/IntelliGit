@@ -45,6 +45,9 @@ import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
 
+/** Horizontal padding of a `.code-line` (0 9px), added to the content width. */
+const LINE_PADDING_PX = 18;
+
 // --- VS Code API ---
 
 /** Acquires the typed VS Code API for the interactive three-way merge editor. */
@@ -79,6 +82,7 @@ function App() {
     const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
     const horizontalScrollInnerRef = useRef<HTMLDivElement | null>(null);
     const updateHorizontalScrollWidthRef = useRef<() => void>(() => undefined);
+    const lastPaneClientWidthRef = useRef(0);
 
     const scrollSyncRef = useRef<{ raf: number; left: number }>({ raf: 0, left: 0 });
     const syncHorizontalScroll = useCallback((left: number, source?: HTMLElement | null) => {
@@ -128,22 +132,70 @@ function App() {
         },
         [syncHorizontalScroll],
     );
+    // Widest line across every pane, derived from the data rather than the DOM.
+    // The monospace editor font makes 1ch == one glyph, so this length sizes the
+    // synthetic scrollbar without measuring each pane — and it counts lines in
+    // offscreen segments whose content-visibility-collapsed scrollWidth would
+    // otherwise read short.
+    const maxLineLength = useMemo(() => {
+        let max = 1;
+        for (const segment of segments) {
+            if (segment.type === "common") {
+                for (const line of segment.lines) max = Math.max(max, line.length);
+            } else {
+                for (const line of segment.oursLines) max = Math.max(max, line.length);
+                for (const line of segment.theirsLines) max = Math.max(max, line.length);
+                for (const line of segment.baseLines) max = Math.max(max, line.length);
+                // Auto-merged lines splice both sides together, so a merged line
+                // can be longer than any single side.
+                for (const line of segment.autoResolvedLines ?? []) {
+                    max = Math.max(max, line.length);
+                }
+            }
+        }
+        for (const lines of Object.values(state.edits)) {
+            for (const line of lines) max = Math.max(max, line.length);
+        }
+        return max;
+    }, [segments, state.edits]);
     const updateHorizontalScrollWidth = useCallback(() => {
         const bar = horizontalScrollRef.current;
         const inner = horizontalScrollInnerRef.current;
         const content = mergeContentRef.current;
         if (!bar || !inner || !content) return;
-        let maxScroll = 0;
-        for (const pane of content.querySelectorAll<HTMLElement>(".code-lines")) {
-            maxScroll = Math.max(maxScroll, pane.scrollWidth - pane.clientWidth);
+        // The narrowest pane overflows first, so it sets the shared scroll extent.
+        // Column widths follow normal flow even under content-visibility (only
+        // height collapses), so one segment's panes give the right clientWidth
+        // without walking every segment.
+        const firstPanes = content
+            .querySelector(".segment")
+            ?.querySelectorAll<HTMLElement>(".code-lines");
+        let minClientWidth = Infinity;
+        for (const pane of firstPanes ?? []) {
+            // A skipped (content-visibility) segment's panes report 0; ignore
+            // those and fall back to the last real width below.
+            if (pane.clientWidth > 0) {
+                minClientWidth = Math.min(minClientWidth, pane.clientWidth);
+            }
         }
-        const barWidth = bar.clientWidth || content.clientWidth;
-        inner.style.width = `${barWidth + Math.max(0, maxScroll)}px`;
+        // ponytail: reuse the last real width when the first segment is offscreen
+        // and layout-skipped. It only drifts if the window is resized while
+        // scrolled past segment 0, and self-corrects on the next render tick.
+        if (minClientWidth === Infinity) {
+            minClientWidth = lastPaneClientWidthRef.current;
+        } else {
+            lastPaneClientWidthRef.current = minClientWidth;
+        }
+        // 100% == bar width; the ch term is the content width (monospace) and the
+        // px terms add the line padding and subtract the visible pane, leaving
+        // exactly the overflow the bar must cover.
+        inner.style.width = `calc(100% + ${maxLineLength}ch + ${LINE_PADDING_PX}px - ${minClientWidth}px)`;
+        const maxScroll = Math.max(0, inner.offsetWidth - bar.clientWidth);
         bar.hidden = maxScroll < 1;
         if (scrollSyncRef.current.left > maxScroll) {
-            syncHorizontalScroll(Math.max(0, maxScroll));
+            syncHorizontalScroll(maxScroll);
         }
-    }, [syncHorizontalScroll]);
+    }, [maxLineLength, syncHorizontalScroll]);
     useEffect(() => {
         updateHorizontalScrollWidthRef.current = updateHorizontalScrollWidth;
     }, [updateHorizontalScrollWidth]);

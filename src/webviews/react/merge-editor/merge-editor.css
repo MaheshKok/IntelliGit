@@ -519,6 +519,10 @@
 }
 .merge-horizontal-scroll-inner {
     height: 1px;
+    /* Match the code font so the `ch` unit used to size this spacer equals one
+       monospace glyph in the panes. */
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: var(--vscode-editor-font-size, 13px);
 }
 .merge-horizontal-scroll::-webkit-scrollbar {
     height: 9px;
