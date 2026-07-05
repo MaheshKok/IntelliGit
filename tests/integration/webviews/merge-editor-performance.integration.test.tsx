@@ -196,7 +196,8 @@ describe("MergeEditorApp large document flow", () => {
         const conflict = document.querySelector<HTMLElement>(".segment-conflict");
         // 3 common lines * 20px row height.
         expect(common?.style.containIntrinsicSize).toBe("auto 60px");
-        // 1 result row * 20px + simplified hunk chrome.
-        expect(conflict?.style.containIntrinsicSize).toBe("auto 24px");
+        // 1 result row * 20px — conflict rules add no height (zero-height inset
+        // shadow), so the intrinsic size matches the content box exactly.
+        expect(conflict?.style.containIntrinsicSize).toBe("auto 20px");
     });
 });

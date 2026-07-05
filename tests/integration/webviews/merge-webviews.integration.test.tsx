@@ -230,21 +230,20 @@ describe("MergeEditorApp", () => {
 
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
-        expect(
-            document.querySelector('[data-conflict-id="0"]')?.querySelectorAll(".action-btn"),
-        ).toHaveLength(4);
+        expect(document.querySelectorAll(".action-btn")).toHaveLength(4);
 
         clickButton("Conflicts");
         clickButton("Abort Merge");
         clickButton("Accept left block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
-        const hunk = document.querySelector('[data-conflict-id="0"]');
-        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
-        expect(hunk?.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
-        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+        expect(document.querySelector(".conflict-actions-left")).toBeNull();
+        expect(document.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
+        expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
+            "accepted-pane",
+        );
         clickButton("Apply (1/1)");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
@@ -445,12 +444,11 @@ describe("MergeEditorApp", () => {
         clickButton("Accept right block");
         await flush();
         expect(document.querySelector(".conflict-result.edited")).toBeNull();
-        const hunk = document.querySelector('[data-conflict-id="0"]');
-        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
-        expect(hunk?.querySelectorAll(".conflict-actions-left .action-btn")).toHaveLength(2);
-        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-ours")?.className).not.toContain("accepted-pane");
+        expect(document.querySelector(".conflict-actions-right")).toBeNull();
+        expect(document.querySelectorAll(".conflict-actions-left .action-btn")).toHaveLength(2);
+        expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-ours")?.className).not.toContain("accepted-pane");
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -500,12 +498,11 @@ describe("MergeEditorApp", () => {
         // Both sides are now in the result: every side control disappears and
         // both source panes plus the result read as accepted.
         expect(document.body.textContent).toContain("0 unresolved");
-        const hunk = document.querySelector('[data-conflict-id="0"]');
-        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
-        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
-        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-actions-left")).toBeNull();
+        expect(document.querySelector(".conflict-actions-right")).toBeNull();
+        expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-result")?.className).toContain("accepted-pane");
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -553,11 +550,10 @@ describe("MergeEditorApp", () => {
         await flush();
 
         expect(document.body.textContent).toContain("0 unresolved");
-        const hunk = document.querySelector('[data-conflict-id="0"]');
-        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
-        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
-        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-actions-left")).toBeNull();
+        expect(document.querySelector(".conflict-actions-right")).toBeNull();
+        expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -603,13 +599,14 @@ describe("MergeEditorApp", () => {
         clickButton("Ignore left block");
         await flush();
         expect(document.body.textContent).toContain("1 unresolved");
-        const hunk = document.querySelector('[data-conflict-id="0"]');
-        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
-        expect(hunk?.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
-        expect(hunk?.querySelector(".column-left.conflict-column")?.className).toContain(
+        expect(document.querySelector(".conflict-actions-left")).toBeNull();
+        expect(document.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
+        expect(document.querySelector(".column-left.conflict-column")?.className).toContain(
             "dismissed",
         );
-        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+        expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
+            "accepted-pane",
+        );
 
         // The right side only enters the result when the user explicitly accepts it.
         clickButton("Accept right block");
@@ -663,14 +660,15 @@ describe("MergeEditorApp", () => {
         await flush();
 
         expect(document.body.textContent).toContain("0 unresolved");
-        const hunk = document.querySelector('[data-conflict-id="0"]');
-        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
-        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
-        expect(hunk?.querySelector(".column-right.conflict-column")?.className).toContain(
+        expect(document.querySelector(".conflict-actions-left")).toBeNull();
+        expect(document.querySelector(".conflict-actions-right")).toBeNull();
+        expect(document.querySelector(".column-right.conflict-column")?.className).toContain(
             "dismissed",
         );
-        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
-        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+        expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
+            "accepted-pane",
+        );
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -945,7 +943,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector('[data-conflict-id="1"]')?.className).toContain("active");
     });
 
-    it("keeps hunk pane content contiguous while leaving filler rows unpainted", async () => {
+    it("renders each hunk pane at its natural height without filler rows", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -983,25 +981,25 @@ describe("MergeEditorApp", () => {
             document.querySelectorAll(".conflict-theirs .code-lines .code-line"),
         );
 
-        // PyCharm-style layout: each pane renders its own lines contiguously
-        // from the hunk top; the shorter side pads with plain filler rows at
-        // the bottom. Lines are never scattered mid-hunk to line up with the
-        // opposite pane, and padding rows must not inherit changed-line color.
-        expect(oursRows).toHaveLength(3);
+        // PyCharm-style layout: each pane renders exactly its own lines,
+        // contiguously from the hunk top. The shorter side is NOT padded to
+        // match the taller one — the columns flow independently at natural
+        // height and the scroll driver keeps them aligned.
+        expect(oursRows).toHaveLength(2);
         expect(theirsRows).toHaveLength(3);
         expect(oursRows[0].textContent).toContain("added_a();");
         expect(oursRows[1].textContent).toContain("shared();");
-        expect(oursRows[2].textContent?.trim()).toBe("");
         expect(theirsRows[0].textContent).toContain("shared();");
         expect(theirsRows[1].textContent).toContain("added_b();");
         expect(theirsRows[2].textContent).toContain("tail();");
-        expect(oursRows[0].className).toContain("real-code-line");
-        expect(oursRows[1].className).toContain("real-code-line");
-        expect(oursRows[2].className).toContain("padding-code-line");
+        // No pane carries filler rows anymore, so nothing is a padding line.
+        expect(oursRows.every((row) => row.className.includes("real-code-line"))).toBe(true);
         expect(theirsRows.every((row) => row.className.includes("real-code-line"))).toBe(true);
+        expect(document.querySelectorAll(".padding-code-line")).toHaveLength(0);
 
         // Line numbers stay at pane intersections: left pane numbers render on
-        // the right edge, while right pane numbers render on the left edge.
+        // the right edge, right pane numbers on the left edge; each pane numbers
+        // only its own real lines.
         const oursNumberRows = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-row"),
         );
@@ -1011,20 +1009,20 @@ describe("MergeEditorApp", () => {
         const oursNumbers = Array.from(
             document.querySelectorAll(".conflict-ours .line-number-primary"),
         ).map((el) => el.textContent?.trim());
-        expect(oursNumbers).toEqual(["1", "2", ""]);
+        expect(oursNumbers).toEqual(["1", "2"]);
         const theirsNumbers = Array.from(
             document.querySelectorAll(".conflict-theirs .line-number-primary"),
         ).map((el) => el.textContent?.trim());
         expect(theirsNumbers).toEqual(["1", "2", "3"]);
         expect(document.querySelectorAll(".line-number-secondary")).toHaveLength(0);
-        expect(oursNumberRows).toHaveLength(3);
+        expect(oursNumberRows).toHaveLength(2);
         expect(
             document.querySelector(".conflict-ours")?.className.includes("line-numbers-right"),
         ).toBe(true);
         expect(theirsNumberRows.every((row) => row.className.includes("real-line-row"))).toBe(true);
     });
 
-    it("uses one shared horizontal scroll container for merge rows", async () => {
+    it("renders three translated columns under a single vertical scroller", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -1060,11 +1058,16 @@ describe("MergeEditorApp", () => {
         await flush();
 
         const mergeContent = document.querySelector<HTMLElement>(".merge-content");
-        const scrollWidth = document.querySelector<HTMLElement>(".merge-scroll-width");
+        const viewport = document.querySelector<HTMLElement>(".merge-viewport");
+        const spacer = document.querySelector<HTMLElement>(".merge-vscroll-spacer");
         const bottomScroll = document.querySelector<HTMLElement>(".merge-horizontal-scroll");
 
-        expect(scrollWidth?.parentElement).toBe(mergeContent);
-        expect(scrollWidth?.querySelectorAll(":scope > .segment")).toHaveLength(1);
+        // Single native vertical scroller: the sticky viewport holds the three
+        // translated columns and the spacer supplies the scroll length. The
+        // horizontal scrollbar stays a sibling in the content shell.
+        expect(viewport?.parentElement).toBe(mergeContent);
+        expect(spacer?.parentElement).toBe(mergeContent);
+        expect(viewport?.querySelectorAll(":scope > .merge-col")).toHaveLength(3);
         expect(mergeContent?.querySelector(":scope > .code-lines")).toBeNull();
         expect(bottomScroll?.parentElement).toBe(document.querySelector(".merge-content-shell"));
     });

@@ -343,8 +343,65 @@
     padding-bottom: 10px;
     color: var(--merge-editor-fg);
 }
-.merge-scroll-width {
+/* Sticky viewport holding the three translated columns. It is exactly one
+   viewport tall and pinned to the top of the scroller; the spacer below supplies
+   the scroll length (canonicalTotalPx). The negative margin removes the
+   viewport's own height from flow so the scroll range is the spacer alone. The
+   --merge-viewport-h var is set by the scroll driver from clientHeight. */
+.merge-viewport {
+    position: sticky;
+    top: 0;
+    height: var(--merge-viewport-h, 100%);
+    margin-bottom: calc(-1 * var(--merge-viewport-h, 0px));
+    display: flex;
+    overflow: hidden;
     min-width: 100%;
+}
+/* Each column flows at its own natural height and is moved by the driver's
+   translateY; the viewport clips the overflow. align-self keeps it from
+   stretching to the viewport height so translate reveals the right rows. */
+.merge-col {
+    flex: 1 1 0;
+    min-width: 0;
+    align-self: flex-start;
+    will-change: transform;
+}
+/* Reserves ribbon space between columns and spans the full viewport height so
+   the connector SVG has a backdrop to draw over. */
+.merge-gutter {
+    flex: 0 0 12px;
+    align-self: stretch;
+    background: var(--merge-gutter-bg);
+}
+/* Full length below the sticky viewport; height set inline to canonicalTotalPx. */
+.merge-vscroll-spacer {
+    flex: none;
+    width: 1px;
+}
+/* Ribbon overlay covering the viewport; paths are positioned in viewport
+   coordinates by the scroll driver. pointer-events:none so it never blocks the
+   panes underneath. */
+.merge-connectors {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+    z-index: 4;
+}
+.merge-connector {
+    fill: color-mix(in srgb, var(--pycharm-conflict) 55%, transparent);
+    stroke: none;
+}
+.merge-connector.variant-insertion {
+    fill: color-mix(in srgb, var(--pycharm-inserted) 55%, transparent);
+}
+.merge-connector.variant-modification {
+    fill: color-mix(in srgb, var(--pycharm-modified) 55%, transparent);
+}
+.merge-connector.variant-deletion {
+    fill: color-mix(in srgb, var(--pycharm-deleted) 55%, transparent);
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;
@@ -361,15 +418,14 @@
 }
 
 .segment {
-    display: flex;
     width: 100%;
     /* Browser-level virtualization: offscreen segments skip rendering work
        while the inline contain-intrinsic-size keeps scrollbar geometry stable
-       for very large conflict files. */
+       for very large conflict files. Each segment now holds a single pane's
+       slice, stacked vertically inside its column. */
     content-visibility: auto;
 }
 .column {
-    flex: 1;
     min-width: 0;
     border-right: 1px solid var(--merge-border);
     background: var(--merge-editor-bg);
@@ -487,28 +543,37 @@
 
 .segment-conflict {
     display: block;
-    margin: 1px 0 2px;
-    border-top: 1px solid color-mix(in srgb, var(--merge-border) 72%, transparent);
-    border-bottom: 1px solid color-mix(in srgb, var(--merge-border) 72%, transparent);
-    box-shadow: none;
-}
-.segment-conflict.active {
-    border-top-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 58%, transparent);
-    border-bottom-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 58%, transparent);
-    box-shadow: inset 0 0 0 1px
-        color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
+    /* Hunk boundary rules are drawn as zero-height inset shadows (not a
+       border/margin) so a conflict block occupies exactly its rows
+       (lines * 20px) — matching the scroll geometry and contain-intrinsic-size
+       — with no per-conflict overhead that would drift connectors or jitter
+       on first reveal. */
+    box-shadow:
+        inset 0 1px 0 0 color-mix(in srgb, var(--merge-border) 72%, transparent),
+        inset 0 -1px 0 0 color-mix(in srgb, var(--merge-border) 72%, transparent);
 }
 .segment-conflict.auto-merged {
-    border-top-color: color-mix(
-        in srgb,
-        var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%,
-        transparent
-    );
-    border-bottom-color: color-mix(
-        in srgb,
-        var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%,
-        transparent
-    );
+    box-shadow:
+        inset 0 1px 0 0
+            color-mix(
+                in srgb,
+                var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%,
+                transparent
+            ),
+        inset 0 -1px 0 0
+            color-mix(
+                in srgb,
+                var(--vscode-gitDecoration-addedResourceForeground, #81b88b) 45%,
+                transparent
+            );
+}
+/* Ordered after .auto-merged so the focus emphasis wins the specificity tie
+   when a hunk is both active and auto-merged. */
+.segment-conflict.active {
+    box-shadow:
+        inset 0 1px 0 0 color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 58%, transparent),
+        inset 0 -1px 0 0 color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 58%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
 }
 .hunk-action-glyph {
     font-family: var(--vscode-editor-font-family, monospace);
@@ -525,9 +590,6 @@
 .conflict-column {
     position: relative;
     overflow: visible;
-}
-.hunk-columns {
-    display: flex;
 }
 .merge-horizontal-scroll {
     position: absolute;
