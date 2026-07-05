@@ -5,6 +5,7 @@ import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
+import { abortMergeWithConfirmation } from "./mergeAbort";
 
 /**
  * Branch labels shown in the merge-conflict session panel header.
@@ -238,20 +239,13 @@ export class MergeConflictSessionPanel {
 
     /** Confirms and aborts the active merge represented by this conflict session. */
     private async abortMerge(): Promise<void> {
-        const abortAction = vscode.l10n.t("Abort Merge");
-        const confirmed = await vscode.window.showWarningMessage(
-            vscode.l10n.t("Abort the current merge? Local conflict resolutions will be discarded."),
-            { modal: true },
-            abortAction,
-        );
-        if (confirmed !== abortAction) return;
-
-        await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
-            await this.gitOps.abortMerge();
+        await abortMergeWithConfirmation({
+            gitOps: this.gitOps,
+            onConflictStateChanged: () => this.callbacks.onConflictStateChanged(),
+            disposePanel: () => {
+                if (this.isAlive()) this.panel.dispose();
+            },
         });
-        showTimedInformationMessage(vscode.l10n.t("Merge aborted."));
-        await this.callbacks.onConflictStateChanged();
-        if (this.isAlive()) this.panel.dispose();
     }
 
     private isAlive(): boolean {

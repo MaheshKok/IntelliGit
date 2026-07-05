@@ -19,6 +19,7 @@ import {
     showTimedInformationMessage,
     showTimedWarningMessage,
 } from "../utils/notifications";
+import { abortMergeWithConfirmation } from "./mergeAbort";
 import { buildWebviewShellHtml } from "./webviewHtml";
 
 /**
@@ -240,20 +241,13 @@ export class MergeEditorPanel {
 
     /** Confirms and aborts the repository merge backing this editor panel. */
     private async abortMerge(): Promise<void> {
-        const abortAction = vscode.l10n.t("Abort Merge");
-        const confirmed = await vscode.window.showWarningMessage(
-            vscode.l10n.t("Abort the current merge? Local conflict resolutions will be discarded."),
-            { modal: true },
-            abortAction,
-        );
-        if (confirmed !== abortAction) return;
-
-        await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
-            await this.gitOps.abortMerge();
+        await abortMergeWithConfirmation({
+            gitOps: this.gitOps,
+            onConflictStateChanged: () => this.notifyConflictStateChanged(),
+            disposePanel: () => {
+                if (this.isAlive()) this.panel.dispose();
+            },
         });
-        showTimedInformationMessage(vscode.l10n.t("Merge aborted."));
-        await this.notifyConflictStateChanged();
-        if (this.isAlive()) this.panel.dispose();
     }
 
     /**
