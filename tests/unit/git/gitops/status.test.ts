@@ -99,6 +99,29 @@ describe("GitOps", () => {
                 expectedCommand,
             );
         });
+
+        it("resets unmerged index conflicts left by stash apply", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key.startsWith("rev-parse --verify --quiet ")) {
+                        throw new Error("missing ref");
+                    }
+                    if (key === "ls-files -u") {
+                        return "100644 abc 1\tfile.ts\n100644 def 2\tfile.ts\n";
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await ops.abortMerge();
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0]).toEqual([
+                "reset",
+                "--merge",
+            ]);
+        });
     });
     describe("getBranches", () => {
         it("parses local and remote branches", async () => {

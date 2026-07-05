@@ -508,6 +508,7 @@ export const ConflictSection = React.memo(function ConflictSection({
         segment.autoResolvedLines !== undefined ||
         resolution !== undefined ||
         isEdited;
+    const showActions = resolution === undefined;
     const setSectionRef = useCallback(
         (el: HTMLDivElement | null) => onSectionRef(segment.id, el),
         [onSectionRef, segment.id],
@@ -581,31 +582,33 @@ export const ConflictSection = React.memo(function ConflictSection({
                         wordHighlight={highlightWords}
                         compareLines={segment.baseLines}
                     />
-                    <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            className="action-btn discard-btn"
-                            onClick={() => onResolve(segment.id, "theirs")}
-                            title={t("merge.hunk.ignoreLeft")}
-                            aria-label={t("merge.hunk.ignoreLeft")}
-                        >
-                            <span className="hunk-action-glyph" aria-hidden="true">
-                                X
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
-                            onClick={() => onResolve(segment.id, "ours")}
-                            title={t("merge.hunk.acceptLeft")}
-                            aria-label={t("merge.hunk.acceptLeft")}
-                            aria-current={isOurs ? "true" : undefined}
-                        >
-                            <span className="hunk-action-glyph" aria-hidden="true">
-                                &gt;&gt;
-                            </span>
-                        </button>
-                    </div>
+                    {showActions ? (
+                        <div className="conflict-actions-left" onClick={(e) => e.stopPropagation()}>
+                            <button
+                                type="button"
+                                className="action-btn discard-btn"
+                                onClick={() => onResolve(segment.id, "theirs")}
+                                title={t("merge.hunk.ignoreLeft")}
+                                aria-label={t("merge.hunk.ignoreLeft")}
+                            >
+                                <span className="hunk-action-glyph" aria-hidden="true">
+                                    X
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                className={`action-btn accept-btn ${isOurs ? "active" : ""}`}
+                                onClick={() => onResolve(segment.id, "ours")}
+                                title={t("merge.hunk.acceptLeft")}
+                                aria-label={t("merge.hunk.acceptLeft")}
+                                aria-current={isOurs ? "true" : undefined}
+                            >
+                                <span className="hunk-action-glyph" aria-hidden="true">
+                                    &gt;&gt;
+                                </span>
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
 
                 <div className="column column-middle conflict-column result-column">
@@ -623,31 +626,36 @@ export const ConflictSection = React.memo(function ConflictSection({
                 <div
                     className={`column column-right conflict-column ${isTheirs ? "accepted" : ""}`}
                 >
-                    <div className="conflict-actions-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                            type="button"
-                            className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
-                            onClick={() => onResolve(segment.id, "theirs")}
-                            title={t("merge.hunk.acceptRight")}
-                            aria-label={t("merge.hunk.acceptRight")}
-                            aria-current={isTheirs ? "true" : undefined}
+                    {showActions ? (
+                        <div
+                            className="conflict-actions-right"
+                            onClick={(e) => e.stopPropagation()}
                         >
-                            <span className="hunk-action-glyph" aria-hidden="true">
-                                &lt;&lt;
-                            </span>
-                        </button>
-                        <button
-                            type="button"
-                            className="action-btn discard-btn"
-                            onClick={() => onResolve(segment.id, "ours")}
-                            title={t("merge.hunk.ignoreRight")}
-                            aria-label={t("merge.hunk.ignoreRight")}
-                        >
-                            <span className="hunk-action-glyph" aria-hidden="true">
-                                X
-                            </span>
-                        </button>
-                    </div>
+                            <button
+                                type="button"
+                                className={`action-btn accept-btn ${isTheirs ? "active" : ""}`}
+                                onClick={() => onResolve(segment.id, "theirs")}
+                                title={t("merge.hunk.acceptRight")}
+                                aria-label={t("merge.hunk.acceptRight")}
+                                aria-current={isTheirs ? "true" : undefined}
+                            >
+                                <span className="hunk-action-glyph" aria-hidden="true">
+                                    &lt;&lt;
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                className="action-btn discard-btn"
+                                onClick={() => onResolve(segment.id, "ours")}
+                                title={t("merge.hunk.ignoreRight")}
+                                aria-label={t("merge.hunk.ignoreRight")}
+                            >
+                                <span className="hunk-action-glyph" aria-hidden="true">
+                                    X
+                                </span>
+                            </button>
+                        </div>
+                    ) : null}
                     <CodeBlock
                         lines={segment.theirsLines}
                         lineCount={lineCount}

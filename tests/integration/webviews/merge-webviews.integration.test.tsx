@@ -219,11 +219,18 @@ describe("MergeEditorApp", () => {
 
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
+        expect(
+            document.querySelector('[data-conflict-id="0"]')?.querySelectorAll(".action-btn"),
+        ).toHaveLength(4);
 
         clickButton("Conflicts");
         clickButton("Abort Merge");
-        clickButton("Accept All Yours");
+        clickButton("Accept left block");
         await flush();
+        expect(document.body.textContent).toContain("0 unresolved");
+        expect(
+            document.querySelector('[data-conflict-id="0"]')?.querySelectorAll(".action-btn"),
+        ).toHaveLength(0);
         clickButton("Apply (1/1)");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
@@ -725,9 +732,7 @@ describe("MergeEditorApp", () => {
         expect(document.querySelectorAll(".line-number-secondary")).toHaveLength(0);
         expect(oursNumberRows).toHaveLength(3);
         expect(
-            document
-                .querySelector(".conflict-ours")
-                ?.className.includes("line-numbers-right"),
+            document.querySelector(".conflict-ours")?.className.includes("line-numbers-right"),
         ).toBe(true);
         expect(theirsNumberRows.every((row) => row.className.includes("real-line-row"))).toBe(true);
     });

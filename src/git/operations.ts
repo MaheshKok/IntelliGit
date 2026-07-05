@@ -913,7 +913,7 @@ export class GitOps {
         await this.executor.run(withLiteralPathspecs(["checkout", sideArg, "--", filePath]));
         await this.executor.run(withLiteralPathspecs(["add", "--", filePath]));
     }
-    /** Aborts the active merge-like operation Git is currently recording. */
+    /** Aborts the active merge-like operation, including stash-apply index conflicts. */
     async abortMerge(): Promise<void> {
         const hasRef = async (ref: string): Promise<boolean> => {
             try {
@@ -935,7 +935,12 @@ export class GitOps {
             await this.executor.run(["cherry-pick", "--abort"]);
             return;
         }
-        throw new Error("No active merge, rebase, or cherry-pick operation to abort.");
+        const unmergedEntries = (await this.executor.run(["ls-files", "-u"])).trim();
+        if (unmergedEntries) {
+            await this.executor.run(["reset", "--merge"]);
+            return;
+        }
+        throw new Error("No active merge, rebase, cherry-pick, or unmerged index state to abort.");
     }
     /** Removes a literal repository path through Git, optionally forcing removal of missing or staged files. */
     async deleteFile(filePath: string, force: boolean = false): Promise<void> {
