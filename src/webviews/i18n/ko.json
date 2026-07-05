@@ -170,7 +170,7 @@
     "merge.error.load": "충돌 데이터 로드 실패: {error}",
     "merge.error.retry": "다시 해 보다",
     "merge.loading": "충돌 데이터를 불러오는 중...",
-    "merge.action.abortMerge": "Abort Merge",
+    "merge.action.abortMerge": "병합 중단",
     "mergeSession.title": "충돌",
     "mergeSession.subtitle.pre": "브랜치 ",
     "mergeSession.subtitle.mid": " 브랜치를 ",

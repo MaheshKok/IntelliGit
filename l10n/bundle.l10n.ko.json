@@ -424,8 +424,9 @@
     "Could not clear the saved token.": "저장된 토큰을 지울 수 없습니다.",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
     "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
-    "Abort Merge": "Abort Merge",
-    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
-    "Aborting merge...": "Aborting merge...",
-    "Merge aborted.": "Merge aborted."
+    "Abort Merge": "병합 중단",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "현재 병합을 중단하시겠습니까? 로컬 충돌 해결 사항이 삭제됩니다.",
+    "Aborting merge...": "병합 중단 중...",
+    "Merge aborted.": "병합이 중단되었습니다.",
+    "Abort merge failed: {message}": "병합 중단 실패: {message}"
 }

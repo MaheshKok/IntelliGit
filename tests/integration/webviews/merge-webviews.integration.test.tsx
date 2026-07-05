@@ -70,6 +70,17 @@ function pressKey(key: string, init: KeyboardEventInit = {}): void {
     });
 }
 
+/**
+ * Advances past a macrotask so the deferred Shiki init (requestIdleCallback with
+ * a setTimeout fallback) runs; jsdom lacks requestIdleCallback, so the fallback
+ * timer fires here. The microtask-only `flush()` cannot observe it.
+ */
+async function flushShikiInit(): Promise<void> {
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+}
+
 /** Conflict payload with two true conflicts separated by common code. */
 function twoConflictData(): unknown {
     return {
@@ -1190,9 +1201,9 @@ describe("MergeEditorApp", () => {
                 ],
             },
         });
-        // Shiki initializes asynchronously relative to the first render; give
-        // its init effect a tick to flip the module ready before asserting.
-        await flush();
+        // Shiki initializes asynchronously relative to the first render; run the
+        // deferred init timer, then flush its ready state update before asserting.
+        await flushShikiInit();
         await flush();
 
         // Shiki now owns .ts highlighting: no hand-rolled tok-* classes should
@@ -1245,12 +1256,10 @@ describe("MergeEditorApp", () => {
                 theirsLabel: "feature/incoming",
                 eol: "\n",
                 hasTrailingNewline: true,
-                segments: [
-                    { type: "common", lines: ['const greeting = "hi"; // welcome 42'] },
-                ],
+                segments: [{ type: "common", lines: ['const greeting = "hi"; // welcome 42'] }],
             },
         });
-        await flush();
+        await flushShikiInit();
         await flush();
 
         const keywordSpans = Array.from(document.querySelectorAll(".tok-keyword"));
@@ -1292,7 +1301,7 @@ describe("MergeEditorApp", () => {
                 ],
             },
         });
-        await flush();
+        await flushShikiInit();
         await flush();
 
         const wrappers = Array.from(document.querySelectorAll(".word-diff-change"));

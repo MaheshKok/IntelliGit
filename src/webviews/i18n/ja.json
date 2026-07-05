@@ -170,7 +170,7 @@
     "merge.error.load": "競合データの読み込みに失敗しました: {error}",
     "merge.error.retry": "リトライ",
     "merge.loading": "競合データを読み込んでいます...",
-    "merge.action.abortMerge": "Abort Merge",
+    "merge.action.abortMerge": "マージを中止",
     "mergeSession.title": "競合",
     "mergeSession.subtitle.pre": "ブランチ ",
     "mergeSession.subtitle.mid": " をブランチ ",

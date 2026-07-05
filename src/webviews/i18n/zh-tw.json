@@ -226,5 +226,5 @@
     "common.show": "顯示",
     "status.ignored": "已忽略",
     "commitPanel.ignoredFiles": "已忽略檔案",
-    "merge.action.abortMerge": "Abort Merge"
+    "merge.action.abortMerge": "中止合併"
 }

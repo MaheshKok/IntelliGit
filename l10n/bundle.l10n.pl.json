@@ -424,8 +424,9 @@
     "Could not clear the saved token.": "Nie można wyczyścić zapisanego tokena.",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
     "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
-    "Abort Merge": "Abort Merge",
-    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
-    "Aborting merge...": "Aborting merge...",
-    "Merge aborted.": "Merge aborted."
+    "Abort Merge": "Przerwij scalanie",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "Przerwać bieżące scalanie? Lokalne rozwiązania konfliktów zostaną odrzucone.",
+    "Aborting merge...": "Przerywanie scalania...",
+    "Merge aborted.": "Scalanie przerwane.",
+    "Abort merge failed: {message}": "Przerwanie scalania nie powiodło się: {message}"
 }

@@ -424,8 +424,9 @@
     "Could not clear the saved token.": "No se pudo borrar el token guardado.",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
     "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
-    "Abort Merge": "Abort Merge",
-    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
-    "Aborting merge...": "Aborting merge...",
-    "Merge aborted.": "Merge aborted."
+    "Abort Merge": "Cancelar fusión",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "¿Cancelar la fusión actual? Se descartarán las resoluciones de conflictos locales.",
+    "Aborting merge...": "Cancelando fusión...",
+    "Merge aborted.": "Fusión cancelada.",
+    "Abort merge failed: {message}": "Error al cancelar la fusión: {message}"
 }

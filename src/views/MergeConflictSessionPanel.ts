@@ -3,7 +3,11 @@ import { GitOps } from "../git/operations";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
-import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
+import {
+    runWithNotificationProgress,
+    showTimedInformationMessage,
+    showTimedWarningMessage,
+} from "../utils/notifications";
 import type { MergeConflictSessionData } from "../webviews/protocol/mergeConflictSessionTypes";
 import { abortMergeWithConfirmation } from "./mergeAbort";
 
@@ -241,11 +245,26 @@ export class MergeConflictSessionPanel {
     private async abortMerge(): Promise<void> {
         await abortMergeWithConfirmation({
             gitOps: this.gitOps,
-            onConflictStateChanged: () => this.callbacks.onConflictStateChanged(),
+            onConflictStateChanged: () => this.notifyConflictStateChanged(),
             disposePanel: () => {
                 if (this.isAlive()) this.panel.dispose();
             },
         });
+    }
+
+    /**
+     * Notifies conflict listeners without letting refresh failures mask a successful abort.
+     */
+    private async notifyConflictStateChanged(): Promise<void> {
+        try {
+            await this.callbacks.onConflictStateChanged();
+        } catch (error) {
+            showTimedWarningMessage(
+                vscode.l10n.t("Failed to refresh conflict UI: {message}", {
+                    message: getErrorMessage(error),
+                }),
+            );
+        }
     }
 
     private isAlive(): boolean {

@@ -424,8 +424,9 @@
     "Could not clear the saved token.": "無法清除已儲存的權杖。",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
     "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
-    "Abort Merge": "Abort Merge",
-    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
-    "Aborting merge...": "Aborting merge...",
-    "Merge aborted.": "Merge aborted."
+    "Abort Merge": "中止合併",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "中止目前合併？本機衝突解決方案將被丟棄。",
+    "Aborting merge...": "正在中止合併...",
+    "Merge aborted.": "合併已中止。",
+    "Abort merge failed: {message}": "中止合併失敗：{message}"
 }

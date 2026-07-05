@@ -28,6 +28,16 @@ function fireClick(el: Element | null): void {
     });
 }
 
+/** Locates a button by accessible name (aria-label or visible text). */
+function findButtonByName(name: string): HTMLButtonElement | null {
+    return (
+        Array.from(document.querySelectorAll("button")).find(
+            (button) =>
+                (button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "") === name,
+        ) ?? null
+    );
+}
+
 function fireInput(el: HTMLInputElement | HTMLTextAreaElement, value: string): void {
     act(() => {
         el.value = value;
@@ -180,7 +190,7 @@ describe("CommitPanelApp integration", () => {
             (tab) => tab.textContent?.trim() ?? "",
         );
         expect(tabListLabels).toEqual(["Commit", "Stash (1)"]);
-        expect(document.querySelector('button[aria-label="Abort Merge"]')).toBeNull();
+        expect(findButtonByName("Abort Merge")).toBeNull();
 
         fireClick(document.querySelector('button[aria-label="Refresh"]'));
         fireClick(document.querySelector('button[aria-label="Rollback"]'));
@@ -194,7 +204,7 @@ describe("CommitPanelApp integration", () => {
         fireClick(document.querySelector('button[aria-label="Show Diff Preview"]'));
         fireClick(document.querySelector('button[aria-label="Expand All"]'));
         fireClick(document.querySelector('button[aria-label="Collapse All"]'));
-        expect(document.querySelector('button[aria-label="Abort Merge"]')).toBeNull();
+        expect(findButtonByName("Abort Merge")).toBeNull();
         act(() => {
             window.dispatchEvent(
                 new MessageEvent("message", {
@@ -235,7 +245,7 @@ describe("CommitPanelApp integration", () => {
             );
         });
         await flush();
-        fireClick(document.querySelector('button[aria-label="Abort Merge"]'));
+        fireClick(findButtonByName("Abort Merge"));
         fireClick(document.querySelector('button[aria-label="Sync"]'));
         fireClick(document.querySelector('button[aria-label="Fetch"]'));
         fireClick(document.querySelector('button[aria-label="Pull"]'));
@@ -301,7 +311,7 @@ describe("CommitPanelApp integration", () => {
             );
         });
         await flush();
-        fireClick(document.querySelector('button[aria-label="Abort Merge"]'));
+        fireClick(findButtonByName("Abort Merge"));
 
         act(() => {
             window.dispatchEvent(

@@ -176,7 +176,7 @@
     "merge.error.load": "Fehler beim Laden der Konfliktdaten: {error}",
     "merge.error.retry": "Wiederholen",
     "merge.loading": "Konfliktdaten werden geladen...",
-    "merge.action.abortMerge": "Abort Merge",
+    "merge.action.abortMerge": "Zusammenführung abbrechen",
     "mergeSession.title": "Konflikte",
     "mergeSession.subtitle.pre": "Merge von Branch ",
     "mergeSession.subtitle.mid": " in Branch ",

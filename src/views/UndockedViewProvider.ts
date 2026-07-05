@@ -66,6 +66,7 @@ import {
     stageFilesFromPanel,
     unstageFilesFromPanel,
 } from "./panelFileActions";
+import { abortMergeWithConfirmation } from "./mergeAbort";
 interface PersistedColumnWidths {
     branchWidth: number;
     graphWidth: number;
@@ -525,6 +526,19 @@ export class UndockedViewProvider {
             // Commit-panel-side
             case "refresh":
                 await this.refreshCommitPanelData(false);
+                break;
+            case "abortMerge":
+                await abortMergeWithConfirmation({
+                    gitOps: this.gitOps,
+                    onConflictStateChanged: async () => {
+                        await this.refreshCommitPanelData(false);
+                        await this.sendBranches();
+                        await this.loadInitial();
+                        this.postCommitDetailState();
+                        this._onDidChangeWorkingTree.fire();
+                        await vscode.commands.executeCommand("intelligit.mergeConflictsRefresh");
+                    },
+                });
                 break;
             case "setShowIgnoredFiles":
                 this.showIgnoredFiles = msg.showIgnoredFiles === true;

@@ -247,5 +247,5 @@
     "common.show": "Show",
     "status.ignored": "Ignored",
     "commitPanel.ignoredFiles": "Ignored Files",
-    "merge.action.abortMerge": "Abort Merge"
+    "merge.action.abortMerge": "Прервать слияние"
 }

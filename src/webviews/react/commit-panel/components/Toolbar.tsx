@@ -235,7 +235,6 @@ function ToolbarButton({
         >
             {showLabel ? (
                 <Button
-                    aria-label={label}
                     variant={prominent ? "danger" : "toolbarGhost"}
                     size="sm"
                     onClick={disabled ? undefined : onClick}

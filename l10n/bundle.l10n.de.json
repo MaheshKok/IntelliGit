@@ -424,8 +424,9 @@
   "Could not clear the saved token.": "Gespeichertes Token konnte nicht gelöscht werden.",
   "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
   "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
-  "Abort Merge": "Abort Merge",
-  "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
-  "Aborting merge...": "Aborting merge...",
-  "Merge aborted.": "Merge aborted."
+  "Abort Merge": "Zusammenführung abbrechen",
+  "Abort the current merge? Local conflict resolutions will be discarded.": "Aktuelle Zusammenführung abbrechen? Lokale Konfliktlösungen werden verworfen.",
+  "Aborting merge...": "Zusammenführung wird abgebrochen...",
+  "Merge aborted.": "Zusammenführung abgebrochen.",
+  "Abort merge failed: {message}": "Abbruch der Zusammenführung fehlgeschlagen: {message}"
 }

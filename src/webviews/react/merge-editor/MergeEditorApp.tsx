@@ -358,11 +358,20 @@ function App() {
         return () => window.removeEventListener("message", handler);
     }, []);
 
-    // Lazily initialize the Shiki highlighter once; flip ready so consumers
-    // switch from the fallback tokenizer to grammar-accurate colors.
+    // Lazily initialize the Shiki highlighter off the critical render path so the
+    // first paint isn't blocked by grammar/theme compilation; flip ready so
+    // consumers switch from the fallback tokenizer to grammar-accurate colors.
     useEffect(() => {
         if (shikiReady) return;
-        if (initShiki()) setShikiReady(true);
+        const runInit = (): void => {
+            if (initShiki()) setShikiReady(true);
+        };
+        if (typeof window.requestIdleCallback === "function") {
+            const handle = window.requestIdleCallback(runInit);
+            return () => window.cancelIdleCallback(handle);
+        }
+        const timer = window.setTimeout(runInit, 0);
+        return () => window.clearTimeout(timer);
     }, [shikiReady]);
 
     useEffect(() => {

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
+import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 
 /** Dependencies for the shared merge-abort confirmation flow. */
@@ -21,9 +22,17 @@ export async function abortMergeWithConfirmation(options: AbortMergeOptions): Pr
     );
     if (confirmed !== abortAction) return;
 
-    await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
-        await options.gitOps.abortMerge();
-    });
+    try {
+        await runWithNotificationProgress(vscode.l10n.t("Aborting merge..."), async () => {
+            await options.gitOps.abortMerge();
+        });
+    } catch (error) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Abort merge failed: {message}", { message: getErrorMessage(error) }),
+        );
+        return;
+    }
+
     showTimedInformationMessage(vscode.l10n.t("Merge aborted."));
     await options.onConflictStateChanged();
     options.disposePanel?.();

@@ -424,8 +424,9 @@
     "Could not clear the saved token.": "Impossible d'effacer le jeton enregistré.",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
     "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.": "Invalid intelligit.commitChecks.ciCdFilter pattern; using the default filter.",
-    "Abort Merge": "Abort Merge",
-    "Abort the current merge? Local conflict resolutions will be discarded.": "Abort the current merge? Local conflict resolutions will be discarded.",
-    "Aborting merge...": "Aborting merge...",
-    "Merge aborted.": "Merge aborted."
+    "Abort Merge": "Abandonner la fusion",
+    "Abort the current merge? Local conflict resolutions will be discarded.": "Abandonner la fusion en cours ? Les résolutions de conflits locales seront ignorées.",
+    "Aborting merge...": "Abandon de la fusion...",
+    "Merge aborted.": "Fusion abandonnée.",
+    "Abort merge failed: {message}": "Échec de l'abandon de la fusion : {message}"
 }
