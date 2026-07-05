@@ -1,0 +1,72 @@
+repos:
+  - repo: local
+    hooks:
+      - id: format-check
+        name: format check
+        entry: bun run format:check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: lint-strict
+        name: strict lint
+        entry: bun run lint:strict
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: deps-check-strict
+        name: strict dependency check
+        entry: bun run deps:check:strict
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: architecture-check
+        name: architecture check
+        entry: bun run architecture:check
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: l10n-validate
+        name: localization validate
+        entry: bun run l10n:validate
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: l10n-audit
+        name: localization audit
+        entry: bun run l10n:audit
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: typecheck
+        name: typecheck
+        entry: bun run typecheck
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: build
+        name: build
+        entry: bun run build
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: react-doctor
+        name: react doctor
+        entry: bun run react-doctor
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: unit-tests
+        name: unit tests
+        entry: bun vitest run tests/unit tests/webview/unit
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

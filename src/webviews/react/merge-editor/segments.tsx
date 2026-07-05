@@ -14,6 +14,8 @@ import {
 } from "../../../mergeEditor/wordDiff";
 import { getEffectiveResultLines, splitEditedText } from "./mergeState";
 import { tokenizeSyntaxLine, type SyntaxTokenKind } from "./syntaxHighlight";
+import { highlightLine } from "./shikiHighlighter";
+import { useSyntaxHighlightState, type SyntaxHighlightState } from "./syntaxHighlightContext";
 import type { LineNumberValue } from "./lineNumbers";
 import { t } from "../shared/i18n";
 
@@ -28,15 +30,53 @@ const TOKEN_CLASS: Record<SyntaxTokenKind, string | undefined> = {
     number: "tok-number",
 };
 
-function renderSyntaxHighlightedNodes(line: string, keyPrefix: string): React.ReactNode[] {
-    if (!line) return [<React.Fragment key={`${keyPrefix}-nbsp`}>{`\u00A0`}</React.Fragment>];
+/** A single colored run of text: Shiki tokens carry an inline style, fallback tokens carry a className. */
+interface ColoredSpan {
+    text: string;
+    style?: React.CSSProperties;
+    className?: string;
+}
+
+// Shiki `fontStyle` bitmask bits (see @shikijs/core ThemedToken).
+const FONT_STYLE_ITALIC = 1;
+const FONT_STYLE_BOLD = 2;
+const FONT_STYLE_UNDERLINE = 4;
+
+/**
+ * Tokenizes a line into colored spans. Uses Shiki's grammar-accurate tokens
+ * when the highlighter is ready and the file's language is registered;
+ * otherwise falls back to the hand-rolled five-category tokenizer.
+ */
+function coloredSpansForLine(line: string, ctx: SyntaxHighlightState): ColoredSpan[] {
+    if (ctx.ready && ctx.lang) {
+        const shikiTokens = highlightLine(line, ctx.lang, ctx.theme);
+        if (shikiTokens) {
+            return shikiTokens.map((tok) => {
+                const style: React.CSSProperties = {};
+                if (tok.color) style.color = tok.color;
+                if (tok.fontStyle) {
+                    if (tok.fontStyle & FONT_STYLE_ITALIC) style.fontStyle = "italic";
+                    if (tok.fontStyle & FONT_STYLE_BOLD) style.fontWeight = "bold";
+                    if (tok.fontStyle & FONT_STYLE_UNDERLINE) style.textDecoration = "underline";
+                }
+                return { text: tok.text, style: Object.keys(style).length ? style : undefined };
+            });
+        }
+    }
+    return tokenizeSyntaxLine(line).map((token) => ({
+        text: token.text,
+        className: TOKEN_CLASS[token.kind],
+    }));
+}
+
+function renderColoredSpans(spans: ColoredSpan[], keyPrefix: string): React.ReactNode[] {
     let offset = 0;
-    return tokenizeSyntaxLine(line).map((token) => {
-        const key = `${keyPrefix}-${offset}-${token.text}`;
-        offset += token.text.length;
+    return spans.map((span) => {
+        const key = `${keyPrefix}-${offset}-${span.text}`;
+        offset += span.text.length;
         return (
-            <span key={key} className={TOKEN_CLASS[token.kind]}>
-                {token.text}
+            <span key={key} className={span.className} style={span.style}>
+                {span.text}
             </span>
         );
     });
@@ -47,11 +87,87 @@ const HighlightedLine = React.memo(function HighlightedLine({
 }: {
     line: string;
 }): React.ReactElement {
-    if (!line) return <>{`\u00A0`}</>;
+    const ctx = useSyntaxHighlightState();
+    if (!line) return <>{` `}</>;
     // Pure syntax-token helper, not a component invocation.
     // react-doctor-disable-next-line react-doctor/no-render-in-render
-    return <>{renderSyntaxHighlightedNodes(line, "line")}</>;
+    return <>{renderColoredSpans(coloredSpansForLine(line, ctx), "line")}</>;
 });
+
+/**
+ * Expands a token-level word-diff mask into per-character changed/whitespace
+ * masks aligned to `line`. This lets the change overlay be intersected with
+ * Shiki's full-line colored spans without re-tokenizing fragments (which
+ * would lose surrounding grammar context, e.g. a string opened before the
+ * changed run).
+ */
+function buildChangedCharMasks(
+    line: string,
+    compareLine: string,
+): { changed: boolean[]; whitespace: boolean[] } {
+    const tokens = tokenizeWordDiff(line);
+    const changedMask = buildWordDiffMask(line, compareLine);
+    const changed: boolean[] = [];
+    const whitespace: boolean[] = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const isChanged = changedMask[i];
+        const isWhitespace = /^\s+$/.test(token);
+        for (let c = 0; c < token.length; c++) {
+            changed.push(isChanged);
+            whitespace.push(isWhitespace);
+        }
+    }
+    return { changed, whitespace };
+}
+
+/**
+ * Renders colored spans with a word-diff overlay: each colored span is split
+ * at change-boundary offsets so the underlying grammar coloring is preserved
+ * beneath the `.word-diff-change` background instead of being replaced by it.
+ */
+function renderColoredSpansWithWordDiff(
+    spans: ColoredSpan[],
+    changed: boolean[],
+    whitespace: boolean[],
+    keyPrefix: string,
+): React.ReactNode[] {
+    const nodes: React.ReactNode[] = [];
+    let offset = 0;
+    for (const span of spans) {
+        let runStart = 0;
+        while (runStart < span.text.length) {
+            const runChanged = changed[offset + runStart];
+            let runEnd = runStart + 1;
+            while (runEnd < span.text.length && changed[offset + runEnd] === runChanged) {
+                runEnd++;
+            }
+            const runText = span.text.slice(runStart, runEnd);
+            const key = `${keyPrefix}-${offset + runStart}`;
+            const coloredNode = (
+                <span key={key} className={span.className} style={span.style}>
+                    {runText}
+                </span>
+            );
+            if (runChanged) {
+                const runIsWhitespace = whitespace[offset + runStart];
+                nodes.push(
+                    <span
+                        key={`chg-${key}`}
+                        className={`word-diff-change ${runIsWhitespace ? "word-diff-whitespace" : ""}`}
+                    >
+                        {coloredNode}
+                    </span>,
+                );
+            } else {
+                nodes.push(coloredNode);
+            }
+            runStart = runEnd;
+        }
+        offset += span.text.length;
+    }
+    return nodes;
+}
 
 const WordDiffLine = React.memo(function WordDiffLine({
     line,
@@ -60,7 +176,8 @@ const WordDiffLine = React.memo(function WordDiffLine({
     line: string;
     compareLine: string;
 }): React.ReactElement {
-    if (!line) return <>{`\u00A0`}</>;
+    const ctx = useSyntaxHighlightState();
+    if (!line) return <>{` `}</>;
     if (line === compareLine) return <HighlightedLine line={line} />;
     if (!compareLine) return <HighlightedLine line={line} />;
 
@@ -69,36 +186,12 @@ const WordDiffLine = React.memo(function WordDiffLine({
         return <HighlightedLine line={line} />;
     }
 
-    const tokens = tokenizeWordDiff(line);
-    if (tokens.length === 0) return <>{`\u00A0`}</>;
+    const spans = coloredSpansForLine(line, ctx);
+    if (spans.length === 0) return <>{` `}</>;
 
-    const changedMask = buildWordDiffMask(line, compareLine);
-    const nodes: React.ReactNode[] = [];
-    let offset = 0;
+    const { changed, whitespace } = buildChangedCharMasks(line, compareLine);
 
-    for (let i = 0; i < tokens.length; i++) {
-        const token = tokens[i];
-        const keyOffset = offset;
-        offset += token.length;
-        const changed = changedMask[i];
-        const syntaxNodes = renderSyntaxHighlightedNodes(token, `wd-${keyOffset}`);
-        if (!changed) {
-            nodes.push(<React.Fragment key={`same-${keyOffset}`}>{syntaxNodes}</React.Fragment>);
-            continue;
-        }
-
-        const isWhitespace = /^\s+$/.test(token);
-        nodes.push(
-            <span
-                key={`chg-${keyOffset}`}
-                className={`word-diff-change ${isWhitespace ? "word-diff-whitespace" : ""}`}
-            >
-                {syntaxNodes}
-            </span>,
-        );
-    }
-
-    return <>{nodes}</>;
+    return <>{renderColoredSpansWithWordDiff(spans, changed, whitespace, "wd")}</>;
 });
 
 // --- Line numbers ---

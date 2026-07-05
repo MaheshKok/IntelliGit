@@ -41,6 +41,8 @@ import {
     type OverviewMarker,
 } from "./segments";
 import { buildLineNumberValues } from "./lineNumbers";
+import { initShiki, isShikiReady, langForPath, detectTheme } from "./shikiHighlighter";
+import { SyntaxHighlightProvider } from "./syntaxHighlightContext";
 import "./merge-editor.css";
 
 const EMPTY_SEGMENTS: MergeSegment[] = [];
@@ -76,7 +78,21 @@ function App() {
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
+    const [shikiReady, setShikiReady] = useState(isShikiReady());
+    // ponytail: theme sampled once at mount. VS Code reloads the webview on a
+    // live theme switch, so re-reading the body class on every render buys
+    // nothing — reopen the merge editor to pick up a changed theme.
+    const [shikiTheme] = useState(detectTheme());
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
+    const filePath = state.data?.filePath;
+    const syntaxHighlightState = useMemo(
+        () => ({
+            ready: shikiReady,
+            lang: filePath ? langForPath(filePath) : null,
+            theme: shikiTheme,
+        }),
+        [shikiReady, filePath, shikiTheme],
+    );
 
     const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const mergeContentRef = useRef<HTMLDivElement | null>(null);
@@ -341,6 +357,13 @@ function App() {
         vscode.postMessage({ type: "ready" });
         return () => window.removeEventListener("message", handler);
     }, []);
+
+    // Lazily initialize the Shiki highlighter once; flip ready so consumers
+    // switch from the fallback tokenizer to grammar-accurate colors.
+    useEffect(() => {
+        if (shikiReady) return;
+        if (initShiki()) setShikiReady(true);
+    }, [shikiReady]);
 
     useEffect(() => {
         setActiveConflictId((prev) => {
@@ -631,6 +654,7 @@ function App() {
     } as React.CSSProperties;
 
     return (
+        <SyntaxHighlightProvider value={syntaxHighlightState}>
         <div
             style={rootStyle}
             className={[
@@ -948,6 +972,7 @@ function App() {
                 </div>
             </div>
         </div>
+        </SyntaxHighlightProvider>
     );
 }
 

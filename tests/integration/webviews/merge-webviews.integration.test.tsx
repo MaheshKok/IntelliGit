@@ -1160,7 +1160,7 @@ describe("MergeEditorApp", () => {
         });
     });
 
-    it("renders theme-colored syntax tokens in all three panes", async () => {
+    it("renders Shiki theme-colored syntax tokens in all three panes for a bundled language", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -1178,7 +1178,7 @@ describe("MergeEditorApp", () => {
                 eol: "\n",
                 hasTrailingNewline: true,
                 segments: [
-                    { type: "common", lines: ['const greeting = "hi"; // welcome 42'] },
+                    { type: "common", lines: ['const greeting = "hi";'] },
                     {
                         type: "conflict",
                         id: 0,
@@ -1190,26 +1190,124 @@ describe("MergeEditorApp", () => {
                 ],
             },
         });
+        // Shiki initializes asynchronously relative to the first render; give
+        // its init effect a tick to flip the module ready before asserting.
+        await flush();
         await flush();
 
-        // The common line renders in left, result, and right panes; each pane
-        // must classify the keyword, string, comment, and number tokens.
+        // Shiki now owns .ts highlighting: no hand-rolled tok-* classes should
+        // remain for a bundled language.
+        expect(document.querySelectorAll(".tok-keyword").length).toBe(0);
+        expect(document.querySelectorAll(".tok-string").length).toBe(0);
+
+        // The common line renders in left, result, and right panes; each pane's
+        // "const" span must carry an inline Shiki color.
+        const spans = Array.from(document.querySelectorAll(".code-line span"));
+        const constSpans = spans.filter((el) => el.textContent === "const");
+        expect(constSpans.length).toBe(3);
+        for (const span of constSpans) {
+            expect((span as HTMLElement).style.color).not.toBe("");
+        }
+
+        // String tokens get a different color than keyword tokens under the
+        // same theme (grammar-accurate categorization, not a single fallback color).
+        const stringSpan = spans.find((el) => el.textContent === '"hi"');
+        expect(stringSpan).toBeDefined();
+        const stringColor = (stringSpan as HTMLElement).style.color;
+        expect(stringColor).not.toBe("");
+        expect(stringColor).not.toBe((constSpans[0] as HTMLElement).style.color);
+
+        // Conflict pane lines are colored too.
+        const conflictPanes = document.querySelectorAll('[data-conflict-id="0"] .code-block');
+        for (const pane of Array.from(conflictPanes)) {
+            const returnSpan = Array.from(pane.querySelectorAll("span")).find(
+                (el) => el.textContent === "return",
+            );
+            expect(returnSpan).toBeDefined();
+            expect((returnSpan as HTMLElement).style.color).not.toBe("");
+        }
+    });
+
+    it("falls back to the hand-rolled tokenizer for a file type with no bundled Shiki grammar", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/notes.unsupportedext",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ['const greeting = "hi"; // welcome 42'] },
+                ],
+            },
+        });
+        await flush();
+        await flush();
+
         const keywordSpans = Array.from(document.querySelectorAll(".tok-keyword"));
         expect(keywordSpans.filter((el) => el.textContent === "const").length).toBe(3);
 
         const stringSpans = Array.from(document.querySelectorAll(".tok-string"));
         expect(stringSpans.filter((el) => el.textContent === '"hi"').length).toBe(3);
 
-        // Trailing comments after code are highlighted, and the number inside
-        // the comment stays part of the comment token.
         const commentSpans = Array.from(document.querySelectorAll(".tok-comment"));
         expect(commentSpans.filter((el) => el.textContent === "// welcome 42").length).toBe(3);
+    });
 
-        // Conflict pane lines are highlighted too (keyword + number per pane).
-        const conflictPanes = document.querySelectorAll('[data-conflict-id="0"] .code-block');
-        for (const pane of Array.from(conflictPanes)) {
-            expect(pane.querySelector(".tok-keyword")?.textContent).toBe("return");
-            expect(pane.querySelector(".tok-number")).not.toBeNull();
-        }
+    it("overlays the word-diff change highlight on top of Shiki-colored spans", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["const total = 100;"],
+                        theirsLines: ["const total = 200;"],
+                        baseLines: ["const total = 300;"],
+                    },
+                ],
+            },
+        });
+        await flush();
+        await flush();
+
+        const wrappers = Array.from(document.querySelectorAll(".word-diff-change"));
+        expect(wrappers.length).toBeGreaterThan(0);
+
+        // At least one change wrapper must contain a Shiki-colored inner span,
+        // proving the overlay sits on top of (not instead of) grammar coloring.
+        const wrapperWithColor = wrappers.find((wrapper) => {
+            const inner = wrapper.querySelector("span");
+            return inner && (inner as HTMLElement).style.color !== "";
+        });
+        expect(wrapperWithColor).toBeDefined();
+
+        // The ours pane line must still reconstruct exactly from its spans.
+        const oursPane = document.querySelector('[data-conflict-id="0"] .code-block');
+        expect(oursPane?.textContent).toContain("const total = 100;");
     });
 });
