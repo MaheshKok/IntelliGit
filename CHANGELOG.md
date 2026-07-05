@@ -5,6 +5,19 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.2] - 2026-07-05
+
+### Changed
+
+- Reworked the merge editor so each pane (ours, result, theirs) flows at its natural height instead of padding every hunk to the tallest pane, keeping a shorter change's next line directly beneath it while segment boundaries stay aligned across panes, PyCharm-style.
+- Added SVG connector ribbons that link each conflict hunk across the three panes and track the scroll position.
+
+### Fixed
+
+- Aligned conflict connector ribbons with their colored bands by drawing hunk boundary rules as a zero-height inset shadow, so panes stay pixel-aligned as the file is scrolled.
+- Removed a per-conflict scroll jitter that occurred when a hunk first scrolled into view under content-visibility virtualization.
+- Sized the merge editor scrollbar correctly on the first paint instead of briefly rendering it one viewport too long.
+
 ## [0.15.1] - 2026-07-05
 
 ### Changed
