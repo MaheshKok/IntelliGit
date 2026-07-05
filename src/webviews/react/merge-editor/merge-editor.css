@@ -336,7 +336,7 @@
     overflow-x: hidden;
     overflow-y: auto;
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: var(--vscode-editor-font-size, 13px);
+    font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
     line-height: 20px;
     background: var(--merge-editor-bg);
     padding-right: 14px;
@@ -401,13 +401,9 @@
     grid-template-columns: minmax(0, 1fr);
 }
 .line-numbers {
-    background: color-mix(in srgb, var(--merge-gutter-bg) 96%, #000 4%);
+    background: var(--merge-gutter-bg);
     border-right: 1px solid var(--merge-border);
-    color: color-mix(
-        in srgb,
-        var(--vscode-editorLineNumber-foreground, var(--merge-muted)) 72%,
-        transparent
-    );
+    color: var(--vscode-editorLineNumber-foreground, var(--merge-muted));
 }
 .code-block.line-numbers-right .line-numbers {
     border-right: none;
@@ -432,8 +428,6 @@
     text-align: right;
     min-height: 20px;
     line-height: 20px;
-    font-size: 11px;
-    opacity: 0.72;
     border-left: 1px solid transparent;
 }
 .line-number-secondary {
@@ -484,7 +478,7 @@
     position: relative;
 }
 .segment-common .code-line {
-    color: color-mix(in srgb, var(--merge-editor-fg) 88%, transparent);
+    color: var(--vscode-editor-foreground);
 }
 
 .segment-conflict {
@@ -547,7 +541,7 @@
     /* Match the code font so the `ch` unit used to size this spacer equals one
        monospace glyph in the panes. */
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: var(--vscode-editor-font-size, 13px);
+    font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 13px));
 }
 .merge-horizontal-scroll::-webkit-scrollbar {
     height: 9px;
@@ -712,7 +706,7 @@
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: var(--vscode-editor-font-size, 12px);
+    font-size: var(--merge-code-font-size, var(--vscode-editor-font-size, 12px));
     line-height: 20px;
     white-space: pre;
     overflow-x: auto;

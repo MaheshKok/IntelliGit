@@ -67,6 +67,13 @@ export interface MergeEditorData {
     eol?: "\n" | "\r\n";
     hasTrailingNewline?: boolean;
     diffOptions?: MergeDiffOptions;
+    /**
+     * Effective `editor.fontSize` in pixels, supplied by the host so merge code
+     * renders at the same size as a normal editor. Absent when the setting is
+     * unavailable, in which case the webview falls back to the editor font-size
+     * CSS variable.
+     */
+    editorFontSize?: number;
 }
 
 /**

@@ -618,8 +618,21 @@ function App() {
             : unresolvedTrueConflictIds[0];
     })();
 
+    // Widen the line-number gutter with the largest line number so editor-size
+    // digits never clip, floored at the base width for small files. When the
+    // host supplied editor.fontSize, use it as the code size, overriding the
+    // unreliable --vscode-editor-font-size webview variable.
+    const gutterDigits = Math.max(String(totalVisualLines).length, 2);
+    const rootStyle = {
+        "--merge-line-number-gutter": `max(37px, calc(${gutterDigits}ch + 14px))`,
+        ...(state.data.editorFontSize
+            ? { "--merge-code-font-size": `${state.data.editorFontSize}px` }
+            : {}),
+    } as React.CSSProperties;
+
     return (
         <div
+            style={rootStyle}
             className={[
                 "merge-editor",
                 highlightWords ? "words-highlighted" : "",
