@@ -70,6 +70,7 @@ function App() {
         error: null,
         resolutions: {},
         edits: {},
+        dismissals: {},
     });
     const [showDetails, setShowDetails] = useState(false);
     const [highlightWords, setHighlightWords] = useState(true);
@@ -361,6 +362,11 @@ function App() {
     const handleEditResult = useCallback((id: number, lines: string[]) => {
         setActiveConflictId(id);
         dispatch({ type: "EDIT_HUNK_RESULT", id, lines });
+    }, []);
+
+    const handleDismissSide = useCallback((id: number, side: "ours" | "theirs") => {
+        setActiveConflictId(id);
+        dispatch({ type: "DISMISS_SIDE", id, side });
     }, []);
 
     const registerConflictSectionRef = useCallback((id: number, el: HTMLDivElement | null) => {
@@ -853,10 +859,12 @@ function App() {
                                         segment={segment}
                                         resolution={state.resolutions[segment.id]}
                                         editedLines={state.edits[segment.id]}
+                                        dismissed={state.dismissals[segment.id]}
                                         lineCount={lineCount}
                                         lineNumbers={lineNumbers}
                                         onResolve={handleResolve}
                                         onEditResult={handleEditResult}
+                                        onDismiss={handleDismissSide}
                                         onSelect={setActiveConflictId}
                                         onSectionRef={registerConflictSectionRef}
                                         isActive={activeConflictId === segment.id}

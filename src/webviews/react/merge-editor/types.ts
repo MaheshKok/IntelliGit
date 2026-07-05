@@ -29,3 +29,16 @@ export type InboundMessage =
  * in (PyCharm-style sequential accept).
  */
 export type HunkResolution = "ours" | "theirs" | "both" | "both-reversed" | "none";
+
+/**
+ * Per-side dismissal flags for one conflict hunk.
+ *
+ * A dismissed side is one the user rejected with its discard (X) control without
+ * accepting the opposite side. It is neither in the result nor still offered, so
+ * its action buttons hide while the opposite side's suggestion stays available.
+ * Accepting a side clears its hunk's dismissals, so acceptance always overrides.
+ */
+export interface HunkSideDismissal {
+    ours?: boolean;
+    theirs?: boolean;
+}

@@ -679,6 +679,18 @@
 .conflict-column.accepted .conflict-theirs .real-line-row {
     background: transparent;
 }
+/* A dismissed source pane was rejected via its discard (X) control without
+   accepting the opposite side. Drop its conflict band and dim it so it reads as
+   discarded rather than a live suggestion; the opposite side stays offered. */
+.conflict-column.dismissed .conflict-ours .real-code-line::before,
+.conflict-column.dismissed .conflict-theirs .real-code-line::before,
+.conflict-column.dismissed .conflict-ours .real-line-row,
+.conflict-column.dismissed .conflict-theirs .real-line-row {
+    background: transparent;
+}
+.conflict-column.dismissed {
+    opacity: 0.5;
+}
 
 .result-editable {
     cursor: text;

@@ -555,6 +555,166 @@ describe("MergeEditorApp", () => {
         });
     });
 
+    it("discards only the left side on left X and leaves the right suggestion offered", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Discarding the left side must NOT apply the right side (the old bug):
+        // the hunk stays unresolved and the right suggestion is still offered.
+        clickButton("Ignore left block");
+        await flush();
+        expect(document.body.textContent).toContain("1 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
+        expect(hunk?.querySelector(".column-left.conflict-column")?.className).toContain(
+            "dismissed",
+        );
+        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+
+        // The right side only enters the result when the user explicitly accepts it.
+        clickButton("Accept right block");
+        await flush();
+        expect(document.body.textContent).toContain("0 unresolved");
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\ntheirs();\n",
+        });
+    });
+
+    it("discards the right side after accepting the left, keeping only ours", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Accept left, then discard the still-offered right side. Previously the
+        // right X re-emitted "ours" and did nothing; now it dismisses the right
+        // suggestion and hides its controls while the result stays ours-only.
+        clickButton("Accept left block");
+        await flush();
+        clickButton("Ignore right block");
+        await flush();
+
+        expect(document.body.textContent).toContain("0 unresolved");
+        const hunk = document.querySelector('[data-conflict-id="0"]');
+        expect(hunk?.querySelector(".conflict-actions-left")).toBeNull();
+        expect(hunk?.querySelector(".conflict-actions-right")).toBeNull();
+        expect(hunk?.querySelector(".column-right.conflict-column")?.className).toContain(
+            "dismissed",
+        );
+        expect(hunk?.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
+        expect(hunk?.querySelector(".conflict-theirs")?.className).not.toContain("accepted-pane");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\nours();\n",
+        });
+    });
+
+    it("drops the block when both sides are discarded", async () => {
+        const vscode = installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    { type: "common", lines: ["shared();"] },
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ["ours();"],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Discard both sides: the second discard drops the block entirely.
+        clickButton("Ignore left block");
+        await flush();
+        expect(document.body.textContent).toContain("1 unresolved");
+        clickButton("Ignore right block");
+        await flush();
+        expect(document.body.textContent).toContain("0 unresolved");
+
+        clickButton("Apply (1/1)");
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "applyResolution",
+            content: "shared();\n",
+        });
+    });
+
     it("resolves conflicts with Ctrl+Arrow side shortcuts, auto-advances, and applies with Ctrl+Enter", async () => {
         const vscode = installVsCodeMock();
         createRootHost();

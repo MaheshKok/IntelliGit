@@ -5,7 +5,7 @@
 // OverviewRail provides a minimap of conflict locations for quick navigation.
 
 import React, { useCallback, useMemo, useState } from "react";
-import type { CommonSegment, ConflictSegment, HunkResolution } from "./types";
+import type { CommonSegment, ConflictSegment, HunkResolution, HunkSideDismissal } from "./types";
 import {
     tokenSimilarityRatio,
     buildWordDiffMask,
@@ -462,10 +462,12 @@ export interface ConflictSectionProps {
     segment: ConflictSegment;
     resolution: HunkResolution | undefined;
     editedLines: string[] | undefined;
+    dismissed: HunkSideDismissal | undefined;
     lineCount: number;
     lineNumbers: SegmentPaneLineNumbers;
     onResolve: (id: number, resolution: HunkResolution) => void;
     onEditResult: (id: number, lines: string[]) => void;
+    onDismiss: (id: number, side: "ours" | "theirs") => void;
     onSelect: (id: number) => void;
     onSectionRef: (id: number, el: HTMLDivElement | null) => void;
     isActive: boolean;
@@ -485,10 +487,12 @@ export const ConflictSection = React.memo(function ConflictSection({
     segment,
     resolution,
     editedLines,
+    dismissed,
     lineCount,
     lineNumbers,
     onResolve,
     onEditResult,
+    onDismiss,
     onSelect,
     onSectionRef,
     isActive,
@@ -505,6 +509,11 @@ export const ConflictSection = React.memo(function ConflictSection({
     const isBoth = !isEdited && (resolution === "both" || resolution === "both-reversed");
     const oursInResult = isOurs || isBoth;
     const theirsInResult = isTheirs || isBoth;
+    // A side is "dismissed" when the user discarded it (X) without accepting the
+    // opposite side. Acceptance overrides dismissal, so a side in the result is
+    // never treated as dismissed. A manual edit supersedes both.
+    const oursDismissed = !isEdited && !oursInResult && dismissed?.ours === true;
+    const theirsDismissed = !isEdited && !theirsInResult && dismissed?.theirs === true;
     const isAutoMerged =
         segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
     const isResolved =
@@ -512,12 +521,14 @@ export const ConflictSection = React.memo(function ConflictSection({
         segment.autoResolvedLines !== undefined ||
         resolution !== undefined ||
         isEdited;
-    // A side's controls show only while that side is not yet in the result, so
-    // accepting one side leaves the other side's accept button available to
-    // append (stack) below it. Once both are stacked, all controls hide. A
-    // manual edit puts neither side "in result", so both controls reappear.
-    const showLeftActions = !oursInResult;
-    const showRightActions = !theirsInResult;
+    // A side's controls show only while that side is still pending: not yet in
+    // the result and not discarded. Accepting one side leaves the other side's
+    // accept button available to append (stack) below it; discarding the other
+    // side hides its controls without touching the accepted side. Once both are
+    // stacked, all controls hide. A manual edit puts neither side "in result",
+    // so both controls reappear.
+    const showLeftActions = !oursInResult && !oursDismissed;
+    const showRightActions = !theirsInResult && !theirsDismissed;
     // When one side is already in the result, the opposite accept button
     // appends the second side below it instead of replacing the result.
     const leftAppend = theirsInResult;
@@ -588,7 +599,7 @@ export const ConflictSection = React.memo(function ConflictSection({
         >
             <div className="hunk-columns">
                 <div
-                    className={`column column-left conflict-column ${oursInResult ? "accepted" : ""}`}
+                    className={`column column-left conflict-column ${oursInResult ? "accepted" : ""} ${oursDismissed ? "dismissed" : ""}`}
                 >
                     <CodeBlock
                         lines={segment.oursLines}
@@ -604,7 +615,11 @@ export const ConflictSection = React.memo(function ConflictSection({
                             <button
                                 type="button"
                                 className="action-btn discard-btn"
-                                onClick={() => onResolve(segment.id, "theirs")}
+                                onClick={() =>
+                                    theirsDismissed
+                                        ? onResolve(segment.id, "none")
+                                        : onDismiss(segment.id, "ours")
+                                }
                                 title={t("merge.hunk.ignoreLeft")}
                                 aria-label={t("merge.hunk.ignoreLeft")}
                             >
@@ -647,7 +662,7 @@ export const ConflictSection = React.memo(function ConflictSection({
                 </div>
 
                 <div
-                    className={`column column-right conflict-column ${theirsInResult ? "accepted" : ""}`}
+                    className={`column column-right conflict-column ${theirsInResult ? "accepted" : ""} ${theirsDismissed ? "dismissed" : ""}`}
                 >
                     {showRightActions ? (
                         <div
@@ -679,7 +694,11 @@ export const ConflictSection = React.memo(function ConflictSection({
                             <button
                                 type="button"
                                 className="action-btn discard-btn"
-                                onClick={() => onResolve(segment.id, "ours")}
+                                onClick={() =>
+                                    oursDismissed
+                                        ? onResolve(segment.id, "none")
+                                        : onDismiss(segment.id, "theirs")
+                                }
                                 title={t("merge.hunk.ignoreRight")}
                                 aria-label={t("merge.hunk.ignoreRight")}
                             >
@@ -715,9 +734,11 @@ function conflictSectionPropsEqual(
         prev.segment === next.segment &&
         prev.resolution === next.resolution &&
         prev.editedLines === next.editedLines &&
+        prev.dismissed === next.dismissed &&
         prev.lineCount === next.lineCount &&
         prev.onResolve === next.onResolve &&
         prev.onEditResult === next.onEditResult &&
+        prev.onDismiss === next.onDismiss &&
         prev.onSelect === next.onSelect &&
         prev.onSectionRef === next.onSectionRef &&
         prev.isActive === next.isActive &&
