@@ -282,6 +282,26 @@ export async function stashSaveFromPanel(
 }
 
 /**
+ * Runs a stash mutation and opens the merge session when Git leaves conflict markers behind.
+ */
+async function runStashMutationWithConflicts(
+    deps: Pick<CommitPanelActionDeps, "gitOps" | "refreshData" | "fireWorkingTreeChanged">,
+    mutate: () => Promise<unknown>,
+): Promise<boolean> {
+    try {
+        await mutate();
+        return false;
+    } catch (err) {
+        const conflicts = await deps.gitOps.getConflictFilesDetailed();
+        if (conflicts.length === 0) throw err;
+        await deps.refreshData();
+        deps.fireWorkingTreeChanged();
+        await vscode.commands.executeCommand("intelligit.openConflictSession");
+        return true;
+    }
+}
+
+/**
  * Applies, pops, or deletes a stash entry selected in the panel.
  *
  * Delete requests require a modal confirmation because they discard the saved stash entry, while
@@ -303,28 +323,10 @@ export async function stashMutationFromPanel(
         await deps.gitOps.stashDelete(index);
         showTimedInformationMessage(vscode.l10n.t("Stashed change deleted."));
     } else if (action === "pop") {
-        try {
-            await deps.gitOps.stashPop(index);
-        } catch (err) {
-            const conflicts = await deps.gitOps.getConflictFilesDetailed();
-            if (conflicts.length === 0) throw err;
-            await deps.refreshData();
-            deps.fireWorkingTreeChanged();
-            await vscode.commands.executeCommand("intelligit.openConflictSession");
-            return;
-        }
+        if (await runStashMutationWithConflicts(deps, () => deps.gitOps.stashPop(index))) return;
         showTimedInformationMessage(vscode.l10n.t("Unstashed changes."));
     } else {
-        try {
-            await deps.gitOps.stashApply(index);
-        } catch (err) {
-            const conflicts = await deps.gitOps.getConflictFilesDetailed();
-            if (conflicts.length === 0) throw err;
-            await deps.refreshData();
-            deps.fireWorkingTreeChanged();
-            await vscode.commands.executeCommand("intelligit.openConflictSession");
-            return;
-        }
+        if (await runStashMutationWithConflicts(deps, () => deps.gitOps.stashApply(index))) return;
         showTimedInformationMessage(vscode.l10n.t("Applied stashed changes."));
     }
     await deps.refreshData();

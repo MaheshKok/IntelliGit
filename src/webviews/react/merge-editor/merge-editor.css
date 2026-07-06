@@ -629,6 +629,7 @@
 .segment-conflict {
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
+
     display: block;
     /* Hunk boundary rules are drawn as zero-height inset shadows (not a
        border/margin) so a conflict block occupies exactly its rows

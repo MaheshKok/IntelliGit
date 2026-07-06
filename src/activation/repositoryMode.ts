@@ -279,7 +279,6 @@ export async function activateRepositoryMode(
                     await refreshService.refreshConflictUi();
                 },
             });
-            await moveUndockedEditorToNewWindow();
         } catch (error) {
             const message = getErrorMessage(error);
             showTimedWarningMessage(
@@ -289,7 +288,6 @@ export async function activateRepositoryMode(
                 ),
             );
             await vscode.commands.executeCommand("vscode.open", fileUri);
-            await moveUndockedEditorToNewWindow();
         }
     };
 

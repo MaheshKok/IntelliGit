@@ -1901,6 +1901,38 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider opens conflicts after stash apply conflict", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.stashApply.mockRejectedValueOnce(new Error("stash apply failed"));
+        gitOps.getConflictFilesDetailed.mockResolvedValueOnce([
+            { path: "src/a.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+        ]);
+
+        await webview.send({ type: "stashApply", index: 0 });
+
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.openConflictSession");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "error" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider surfaces stash failures without conflicts", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.stashApply.mockRejectedValueOnce(new Error("stash apply failed"));
+        gitOps.getConflictFilesDetailed.mockResolvedValueOnce([]);
+
+        await webview.send({ type: "stashApply", index: 0 });
+
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.openConflictSession");
+        expect(showErrorMessage).toHaveBeenCalledWith("stash apply failed");
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "stash apply failed",
+        });
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider handles file delete with confirmation", async () => {
         const { provider, webview } = await setupCommitPanelProvider();
         showWarningMessage.mockResolvedValueOnce("Delete");

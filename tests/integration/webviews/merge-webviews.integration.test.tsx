@@ -230,32 +230,44 @@ describe("MergeEditorApp", () => {
 
         expect(document.body.textContent).toContain("src/conflict.ts");
         expect(document.body.textContent).toContain("1 unresolved");
-        expect(document.querySelectorAll(".action-btn")).toHaveLength(4);
+        expect(document.querySelectorAll('[data-conflict-id="0"] .action-btn')).toHaveLength(4);
 
         clickButton("Conflicts");
         clickButton("Abort Merge");
         clickButton("Accept left block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
-        expect(document.querySelector(".conflict-actions-left")).toBeNull();
-        expect(document.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
-        expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
-        expect(document.querySelector(".conflict-result")?.className).not.toContain(
+        expect(document.querySelector('[data-conflict-id="0"] .conflict-actions-left')).toBeNull();
+        expect(
+            document.querySelectorAll('[data-conflict-id="0"] .conflict-actions-right .action-btn'),
+        ).toHaveLength(2);
+        expect(document.querySelector('[data-conflict-id="0"] .conflict-ours')?.className).toContain(
             "accepted-pane",
         );
-        expect(document.querySelector(".conflict-result")?.className).toContain("unresolved");
-        expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
+        expect(document.querySelector('[data-conflict-id="0"] .conflict-result')?.className).not.toContain(
+            "accepted-pane",
+        );
+        expect(document.querySelector('[data-conflict-id="0"] .conflict-result')?.className).toContain(
+            "unresolved",
+        );
         expect(
-            document.querySelector(".source-insertion-marker.marker-left.marker-bottom"),
+            document.querySelector('[data-conflict-id="0"] .result-insertion-marker.marker-bottom'),
         ).not.toBeNull();
-        expect(document.querySelector(".source-insertion-marker.marker-right")).toBeNull();
+        expect(
+            document.querySelector(
+                '[data-conflict-id="0"] .source-insertion-marker.marker-left.marker-bottom',
+            ),
+        ).not.toBeNull();
+        expect(
+            document.querySelector('[data-conflict-id="0"] .source-insertion-marker.marker-right'),
+        ).toBeNull();
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(connectors).toHaveLength(2);
         expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
-        expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
-            "accepted-pane",
-        );
+        expect(
+            document.querySelector('[data-conflict-id="0"] .conflict-theirs')?.className,
+        ).not.toContain("accepted-pane");
         clickButton("Apply (1/1)");
 
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "openConflictSession" });
