@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kept commit-panel file counts in sync with external file changes by adding repository file watching and a 5-second fallback refresh cadence matching VS Code Git's status throttle.
 - Prevented light refreshes from being lost when they arrive during a full-refresh suppression window.
 - Updated working-tree files and counts even when stash, branch, or icon metadata refreshes fail.
+- Opened stash file diffs as read-only virtual documents instead of editable untitled buffers.
 
 ## [0.15.2] - 2026-07-05
 

@@ -85,6 +85,12 @@ const vscodeMock = {
     ProgressLocation: { Notification: 15 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
+        parse: (value: string): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
+            fsPath: value,
+            path: value,
+            scheme: value.split(":", 1)[0],
+            toString: () => value,
+        }),
         joinPath: (
             base: { fsPath?: string; path?: string },
             ...segments: string[]
@@ -1905,9 +1911,11 @@ describe("view providers integration", () => {
         expect(gitOps.getStashFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
         expect(openTextDocument).toHaveBeenCalledWith(
             expect.objectContaining({
-                content: "diff --git a b",
-                language: "diff",
+                scheme: "intelligit-diff",
             }),
+        );
+        expect(openTextDocument).not.toHaveBeenCalledWith(
+            expect.objectContaining({ content: expect.any(String) }),
         );
         provider.dispose();
     });

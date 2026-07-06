@@ -83,7 +83,11 @@ function encodePathForVirtualUri(filePath: string): string {
  * `filePath` must already be a repository-relative Git path. The path is encoded
  * as URI data only; it is not resolved against the workspace filesystem.
  */
-function createReadonlyDiffUri(filePath: string, content: string, refLabel: string): vscode.Uri {
+export function createReadonlyDiffUri(
+    filePath: string,
+    content: string,
+    refLabel: string,
+): vscode.Uri {
     readonlyDiffDocumentSeq += 1;
     const query = new URLSearchParams({
         id: String(readonlyDiffDocumentSeq),
