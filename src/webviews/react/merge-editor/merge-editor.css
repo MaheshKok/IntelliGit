@@ -1,7 +1,6 @@
 .merge-editor {
     --merge-editor-bg: var(--vscode-editor-background, #2b3240);
     --merge-editor-fg: var(--vscode-editor-foreground, #bfc7d5);
-    --merge-gutter-bg: var(--vscode-editorGutter-background, var(--merge-editor-bg));
     --merge-border: color-mix(in srgb, var(--merge-editor-fg) 14%, transparent);
     --merge-toolbar-bg: color-mix(in srgb, var(--vscode-sideBar-background, #2b2d30) 82%, #000 18%);
     --merge-header-bg: color-mix(
@@ -365,13 +364,18 @@
     min-width: 0;
     align-self: flex-start;
     will-change: transform;
+    /* Columns paint above the connector SVG so opaque ribbons run underneath
+       line numbers and action glyphs (z-index applies to flex items). */
+    z-index: 2;
 }
 /* Reserves ribbon space between columns and spans the full viewport height so
-   the connector SVG has a backdrop to draw over. */
+   the connector SVG has a backdrop to draw over. Uses the editor background
+   (not the theme gutter tint) so it blends with the now-transparent
+   line-number gutters the ribbons pass behind. */
 .merge-gutter {
     flex: 0 0 12px;
     align-self: stretch;
-    background: var(--merge-gutter-bg);
+    background: var(--merge-editor-bg);
 }
 /* Full length below the sticky viewport; height set inline to canonicalTotalPx. */
 .merge-vscroll-spacer {
@@ -379,8 +383,9 @@
     width: 1px;
 }
 /* Ribbon overlay covering the viewport; paths are positioned in viewport
-   coordinates by the scroll driver. pointer-events:none so it never blocks the
-   panes underneath. */
+   coordinates by the scroll driver. Painted below the columns (z-index 1 vs 2)
+   so opaque band-colored ribbons flow underneath line numbers and buttons,
+   PyCharm-style. pointer-events:none so it never blocks the panes. */
 .merge-connectors {
     position: absolute;
     inset: 0;
@@ -388,34 +393,43 @@
     height: 100%;
     pointer-events: none;
     overflow: visible;
-    z-index: 4;
+    z-index: 1;
 }
+/* Ribbon fills reuse the block-band palette so a hunk's band and its connector
+   read as one continuous region across the gutters. */
 .merge-connector {
-    fill: color-mix(in srgb, var(--pycharm-conflict) 42%, transparent);
+    fill: var(--merge-conflict-block-bg);
     stroke: none;
 }
 .merge-connector.variant-insertion {
-    fill: color-mix(in srgb, var(--pycharm-inserted) 42%, transparent);
+    fill: var(--merge-inserted-block-bg);
 }
 .merge-connector.variant-modification {
-    fill: color-mix(in srgb, var(--pycharm-modified) 42%, transparent);
+    fill: var(--merge-modified-block-bg);
 }
 .merge-connector.variant-deletion {
-    fill: color-mix(in srgb, var(--pycharm-deleted) 42%, transparent);
+    fill: var(--merge-deleted-block-bg);
 }
+/* Hairline connectors keep the brighter word palette: band colors are too dim
+   for a 1px stroke. */
 .merge-connector.merge-connector-line {
     fill: none;
-    stroke: color-mix(in srgb, var(--pycharm-conflict) 86%, transparent);
+    stroke: var(--pycharm-conflict);
     stroke-width: 1px;
 }
 .merge-connector.merge-connector-line.variant-insertion {
-    stroke: color-mix(in srgb, var(--pycharm-inserted) 86%, transparent);
+    stroke: var(--pycharm-inserted);
 }
 .merge-connector.merge-connector-line.variant-modification {
-    stroke: color-mix(in srgb, var(--pycharm-modified) 86%, transparent);
+    stroke: var(--pycharm-modified);
 }
 .merge-connector.merge-connector-line.variant-deletion {
-    stroke: color-mix(in srgb, var(--pycharm-deleted) 86%, transparent);
+    stroke: var(--pycharm-deleted);
+}
+/* Accepted-side ribbons dim to a quiet "done" marker; opacity (not
+   fill-opacity) so paired hairline strokes dim too. */
+.merge-connector.connector-resolved {
+    opacity: 0.45;
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;
@@ -439,17 +453,12 @@
        slice, stacked vertically inside its column. */
     content-visibility: auto;
 }
+/* Columns are transparent (base color comes from .merge-content) and carry no
+   vertical separators, so band and ribbon colors run uninterrupted across the
+   pane boundaries like PyCharm's merge view. */
 .column {
     min-width: 0;
-    border-right: 1px solid var(--merge-border);
-    background: var(--merge-editor-bg);
-}
-.column-right {
-    border-right: none;
-}
-.result-column {
-    border-left: 1px solid var(--merge-border);
-    border-right: 1px solid var(--merge-border);
+    background: transparent;
 }
 .code-block {
     display: grid;
@@ -470,14 +479,11 @@
 .code-block.no-line-numbers {
     grid-template-columns: minmax(0, 1fr);
 }
+/* Transparent so ribbons drawn below the column show through non-band rows;
+   band rows still paint their own row background on top. */
 .line-numbers {
-    background: var(--merge-gutter-bg);
-    border-right: 1px solid var(--merge-border);
+    background: transparent;
     color: var(--vscode-editorLineNumber-foreground, var(--merge-muted));
-}
-.code-block.line-numbers-right .line-numbers {
-    border-right: none;
-    border-left: 1px solid var(--merge-border);
 }
 .line-number-row {
     display: grid;
