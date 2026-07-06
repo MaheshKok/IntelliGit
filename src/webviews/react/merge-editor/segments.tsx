@@ -711,7 +711,7 @@ function LeftHunkActions({
                 aria-label={t("merge.hunk.ignoreLeft")}
             >
                 <span className="hunk-action-glyph" aria-hidden="true">
-                    X
+                    ×
                 </span>
             </button>
             <button
@@ -723,7 +723,7 @@ function LeftHunkActions({
                 aria-current={isOurs ? "true" : undefined}
             >
                 <span className="hunk-action-glyph" aria-hidden="true">
-                    {leftAppend ? "»+" : ">>"}
+                    {leftAppend ? "≫+" : "≫"}
                 </span>
             </button>
         </div>
@@ -757,7 +757,7 @@ function RightHunkActions({
                 aria-current={isTheirs ? "true" : undefined}
             >
                 <span className="hunk-action-glyph" aria-hidden="true">
-                    {rightAppend ? "«+" : "<<"}
+                    {rightAppend ? "≪+" : "≪"}
                 </span>
             </button>
             <button
@@ -770,7 +770,7 @@ function RightHunkActions({
                 aria-label={t("merge.hunk.ignoreRight")}
             >
                 <span className="hunk-action-glyph" aria-hidden="true">
-                    X
+                    ×
                 </span>
             </button>
         </div>

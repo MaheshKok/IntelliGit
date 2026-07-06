@@ -600,15 +600,16 @@
 }
 .hunk-action-glyph {
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 700;
     line-height: 1;
 }
 .accept-btn {
     color: var(--merge-ok);
 }
+/* Gray at rest like PyCharm's ×; the hover rule escalates to red. */
 .discard-btn {
-    color: var(--merge-danger);
+    color: var(--merge-muted);
 }
 .conflict-column {
     position: relative;
@@ -698,10 +699,12 @@
     gap: 0;
     z-index: 7;
 }
+/* Flat PyCharm-style gutter glyphs: no box chrome at rest, a subtle tint only
+   on hover. The 20px box keeps the hit target. */
 .action-btn {
     width: 20px;
     height: 20px;
-    border: 1px solid transparent;
+    border: none;
     border-radius: 3px;
     cursor: pointer;
     display: flex;
@@ -709,19 +712,13 @@
     justify-content: center;
     font-size: 12px;
     line-height: 1;
-    background: color-mix(in srgb, var(--merge-editor-bg) 24%, transparent);
+    background: transparent;
     color: color-mix(in srgb, var(--merge-editor-fg) 84%, transparent);
     opacity: 0.92;
-    box-shadow: none;
 }
 .action-btn:hover {
     background: color-mix(in srgb, var(--merge-editor-fg) 10%, transparent);
     opacity: 1;
-}
-.accept-btn.active {
-    border-color: color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 70%, transparent);
-    background: color-mix(in srgb, var(--vscode-button-background, #0e639c) 42%, transparent);
-    color: var(--merge-ok);
 }
 .discard-btn:hover {
     background: rgba(216, 108, 108, 0.15);
@@ -730,14 +727,13 @@
 .action-btn.accept-btn {
     color: var(--merge-ok);
 }
-/* Append mode stacks the second side below the first; a faint tint sets it
-   apart from a plain accept so the "»+"/"«+" glyph reads as add, not replace. */
+/* Append mode stacks the second side below the first; the "+" in the glyph
+   carries the add-not-replace meaning. */
 .action-btn.append-btn {
     color: var(--merge-ok);
-    background: color-mix(in srgb, var(--merge-ok) 16%, transparent);
 }
 .action-btn.discard-btn {
-    color: var(--merge-danger);
+    color: var(--merge-muted);
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
