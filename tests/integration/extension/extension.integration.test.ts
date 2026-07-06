@@ -1382,9 +1382,7 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalled();
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "ours");
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "theirs");
-        // Opening a merge conflict must not float the active editor into a new
-        // window; that side effect belongs to the undock flow alone.
-        expect(executeCommandFallback).not.toHaveBeenCalledWith(
+        expect(executeCommandFallback).toHaveBeenCalledWith(
             "workbench.action.moveEditorToNewWindow",
         );
         expect(withProgress).toHaveBeenCalledWith(

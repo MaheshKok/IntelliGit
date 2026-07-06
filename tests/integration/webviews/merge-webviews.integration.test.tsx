@@ -240,7 +240,12 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-actions-left")).toBeNull();
         expect(document.querySelectorAll(".conflict-actions-right .action-btn")).toHaveLength(2);
         expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
-        expect(document.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-result")?.className).not.toContain(
+            "accepted-pane",
+        );
+        expect(document.querySelector(".conflict-result")?.className).toContain("unresolved");
+        expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
+        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
@@ -252,6 +257,48 @@ describe("MergeEditorApp", () => {
             type: "applyResolution",
             content: "shared();\nours();\n",
         });
+    });
+
+    it("shows a thin result insertion marker for pending insert conflicts", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: ['import * as yaml from "yaml";'],
+                        theirsLines: ['import * as toml from "toml";'],
+                        baseLines: [],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        expect(document.querySelector(".result-insertion-marker.marker-top")).not.toBeNull();
+        expect(document.querySelectorAll(".merge-connector")).toHaveLength(2);
+
+        clickButton("Accept left block");
+        await flush();
+
+        expect(document.querySelector(".result-insertion-marker.marker-top")).toBeNull();
+        expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
+        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
     });
 
     it("edits the result pane manually and applies the edited content", async () => {
@@ -447,7 +494,10 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-actions-right")).toBeNull();
         expect(document.querySelectorAll(".conflict-actions-left .action-btn")).toHaveLength(2);
         expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
-        expect(document.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-result")?.className).not.toContain(
+            "accepted-pane",
+        );
+        expect(document.querySelector(".conflict-result")?.className).toContain("unresolved");
         expect(document.querySelector(".conflict-ours")?.className).not.toContain("accepted-pane");
 
         clickButton("Apply (1/1)");
@@ -502,7 +552,10 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-actions-right")).toBeNull();
         expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
         expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
-        expect(document.querySelector(".conflict-result")?.className).toContain("accepted-pane");
+        expect(document.querySelector(".conflict-result")?.className).not.toContain(
+            "accepted-pane",
+        );
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -602,7 +655,7 @@ describe("MergeEditorApp", () => {
             ".result-insertion-marker.variant-insertion",
         );
         expect(marker).not.toBeNull();
-        expect(marker?.style.top).toBe("0px");
+        expect(marker?.className).toContain("marker-top");
     });
 
     it("discards only the left side on left X and leaves the right suggestion offered", async () => {
@@ -923,6 +976,9 @@ describe("MergeEditorApp", () => {
         // The one-sided hunk surfaces as auto-resolved in the header stats.
         expect(document.body.textContent).toContain("1 auto-resolved");
         expect(findButton("Apply non-conflicting changes").disabled).toBe(false);
+        expect(
+            document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
+        ).not.toContain("accepted-pane");
 
         // Select the one-sided hunk, then try to take both sides.
         const oneSided = document.querySelector('[data-conflict-id="0"]');

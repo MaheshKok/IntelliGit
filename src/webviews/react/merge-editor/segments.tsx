@@ -558,6 +558,8 @@ interface ConflictView {
     theirsDismissed: boolean;
     isAutoMerged: boolean;
     isResolved: boolean;
+    resultIsUnresolved: boolean;
+    resultInsertionMarker: "top" | "bottom" | undefined;
     showLeftActions: boolean;
     showRightActions: boolean;
     leftAppend: boolean;
@@ -625,6 +627,27 @@ function deriveConflictView(
         segment.autoResolvedLines !== undefined ||
         resolution !== undefined ||
         isEdited;
+    const resultIsUnresolved =
+        segment.changeKind === "conflict" &&
+        !isEdited &&
+        ((isOurs && !theirsDismissed) || (isTheirs && !oursDismissed));
+    const hasPendingInsertionTarget =
+        segment.changeKind === "conflict" &&
+        !isEdited &&
+        segment.autoResolvedLines === undefined &&
+        ((!oursInResult && !theirsInResult && segment.baseLines.length === 0) ||
+            (isOurs && !theirsDismissed) ||
+            (isTheirs && !oursDismissed));
+    const acceptedResultLineCount = isOurs
+        ? segment.oursLines.length
+        : isTheirs
+          ? segment.theirsLines.length
+          : 0;
+    const resultInsertionMarker = hasPendingInsertionTarget
+        ? (!oursInResult && !theirsInResult) || acceptedResultLineCount === 0
+            ? "top"
+            : "bottom"
+        : undefined;
     return {
         isEdited,
         isOurs,
@@ -635,6 +658,8 @@ function deriveConflictView(
         theirsDismissed,
         isAutoMerged,
         isResolved,
+        resultIsUnresolved,
+        resultInsertionMarker,
         // A side's controls show only while that side is still pending: not yet
         // in the result and not discarded. Accepting one side leaves the other
         // side's accept button available to append (stack) below it; discarding
@@ -895,11 +920,6 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
 }: ResultConflictBlockProps) {
     const view = deriveConflictView(segment, resolution, editedLines, dismissed);
     const resultLines = getEffectiveResultLines(segment, resolution, editedLines);
-    const showPendingAppendTarget =
-        !view.isEdited &&
-        segment.autoResolvedLines === undefined &&
-        ((view.leftAppend && view.showLeftActions && segment.oursLines.length > 0) ||
-            (view.rightAppend && view.showRightActions && segment.theirsLines.length > 0));
     const handleSelect = useCallback(() => onSelect(segment.id), [onSelect, segment.id]);
     const handleKeyDown = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -930,15 +950,16 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
                     lines={resultLines}
                     lineCount={lineCount}
                     lineNumbers={lineNumbers}
-                    className={`conflict-result ${view.isResolved ? "resolved" : "unresolved"} ${view.isEdited ? "edited" : ""} ${view.oursInResult || view.theirsInResult ? "accepted-pane" : ""}`}
+                    className={`conflict-result ${
+                        view.resultIsUnresolved || !view.isResolved ? "unresolved" : "resolved"
+                    } ${view.isEdited ? "edited" : ""}`}
                     wordHighlight={highlightWords}
                     compareLines={view.resultCompareLines}
                     onCommit={(lines) => onEditResult(segment.id, lines)}
                 />
-                {showPendingAppendTarget ? (
+                {view.resultInsertionMarker ? (
                     <div
-                        className="result-insertion-marker variant-insertion"
-                        style={{ top: `${resultLines.length * LINE_HEIGHT_PX}px` }}
+                        className={`result-insertion-marker marker-${view.resultInsertionMarker} variant-insertion`}
                         aria-hidden="true"
                     />
                 ) : null}

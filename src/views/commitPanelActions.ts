@@ -303,10 +303,28 @@ export async function stashMutationFromPanel(
         await deps.gitOps.stashDelete(index);
         showTimedInformationMessage(vscode.l10n.t("Stashed change deleted."));
     } else if (action === "pop") {
-        await deps.gitOps.stashPop(index);
+        try {
+            await deps.gitOps.stashPop(index);
+        } catch (err) {
+            const conflicts = await deps.gitOps.getConflictFilesDetailed();
+            if (conflicts.length === 0) throw err;
+            await deps.refreshData();
+            deps.fireWorkingTreeChanged();
+            await vscode.commands.executeCommand("intelligit.openConflictSession");
+            return;
+        }
         showTimedInformationMessage(vscode.l10n.t("Unstashed changes."));
     } else {
-        await deps.gitOps.stashApply(index);
+        try {
+            await deps.gitOps.stashApply(index);
+        } catch (err) {
+            const conflicts = await deps.gitOps.getConflictFilesDetailed();
+            if (conflicts.length === 0) throw err;
+            await deps.refreshData();
+            deps.fireWorkingTreeChanged();
+            await vscode.commands.executeCommand("intelligit.openConflictSession");
+            return;
+        }
         showTimedInformationMessage(vscode.l10n.t("Applied stashed changes."));
     }
     await deps.refreshData();

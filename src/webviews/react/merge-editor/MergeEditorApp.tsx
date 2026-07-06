@@ -491,14 +491,17 @@ function App() {
                     (
                         item,
                     ): item is (typeof renderedSegments)[number] & { segment: ConflictSegment } =>
-                        item.segment.type === "conflict",
+                        item.segment.type === "conflict" &&
+                        isTrueConflict(item.segment) &&
+                        state.resolutions[item.segment.id] === undefined &&
+                        state.edits[item.segment.id] === undefined,
                 )
                 .map((item) => ({
                     id: item.segment.id,
                     index: item.index,
                     colorClass: connectorClass(item.segment),
                 })),
-        [renderedSegments],
+        [renderedSegments, state.resolutions, state.edits],
     );
     const connectorSpecs: ConnectorSpec[] = useMemo(
         () => connectors.map(({ id, colorClass }) => ({ id, colorClass })),

@@ -591,6 +591,24 @@
     position: relative;
     overflow: visible;
 }
+.result-insertion-marker {
+    position: absolute;
+    left: var(--merge-line-number-gutter);
+    right: 0;
+    height: 0;
+    border-top: 1px dotted var(--pycharm-conflict);
+    pointer-events: none;
+    z-index: 5;
+}
+.result-insertion-marker.marker-top {
+    top: 0;
+}
+.result-insertion-marker.marker-bottom {
+    bottom: 0;
+}
+.result-insertion-marker.variant-insertion {
+    border-top-color: var(--pycharm-inserted);
+}
 .merge-horizontal-scroll {
     position: absolute;
     right: 14px;
@@ -678,19 +696,6 @@
 .action-btn.discard-btn {
     color: var(--merge-danger);
 }
-.result-insertion-marker {
-    position: absolute;
-    right: 0;
-    left: var(--merge-line-number-gutter);
-    height: 0;
-    border-top: 1px solid var(--pycharm-conflict);
-    pointer-events: none;
-    z-index: 5;
-}
-.result-insertion-marker.variant-insertion {
-    border-top-color: var(--pycharm-inserted);
-}
-
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
    layer so color stays pinned to the visible pane while text scrolls. */
@@ -726,14 +731,9 @@
 .change-theirs-only .conflict-ours .real-line-row {
     background: transparent;
 }
-.conflict-result.resolved .real-code-line::before,
-.conflict-result.resolved .real-line-row {
-    background: var(--merge-inserted-block-bg);
-}
-/* One-sided hunks are auto-resolved, so their result pane is always
-   "resolved"; keep the variant color instead of the generic green (a
-   deletion's empty result must not read as an insertion). User edits win
-   via the .edited tint below. */
+/* One-sided hunks are auto-resolved, so their result pane can be "resolved"
+   without meaning "green accepted"; keep non-green variant colors where useful.
+   User edits win via the .edited tint below. */
 .variant-modification .conflict-result.resolved:not(.edited) .real-code-line::before,
 .variant-modification .conflict-result.resolved:not(.edited) .real-line-row {
     background: var(--merge-modified-block-bg);
@@ -956,7 +956,8 @@
 .change-conflict .word-diff-change {
     background: var(--pycharm-conflict);
 }
-.variant-insertion .word-diff-change {
+.variant-insertion .conflict-ours .word-diff-change,
+.variant-insertion .conflict-theirs .word-diff-change {
     background: var(--pycharm-inserted);
 }
 .variant-modification .word-diff-change {
@@ -965,7 +966,6 @@
 .variant-deletion .word-diff-change {
     background: var(--pycharm-deleted);
 }
-.conflict-result.resolved .word-diff-change,
 .conflict-result.edited .word-diff-change {
     background: var(--pycharm-inserted);
 }
