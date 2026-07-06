@@ -302,9 +302,14 @@ describe("MergeEditorApp", () => {
         expect(pendingConnectors).toHaveLength(2);
         expect(
             Array.from(pendingConnectors).every((connector) =>
-                connector.classList.contains("merge-connector-line"),
+                connector.getAttribute("d")?.trim().endsWith("Z"),
             ),
         ).toBe(true);
+        expect(
+            Array.from(pendingConnectors).some((connector) =>
+                connector.classList.contains("merge-connector-line"),
+            ),
+        ).toBe(false);
 
         clickButton("Accept left block");
         await flush();

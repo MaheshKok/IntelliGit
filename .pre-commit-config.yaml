@@ -64,9 +64,9 @@ repos:
             pass_filenames: false
             stages: [pre-push]
 
-          - id: unit-tests
-            name: unit tests
-            entry: bun vitest run tests/unit tests/webview/unit
+          - id: pre-push-tests
+            name: pre-push tests
+            entry: bun vitest run tests/unit tests/webview/unit tests/integration/webviews
             language: system
             pass_filenames: false
             stages: [pre-push]
