@@ -722,7 +722,7 @@ async function waitForAsync(): Promise<void> {
     for (let i = 0; i < maxPasses; i++) {
         await Promise.resolve();
         try {
-            await vi.runAllTimersAsync();
+            await vi.advanceTimersByTimeAsync(0);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             const isExpectedTimerError =

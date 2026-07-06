@@ -85,6 +85,12 @@ const vscodeMock = {
     ProgressLocation: { Notification: 15 },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
+        parse: (value: string): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
+            fsPath: value,
+            path: value,
+            scheme: value.split(":", 1)[0],
+            toString: () => value,
+        }),
         joinPath: (
             base: { fsPath?: string; path?: string },
             ...segments: string[]
@@ -390,9 +396,12 @@ function lastCommitChecksSnapshot():
     return snapshots[snapshots.length - 1];
 }
 
-async function setupCommitPanelProvider() {
+async function setupCommitPanelProvider(
+    configure?: (gitOps: ReturnType<typeof makeGitOpsMock>) => void,
+) {
     const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
     const gitOps = makeGitOpsMock();
+    configure?.(gitOps);
     const draftStore = createMemento();
     const provider = new CommitPanelViewProvider(
         { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -1436,6 +1445,65 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider still updates files when stash metadata refresh fails", async () => {
+        const { provider } = await setupCommitPanelProvider((gitOps) => {
+            gitOps.getStatus.mockResolvedValueOnce([
+                { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+                { path: "src/b.ts", status: "?", staged: false, additions: 0, deletions: 0 },
+            ]);
+            gitOps.listStashes.mockRejectedValueOnce(new Error("stash metadata failed"));
+        });
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "update"; files: Array<{ path: string }> } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "files" in message,
+            );
+
+        expect(updates.at(-1)?.files.map((file) => file.path)).toEqual(["src/a.ts", "src/b.ts"]);
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider clears stash files when a new selected stash fails to load", async () => {
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        gitOps.listStashes.mockResolvedValueOnce([
+            { index: 1, message: "On main: next", date: "2026-02-20T00:00:00Z", hash: "next" },
+        ]);
+        gitOps.getStashFiles.mockRejectedValueOnce(new Error("stash files failed"));
+        postMessageSpy.mockClear();
+
+        await (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (
+                    message,
+                ): message is {
+                    type: "update";
+                    selectedStashIndex: number | null;
+                    stashFiles: Array<{ path: string }>;
+                } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "stashFiles" in message,
+            );
+        expect(updates.at(-1)).toEqual(
+            expect.objectContaining({
+                selectedStashIndex: 1,
+                stashFiles: [],
+            }),
+        );
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider ignores stale refresh results from older requests", async () => {
         const { provider, gitOps } = await setupCommitPanelProvider();
         let resolveSlowStatus: (
@@ -1878,9 +1946,11 @@ describe("view providers integration", () => {
         expect(gitOps.getStashFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
         expect(openTextDocument).toHaveBeenCalledWith(
             expect.objectContaining({
-                content: "diff --git a b",
-                language: "diff",
+                scheme: "intelligit-diff",
             }),
+        );
+        expect(openTextDocument).not.toHaveBeenCalledWith(
+            expect.objectContaining({ content: expect.any(String) }),
         );
         provider.dispose();
     });
@@ -1895,9 +1965,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "stashPop", index: 0 });
 
         expect(executeCommand).toHaveBeenCalledWith("intelligit.openConflictSession");
-        expect(postMessageSpy).not.toHaveBeenCalledWith(
-            expect.objectContaining({ type: "error" }),
-        );
+        expect(postMessageSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
         provider.dispose();
     });
 
@@ -1911,9 +1979,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "stashApply", index: 0 });
 
         expect(executeCommand).toHaveBeenCalledWith("intelligit.openConflictSession");
-        expect(postMessageSpy).not.toHaveBeenCalledWith(
-            expect.objectContaining({ type: "error" }),
-        );
+        expect(postMessageSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
         provider.dispose();
     });
 

@@ -11,6 +11,7 @@ import { assertRepoRelativePath, deleteFileWithFallback } from "../utils/fileOps
 import { assertNumber, assertRepoPathArray, assertString } from "./messageValidation";
 import type { IconThemeService } from "./shared/IconThemeService";
 import { showTimedInformationMessage } from "../utils/notifications";
+import { createReadonlyDiffUri } from "../services/diffService";
 
 interface PanelFileActionDeps {
     gitOps: GitOps;
@@ -140,7 +141,7 @@ export async function showDiffFromPanel(
 }
 
 /**
- * Opens an untitled diff document for one file inside a stashed change.
+ * Opens a read-only diff document for one file inside a stashed change.
  *
  * The stash index must be finite and the path repository-relative. Empty patch content is converted
  * into a visible fallback message so the panel action always produces understandable editor output.
@@ -153,10 +154,12 @@ export async function showStashDiffFromPanel(
     const index = assertNumber(indexValue, "index");
     const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
     const patch = await deps.gitOps.getStashFilePatch(index, filePath);
-    const doc = await vscode.workspace.openTextDocument({
-        content: patch || `No stashed diff found for ${filePath}.`,
-        language: "diff",
-    });
+    const uri = createReadonlyDiffUri(
+        `${filePath}.diff`,
+        patch || `No stashed diff found for ${filePath}.`,
+        `stash@{${index}}`,
+    );
+    const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc, { preview: true });
 }
 

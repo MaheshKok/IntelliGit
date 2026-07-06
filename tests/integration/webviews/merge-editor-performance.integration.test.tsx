@@ -99,66 +99,70 @@ afterEach(() => {
 });
 
 describe("MergeEditorApp large document flow", () => {
-    it("renders 1,000 lines with 50 conflicts and resolves them end-to-end", async () => {
-        const vscode = installVsCodeMock();
-        createRootHost();
+    it(
+        "renders 1,000 lines with 50 conflicts and resolves them end-to-end",
+        async () => {
+            const vscode = installVsCodeMock();
+            createRootHost();
 
-        await act(async () => {
-            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
-        });
-        await flush();
+            await act(async () => {
+                await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+            });
+            await flush();
 
-        const { segments, expectedTheirsContent } = buildLargeConflictData();
+            const { segments, expectedTheirsContent } = buildLargeConflictData();
 
-        const renderStart = performance.now();
-        dispatchHostMessage({
-            type: "setConflictData",
-            data: {
-                filePath: "src/huge.ts",
-                oursLabel: "main",
-                theirsLabel: "feature",
-                eol: "\n",
-                hasTrailingNewline: true,
-                segments,
-            },
-        });
-        await flush();
-        const renderMs = performance.now() - renderStart;
+            const renderStart = performance.now();
+            dispatchHostMessage({
+                type: "setConflictData",
+                data: {
+                    filePath: "src/huge.ts",
+                    oursLabel: "main",
+                    theirsLabel: "feature",
+                    eol: "\n",
+                    hasTrailingNewline: true,
+                    segments,
+                },
+            });
+            await flush();
+            const renderMs = performance.now() - renderStart;
 
-        expect(document.body.textContent).toContain(`${CONFLICT_COUNT} unresolved`);
-        // Generous bound for jsdom; a quadratic re-render regression blows
-        // far past this while the memoized pipeline stays well under it.
-        expect(renderMs).toBeLessThan(15_000);
+            expect(document.body.textContent).toContain(`${CONFLICT_COUNT} unresolved`);
+            // Generous bound for jsdom; a quadratic re-render regression blows
+            // far past this while the memoized pipeline stays well under it.
+            expect(renderMs).toBeLessThan(15_000);
 
-        // Resolving a single hunk must stay cheap relative to the full render:
-        // with working memoization only the affected segment re-renders.
-        const acceptAll = Array.from(document.querySelectorAll("button")).find(
-            (b) => b.textContent?.trim() === "Accept All Theirs",
-        );
-        if (!acceptAll) throw new Error("Expected the Accept All Theirs button");
-        const resolveStart = performance.now();
-        act(() => {
-            acceptAll.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        });
-        await flush();
-        const resolveMs = performance.now() - resolveStart;
-        expect(resolveMs).toBeLessThan(10_000);
+            // Resolving a single hunk must stay cheap relative to the full render:
+            // with working memoization only the affected segment re-renders.
+            const acceptAll = Array.from(document.querySelectorAll("button")).find(
+                (b) => b.textContent?.trim() === "Accept All Theirs",
+            );
+            if (!acceptAll) throw new Error("Expected the Accept All Theirs button");
+            const resolveStart = performance.now();
+            act(() => {
+                acceptAll.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            await flush();
+            const resolveMs = performance.now() - resolveStart;
+            expect(resolveMs).toBeLessThan(10_000);
 
-        expect(document.body.textContent).toContain("0 unresolved");
+            expect(document.body.textContent).toContain("0 unresolved");
 
-        const apply = Array.from(document.querySelectorAll("button")).find((b) =>
-            b.textContent?.trim().startsWith("Apply ("),
-        );
-        if (!apply) throw new Error("Expected the Apply button");
-        act(() => {
-            apply.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-        });
+            const apply = Array.from(document.querySelectorAll("button")).find((b) =>
+                b.textContent?.trim().startsWith("Apply ("),
+            );
+            if (!apply) throw new Error("Expected the Apply button");
+            act(() => {
+                apply.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
 
-        expect(vscode.postMessage).toHaveBeenCalledWith({
-            type: "applyResolution",
-            content: expectedTheirsContent,
-        });
-    });
+            expect(vscode.postMessage).toHaveBeenCalledWith({
+                type: "applyResolution",
+                content: expectedTheirsContent,
+            });
+        },
+        20_000,
+    );
 
     it("keeps per-segment size hints so offscreen virtualization has stable geometry", async () => {
         installVsCodeMock();

@@ -73,12 +73,17 @@ type RefreshEventType =
  */
 export class RefreshService implements vscode.Disposable {
     private static readonly lightRefreshSuppressionAfterFullMs = 800;
+    private static readonly pollingRefreshIntervalMs = 5000;
+    private static readonly ignoredWorkspaceEventDirs = new Set([".git", "dist", "build", "out"]);
 
     private lightTimer: ReturnType<typeof setTimeout> | undefined;
     private fullTimer: ReturnType<typeof setTimeout> | undefined;
+    private pollTimer: ReturnType<typeof setInterval> | undefined;
     private readonly fsWatchers: fs.FSWatcher[] = [];
     private readonly gitRepositoryStateDisposables = new Map<string, vscode.Disposable>();
     private readonly disposables: vscode.Disposable[] = [];
+    private suppressedLightTimer: ReturnType<typeof setTimeout> | undefined;
+    private pollingRefreshInFlight = false;
     private recentFullScheduledUntil = 0;
     private disposed = false;
 
@@ -137,6 +142,10 @@ export class RefreshService implements vscode.Disposable {
             clearTimeout(this.lightTimer);
             this.lightTimer = undefined;
         }
+        if (this.suppressedLightTimer) {
+            clearTimeout(this.suppressedLightTimer);
+            this.suppressedLightTimer = undefined;
+        }
         if (this.fullTimer) clearTimeout(this.fullTimer);
         this.fullTimer = setTimeout(() => {
             void (async () => {
@@ -184,8 +193,47 @@ export class RefreshService implements vscode.Disposable {
             vscode.workspace.onDidRenameFiles(handler),
         );
 
+        try {
+            const watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(vscode.Uri.file(this.repoRoot), "**/*"),
+            );
+            const repoFileHandler = (uri: vscode.Uri) => {
+                const relativePath = path.relative(this.repoRoot, uri.fsPath);
+                const [topLevelDir] = relativePath.split(path.sep);
+                if (topLevelDir && RefreshService.ignoredWorkspaceEventDirs.has(topLevelDir)) {
+                    return;
+                }
+                this.scheduleRefreshEvent("workspace-file");
+            };
+            this.disposables.push(
+                watcher.onDidChange(repoFileHandler),
+                watcher.onDidCreate(repoFileHandler),
+                watcher.onDidDelete(repoFileHandler),
+                watcher,
+            );
+        } catch {
+            /* Repository file watcher may be unavailable for virtual roots. */
+        }
+
         this.registerGitDirWatchers();
         this.registerVsCodeGitWatchers();
+        this.registerPollingRefresh();
+    }
+
+    /** Polls as a fallback for file changes that VS Code or Git watchers miss. */
+    private registerPollingRefresh(): void {
+        if (this.pollTimer) return;
+        this.pollTimer = setInterval(() => {
+            if (this.disposed || this.pollingRefreshInFlight) return;
+            this.pollingRefreshInFlight = true;
+            void this.refreshCommitPanels()
+                .catch((err) => {
+                    console.error("[IntelliGit] Polling refresh failed:", err);
+                })
+                .finally(() => {
+                    this.pollingRefreshInFlight = false;
+                });
+        }, RefreshService.pollingRefreshIntervalMs);
     }
 
     /** Resolve the real Git metadata directory, including worktree-style .git files. */
@@ -339,9 +387,18 @@ export class RefreshService implements vscode.Disposable {
                 this.debouncedFullRefresh();
                 return;
             case "workspace-file":
+                this.debouncedLightRefresh();
+                return;
             case "git-index":
             case "git-repository-state":
-                if (Date.now() < this.recentFullScheduledUntil) return;
+                if (Date.now() < this.recentFullScheduledUntil) {
+                    if (this.suppressedLightTimer) clearTimeout(this.suppressedLightTimer);
+                    this.suppressedLightTimer = setTimeout(() => {
+                        this.suppressedLightTimer = undefined;
+                        this.debouncedLightRefresh();
+                    }, this.recentFullScheduledUntil - Date.now());
+                    return;
+                }
                 this.debouncedLightRefresh();
                 return;
         }
@@ -352,6 +409,8 @@ export class RefreshService implements vscode.Disposable {
         this.disposed = true;
         if (this.lightTimer) clearTimeout(this.lightTimer);
         if (this.fullTimer) clearTimeout(this.fullTimer);
+        if (this.pollTimer) clearInterval(this.pollTimer);
+        if (this.suppressedLightTimer) clearTimeout(this.suppressedLightTimer);
         for (const watcher of this.fsWatchers) {
             watcher.close();
         }
