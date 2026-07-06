@@ -1098,17 +1098,13 @@ export function ConnectorLayer({
                     {spec.leftColorClass ? (
                         <path
                             ref={(el) => registerPath(`${spec.id}-left`, el)}
-                            className={`merge-connector ${spec.leftColorClass} ${
-                                spec.middleLineTarget ? "merge-connector-line" : ""
-                            }`}
+                            className={`merge-connector ${spec.leftColorClass}`}
                         />
                     ) : null}
                     {spec.rightColorClass ? (
                         <path
                             ref={(el) => registerPath(`${spec.id}-right`, el)}
-                            className={`merge-connector ${spec.rightColorClass} ${
-                                spec.middleLineTarget ? "merge-connector-line" : ""
-                            }`}
+                            className={`merge-connector ${spec.rightColorClass}`}
                         />
                     ) : null}
                 </React.Fragment>

@@ -83,6 +83,8 @@ interface ConnectorClassPair {
 
 type RibbonLineSide = "a" | "b";
 
+const RIBBON_LINE_TARGET_HEIGHT_PX = 3;
+
 interface ConnectorRenderSpec extends ConnectorClassPair {
     id: number;
     index: number;
@@ -134,7 +136,7 @@ function readPxVar(element: Element, name: string): number {
 
 /**
  * Sets one connector ribbon's path across a gutter. Empty result targets render
- * as a row-boundary line instead of a filled block so insertion hunks stay thin.
+ * as a thin filled trapezoid so insertion hunks stay visible without a full row.
  */
 function setRibbonPath(
     path: SVGPathElement | undefined,
@@ -148,8 +150,12 @@ function setRibbonPath(
     lineSide?: RibbonLineSide,
 ): void {
     if (!path) return;
-    if (lineSide === "a") aBot = aTop;
-    if (lineSide === "b") bBot = bTop;
+    if (lineSide === "a") {
+        aBot = aTop + RIBBON_LINE_TARGET_HEIGHT_PX;
+    }
+    if (lineSide === "b") {
+        bBot = bTop + RIBBON_LINE_TARGET_HEIGHT_PX;
+    }
 
     const top = Math.min(aTop, bTop);
     const bottom = Math.max(aBot, bBot);
@@ -159,12 +165,7 @@ function setRibbonPath(
     }
 
     path.style.display = "";
-    path.classList.toggle("merge-connector-line", lineSide !== undefined);
-    if (lineSide !== undefined) {
-        path.setAttribute("d", `M ${x0},${(aTop + aBot) / 2} L ${x1},${(bTop + bBot) / 2}`);
-        return;
-    }
-
+    path.classList.remove("merge-connector-line");
     path.setAttribute("d", `M ${x0},${aTop} L ${x1},${bTop} L ${x1},${bBot} L ${x0},${aBot} Z`);
 }
 
