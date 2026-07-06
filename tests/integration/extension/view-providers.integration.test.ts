@@ -1469,6 +1469,41 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider clears stash files when a new selected stash fails to load", async () => {
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        gitOps.listStashes.mockResolvedValueOnce([
+            { index: 1, message: "On main: next", date: "2026-02-20T00:00:00Z", hash: "next" },
+        ]);
+        gitOps.getStashFiles.mockRejectedValueOnce(new Error("stash files failed"));
+        postMessageSpy.mockClear();
+
+        await (provider as typeof provider & { refreshSilent(): Promise<void> }).refreshSilent();
+
+        const updates = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (
+                    message,
+                ): message is {
+                    type: "update";
+                    selectedStashIndex: number | null;
+                    stashFiles: Array<{ path: string }>;
+                } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "update" &&
+                    "stashFiles" in message,
+            );
+        expect(updates.at(-1)).toEqual(
+            expect.objectContaining({
+                selectedStashIndex: 1,
+                stashFiles: [],
+            }),
+        );
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider ignores stale refresh results from older requests", async () => {
         const { provider, gitOps } = await setupCommitPanelProvider();
         let resolveSlowStatus: (

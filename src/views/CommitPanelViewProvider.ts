@@ -361,12 +361,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             } else {
                 selectedStashIndex = stashes.length > 0 ? stashes[0].index : null;
             }
+            const selectedStashIndexUnchanged = selectedStashIndex === this.selectedStashIndex;
             const stashFiles =
                 selectedStashIndex !== null
                     ? await this.gitOps
                           .getStashFiles(selectedStashIndex)
                           .then((files) => this.iconTheme.decorateWorkingFiles(files))
-                          .catch(() => this.stashFiles)
+                          .catch(() => (selectedStashIndexUnchanged ? this.stashFiles : []))
                     : [];
             const folderIconsByName = await this.iconTheme
                 .getFolderIconsByWorkingFiles([...files, ...stashFiles])

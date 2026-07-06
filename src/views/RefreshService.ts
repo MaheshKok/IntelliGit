@@ -74,6 +74,7 @@ type RefreshEventType =
 export class RefreshService implements vscode.Disposable {
     private static readonly lightRefreshSuppressionAfterFullMs = 800;
     private static readonly pollingRefreshIntervalMs = 5000;
+    private static readonly ignoredWorkspaceEventDirs = new Set([".git", "dist", "build", "out"]);
 
     private lightTimer: ReturnType<typeof setTimeout> | undefined;
     private fullTimer: ReturnType<typeof setTimeout> | undefined;
@@ -198,7 +199,8 @@ export class RefreshService implements vscode.Disposable {
             );
             const repoFileHandler = (uri: vscode.Uri) => {
                 const relativePath = path.relative(this.repoRoot, uri.fsPath);
-                if (relativePath === ".git" || relativePath.startsWith(`.git${path.sep}`)) {
+                const [topLevelDir] = relativePath.split(path.sep);
+                if (topLevelDir && RefreshService.ignoredWorkspaceEventDirs.has(topLevelDir)) {
                     return;
                 }
                 this.scheduleRefreshEvent("workspace-file");

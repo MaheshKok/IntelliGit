@@ -190,6 +190,12 @@ describe("RefreshService refresh scheduling", () => {
         await vi.advanceTimersByTimeAsync(300);
         expect(deps.commitPanel.refreshSilent).not.toHaveBeenCalled();
 
+        for (const dir of ["dist", "build", "out"]) {
+            onDidCreate({ fsPath: `/tmp/intelligit-refresh-test/${dir}/bundle.js` });
+            await vi.advanceTimersByTimeAsync(300);
+            expect(deps.commitPanel.refreshSilent).not.toHaveBeenCalled();
+        }
+
         onDidCreate({ fsPath: "/tmp/intelligit-refresh-test/src/generated.ts" });
         await vi.advanceTimersByTimeAsync(300);
         expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
