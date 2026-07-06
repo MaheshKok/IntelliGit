@@ -564,6 +564,47 @@ describe("MergeEditorApp", () => {
         });
     });
 
+    it("shows the append marker at the top after accepting an empty side", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "conflict",
+                        oursLines: [],
+                        theirsLines: ["theirs();"],
+                        baseLines: ["base();"],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        clickButton("Accept left block");
+        await flush();
+
+        const marker = document.querySelector<HTMLElement>(
+            ".result-insertion-marker.variant-insertion",
+        );
+        expect(marker).not.toBeNull();
+        expect(marker?.style.top).toBe("0px");
+    });
+
     it("discards only the left side on left X and leaves the right suggestion offered", async () => {
         const vscode = installVsCodeMock();
         createRootHost();

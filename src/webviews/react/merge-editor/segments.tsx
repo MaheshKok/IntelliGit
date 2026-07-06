@@ -898,7 +898,6 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
     const showPendingAppendTarget =
         !view.isEdited &&
         segment.autoResolvedLines === undefined &&
-        resultLines.length > 0 &&
         ((view.leftAppend && view.showLeftActions && segment.oursLines.length > 0) ||
             (view.rightAppend && view.showRightActions && segment.theirsLines.length > 0));
     const handleSelect = useCallback(() => onSelect(segment.id), [onSelect, segment.id]);
