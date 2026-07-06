@@ -91,9 +91,16 @@ body {
 }
 </style>
 <script>
+const sampleConflictData = ${JSON.stringify(sampleConflictData)};
+function postSampleConflictData() {
+  window.dispatchEvent(new MessageEvent("message", {
+    data: { type: "setConflictData", data: sampleConflictData }
+  }));
+}
 window.acquireVsCodeApi = () => ({
   postMessage(message) {
     console.log("[merge-preview]", message);
+    if (message?.type === "ready") window.setTimeout(postSampleConflictData, 0);
   },
   getState() {
     return {};
@@ -106,9 +113,8 @@ window.acquireVsCodeApi = () => ({
 <div id="root"></div>
 <script src="/dist/webview-mergeeditor.js"></script>
 <script>
-window.dispatchEvent(new MessageEvent("message", {
-  data: { type: "setConflictData", data: ${JSON.stringify(sampleConflictData)} }
-}));
+window.setTimeout(postSampleConflictData, 100);
+window.setTimeout(postSampleConflictData, 500);
 </script>
 </body>
 </html>`;

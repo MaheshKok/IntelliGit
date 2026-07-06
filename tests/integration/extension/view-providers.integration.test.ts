@@ -308,6 +308,7 @@ function makeGitOpsMock() {
         stashPop: vi.fn(async () => "popped"),
         stashApply: vi.fn(async () => "applied"),
         stashDelete: vi.fn(async () => "deleted"),
+        getConflictFilesDetailed: vi.fn(async () => []),
         getStashFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
     };
@@ -1881,6 +1882,54 @@ describe("view providers integration", () => {
                 language: "diff",
             }),
         );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider opens conflicts after stash pop conflict", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.stashPop.mockRejectedValueOnce(new Error("stash pop failed"));
+        gitOps.getConflictFilesDetailed.mockResolvedValueOnce([
+            { path: "src/a.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+        ]);
+
+        await webview.send({ type: "stashPop", index: 0 });
+
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.openConflictSession");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "error" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider opens conflicts after stash apply conflict", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.stashApply.mockRejectedValueOnce(new Error("stash apply failed"));
+        gitOps.getConflictFilesDetailed.mockResolvedValueOnce([
+            { path: "src/a.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+        ]);
+
+        await webview.send({ type: "stashApply", index: 0 });
+
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.openConflictSession");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "error" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider surfaces stash failures without conflicts", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.stashApply.mockRejectedValueOnce(new Error("stash apply failed"));
+        gitOps.getConflictFilesDetailed.mockResolvedValueOnce([]);
+
+        await webview.send({ type: "stashApply", index: 0 });
+
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.openConflictSession");
+        expect(showErrorMessage).toHaveBeenCalledWith("stash apply failed");
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "stash apply failed",
+        });
         provider.dispose();
     });
 

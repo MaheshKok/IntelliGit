@@ -1,10 +1,19 @@
 // Entry point for the 3-way merge editor webview. Renders three columns:
 // Ours (left), Result (middle), Theirs (right) with per-hunk controls.
 
-import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import React, {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useReducer,
+    useRef,
+    useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 import type {
     ConflictSegment,
+    HunkSideDismissal,
     HunkResolution,
     InboundMessage,
     MergeSegment,
@@ -34,12 +43,24 @@ import {
     isTrueConflict,
 } from "./mergeState";
 import {
-    CommonSection,
-    ConflictSection,
+    CommonPaneBlock,
+    OursConflictBlock,
+    ResultConflictBlock,
+    TheirsConflictBlock,
+    ConnectorLayer,
+    connectorClass,
     OverviewRail,
     type SegmentPaneLineNumbers,
+    type ConnectorSpec,
     type OverviewMarker,
 } from "./segments";
+import {
+    buildVerticalLayout,
+    paneOffsetForCanonical,
+    type MergeVerticalLayout,
+    type MergePane,
+    type SegmentPaneLines,
+} from "./mergeScrollLayout";
 import { buildLineNumberValues } from "./lineNumbers";
 import { initShiki, isShikiReady, langForPath, detectTheme } from "./shikiHighlighter";
 import { SyntaxHighlightProvider } from "./syntaxHighlightContext";
@@ -49,6 +70,104 @@ const EMPTY_SEGMENTS: MergeSegment[] = [];
 
 /** Horizontal padding of a `.code-line` (0 9px), added to the content width. */
 const LINE_PADDING_PX = 18;
+
+const MERGE_PANES: readonly MergePane[] = ["left", "middle", "right"];
+/* connector-resolved dims the accepted side's ribbon to a quiet "done" marker
+   so it does not read as a still-pending insertion next to the neutral result. */
+const ACCEPTED_CONNECTOR_CLASS = "variant-insertion connector-resolved";
+
+interface ConnectorClassPair {
+    leftColorClass?: string;
+    rightColorClass?: string;
+}
+
+type RibbonLineSide = "a" | "b";
+
+const RIBBON_LINE_TARGET_HEIGHT_PX = 3;
+
+interface ConnectorRenderSpec extends ConnectorClassPair {
+    id: number;
+    index: number;
+    middleLineTarget: boolean;
+}
+
+function connectorClassPair(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+    dismissed: HunkSideDismissal | undefined,
+): ConnectorClassPair {
+    if (editedLines !== undefined || resolution === "none") return {};
+    if (resolution === "both" || resolution === "both-reversed") return {};
+
+    const pendingClass = connectorClass(segment);
+    if (resolution === "ours") {
+        return {
+            leftColorClass: ACCEPTED_CONNECTOR_CLASS,
+            rightColorClass: dismissed?.theirs ? undefined : pendingClass,
+        };
+    }
+    if (resolution === "theirs") {
+        return {
+            leftColorClass: dismissed?.ours ? undefined : pendingClass,
+            rightColorClass: ACCEPTED_CONNECTOR_CLASS,
+        };
+    }
+    return {
+        leftColorClass: dismissed?.ours ? undefined : pendingClass,
+        rightColorClass: dismissed?.theirs ? undefined : pendingClass,
+    };
+}
+
+function resultIsLineTarget(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+): boolean {
+    if (editedLines !== undefined) return false;
+    return getEffectiveResultLines(segment, resolution, editedLines).length === 0;
+}
+
+/** Reads a numeric px-valued CSS variable used by merge-editor geometry. */
+function readPxVar(element: Element, name: string): number {
+    const value = Number.parseFloat(getComputedStyle(element).getPropertyValue(name));
+    return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Sets one connector ribbon's path across a gutter. Empty result targets render
+ * as a thin filled trapezoid so insertion hunks stay visible without a full row.
+ */
+function setRibbonPath(
+    path: SVGPathElement | undefined,
+    x0: number,
+    x1: number,
+    aTop: number,
+    aBot: number,
+    bTop: number,
+    bBot: number,
+    viewportH: number,
+    lineSide?: RibbonLineSide,
+): void {
+    if (!path) return;
+    if (lineSide === "a") {
+        aBot = aTop + RIBBON_LINE_TARGET_HEIGHT_PX;
+    }
+    if (lineSide === "b") {
+        bBot = bTop + RIBBON_LINE_TARGET_HEIGHT_PX;
+    }
+
+    const top = Math.min(aTop, bTop);
+    const bottom = Math.max(aBot, bBot);
+    if (bottom < 0 || top > viewportH) {
+        path.style.display = "none";
+        return;
+    }
+
+    path.style.display = "";
+    path.classList.remove("merge-connector-line");
+    path.setAttribute("d", `M ${x0},${aTop} L ${x1},${bTop} L ${x1},${bBot} L ${x0},${aBot} Z`);
+}
 
 // --- VS Code API ---
 
@@ -65,7 +184,7 @@ function getVsCodeApi() {
  * extension apply/ignore-mode commands.
  */
 // Webview entrypoint owns merge-editor state orchestration and root render side effects.
-// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component
+// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer
 function App() {
     const [state, dispatch] = useReducer(reducer, {
         data: null,
@@ -78,11 +197,11 @@ function App() {
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
-    const [shikiReady, setShikiReady] = useState(isShikiReady());
+    const [shikiReady, setShikiReady] = useState(() => isShikiReady());
     // ponytail: theme sampled once at mount. VS Code reloads the webview on a
     // live theme switch, so re-reading the body class on every render buys
     // nothing — reopen the merge editor to pick up a changed theme.
-    const [shikiTheme] = useState(detectTheme());
+    const [shikiTheme] = useState(() => detectTheme());
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
     const filePath = state.data?.filePath;
     const syntaxHighlightState = useMemo(
@@ -94,8 +213,24 @@ function App() {
         [shikiReady, filePath, shikiTheme],
     );
 
-    const conflictSectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
     const mergeContentRef = useRef<HTMLDivElement | null>(null);
+    const columnRefs = useRef<Record<MergePane, HTMLDivElement | null>>({
+        left: null,
+        middle: null,
+        right: null,
+    });
+    const connectorPaths = useMemo(() => new Map<string, SVGPathElement>(), []);
+    // Gutter x-ranges (viewport-relative) the connector ribbons span; measured
+    // on layout/resize so the per-frame draw only recomputes y.
+    const gutterXRef = useRef<{ leftX0: number; leftX1: number; rightX0: number; rightX1: number }>(
+        { leftX0: 0, leftX1: 0, rightX0: 0, rightX1: 0 },
+    );
+    const viewportHRef = useRef(0);
+    const layoutRef = useRef<MergeVerticalLayout | null>(null);
+    // Conflict hunks the ribbons link, kept in a ref so the rAF draw reads the
+    // current set without being re-created each render.
+    const connectorsRef = useRef<ConnectorRenderSpec[]>([]);
+    const vFrameRef = useRef(0);
     const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
     const horizontalScrollInnerRef = useRef<HTMLDivElement | null>(null);
     const updateHorizontalScrollWidthRef = useRef<() => void>(() => undefined);
@@ -124,6 +259,108 @@ function App() {
         });
     }, []);
 
+    // Cache the viewport height (clamps pane offsets, culls ribbons) and expose
+    // it as a CSS var so the sticky viewport's negative margin cancels its own
+    // height, leaving the scroll range at exactly canonicalTotalPx.
+    const measureViewport = useCallback(() => {
+        const content = mergeContentRef.current;
+        if (!content) return;
+        const h = content.clientHeight;
+        viewportHRef.current = h;
+        content.style.setProperty("--merge-viewport-h", `${h}px`);
+    }, []);
+
+    // Gutter x-ranges are viewport-relative and change only on layout/resize, so
+    // measure them once here and let the per-frame draw recompute only y.
+    const measureGutters = useCallback(() => {
+        const { left, middle, right } = columnRefs.current;
+        if (!left || !middle || !right) return;
+        const lineGutter = readPxVar(left, "--merge-line-number-gutter");
+        const sourceGutter = lineGutter + readPxVar(left, "--merge-action-gutter");
+        gutterXRef.current = {
+            leftX0: left.offsetLeft + left.offsetWidth - sourceGutter,
+            leftX1: middle.offsetLeft + lineGutter,
+            rightX0: middle.offsetLeft + middle.offsetWidth,
+            rightX1: right.offsetLeft + sourceGutter,
+        };
+    }, []);
+
+    const drawConnectors = useCallback(
+        (offsets: Record<MergePane, number>, viewportH: number) => {
+            const layout = layoutRef.current;
+            if (!layout) return;
+            const { leftX0, leftX1, rightX0, rightX1 } = gutterXRef.current;
+            for (const { id, index, middleLineTarget } of connectorsRef.current) {
+                const oursTop = layout.paneTopPx.left[index] - offsets.left;
+                const oursBot = oursTop + layout.paneHPx.left[index];
+                const midTop = layout.paneTopPx.middle[index] - offsets.middle;
+                const midBot = midTop + layout.paneHPx.middle[index];
+                const theirsTop = layout.paneTopPx.right[index] - offsets.right;
+                const theirsBot = theirsTop + layout.paneHPx.right[index];
+                setRibbonPath(
+                    connectorPaths.get(`${id}-left`),
+                    leftX0,
+                    leftX1,
+                    oursTop,
+                    oursBot,
+                    midTop,
+                    midBot,
+                    viewportH,
+                    middleLineTarget ? "b" : undefined,
+                );
+                setRibbonPath(
+                    connectorPaths.get(`${id}-right`),
+                    rightX0,
+                    rightX1,
+                    midTop,
+                    midBot,
+                    theirsTop,
+                    theirsBot,
+                    viewportH,
+                    middleLineTarget ? "a" : undefined,
+                );
+            }
+        },
+        [connectorPaths],
+    );
+
+    // One frame of the vertical layout: translate each column to its proportional
+    // offset for the shared canonical scrollTop, then redraw the ribbons from the
+    // same offsets so columns and connectors never disagree.
+    const drawMergeFrame = useCallback(() => {
+        const layout = layoutRef.current;
+        const content = mergeContentRef.current;
+        if (!layout || !content) return;
+        const viewportH = viewportHRef.current;
+        const scroll = content.scrollTop;
+        const offsets = {
+            left: paneOffsetForCanonical(layout, "left", scroll, viewportH),
+            middle: paneOffsetForCanonical(layout, "middle", scroll, viewportH),
+            right: paneOffsetForCanonical(layout, "right", scroll, viewportH),
+        } as Record<MergePane, number>;
+        for (const pane of MERGE_PANES) {
+            const col = columnRefs.current[pane];
+            if (col) col.style.transform = `translateY(${-offsets[pane]}px)`;
+        }
+        drawConnectors(offsets, viewportH);
+    }, [drawConnectors]);
+
+    const scheduleMergeFrame = useCallback(() => {
+        if (vFrameRef.current) return;
+        vFrameRef.current = requestAnimationFrame(() => {
+            vFrameRef.current = 0;
+            drawMergeFrame();
+        });
+    }, [drawMergeFrame]);
+
+    const registerConnectorPath = useCallback(
+        (key: string, el: SVGPathElement | null) => {
+            if (el) connectorPaths.set(key, el);
+            else connectorPaths.delete(key);
+        },
+        [connectorPaths],
+    );
+
     const handlePaneScroll = useCallback(
         (event: React.UIEvent<HTMLDivElement>) => {
             const target = event.target as HTMLElement | null;
@@ -137,11 +374,15 @@ function App() {
                 syncHorizontalScroll(left, target);
                 return;
             }
+            // Vertical scroll of the single native scroller drives the columns.
+            if (target === mergeContentRef.current) {
+                scheduleMergeFrame();
+            }
             if (scrollSyncRef.current.left > 0) {
                 syncHorizontalScroll(scrollSyncRef.current.left, target);
             }
         },
-        [syncHorizontalScroll],
+        [scheduleMergeFrame, syncHorizontalScroll],
     );
     const handleHorizontalScroll = useCallback(
         (event: React.UIEvent<HTMLDivElement>) => {
@@ -181,18 +422,18 @@ function App() {
         const content = mergeContentRef.current;
         if (!bar || !inner || !content) return;
         // The narrowest pane overflows first, so it sets the shared scroll extent.
-        // Column widths follow normal flow even under content-visibility (only
-        // height collapses), so one segment's panes give the right clientWidth
-        // without walking every segment.
-        const firstPanes = content
-            .querySelector(".segment")
-            ?.querySelectorAll<HTMLElement>(".code-lines");
+        // Each column is one flow with a stable width, so the first non-collapsed
+        // `.code-lines` in each `.merge-col` gives that pane's clientWidth without
+        // walking every block.
         let minClientWidth = Infinity;
-        for (const pane of firstPanes ?? []) {
-            // A skipped (content-visibility) segment's panes report 0; ignore
-            // those and fall back to the last real width below.
-            if (pane.clientWidth > 0) {
-                minClientWidth = Math.min(minClientWidth, pane.clientWidth);
+        for (const col of content.querySelectorAll<HTMLElement>(".merge-col")) {
+            for (const pane of col.querySelectorAll<HTMLElement>(".code-lines")) {
+                // A skipped (content-visibility) block reports 0; ignore those
+                // and fall back to the last real width below.
+                if (pane.clientWidth > 0) {
+                    minClientWidth = Math.min(minClientWidth, pane.clientWidth);
+                    break;
+                }
             }
         }
         // ponytail: reuse the last real width when the first segment is offscreen
@@ -217,7 +458,7 @@ function App() {
         updateHorizontalScrollWidthRef.current = updateHorizontalScrollWidth;
     }, [updateHorizontalScrollWidth]);
     const renderedSegments = useMemo(() => {
-        let visualLineCursor = 1;
+        let canonicalLineCursor = 1;
         let oursCursor = 1;
         let baseCursor = 1;
         let theirsCursor = 1;
@@ -226,28 +467,25 @@ function App() {
         let trueConflictOrdinal = 0;
 
         return segments.map((segment, index) => {
-            let lineCount: number;
+            let paneLines: { left: number; middle: number; right: number };
+            // Canonical height is the tallest pane; segment boundaries align
+            // across panes in this space while shorter panes flow naturally.
+            let canonicalLineCount: number;
             let lineNumbers: SegmentPaneLineNumbers;
             let startLine: number;
             let renderKey: string;
 
             if (segment.type === "common") {
                 const commonLen = segment.lines.length;
-                lineCount = Math.max(commonLen, 1);
-                startLine = visualLineCursor;
+                paneLines = { left: commonLen, middle: commonLen, right: commonLen };
+                canonicalLineCount = Math.max(commonLen, 1);
+                startLine = canonicalLineCursor;
+                // Each pane numbers exactly its own lines — no null padding,
+                // because panes no longer stretch to a shared row count.
                 lineNumbers = {
-                    left: {
-                        primary: buildLineNumberValues(oursCursor, commonLen, lineCount),
-                        secondary: buildLineNumberValues(baseCursor, commonLen, lineCount),
-                    },
-                    middle: {
-                        primary: buildLineNumberValues(resultCursor, commonLen, lineCount),
-                        secondary: buildLineNumberValues(baseCursor, commonLen, lineCount),
-                    },
-                    right: {
-                        primary: buildLineNumberValues(theirsCursor, commonLen, lineCount),
-                        secondary: buildLineNumberValues(baseCursor, commonLen, lineCount),
-                    },
+                    left: { primary: buildLineNumberValues(oursCursor, commonLen, commonLen) },
+                    middle: { primary: buildLineNumberValues(resultCursor, commonLen, commonLen) },
+                    right: { primary: buildLineNumberValues(theirsCursor, commonLen, commonLen) },
                 };
                 renderKey = `common-${oursCursor}-${baseCursor}-${theirsCursor}-${commonLen}-${segment.lines[0] ?? ""}`;
                 oursCursor += commonLen;
@@ -264,24 +502,13 @@ function App() {
                 const theirsLen = segment.theirsLines.length;
                 const baseLen = segment.baseLines.length;
                 const resultLen = resultLines.length;
-
-                // Panes render contiguously from the hunk top (PyCharm-style),
-                // so the hunk height is simply the tallest pane.
-                lineCount = Math.max(oursLen, theirsLen, resultLen, 1);
-                startLine = visualLineCursor;
+                paneLines = { left: oursLen, middle: resultLen, right: theirsLen };
+                canonicalLineCount = Math.max(oursLen, theirsLen, resultLen, 1);
+                startLine = canonicalLineCursor;
                 lineNumbers = {
-                    left: {
-                        primary: buildLineNumberValues(oursCursor, oursLen, lineCount),
-                        secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
-                    },
-                    middle: {
-                        primary: buildLineNumberValues(resultCursor, resultLen, lineCount),
-                        secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
-                    },
-                    right: {
-                        primary: buildLineNumberValues(theirsCursor, theirsLen, lineCount),
-                        secondary: buildLineNumberValues(baseCursor, baseLen, lineCount),
-                    },
+                    left: { primary: buildLineNumberValues(oursCursor, oursLen, oursLen) },
+                    middle: { primary: buildLineNumberValues(resultCursor, resultLen, resultLen) },
+                    right: { primary: buildLineNumberValues(theirsCursor, theirsLen, theirsLen) },
                 };
                 renderKey = `conflict-${segment.id}`;
                 oursCursor += oursLen;
@@ -290,7 +517,7 @@ function App() {
                 resultCursor += resultLen;
             }
 
-            visualLineCursor += lineCount;
+            canonicalLineCursor += canonicalLineCount;
 
             let computedConflictOrdinal: number | undefined;
             let computedTrueConflictOrdinal: number | undefined;
@@ -308,13 +535,109 @@ function App() {
                 index,
                 renderKey,
                 startLine,
-                lineCount,
+                canonicalLineCount,
+                paneLines,
                 lineNumbers,
                 conflictOrdinal: computedConflictOrdinal,
                 trueConflictOrdinal: computedTrueConflictOrdinal,
             };
         });
     }, [segments, state.resolutions, state.edits]);
+
+    // Vertical geometry for the single-scrollbar / translated-column layout.
+    const layout = useMemo<MergeVerticalLayout>(() => {
+        const paneLines: SegmentPaneLines[] = renderedSegments.map((item) => ({
+            left: item.paneLines.left,
+            middle: item.paneLines.middle,
+            right: item.paneLines.right,
+            conflict: item.segment.type === "conflict",
+            id: item.segment.type === "conflict" ? item.segment.id : undefined,
+        }));
+        return buildVerticalLayout(paneLines);
+    }, [renderedSegments]);
+
+    // Conflict hunks the connector ribbons link across panes. `index` is the
+    // segment index into the layout tables; `colorClass` matches the block band.
+    const connectors = useMemo(
+        () =>
+            renderedSegments
+                .filter(
+                    (
+                        item,
+                    ): item is (typeof renderedSegments)[number] & { segment: ConflictSegment } =>
+                        item.segment.type === "conflict" &&
+                        isTrueConflict(item.segment) &&
+                        state.edits[item.segment.id] === undefined,
+                )
+                .map((item) => ({
+                    id: item.segment.id,
+                    index: item.index,
+                    middleLineTarget: resultIsLineTarget(
+                        item.segment,
+                        state.resolutions[item.segment.id],
+                        state.edits[item.segment.id],
+                    ),
+                    ...connectorClassPair(
+                        item.segment,
+                        state.resolutions[item.segment.id],
+                        state.edits[item.segment.id],
+                        state.dismissals[item.segment.id],
+                    ),
+                }))
+                .filter(
+                    (item) =>
+                        item.leftColorClass !== undefined || item.rightColorClass !== undefined,
+                ),
+        [renderedSegments, state.resolutions, state.edits, state.dismissals],
+    );
+    const connectorSpecs: ConnectorSpec[] = useMemo(
+        () =>
+            connectors.map(({ id, leftColorClass, rightColorClass, middleLineTarget }) => ({
+                id,
+                leftColorClass,
+                rightColorClass,
+                middleLineTarget,
+            })),
+        [connectors],
+    );
+
+    // Keep the driver's refs current and repaint columns + ribbons whenever the
+    // layout or connector set changes (resolve/edit/segment change) so heights
+    // and ribbon positions stay in sync with the DOM. Runs before paint so the
+    // `--merge-viewport-h` var (which sizes the sticky viewport and its
+    // margin-bottom cancel) is committed on the first frame — otherwise the
+    // scrollbar would flash one viewport too long before a post-paint measure.
+    useLayoutEffect(() => {
+        layoutRef.current = layout;
+        connectorsRef.current = connectors;
+        measureViewport();
+        measureGutters();
+        scheduleMergeFrame();
+    }, [layout, connectors, measureViewport, measureGutters, scheduleMergeFrame]);
+
+    // Track viewport height (pane-offset clamp + ribbon culling) and gutter
+    // x-ranges across resizes. jsdom lacks ResizeObserver, so guard it.
+    useEffect(() => {
+        measureViewport();
+        if (typeof ResizeObserver === "undefined") return;
+        const content = mergeContentRef.current;
+        if (!content) return;
+        const observer = new ResizeObserver(() => {
+            measureViewport();
+            measureGutters();
+            scheduleMergeFrame();
+        });
+        observer.observe(content);
+        return () => observer.disconnect();
+    }, [measureViewport, measureGutters, scheduleMergeFrame]);
+
+    // `vFrameRef` is a stable ref; this cleanup is unmount-only.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
+    useEffect(() => {
+        return () => {
+            if (vFrameRef.current) cancelAnimationFrame(vFrameRef.current);
+        };
+    }, []);
 
     useEffect(() => {
         const raf = requestAnimationFrame(updateHorizontalScrollWidth);
@@ -401,10 +724,6 @@ function App() {
         dispatch({ type: "DISMISS_SIDE", id, side });
     }, []);
 
-    const registerConflictSectionRef = useCallback((id: number, el: HTMLDivElement | null) => {
-        conflictSectionRefs.current[id] = el;
-    }, []);
-
     const handleApply = useCallback(() => {
         if (!state.data) return;
         const content = buildResultContent(state.data, state.resolutions, state.edits);
@@ -471,11 +790,29 @@ function App() {
         getVsCodeApi().postMessage({ type: "setIgnoreMode", mode: nextMode });
     }, [ignoreMode]);
 
-    const jumpToConflict = useCallback((id: number) => {
-        setActiveConflictId(id);
-        const target = conflictSectionRefs.current[id];
-        target?.scrollIntoView({ block: "center", behavior: "smooth" });
-    }, []);
+    const jumpToConflict = useCallback(
+        (id: number) => {
+            setActiveConflictId(id);
+            const content = mergeContentRef.current;
+            const layout = layoutRef.current;
+            if (!content || !layout) return;
+            const extent = layout.hunkCanonical.get(id);
+            if (!extent) return;
+            // Center the hunk's canonical extent in the viewport, clamped to range.
+            const maxScroll = Math.max(0, layout.canonicalTotalPx - viewportHRef.current);
+            const top = Math.max(
+                0,
+                Math.min(extent.top + extent.height / 2 - viewportHRef.current / 2, maxScroll),
+            );
+            if (typeof content.scrollTo === "function") {
+                content.scrollTo({ top, behavior: "smooth" });
+            } else {
+                content.scrollTop = top;
+            }
+            scheduleMergeFrame();
+        },
+        [scheduleMergeFrame],
+    );
 
     const moveActiveConflict = useCallback(
         (direction: -1 | 1) => {
@@ -614,7 +951,7 @@ function App() {
         activeConflictId !== null ? trueConflictIds.indexOf(activeConflictId) + 1 : 0;
 
     const totalVisualLines = Math.max(
-        renderedSegments.reduce((sum, item) => sum + item.lineCount, 0),
+        renderedSegments.reduce((sum, item) => sum + item.canonicalLineCount, 0),
         1,
     );
     const overviewMarkers: OverviewMarker[] = renderedSegments
@@ -627,7 +964,10 @@ function App() {
             id: item.segment.id,
             ordinal: item.conflictOrdinal ?? 0,
             topPct: ((item.startLine - 1) / totalVisualLines) * 100,
-            heightPct: Math.min(Math.max((item.lineCount / totalVisualLines) * 100, 1), 30),
+            heightPct: Math.min(
+                Math.max((item.canonicalLineCount / totalVisualLines) * 100, 1),
+                30,
+            ),
             changeKind: item.segment.changeKind,
             resolved:
                 !isTrueConflict(item.segment) ||
@@ -885,47 +1225,124 @@ function App() {
                         className="merge-content"
                         onScrollCapture={handlePaneScroll}
                     >
-                        <div className="merge-scroll-width">
-                            {renderedSegments.map(
-                                ({
-                                    segment,
-                                    renderKey,
-                                    lineCount,
-                                    lineNumbers,
-                                    conflictOrdinal,
-                                    trueConflictOrdinal,
-                                }) =>
-                                    segment.type === "common" ? (
-                                        <CommonSection
-                                            key={renderKey}
-                                            segment={segment}
-                                            lineCount={lineCount}
-                                            lineNumbers={lineNumbers}
+                        <div className="merge-viewport">
+                            <div
+                                ref={(el) => {
+                                    columnRefs.current.left = el;
+                                }}
+                                className="merge-col col-left"
+                            >
+                                {renderedSegments.map((item) =>
+                                    item.segment.type === "common" ? (
+                                        <CommonPaneBlock
+                                            key={item.renderKey}
+                                            pane="left"
+                                            segment={item.segment}
+                                            lineCount={item.paneLines.left}
+                                            lineNumbers={item.lineNumbers.left}
                                             highlightWords={highlightWords}
                                         />
                                     ) : (
-                                        <ConflictSection
-                                            key={renderKey}
-                                            segment={segment}
-                                            resolution={state.resolutions[segment.id]}
-                                            editedLines={state.edits[segment.id]}
-                                            dismissed={state.dismissals[segment.id]}
-                                            lineCount={lineCount}
-                                            lineNumbers={lineNumbers}
+                                        <OursConflictBlock
+                                            key={item.renderKey}
+                                            segment={item.segment}
+                                            resolution={state.resolutions[item.segment.id]}
+                                            editedLines={state.edits[item.segment.id]}
+                                            dismissed={state.dismissals[item.segment.id]}
+                                            lineCount={item.paneLines.left}
+                                            lineNumbers={item.lineNumbers.left}
                                             onResolve={handleResolve}
-                                            onEditResult={handleEditResult}
                                             onDismiss={handleDismissSide}
                                             onSelect={setActiveConflictId}
-                                            onSectionRef={registerConflictSectionRef}
-                                            isActive={activeConflictId === segment.id}
-                                            showDetails={showDetails}
+                                            isActive={activeConflictId === item.segment.id}
                                             highlightWords={highlightWords}
-                                            conflictOrdinal={conflictOrdinal ?? segment.id + 1}
-                                            trueConflictOrdinal={trueConflictOrdinal}
                                         />
                                     ),
-                            )}
+                                )}
+                            </div>
+                            <div className="merge-gutter merge-gutter-left" aria-hidden="true" />
+                            <div
+                                ref={(el) => {
+                                    columnRefs.current.middle = el;
+                                }}
+                                className="merge-col col-middle"
+                            >
+                                {renderedSegments.map((item) =>
+                                    item.segment.type === "common" ? (
+                                        <CommonPaneBlock
+                                            key={item.renderKey}
+                                            pane="middle"
+                                            segment={item.segment}
+                                            lineCount={item.paneLines.middle}
+                                            lineNumbers={item.lineNumbers.middle}
+                                            highlightWords={highlightWords}
+                                        />
+                                    ) : (
+                                        <ResultConflictBlock
+                                            key={item.renderKey}
+                                            segment={item.segment}
+                                            resolution={state.resolutions[item.segment.id]}
+                                            editedLines={state.edits[item.segment.id]}
+                                            dismissed={state.dismissals[item.segment.id]}
+                                            lineCount={item.paneLines.middle}
+                                            lineNumbers={item.lineNumbers.middle}
+                                            onEditResult={handleEditResult}
+                                            onSelect={setActiveConflictId}
+                                            isActive={activeConflictId === item.segment.id}
+                                            highlightWords={highlightWords}
+                                            conflictOrdinal={
+                                                item.conflictOrdinal ?? item.segment.id + 1
+                                            }
+                                            trueConflictOrdinal={item.trueConflictOrdinal}
+                                        />
+                                    ),
+                                )}
+                            </div>
+                            <div className="merge-gutter merge-gutter-right" aria-hidden="true" />
+                            <div
+                                ref={(el) => {
+                                    columnRefs.current.right = el;
+                                }}
+                                className="merge-col col-right"
+                            >
+                                {renderedSegments.map((item) =>
+                                    item.segment.type === "common" ? (
+                                        <CommonPaneBlock
+                                            key={item.renderKey}
+                                            pane="right"
+                                            segment={item.segment}
+                                            lineCount={item.paneLines.right}
+                                            lineNumbers={item.lineNumbers.right}
+                                            highlightWords={highlightWords}
+                                        />
+                                    ) : (
+                                        <TheirsConflictBlock
+                                            key={item.renderKey}
+                                            segment={item.segment}
+                                            resolution={state.resolutions[item.segment.id]}
+                                            editedLines={state.edits[item.segment.id]}
+                                            dismissed={state.dismissals[item.segment.id]}
+                                            lineCount={item.paneLines.right}
+                                            lineNumbers={item.lineNumbers.right}
+                                            onResolve={handleResolve}
+                                            onDismiss={handleDismissSide}
+                                            onSelect={setActiveConflictId}
+                                            isActive={activeConflictId === item.segment.id}
+                                            highlightWords={highlightWords}
+                                        />
+                                    ),
+                                )}
+                            </div>
+                            <ConnectorLayer
+                                specs={connectorSpecs}
+                                registerPath={registerConnectorPath}
+                            />
                         </div>
+                        <div
+                            className="merge-vscroll-spacer"
+                            style={{ height: layout.canonicalTotalPx }}
+                            aria-hidden="true"
+                        />
                     </div>
                     <div
                         ref={horizontalScrollRef}

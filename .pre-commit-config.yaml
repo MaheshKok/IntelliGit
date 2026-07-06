@@ -8,6 +8,13 @@ repos:
             pass_filenames: false
             stages: [pre-commit]
 
+          - id: react-doctor
+            name: react doctor
+            entry: bun run react-doctor
+            language: system
+            pass_filenames: false
+            stages: [pre-push]
+
           - id: lint-strict
             name: strict lint
             entry: bun run lint:strict
@@ -48,6 +55,13 @@ repos:
             entry: bun run typecheck
             language: system
             pass_filenames: false
+            stages: [pre-commit]
+
+          - id: test-coverage
+            name: tests with coverage
+            entry: bun run test:coverage
+            language: system
+            pass_filenames: false
             stages: [pre-push]
 
           - id: build
@@ -55,18 +69,11 @@ repos:
             entry: bun run build
             language: system
             pass_filenames: false
-            stages: [pre-push]
+            stages: [pre-commit]
 
-          - id: react-doctor
-            name: react doctor
-            entry: bun run react-doctor
+          - id: package-extension
+            name: package extension
+            entry: bunx vsce package --no-dependencies
             language: system
             pass_filenames: false
-            stages: [pre-push]
-
-          - id: unit-tests
-            name: unit tests
-            entry: bun vitest run tests/unit tests/webview/unit
-            language: system
-            pass_filenames: false
-            stages: [pre-push]
+            stages: [pre-commit]
