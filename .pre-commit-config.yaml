@@ -6,7 +6,7 @@ repos:
             entry: bun run format:check
             language: system
             pass_filenames: false
-            stages: [pre-commit, pre-push]
+            stages: [pre-commit]
 
           - id: react-doctor
             name: react doctor
@@ -20,42 +20,42 @@ repos:
             entry: bun run lint:strict
             language: system
             pass_filenames: false
-            stages: [pre-commit, pre-push]
+            stages: [pre-commit]
 
           - id: deps-check-strict
             name: strict dependency check
             entry: bun run deps:check:strict
             language: system
             pass_filenames: false
-            stages: [pre-commit, pre-push]
+            stages: [pre-commit]
 
           - id: architecture-check
             name: architecture check
             entry: bun run architecture:check
             language: system
             pass_filenames: false
-            stages: [pre-commit, pre-push]
+            stages: [pre-commit]
 
           - id: l10n-validate
             name: localization validate
             entry: bun run l10n:validate
             language: system
             pass_filenames: false
-            stages: [pre-commit, pre-push]
+            stages: [pre-commit]
 
           - id: l10n-audit
             name: localization audit
             entry: bun run l10n:audit
             language: system
             pass_filenames: false
-            stages: [pre-commit, pre-push]
+            stages: [pre-commit]
 
           - id: typecheck
             name: typecheck
             entry: bun run typecheck
             language: system
             pass_filenames: false
-            stages: [pre-push]
+            stages: [pre-commit]
 
           - id: test-coverage
             name: tests with coverage
@@ -69,11 +69,11 @@ repos:
             entry: bun run build
             language: system
             pass_filenames: false
-            stages: [pre-push]
+            stages: [pre-commit]
 
           - id: package-extension
             name: package extension
             entry: bunx vsce package --no-dependencies
             language: system
             pass_filenames: false
-            stages: [pre-push]
+            stages: [pre-commit]
