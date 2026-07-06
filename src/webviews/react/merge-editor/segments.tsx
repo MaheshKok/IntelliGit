@@ -901,6 +901,12 @@ export const OursConflictBlock = React.memo(function OursConflictBlock({
                     wordHighlight={highlightWords}
                     compareLines={view.oursInResult ? undefined : segment.baseLines}
                 />
+                {view.oursInResult && view.resultInsertionMarker ? (
+                    <div
+                        className={`source-insertion-marker marker-left marker-${view.resultInsertionMarker} variant-insertion`}
+                        aria-hidden="true"
+                    />
+                ) : null}
                 {view.showLeftActions ? (
                     <LeftHunkActions
                         segmentId={segment.id}
@@ -1045,6 +1051,12 @@ export const TheirsConflictBlock = React.memo(function TheirsConflictBlock({
                     wordHighlight={highlightWords}
                     compareLines={view.theirsInResult ? undefined : segment.baseLines}
                 />
+                {view.theirsInResult && view.resultInsertionMarker ? (
+                    <div
+                        className={`source-insertion-marker marker-right marker-${view.resultInsertionMarker} variant-insertion`}
+                        aria-hidden="true"
+                    />
+                ) : null}
             </div>
         </div>
     );
@@ -1055,7 +1067,9 @@ export const TheirsConflictBlock = React.memo(function TheirsConflictBlock({
 /** One hunk's connector metadata; geometry is set imperatively per scroll frame. */
 export interface ConnectorSpec {
     id: number;
-    colorClass: string;
+    leftColorClass?: string;
+    rightColorClass?: string;
+    middleLineTarget: boolean;
 }
 
 /** Color class for a hunk's connector ribbon, matching its block band. */
@@ -1081,14 +1095,22 @@ export function ConnectorLayer({
         <svg className="merge-connectors" aria-hidden="true">
             {specs.map((spec) => (
                 <React.Fragment key={spec.id}>
-                    <path
-                        ref={(el) => registerPath(`${spec.id}-left`, el)}
-                        className={`merge-connector ${spec.colorClass}`}
-                    />
-                    <path
-                        ref={(el) => registerPath(`${spec.id}-right`, el)}
-                        className={`merge-connector ${spec.colorClass}`}
-                    />
+                    {spec.leftColorClass ? (
+                        <path
+                            ref={(el) => registerPath(`${spec.id}-left`, el)}
+                            className={`merge-connector ${spec.leftColorClass} ${
+                                spec.middleLineTarget ? "merge-connector-line" : ""
+                            }`}
+                        />
+                    ) : null}
+                    {spec.rightColorClass ? (
+                        <path
+                            ref={(el) => registerPath(`${spec.id}-right`, el)}
+                            className={`merge-connector ${spec.rightColorClass} ${
+                                spec.middleLineTarget ? "merge-connector-line" : ""
+                            }`}
+                        />
+                    ) : null}
                 </React.Fragment>
             ))}
         </svg>

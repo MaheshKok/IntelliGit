@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildVerticalLayout,
     paneOffsetForCanonical,
+    type MergePane,
     type SegmentPaneLines,
 } from "../../../src/webviews/react/merge-editor/mergeScrollLayout";
 
@@ -89,5 +90,41 @@ describe("paneOffsetForCanonical", () => {
     it("never returns a negative offset when the viewport exceeds content", () => {
         expect(paneOffsetForCanonical(layout, "middle", 0, 5000)).toBe(0);
         expect(paneOffsetForCanonical(layout, "left", 90, 5000)).toBe(0);
+    });
+
+    it("keeps large unbalanced hunk boundaries stable while scrolling", () => {
+        const largeLayout = buildVerticalLayout([
+            { left: 45, middle: 45, right: 45, conflict: false },
+            { left: 16, middle: 16, right: 28, conflict: true, id: 42 },
+            { left: 80, middle: 80, right: 80, conflict: false },
+        ]);
+        const viewport = 200;
+        const conflictIndex = 1;
+        const conflictTop = largeLayout.canonicalTopPx[conflictIndex];
+        const conflictBottom =
+            conflictTop + largeLayout.canonicalHPx[conflictIndex];
+        const visibleExtent = (pane: MergePane, canonicalScroll: number) => {
+            const offset = paneOffsetForCanonical(
+                largeLayout,
+                pane,
+                canonicalScroll,
+                viewport,
+            );
+            const top = largeLayout.paneTopPx[pane][conflictIndex] - offset;
+            return { top, bottom: top + largeLayout.paneHPx[pane][conflictIndex] };
+        };
+
+        expect(visibleExtent("left", conflictTop).top).toBe(0);
+        expect(visibleExtent("middle", conflictTop).top).toBe(0);
+        expect(visibleExtent("right", conflictTop).top).toBe(0);
+
+        const midScroll = conflictTop + largeLayout.canonicalHPx[conflictIndex] / 2;
+        expect(visibleExtent("left", midScroll)).toEqual({ top: -160, bottom: 160 });
+        expect(visibleExtent("middle", midScroll)).toEqual({ top: -160, bottom: 160 });
+        expect(visibleExtent("right", midScroll)).toEqual({ top: -280, bottom: 280 });
+
+        expect(visibleExtent("left", conflictBottom).bottom).toBe(0);
+        expect(visibleExtent("middle", conflictBottom).bottom).toBe(0);
+        expect(visibleExtent("right", conflictBottom).bottom).toBe(0);
     });
 });

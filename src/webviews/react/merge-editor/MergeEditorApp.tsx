@@ -13,6 +13,7 @@ import React, {
 import { createRoot } from "react-dom/client";
 import type {
     ConflictSegment,
+    HunkSideDismissal,
     HunkResolution,
     InboundMessage,
     MergeSegment,
@@ -71,12 +72,61 @@ const EMPTY_SEGMENTS: MergeSegment[] = [];
 const LINE_PADDING_PX = 18;
 
 const MERGE_PANES: readonly MergePane[] = ["left", "middle", "right"];
+const ACCEPTED_CONNECTOR_CLASS = "variant-insertion";
+
+interface ConnectorClassPair {
+    leftColorClass?: string;
+    rightColorClass?: string;
+}
+
+type RibbonLineSide = "a" | "b";
+
+interface ConnectorRenderSpec extends ConnectorClassPair {
+    id: number;
+    index: number;
+    middleLineTarget: boolean;
+}
+
+function connectorClassPair(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+    dismissed: HunkSideDismissal | undefined,
+): ConnectorClassPair {
+    if (editedLines !== undefined || resolution === "none") return {};
+    if (resolution === "both" || resolution === "both-reversed") return {};
+
+    const pendingClass = connectorClass(segment);
+    if (resolution === "ours") {
+        return { leftColorClass: ACCEPTED_CONNECTOR_CLASS, rightColorClass: pendingClass };
+    }
+    if (resolution === "theirs") {
+        return { leftColorClass: pendingClass, rightColorClass: ACCEPTED_CONNECTOR_CLASS };
+    }
+    return {
+        leftColorClass: dismissed?.ours ? undefined : pendingClass,
+        rightColorClass: dismissed?.theirs ? undefined : pendingClass,
+    };
+}
+
+function resultIsLineTarget(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+): boolean {
+    if (editedLines !== undefined) return false;
+    return getEffectiveResultLines(segment, resolution, editedLines).length === 0;
+}
+
+/** Reads a numeric px-valued CSS variable used by merge-editor geometry. */
+function readPxVar(element: Element, name: string): number {
+    const value = Number.parseFloat(getComputedStyle(element).getPropertyValue(name));
+    return Number.isFinite(value) ? value : 0;
+}
 
 /**
- * Sets one connector ribbon's path to a filled quadrilateral spanning a gutter:
- * from side A (rows aTop..aBot at x0) to side B (rows bTop..bBot at x1), with
- * cubic-bezier top and bottom edges. Hides the path when the hunk is fully
- * outside the viewport so offscreen ribbons cost nothing.
+ * Sets one connector ribbon's path across a gutter. Empty result targets render
+ * as a row-boundary line instead of a filled block so insertion hunks stay thin.
  */
 function setRibbonPath(
     path: SVGPathElement | undefined,
@@ -87,21 +137,27 @@ function setRibbonPath(
     bTop: number,
     bBot: number,
     viewportH: number,
+    lineSide?: RibbonLineSide,
 ): void {
     if (!path) return;
+    if (lineSide === "a") aBot = aTop;
+    if (lineSide === "b") bBot = bTop;
+
     const top = Math.min(aTop, bTop);
     const bottom = Math.max(aBot, bBot);
     if (bottom < 0 || top > viewportH) {
         path.style.display = "none";
         return;
     }
+
     path.style.display = "";
-    const xc = (x0 + x1) / 2;
-    path.setAttribute(
-        "d",
-        `M ${x0},${aTop} C ${xc},${aTop} ${xc},${bTop} ${x1},${bTop} ` +
-            `L ${x1},${bBot} C ${xc},${bBot} ${xc},${aBot} ${x0},${aBot} Z`,
-    );
+    path.classList.toggle("merge-connector-line", lineSide !== undefined);
+    if (lineSide !== undefined) {
+        path.setAttribute("d", `M ${x0},${(aTop + aBot) / 2} L ${x1},${(bTop + bBot) / 2}`);
+        return;
+    }
+
+    path.setAttribute("d", `M ${x0},${aTop} L ${x1},${bTop} L ${x1},${bBot} L ${x0},${aBot} Z`);
 }
 
 // --- VS Code API ---
@@ -164,7 +220,7 @@ function App() {
     const layoutRef = useRef<MergeVerticalLayout | null>(null);
     // Conflict hunks the ribbons link, kept in a ref so the rAF draw reads the
     // current set without being re-created each render.
-    const connectorsRef = useRef<{ id: number; index: number }[]>([]);
+    const connectorsRef = useRef<ConnectorRenderSpec[]>([]);
     const vFrameRef = useRef(0);
     const horizontalScrollRef = useRef<HTMLDivElement | null>(null);
     const horizontalScrollInnerRef = useRef<HTMLDivElement | null>(null);
@@ -210,11 +266,13 @@ function App() {
     const measureGutters = useCallback(() => {
         const { left, middle, right } = columnRefs.current;
         if (!left || !middle || !right) return;
+        const lineGutter = readPxVar(left, "--merge-line-number-gutter");
+        const sourceGutter = lineGutter + readPxVar(left, "--merge-action-gutter");
         gutterXRef.current = {
-            leftX0: left.offsetLeft + left.offsetWidth,
-            leftX1: middle.offsetLeft,
+            leftX0: left.offsetLeft + left.offsetWidth - sourceGutter,
+            leftX1: middle.offsetLeft + lineGutter,
             rightX0: middle.offsetLeft + middle.offsetWidth,
-            rightX1: right.offsetLeft,
+            rightX1: right.offsetLeft + sourceGutter,
         };
     }, []);
 
@@ -223,7 +281,7 @@ function App() {
             const layout = layoutRef.current;
             if (!layout) return;
             const { leftX0, leftX1, rightX0, rightX1 } = gutterXRef.current;
-            for (const { id, index } of connectorsRef.current) {
+            for (const { id, index, middleLineTarget } of connectorsRef.current) {
                 const oursTop = layout.paneTopPx.left[index] - offsets.left;
                 const oursBot = oursTop + layout.paneHPx.left[index];
                 const midTop = layout.paneTopPx.middle[index] - offsets.middle;
@@ -239,6 +297,7 @@ function App() {
                     midTop,
                     midBot,
                     viewportH,
+                    middleLineTarget ? "b" : undefined,
                 );
                 setRibbonPath(
                     connectorPaths.get(`${id}-right`),
@@ -249,6 +308,7 @@ function App() {
                     theirsTop,
                     theirsBot,
                     viewportH,
+                    middleLineTarget ? "a" : undefined,
                 );
             }
         },
@@ -498,18 +558,37 @@ function App() {
                     ): item is (typeof renderedSegments)[number] & { segment: ConflictSegment } =>
                         item.segment.type === "conflict" &&
                         isTrueConflict(item.segment) &&
-                        state.resolutions[item.segment.id] === undefined &&
                         state.edits[item.segment.id] === undefined,
                 )
                 .map((item) => ({
                     id: item.segment.id,
                     index: item.index,
-                    colorClass: connectorClass(item.segment),
-                })),
-        [renderedSegments, state.resolutions, state.edits],
+                    middleLineTarget: resultIsLineTarget(
+                        item.segment,
+                        state.resolutions[item.segment.id],
+                        state.edits[item.segment.id],
+                    ),
+                    ...connectorClassPair(
+                        item.segment,
+                        state.resolutions[item.segment.id],
+                        state.edits[item.segment.id],
+                        state.dismissals[item.segment.id],
+                    ),
+                }))
+                .filter(
+                    (item) =>
+                        item.leftColorClass !== undefined || item.rightColorClass !== undefined,
+                ),
+        [renderedSegments, state.resolutions, state.edits, state.dismissals],
     );
     const connectorSpecs: ConnectorSpec[] = useMemo(
-        () => connectors.map(({ id, colorClass }) => ({ id, colorClass })),
+        () =>
+            connectors.map(({ id, leftColorClass, rightColorClass, middleLineTarget }) => ({
+                id,
+                leftColorClass,
+                rightColorClass,
+                middleLineTarget,
+            })),
         [connectors],
     );
 

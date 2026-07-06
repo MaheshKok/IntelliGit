@@ -245,7 +245,14 @@ describe("MergeEditorApp", () => {
         );
         expect(document.querySelector(".conflict-result")?.className).toContain("unresolved");
         expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
-        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
+        expect(
+            document.querySelector(".source-insertion-marker.marker-left.marker-bottom"),
+        ).not.toBeNull();
+        expect(document.querySelector(".source-insertion-marker.marker-right")).toBeNull();
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(2);
+        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[1].getAttribute("class")).toContain("change-conflict");
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
@@ -291,14 +298,27 @@ describe("MergeEditorApp", () => {
         await flush();
 
         expect(document.querySelector(".result-insertion-marker.marker-top")).not.toBeNull();
-        expect(document.querySelectorAll(".merge-connector")).toHaveLength(2);
+        const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(pendingConnectors).toHaveLength(2);
+        expect(
+            Array.from(pendingConnectors).every((connector) =>
+                connector.classList.contains("merge-connector-line"),
+            ),
+        ).toBe(true);
 
         clickButton("Accept left block");
         await flush();
 
         expect(document.querySelector(".result-insertion-marker.marker-top")).toBeNull();
         expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
-        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
+        expect(
+            document.querySelector(".source-insertion-marker.marker-left.marker-bottom"),
+        ).not.toBeNull();
+        expect(document.querySelector(".source-insertion-marker.marker-right")).toBeNull();
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(2);
+        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[1].getAttribute("class")).toContain("change-conflict");
     });
 
     it("edits the result pane manually and applies the edited content", async () => {

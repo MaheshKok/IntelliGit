@@ -391,17 +391,31 @@
     z-index: 4;
 }
 .merge-connector {
-    fill: color-mix(in srgb, var(--pycharm-conflict) 55%, transparent);
+    fill: color-mix(in srgb, var(--pycharm-conflict) 42%, transparent);
     stroke: none;
 }
 .merge-connector.variant-insertion {
-    fill: color-mix(in srgb, var(--pycharm-inserted) 55%, transparent);
+    fill: color-mix(in srgb, var(--pycharm-inserted) 42%, transparent);
 }
 .merge-connector.variant-modification {
-    fill: color-mix(in srgb, var(--pycharm-modified) 55%, transparent);
+    fill: color-mix(in srgb, var(--pycharm-modified) 42%, transparent);
 }
 .merge-connector.variant-deletion {
-    fill: color-mix(in srgb, var(--pycharm-deleted) 55%, transparent);
+    fill: color-mix(in srgb, var(--pycharm-deleted) 42%, transparent);
+}
+.merge-connector.merge-connector-line {
+    fill: none;
+    stroke: color-mix(in srgb, var(--pycharm-conflict) 86%, transparent);
+    stroke-width: 1px;
+}
+.merge-connector.merge-connector-line.variant-insertion {
+    stroke: color-mix(in srgb, var(--pycharm-inserted) 86%, transparent);
+}
+.merge-connector.merge-connector-line.variant-modification {
+    stroke: color-mix(in srgb, var(--pycharm-modified) 86%, transparent);
+}
+.merge-connector.merge-connector-line.variant-deletion {
+    stroke: color-mix(in srgb, var(--pycharm-deleted) 86%, transparent);
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;
@@ -540,6 +554,9 @@
 .segment-common .code-line {
     color: var(--vscode-editor-foreground);
 }
+.segment-common .code-line-content {
+    opacity: 0.62;
+}
 
 .segment-conflict {
     display: block;
@@ -596,9 +613,9 @@
     left: var(--merge-line-number-gutter);
     right: 0;
     height: 0;
-    border-top: 1px dotted var(--pycharm-conflict);
+    border-top: 1px solid var(--pycharm-conflict);
     pointer-events: none;
-    z-index: 5;
+    z-index: 6;
 }
 .result-insertion-marker.marker-top {
     top: 0;
@@ -608,6 +625,26 @@
 }
 .result-insertion-marker.variant-insertion {
     border-top-color: var(--pycharm-inserted);
+}
+.source-insertion-marker {
+    position: absolute;
+    width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
+    height: 0;
+    border-top: 1px solid var(--pycharm-inserted);
+    pointer-events: none;
+    z-index: 6;
+}
+.source-insertion-marker.marker-left {
+    right: 0;
+}
+.source-insertion-marker.marker-right {
+    left: 0;
+}
+.source-insertion-marker.marker-top {
+    top: 0;
+}
+.source-insertion-marker.marker-bottom {
+    bottom: 0;
 }
 .merge-horizontal-scroll {
     position: absolute;
@@ -645,7 +682,7 @@
     right: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
-    z-index: 5;
+    z-index: 7;
 }
 .conflict-actions-right {
     position: absolute;
@@ -653,7 +690,7 @@
     left: var(--merge-line-number-gutter);
     display: flex;
     gap: 0;
-    z-index: 5;
+    z-index: 7;
 }
 .action-btn {
     width: 20px;
@@ -666,7 +703,7 @@
     justify-content: center;
     font-size: 12px;
     line-height: 1;
-    background: transparent;
+    background: color-mix(in srgb, var(--merge-editor-bg) 24%, transparent);
     color: color-mix(in srgb, var(--merge-editor-fg) 84%, transparent);
     opacity: 0.92;
     box-shadow: none;
@@ -817,10 +854,10 @@
 .overview-track {
     position: absolute;
     top: 3px;
-    right: 2px;
+    right: 3px;
     bottom: 3px;
-    width: 4px;
-    border-radius: 3px;
+    width: 3px;
+    border-radius: 2px;
     background: transparent;
     border: none;
     pointer-events: auto;
@@ -833,19 +870,19 @@
     border: none;
     padding: 0;
     margin: 0;
-    border-radius: 2px;
+    border-radius: 1px;
     cursor: pointer;
-    opacity: 0.82;
+    opacity: 0.68;
 }
 .overview-marker.marker-conflict.unresolved {
-    background: rgba(216, 108, 108, 0.86);
+    background: rgba(216, 108, 108, 0.74);
 }
 .overview-marker.marker-conflict.resolved {
-    background: rgba(121, 193, 141, 0.76);
+    background: rgba(121, 193, 141, 0.66);
 }
 .overview-marker.marker-ours-only,
 .overview-marker.marker-theirs-only {
-    background: rgba(91, 137, 214, 0.78);
+    background: rgba(91, 137, 214, 0.68);
 }
 .overview-marker.active {
     outline: 1px solid color-mix(in srgb, var(--merge-editor-fg) 48%, transparent);
