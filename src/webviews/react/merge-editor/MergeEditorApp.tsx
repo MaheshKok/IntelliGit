@@ -72,7 +72,9 @@ const EMPTY_SEGMENTS: MergeSegment[] = [];
 const LINE_PADDING_PX = 18;
 
 const MERGE_PANES: readonly MergePane[] = ["left", "middle", "right"];
-const ACCEPTED_CONNECTOR_CLASS = "variant-insertion";
+/* connector-resolved dims the accepted side's ribbon to a quiet "done" marker
+   so it does not read as a still-pending insertion next to the neutral result. */
+const ACCEPTED_CONNECTOR_CLASS = "variant-insertion connector-resolved";
 
 interface ConnectorClassPair {
     leftColorClass?: string;
@@ -98,10 +100,16 @@ function connectorClassPair(
 
     const pendingClass = connectorClass(segment);
     if (resolution === "ours") {
-        return { leftColorClass: ACCEPTED_CONNECTOR_CLASS, rightColorClass: pendingClass };
+        return {
+            leftColorClass: ACCEPTED_CONNECTOR_CLASS,
+            rightColorClass: dismissed?.theirs ? undefined : pendingClass,
+        };
     }
     if (resolution === "theirs") {
-        return { leftColorClass: pendingClass, rightColorClass: ACCEPTED_CONNECTOR_CLASS };
+        return {
+            leftColorClass: dismissed?.ours ? undefined : pendingClass,
+            rightColorClass: ACCEPTED_CONNECTOR_CLASS,
+        };
     }
     return {
         leftColorClass: dismissed?.ours ? undefined : pendingClass,

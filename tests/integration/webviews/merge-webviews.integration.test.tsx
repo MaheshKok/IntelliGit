@@ -723,6 +723,11 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
+        // The dismissed left side loses its ribbon; only the still-offered
+        // right suggestion keeps its pending conflict connector.
+        const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(pendingConnectors).toHaveLength(1);
+        expect(pendingConnectors[0].getAttribute("class")).toContain("change-conflict");
 
         // The right side only enters the result when the user explicitly accepts it.
         clickButton("Accept right block");
@@ -785,6 +790,12 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
+        // The dismissed right side loses its ribbon; the accepted left keeps a
+        // dimmed "done" connector instead of a pending suggestion ribbon.
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(1);
+        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -832,6 +843,8 @@ describe("MergeEditorApp", () => {
         clickButton("Ignore right block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
+        // A fully discarded hunk points at nothing: no ribbons remain.
+        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
