@@ -137,14 +137,15 @@ function renderColoredSpansWithWordDiff(
     const nodes: React.ReactNode[] = [];
     let offset = 0;
     for (const span of spans) {
+        const spanText = span.text;
         let runStart = 0;
-        while (runStart < span.text.length) {
+        while (runStart < spanText.length) {
             const runChanged = changed[offset + runStart];
             let runEnd = runStart + 1;
-            while (runEnd < span.text.length && changed[offset + runEnd] === runChanged) {
+            while (runEnd < spanText.length && changed[offset + runEnd] === runChanged) {
                 runEnd++;
             }
-            const runText = span.text.slice(runStart, runEnd);
+            const runText = spanText.slice(runStart, runEnd);
             const key = `${keyPrefix}-${offset + runStart}`;
             const coloredNode = (
                 <span key={key} className={span.className} style={span.style}>
@@ -166,7 +167,7 @@ function renderColoredSpansWithWordDiff(
             }
             runStart = runEnd;
         }
-        offset += span.text.length;
+        offset += spanText.length;
     }
     return nodes;
 }
@@ -193,7 +194,8 @@ const WordDiffLine = React.memo(function WordDiffLine({
 
     const { changed, whitespace } = buildChangedCharMasks(line, compareLine);
 
-    return <>{renderColoredSpansWithWordDiff(spans, changed, whitespace, "wd")}</>;
+    const wordDiffNodes = renderColoredSpansWithWordDiff(spans, changed, whitespace, "wd");
+    return <>{wordDiffNodes}</>;
 });
 
 // --- Line numbers ---
@@ -866,12 +868,26 @@ export const OursConflictBlock = React.memo(function OursConflictBlock({
 }: ConflictPaneBaseProps & ConflictSideCallbacks) {
     const view = deriveConflictView(segment, resolution, editedLines, dismissed);
     const handleSelect = useCallback(() => onSelect(segment.id), [onSelect, segment.id]);
+    const handleKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.currentTarget !== event.target) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            onSelect(segment.id);
+        },
+        [onSelect, segment.id],
+    );
     return (
         <div
             className={conflictWrapperClass(segment, view, isActive)}
             style={intrinsicSizeStyle(lineCount)}
+            // Native button is invalid here because the block contains hunk action buttons.
+            // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+            role="button"
+            tabIndex={0}
             data-conflict-id={segment.id}
             onClick={handleSelect}
+            onKeyDown={handleKeyDown}
         >
             <div
                 className={`column column-left conflict-column ${view.oursInResult ? "accepted" : ""} ${view.oursDismissed ? "dismissed" : ""}`}
@@ -987,12 +1003,26 @@ export const TheirsConflictBlock = React.memo(function TheirsConflictBlock({
 }: ConflictPaneBaseProps & ConflictSideCallbacks) {
     const view = deriveConflictView(segment, resolution, editedLines, dismissed);
     const handleSelect = useCallback(() => onSelect(segment.id), [onSelect, segment.id]);
+    const handleKeyDown = useCallback(
+        (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (event.currentTarget !== event.target) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            onSelect(segment.id);
+        },
+        [onSelect, segment.id],
+    );
     return (
         <div
             className={conflictWrapperClass(segment, view, isActive)}
             style={intrinsicSizeStyle(lineCount)}
+            // Native button is invalid here because the block contains hunk action buttons.
+            // react-doctor-disable-next-line react-doctor/prefer-tag-over-role
+            role="button"
+            tabIndex={0}
             data-conflict-id={segment.id}
             onClick={handleSelect}
+            onKeyDown={handleKeyDown}
         >
             <div
                 className={`column column-right conflict-column ${view.theirsInResult ? "accepted" : ""} ${view.theirsDismissed ? "dismissed" : ""}`}
@@ -1029,6 +1059,7 @@ export interface ConnectorSpec {
 }
 
 /** Color class for a hunk's connector ribbon, matching its block band. */
+// react-doctor-disable-next-line react-doctor/only-export-components
 export function connectorClass(segment: ConflictSegment): string {
     return sideVariantClass(segment) || "change-conflict";
 }

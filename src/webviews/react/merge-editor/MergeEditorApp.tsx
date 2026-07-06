@@ -119,7 +119,7 @@ function getVsCodeApi() {
  * extension apply/ignore-mode commands.
  */
 // Webview entrypoint owns merge-editor state orchestration and root render side effects.
-// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component
+// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer
 function App() {
     const [state, dispatch] = useReducer(reducer, {
         data: null,
@@ -132,11 +132,11 @@ function App() {
     const [highlightWords, setHighlightWords] = useState(true);
     const [ignoreMode, setIgnoreMode] = useState<"none" | "whitespace">("none");
     const [activeConflictId, setActiveConflictId] = useState<number | null>(null);
-    const [shikiReady, setShikiReady] = useState(isShikiReady());
+    const [shikiReady, setShikiReady] = useState(() => isShikiReady());
     // ponytail: theme sampled once at mount. VS Code reloads the webview on a
     // live theme switch, so re-reading the body class on every render buys
     // nothing — reopen the merge editor to pick up a changed theme.
-    const [shikiTheme] = useState(detectTheme());
+    const [shikiTheme] = useState(() => detectTheme());
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
     const filePath = state.data?.filePath;
     const syntaxHighlightState = useMemo(
@@ -154,7 +154,7 @@ function App() {
         middle: null,
         right: null,
     });
-    const connectorPathsRef = useRef<Map<string, SVGPathElement>>(new Map());
+    const connectorPaths = useMemo(() => new Map<string, SVGPathElement>(), []);
     // Gutter x-ranges (viewport-relative) the connector ribbons span; measured
     // on layout/resize so the per-frame draw only recomputes y.
     const gutterXRef = useRef<{ leftX0: number; leftX1: number; rightX0: number; rightX1: number }>(
@@ -218,40 +218,42 @@ function App() {
         };
     }, []);
 
-    const drawConnectors = useCallback((offsets: Record<MergePane, number>, viewportH: number) => {
-        const layout = layoutRef.current;
-        if (!layout) return;
-        const paths = connectorPathsRef.current;
-        const { leftX0, leftX1, rightX0, rightX1 } = gutterXRef.current;
-        for (const { id, index } of connectorsRef.current) {
-            const oursTop = layout.paneTopPx.left[index] - offsets.left;
-            const oursBot = oursTop + layout.paneHPx.left[index];
-            const midTop = layout.paneTopPx.middle[index] - offsets.middle;
-            const midBot = midTop + layout.paneHPx.middle[index];
-            const theirsTop = layout.paneTopPx.right[index] - offsets.right;
-            const theirsBot = theirsTop + layout.paneHPx.right[index];
-            setRibbonPath(
-                paths.get(`${id}-left`),
-                leftX0,
-                leftX1,
-                oursTop,
-                oursBot,
-                midTop,
-                midBot,
-                viewportH,
-            );
-            setRibbonPath(
-                paths.get(`${id}-right`),
-                rightX0,
-                rightX1,
-                midTop,
-                midBot,
-                theirsTop,
-                theirsBot,
-                viewportH,
-            );
-        }
-    }, []);
+    const drawConnectors = useCallback(
+        (offsets: Record<MergePane, number>, viewportH: number) => {
+            const layout = layoutRef.current;
+            if (!layout) return;
+            const { leftX0, leftX1, rightX0, rightX1 } = gutterXRef.current;
+            for (const { id, index } of connectorsRef.current) {
+                const oursTop = layout.paneTopPx.left[index] - offsets.left;
+                const oursBot = oursTop + layout.paneHPx.left[index];
+                const midTop = layout.paneTopPx.middle[index] - offsets.middle;
+                const midBot = midTop + layout.paneHPx.middle[index];
+                const theirsTop = layout.paneTopPx.right[index] - offsets.right;
+                const theirsBot = theirsTop + layout.paneHPx.right[index];
+                setRibbonPath(
+                    connectorPaths.get(`${id}-left`),
+                    leftX0,
+                    leftX1,
+                    oursTop,
+                    oursBot,
+                    midTop,
+                    midBot,
+                    viewportH,
+                );
+                setRibbonPath(
+                    connectorPaths.get(`${id}-right`),
+                    rightX0,
+                    rightX1,
+                    midTop,
+                    midBot,
+                    theirsTop,
+                    theirsBot,
+                    viewportH,
+                );
+            }
+        },
+        [connectorPaths],
+    );
 
     // One frame of the vertical layout: translate each column to its proportional
     // offset for the shared canonical scrollTop, then redraw the ribbons from the
@@ -282,10 +284,13 @@ function App() {
         });
     }, [drawMergeFrame]);
 
-    const registerConnectorPath = useCallback((key: string, el: SVGPathElement | null) => {
-        if (el) connectorPathsRef.current.set(key, el);
-        else connectorPathsRef.current.delete(key);
-    }, []);
+    const registerConnectorPath = useCallback(
+        (key: string, el: SVGPathElement | null) => {
+            if (el) connectorPaths.set(key, el);
+            else connectorPaths.delete(key);
+        },
+        [connectorPaths],
+    );
 
     const handlePaneScroll = useCallback(
         (event: React.UIEvent<HTMLDivElement>) => {
@@ -538,6 +543,8 @@ function App() {
         return () => observer.disconnect();
     }, [measureViewport, measureGutters, scheduleMergeFrame]);
 
+    // `vFrameRef` is a stable ref; this cleanup is unmount-only.
+    // react-doctor-disable-next-line react-doctor/exhaustive-deps
     useEffect(() => {
         return () => {
             if (vFrameRef.current) cancelAnimationFrame(vFrameRef.current);

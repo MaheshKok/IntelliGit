@@ -531,9 +531,11 @@ export class UndockedViewProvider {
                 await abortMergeWithConfirmation({
                     gitOps: this.gitOps,
                     onConflictStateChanged: async () => {
-                        await this.refreshCommitPanelData(false);
-                        await this.sendBranches();
-                        await this.loadInitial();
+                        await Promise.all([
+                            this.refreshCommitPanelData(false),
+                            this.sendBranches(),
+                            this.loadInitial(),
+                        ]);
                         this.postCommitDetailState();
                         this._onDidChangeWorkingTree.fire();
                         await vscode.commands.executeCommand("intelligit.mergeConflictsRefresh");
