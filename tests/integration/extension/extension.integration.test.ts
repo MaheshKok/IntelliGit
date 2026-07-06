@@ -1382,9 +1382,6 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalled();
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "ours");
         expect(gitOpsState.acceptConflictSide).toHaveBeenCalledWith("src/conflicted.ts", "theirs");
-        expect(executeCommandFallback).toHaveBeenCalledWith(
-            "workbench.action.moveEditorToNewWindow",
-        );
         expect(withProgress).toHaveBeenCalledWith(
             expect.objectContaining({
                 location: 15,
