@@ -138,6 +138,22 @@ describe("RefreshService refresh scheduling", () => {
         service.dispose();
     });
 
+    it("runs one trailing light refresh for light events suppressed by a full refresh", async () => {
+        const { service, scheduler, deps } = makeService();
+
+        scheduler.scheduleRefreshEvent("git-refs");
+        await vi.advanceTimersByTimeAsync(100);
+        scheduler.scheduleRefreshEvent("git-index");
+
+        await vi.advanceTimersByTimeAsync(400);
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(600);
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(2);
+
+        service.dispose();
+    });
+
     it("cancels a pending light refresh when a full refresh is scheduled", async () => {
         const { service, scheduler, deps } = makeService();
 
@@ -152,6 +168,47 @@ describe("RefreshService refresh scheduling", () => {
         expect(deps.gitOps.getBranches).toHaveBeenCalledTimes(1);
         expect(deps.commitPanel.refresh).not.toHaveBeenCalled();
         expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
+
+        service.dispose();
+    });
+
+    it("refreshes when repository file watcher sees external file changes", async () => {
+        const vscode = await import("vscode");
+        const { service, deps } = makeService();
+        service.registerFileWatchers();
+
+        const createFileSystemWatcher = vscode.workspace
+            .createFileSystemWatcher as unknown as ReturnType<typeof vi.fn>;
+        const watcher = createFileSystemWatcher.mock.results[0].value as {
+            onDidCreate: ReturnType<typeof vi.fn>;
+        };
+        const onDidCreate = watcher.onDidCreate.mock.calls[0][0] as (uri: {
+            fsPath: string;
+        }) => void;
+
+        onDidCreate({ fsPath: "/tmp/intelligit-refresh-test/.git/index" });
+        await vi.advanceTimersByTimeAsync(300);
+        expect(deps.commitPanel.refreshSilent).not.toHaveBeenCalled();
+
+        onDidCreate({ fsPath: "/tmp/intelligit-refresh-test/src/generated.ts" });
+        await vi.advanceTimersByTimeAsync(300);
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
+
+        service.dispose();
+    });
+
+    it("polls commit panels every five seconds as a fallback", async () => {
+        const { service, deps } = makeService();
+        service.registerFileWatchers();
+
+        await vi.advanceTimersByTimeAsync(4_999);
+        expect(deps.commitPanel.refreshSilent).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(deps.commitPanel.refreshSilent).toHaveBeenCalledTimes(2);
 
         service.dispose();
     });

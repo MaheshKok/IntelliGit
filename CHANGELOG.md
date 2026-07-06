@@ -5,6 +5,14 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.3] - 2026-07-06
+
+### Fixed
+
+- Kept commit-panel file counts in sync with external file changes by adding repository file watching and a 5-second fallback refresh cadence matching VS Code Git's status throttle.
+- Prevented light refreshes from being lost when they arrive during a full-refresh suppression window.
+- Updated working-tree files and counts even when stash, branch, or icon metadata refreshes fail.
+
 ## [0.15.2] - 2026-07-05
 
 ### Changed

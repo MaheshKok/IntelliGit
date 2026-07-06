@@ -337,13 +337,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             ).catch(() => {});
         }
         try {
-            const [status, stashes, currentBranchStatus] = await Promise.all([
-                this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
-                this.gitOps.listStashes(),
-                this.currentBranchStatus(),
-                this.iconTheme.initIconThemeData(),
+            const status = await this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles });
+            await this.iconTheme.initIconThemeData().catch(() => {});
+            const [stashes, currentBranchStatus] = await Promise.all([
+                this.gitOps.listStashes().catch(() => this.stashes),
+                this.currentBranchStatus().catch(() => ({
+                    hasUpstream: this.currentBranchHasUpstreamCache,
+                    hasRemotes: this.hasRemotesCache,
+                    ahead: this.currentBranchAheadCache,
+                    behind: this.currentBranchBehindCache,
+                    name: this.currentBranchNameCache,
+                    upstream: this.currentBranchUpstreamCache,
+                })),
             ]);
-            const files = await this.iconTheme.decorateWorkingFiles(status);
+            const files = await this.iconTheme.decorateWorkingFiles(status).catch(() => status);
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedStashIndex !== null &&
@@ -356,14 +363,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
             const stashFiles =
                 selectedStashIndex !== null
-                    ? await this.iconTheme.decorateWorkingFiles(
-                          await this.gitOps.getStashFiles(selectedStashIndex),
-                      )
+                    ? await this.gitOps
+                          .getStashFiles(selectedStashIndex)
+                          .then((files) => this.iconTheme.decorateWorkingFiles(files))
+                          .catch(() => this.stashFiles)
                     : [];
-            const folderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
-                ...files,
-                ...stashFiles,
-            ]);
+            const folderIconsByName = await this.iconTheme
+                .getFolderIconsByWorkingFiles([...files, ...stashFiles])
+                .catch(() => this.folderIconsByName);
             if (refreshRequestId === this.dataRefreshSeq) {
                 this.folderIconsByName = folderIconsByName;
                 this.files = files;
