@@ -237,6 +237,14 @@ const branchRefreshControls = vi.hoisted(
             resolve: (branches: unknown[]) => void;
         }>,
 );
+const refreshServiceInstances = vi.hoisted(
+    () =>
+        [] as Array<{
+            root: string;
+            registerFileWatchers: ReturnType<typeof vi.fn>;
+            dispose: ReturnType<typeof vi.fn>;
+        }>,
+);
 const makeBranchesForRoot = vi.hoisted(
     () => (root: string) => [
         {
@@ -291,6 +299,9 @@ vi.mock("../../../src/services/worktreeService", () => ({
 }));
 vi.mock("../../../src/views/RefreshService", () => ({
     RefreshService: class {
+        constructor(_deps: unknown, public readonly root: string) {
+            refreshServiceInstances.push(this);
+        }
         refreshMergeConflicts = vi.fn(async () => undefined);
         refreshConflictUi = vi.fn(async () => undefined);
         refreshAll = vi.fn(async () => undefined);
@@ -577,6 +588,7 @@ describe("view providers integration", () => {
         activeGitRoot.value = "";
         deferBranchRefreshes.active = false;
         branchRefreshControls.length = 0;
+        refreshServiceInstances.length = 0;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -653,6 +665,34 @@ describe("view providers integration", () => {
         expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
     });
 
+    it("registers startup active-editor repository watchers once", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        activeTextEditor = {
+            document: { uri: vscodeMock.Uri.file(`${repoB}/src/file.ts`) },
+        };
+
+        await activateRepositoryMode(
+            {
+                extensionUri: vscodeMock.Uri.file("/ext"),
+                subscriptions: [],
+                workspaceState: createMemento(),
+                secrets: {},
+            } as never,
+            [
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ],
+        );
+
+        const repoBRefreshServices = refreshServiceInstances.filter(
+            (instance) => instance.root === repoB,
+        );
+        expect(repoBRefreshServices).toHaveLength(1);
+        expect(repoBRefreshServices[0].registerFileWatchers).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps the latest active-editor repository when earlier refreshes finish last", async () => {
         const { SELECTED_REPOSITORY_KEY } = await import("../../../src/activation/common");
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
@@ -724,19 +764,22 @@ describe("view providers integration", () => {
             listener({ document: { uri: vscodeMock.Uri.file(`${repoA}/src/a.ts`) } }),
         );
         await flushMicrotasks();
+        await resolveBranchRefreshesFor(repoA);
+        expect(
+            controlledWorkspaceStore.pendingUpdates.some(
+                (update) => !update.resolved && update.value === repoA,
+            ),
+        ).toBe(true);
 
         activeTextEditorListeners.forEach((listener) =>
             listener({ document: { uri: vscodeMock.Uri.file(`${repoB}/src/b.ts`) } }),
         );
         await flushMicrotasks();
 
-        await resolvePendingUpdatesFor(repoB);
         await resolveBranchRefreshesFor(repoB);
-        await flushMicrotasks();
         await resolvePendingUpdatesFor(repoB);
         await resolvePendingUpdatesFor(repoA);
-        await resolveBranchRefreshesFor(repoA);
-        await resolvePendingUpdatesFor(repoA);
+        await resolvePendingUpdatesFor(repoB);
 
         const latestBranches = commitGraphBranchesSpy.mock.calls.at(-1)?.[0] as
             | Array<{ name: string }>

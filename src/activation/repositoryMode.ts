@@ -192,8 +192,14 @@ export async function activateRepositoryMode(
         );
 
     let refreshService = createRefreshService(repoRoot);
+    let refreshServiceWatchersRegistered = false;
     /** Returns the currently active refresh coordinator after repository switches replace it. */
     const getRefreshService = (): RefreshService => refreshService;
+    const registerRefreshServiceWatchers = (): void => {
+        if (refreshServiceWatchersRegistered) return;
+        refreshService.registerFileWatchers();
+        refreshServiceWatchersRegistered = true;
+    };
     /** Returns the repository root currently bound to command handlers. */
     const getRepoRoot = (): string => repoRoot;
     /** Returns the latest decorated branch snapshot shared by host command handlers. */
@@ -258,10 +264,30 @@ export async function activateRepositoryMode(
     };
 
     let activeEditorSwitchSeq = 0;
+    let activeEditorSelectionWrite = Promise.resolve();
     type ActiveRepositorySwitchOptions = {
         fromActiveEditor?: boolean;
         persistSelectionAfterBranchData?: boolean;
         shouldContinue?: () => boolean;
+    };
+    const persistActiveEditorSelection = async (
+        root: string,
+        shouldContinue: () => boolean,
+    ): Promise<void> => {
+        const write = activeEditorSelectionWrite
+            .catch(() => undefined)
+            .then(async () => {
+                if (!shouldContinue()) return;
+                await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, root);
+                if (!shouldContinue()) {
+                    await context.workspaceState?.update(
+                        SELECTED_REPOSITORY_KEY,
+                        activeRepository.root,
+                    );
+                }
+            });
+        activeEditorSelectionWrite = write;
+        await write;
     };
 
     /**
@@ -296,7 +322,8 @@ export async function activateRepositoryMode(
         resetFileCountBadge();
         refreshService.dispose();
         refreshService = createRefreshService(repoRoot);
-        refreshService.registerFileWatchers();
+        refreshServiceWatchersRegistered = false;
+        registerRefreshServiceWatchers();
         if (!options.persistSelectionAfterBranchData) {
             await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
             if (!shouldContinue()) return;
@@ -304,9 +331,7 @@ export async function activateRepositoryMode(
         clearSelection();
         const persistSelectionAfterBranchDataApplied = options.persistSelectionAfterBranchData
             ? async (): Promise<void> => {
-                  if (shouldContinue()) {
-                      await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
-                  }
+                  await persistActiveEditorSelection(repoRoot, shouldContinue);
               }
             : undefined;
         if (
@@ -773,7 +798,7 @@ export async function activateRepositoryMode(
     refreshService.refreshMergeConflicts().catch((err) => {
         console.error("Initial merge conflicts refresh failed:", err);
     });
-    refreshService.registerFileWatchers();
+    registerRefreshServiceWatchers();
 
     context.subscriptions.push(
         fileCountBadgeSubscription,
