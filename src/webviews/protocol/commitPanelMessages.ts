@@ -11,6 +11,25 @@ import type {
 } from "../../types";
 
 /**
+ * Optional repository selector for webview commands that operate on Git or repository files.
+ *
+ * Rootless messages remain valid during the single-repository UI transition; when present, the
+ * extension host must reject roots that are not in its current repository runtime map.
+ */
+type RepositoryScopedMessage<T extends { type: string }> = T & {
+    /** Absolute repository root originally supplied by host repository hydration. */
+    repositoryRoot?: string;
+};
+
+/** Minimal repository identity sent from the extension host to the commit-panel webview. */
+interface CommitPanelRepositorySummary {
+    /** Absolute filesystem path to the Git repository root. */
+    root: string;
+    /** Stable display label for repository pickers and headings. */
+    label: string;
+}
+
+/**
  * Commit panel messages sent from the webview to the extension host.
  *
  * Commands that carry paths use repository-relative Git paths originally
@@ -23,61 +42,61 @@ export type OutboundMessage =
           /** Lifecycle event requesting working-tree, stash, graph, and draft state. */
           type: "ready";
       }
-    | {
+    | RepositoryScopedMessage<{
           /** User event requesting a fresh working-tree and stash snapshot. */
           type: "refresh";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command aborting the active merge after host confirmation. */
           type: "abortMerge";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** View option controlling whether ignored files are included in working-tree snapshots. */
           type: "setShowIgnoredFiles";
           /** True asks the host to include `git status --ignored` rows; false restores the default. */
           showIgnoredFiles: boolean;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command fetching remote refs without changing the current working tree. */
           type: "fetch";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command pulling the current branch with rebase semantics. */
           type: "pull";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command pushing the current branch to its upstream. */
           type: "push";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command pulling the current branch and then pushing it. */
           type: "sync";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Persistence event storing the commit message draft in workspace state. */
           type: "saveCommitDraft";
           /** Plain commit message text scoped by repository root; empty text clears storage. */
           message: string;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command staging selected working-tree files. */
           type: "stageFiles";
           /** Repository-relative paths from `WorkingFile.path`; empty arrays are a no-op. */
           paths: string[];
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command unstaging selected index entries. */
           type: "unstageFiles";
           /** Repository-relative paths from `WorkingFile.path`; empty arrays are a no-op. */
           paths: string[];
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command marking selected unversioned paths as intent-to-add. */
           type: "trackUnversionedFiles";
           /** Repository-relative unversioned paths from `WorkingFile.path`; host revalidates status. */
           paths: string[];
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command staging selected paths and then committing, optionally pushing. */
           type: "commitSelected";
           /** Repository-relative paths to stage before commit; empty is valid only for amend. */
@@ -88,99 +107,99 @@ export type OutboundMessage =
           amend: boolean;
           /** Whether a successful commit should be followed by a push. */
           push: boolean;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command committing currently staged changes without staging panel selections first. */
           type: "commit";
           /** Commit message after UI trimming; the host allows empty text only while amending. */
           message: string;
           /** Whether the host should run the commit as an amend operation. */
           amend: boolean;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command committing currently staged changes and then pushing. */
           type: "commitAndPush";
           /** Commit message after UI trimming; the host allows empty text only while amending. */
           message: string;
           /** Whether the host should run the commit as an amend operation. */
           amend: boolean;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command delegating publish-branch setup to the extension host. */
           type: "publishBranch";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Request for the latest commit message used to prefill amend text. */
           type: "getLastCommitMessage";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Request for branch-local history shown as amend context. */
           type: "getAmendBranchCommits";
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command rolling back selected paths, or all changes when no path is selected. */
           type: "rollback";
           /** Repository-relative paths from `WorkingFile.path`; empty means rollback all. */
           paths: string[];
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command opening the VS Code working-tree diff for a selected file. */
           type: "showDiff";
           /** Repository-relative path from the working-tree snapshot. */
           path: string;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command saving selected or all changes to the Git stash. */
           type: "stashSave";
           /** Optional stash message; host defaults to a generic stash name when absent. */
           name?: string;
           /** Repository-relative paths to stash; omitted means stash all tracked/untracked changes. */
           paths?: string[];
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command applying and dropping a stashed change via `git stash pop`. */
           type: "stashPop";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command applying a stashed change without dropping it. */
           type: "stashApply";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command deleting a stashed change after host confirmation. */
           type: "stashDelete";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Request loading the file list for one stashed change. */
           type: "stashSelect";
           /** Current `stash@{n}` index whose files should populate `stashFiles`. */
           index: number;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command opening a preview diff for one file inside a stashed change. */
           type: "showStashDiff";
           /** Current `stash@{n}` index containing the file. */
           index: number;
           /** Repository-relative path from the selected stash file list. */
           path: string;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command opening a working-tree file in the editor. */
           type: "openFile";
           /** Repository-relative path from the working-tree snapshot. */
           path: string;
-      }
-    | {
+      }>
+    | RepositoryScopedMessage<{
           /** Command deleting a working-tree file after host confirmation. */
           type: "deleteFile";
           /** Repository-relative path from the working-tree snapshot. */
           path: string;
-      };
+      }>;
 
 /**
  * Commit panel messages sent from the extension host to the webview.
@@ -191,6 +210,14 @@ export type OutboundMessage =
  * data for the current view.
  */
 export type InboundMessage =
+    | {
+          /** Repository list hydration for host-owned multi-repository state. */
+          type: "setRepositories";
+          /** Discovered repositories known to the host, in display order. */
+          repositories: CommitPanelRepositorySummary[];
+          /** Active host repository root, or `null` when no repository is selected. */
+          activeRepositoryRoot: string | null;
+      }
     | {
           /** State update for working-tree files, stashes, and render-only icon metadata. */
           type: "update";

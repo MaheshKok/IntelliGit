@@ -4,12 +4,14 @@
 // Frontend is a React + Chakra UI app loaded from dist/webview-commitpanel.js.
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch, CommitDetail, ThemeFolderIconMap, WorkingFile, StashEntry } from "../types";
+import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { abortMergeWithConfirmation } from "./mergeAbort";
 import type { InboundMessage } from "../webviews/protocol/commitPanelMessages";
+import type { DiscoveredRepository } from "../services/repositoryDiscovery";
+import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
 import type {
     BranchAction,
     CommitAction,
@@ -59,28 +61,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
     private view?: vscode.WebviewView;
-    private files: WorkingFile[] = [];
-    private stashes: StashEntry[] = [];
-    private selectedStashIndex: number | null = null;
-    private stashFiles: WorkingFile[] = [];
-    private folderIconsByName: ThemeFolderIconMap = {};
     private lastFileCount = 0;
-    private showIgnoredFiles = false;
+    private repositories: DiscoveredRepository[] = [];
+    private readonly runtimes = new Map<string, CommitPanelRepositoryRuntime>();
+    private activeRepositoryRoot: string | null = null;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
-    // Embedded commit graph state
-    private currentBranch: string | null = null;
-    private currentBranchHasUpstreamCache = false;
-    private hasRemotesCache = false;
-    private currentBranchAheadCache = 0;
-    private currentBranchBehindCache = 0;
-    private currentBranchNameCache: string | null = null;
-    private currentBranchUpstreamCache: string | null = null;
-    private filterText = "";
-    private offset = 0;
-    private loadingMore = false;
-    private requestSeq = 0;
-    private dataRefreshSeq = 0;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
     private selectedCommitDetail: CommitDetail | null = null;
@@ -125,7 +111,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private readonly workspaceState?: vscode.Memento,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        if (repoRootUri) {
+            this.setRepositoriesInternal(
+                [this.repositoryFromUri(repoRootUri)],
+                repoRootUri.fsPath,
+                this.gitOps,
+            );
+        }
     }
+
+    /**
+     * Replaces the repository set known to the commit panel while preserving unchanged runtimes.
+     *
+     * Roots are matched exactly against host-discovered absolute paths. Removed runtimes are
+     * invalidated so late async refreshes cannot post stale state after the repository list changes.
+     */
+    setRepositories(repositories: DiscoveredRepository[], activeRoot?: string): void {
+        this.setRepositoriesInternal(repositories, activeRoot);
+    }
+
     /**
      * Switches the panel to a new active repository and invalidates repository-scoped caches.
      *
@@ -134,34 +138,155 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * so the webview receives a fresh draft restore message after the root changes.
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
-        this.repoRootUri = repoRootUri;
-        this.selectedStashIndex = null;
-        this.files = [];
-        this.stashes = [];
-        this.stashFiles = [];
-        this.currentBranch = null;
-        this.currentBranchHasUpstreamCache = false;
-        this.hasRemotesCache = false;
-        this.currentBranchAheadCache = 0;
-        this.currentBranchBehindCache = 0;
-        this.currentBranchNameCache = null;
-        this.currentBranchUpstreamCache = null;
-        this.filterText = "";
-        this.offset = 0;
-        this.loadingMore = false;
-        this.selectedCommitDetail = null;
-        this.commitDetailFolderIconsByName = {};
-        this.branchFolderIconsByName = {};
-        // Bump request sequences so in-flight async responses from the old repo are ignored.
-        this.requestSeq += 1;
-        this.dataRefreshSeq += 1;
-        this.commitDetailSeq += 1;
-        this.updateViewCount(0);
+        for (const runtime of this.runtimes.values()) {
+            this.invalidateRuntime(runtime);
+        }
+        this.runtimes.clear();
+        this.setRepositoriesInternal(
+            [this.repositoryFromUri(repoRootUri)],
+            repoRootUri.fsPath,
+            this.gitOps,
+            { resetActiveState: true },
+        );
+    }
+
+    private repositoryFromUri(repoRootUri: vscode.Uri): DiscoveredRepository {
+        const root = repoRootUri.fsPath;
+        const parts = root.split(/[\\/]/).filter(Boolean);
+        return {
+            root,
+            label: parts[parts.length - 1] ?? root,
+        };
+    }
+
+    private setRepositoriesInternal(
+        repositories: DiscoveredRepository[],
+        activeRoot?: string,
+        activeGitOps?: GitOps,
+        options: { resetActiveState?: boolean } = {},
+    ): void {
+        const previousActiveRoot = this.activeRepositoryRoot;
+        const previousActiveRuntime =
+            previousActiveRoot !== null ? this.runtimes.get(previousActiveRoot) : undefined;
+        const nextRoots = new Set(repositories.map((repository) => repository.root));
+
+        for (const [root, runtime] of this.runtimes) {
+            if (nextRoots.has(root)) continue;
+            this.invalidateRuntime(runtime);
+            this.runtimes.delete(root);
+        }
+
+        for (const repository of repositories) {
+            const existing = this.runtimes.get(repository.root);
+            if (existing) {
+                existing.repository = repository;
+                continue;
+            }
+            const gitOps = repository.root === activeRoot ? activeGitOps : undefined;
+            this.runtimes.set(
+                repository.root,
+                new CommitPanelRepositoryRuntime(repository, gitOps),
+            );
+        }
+
+        this.repositories = repositories;
+        const requestedActiveRoot =
+            activeRoot !== undefined && this.runtimes.has(activeRoot) ? activeRoot : null;
+        this.activeRepositoryRoot =
+            requestedActiveRoot ??
+            (this.activeRepositoryRoot !== null && this.runtimes.has(this.activeRepositoryRoot)
+                ? this.activeRepositoryRoot
+                : (repositories[0]?.root ?? null));
+        const activeChanged = previousActiveRoot !== this.activeRepositoryRoot;
+        if (activeChanged && previousActiveRuntime) this.invalidateRuntime(previousActiveRuntime);
+
+        const activeRuntime = this.getActiveRuntime();
+        this.repoRootUri = activeRuntime?.repoRootUri;
+        if (activeChanged || options.resetActiveState) {
+            this.selectedCommitDetail = null;
+            this.commitDetailFolderIconsByName = {};
+            this.branchFolderIconsByName = {};
+            this.commitDetailSeq += 1;
+            this.updateViewCount(activeRuntime ? this.countChangedFiles(activeRuntime) : 0);
+            if (activeRuntime) {
+                this.postToWebview({
+                    type: "restoreCommitDraft",
+                    message: this.getStoredCommitDraft(activeRuntime),
+                });
+            }
+        }
+        this.postRepositoryListHydration();
+    }
+
+    private postRepositoryListHydration(): void {
         this.postToWebview({
-            type: "restoreCommitDraft",
-            message: this.getStoredCommitDraft(),
+            type: "setRepositories",
+            repositories: this.repositories,
+            activeRepositoryRoot: this.activeRepositoryRoot,
         });
     }
+
+    private getActiveRuntime(): CommitPanelRepositoryRuntime | undefined {
+        return this.activeRepositoryRoot !== null
+            ? this.runtimes.get(this.activeRepositoryRoot)
+            : undefined;
+    }
+
+    private requireActiveRuntime(): CommitPanelRepositoryRuntime {
+        const runtime = this.getActiveRuntime();
+        if (!runtime) throw new Error("No active repository selected.");
+        return runtime;
+    }
+
+    private runtimeForMessage(msg: {
+        [key: string]: unknown;
+    }): CommitPanelRepositoryRuntime | undefined {
+        if (msg.repositoryRoot !== undefined) {
+            const repositoryRoot = assertString(msg.repositoryRoot, "repositoryRoot");
+            const runtime = this.runtimes.get(repositoryRoot);
+            if (!runtime) {
+                throw new Error("Unknown repository root received from webview.");
+            }
+            return runtime;
+        }
+        return this.getActiveRuntime();
+    }
+
+    private invalidateRuntime(runtime: CommitPanelRepositoryRuntime): void {
+        runtime.requestSeq += 1;
+        runtime.dataRefreshSeq += 1;
+    }
+
+    private countChangedFiles(runtime: CommitPanelRepositoryRuntime): number {
+        const uniquePaths = new Set<string>();
+        for (const file of runtime.files) {
+            if (file.status !== "!") uniquePaths.add(file.path);
+        }
+        return uniquePaths.size;
+    }
+
+    private actionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
+        return {
+            gitOps: runtime?.gitOps ?? this.gitOps,
+            refreshData: () => (runtime ? this.refreshData(false, runtime) : Promise.resolve()),
+            refreshGraphData: () => (runtime ? this.refreshGraphData(runtime) : Promise.resolve()),
+            fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+            postCommitted: () => this.postToWebview({ type: "committed" }),
+            maybeOfferPublishBranch: () =>
+                runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
+        };
+    }
+
+    private fileActionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
+        return {
+            gitOps: runtime?.gitOps ?? this.gitOps,
+            getWorkspaceRoot: () => this.getWorkspaceRoot(runtime),
+            refreshData: (silent = false) =>
+                runtime ? this.refreshData(silent, runtime) : Promise.resolve(),
+            fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+        };
+    }
+
     /** Handles repository label changes while keeping native view descriptions empty. */
     setRepositoryLabel(_label: string): void {
         this.updateViewCount(this.lastFileCount);
@@ -171,7 +296,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     setBranches(branches: Branch[]): void {
         this.branches = branches;
-        this.sendGraphBranches().catch((err) => {
+        const runtime = this.getActiveRuntime();
+        if (!runtime) return;
+        this.sendGraphBranches(runtime).catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(
                 vscode.l10n.t("Branch update error: {message}", { message }),
@@ -254,21 +381,24 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtml(webviewView.webview);
         webviewView.onDidChangeVisibility(() => {
             if (!webviewView.visible) return;
-            this.postWorkingTreeSnapshot();
-            this.refreshDataWithErrorHandling(true);
+            const runtime = this.requireActiveRuntime();
+            this.postWorkingTreeSnapshot(runtime);
+            this.refreshDataWithErrorHandling(true, runtime);
         });
+        this.postRepositoryListHydration();
         this.updateViewCount(this.lastFileCount);
     }
     /**
      * Refreshes working-tree/stash data and then reloads embedded graph state.
      */
     async refresh(): Promise<void> {
-        await this.refreshData(false);
-        await this.refreshGraphData();
+        const runtime = this.requireActiveRuntime();
+        await this.refreshData(false, runtime);
+        await this.refreshGraphData(runtime);
     }
     /** Refreshes working-tree data without showing webview or context-key spinner state. */
     async refreshSilent(): Promise<void> {
-        await this.refreshData(true);
+        await this.refreshData(true, this.requireActiveRuntime());
     }
     /**
      * Runs a visible refresh for explicit user requests in the Changes view.
@@ -276,12 +406,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * The progress location is scoped to the view so refresh feedback appears where the user
      * initiated it instead of as a global notification.
      */
-    private async refreshFromUserAction(): Promise<void> {
+    private async refreshFromUserAction(runtime?: CommitPanelRepositoryRuntime): Promise<void> {
+        if (!runtime) return;
         await vscode.window.withProgress(
             { location: { viewId: CommitPanelViewProvider.viewType } },
             async () => {
-                await this.refreshData(false);
-                await this.refreshGraphData();
+                await this.refreshData(false, runtime);
+                await this.refreshGraphData(runtime);
             },
         );
     }
@@ -292,27 +423,24 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * immediately, before the follow-up silent refresh reconciles any changes that happened while
      * the webview was hidden or loading.
      */
-    private postWorkingTreeSnapshot(
-        currentBranchHasUpstream = this.currentBranchHasUpstreamCache,
-        hasRemotes = this.hasRemotesCache,
-    ): void {
+    private postWorkingTreeSnapshot(runtime: CommitPanelRepositoryRuntime): void {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "update",
-            files: this.files,
-            stashes: this.stashes,
-            selectedStashIndex: this.selectedStashIndex,
-            stashFiles: this.stashFiles,
+            files: runtime.files,
+            stashes: runtime.stashes,
+            selectedStashIndex: runtime.selectedStashIndex,
+            stashFiles: runtime.stashFiles,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
-            folderIconsByName: this.folderIconsByName,
+            folderIconsByName: runtime.folderIconsByName,
             iconFonts,
-            currentBranchHasUpstream,
-            hasRemotes,
-            currentBranchAhead: this.currentBranchAheadCache,
-            currentBranchBehind: this.currentBranchBehindCache,
-            currentBranchName: this.currentBranchNameCache,
-            currentBranchUpstream: this.currentBranchUpstreamCache,
+            currentBranchHasUpstream: runtime.currentBranchHasUpstreamCache,
+            hasRemotes: runtime.hasRemotesCache,
+            currentBranchAhead: runtime.currentBranchAheadCache,
+            currentBranchBehind: runtime.currentBranchBehindCache,
+            currentBranchName: runtime.currentBranchNameCache,
+            currentBranchUpstream: runtime.currentBranchUpstreamCache,
         });
     }
 
@@ -323,9 +451,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * keep the spinner visible for a short minimum duration to avoid flicker. The selected stash is
      * preserved when it still exists, otherwise the first available stash becomes selected.
      */
-    private async refreshData(silent = false): Promise<void> {
+    private async refreshData(
+        silent = false,
+        runtime: CommitPanelRepositoryRuntime = this.requireActiveRuntime(),
+    ): Promise<void> {
         const refreshStartedAt = Date.now();
-        const refreshRequestId = ++this.dataRefreshSeq;
+        const refreshRequestId = ++runtime.dataRefreshSeq;
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         if (!silent) {
             void Promise.resolve(
@@ -337,60 +468,60 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             ).catch(() => {});
         }
         try {
-            const status = await this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles });
+            const status = await runtime.gitOps.getStatus({
+                includeIgnored: runtime.showIgnoredFiles,
+            });
             await this.iconTheme.initIconThemeData().catch(() => {});
             const [stashes, currentBranchStatus] = await Promise.all([
-                this.gitOps.listStashes().catch(() => this.stashes),
-                this.currentBranchStatus().catch(() => ({
-                    hasUpstream: this.currentBranchHasUpstreamCache,
-                    hasRemotes: this.hasRemotesCache,
-                    ahead: this.currentBranchAheadCache,
-                    behind: this.currentBranchBehindCache,
-                    name: this.currentBranchNameCache,
-                    upstream: this.currentBranchUpstreamCache,
+                runtime.gitOps.listStashes().catch(() => runtime.stashes),
+                this.currentBranchStatus(runtime).catch(() => ({
+                    hasUpstream: runtime.currentBranchHasUpstreamCache,
+                    hasRemotes: runtime.hasRemotesCache,
+                    ahead: runtime.currentBranchAheadCache,
+                    behind: runtime.currentBranchBehindCache,
+                    name: runtime.currentBranchNameCache,
+                    upstream: runtime.currentBranchUpstreamCache,
                 })),
             ]);
             const files = await this.iconTheme.decorateWorkingFiles(status).catch(() => status);
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
-                this.selectedStashIndex !== null &&
-                stashes.some((entry) => entry.index === this.selectedStashIndex);
+                runtime.selectedStashIndex !== null &&
+                stashes.some((entry) => entry.index === runtime.selectedStashIndex);
             let selectedStashIndex: number | null;
             if (hasSelected) {
-                selectedStashIndex = this.selectedStashIndex;
+                selectedStashIndex = runtime.selectedStashIndex;
             } else {
                 selectedStashIndex = stashes.length > 0 ? stashes[0].index : null;
             }
-            const selectedStashIndexUnchanged = selectedStashIndex === this.selectedStashIndex;
+            const selectedStashIndexUnchanged = selectedStashIndex === runtime.selectedStashIndex;
             const stashFiles =
                 selectedStashIndex !== null
-                    ? await this.gitOps
+                    ? await runtime.gitOps
                           .getStashFiles(selectedStashIndex)
                           .then((files) => this.iconTheme.decorateWorkingFiles(files))
-                          .catch(() => (selectedStashIndexUnchanged ? this.stashFiles : []))
+                          .catch(() => (selectedStashIndexUnchanged ? runtime.stashFiles : []))
                     : [];
             const folderIconsByName = await this.iconTheme
                 .getFolderIconsByWorkingFiles([...files, ...stashFiles])
-                .catch(() => this.folderIconsByName);
-            if (refreshRequestId === this.dataRefreshSeq) {
-                this.folderIconsByName = folderIconsByName;
-                this.files = files;
-                this.stashes = stashes;
-                this.selectedStashIndex = selectedStashIndex;
-                this.stashFiles = stashFiles;
-                this.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
-                this.hasRemotesCache = currentBranchStatus.hasRemotes;
-                this.currentBranchAheadCache = currentBranchStatus.ahead;
-                this.currentBranchBehindCache = currentBranchStatus.behind;
-                this.currentBranchNameCache = currentBranchStatus.name;
-                this.currentBranchUpstreamCache = currentBranchStatus.upstream;
-                const uniquePaths = new Set<string>();
-                for (const file of files) {
-                    if (file.status !== "!") uniquePaths.add(file.path);
+                .catch(() => runtime.folderIconsByName);
+            if (refreshRequestId === runtime.dataRefreshSeq) {
+                runtime.folderIconsByName = folderIconsByName;
+                runtime.files = files;
+                runtime.stashes = stashes;
+                runtime.selectedStashIndex = selectedStashIndex;
+                runtime.stashFiles = stashFiles;
+                runtime.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
+                runtime.hasRemotesCache = currentBranchStatus.hasRemotes;
+                runtime.currentBranchAheadCache = currentBranchStatus.ahead;
+                runtime.currentBranchBehindCache = currentBranchStatus.behind;
+                runtime.currentBranchNameCache = currentBranchStatus.name;
+                runtime.currentBranchUpstreamCache = currentBranchStatus.upstream;
+                const count = this.countChangedFiles(runtime);
+                if (runtime === this.getActiveRuntime()) {
+                    this._onDidChangeFileCount.fire(count);
+                    this.updateViewCount(count);
                 }
-                const count = uniquePaths.size;
-                this._onDidChangeFileCount.fire(count);
-                this.updateViewCount(count);
                 this.postToWebview({
                     type: "update",
                     files,
@@ -399,7 +530,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     selectedStashIndex,
                     folderIcon: folderIcons.folderIcon,
                     folderExpandedIcon: folderIcons.folderExpandedIcon,
-                    folderIconsByName: this.folderIconsByName,
+                    folderIconsByName: runtime.folderIconsByName,
                     iconFonts,
                     currentBranchHasUpstream: currentBranchStatus.hasUpstream,
                     hasRemotes: currentBranchStatus.hasRemotes,
@@ -429,18 +560,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Refreshes embedded graph theme data, branch metadata, first-page commits, and detail state.
      */
-    private async refreshGraphData(): Promise<void> {
+    private async refreshGraphData(
+        runtime: CommitPanelRepositoryRuntime = this.requireActiveRuntime(),
+    ): Promise<void> {
         // Embedded graph refresh relies on current theme data before branch/log decoration.
         // react-doctor-disable-next-line react-doctor/async-parallel
         await this.iconTheme.initIconThemeData();
-        await this.sendGraphBranches();
-        await this.loadInitialGraphCommits();
+        await this.sendGraphBranches(runtime);
+        await this.loadInitialGraphCommits(runtime);
         this.postGraphCommitDetailState();
     }
     /**
      * Sends embedded graph branch data with folder icons derived from branch path segments.
      */
-    private async sendGraphBranches(): Promise<void> {
+    private async sendGraphBranches(runtime: CommitPanelRepositoryRuntime): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
@@ -450,12 +583,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,
             iconFonts,
-            currentBranchHasUpstream: this.currentBranchHasUpstreamCache,
-            hasRemotes: this.hasRemotesCache,
-            currentBranchAhead: this.currentBranchAheadCache,
-            currentBranchBehind: this.currentBranchBehindCache,
-            currentBranchName: this.currentBranchNameCache,
-            currentBranchUpstream: this.currentBranchUpstreamCache,
+            currentBranchHasUpstream: runtime.currentBranchHasUpstreamCache,
+            hasRemotes: runtime.hasRemotesCache,
+            currentBranchAhead: runtime.currentBranchAheadCache,
+            currentBranchBehind: runtime.currentBranchBehindCache,
+            currentBranchName: runtime.currentBranchNameCache,
+            currentBranchUpstream: runtime.currentBranchUpstreamCache,
         });
     }
     /**
@@ -464,26 +597,26 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * If the active branch filter disappears from the cached branch list, the selection is cleared
      * before loading so the webview and Git query stay in sync.
      */
-    private async loadInitialGraphCommits(): Promise<void> {
-        const requestId = ++this.requestSeq;
-        this.offset = 0;
-        this.loadingMore = false;
-        if (this.currentBranch && !this.branches.some((b) => b.name === this.currentBranch)) {
-            this.currentBranch = null;
+    private async loadInitialGraphCommits(runtime: CommitPanelRepositoryRuntime): Promise<void> {
+        const requestId = ++runtime.requestSeq;
+        runtime.offset = 0;
+        runtime.loadingMore = false;
+        if (runtime.currentBranch && !this.branches.some((b) => b.name === runtime.currentBranch)) {
+            runtime.currentBranch = null;
             this.postToWebview({ type: "setSelectedBranch", branch: null });
         }
         try {
             const [commits, unpushedHashes] = await Promise.all([
-                this.gitOps.getLog(
+                runtime.gitOps.getLog(
                     this.PAGE_SIZE,
-                    this.currentBranch ?? undefined,
-                    this.filterText || undefined,
+                    runtime.currentBranch ?? undefined,
+                    runtime.filterText || undefined,
                     0,
                 ),
-                this.gitOps.getUnpushedCommitHashes(),
+                runtime.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId === this.requestSeq) {
-                this.offset = commits.length;
+            if (requestId === runtime.requestSeq) {
+                runtime.offset = commits.length;
                 this.postToWebview({
                     type: "loadCommits",
                     commits,
@@ -493,7 +626,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 });
             }
         } catch (err) {
-            if (requestId === this.requestSeq) {
+            if (requestId === runtime.requestSeq) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(
                     vscode.l10n.t("Git log error: {message}", { message }),
@@ -505,22 +638,22 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Appends embedded graph commits while coalescing duplicate pagination requests.
      */
-    private async loadMoreGraphCommits(): Promise<void> {
-        if (this.loadingMore) return;
-        this.loadingMore = true;
-        const requestId = ++this.requestSeq;
+    private async loadMoreGraphCommits(runtime: CommitPanelRepositoryRuntime): Promise<void> {
+        if (runtime.loadingMore) return;
+        runtime.loadingMore = true;
+        const requestId = ++runtime.requestSeq;
         try {
             const [commits, unpushedHashes] = await Promise.all([
-                this.gitOps.getLog(
+                runtime.gitOps.getLog(
                     this.PAGE_SIZE,
-                    this.currentBranch ?? undefined,
-                    this.filterText || undefined,
-                    this.offset,
+                    runtime.currentBranch ?? undefined,
+                    runtime.filterText || undefined,
+                    runtime.offset,
                 ),
-                this.gitOps.getUnpushedCommitHashes(),
+                runtime.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId === this.requestSeq) {
-                this.offset += commits.length;
+            if (requestId === runtime.requestSeq) {
+                runtime.offset += commits.length;
                 this.postToWebview({
                     type: "loadCommits",
                     commits,
@@ -530,7 +663,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 });
             }
         } catch (err) {
-            if (requestId === this.requestSeq) {
+            if (requestId === runtime.requestSeq) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(
                     vscode.l10n.t("Git log error: {message}", { message }),
@@ -538,14 +671,17 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 this.postToWebview({ type: "loadError", message });
             }
         } finally {
-            if (requestId === this.requestSeq) {
-                this.loadingMore = false;
+            if (requestId === runtime.requestSeq) {
+                runtime.loadingMore = false;
             }
         }
     }
-    private async filterGraphByText(text: string): Promise<void> {
-        this.filterText = text;
-        await this.loadInitialGraphCommits();
+    private async filterGraphByText(
+        runtime: CommitPanelRepositoryRuntime,
+        text: string,
+    ): Promise<void> {
+        runtime.filterText = text;
+        await this.loadInitialGraphCommits(runtime);
     }
     /**
      * Validates and dispatches every message accepted by the Changes webview.
@@ -557,71 +693,70 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     private async handleMessage(raw: unknown): Promise<void> {
         const msg = assertMessage(raw);
-        const actionDeps = {
-            gitOps: this.gitOps,
-            refreshData: () => this.refreshData(),
-            refreshGraphData: () => this.refreshGraphData(),
-            fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () => this.postToWebview({ type: "committed" }),
-            maybeOfferPublishBranch: () => this.maybeOfferPublishBranch(),
-        };
-        const fileActionDeps = {
-            gitOps: this.gitOps,
-            getWorkspaceRoot: () => this.getWorkspaceRoot(),
-            refreshData: (silent = false) => this.refreshData(silent),
-            fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-        };
+        const activeRuntime = () => this.requireActiveRuntime();
+        const scopedRuntime = () => this.runtimeForMessage(msg);
         switch (msg.type) {
-            case "ready":
-                this.postWorkingTreeSnapshot();
-                await this.refreshSilent();
-                await this.refreshGraphData();
+            case "ready": {
+                const runtime = this.getActiveRuntime();
+                this.postRepositoryListHydration();
+                if (runtime) {
+                    this.postWorkingTreeSnapshot(runtime);
+                    await this.refreshData(true, runtime);
+                    await this.refreshGraphData(runtime);
+                }
                 this.postToWebview({
                     type: "restoreCommitDraft",
-                    message: this.getStoredCommitDraft(),
+                    message: this.getStoredCommitDraft(runtime),
                 });
                 break;
+            }
             case "refresh":
-                await this.refreshFromUserAction();
+                await this.refreshFromUserAction(scopedRuntime());
                 break;
             case "abortMerge":
-                await this.abortMerge();
+                await this.abortMerge(scopedRuntime());
                 break;
-            case "setShowIgnoredFiles":
-                this.showIgnoredFiles = msg.showIgnoredFiles === true;
-                await this.refreshData(true);
+            case "setShowIgnoredFiles": {
+                const runtime = scopedRuntime();
+                if (runtime) {
+                    runtime.showIgnoredFiles = msg.showIgnoredFiles === true;
+                    await this.refreshData(true, runtime);
+                }
                 break;
+            }
             case "fetch":
-                await runGitOperationFromPanel(actionDeps, "fetch");
+                await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "fetch");
                 break;
             case "pull":
-                await runGitOperationFromPanel(actionDeps, "pull");
+                await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "pull");
                 break;
             case "push":
-                await runGitOperationFromPanel(actionDeps, "push");
+                await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "push");
                 break;
             case "sync":
-                await runGitOperationFromPanel(actionDeps, "sync");
+                await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "sync");
                 break;
             case "selectCommit":
                 this._onCommitSelected.fire(assertGitHash(msg.hash, "hash"));
                 break;
             case "loadMore":
-                await this.loadMoreGraphCommits();
+                await this.loadMoreGraphCommits(activeRuntime());
                 break;
             case "filterText":
-                await this.filterGraphByText(assertString(msg.text, "text"));
+                await this.filterGraphByText(activeRuntime(), assertString(msg.text, "text"));
                 break;
-            case "filterBranch":
-                this.currentBranch = assertNullableString(msg.branch, "branch");
-                this.filterText = "";
-                this._onBranchFilterChanged.fire(this.currentBranch);
+            case "filterBranch": {
+                const runtime = activeRuntime();
+                runtime.currentBranch = assertNullableString(msg.branch, "branch");
+                runtime.filterText = "";
+                this._onBranchFilterChanged.fire(runtime.currentBranch);
                 this.postToWebview({
                     type: "setSelectedBranch",
-                    branch: this.currentBranch,
+                    branch: runtime.currentBranch,
                 });
-                await this.loadInitialGraphCommits();
+                await this.loadInitialGraphCommits(runtime);
                 break;
+            }
             case "branchAction": {
                 const branchAction = assertString(msg.action, "action");
                 if (!isBranchAction(branchAction)) {
@@ -651,23 +786,34 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 });
                 break;
             case "saveCommitDraft": {
+                const runtime = scopedRuntime();
                 const message = assertString(msg.message, "message");
                 await this.workspaceState?.update(
-                    this.getCommitDraftStorageKey(),
+                    this.getCommitDraftStorageKey(runtime),
                     message || undefined,
                 );
                 break;
             }
             case "stageFiles":
-                await stageFilesFromPanel(fileActionDeps, msg.paths);
+                await stageFilesFromPanel(
+                    this.fileActionDepsForRuntime(scopedRuntime()),
+                    msg.paths,
+                );
                 break;
             case "unstageFiles":
-                await unstageFilesFromPanel(fileActionDeps, msg.paths);
+                await unstageFilesFromPanel(
+                    this.fileActionDepsForRuntime(scopedRuntime()),
+                    msg.paths,
+                );
                 break;
             case "trackUnversionedFiles":
-                await trackUnversionedFilesFromPanel(fileActionDeps, msg.paths);
+                await trackUnversionedFilesFromPanel(
+                    this.fileActionDepsForRuntime(scopedRuntime()),
+                    msg.paths,
+                );
                 break;
             case "commitSelected": {
+                const actionDeps = this.actionDepsForRuntime(scopedRuntime());
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
                 await commitSelectedFromPanel(actionDeps, {
                     message,
@@ -679,33 +825,48 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
             case "commit": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitOnlyFromPanel(actionDeps, message, msg.amend === true);
+                await commitOnlyFromPanel(
+                    this.actionDepsForRuntime(scopedRuntime()),
+                    message,
+                    msg.amend === true,
+                );
                 break;
             }
             case "commitAndPush": {
                 const message = (typeof msg.message === "string" ? msg.message : "").trim();
-                await commitAndPushFromPanel(actionDeps, message, msg.amend === true);
+                await commitAndPushFromPanel(
+                    this.actionDepsForRuntime(scopedRuntime()),
+                    message,
+                    msg.amend === true,
+                );
                 break;
             }
             case "getLastCommitMessage": {
-                const lastMsg = await this.gitOps.getLastCommitMessage();
+                const lastMsg = await (
+                    scopedRuntime()?.gitOps ?? this.gitOps
+                ).getLastCommitMessage();
                 this.postToWebview({ type: "lastCommitMessage", message: lastMsg });
                 break;
             }
             case "getAmendBranchCommits": {
-                const commits = await this.gitOps.getAmendBranchCommits();
+                const commits = await (
+                    scopedRuntime()?.gitOps ?? this.gitOps
+                ).getAmendBranchCommits();
                 this.postToWebview({ type: "amendBranchCommits", commits });
                 break;
             }
             case "rollback": {
-                await rollbackFromPanel(actionDeps, assertRepoPathArray(msg.paths, "paths"));
+                await rollbackFromPanel(
+                    this.actionDepsForRuntime(scopedRuntime()),
+                    assertRepoPathArray(msg.paths, "paths"),
+                );
                 break;
             }
             case "showDiff":
-                await showDiffFromPanel(fileActionDeps, msg.path);
+                await showDiffFromPanel(this.fileActionDepsForRuntime(scopedRuntime()), msg.path);
                 break;
             case "stashSave": {
-                await stashSaveFromPanel(actionDeps, {
+                await stashSaveFromPanel(this.actionDepsForRuntime(scopedRuntime()), {
                     name: typeof msg.name === "string" ? msg.name : "Stashed changes",
                     paths:
                         msg.paths !== undefined
@@ -715,59 +876,76 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
             case "stashPop":
-                await stashMutationFromPanel(actionDeps, "pop", assertNumber(msg.index, "index"));
+                await stashMutationFromPanel(
+                    this.actionDepsForRuntime(scopedRuntime()),
+                    "pop",
+                    assertNumber(msg.index, "index"),
+                );
                 break;
             case "stashApply":
-                await stashMutationFromPanel(actionDeps, "apply", assertNumber(msg.index, "index"));
+                await stashMutationFromPanel(
+                    this.actionDepsForRuntime(scopedRuntime()),
+                    "apply",
+                    assertNumber(msg.index, "index"),
+                );
                 break;
             case "stashDelete":
                 await stashMutationFromPanel(
-                    actionDeps,
+                    this.actionDepsForRuntime(scopedRuntime()),
                     "delete",
                     assertNumber(msg.index, "index"),
                 );
                 break;
-            case "stashSelect":
+            case "stashSelect": {
+                const runtime = scopedRuntime();
+                if (!runtime) throw new Error("No active repository selected.");
                 await selectStashFromPanel(
                     {
-                        ...fileActionDeps,
+                        ...this.fileActionDepsForRuntime(runtime),
                         iconTheme: this.iconTheme,
-                        getFiles: () => this.files,
-                        getStashes: () => this.stashes,
+                        getFiles: () => runtime.files,
+                        getStashes: () => runtime.stashes,
                         currentBranchHasUpstream: async () =>
-                            (await this.currentBranchStatus()).hasUpstream,
+                            (await this.currentBranchStatus(runtime)).hasUpstream,
                         setStashState: (state) => {
-                            this.selectedStashIndex = state.selectedStashIndex;
-                            this.stashFiles = state.stashFiles;
-                            this.folderIconsByName = state.folderIconsByName;
+                            runtime.selectedStashIndex = state.selectedStashIndex;
+                            runtime.stashFiles = state.stashFiles;
+                            runtime.folderIconsByName = state.folderIconsByName;
                         },
                         postUpdate: (message) => this.postToWebview(message),
                     },
                     msg.index,
                 );
                 break;
+            }
             case "publishBranch":
-                await publishBranchFromPanel(fileActionDeps);
+                await publishBranchFromPanel(this.fileActionDepsForRuntime(scopedRuntime()));
                 break;
             case "showStashDiff":
-                await showStashDiffFromPanel(fileActionDeps, msg.index, msg.path);
+                await showStashDiffFromPanel(
+                    this.fileActionDepsForRuntime(scopedRuntime()),
+                    msg.index,
+                    msg.path,
+                );
                 break;
             case "openFile":
-                await openFileFromPanel(fileActionDeps, msg.path);
+                await openFileFromPanel(this.fileActionDepsForRuntime(scopedRuntime()), msg.path);
                 break;
             case "deleteFile":
-                await deleteFileFromPanel(fileActionDeps, msg.path);
+                await deleteFileFromPanel(this.fileActionDepsForRuntime(scopedRuntime()), msg.path);
                 break;
         }
     }
 
     /** Confirms and aborts an active merge, then refreshes all conflict and working-tree surfaces. */
-    private async abortMerge(): Promise<void> {
+    private async abortMerge(runtime?: CommitPanelRepositoryRuntime): Promise<void> {
         await abortMergeWithConfirmation({
-            gitOps: this.gitOps,
+            gitOps: runtime?.gitOps ?? this.gitOps,
             onConflictStateChanged: async () => {
-                await this.refreshData(false);
-                await this.refreshGraphData();
+                if (runtime) {
+                    await this.refreshData(false, runtime);
+                    await this.refreshGraphData(runtime);
+                }
                 this._onDidChangeWorkingTree.fire();
                 await vscode.commands.executeCommand("intelligit.mergeConflictsRefresh");
             },
@@ -829,7 +1007,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      *
      * @throws When no active repository or workspace folder can back a file action.
      */
-    private getWorkspaceRoot(): vscode.Uri {
+    private getWorkspaceRoot(runtime?: CommitPanelRepositoryRuntime): vscode.Uri {
+        if (runtime) return runtime.repoRootUri;
         if (this.repoRootUri) return this.repoRootUri;
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
         if (!workspaceRoot) {
@@ -854,9 +1033,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      *
      * @throws When no repository or workspace folder is available to scope the persisted draft.
      */
-    private getCommitDraftStorageKey(): string {
+    private getCommitDraftStorageKey(runtime?: CommitPanelRepositoryRuntime): string {
         const storageRoot =
-            this.repoRootUri?.fsPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            runtime?.repository.root ??
+            this.repoRootUri?.fsPath ??
+            vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!storageRoot) {
             throw new Error("No workspace folder is open.");
         }
@@ -865,8 +1046,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Reads the persisted commit draft for the active repository, defaulting to an empty input.
      */
-    private getStoredCommitDraft(): string {
-        return this.workspaceState?.get<string>(this.getCommitDraftStorageKey()) ?? "";
+    private getStoredCommitDraft(runtime?: CommitPanelRepositoryRuntime): string {
+        return this.workspaceState?.get<string>(this.getCommitDraftStorageKey(runtime)) ?? "";
     }
     /**
      * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
@@ -888,11 +1069,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * The prompt is best-effort and intentionally swallowed on failure so commit completion is not
      * blocked by optional upstream detection or command-palette wiring.
      */
-    private async maybeOfferPublishBranch(): Promise<void> {
+    private async maybeOfferPublishBranch(runtime: CommitPanelRepositoryRuntime): Promise<void> {
         try {
-            const hasCommits = await this.gitOps.hasAnyCommits();
+            const hasCommits = await runtime.gitOps.hasAnyCommits();
             if (!hasCommits) return;
-            const branches = await this.gitOps.getBranches();
+            const branches = await runtime.gitOps.getBranches();
             const currentBranch = branches.find((b) => b.isCurrent);
             if (!currentBranch) return;
             // Already published — nothing to do
@@ -914,7 +1095,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Reads current-branch upstream, ahead/behind, and remote availability for toolbar state.
      */
-    private async currentBranchStatus(): Promise<{
+    private async currentBranchStatus(runtime: CommitPanelRepositoryRuntime): Promise<{
         hasUpstream: boolean;
         hasRemotes: boolean;
         ahead: number;
@@ -923,8 +1104,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         upstream: string | null;
     }> {
         const [branches, remotes] = await Promise.all([
-            this.gitOps.getBranches(),
-            this.gitOps.getRemotes(),
+            runtime.gitOps.getBranches(),
+            runtime.gitOps.getRemotes(),
         ]);
         const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
         const upstream = currentBranch?.upstream?.trim() || null;
@@ -940,8 +1121,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Runs a panel data refresh from listeners without leaking rejected promises into VS Code.
      */
-    private refreshDataWithErrorHandling(silent = false): void {
-        this.refreshData(silent).catch((err) => {
+    private refreshDataWithErrorHandling(
+        silent = false,
+        runtime: CommitPanelRepositoryRuntime | undefined = this.getActiveRuntime(),
+    ): void {
+        if (!runtime) return;
+        this.refreshData(silent, runtime).catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(message);
             this.postToWebview({ type: "error", message });
@@ -949,7 +1134,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
     private registerThemeChangeListeners(): void {
         this.themeChangeDisposables.push(
-            ...registerThemeChangeListeners(() => this.refreshDataWithErrorHandling()),
+            ...registerThemeChangeListeners(() =>
+                this.refreshDataWithErrorHandling(false, this.getActiveRuntime()),
+            ),
         );
     }
     private disposeThemeChangeDisposables(): void {

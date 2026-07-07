@@ -245,19 +245,17 @@ const refreshServiceInstances = vi.hoisted(
             dispose: ReturnType<typeof vi.fn>;
         }>,
 );
-const makeBranchesForRoot = vi.hoisted(
-    () => (root: string) => [
-        {
-            name: `branch-${root.split(/[\\/]/).pop() ?? root}`,
-            hash: "abc1234",
-            isRemote: false,
-            isCurrent: true,
-            upstream: "origin/main",
-            ahead: 0,
-            behind: 0,
-        },
-    ],
-);
+const makeBranchesForRoot = vi.hoisted(() => (root: string) => [
+    {
+        name: `branch-${root.split(/[\\/]/).pop() ?? root}`,
+        hash: "abc1234",
+        isRemote: false,
+        isCurrent: true,
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 0,
+    },
+]);
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/git/executor", () => ({
@@ -299,7 +297,10 @@ vi.mock("../../../src/services/worktreeService", () => ({
 }));
 vi.mock("../../../src/views/RefreshService", () => ({
     RefreshService: class {
-        constructor(_deps: unknown, public readonly root: string) {
+        constructor(
+            _deps: unknown,
+            public readonly root: string,
+        ) {
             refreshServiceInstances.push(this);
         }
         refreshMergeConflicts = vi.fn(async () => undefined);
@@ -784,7 +785,9 @@ describe("view providers integration", () => {
         const latestBranches = commitGraphBranchesSpy.mock.calls.at(-1)?.[0] as
             | Array<{ name: string }>
             | undefined;
-        expect(commitPanelRootSpy).toHaveBeenLastCalledWith(expect.objectContaining({ fsPath: repoB }));
+        expect(commitPanelRootSpy).toHaveBeenLastCalledWith(
+            expect.objectContaining({ fsPath: repoB }),
+        );
         expect(latestBranches?.[0]?.name).toBe("branch-app-b");
         expect(controlledWorkspaceStore.memento.get(SELECTED_REPOSITORY_KEY)).toBe(repoB);
     });
@@ -1632,6 +1635,138 @@ describe("view providers integration", () => {
         expect(gitOps.getStatus).not.toHaveBeenCalled();
         expect(postMessageSpy).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "update" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes retain unchanged roots and drop removed roots", async () => {
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        const repoA = { root: "/repo-a", label: "Repo A" };
+        const repoB = { root: "/repo-b", label: "Repo B" };
+        postMessageSpy.mockClear();
+
+        provider.setRepositories([repoA, repoB], repoA.root);
+        const testProvider = provider as unknown as {
+            activeRepositoryRoot: string | null;
+            repositories: Array<{ root: string; label: string }>;
+            runtimes: Map<
+                string,
+                {
+                    files: Array<{
+                        path: string;
+                        status: string;
+                        staged: boolean;
+                        additions: number;
+                        deletions: number;
+                    }>;
+                }
+            >;
+        };
+        const runtimeA = testProvider.runtimes.get(repoA.root);
+        const runtimeB = testProvider.runtimes.get(repoB.root);
+        expect(runtimeA).toBeDefined();
+        expect(runtimeB).toBeDefined();
+        runtimeB!.files = [
+            { path: "src/b.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ];
+
+        provider.setRepositories([repoB]);
+
+        expect(testProvider.runtimes.has(repoA.root)).toBe(false);
+        expect(testProvider.runtimes.get(repoB.root)).toBe(runtimeB);
+        expect(testProvider.activeRepositoryRoot).toBe(repoB.root);
+        expect(testProvider.repositories).toEqual([repoB]);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setRepositories",
+            repositories: [repoB],
+            activeRepositoryRoot: repoB.root,
+        });
+        provider.dispose();
+    });
+
+    it("Unknown repository showDiff is rejected before Git or git.openChange", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockClear();
+        executeCommand.mockClear();
+        showErrorMessage.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "showDiff", repositoryRoot: "/unknown", path: "src/a.ts" });
+
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(executeCommand).not.toHaveBeenCalledWith("git.openChange", expect.anything());
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Unknown repository root received from webview.",
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Unknown repository root received from webview.",
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route scoped actions through selected runtime GitOps and root", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.stageFiles.mockClear();
+        repoBGitOps.stageFiles.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "stageFiles",
+            repositoryRoot: "/repo-b",
+            paths: ["src/b.ts"],
+        });
+
+        expect(repoBGitOps.stageFiles).toHaveBeenCalledWith(["src/b.ts"]);
+        expect(gitOps.stageFiles).not.toHaveBeenCalled();
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                files: [expect.objectContaining({ path: "src/b.ts" })],
+            }),
+        );
+
+        executeCommand.mockClear();
+        await webview.send({
+            type: "showDiff",
+            repositoryRoot: "/repo-b",
+            path: "src/b.ts",
+        });
+        expect(executeCommand).toHaveBeenCalledWith(
+            "git.openChange",
+            expect.objectContaining({ fsPath: "/repo-b/src/b.ts" }),
         );
         provider.dispose();
     });
