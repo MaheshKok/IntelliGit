@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.15.3",
+    "version": "0.15.4",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -415,16 +415,10 @@
                 "icon": "$(go-to-file)"
             },
             {
-                "command": "intelligit.detectJetBrainsMergeTool",
-                "title": "%command.detectJetBrainsMergeTool%",
+                "command": "intelligit.openMergeConflictInVsCode",
+                "title": "%command.openInVsCodeMergeEditor%",
                 "category": "%intelligit%",
-                "icon": "$(search)"
-            },
-            {
-                "command": "intelligit.openMergeConflictInJetBrains",
-                "title": "%command.openInJetBrainsMergeTool%",
-                "category": "%intelligit%",
-                "icon": "$(link-external)"
+                "icon": "$(git-merge)"
             },
             {
                 "command": "intelligit.conflictAcceptYours",
@@ -665,7 +659,7 @@
                     "group": "navigation@1"
                 },
                 {
-                    "command": "intelligit.openMergeConflictInJetBrains",
+                    "command": "intelligit.openMergeConflictInVsCode",
                     "when": "view == intelligit.mergeConflicts && viewItem == intelligit.conflictFile",
                     "group": "navigation@2"
                 },
@@ -733,17 +727,6 @@
         "configuration": {
             "title": "%intelligit%",
             "properties": {
-                "intelligit.jetbrainsMergeTool.path": {
-                    "type": "string",
-                    "default": "",
-                    "scope": "machine",
-                    "markdownDescription": "%configuration.jetbrainsMergeTool.path.markdownDescription%"
-                },
-                "intelligit.jetbrainsMergeTool.preferExternal": {
-                    "type": "boolean",
-                    "default": false,
-                    "markdownDescription": "%configuration.jetbrainsMergeTool.preferExternal.markdownDescription%"
-                },
                 "intelligit.tooltips.enabled": {
                     "type": "boolean",
                     "default": true,

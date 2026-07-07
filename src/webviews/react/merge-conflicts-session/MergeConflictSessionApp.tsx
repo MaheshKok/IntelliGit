@@ -163,8 +163,10 @@ function App() {
                 className={selected ? "row selected" : "row"}
                 tabIndex={0}
                 aria-selected={selected}
-                onClick={() => dispatch({ type: "selectPath", path: file.path })}
-                onDoubleClick={() => openMerge(file.path)}
+                onClick={() => {
+                    dispatch({ type: "selectPath", path: file.path });
+                    openMerge(file.path);
+                }}
                 onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();

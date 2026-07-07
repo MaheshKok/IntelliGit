@@ -20,7 +20,7 @@ Primary product/runtime areas:
 - `src/extension.ts` and `src/activation/*`: activation, repository-mode/no-repository-mode wiring, command registration, and UI event routing.
 - `src/git/executor.ts`, `src/git/operations.ts`, `src/git/workingTree.ts`, `src/git/parsers.ts`, `src/git/stashFiles.ts`: Git process abstraction and Git output parsing.
 - `src/commands/*`: branch, commit, file, history, and conflict operations that can mutate repository state.
-- `src/services/cloneService.ts`, `src/services/publishService.ts`, `src/services/gitAskpass.ts`, `src/services/jetbrainsMergeService.ts`, `src/utils/jetbrainsMergeTool.ts`: clone/publish credential handling, provider API calls, Git askpass, and external merge tool execution.
+- `src/services/cloneService.ts`, `src/services/publishService.ts`, `src/services/gitAskpass.ts`: clone/publish credential handling, provider API calls, and Git askpass.
 - `src/views/*` and `src/webviews/*`: VS Code webview providers, HTML/CSP generation, message validation, and React UI.
 - `scripts/*`, `.github/workflows/*`, and packaging scripts: build, validation, localization, and marketplace release automation.
 
@@ -32,7 +32,7 @@ Primary product/runtime areas:
 - Repository/content attacker: can influence a repository the user opens or clones, including filenames, paths, symlinks, Git metadata, commit messages, branch/tag names, remotes, conflict contents, and file contents rendered in webviews.
 - Remote provider attacker or compromised network/provider response: can influence GitHub/GitLab API responses, repository metadata, remote URLs, and clone/publish error payloads. HTTPS/TLS and VS Code/Git provider authentication are assumed to enforce transport security.
 - Malicious webview script execution: would be possible only if the extension allows injection into its webview HTML or bundled scripts. If achieved, the attacker is across the webview-to-extension boundary and can send extension-host messages.
-- Malicious local configuration/operator: can set extension settings, especially external JetBrains merge tool path. This actor is mostly out of scope as a user-controlled local configuration, but the extension should still avoid surprising command execution footguns.
+- Malicious local configuration/operator: can set extension settings and invoke VS Code/Git commands. This actor is mostly out of scope as user-controlled local configuration, but the extension should still avoid surprising command execution footguns.
 - CI/release attacker: can influence repository workflow files, build scripts, or package contents in a contribution path, with possible impact on extension package integrity or release secrets if workflow permissions are too broad.
 
 ### Trust boundaries
@@ -40,7 +40,7 @@ Primary product/runtime areas:
 - Webview JavaScript to extension host: webviews are untrusted relative to the extension host. Messages from webviews must be treated as attacker-controlled and validated before invoking Git, filesystem, or VS Code commands. Relevant controls include `src/views/messageValidation.ts`, protocol types under `src/webviews/protocol/*`, and per-provider `onDidReceiveMessage` handlers.
 - Repository content to extension host: file paths, filenames, commit messages, branch names, remotes, stash metadata, conflict contents, Git output, and diff text can be attacker-controlled. Any path that crosses into filesystem or Git pathspec APIs must be normalized and constrained to repository-relative paths. `src/utils/fileOps.ts` is a key path validation control.
 - Extension host to Git process: the extension invokes Git with structured arguments through `simple-git` and direct `execFile` in askpass flows. The extension must preserve argument boundaries and use `--` before path lists where applicable. It should avoid shell interpolation for untrusted values.
-- Extension host to external tools: JetBrains merge tool invocation and VS Code commands cross into external process/editor behavior. Paths and executable settings are user/operator-controlled but still security-relevant because repository-supplied conflict paths must not become executable arguments outside intended semantics.
+- Extension host to VS Code/Git commands: native editor and Git commands cross into VS Code-owned behavior. Repository-supplied paths must stay repository-relative before command invocation.
 - Extension host to remote providers: clone/publish flows cross from local VS Code into GitHub/GitLab APIs and Git remotes. Tokens must not be written to persistent Git config, logs, command-line arguments, or files with broad permissions. `src/services/gitAskpass.ts` is the key transient credential control.
 - VS Code SecretStorage/authentication to extension runtime: GitHub tokens come from VS Code Authentication API; GitLab tokens may be stored in SecretStorage. These tokens should be handled as secrets and only exposed to provider APIs or transient Git credential mechanisms.
 - Build/release automation to marketplace secrets: `.github/workflows/publish.yml` can access publishing tokens. PRs or branch changes that alter workflow behavior, package contents, or versioning can affect release integrity.
@@ -122,13 +122,13 @@ Important attacker stories:
 - A symlink or Git path edge case causes a UI operation that appears repo-local to affect a different filesystem location.
 - Clone destination plus repository name extraction creates a target path outside the chosen folder or collides with an existing sensitive directory.
 
-### External merge tools and terminals
+### VS Code merge commands and terminals
 
-The extension can detect or launch JetBrains merge tools and can open an interactive rebase terminal.
+The extension can open VS Code's native merge editor and can open an interactive rebase terminal.
 
 Relevant mitigations:
 
-- External tool paths are user settings or detected local application paths.
+- Merge-editor commands receive repository-relative file paths validated before command invocation.
 - Terminal commands should quote commit hashes or otherwise constrain inputs; Git hashes and parent expressions must be validated before terminal use.
 
 Important attacker stories:

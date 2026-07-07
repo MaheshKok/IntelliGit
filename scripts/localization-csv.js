@@ -221,6 +221,7 @@ function importCsv() {
     const { rows, header } = readTranslationRows();
     const expectedById = new Map(collectExpectedRows().map((row) => [row.id, row]));
     const targetCatalogs = new Map();
+    const allowedTargetKeys = new Map();
     let appliedCells = 0;
     let skippedCells = 0;
 
@@ -239,6 +240,9 @@ function importCsv() {
             }
 
             const targetPath = path.join(repoRoot, expected.targetFile(locale));
+            if (!allowedTargetKeys.has(targetPath)) allowedTargetKeys.set(targetPath, new Set());
+            allowedTargetKeys.get(targetPath).add(expected.pluralParentKey || expected.key);
+
             if (!targetCatalogs.has(targetPath)) {
                 targetCatalogs.set(targetPath, readJsonAbsolute(targetPath));
             }
@@ -262,6 +266,11 @@ function importCsv() {
 
     let updatedFiles = 0;
     for (const [targetPath, catalog] of targetCatalogs.entries()) {
+        const allowedKeys = allowedTargetKeys.get(targetPath) ?? new Set();
+        for (const key of Object.keys(catalog)) {
+            if (!allowedKeys.has(key)) delete catalog[key];
+        }
+
         const original = fs.readFileSync(targetPath, "utf8");
         const formatted = `${JSON.stringify(catalog, null, detectIndent(original))}\n`;
         if (formatted !== original) {

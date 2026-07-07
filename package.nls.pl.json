@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "Cherry-pick wybranej zmiany",
     "command.revertSelectedChange": "Przywróć wybraną zmianę",
     "command.openMergeConflict": "Otwarty konflikt scalania",
-    "command.detectJetBrainsMergeTool": "Wykryj narzędzie JetBrains Merge",
-    "command.openInJetBrainsMergeTool": "Otwórz w narzędziu JetBrains Merge Tool",
     "command.acceptYours": "Zaakceptuj bieżące zmiany",
     "command.acceptTheirs": "Zaakceptuj przychodzące zmiany",
     "command.openConflictSession": "Otwórz sesję rozwiązywania konfliktów",
@@ -41,8 +39,6 @@
     "command.openFolder": "Otwórz folder",
     "command.initializeRepository": "Zainicjuj repozytorium",
     "command.publishBranch": "Opublikuj branch",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "Ścieżka/polecenie binarne JetBrains IDE (`pycharm`, `idea`, `webstorm`) lub ścieżka pakietu `.app` w systemie macOS. IntelliGit automatycznie przekierowuje pakiety `.app` do pliku wykonywalnego w `Contents/MacOS`.",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Preferuj zewnętrzne narzędzie do scalania JetBrains podczas otwierania konfliktów scalania. Przechodzi do wewnętrznego edytora scalania VS Code, jeśli ścieżka JetBrains nie jest skonfigurowana lub uruchomienie się nie powiedzie.",
     "configuration.tooltips.enabled.markdownDescription": "Włącz lub wyłącz podpowiedzi w oknie IntelliGit (wykres zatwierdzenia, kolumna gałęzi itd.).",
     "configuration.undockableWindow.markdownDescription": "Otwórz IntelliGit jako ujednoliconą kartę edytora po wywołaniu opcji Pokaż dziennik Git, umożliwiając natywne oddokowanie VS Code do drugiego monitora.",
     "configuration.undockableWindowButtonVisability.markdownDescription": "Pokazuje przycisk Odłącz na pasku tytułu widoku grafu IntelliGit. Wyłącz, aby ukryć przycisk, zachowując dostępność polecenia odłączania.",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "Wyloguj się z dostawcy sprawdzeń commitów",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Zastąp nazwy sprawdzeń uznawane za CI/CD na potrzeby odznaki (tylko GitHub i GitLab). Podaj wyrażenie regularne (dopasowywane bez rozróżniania wielkości liter do nazwy i opisu każdego sprawdzenia); pozostaw puste, aby użyć wbudowanego wzorca. Boty do przeglądu kodu są zawsze wykluczane niezależnie od tej wartości. Zmiany zaczną obowiązywać po ponownym załadowaniu okna."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Zastąp nazwy sprawdzeń uznawane za CI/CD na potrzeby odznaki (tylko GitHub i GitLab). Podaj wyrażenie regularne (dopasowywane bez rozróżniania wielkości liter do nazwy i opisu każdego sprawdzenia); pozostaw puste, aby użyć wbudowanego wzorca. Boty do przeglądu kodu są zawsze wykluczane niezależnie od tej wartości. Zmiany zaczną obowiązywać po ponownym załadowaniu okna.",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

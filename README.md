@@ -49,7 +49,7 @@ IntelliGit pulls those workflows into one JetBrains-inspired surface:
 - Act on branches and commits from the graph instead of jumping back to the command line.
 - Park unfinished work with a shelf-style stash workflow.
 - Handle risky history operations with availability rules and confirmations.
-- Open conflicts in IntelliGit's native merge flow, VS Code, or an optional JetBrains merge tool.
+- Open conflicts in the built-in merge editor or VS Code's native merge editor.
 
 ## Feature Gallery
 
@@ -129,7 +129,7 @@ add the remote, and push the selected branch through one guided flow.
 | Branches          | Checkout, new branch, checkout-and-rebase, rebase, merge, update, push, rename, delete                                                                             |
 | Commits           | Copy hash, create patch, cherry-pick, checkout revision, reset, revert, push up to here, undo, edit message, squash, drop, interactive rebase, new branch, new tag |
 | Worktrees         | Create, create from branch, delete, lock, unlock, move, prune, repair                                                                                              |
-| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, VS Code/native merge, optional JetBrains merge tool                                                          |
+| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, built-in merge editor, VS Code native merge editor                                                           |
 | Hosting           | Clone repository, initialize repository, publish branch, create remote repositories/projects                                                                       |
 | Commit checks     | GitHub, GitLab, Bitbucket Cloud, Bitbucket Server, self-hosted host mapping, CI/CD status popovers                                                                 |
 | Layout            | Activity bar view, bottom graph panel, unified undocked workbench tab                                                                                              |
@@ -161,14 +161,6 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
 
 ```jsonc
 {
-    // JetBrains IDE binary path/command or a macOS .app bundle path.
-    // Examples: "", "pycharm", "idea", "webstorm", "/Applications/PyCharm.app",
-    // "C:\\Program Files\\JetBrains\\PyCharm 2025.1\\bin\\pycharm64.exe"
-    "intelligit.jetbrainsMergeTool.path": "",
-
-    // Prefer JetBrains merge tool for conflicts, falling back to IntelliGit/VS Code if unavailable.
-    "intelligit.jetbrainsMergeTool.preferExternal": false,
-
     // Enable tooltips inside IntelliGit webviews.
     "intelligit.tooltips.enabled": true,
 
@@ -182,32 +174,6 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
     "intelligit.commitWindowPosition": "auto",
 }
 ```
-
-## JetBrains Merge Tool Setup
-
-IntelliGit can open merge conflicts in a JetBrains IDE merge tool such as PyCharm, IntelliJ IDEA, or WebStorm.
-
-1. Open VS Code Settings and search for `IntelliGit: JetBrains Merge Tool Path`.
-2. Set `intelligit.jetbrainsMergeTool.path` to your JetBrains app path.
-3. On macOS, you can paste the `.app` path directly; IntelliGit resolves the internal executable.
-4. Enable `intelligit.jetbrainsMergeTool.preferExternal` if you want IntelliGit to try JetBrains first.
-
-macOS examples:
-
-- `/Applications/PyCharm.app`
-- `/Applications/IntelliJ IDEA.app`
-- `/Applications/WebStorm.app`
-- `/Users/<your-user>/Applications/PyCharm.app`
-
-Windows examples:
-
-- `C:\\Program Files\\JetBrains\\PyCharm 2025.1\\bin\\pycharm64.exe`
-- `C:\\Program Files\\JetBrains\\IntelliJ IDEA 2025.1\\bin\\idea64.exe`
-- `C:\\Program Files\\JetBrains\\WebStorm 2025.1\\bin\\webstorm64.exe`
-
-Helpful command:
-
-- Run `IntelliGit: Detect JetBrains Merge Tool` from the Command Palette to auto-detect installed JetBrains IDEs and save the path.
 
 ## Development
 

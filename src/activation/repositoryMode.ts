@@ -7,11 +7,6 @@ import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { WorktreeService } from "../services/worktreeService";
-import {
-    getJetBrainsMergeToolPath,
-    getPreferExternalMergeTool,
-    openJetBrainsMergeToolForFile,
-} from "../services/jetbrainsMergeService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
@@ -291,27 +286,30 @@ export async function activateRepositoryMode(
         }
     };
 
-    /**
-     * Opens a conflict file using the preferred merge tool for the active repository.
-     *
-     * A configured JetBrains tool gets the first chance when external tools are
-     * preferred; unresolved or failed external opens fall back to VS Code's
-     * built-in merge editor path.
-     */
+    /** Opens a conflict file using IntelliGit's merge editor for the active repository. */
     const openMergeConflictForFile = async (filePath: string): Promise<void> => {
-        const preferExternal = getPreferExternalMergeTool();
-
-        if (preferExternal && getJetBrainsMergeToolPath()) {
-            const opened = await openJetBrainsMergeToolForFile(
-                filePath,
-                repoRoot,
-                gitOps,
-                () => refreshService.refreshConflictUi(),
-                openBuiltInMergeEditorForFile,
-            );
-            if (opened) return;
-        }
         await openBuiltInMergeEditorForFile(filePath);
+    };
+
+    /** Opens a conflict file with VS Code's native Git merge editor. */
+    const openVsCodeMergeEditorForFile = async (filePath: string): Promise<void> => {
+        const fileUri = vscode.Uri.file(path.join(repoRoot, assertRepoRelativePath(filePath)));
+        try {
+            await vscode.commands.executeCommand("git.openMergeEditor", fileUri);
+        } catch (error) {
+            const message = getErrorMessage(error);
+            showTimedWarningMessage(
+                vscode.l10n.t(
+                    "VS Code merge editor command failed ({message}). Opening the file instead.",
+                    {
+                        message,
+                    },
+                ),
+            );
+            await vscode.commands.executeCommand("vscode.open", fileUri);
+            return;
+        }
+        await refreshService.refreshConflictUi();
     };
 
     /**
@@ -671,7 +669,7 @@ export async function activateRepositoryMode(
         dockIntelliGit,
         openMergeConflictForFile,
         openConflictSession,
-        openBuiltInMergeEditorForFile,
+        openVsCodeMergeEditorForFile,
     });
 
     try {

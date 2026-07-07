@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "Cherry-pick de la modification sélectionnée",
     "command.revertSelectedChange": "Annuler la modification sélectionnée",
     "command.openMergeConflict": "Ouvrir le conflit de fusion",
-    "command.detectJetBrainsMergeTool": "Détecter l'outil de fusion JetBrains",
-    "command.openInJetBrainsMergeTool": "Ouvrir dans l'outil de fusion JetBrains",
     "command.acceptYours": "Accepter les modifications actuelles",
     "command.acceptTheirs": "Accepter les modifications entrantes",
     "command.openConflictSession": "Ouvrir la session de conflit",
@@ -41,8 +39,6 @@
     "command.openFolder": "Ouvrir le dossier",
     "command.initializeRepository": "Initialiser le dépôt",
     "command.publishBranch": "Publier la branche",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "Chemin d'accès/commande de l'IDE JetBrains (`pycharm`, `idea`, `webstorm`) ou chemin d'accès à un bundle `.app` macOS. IntelliGit résout automatiquement les bundles `.app` en exécutables situés dans `Contents/MacOS`.",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Privilégiez l'outil de fusion externe JetBrains pour résoudre les conflits de fusion. En cas d'absence de chemin d'accès à JetBrains ou d'échec du lancement, utilisez l'éditeur de fusion interne de VS Code.",
     "configuration.tooltips.enabled.markdownDescription": "Activer ou désactiver les infobulles dans la fenêtre IntelliGit (Graphique des commits, Colonne des branches, etc.).",
     "configuration.undockableWindow.markdownDescription": "Ouvrez IntelliGit comme un onglet d'éditeur unifié lorsque vous utilisez l'option « Afficher le journal Git », ce qui permet de détacher nativement VS Code sur un deuxième écran.",
     "configuration.undockableWindowButtonVisability.markdownDescription": "Affiche le bouton Détacher dans la barre de titre de la vue graphique IntelliGit. Désactivez cette option pour masquer le bouton tout en conservant la commande de détachement disponible.",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "Se déconnecter du fournisseur de vérifications de commits",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Remplace les noms de vérifications qui comptent comme CI/CD pour le badge (GitHub et GitLab uniquement). Fournissez une expression régulière (comparée sans tenir compte de la casse au nom et à la description de chaque vérification) ; laissez vide pour utiliser le motif intégré. Les bots de revue de code sont toujours exclus, quelle que soit cette valeur. Les changements prennent effet après le rechargement de la fenêtre."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Remplace les noms de vérifications qui comptent comme CI/CD pour le badge (GitHub et GitLab uniquement). Fournissez une expression régulière (comparée sans tenir compte de la casse au nom et à la description de chaque vérification) ; laissez vide pour utiliser le motif intégré. Les bots de revue de code sont toujours exclus, quelle que soit cette valeur. Les changements prennent effet après le rechargement de la fenêtre.",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

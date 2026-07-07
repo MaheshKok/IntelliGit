@@ -1246,6 +1246,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
+        expect(registeredCommands.has("intelligit.openMergeConflictInVsCode")).toBe(true);
         expect(registeredCommands.has("intelligit.conflictAcceptYours")).toBe(true);
         expect(registeredCommands.has("intelligit.conflictAcceptTheirs")).toBe(true);
         expect(registeredCommands.has("intelligit.openConflictSession")).toBe(true);
@@ -1366,6 +1367,9 @@ describe("extension integration", () => {
         await getCommand("intelligit.fileShelve")({ filePath: "src/a.ts" });
         await getCommand("intelligit.fileRefresh")();
         await getCommand("intelligit.openMergeConflict")({
+            filePath: "src/conflicted.ts",
+        });
+        await getCommand("intelligit.openMergeConflictInVsCode")({
             filePath: "src/conflicted.ts",
         });
         await getCommand("intelligit.conflictAcceptYours")({
@@ -2189,6 +2193,34 @@ describe("extension integration", () => {
             | { dispose?: () => void }
             | undefined;
         panelResult?.dispose?.();
+    });
+
+    it("refreshes conflict UI after opening the VS Code merge editor", async () => {
+        const { activate } = await import("../../../src/extension");
+        const context = {
+            extensionUri: { fsPath: "/ext", path: "/ext" },
+            subscriptions: [],
+        } as unknown as MockExtensionContext;
+        await activate(context);
+        expect(latestCommitPanelProvider).toBeDefined();
+
+        executeCommandFallback.mockClear();
+        latestCommitPanelProvider!.refreshSilent.mockClear();
+        gitOpsState.getConflictFilesDetailed.mockClear();
+
+        await registeredCommands.get("intelligit.openMergeConflictInVsCode")?.({
+            filePath: "src/conflicted.ts",
+        });
+
+        expect(executeCommandFallback).toHaveBeenCalledWith("git.openMergeEditor", {
+            fsPath: "/repo/src/conflicted.ts",
+            path: "/repo/src/conflicted.ts",
+        });
+        expect(executeCommandFallback).not.toHaveBeenCalledWith(
+            "vscode.open",
+            expect.anything(),
+        );
+        expect(latestCommitPanelProvider!.refreshSilent).toHaveBeenCalledTimes(1);
     });
 
     it("rejects unsafe conflict-session accept paths before git operations", async () => {
