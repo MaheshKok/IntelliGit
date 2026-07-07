@@ -52,6 +52,8 @@ const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
 const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
+const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
+let activeTextEditor: { document: { uri: unknown } } | undefined;
 const closeDocListeners: Array<
     (document: { uri: { scheme: string; toString: () => string } }) => void
 > = [];
@@ -527,6 +529,15 @@ vi.mock("vscode", () => ({
     window: {
         registerWebviewViewProvider,
         registerWebviewPanelSerializer,
+        get activeTextEditor() {
+            return activeTextEditor;
+        },
+        onDidChangeActiveTextEditor: vi.fn(
+            (listener: (editor?: { document: { uri: unknown } }) => void) => {
+                activeTextEditorListeners.push(listener);
+                return { dispose: vi.fn() };
+            },
+        ),
         createTreeView: vi.fn((id: string) => {
             const view: MockTreeView = {
                 badge: initialTreeViewBadges.get(id),
@@ -823,6 +834,8 @@ describe("extension integration", () => {
         registeredCommands.clear();
         mockDisposables.length = 0;
         textDocListeners.length = 0;
+        activeTextEditorListeners.length = 0;
+        activeTextEditor = undefined;
         closeDocListeners.length = 0;
         saveDocListeners.length = 0;
         createFileListeners.length = 0;

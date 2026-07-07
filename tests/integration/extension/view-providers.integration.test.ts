@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
+type CommandHandler = (...args: unknown[]) => unknown;
 
 class FakeEventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
@@ -43,6 +44,9 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
+const registeredCommands = new Map<string, CommandHandler>();
+const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
+let activeTextEditor: { document: { uri: unknown } } | undefined;
 const withProgress = vi.fn(
     async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
         task(
@@ -83,9 +87,25 @@ const vscodeMock = {
         t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
+    Disposable: class {
+        constructor(private readonly disposeCallback: () => void) {}
+        dispose(): void {
+            this.disposeCallback();
+        }
+    },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
-        parse: (value: string): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
+        file: (
+            value: string,
+        ): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
+            fsPath: value,
+            path: value,
+            scheme: "file",
+            toString: () => value,
+        }),
+        parse: (
+            value: string,
+        ): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
             fsPath: value,
             path: value,
             scheme: value.split(":", 1)[0],
@@ -114,10 +134,33 @@ const vscodeMock = {
         showInformationMessage,
         showTextDocument,
         withProgress,
+        get activeTextEditor() {
+            return activeTextEditor;
+        },
+        registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        createTreeView: vi.fn(() => ({
+            dispose: vi.fn(),
+            badge: undefined,
+            description: undefined,
+        })),
+        onDidChangeActiveTextEditor: vi.fn(
+            (listener: (editor?: { document: { uri: unknown } }) => void) => {
+                activeTextEditorListeners.push(listener);
+                return { dispose: vi.fn() };
+            },
+        ),
         onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
     },
     commands: {
-        executeCommand,
+        registerCommand: vi.fn((id: string, handler: CommandHandler) => {
+            registeredCommands.set(id, handler);
+            return { dispose: vi.fn() };
+        }),
+        executeCommand: vi.fn(async (id: string, ...args: unknown[]) => {
+            const handler = registeredCommands.get(id);
+            if (handler) return handler(...args);
+            return executeCommand(id, ...args);
+        }),
     },
     workspace: {
         get workspaceFolders() {
@@ -137,6 +180,9 @@ const vscodeMock = {
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     },
+    authentication: {
+        onDidChangeSessions: vi.fn(() => ({ dispose: vi.fn() })),
+    },
 };
 
 const deleteFileWithFallback = vi.fn(async () => true);
@@ -147,8 +193,54 @@ const providerGetChecks = vi.hoisted(() => vi.fn());
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
+const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/git/executor", () => ({
+    GitExecutor: class {
+        constructor(public readonly root: string) {}
+        setRoot = gitExecutorSetRoot;
+    },
+}));
+vi.mock("../../../src/git/operations", () => ({
+    GitOps: class {
+        getBranches = vi.fn(async () => [
+            {
+                name: "main",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                upstream: "origin/main",
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        getLog = vi.fn(async () => []);
+        getRemotes = vi.fn(async () => ["origin"]);
+        getRemoteUrl = vi.fn(async () => "https://github.com/owner/repo.git");
+        getUnpushedCommitHashes = vi.fn(async () => []);
+        hasUncommittedChanges = vi.fn(async () => false);
+        getStatus = vi.fn(async () => []);
+        listStashes = vi.fn(async () => []);
+        getConflictFilesDetailed = vi.fn(async () => []);
+    },
+}));
+vi.mock("../../../src/services/worktreeService", () => ({
+    WorktreeService: class {
+        refresh = vi.fn(async () => []);
+        decorateBranches = vi.fn((branches: unknown[]) => branches);
+        dispose = vi.fn();
+    },
+}));
+vi.mock("../../../src/views/RefreshService", () => ({
+    RefreshService: class {
+        refreshMergeConflicts = vi.fn(async () => undefined);
+        refreshConflictUi = vi.fn(async () => undefined);
+        refreshAll = vi.fn(async () => undefined);
+        registerFileWatchers = vi.fn();
+        dispose = vi.fn();
+    },
+}));
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: vi.fn(
         async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
@@ -422,6 +514,9 @@ async function setupCommitPanelProvider(
 describe("view providers integration", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        registeredCommands.clear();
+        activeTextEditorListeners.length = 0;
+        activeTextEditor = undefined;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -430,6 +525,72 @@ describe("view providers integration", () => {
             summary: "All checks passed",
             items: [],
         }));
+    });
+
+    it("active editor switches providers to the deepest matching repository", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace";
+        const repoB = "/workspace/packages/app";
+        const captured: {
+            commitGraph?: { setRepositoryLabel: (label: string) => void };
+            sidebarGraph?: { setRepositoryLabel: (label: string) => void };
+            commitPanel?: {
+                setRepositoryLabel: (label: string) => void;
+                setRepositoryRootUri: (uri: { fsPath: string }) => void;
+            };
+        } = {};
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [],
+            workspaceState: createMemento(),
+            secrets: {},
+        };
+
+        await activateRepositoryMode(
+            context as never,
+            [
+                { root: repoA, label: "workspace" },
+                { root: repoB, label: "app" },
+            ],
+            {
+                commitGraph: {
+                    setProvider: (provider: unknown) => (captured.commitGraph = provider as never),
+                },
+                sidebarGraph: {
+                    setProvider: (provider: unknown) => (captured.sidebarGraph = provider as never),
+                },
+                commitPanel: {
+                    setProvider: (provider: unknown) => (captured.commitPanel = provider as never),
+                },
+            } as never,
+        );
+        expect(activeTextEditorListeners).toHaveLength(1);
+
+        const commitGraphLabelSpy = vi.spyOn(captured.commitGraph!, "setRepositoryLabel");
+        const sidebarGraphLabelSpy = vi.spyOn(captured.sidebarGraph!, "setRepositoryLabel");
+        const commitPanelRootSpy = vi.spyOn(captured.commitPanel!, "setRepositoryRootUri");
+        const commitPanelLabelSpy = vi.spyOn(captured.commitPanel!, "setRepositoryLabel");
+        gitExecutorSetRoot.mockClear();
+
+        const fireActiveEditor = async (uri: unknown): Promise<void> => {
+            activeTextEditorListeners.forEach((listener) => listener({ document: { uri } }));
+            await flushMicrotasks();
+            await flushMicrotasks();
+        };
+
+        await fireActiveEditor({ scheme: "untitled", fsPath: `${repoB}/src/file.ts` });
+        await fireActiveEditor(vscodeMock.Uri.file("/other/src/file.ts"));
+
+        expect(gitExecutorSetRoot).not.toHaveBeenCalledWith(repoB);
+        expect(commitPanelRootSpy).not.toHaveBeenCalled();
+
+        await fireActiveEditor(vscodeMock.Uri.file(`${repoB}/src/file.ts`));
+
+        expect(gitExecutorSetRoot).toHaveBeenCalledWith(repoB);
+        expect(commitGraphLabelSpy).toHaveBeenCalledWith("app");
+        expect(sidebarGraphLabelSpy).toHaveBeenCalledWith("app");
+        expect(commitPanelRootSpy).toHaveBeenCalledWith(expect.objectContaining({ fsPath: repoB }));
+        expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
     });
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {

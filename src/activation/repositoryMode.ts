@@ -39,6 +39,26 @@ function getBranchSelectionName(branch: Branch | string): string {
 }
 
 /**
+ * Returns the deepest discovered repository that contains a file URI.
+ *
+ * Non-file editors and files outside known repositories are ignored so
+ * transient editor switches do not disturb the active IntelliGit root.
+ */
+function repositoryForFileUri(
+    uri: vscode.Uri | undefined,
+    knownRepositories: DiscoveredRepository[],
+): DiscoveredRepository | undefined {
+    if (!uri || uri.scheme !== "file") return undefined;
+    const filePath = path.resolve(uri.fsPath);
+    return knownRepositories
+        .filter((repo) => {
+            const root = path.resolve(repo.root);
+            return filePath === root || filePath.startsWith(root + path.sep);
+        })
+        .sort((a, b) => b.root.length - a.root.length)[0];
+}
+
+/**
  * Activates IntelliGit's repository-backed mode for discovered Git roots.
  *
  * This path runs after startup discovery finds repositories or after
@@ -254,6 +274,21 @@ export async function activateRepositoryMode(
         clearSelection();
         await refreshActiveRepository();
     };
+
+    const updateActiveRepositoryFromEditor = async (editor?: vscode.TextEditor): Promise<void> => {
+        const repository = repositoryForFileUri(editor?.document.uri, repositories);
+        if (!repository || repository.root === activeRepository.root) return;
+        await setActiveRepository(repository);
+    };
+
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor((editor) => {
+            void updateActiveRepositoryFromEditor(editor).catch((err) => {
+                console.error("[IntelliGit] Failed to update active repository from editor:", err);
+            });
+        }),
+    );
+    await updateActiveRepositoryFromEditor(vscode.window.activeTextEditor);
 
     /**
      * Opens IntelliGit's native three-way merge editor for a repository-relative conflict file.
