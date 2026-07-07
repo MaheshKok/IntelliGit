@@ -226,6 +226,7 @@ const providerGetChecks = vi.hoisted(() => vi.fn());
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
+const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 const activeGitRoot = vi.hoisted(() => ({ value: "" }));
 const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
@@ -364,6 +365,9 @@ vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
 vi.mock("../../../src/services/commitChecks/http", () => ({
     httpGetJson: httpGetJsonSpy,
 }));
+vi.mock("../../../src/services/publishService", () => ({
+    runPublishBranchFlow: runPublishBranchFlowSpy,
+}));
 
 function createWebviewView() {
     let messageHandler: MessageHandler | undefined;
@@ -447,6 +451,7 @@ function makeGitOpsMock() {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
+        hasAnyCommits: vi.fn(async () => true),
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -1771,6 +1776,163 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider repository runtimes route scoped publishBranch through selected runtime", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getBranches.mockResolvedValue([
+            {
+                name: "feature-b",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.hasAnyCommits.mockClear();
+        gitOps.getBranches.mockClear();
+        repoBGitOps.hasAnyCommits.mockClear();
+        repoBGitOps.getBranches.mockClear();
+        executeCommand.mockClear();
+        runPublishBranchFlowSpy.mockClear();
+
+        await webview.send({ type: "publishBranch", repositoryRoot: "/repo-b" });
+
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(1);
+        expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
+        expect(gitOps.getBranches).not.toHaveBeenCalled();
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(
+            repoBGitOps,
+            "feature-b",
+            "/repo-b",
+        );
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route unpublished push publish through selected runtime", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getBranches.mockResolvedValue([
+            {
+                name: "feature-b",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        repoBGitOps.getStatus.mockResolvedValue([]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.hasAnyCommits.mockClear();
+        gitOps.getBranches.mockClear();
+        gitOps.push.mockClear();
+        repoBGitOps.hasAnyCommits.mockClear();
+        repoBGitOps.getBranches.mockClear();
+        repoBGitOps.push.mockClear();
+        executeCommand.mockClear();
+        runPublishBranchFlowSpy.mockClear();
+
+        await webview.send({ type: "push", repositoryRoot: "/repo-b" });
+
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getBranches).toHaveBeenCalled();
+        expect(repoBGitOps.push).not.toHaveBeenCalled();
+        expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
+        expect(gitOps.getBranches).not.toHaveBeenCalled();
+        expect(gitOps.push).not.toHaveBeenCalled();
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(
+            repoBGitOps,
+            "feature-b",
+            "/repo-b",
+        );
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route post-commit publish prompt through selected runtime", async () => {
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getBranches.mockResolvedValue([
+            {
+                name: "feature-b",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const testProvider = provider as unknown as {
+            maybeOfferPublishBranch(runtime: unknown): Promise<void>;
+            runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+        };
+        const runtimeB = testProvider.runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        showInformationMessage.mockResolvedValueOnce("Publish Branch...");
+        gitOps.hasAnyCommits.mockClear();
+        gitOps.getBranches.mockClear();
+        repoBGitOps.hasAnyCommits.mockClear();
+        repoBGitOps.getBranches.mockClear();
+        executeCommand.mockClear();
+        runPublishBranchFlowSpy.mockClear();
+
+        await testProvider.maybeOfferPublishBranch(runtimeB);
+
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            'Branch "{branch}" has not been published.',
+            "Publish Branch...",
+        );
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(2);
+        expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(2);
+        expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
+        expect(gitOps.getBranches).not.toHaveBeenCalled();
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(
+            repoBGitOps,
+            "feature-b",
+            "/repo-b",
+        );
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider handles staging and unstaging", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         expect(gitOps.getStatus).toHaveBeenCalled();
@@ -2120,7 +2282,8 @@ describe("view providers integration", () => {
                 currentBranchHasUpstream: false,
             }),
         );
-        expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(gitOps, "main", "/repo");
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
         provider.dispose();
     });
 

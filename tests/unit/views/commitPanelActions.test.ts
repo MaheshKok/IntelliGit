@@ -74,6 +74,7 @@ function makeDeps(gitOps: GitOps) {
         fireWorkingTreeChanged: vi.fn(),
         postCommitted: vi.fn(),
         maybeOfferPublishBranch: vi.fn(async () => undefined),
+        publishBranch: vi.fn(async () => undefined),
     };
 }
 
@@ -139,7 +140,8 @@ describe("runGitOperationFromPanel", () => {
         await runGitOperationFromPanel(deps, "push");
 
         expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
-        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(deps.publishBranch).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
             "There are uncommitted changes, please commit or stash them first.",
         );
@@ -171,8 +173,22 @@ describe("runGitOperationFromPanel", () => {
 
         await runGitOperationFromPanel(deps, "push");
 
-        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(deps.publishBranch).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalled();
+        expect(gitOps.push).not.toHaveBeenCalled();
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to the publish command when no scoped publish callback is supplied", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const { publishBranch: _publishBranch, ...depsWithoutPublish } = deps;
+
+        await runGitOperationFromPanel(depsWithoutPublish, "push");
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
         expect(gitOps.push).not.toHaveBeenCalled();
         expect(deps.refreshData).toHaveBeenCalledTimes(1);
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
@@ -220,7 +236,8 @@ describe("runGitOperationFromPanel", () => {
 
         expect(gitOps.commit).toHaveBeenCalledWith("feat: publish", false);
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
-        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(deps.publishBranch).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
         expect(deps.postCommitted).toHaveBeenCalledTimes(1);
         expect(deps.refreshData).toHaveBeenCalledTimes(1);
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
@@ -240,7 +257,8 @@ describe("runGitOperationFromPanel", () => {
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: publish selected", false);
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
-        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(deps.publishBranch).toHaveBeenCalledTimes(1);
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
         expect(deps.postCommitted).toHaveBeenCalledTimes(1);
     });
 

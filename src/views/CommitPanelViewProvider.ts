@@ -12,6 +12,8 @@ import { abortMergeWithConfirmation } from "./mergeAbort";
 import type { InboundMessage } from "../webviews/protocol/commitPanelMessages";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
+import { runPublishBranchFlow } from "../services/publishService";
+import { showTimedWarningMessage } from "../utils/notifications";
 import type {
     BranchAction,
     CommitAction,
@@ -274,6 +276,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             postCommitted: () => this.postToWebview({ type: "committed" }),
             maybeOfferPublishBranch: () =>
                 runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
+            publishBranch: runtime ? () => this.publishBranch(runtime) : undefined,
         };
     }
 
@@ -919,7 +922,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
             case "publishBranch":
-                await publishBranchFromPanel(this.fileActionDepsForRuntime(scopedRuntime()));
+                {
+                    const runtime = scopedRuntime();
+                    if (runtime) {
+                        await this.publishBranch(runtime);
+                    } else {
+                        await publishBranchFromPanel(this.fileActionDepsForRuntime());
+                    }
+                }
                 break;
             case "showStashDiff":
                 await showStashDiffFromPanel(
@@ -1086,11 +1096,28 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 publishBranchAction,
             );
             if (publish === publishBranchAction) {
-                await vscode.commands.executeCommand("intelligit.publishBranch");
+                await this.publishBranch(runtime);
             }
         } catch {
             // Silently ignore — publish is optional, don't block the user
         }
+    }
+
+    private async publishBranch(runtime: CommitPanelRepositoryRuntime): Promise<void> {
+        const hasCommits = await runtime.gitOps.hasAnyCommits();
+        if (!hasCommits) {
+            showTimedWarningMessage(
+                vscode.l10n.t("Create a commit before publishing this branch."),
+            );
+            return;
+        }
+        const branches = await runtime.gitOps.getBranches();
+        const currentBranch = branches.find((branch) => branch.isCurrent && !branch.isRemote);
+        if (!currentBranch) {
+            vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
+            return;
+        }
+        await runPublishBranchFlow(runtime.gitOps, currentBranch.name, runtime.repository.root);
     }
     /**
      * Reads current-branch upstream, ahead/behind, and remote availability for toolbar state.
