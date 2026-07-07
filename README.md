@@ -49,7 +49,7 @@ IntelliGit pulls those workflows into one JetBrains-inspired surface:
 - Act on branches and commits from the graph instead of jumping back to the command line.
 - Park unfinished work with a shelf-style stash workflow.
 - Handle risky history operations with availability rules and confirmations.
-- Open conflicts in IntelliGit's merge editor or VS Code's native merge editor.
+- Open conflicts in the built-in merge editor or VS Code's native merge editor.
 
 ## Feature Gallery
 
@@ -129,7 +129,7 @@ add the remote, and push the selected branch through one guided flow.
 | Branches          | Checkout, new branch, checkout-and-rebase, rebase, merge, update, push, rename, delete                                                                             |
 | Commits           | Copy hash, create patch, cherry-pick, checkout revision, reset, revert, push up to here, undo, edit message, squash, drop, interactive rebase, new branch, new tag |
 | Worktrees         | Create, create from branch, delete, lock, unlock, move, prune, repair                                                                                              |
-| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, IntelliGit merge editor, VS Code native merge editor                                                         |
+| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, built-in merge editor, VS Code native merge editor                                                           |
 | Hosting           | Clone repository, initialize repository, publish branch, create remote repositories/projects                                                                       |
 | Commit checks     | GitHub, GitLab, Bitbucket Cloud, Bitbucket Server, self-hosted host mapping, CI/CD status popovers                                                                 |
 | Layout            | Activity bar view, bottom graph panel, unified undocked workbench tab                                                                                              |

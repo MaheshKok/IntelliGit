@@ -165,6 +165,20 @@ describe("MergeConflictSessionApp", () => {
         expect(document.body.textContent).toContain("conflict.ts");
         expect(document.body.textContent).toContain("src");
 
+        const conflictRow = Array.from(document.querySelectorAll("tr.row")).find((row) =>
+            row.textContent?.includes("conflict.ts"),
+        );
+        if (!conflictRow) throw new Error("Expected the conflict file row");
+        vscode.postMessage.mockClear();
+        act(() => {
+            conflictRow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await flush();
+        expect(vscode.postMessage).toHaveBeenCalledWith({
+            type: "openMerge",
+            filePath: "src/conflict.ts",
+        });
+
         clickButton("Accept Yours");
         clickButton("Accept Theirs");
         clickButton("Merge...");
