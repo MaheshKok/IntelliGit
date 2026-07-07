@@ -2941,6 +2941,7 @@ describe("extension integration", () => {
     });
 
     it("switches the active repository from the selector", async () => {
+        const { SELECTED_REPOSITORY_KEY } = await import("../../../src/activation/common");
         const { activate } = await import("../../../src/extension");
         const workspace = await fs.realpath(
             await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-")),
@@ -2960,10 +2961,15 @@ describe("extension integration", () => {
             const context = {
                 extensionUri: { fsPath: "/ext", path: "/ext" },
                 subscriptions: [],
+                workspaceState: createWorkspaceState(),
             } as unknown as MockExtensionContext;
             await activate(context);
             await registeredCommands.get("intelligit.selectRepository")?.();
 
+            expect(context.workspaceState?.update).toHaveBeenCalledWith(
+                SELECTED_REPOSITORY_KEY,
+                secondRepo,
+            );
             expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("app-b");
             expect(latestCommitPanelProvider!.setRepositoryRootUri).toHaveBeenCalledWith(
                 expect.objectContaining({ fsPath: secondRepo }),

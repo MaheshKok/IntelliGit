@@ -75,6 +75,39 @@ function createMemento(initial: Record<string, unknown> = {}) {
     };
 }
 
+function createControlledMemento(initial: Record<string, unknown> = {}) {
+    const store = new Map<string, unknown>(Object.entries(initial));
+    const pendingUpdates: Array<{
+        key: string;
+        value: unknown | undefined;
+        resolved?: boolean;
+        resolve: () => void;
+    }> = [];
+    return {
+        memento: {
+            get: vi.fn((key: string) => store.get(key)),
+            update: vi.fn(
+                (key: string, value: unknown | undefined) =>
+                    new Promise<void>((resolve) => {
+                        pendingUpdates.push({
+                            key,
+                            value,
+                            resolve: () => {
+                                if (value === undefined) {
+                                    store.delete(key);
+                                } else {
+                                    store.set(key, value);
+                                }
+                                resolve();
+                            },
+                        });
+                    }),
+            ),
+        },
+        pendingUpdates,
+    };
+}
+
 const vscodeMock = {
     EventEmitter: FakeEventEmitter,
     TreeItem: FakeTreeItem,
@@ -194,27 +227,51 @@ const providerGetChecks = vi.hoisted(() => vi.fn());
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
+const activeGitRoot = vi.hoisted(() => ({ value: "" }));
+const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
+const branchRefreshControls = vi.hoisted(
+    () =>
+        [] as Array<{
+            root: string;
+            resolved?: boolean;
+            resolve: (branches: unknown[]) => void;
+        }>,
+);
+const makeBranchesForRoot = vi.hoisted(
+    () => (root: string) => [
+        {
+            name: `branch-${root.split(/[\\/]/).pop() ?? root}`,
+            hash: "abc1234",
+            isRemote: false,
+            isCurrent: true,
+            upstream: "origin/main",
+            ahead: 0,
+            behind: 0,
+        },
+    ],
+);
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
-        constructor(public readonly root: string) {}
-        setRoot = gitExecutorSetRoot;
+        constructor(public readonly root: string) {
+            activeGitRoot.value = root;
+        }
+        setRoot = vi.fn((root: string) => {
+            activeGitRoot.value = root;
+            gitExecutorSetRoot(root);
+        });
     },
 }));
 vi.mock("../../../src/git/operations", () => ({
     GitOps: class {
-        getBranches = vi.fn(async () => [
-            {
-                name: "main",
-                hash: "abc1234",
-                isRemote: false,
-                isCurrent: true,
-                upstream: "origin/main",
-                ahead: 0,
-                behind: 0,
-            },
-        ]);
+        getBranches = vi.fn(async () => {
+            const root = activeGitRoot.value;
+            if (!deferBranchRefreshes.active) return makeBranchesForRoot(root);
+            return new Promise<unknown[]>((resolve) => {
+                branchRefreshControls.push({ root, resolve });
+            });
+        });
         getLog = vi.fn(async () => []);
         getRemotes = vi.fn(async () => ["origin"]);
         getRemoteUrl = vi.fn(async () => "https://github.com/owner/repo.git");
@@ -517,6 +574,9 @@ describe("view providers integration", () => {
         registeredCommands.clear();
         activeTextEditorListeners.length = 0;
         activeTextEditor = undefined;
+        activeGitRoot.value = "";
+        deferBranchRefreshes.active = false;
+        branchRefreshControls.length = 0;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -591,6 +651,99 @@ describe("view providers integration", () => {
         expect(sidebarGraphLabelSpy).toHaveBeenCalledWith("app");
         expect(commitPanelRootSpy).toHaveBeenCalledWith(expect.objectContaining({ fsPath: repoB }));
         expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
+    });
+
+    it("keeps the latest active-editor repository when earlier refreshes finish last", async () => {
+        const { SELECTED_REPOSITORY_KEY } = await import("../../../src/activation/common");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const initialRepo = "/workspace/app-c";
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        const captured: {
+            commitGraph?: { setBranches: (branches: unknown[], worktrees: unknown[]) => void };
+            commitPanel?: { setRepositoryRootUri: (uri: { fsPath: string }) => void };
+        } = {};
+        const controlledWorkspaceStore = createControlledMemento();
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [],
+            workspaceState: controlledWorkspaceStore.memento,
+            secrets: {},
+        };
+
+        await activateRepositoryMode(
+            context as never,
+            [
+                { root: initialRepo, label: "app-c" },
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ],
+            {
+                commitGraph: {
+                    setProvider: (provider: unknown) => (captured.commitGraph = provider as never),
+                },
+                commitPanel: {
+                    setProvider: (provider: unknown) => (captured.commitPanel = provider as never),
+                },
+            } as never,
+        );
+
+        const commitGraphBranchesSpy = vi.spyOn(captured.commitGraph!, "setBranches");
+        const commitPanelRootSpy = vi.spyOn(captured.commitPanel!, "setRepositoryRootUri");
+        deferBranchRefreshes.active = true;
+        const resolvePendingUpdatesFor = async (root: string): Promise<void> => {
+            let resolvedAny = true;
+            while (resolvedAny) {
+                resolvedAny = false;
+                for (const update of controlledWorkspaceStore.pendingUpdates.filter(
+                    (candidate) => !candidate.resolved && candidate.value === root,
+                )) {
+                    update.resolved = true;
+                    update.resolve();
+                    resolvedAny = true;
+                }
+                await flushMicrotasks();
+            }
+        };
+        const resolveBranchRefreshesFor = async (root: string): Promise<void> => {
+            let resolvedAny = true;
+            while (resolvedAny) {
+                resolvedAny = false;
+                for (const control of branchRefreshControls.filter(
+                    (candidate) => !candidate.resolved && candidate.root === root,
+                )) {
+                    control.resolved = true;
+                    control.resolve(makeBranchesForRoot(root));
+                    resolvedAny = true;
+                }
+                await flushMicrotasks();
+            }
+        };
+
+        activeTextEditorListeners.forEach((listener) =>
+            listener({ document: { uri: vscodeMock.Uri.file(`${repoA}/src/a.ts`) } }),
+        );
+        await flushMicrotasks();
+
+        activeTextEditorListeners.forEach((listener) =>
+            listener({ document: { uri: vscodeMock.Uri.file(`${repoB}/src/b.ts`) } }),
+        );
+        await flushMicrotasks();
+
+        await resolvePendingUpdatesFor(repoB);
+        await resolveBranchRefreshesFor(repoB);
+        await flushMicrotasks();
+        await resolvePendingUpdatesFor(repoB);
+        await resolvePendingUpdatesFor(repoA);
+        await resolveBranchRefreshesFor(repoA);
+        await resolvePendingUpdatesFor(repoA);
+
+        const latestBranches = commitGraphBranchesSpy.mock.calls.at(-1)?.[0] as
+            | Array<{ name: string }>
+            | undefined;
+        expect(commitPanelRootSpy).toHaveBeenLastCalledWith(expect.objectContaining({ fsPath: repoB }));
+        expect(latestBranches?.[0]?.name).toBe("branch-app-b");
+        expect(controlledWorkspaceStore.memento.get(SELECTED_REPOSITORY_KEY)).toBe(repoB);
     });
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {

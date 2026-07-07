@@ -218,7 +218,10 @@ export async function activateRepositoryMode(
      * Repository switches clear selection before calling this. Failures propagate to
      * the caller; background initial refreshes attach their own logging handlers.
      */
-    const refreshActiveRepository = async (): Promise<void> => {
+    const refreshActiveRepositoryWithGuard = async (
+        shouldContinue: () => boolean = () => true,
+        afterBranchDataApplied?: () => Promise<void>,
+    ): Promise<boolean> => {
         const [branches, refreshedWorktrees] = await Promise.all([
             gitOps.getBranches(),
             worktreeService.refresh().catch((err) => {
@@ -226,11 +229,16 @@ export async function activateRepositoryMode(
                 return [] as GitWorktree[];
             }),
         ]);
+        if (!shouldContinue()) return false;
         currentWorktrees = refreshedWorktrees;
         currentBranches = worktreeService.decorateBranches(branches);
         commitGraph.setBranches(currentBranches, currentWorktrees);
         sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
+        if (afterBranchDataApplied) {
+            await afterBranchDataApplied();
+            if (!shouldContinue()) return false;
+        }
         const refreshes: Array<Promise<void>> = [
             commitGraph.refresh(),
             sidebarGraph.refresh(),
@@ -242,6 +250,18 @@ export async function activateRepositoryMode(
             refreshes.push(undocked.refresh());
         }
         await Promise.all(refreshes);
+        return shouldContinue();
+    };
+
+    const refreshActiveRepository = async (): Promise<void> => {
+        await refreshActiveRepositoryWithGuard();
+    };
+
+    let activeEditorSwitchSeq = 0;
+    type ActiveRepositorySwitchOptions = {
+        fromActiveEditor?: boolean;
+        persistSelectionAfterBranchData?: boolean;
+        shouldContinue?: () => boolean;
     };
 
     /**
@@ -251,7 +271,14 @@ export async function activateRepositoryMode(
      * badge state, persisted workspace selection, and refresh service watchers
      * before loading fresh data for the selected repository.
      */
-    const setActiveRepository = async (repository: DiscoveredRepository): Promise<void> => {
+    const setActiveRepository = async (
+        repository: DiscoveredRepository,
+        options: ActiveRepositorySwitchOptions = {},
+    ): Promise<void> => {
+        if (!options.fromActiveEditor) activeEditorSwitchSeq++;
+        const shouldContinue = options.shouldContinue ?? (() => true);
+        if (!shouldContinue()) return;
+
         activeRepository = repository;
         repoRoot = repository.root;
         repoRootUri = vscode.Uri.file(repoRoot);
@@ -270,15 +297,38 @@ export async function activateRepositoryMode(
         refreshService.dispose();
         refreshService = createRefreshService(repoRoot);
         refreshService.registerFileWatchers();
-        await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+        if (!options.persistSelectionAfterBranchData) {
+            await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+            if (!shouldContinue()) return;
+        }
         clearSelection();
-        await refreshActiveRepository();
+        const persistSelectionAfterBranchDataApplied = options.persistSelectionAfterBranchData
+            ? async (): Promise<void> => {
+                  if (shouldContinue()) {
+                      await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+                  }
+              }
+            : undefined;
+        if (
+            !(await refreshActiveRepositoryWithGuard(
+                shouldContinue,
+                persistSelectionAfterBranchDataApplied,
+            ))
+        ) {
+            return;
+        }
     };
 
     const updateActiveRepositoryFromEditor = async (editor?: vscode.TextEditor): Promise<void> => {
         const repository = repositoryForFileUri(editor?.document.uri, repositories);
         if (!repository || repository.root === activeRepository.root) return;
-        await setActiveRepository(repository);
+        const switchSeq = ++activeEditorSwitchSeq;
+        const isLatestEditorSwitch = (): boolean => switchSeq === activeEditorSwitchSeq;
+        await setActiveRepository(repository, {
+            fromActiveEditor: true,
+            persistSelectionAfterBranchData: true,
+            shouldContinue: isLatestEditorSwitch,
+        });
     };
 
     context.subscriptions.push(
