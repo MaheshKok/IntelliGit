@@ -307,7 +307,9 @@ export async function activateRepositoryMode(
                 ),
             );
             await vscode.commands.executeCommand("vscode.open", fileUri);
+            return;
         }
+        await refreshService.refreshConflictUi();
     };
 
     /**
