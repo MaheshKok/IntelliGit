@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "Cherry-pick выбранного изменения",
     "command.revertSelectedChange": "Отменить выбранное изменение",
     "command.openMergeConflict": "Открыть конфликт слияния",
-    "command.detectJetBrainsMergeTool": "Обнаружение инструмента слияния JetBrains",
-    "command.openInJetBrainsMergeTool": "Открыть в инструменте слияния JetBrains",
     "command.acceptYours": "Принять текущие изменения",
     "command.acceptTheirs": "Принять входящие изменения",
     "command.openConflictSession": "Открыть сессию разрешения конфликтов",
@@ -41,8 +39,6 @@
     "command.openFolder": "Открыть папку",
     "command.initializeRepository": "Инициализировать репозиторий",
     "command.publishBranch": "Опубликовать ветку",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "Путь к исполняемому файлу в среде разработки JetBrains (`pycharm`, `idea`, `webstorm`) или путь к пакету `.app` в macOS. IntelliGit автоматически преобразует пакеты `.app` в исполняемый файл внутри `Contents/MacOS`.",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "При открытии конфликтов слияния предпочтение отдается внешнему инструменту слияния JetBrains. В случае, если путь к JetBrains не указан или запуск не удается, используется встроенный редактор слияния VS Code.",
     "configuration.tooltips.enabled.markdownDescription": "Включение или отключение всплывающих подсказок в окне IntelliGit (график коммитов, столбец ветвей и т. д.).",
     "configuration.undockableWindow.markdownDescription": "При вызове функции «Показать журнал Git» IntelliGit открывается как единая вкладка редактора, что позволяет открепить VS Code на втором мониторе.",
     "configuration.undockableWindowButtonVisability.markdownDescription": "Показывает кнопку «Открепить» в заголовке представления графа IntelliGit. Отключите, чтобы скрыть кнопку, сохранив доступной команду открепления.",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "Выйти из поставщика проверок коммитов",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Переопределяет, какие имена проверок считаются CI/CD для индикатора (только GitHub и GitLab). Укажите регулярное выражение (сопоставляется с именем и описанием каждой проверки без учета регистра); оставьте пустым, чтобы использовать встроенный шаблон. Боты для ревью кода всегда исключаются независимо от этого значения. Изменения вступают в силу после перезагрузки окна."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Переопределяет, какие имена проверок считаются CI/CD для индикатора (только GitHub и GitLab). Укажите регулярное выражение (сопоставляется с именем и описанием каждой проверки без учета регистра); оставьте пустым, чтобы использовать встроенный шаблон. Боты для ревью кода всегда исключаются независимо от этого значения. Изменения вступают в силу после перезагрузки окна.",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

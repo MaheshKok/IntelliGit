@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "선택한 변경 사항 체리픽",
     "command.revertSelectedChange": "선택한 변경 사항 되돌리기",
     "command.openMergeConflict": "병합 충돌 열기",
-    "command.detectJetBrainsMergeTool": "JetBrains 병합 도구 감지",
-    "command.openInJetBrainsMergeTool": "JetBrains Merge Tool에서 열기",
     "command.acceptYours": "현재 변경 사항 적용",
     "command.acceptTheirs": "수신 변경 사항 적용",
     "command.openConflictSession": "충돌 해결 세션 열기",
@@ -41,8 +39,6 @@
     "command.openFolder": "폴더 열기",
     "command.initializeRepository": "리포지토리 초기화",
     "command.publishBranch": "브랜치 게시",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "JetBrains IDE 바이너리 경로/명령어(`pycharm`, `idea`, `webstorm`) 또는 macOS `.app` 번들 경로를 지정합니다. IntelliGit은 `.app` 번들을 `Contents/MacOS` 내의 실행 파일로 자동 해석합니다.",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "병합 충돌을 열 때 외부 JetBrains 병합 도구를 우선적으로 사용합니다. JetBrains 경로가 구성되어 있지 않거나 실행에 실패할 경우 VS Code의 내부 병합 편집기를 사용합니다.",
     "configuration.tooltips.enabled.markdownDescription": "IntelliGit 창(커밋 그래프, 브랜치 열 등) 내의 툴팁을 활성화 또는 비활성화합니다.",
     "configuration.undockableWindow.markdownDescription": "Git 로그 표시를 실행하면 IntelliGit이 통합 편집기 탭으로 열리므로 VS Code를 두 번째 모니터에 기본적으로 도킹 해제할 수 있습니다.",
     "configuration.undockableWindowButtonVisability.markdownDescription": "IntelliGit 그래프 보기 제목에 도킹 해제 버튼을 표시합니다. 이 옵션을 끄면 버튼은 숨기지만 도킹 해제 명령은 계속 사용할 수 있습니다.",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "커밋 검사 공급자에서 로그아웃",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "배지에서 CI/CD로 간주할 검사 이름을 재정의합니다(GitHub 및 GitLab만 해당). 정규식을 제공하면 각 검사의 이름과 설명에 대해 대/소문자를 구분하지 않고 일치시킵니다. 비워 두면 기본 제공 패턴을 사용합니다. 코드 리뷰 봇은 이 값과 관계없이 항상 제외됩니다. 변경 사항은 창을 다시 로드한 후 적용됩니다."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "배지에서 CI/CD로 간주할 검사 이름을 재정의합니다(GitHub 및 GitLab만 해당). 정규식을 제공하면 각 검사의 이름과 설명에 대해 대/소문자를 구분하지 않고 일치시킵니다. 비워 두면 기본 제공 패턴을 사용합니다. 코드 리뷰 봇은 이 값과 관계없이 항상 제외됩니다. 변경 사항은 창을 다시 로드한 후 적용됩니다.",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

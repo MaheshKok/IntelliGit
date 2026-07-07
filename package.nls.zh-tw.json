@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "Cherry-pick 所選變更",
     "command.revertSelectedChange": "還原所選變更",
     "command.openMergeConflict": "開啟合併衝突",
-    "command.detectJetBrainsMergeTool": "偵測 JetBrains 合併工具",
-    "command.openInJetBrainsMergeTool": "在 JetBrains 合併工具中開啟",
     "command.acceptYours": "接受目前變更",
     "command.acceptTheirs": "接受傳入變更",
     "command.openConflictSession": "開啟衝突會話",
@@ -41,8 +39,6 @@
     "command.openFolder": "打開資料夾",
     "command.initializeRepository": "初始化儲存庫",
     "command.publishBranch": "發布分支",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "JetBrains IDE 二進位檔案路徑/指令（`pycharm`、`idea`、`webstorm`）或 macOS `.app` 套件路徑。 IntelliGit 會自動將 `.app` 套件解析為 `Contents/MacOS` 目錄下的執行檔。",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "開啟合併衝突時，優先使用外部 JetBrains 合併工具。如果未配置 JetBrains 路徑或啟動失敗，則回退到 VS Code 的內建合併編輯器。",
     "configuration.tooltips.enabled.markdownDescription": "啟用或停用 IntelliGit 視窗中的工具提示（提交圖、分支列等）。",
     "configuration.undockableWindow.markdownDescription": "當呼叫「顯示 Git 日誌」時，將 IntelliGit 作為統一編輯器標籤打開，從而實現 VS Code 原生脫離停靠在第二個顯示器。",
     "configuration.undockableWindowButtonVisability.markdownDescription": "在 IntelliGit 圖形檢視標題中顯示「取消停靠」按鈕。停用後會隱藏該按鈕，但仍保留取消停靠命令。",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "登出提交檢查提供者",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "覆寫哪些檢查名稱會被視為徽章的 CI/CD（僅限 GitHub 和 GitLab）。提供正規表示式（與每個檢查的名稱和描述進行不區分大小寫的比對）；留空則使用內建模式。無論此值為何，程式碼審查機器人一律會被排除。變更會在重新載入視窗後生效。"
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "覆寫哪些檢查名稱會被視為徽章的 CI/CD（僅限 GitHub 和 GitLab）。提供正規表示式（與每個檢查的名稱和描述進行不區分大小寫的比對）；留空則使用內建模式。無論此值為何，程式碼審查機器人一律會被排除。變更會在重新載入視窗後生效。",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

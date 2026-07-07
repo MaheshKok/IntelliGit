@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "Cherry-pick 所选更改",
     "command.revertSelectedChange": "还原所选更改",
     "command.openMergeConflict": "打开合并冲突",
-    "command.detectJetBrainsMergeTool": "检测 JetBrains 合并工具",
-    "command.openInJetBrainsMergeTool": "在 JetBrains 合并工具中打开",
     "command.acceptYours": "接受当前更改",
     "command.acceptTheirs": "接受传入更改",
     "command.openConflictSession": "打开冲突会话",
@@ -41,8 +39,6 @@
     "command.openFolder": "打开文件夹",
     "command.initializeRepository": "初始化存储库",
     "command.publishBranch": "发布分支",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "JetBrains IDE 二进制文件路径/命令（`pycharm`、`idea`、`webstorm`）或 macOS `.app` 包路径。IntelliGit 会自动将 `.app` 包解析为 `Contents/MacOS` 目录下的可执行文件。",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "打开合并冲突时，优先使用外部 JetBrains 合并工具。如果未配置 JetBrains 路径或启动失败，则回退到 VS Code 的内置合并编辑器。",
     "configuration.tooltips.enabled.markdownDescription": "启用或禁用 IntelliGit 窗口中的工具提示（提交图、分支列等）。",
     "configuration.undockableWindow.markdownDescription": "当调用“显示 Git 日志”时，将 IntelliGit 作为统一编辑器选项卡打开，从而实现 VS Code 原生脱离停靠到第二个显示器。",
     "configuration.undockableWindowButtonVisability.markdownDescription": "在 IntelliGit 图形视图标题中显示“取消停靠”按钮。禁用后会隐藏该按钮，但仍保留取消停靠命令。",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "退出提交检查提供程序",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "覆盖哪些检查名称会被视为徽章的 CI/CD（仅 GitHub 和 GitLab）。提供正则表达式（与每个检查的名称和说明进行不区分大小写的匹配）；留空则使用内置模式。无论此值如何，代码审查机器人始终会被排除。更改会在重新加载窗口后生效。"
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "覆盖哪些检查名称会被视为徽章的 CI/CD（仅 GitHub 和 GitLab）。提供正则表达式（与每个检查的名称和说明进行不区分大小写的匹配）；留空则使用内置模式。无论此值如何，代码审查机器人始终会被排除。更改会在重新加载窗口后生效。",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

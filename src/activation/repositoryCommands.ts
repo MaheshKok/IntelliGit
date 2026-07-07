@@ -11,10 +11,6 @@ import {
     compareEditorFileWithBranch,
     compareEditorFileWithRevision,
 } from "../services/diffService";
-import {
-    detectAndPickJetBrainsMergeToolPath,
-    openJetBrainsMergeToolForFile,
-} from "../services/jetbrainsMergeService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { discoverGitRepositories } from "../services/repositoryDiscovery";
 import type { Branch, GitWorktree } from "../types";
@@ -61,7 +57,7 @@ interface RepositoryCommandsDeps {
         sourceBranch?: string;
         targetBranch?: string;
     }) => Promise<void>;
-    openBuiltInMergeEditorForFile: (filePath: string) => Promise<void>;
+    openVsCodeMergeEditorForFile: (filePath: string) => Promise<void>;
 }
 
 /** Narrows command payloads from tree rows before file operations touch the repository. */
@@ -362,8 +358,7 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
         getRepoRoot,
         openMergeConflictForFile,
         openConflictSession,
-        openBuiltInMergeEditorForFile,
-        refreshService,
+        openVsCodeMergeEditorForFile,
     } = deps;
 
     context.subscriptions.push(
@@ -386,21 +381,12 @@ function registerMergeCommands(deps: RepositoryCommandsDeps): void {
             }
             await openConflictSession();
         }),
-        vscode.commands.registerCommand("intelligit.detectJetBrainsMergeTool", async () => {
-            await detectAndPickJetBrainsMergeToolPath();
-        }),
         vscode.commands.registerCommand(
-            "intelligit.openMergeConflictInJetBrains",
+            "intelligit.openMergeConflictInVsCode",
             async (ctx: unknown) => {
                 const filePath = resolveConflictPath(ctx);
                 if (!filePath) return;
-                await openJetBrainsMergeToolForFile(
-                    filePath,
-                    getRepoRoot(),
-                    gitOps,
-                    () => refreshService().refreshConflictUi(),
-                    openBuiltInMergeEditorForFile,
-                );
+                await openVsCodeMergeEditorForFile(filePath);
             },
         ),
         vscode.commands.registerCommand("intelligit.conflictAcceptYours", async (ctx: unknown) => {

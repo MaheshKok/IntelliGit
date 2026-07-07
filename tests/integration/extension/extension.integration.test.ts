@@ -1246,6 +1246,7 @@ describe("extension integration", () => {
         expect(registeredCommands.has("intelligit.checkout")).toBe(true);
         expect(registeredCommands.has("intelligit.fileDelete")).toBe(true);
         expect(registeredCommands.has("intelligit.openMergeConflict")).toBe(true);
+        expect(registeredCommands.has("intelligit.openMergeConflictInVsCode")).toBe(true);
         expect(registeredCommands.has("intelligit.conflictAcceptYours")).toBe(true);
         expect(registeredCommands.has("intelligit.conflictAcceptTheirs")).toBe(true);
         expect(registeredCommands.has("intelligit.openConflictSession")).toBe(true);
@@ -1366,6 +1367,9 @@ describe("extension integration", () => {
         await getCommand("intelligit.fileShelve")({ filePath: "src/a.ts" });
         await getCommand("intelligit.fileRefresh")();
         await getCommand("intelligit.openMergeConflict")({
+            filePath: "src/conflicted.ts",
+        });
+        await getCommand("intelligit.openMergeConflictInVsCode")({
             filePath: "src/conflicted.ts",
         });
         await getCommand("intelligit.conflictAcceptYours")({

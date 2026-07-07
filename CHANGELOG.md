@@ -5,6 +5,14 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.4] - 2026-07-07
+
+### Changed
+
+- Removed external JetBrains merge-tool configuration and command wiring from the active conflict-resolution flow.
+- Updated merge-conflict file actions so the conflict tree offers IntelliGit's merge editor and VS Code's native merge editor as the two resolution paths.
+- Pruned stale JetBrains merge-tool localization entries from generated catalogs during localization import.
+
 ## [0.15.3] - 2026-07-06
 
 ### Fixed

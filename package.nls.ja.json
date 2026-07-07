@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "選択した変更をチェリーピック",
     "command.revertSelectedChange": "選択した変更を元に戻す",
     "command.openMergeConflict": "マージ競合を開く",
-    "command.detectJetBrainsMergeTool": "JetBrains Merge Tool を検出",
-    "command.openInJetBrainsMergeTool": "JetBrains Merge Toolで開く",
     "command.acceptYours": "現在の変更を採用",
     "command.acceptTheirs": "受信側の変更を採用",
     "command.openConflictSession": "競合解決セッションを開く",
@@ -41,8 +39,6 @@
     "command.openFolder": "フォルダーを開く",
     "command.initializeRepository": "リポジトリを初期化する",
     "command.publishBranch": "ブランチを公開",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "JetBrains IDE のバイナリ パス/コマンド (`pycharm`、`idea`、`webstorm`)、または macOS の `.app` バンドル パスを指定します。IntelliGit は `.app` バンドルを `Contents/MacOS` 内の実行可能ファイルに自動的に解決します。",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "マージの競合を開く際は、外部のJetBrainsマージツールを優先的に使用します。JetBrainsへのパスが設定されていない場合、または起動に失敗した場合は、VS Codeの内部マージエディターにフォールバックします。",
     "configuration.tooltips.enabled.markdownDescription": "IntelliGitウィンドウ内のツールチップ（コミットグラフ、ブランチ列など）を有効または無効にします。",
     "configuration.undockableWindow.markdownDescription": "「Gitログを表示」が呼び出されたときにIntelliGitを統合エディタータブとして開き、VS Codeのネイティブなセカンドモニターへのドッキング解除を可能にします。",
     "configuration.undockableWindowButtonVisability.markdownDescription": "IntelliGit のグラフ ビューのタイトルに [ドッキング解除] ボタンを表示します。ボタンを非表示にしても、ドッキング解除コマンドは引き続き使用できます。",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "コミットチェックプロバイダーからサインアウト",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "バッジで CI/CD として扱うチェック名を上書きします（GitHub と GitLab のみ）。正規表現を指定します（各チェックの名前と説明に対して大文字小文字を区別せずに照合）。空のままにすると組み込みパターンを使用します。コードレビュー Bot はこの値に関係なく常に除外されます。変更はウィンドウの再読み込み後に有効になります。"
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "バッジで CI/CD として扱うチェック名を上書きします（GitHub と GitLab のみ）。正規表現を指定します（各チェックの名前と説明に対して大文字小文字を区別せずに照合）。空のままにすると組み込みパターンを使用します。コードレビュー Bot はこの値に関係なく常に除外されます。変更はウィンドウの再読み込み後に有効になります。",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }

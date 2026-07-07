@@ -50,9 +50,7 @@ vi.mock("../../../src/services/repositoryDiscovery", () => ({
 }));
 
 vi.mock("../../../src/utils/notifications", () => ({
-    runWithNotificationProgress: vi.fn(async (_title: string, task: () => Promise<void>) =>
-        task(),
-    ),
+    runWithNotificationProgress: vi.fn(async (_title: string, task: () => Promise<void>) => task()),
     showTimedInformationMessage: vi.fn((message: string) => {
         mocks.showInformationMessage(message);
     }),
@@ -102,7 +100,7 @@ const makeDeps = (gitOps: GitOps) => {
         dockIntelliGit: vi.fn(),
         openMergeConflictForFile: vi.fn(),
         openConflictSession: vi.fn(),
-        openBuiltInMergeEditorForFile: vi.fn(),
+        openVsCodeMergeEditorForFile: vi.fn(),
     } as Parameters<typeof registerRepositoryCommands>[0];
 };
 
@@ -128,5 +126,20 @@ describe("registerRepositoryCommands", () => {
             "/repo",
             deps.context.secrets,
         );
+    });
+
+    it("routes conflict open commands to IntelliGit and VS Code merge editors", async () => {
+        const deps = makeDeps(makeGitOps());
+        registerRepositoryCommands(deps);
+
+        await mocks.commands.get("intelligit.openMergeConflict")?.({
+            filePath: "src/conflicted.ts",
+        });
+        await mocks.commands.get("intelligit.openMergeConflictInVsCode")?.({
+            filePath: "src/conflicted.ts",
+        });
+
+        expect(deps.openMergeConflictForFile).toHaveBeenCalledWith("src/conflicted.ts");
+        expect(deps.openVsCodeMergeEditorForFile).toHaveBeenCalledWith("src/conflicted.ts");
     });
 });

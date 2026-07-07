@@ -31,8 +31,6 @@
     "command.cherryPickSelectedChange": "Ausgewählte Änderung cherry-picken",
     "command.revertSelectedChange": "Ausgewählte Änderung rückgängig machen",
     "command.openMergeConflict": "Merge-Konflikt öffnen",
-    "command.detectJetBrainsMergeTool": "JetBrains Merge Tool erkennen",
-    "command.openInJetBrainsMergeTool": "Im JetBrains Merge Tool öffnen",
     "command.acceptYours": "Eigene Änderung übernehmen",
     "command.acceptTheirs": "Eingehende Änderung übernehmen",
     "command.openConflictSession": "Konfliktsitzung öffnen",
@@ -41,8 +39,6 @@
     "command.openFolder": "Ordner öffnen",
     "command.initializeRepository": "Repository initialisieren",
     "command.publishBranch": "Branch veröffentlichen",
-    "configuration.jetbrainsMergeTool.path.markdownDescription": "Pfad/Befehl der JetBrains IDE (`pycharm`, `idea`, `webstorm`) oder Pfad eines macOS-`.app`-Bundles. IntelliGit löst `.app`-Bundles automatisch in die ausführbare Datei innerhalb von `Contents/MacOS` auf.",
-    "configuration.jetbrainsMergeTool.preferExternal.markdownDescription": "Beim Öffnen von Merge-Konflikten wird bevorzugt das externe JetBrains-Merge-Tool verwendet. Falls kein JetBrains-Pfad konfiguriert ist oder der Start fehlschlägt, wird der interne Merge-Editor von VS Code verwendet.",
     "configuration.tooltips.enabled.markdownDescription": "Tooltips im IntelliGit-Fenster aktivieren oder deaktivieren (Commit-Diagramm, Branch-Spalte usw.).",
     "configuration.undockableWindow.markdownDescription": "IntelliGit wird als einheitlicher Editor-Tab geöffnet, wenn „Git-Protokoll anzeigen“ aufgerufen wird, wodurch das native Abdocken von VS Code auf einen zweiten Monitor ermöglicht wird.",
     "configuration.undockableWindowButtonVisability.markdownDescription": "Zeigt die Schaltfläche „Abdocken“ in der Titelleiste der IntelliGit-Graphansicht an. Deaktivieren Sie dies, um die Schaltfläche auszublenden, während der Abdocken-Befehl verfügbar bleibt.",
@@ -67,5 +63,6 @@
     "command.commitChecksSignOut": "Vom Commit-Prüfungsanbieter abmelden",
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
-    "configuration.commitChecks.ciCdFilter.markdownDescription": "Überschreiben Sie, welche Prüfnamen für das Badge als CI/CD zählen (nur GitHub und GitLab). Geben Sie einen regulären Ausdruck an (Groß-/Kleinschreibung wird beim Abgleich mit Name und Beschreibung jeder Prüfung ignoriert); leer lassen, um das integrierte Muster zu verwenden. Code-Review-Bots werden unabhängig von diesem Wert immer ausgeschlossen. Änderungen werden nach dem Neuladen des Fensters wirksam."
+    "configuration.commitChecks.ciCdFilter.markdownDescription": "Überschreiben Sie, welche Prüfnamen für das Badge als CI/CD zählen (nur GitHub und GitLab). Geben Sie einen regulären Ausdruck an (Groß-/Kleinschreibung wird beim Abgleich mit Name und Beschreibung jeder Prüfung ignoriert); leer lassen, um das integrierte Muster zu verwenden. Code-Review-Bots werden unabhängig von diesem Wert immer ausgeschlossen. Änderungen werden nach dem Neuladen des Fensters wirksam.",
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
 }
