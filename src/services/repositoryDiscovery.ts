@@ -2,6 +2,12 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { mapWithConcurrency } from "../utils/concurrency";
+
+// Bound on concurrent `git rev-parse` resolutions during discovery. High enough to
+// hide subprocess latency across many repositories, low enough not to swamp the OS.
+// ponytail: fixed cap; tie to os.cpus() only if a profiler says it matters.
+const GIT_RESOLVE_CONCURRENCY = 8;
 
 const IGNORED_DIRS = new Set([
     ".git",
@@ -52,8 +58,16 @@ export interface DiscoverGitRepositoriesOptions {
  */
 async function defaultResolveGitRoot(candidateRoot: string): Promise<string | null> {
     const gitOps = new GitOps(new GitExecutor(candidateRoot));
-    if (!(await gitOps.isRepository())) return null;
-    return gitOps.getRepositoryRoot();
+    // A single `git rev-parse --show-toplevel` both validates that the candidate is
+    // inside a work tree and returns its canonical root: non-repositories reject and
+    // resolve to `null`. This replaces the former is-repository + show-toplevel pair,
+    // halving Git subprocesses per candidate during discovery.
+    try {
+        const root = await gitOps.getRepositoryRoot();
+        return root || null;
+    } catch {
+        return null;
+    }
 }
 
 async function normalizeRoot(root: string): Promise<string> {
@@ -111,17 +125,13 @@ async function addResolvedRoot(
 }
 
 /**
- * Recursively scans a workspace folder for `.git` markers while skipping heavy dependency dirs.
+ * Recursively collects directories containing a `.git` marker while skipping heavy dependency dirs.
  *
- * Inaccessible directories are ignored so discovery remains best-effort during
- * activation and no-repository onboarding flows.
+ * Only the cheap filesystem walk happens here; Git resolution of each candidate is
+ * deferred so it can run bounded-parallel. Inaccessible directories are ignored so
+ * discovery stays best-effort during activation and no-repository onboarding flows.
  */
-async function scanForGitMarkers(
-    directory: string,
-    workspaceRoots: string[],
-    seen: Map<string, DiscoveredRepository>,
-    resolveGitRoot: ResolveGitRoot,
-): Promise<void> {
+async function collectGitMarkerDirs(directory: string, candidates: string[]): Promise<void> {
     let entries: import("fs").Dirent[];
     try {
         entries = await fs.readdir(directory, { withFileTypes: true });
@@ -131,22 +141,15 @@ async function scanForGitMarkers(
 
     for (const entry of entries) {
         if (IGNORED_DIRS.has(entry.name)) {
-            if (entry.name === ".git") {
-                // Discovery is sequential to keep recursive filesystem IO bounded and ordered.
-                // react-doctor-disable-next-line react-doctor/async-await-in-loop
-                await addResolvedRoot(directory, workspaceRoots, seen, resolveGitRoot);
-            }
+            // A `.git` marker makes `directory` a repository/worktree/submodule root
+            // candidate; the actual Git resolution runs later, in parallel.
+            if (entry.name === ".git") candidates.push(directory);
             continue;
         }
         if (!entry.isDirectory()) continue;
-        // Discovery is sequential to keep recursive filesystem IO bounded and ordered.
+        // The walk stays sequential to keep recursive filesystem IO bounded and ordered.
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
-        await scanForGitMarkers(
-            path.join(directory, entry.name),
-            workspaceRoots,
-            seen,
-            resolveGitRoot,
-        );
+        await collectGitMarkerDirs(path.join(directory, entry.name), candidates);
     }
 }
 
@@ -165,12 +168,24 @@ export async function discoverGitRepositories(
     const seen = new Map<string, DiscoveredRepository>();
     const resolveGitRoot = options.resolveGitRoot ?? defaultResolveGitRoot;
 
+    // Phase 1 — cheap filesystem walk that only collects candidate directories. Each
+    // workspace root is itself a candidate (the user may have opened a repository or a
+    // subdirectory of one) alongside every nested `.git` marker.
+    const candidates: string[] = [...roots];
     for (const workspaceRoot of roots) {
-        // Each root is added before its children so repository de-duplication stays deterministic.
+        // Sequential walk keeps recursive filesystem IO bounded.
         // react-doctor-disable-next-line react-doctor/async-await-in-loop
-        await addResolvedRoot(workspaceRoot, roots, seen, resolveGitRoot);
-        await scanForGitMarkers(workspaceRoot, roots, seen, resolveGitRoot);
+        await collectGitMarkerDirs(workspaceRoot, candidates);
     }
+
+    // Phase 2 — resolve candidates through Git concurrently. Git resolution (one
+    // subprocess per candidate) dominated activation time with many repositories, so it
+    // runs bounded-parallel instead of one-at-a-time. De-duplicating candidate paths
+    // first, then keying `seen` by canonical root and sorting by label at the end, keeps
+    // results deterministic regardless of the order resolutions complete in.
+    await mapWithConcurrency([...new Set(candidates)], GIT_RESOLVE_CONCURRENCY, (candidate) =>
+        addResolvedRoot(candidate, roots, seen, resolveGitRoot),
+    );
 
     // Spread already isolates the map values before sorting; no shared array is mutated.
     // react-doctor-disable-next-line react-doctor/js-tosorted-immutable

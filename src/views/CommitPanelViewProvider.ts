@@ -8,6 +8,7 @@ import { GitOps } from "../git/operations";
 import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
+import { mapWithConcurrency } from "../utils/concurrency";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { abortMergeWithConfirmation } from "./mergeAbort";
 import type {
@@ -55,6 +56,11 @@ import {
     unstageFilesFromPanel,
 } from "./panelFileActions";
 const MIN_VISIBLE_REFRESH_MS = 600;
+
+// Bound on concurrent collapsed-row count scans at activation. Each scan spawns one
+// `git status`; with many repositories, firing them all at once starved the active
+// repository's first render. ponytail: fixed cap, revisit only if a profiler asks.
+const COLLAPSED_COUNT_SCAN_CONCURRENCY = 6;
 
 /**
  * Hosts the sidebar Changes webview and its embedded commit graph protocol.
@@ -246,7 +252,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.syncRuntimeWatchers();
         this.scanInitialCollapsedCounts();
         if (activeChanged && previousActiveRoot !== null && activeRuntime) {
-            this.scanRepositoryFileCount(activeRuntime);
+            void this.scanRepositoryFileCount(activeRuntime);
         }
     }
 
@@ -395,24 +401,33 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     /** Starts one-time status scans for collapsed rows whose count has not been hydrated yet. */
     private scanInitialCollapsedCounts(): void {
+        const pending: CommitPanelRepositoryRuntime[] = [];
         for (const runtime of this.runtimes.values()) {
             if (runtime.hasScannedFileCount) continue;
             if (runtime.repository.root === this.activeRepositoryRoot) continue;
             if (this.expandedRepositoryRoots.has(runtime.repository.root)) continue;
-            this.scanRepositoryFileCount(runtime);
+            pending.push(runtime);
         }
+        // Bounded so opening a workspace with many repositories does not launch one
+        // `git status` per repository simultaneously and stall the active row's render.
+        void mapWithConcurrency(pending, COLLAPSED_COUNT_SCAN_CONCURRENCY, (runtime) =>
+            this.scanRepositoryFileCount(runtime),
+        );
     }
 
     /**
      * Refreshes only the lightweight changed-file count for a collapsed or newly active row.
      *
-     * The scan is discarded if a full runtime refresh starts before the status result resolves.
+     * Uses a status-only Git call (no numstat) since the count needs paths and statuses
+     * only; full stats arrive later when the row is activated or expanded. The scan is
+     * discarded if a full runtime refresh starts before the status result resolves. The
+     * returned promise resolves when the scan settles so callers can bound concurrency.
      */
-    private scanRepositoryFileCount(runtime: CommitPanelRepositoryRuntime): void {
+    private scanRepositoryFileCount(runtime: CommitPanelRepositoryRuntime): Promise<void> {
         const dataSeq = runtime.dataRefreshSeq;
         const countRequestId = ++runtime.countRefreshSeq;
-        void runtime.gitOps
-            .getStatus({ includeIgnored: runtime.showIgnoredFiles })
+        return runtime.gitOps
+            .getStatus({ includeIgnored: runtime.showIgnoredFiles, withStats: false })
             .then((files) => {
                 if (
                     dataSeq !== runtime.dataRefreshSeq ||
