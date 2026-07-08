@@ -1957,7 +1957,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider watches active and expanded repositories with targeted refreshes", async () => {
+    it("CommitPanelViewProvider watches expanded non-active repositories with targeted refreshes", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         const repoBGitOps = makeGitOpsMock();
         repoBGitOps.getStatus.mockResolvedValue([
@@ -1979,13 +1979,12 @@ describe("view providers integration", () => {
         runtimeB!.gitOps = repoBGitOps;
         await flushMicrotasks();
 
-        expect(activeWatcherForRoot("/repo")).toBeDefined();
+        expect(activeWatcherForRoot("/repo")).toBeUndefined();
         expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
 
         await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
-        const activeWatcher = activeWatcherForRoot("/repo");
         const expandedWatcher = activeWatcherForRoot("/repo-b");
-        expect(activeWatcher).toBeDefined();
+        expect(activeWatcherForRoot("/repo")).toBeUndefined();
         expect(expandedWatcher).toBeDefined();
 
         gitOps.getStatus.mockClear();
@@ -2011,32 +2010,9 @@ describe("view providers integration", () => {
             expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
         );
 
-        gitOps.getStatus.mockClear();
-        repoBGitOps.getStatus.mockClear();
-        postMessageSpy.mockClear();
-        activeWatcher!.trigger("change", "/repo/src/a.ts");
-        for (let i = 0; i < 10; i += 1) {
-            await flushMicrotasks();
-            if (
-                postMessageSpy.mock.calls.some(([message]) =>
-                    expect
-                        .objectContaining({ type: "update", repositoryRoot: "/repo" })
-                        .asymmetricMatch(message),
-                )
-            ) {
-                break;
-            }
-        }
-
-        expect(gitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
-        expect(repoBGitOps.getStatus).not.toHaveBeenCalled();
-        expect(postMessageSpy).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "update", repositoryRoot: "/repo" }),
-        );
-
         await webview.send({ type: "setExpandedRepositories", repositoryRoots: [] });
         expect(expandedWatcher!.dispose).toHaveBeenCalled();
-        expect(activeWatcherForRoot("/repo")).toBeDefined();
+        expect(activeWatcherForRoot("/repo")).toBeUndefined();
         expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
         provider.dispose();
     });
@@ -2751,6 +2727,88 @@ describe("view providers integration", () => {
             await refresh;
 
             expect(refreshingStates()).toEqual([true, false]);
+            expect(executeCommand).toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider keeps global refresh context active until overlapping visible repository refreshes finish", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        type StatusFile = {
+            path: string;
+            status: "M";
+            staged: false;
+            additions: number;
+            deletions: number;
+        };
+        let resolveActiveStatus: (files: StatusFile[]) => void = () => {};
+        let resolveExpandedStatus: (files: StatusFile[]) => void = () => {};
+        const activeStatus = new Promise<StatusFile[]>((resolve) => {
+            resolveActiveStatus = resolve;
+        });
+        const expandedStatus = new Promise<StatusFile[]>((resolve) => {
+            resolveExpandedStatus = resolve;
+        });
+        gitOps.getStatus.mockImplementationOnce(() => activeStatus);
+        repoBGitOps.getStatus.mockImplementationOnce(() => expandedStatus);
+
+        vi.useFakeTimers();
+        try {
+            const refresh = provider.refresh();
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(executeCommand).toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                true,
+            );
+
+            resolveActiveStatus([
+                { path: "active.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            ]);
+            await flushMicrotasks();
+            await vi.advanceTimersByTimeAsync(600);
+
+            expect(executeCommand).not.toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
+
+            resolveExpandedStatus([
+                { path: "expanded.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            ]);
+            await flushMicrotasks();
+            await refresh;
+
             expect(executeCommand).toHaveBeenCalledWith(
                 "setContext",
                 "intelligit.commitPanel.refreshing",

@@ -74,6 +74,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private readonly expandedRepositoryRoots = new Set<string>();
     private readonly runtimeWatchers = new Map<string, vscode.Disposable>();
     private activeRepositoryRoot: string | null = null;
+    private visibleRefreshCount = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
     private readonly PAGE_SIZE = 500;
@@ -427,10 +428,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             .catch(() => {});
     }
 
-    /** Keeps provider-owned file watchers aligned with the active repository plus expanded rows. */
+    /** Keeps provider-owned file watchers aligned with expanded non-active rows. */
     private syncRuntimeWatchers(): void {
-        const desiredRoots = new Set(this.expandedRepositoryRoots);
-        if (this.activeRepositoryRoot !== null) desiredRoots.add(this.activeRepositoryRoot);
+        const desiredRoots = new Set(
+            Array.from(this.expandedRepositoryRoots).filter(
+                (root) => root !== this.activeRepositoryRoot,
+            ),
+        );
 
         for (const root of Array.from(this.runtimeWatchers.keys())) {
             if (desiredRoots.has(root)) continue;
@@ -726,11 +730,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         }
         if (!silent) {
             void Promise.resolve(
-                vscode.commands.executeCommand(
-                    "setContext",
-                    "intelligit.commitPanel.refreshing",
-                    true,
-                ),
+                ++this.visibleRefreshCount === 1
+                    ? vscode.commands.executeCommand(
+                          "setContext",
+                          "intelligit.commitPanel.refreshing",
+                          true,
+                      )
+                    : undefined,
             ).catch(() => {});
         }
         try {
@@ -801,12 +807,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     repositoryRoot: runtime.repository.root,
                     active: false,
                 });
+                this.visibleRefreshCount = Math.max(0, this.visibleRefreshCount - 1);
                 void Promise.resolve(
-                    vscode.commands.executeCommand(
-                        "setContext",
-                        "intelligit.commitPanel.refreshing",
-                        false,
-                    ),
+                    this.visibleRefreshCount === 0
+                        ? vscode.commands.executeCommand(
+                              "setContext",
+                              "intelligit.commitPanel.refreshing",
+                              false,
+                          )
+                        : undefined,
                 ).catch(() => {});
             }
         }
