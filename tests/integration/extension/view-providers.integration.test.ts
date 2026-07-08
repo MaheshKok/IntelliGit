@@ -740,15 +740,24 @@ describe("view providers integration", () => {
         }));
     });
 
-    it("active editor switches providers to the deepest matching repository", async () => {
+    it("graph active repository follows the active editor without mutating commit accordion expansion", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace";
         const repoB = "/workspace/packages/app";
         const captured: {
-            commitGraph?: { setRepositoryLabel: (label: string) => void };
-            sidebarGraph?: { setRepositoryLabel: (label: string) => void };
+            commitGraph?: {
+                clearCommitDetail: () => void;
+                refresh: () => Promise<void>;
+                setRepositoryLabel: (label: string) => void;
+            };
+            sidebarGraph?: {
+                clearCommitDetail: () => void;
+                refresh: () => Promise<void>;
+                setRepositoryLabel: (label: string) => void;
+            };
             commitPanel?: {
                 activeRepositoryRoot: string | null;
+                expandedRepositoryRoots: Set<string>;
                 repositories: Array<{ root: string; label: string }>;
                 runtimes: Map<string, unknown>;
                 setRepositoryLabel: (label: string) => void;
@@ -791,20 +800,28 @@ describe("view providers integration", () => {
 
         const commitGraphLabelSpy = vi.spyOn(captured.commitGraph!, "setRepositoryLabel");
         const sidebarGraphLabelSpy = vi.spyOn(captured.sidebarGraph!, "setRepositoryLabel");
+        const commitGraphClearSpy = vi.spyOn(captured.commitGraph!, "clearCommitDetail");
+        const sidebarGraphClearSpy = vi.spyOn(captured.sidebarGraph!, "clearCommitDetail");
+        const commitGraphRefreshSpy = vi.spyOn(captured.commitGraph!, "refresh");
+        const sidebarGraphRefreshSpy = vi.spyOn(captured.sidebarGraph!, "refresh");
         const commitPanelRootSpy = vi.spyOn(captured.commitPanel!, "setRepositoryRootUri");
         const commitPanelLabelSpy = vi.spyOn(captured.commitPanel!, "setRepositoryLabel");
+        captured.commitPanel!.expandedRepositoryRoots.add(repoA);
         gitExecutorSetRoot.mockClear();
 
         const fireActiveEditor = async (uri: unknown): Promise<void> => {
             activeTextEditorListeners.forEach((listener) => listener({ document: { uri } }));
-            await flushMicrotasks();
-            await flushMicrotasks();
+            for (let index = 0; index < 5; index += 1) {
+                await flushMicrotasks();
+            }
         };
 
         await fireActiveEditor({ scheme: "untitled", fsPath: `${repoB}/src/file.ts` });
         await fireActiveEditor(vscodeMock.Uri.file("/other/src/file.ts"));
 
         expect(gitExecutorSetRoot).not.toHaveBeenCalledWith(repoB);
+        expect(commitGraphClearSpy).not.toHaveBeenCalled();
+        expect(sidebarGraphClearSpy).not.toHaveBeenCalled();
         expect(commitPanelRootSpy).not.toHaveBeenCalled();
 
         await fireActiveEditor(vscodeMock.Uri.file(`${repoB}/src/file.ts`));
@@ -812,9 +829,14 @@ describe("view providers integration", () => {
         expect(gitExecutorSetRoot).toHaveBeenCalledWith(repoB);
         expect(commitGraphLabelSpy).toHaveBeenCalledWith("app");
         expect(sidebarGraphLabelSpy).toHaveBeenCalledWith("app");
+        expect(commitGraphClearSpy).toHaveBeenCalled();
+        expect(sidebarGraphClearSpy).toHaveBeenCalled();
+        expect(commitGraphRefreshSpy).toHaveBeenCalled();
+        expect(sidebarGraphRefreshSpy).toHaveBeenCalled();
         expect(commitPanelRootSpy).toHaveBeenCalledWith(expect.objectContaining({ fsPath: repoB }));
         expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
         expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
+        expect(captured.commitPanel!.expandedRepositoryRoots.has(repoA)).toBe(true);
         expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
         expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
     });
