@@ -667,7 +667,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         if (!this.view) return;
         this.view.description =
             this.options.showRepositoryLabel && this.repositoryLabel
-                ? this.repositoryLabel
+                ? `(${this.repositoryLabel})`
                 : undefined;
     }
 

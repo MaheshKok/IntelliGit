@@ -1682,11 +1682,11 @@ describe("view providers integration", () => {
             {} as unknown as object,
             {} as unknown as object,
         );
-        expect(sidebarWebview.view.description).toBe("repo-a");
+        expect(sidebarWebview.view.description).toBe("(repo-a)");
         await sidebarWebview.send({ type: "ready" });
 
         sidebarProvider.setRepositoryLabel("repo-b");
-        expect(sidebarWebview.view.description).toBe("repo-b");
+        expect(sidebarWebview.view.description).toBe("(repo-b)");
 
         const fullGraphProvider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },

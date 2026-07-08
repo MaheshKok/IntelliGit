@@ -171,14 +171,8 @@ describe("extension manifest", () => {
             (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
         );
 
-        expect(indicator?.when).toBe(
-            "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons != color",
-        );
-        expect(colorIndicator?.when).toBe(
-            "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons == color",
-        );
-        expect(indicator?.group).toBe("navigation@0");
-        expect(colorIndicator?.group).toBe("navigation@0");
+        expect(indicator).toBeUndefined();
+        expect(colorIndicator).toBeUndefined();
         expect(indicatorContribution?.icon).toEqual({
             light: "media/icons/select-repository-white.svg",
             dark: "media/icons/select-repository-white.svg",

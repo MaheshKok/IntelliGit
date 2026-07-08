@@ -618,16 +618,6 @@
                     "group": "navigation"
                 },
                 {
-                    "command": "intelligit.sidebarRepositoryIndicator",
-                    "when": "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons != color",
-                    "group": "navigation@0"
-                },
-                {
-                    "command": "intelligit.sidebarRepositoryIndicator.color",
-                    "when": "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons == color",
-                    "group": "navigation@0"
-                },
-                {
                     "command": "intelligit.graph.sync",
                     "when": "view == intelligit.sidebarGraph && config.intelligit.icons != color",
                     "group": "navigation@1"
