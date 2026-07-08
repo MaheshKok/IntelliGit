@@ -7,7 +7,10 @@ import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { WorktreeService } from "../services/worktreeService";
-import type { DiscoveredRepository } from "../services/repositoryDiscovery";
+import {
+    discoverGitRepositories,
+    type DiscoveredRepository,
+} from "../services/repositoryDiscovery";
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
 import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
@@ -23,6 +26,7 @@ import {
     type RepositoryViewProviders,
     SELECTED_REPOSITORY_KEY,
     selectInitialRepository,
+    workspaceRoots,
 } from "./common";
 import { registerRepositoryCommands } from "./repositoryCommands";
 import {
@@ -142,6 +146,14 @@ export async function activateRepositoryMode(
     sidebarGraph.setRepositoryLabel(activeRepository.label);
     commitPanel.setRepositoryLabel(activeRepository.label);
     commitPanel.setRepositories(repositories, activeRepository.root);
+
+    const setKnownRepositories = (
+        nextRepositories: DiscoveredRepository[],
+        activeRoot: string | null = activeRepository.root,
+    ): void => {
+        repositories = nextRepositories;
+        commitPanel.setRepositories(nextRepositories, activeRoot ?? undefined);
+    };
 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
         treeDataProvider: mergeConflicts,
@@ -358,10 +370,29 @@ export async function activateRepositoryMode(
         });
     };
 
+    const refreshDiscoveredRepositories = async (): Promise<void> => {
+        const nextRepositories = await discoverGitRepositories(workspaceRoots());
+        const currentActive = nextRepositories.find(
+            (repository) => repository.root === activeRepository.root,
+        );
+        if (currentActive || nextRepositories.length === 0) {
+            setKnownRepositories(nextRepositories, currentActive?.root ?? activeRepository.root);
+            return;
+        }
+        const fallbackRepository = nextRepositories[0];
+        setKnownRepositories(nextRepositories, fallbackRepository.root);
+        await setActiveRepository(fallbackRepository);
+    };
+
     context.subscriptions.push(
         vscode.window.onDidChangeActiveTextEditor((editor) => {
             void updateActiveRepositoryFromEditor(editor).catch((err) => {
                 console.error("[IntelliGit] Failed to update active repository from editor:", err);
+            });
+        }),
+        vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+            await refreshDiscoveredRepositories().catch((err) => {
+                console.error("[IntelliGit] Failed to refresh repositories:", err);
             });
         }),
     );
@@ -766,8 +797,7 @@ export async function activateRepositoryMode(
         worktreeService,
         getRepoRoot,
         setRepositories: (nextRepositories) => {
-            repositories = nextRepositories;
-            commitPanel.setRepositories(nextRepositories, activeRepository.root);
+            setKnownRepositories(nextRepositories);
         },
         getCurrentBranches,
         getCurrentBranchName,

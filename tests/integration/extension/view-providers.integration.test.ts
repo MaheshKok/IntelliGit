@@ -97,6 +97,8 @@ const postMessageSpy = vi.fn();
 const fileSystemWatchers: FakeFileSystemWatcher[] = [];
 const registeredCommands = new Map<string, CommandHandler>();
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
+const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
+const workspaceFolderDisposables: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
 let activeTextEditor: { document: { uri: unknown } } | undefined;
 const withProgress = vi.fn(
     async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
@@ -257,6 +259,12 @@ const vscodeMock = {
             workspaceState.workspaceFolders = value;
         },
         openTextDocument,
+        onDidChangeWorkspaceFolders: vi.fn((listener: () => Promise<void> | void) => {
+            workspaceFolderListeners.push(listener);
+            const disposable = { dispose: vi.fn() };
+            workspaceFolderDisposables.push(disposable);
+            return disposable;
+        }),
         getConfiguration: vi.fn(() => ({
             get: vi.fn((key: string) => {
                 if (key === "workbench.sideBar.location") return "left";
@@ -287,6 +295,7 @@ const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 const activeGitRoot = vi.hoisted(() => ({ value: "" }));
 const gitStatusByRoot = vi.hoisted(() => new Map<string, unknown[]>());
+const discoverGitRepositoriesSpy = vi.hoisted(() => vi.fn(async () => []));
 const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
 const branchRefreshControls = vi.hoisted(
     () =>
@@ -317,6 +326,15 @@ const makeBranchesForRoot = vi.hoisted(() => (root: string) => [
 ]);
 
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/services/repositoryDiscovery", async () => {
+    const actual = await vi.importActual<typeof import("../../../src/services/repositoryDiscovery")>(
+        "../../../src/services/repositoryDiscovery",
+    );
+    return {
+        ...actual,
+        discoverGitRepositories: discoverGitRepositoriesSpy,
+    };
+});
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
         public root: string;
@@ -702,9 +720,12 @@ describe("view providers integration", () => {
         vi.clearAllMocks();
         registeredCommands.clear();
         activeTextEditorListeners.length = 0;
+        workspaceFolderListeners.length = 0;
+        workspaceFolderDisposables.length = 0;
         activeTextEditor = undefined;
         activeGitRoot.value = "";
         gitStatusByRoot.clear();
+        discoverGitRepositoriesSpy.mockResolvedValue([]);
         deferBranchRefreshes.active = false;
         branchRefreshControls.length = 0;
         refreshServiceInstances.length = 0;
@@ -795,6 +816,54 @@ describe("view providers integration", () => {
         expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
         expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
         expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
+        expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
+    });
+
+    it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [] as unknown[],
+            workspaceState: createMemento(),
+            secrets: {},
+        };
+        const captured: {
+            commitPanel?: {
+                activeRepositoryRoot: string | null;
+                repositories: Array<{ root: string; label: string }>;
+                runtimes: Map<string, unknown>;
+            };
+        } = {};
+
+        await activateRepositoryMode(
+            context as never,
+            [
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ],
+            {
+                commitPanel: {
+                    setProvider: (provider: unknown) => (captured.commitPanel = provider as never),
+                },
+            } as never,
+        );
+        expect(workspaceFolderListeners).toHaveLength(1);
+        expect(context.subscriptions).toContain(workspaceFolderDisposables[0]);
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoA);
+        gitExecutorSetRoot.mockClear();
+
+        workspaceState.workspaceFolders = [{ uri: { fsPath: repoB, path: repoB } }];
+        discoverGitRepositoriesSpy.mockResolvedValueOnce([{ root: repoB, label: "app-b" }]);
+        await workspaceFolderListeners[0]();
+        await flushMicrotasks();
+
+        expect(discoverGitRepositoriesSpy).toHaveBeenCalledWith([repoB]);
+        expect(gitExecutorSetRoot).toHaveBeenCalledWith(repoB);
+        expect(captured.commitPanel!.repositories).toEqual([{ root: repoB, label: "app-b" }]);
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
+        expect(captured.commitPanel!.runtimes.has(repoA)).toBe(false);
         expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
     });
 
