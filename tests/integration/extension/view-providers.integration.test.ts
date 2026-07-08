@@ -623,6 +623,9 @@ describe("view providers integration", () => {
             commitGraph?: { setRepositoryLabel: (label: string) => void };
             sidebarGraph?: { setRepositoryLabel: (label: string) => void };
             commitPanel?: {
+                activeRepositoryRoot: string | null;
+                repositories: Array<{ root: string; label: string }>;
+                runtimes: Map<string, unknown>;
                 setRepositoryLabel: (label: string) => void;
                 setRepositoryRootUri: (uri: { fsPath: string }) => void;
             };
@@ -653,6 +656,13 @@ describe("view providers integration", () => {
             } as never,
         );
         expect(activeTextEditorListeners).toHaveLength(1);
+        expect(captured.commitPanel!.repositories).toEqual([
+            { root: repoA, label: "workspace" },
+            { root: repoB, label: "app" },
+        ]);
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoA);
+        expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
+        expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
 
         const commitGraphLabelSpy = vi.spyOn(captured.commitGraph!, "setRepositoryLabel");
         const sidebarGraphLabelSpy = vi.spyOn(captured.sidebarGraph!, "setRepositoryLabel");
@@ -679,6 +689,9 @@ describe("view providers integration", () => {
         expect(sidebarGraphLabelSpy).toHaveBeenCalledWith("app");
         expect(commitPanelRootSpy).toHaveBeenCalledWith(expect.objectContaining({ fsPath: repoB }));
         expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
+        expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
+        expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
     });
 
     it("registers startup active-editor repository watchers once", async () => {
@@ -1779,6 +1792,32 @@ describe("view providers integration", () => {
             type: "error",
             message: "Unknown repository root received from webview.",
         });
+        provider.dispose();
+    });
+
+    it("Unknown repository openCommitFileDiff is rejected before firing the graph event", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        const openCommitFileDiff = vi.fn();
+        const disposable = provider.onOpenCommitFileDiff(openCommitFileDiff);
+        showErrorMessage.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "openCommitFileDiff",
+            repositoryRoot: "/unknown",
+            commitHash: "abc1234",
+            filePath: "src/a.ts",
+        });
+
+        expect(openCommitFileDiff).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Unknown repository root received from webview.",
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Unknown repository root received from webview.",
+        });
+        disposable.dispose();
         provider.dispose();
     });
 

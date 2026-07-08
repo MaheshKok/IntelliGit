@@ -141,6 +141,7 @@ export async function activateRepositoryMode(
     commitGraph.setRepositoryLabel(activeRepository.label);
     sidebarGraph.setRepositoryLabel(activeRepository.label);
     commitPanel.setRepositoryLabel(activeRepository.label);
+    commitPanel.setRepositories(repositories, activeRepository.root);
 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
         treeDataProvider: mergeConflicts,
@@ -766,6 +767,7 @@ export async function activateRepositoryMode(
         getRepoRoot,
         setRepositories: (nextRepositories) => {
             repositories = nextRepositories;
+            commitPanel.setRepositories(nextRepositories, activeRepository.root);
         },
         getCurrentBranches,
         getCurrentBranchName,

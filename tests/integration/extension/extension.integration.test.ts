@@ -382,6 +382,7 @@ class MockCommitPanelViewProvider {
     refreshSilent = vi.fn(async () => {
         await commitPanelRefreshHook?.(this);
     });
+    setRepositories = vi.fn();
     setRepositoryRootUri = vi.fn();
     setRepositoryLabel = vi.fn();
     setBranches = vi.fn();

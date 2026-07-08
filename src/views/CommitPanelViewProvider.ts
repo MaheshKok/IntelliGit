@@ -262,6 +262,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return this.getActiveRuntime();
     }
 
+    private validateKnownRepositoryRoot(msg: { [key: string]: unknown }): void {
+        if (msg.repositoryRoot === undefined) return;
+        const repositoryRoot = assertString(msg.repositoryRoot, "repositoryRoot");
+        if (!this.runtimes.has(repositoryRoot)) {
+            throw new Error("Unknown repository root received from webview.");
+        }
+    }
+
     private invalidateRuntime(runtime: CommitPanelRepositoryRuntime): void {
         runtime.requestSeq += 1;
         runtime.dataRefreshSeq += 1;
@@ -725,6 +733,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     private async handleMessage(raw: unknown): Promise<void> {
         const msg = assertMessage(raw);
+        this.validateKnownRepositoryRoot(msg);
         const activeRuntime = () => this.requireActiveRuntime();
         const scopedRuntime = () => this.runtimeForMessage(msg);
         switch (msg.type) {
