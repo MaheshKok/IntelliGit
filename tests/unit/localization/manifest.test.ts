@@ -70,9 +70,7 @@ describe("extension manifest", () => {
         expect(commands.some((entry) => entry.command === "intelligit.fileShowHistory")).toBe(
             false,
         );
-        expect(commands.some((entry) => entry.command === "intelligit.fileRefreshing")).toBe(
-            false,
-        );
+        expect(commands.some((entry) => entry.command === "intelligit.fileRefreshing")).toBe(false);
         expect(itemFor("intelligit.fileShowHistory")).toBeUndefined();
         expect(itemFor("intelligit.fileDelete")?.when).toBe(
             "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
@@ -210,8 +208,11 @@ describe("extension manifest", () => {
     });
 
     it("keeps native sidebar color icons matching the commit tab toolbar icons", () => {
-        const tabBarSource = readFileSync(
-            path.join(process.cwd(), "src/webviews/react/commit-panel/components/TabBar.tsx"),
+        const repositoryAccordionSource = readFileSync(
+            path.join(
+                process.cwd(),
+                "src/webviews/react/commit-panel/components/RepositoryAccordion.tsx",
+            ),
             "utf8",
         );
         const icons = [
@@ -249,12 +250,12 @@ describe("extension manifest", () => {
         ] as const;
 
         for (const icon of icons) {
-            const labelNeedle = `<GitActionButton label={t("common.${icon.name}")}`;
-            const start = tabBarSource.indexOf(labelNeedle);
+            const labelNeedle = `label={t("common.${icon.name}")}`;
+            const start = repositoryAccordionSource.indexOf(labelNeedle);
             expect(start).toBeGreaterThanOrEqual(0);
-            const end = tabBarSource.indexOf("</GitActionButton>", start);
+            const end = repositoryAccordionSource.indexOf("</RepositoryActionButton>", start);
             expect(end).toBeGreaterThan(start);
-            const iconBlock = tabBarSource.slice(start, end);
+            const iconBlock = repositoryAccordionSource.slice(start, end);
             const svg = readFileSync(
                 path.join(process.cwd(), `media/icons/git-${icon.name}-color.svg`),
                 "utf8",

@@ -178,11 +178,13 @@ describe("CommitPanelApp integration", () => {
 
         const tabRow = document.querySelector('[data-testid="commit-panel-tab-row"]');
         expect(tabRow).not.toBeNull();
-        const buttonLabels = Array.from(tabRow?.querySelectorAll("button") ?? []).map(
+        const actionToolbar = document.querySelector('[data-testid="repository-action-toolbar"]');
+        expect(actionToolbar).not.toBeNull();
+        const buttonLabels = Array.from(actionToolbar?.querySelectorAll("button") ?? []).map(
             (button) => button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "",
         );
-        const gitActionOrder = ["Commit", "Stash (1)", "Sync", "Fetch", "Pull", "Push"].map(
-            (label) => buttonLabels.indexOf(label),
+        const gitActionOrder = ["Sync", "Fetch", "Pull", "Push"].map((label) =>
+            buttonLabels.indexOf(label),
         );
         expect(gitActionOrder.every((index) => index >= 0)).toBe(true);
         expect(gitActionOrder).toEqual([...gitActionOrder].sort((a, b) => a - b));

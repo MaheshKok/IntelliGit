@@ -23,7 +23,7 @@ export type { InboundMessage, OutboundMessage } from "../../protocol/commitPanel
  * refresh state so UI interactions can stay responsive while host messages are
  * in flight.
  */
-export interface CommitPanelState {
+interface CommitPanelState {
     files: WorkingFile[];
     stashes: StashEntry[];
     stashFiles: WorkingFile[];
@@ -47,6 +47,27 @@ export interface CommitPanelState {
     currentBranchUpstream: string | null;
 }
 
+/** Summary row supplied by the extension host for a known Git repository. */
+export interface CommitPanelRepositorySummary {
+    root: string;
+    label: string;
+    changedFileCount: number;
+}
+
+/** Commit-panel state for one repository row in the docked multi-repository view. */
+export interface RepositoryCommitPanelState extends CommitPanelState {
+    root: string;
+    label: string;
+    changedFileCount: number;
+}
+
+/** Root commit-panel state keyed by repository root. */
+export interface MultiRepositoryCommitPanelState {
+    repositories: RepositoryCommitPanelState[];
+    activeRepositoryRoot: string | null;
+    expandedRepositoryRoots: string[];
+}
+
 /**
  * Actions dispatched by host messages and commit-panel UI events.
  *
@@ -56,7 +77,16 @@ export interface CommitPanelState {
  */
 export type CommitPanelAction =
     | {
+          type: "SET_REPOSITORIES";
+          repositories: CommitPanelRepositorySummary[];
+          activeRepositoryRoot: string | null;
+      }
+    | { type: "SET_EXPANDED_REPOSITORIES"; repositoryRoots: string[] }
+    | {
           type: "SET_FILES_AND_STASHES";
+          repositoryRoot?: string;
+          repositoryLabel?: string;
+          changedFileCount?: number;
           files: WorkingFile[];
           stashes: StashEntry[];
           stashFiles: WorkingFile[];
@@ -71,15 +101,21 @@ export type CommitPanelAction =
           currentBranchBehind: number;
           currentBranchName?: string | null;
           currentBranchUpstream?: string | null;
+          refreshing?: boolean;
+          error?: string | null;
       }
-    | { type: "RESTORE_COMMIT_DRAFT"; message: string }
-    | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
-    | { type: "COMMITTED" }
-    | { type: "SET_REFRESHING"; active: boolean }
-    | { type: "SET_ERROR"; message: string }
-    | { type: "SET_COMMIT_MESSAGE"; message: string }
-    | { type: "SET_AMEND"; isAmend: boolean }
-    | { type: "SET_AMEND_BRANCH_COMMITS"; commits: AmendBranchCommitSummary[] };
+    | { type: "RESTORE_COMMIT_DRAFT"; repositoryRoot?: string; message: string }
+    | { type: "SET_LAST_COMMIT_MESSAGE"; repositoryRoot?: string; message: string }
+    | { type: "COMMITTED"; repositoryRoot?: string }
+    | { type: "SET_REFRESHING"; repositoryRoot?: string; active: boolean }
+    | { type: "SET_ERROR"; repositoryRoot?: string; message: string }
+    | { type: "SET_COMMIT_MESSAGE"; repositoryRoot?: string; message: string }
+    | { type: "SET_AMEND"; repositoryRoot?: string; isAmend: boolean }
+    | {
+          type: "SET_AMEND_BRANCH_COMMITS";
+          repositoryRoot?: string;
+          commits: AmendBranchCommitSummary[];
+      };
 
 /**
  * Directory node used by grouped commit-panel file trees.

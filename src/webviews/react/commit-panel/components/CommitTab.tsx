@@ -19,6 +19,7 @@ import { AmendContextSection } from "./AmendContextSection";
 const MIN_REFRESH_FEEDBACK_MS = 700;
 
 interface Props {
+    repositoryRoot?: string;
     files: WorkingFile[];
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
@@ -59,6 +60,7 @@ interface Props {
 // Independent commit workflow flags come from different host state; grouping them would hide intent.
 // react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitTab({
+    repositoryRoot,
     files,
     folderIcon,
     folderExpandedIcon,
@@ -130,44 +132,61 @@ export function CommitTab({
 
     const handleRefresh = useCallback(() => {
         showRefreshFeedback();
-        vscode.postMessage({ type: "refresh" });
-    }, [showRefreshFeedback, vscode]);
+        vscode.postMessage({ type: "refresh", ...(repositoryRoot ? { repositoryRoot } : {}) });
+    }, [repositoryRoot, showRefreshFeedback, vscode]);
 
     const handleRollback = useCallback(() => {
-        vscode.postMessage({ type: "rollback", paths: Array.from(checkedPaths) });
-    }, [vscode, checkedPaths]);
+        vscode.postMessage({
+            type: "rollback",
+            ...(repositoryRoot ? { repositoryRoot } : {}),
+            paths: Array.from(checkedPaths),
+        });
+    }, [repositoryRoot, vscode, checkedPaths]);
 
     const handleStash = useCallback(() => {
         const selected = Array.from(checkedPaths);
         vscode.postMessage({
             type: "stashSave",
+            ...(repositoryRoot ? { repositoryRoot } : {}),
             paths: selected.length > 0 ? selected : undefined,
         });
-    }, [vscode, checkedPaths]);
+    }, [repositoryRoot, vscode, checkedPaths]);
 
     const handleShowDiff = useCallback(() => {
         const selected = Array.from(checkedPaths);
         if (selected.length > 0) {
-            vscode.postMessage({ type: "showDiff", path: selected[0] });
+            vscode.postMessage({
+                type: "showDiff",
+                ...(repositoryRoot ? { repositoryRoot } : {}),
+                path: selected[0],
+            });
         }
-    }, [vscode, checkedPaths]);
+    }, [repositoryRoot, vscode, checkedPaths]);
 
     const handleAbortMerge = useCallback(() => {
-        vscode.postMessage({ type: "abortMerge" });
-    }, [vscode]);
+        vscode.postMessage({ type: "abortMerge", ...(repositoryRoot ? { repositoryRoot } : {}) });
+    }, [repositoryRoot, vscode]);
 
     const handleFileClick = useCallback(
         (path: string) => {
-            vscode.postMessage({ type: "showDiff", path });
+            vscode.postMessage({
+                type: "showDiff",
+                ...(repositoryRoot ? { repositoryRoot } : {}),
+                path,
+            });
         },
-        [vscode],
+        [repositoryRoot, vscode],
     );
 
     const handleTrackUnversionedFiles = useCallback(
         (paths: string[]) => {
-            vscode.postMessage({ type: "trackUnversionedFiles", paths });
+            vscode.postMessage({
+                type: "trackUnversionedFiles",
+                ...(repositoryRoot ? { repositoryRoot } : {}),
+                paths,
+            });
         },
-        [vscode],
+        [repositoryRoot, vscode],
     );
 
     return (

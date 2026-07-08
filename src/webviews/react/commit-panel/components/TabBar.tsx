@@ -17,10 +17,10 @@ import { t } from "../../shared/i18n";
 
 interface Props {
     stashCount: number;
-    onSync: () => void;
-    onFetch: () => void;
-    onPull: () => void;
-    onPush: () => void;
+    onSync?: () => void;
+    onFetch?: () => void;
+    onPull?: () => void;
+    onPush?: () => void;
     commitContent: React.ReactNode;
     stashContent: React.ReactNode;
 }
@@ -46,8 +46,7 @@ const sharedTabStyles = {
  * Hosts the Commit and Stash tab panels with VS Code sidebar styling.
  *
  * Callers provide already-wired panel content, allowing the tab shell to stay
- * presentation-only while still reflecting the current stash count in the stash
- * label.
+ * presentation-only while reflecting the current stash count in the stash label.
  */
 export function TabBar({
     stashCount,
@@ -69,6 +68,8 @@ export function TabBar({
             content: stashContent,
         },
     ];
+    const gitActions =
+        onSync && onFetch && onPull && onPush ? { onSync, onFetch, onPull, onPush } : null;
 
     return (
         <Tabs
@@ -92,46 +93,64 @@ export function TabBar({
                         </Tab>
                     ))}
                 </TabList>
-                <Flex align="center" ml="auto">
-                    <GitActionButton label={t("common.sync")} onClick={onSync} color="#c8a2ff">
-                        <path
-                            fill="currentColor"
-                            d="M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z"
-                        />
-                    </GitActionButton>
-                    <GitActionButton label={t("common.fetch")} onClick={onFetch} color="#8fd5ff">
-                        <path
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="1.3"
-                            d="M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11"
-                        />
-                        <path
-                            fill="none"
-                            stroke="currentColor"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="1.3"
-                            d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
-                        />
-                    </GitActionButton>
-                    <GitActionButton label={t("common.pull")} onClick={onPull} color="#8fd5ff">
-                        <path
-                            fill="currentColor"
-                            d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
-                        />
-                        <path fill="currentColor" d="M3 13h10v1H3v-1z" />
-                    </GitActionButton>
-                    <GitActionButton label={t("common.push")} onClick={onPush} color="#a6e3a1">
-                        <path
-                            fill="currentColor"
-                            d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
-                        />
-                        <path fill="currentColor" d="M3 13h10v1H3v-1z" />
-                    </GitActionButton>
-                </Flex>
+                {gitActions ? (
+                    <Flex align="center" ml="auto">
+                        <GitActionButton
+                            label={t("common.sync")}
+                            onClick={gitActions.onSync}
+                            color="#c8a2ff"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M13 2v4H9l1.55-1.55A4.4 4.4 0 0 0 3.9 6.2l-.94-.34A5.4 5.4 0 0 1 11.25 3.75L13 2zM3 14v-4h4l-1.55 1.55A4.4 4.4 0 0 0 12.1 9.8l.94.34a5.4 5.4 0 0 1-8.29 2.11L3 14z"
+                            />
+                        </GitActionButton>
+                        <GitActionButton
+                            label={t("common.fetch")}
+                            onClick={gitActions.onFetch}
+                            color="#8fd5ff"
+                        >
+                            <path
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="1.3"
+                                d="M5 12.5h-.5a2.8 2.8 0 0 1-.35-5.58A4.1 4.1 0 0 1 12 5.8a2.9 2.9 0 0 1 .5 5.7H11"
+                            />
+                            <path
+                                fill="none"
+                                stroke="currentColor"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="1.3"
+                                d="M8 6.7v5.6m-2.1-2L8 12.4l2.1-2.1"
+                            />
+                        </GitActionButton>
+                        <GitActionButton
+                            label={t("common.pull")}
+                            onClick={gitActions.onPull}
+                            color="#8fd5ff"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M7.5 1h1v8.1l2.15-2.15.7.7L8 11 4.65 7.65l.7-.7L7.5 9.1V1z"
+                            />
+                            <path fill="currentColor" d="M3 13h10v1H3v-1z" />
+                        </GitActionButton>
+                        <GitActionButton
+                            label={t("common.push")}
+                            onClick={gitActions.onPush}
+                            color="#a6e3a1"
+                        >
+                            <path
+                                fill="currentColor"
+                                d="M8 1l3.35 3.35-.7.7L8.5 2.9V11h-1V2.9L5.35 5.05l-.7-.7L8 1z"
+                            />
+                            <path fill="currentColor" d="M3 13h10v1H3v-1z" />
+                        </GitActionButton>
+                    </Flex>
+                ) : null}
             </Flex>
             <TabPanels flex={1} overflow="hidden" display="flex" flexDirection="column">
                 {tabs.map((tab) => (
