@@ -133,6 +133,7 @@ export async function activateRepositoryMode(
         gitOps,
         repoRootUri,
         context.workspaceState,
+        context.secrets,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);

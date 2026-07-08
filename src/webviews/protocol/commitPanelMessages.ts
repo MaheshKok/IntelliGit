@@ -21,6 +21,12 @@ type RepositoryScopedMessage<T extends { type: string }> = T & {
     repositoryRoot?: string;
 };
 
+/** Optional repository identity attached to host messages derived from a repository runtime. */
+type RepositoryIdentifiedMessage<T extends { type: string }> = T & {
+    /** Absolute repository root for the runtime that produced this payload. */
+    repositoryRoot?: string;
+};
+
 /** Minimal repository identity sent from the extension host to the commit-panel webview. */
 interface CommitPanelRepositorySummary {
     /** Absolute filesystem path to the Git repository root. */
@@ -218,7 +224,7 @@ export type InboundMessage =
           /** Active host repository root, or `null` when no repository is selected. */
           activeRepositoryRoot: string | null;
       }
-    | {
+    | RepositoryIdentifiedMessage<{
           /** State update for working-tree files, stashes, and render-only icon metadata. */
           type: "update";
           /** Working-tree and index entries parsed from `git status` and numstat output. */
@@ -252,35 +258,35 @@ export type InboundMessage =
           currentBranchName?: string | null;
           /** Current branch upstream tracking ref, when configured. */
           currentBranchUpstream?: string | null;
-      }
-    | {
+      }>
+    | RepositoryIdentifiedMessage<{
           /** State update restoring the repository-scoped commit draft from workspace state. */
           type: "restoreCommitDraft";
           /** Plain draft text; empty string means no saved draft. */
           message: string;
-      }
-    | {
+      }>
+    | RepositoryIdentifiedMessage<{
           /** Response to `getLastCommitMessage` for amend prefill. */
           type: "lastCommitMessage";
           /** Full body from `git log -1 --format=%B`, or empty string when unavailable. */
           message: string;
-      }
-    | {
+      }>
+    | RepositoryIdentifiedMessage<{
           /** Response to `getAmendBranchCommits` for amend context display. */
           type: "amendBranchCommits";
           /** Git log summaries from upstream-to-HEAD when possible, otherwise recent HEAD history. */
           commits: AmendBranchCommitSummary[];
-      }
-    | {
+      }>
+    | RepositoryIdentifiedMessage<{
           /** Event indicating a commit completed and the webview should clear committed state. */
           type: "committed";
-      }
-    | {
+      }>
+    | RepositoryIdentifiedMessage<{
           /** Status event toggling refresh affordances while host refresh work is active. */
           type: "refreshing";
           /** `true` starts visible refresh feedback; `false` clears it after host completion. */
           active: boolean;
-      }
+      }>
     | {
           /** General host error event for commit-panel commands. */
           type: "error";

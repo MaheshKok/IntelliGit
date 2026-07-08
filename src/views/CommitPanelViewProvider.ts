@@ -104,13 +104,14 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      *
      * `repoRootUri` scopes file actions and draft persistence when known at construction time;
      * activation may inject it later, so helpers retain a workspace-root fallback for early view
-     * restoration.
+     * restoration. `secrets` is forwarded to publish flows that need secure token storage.
      */
     constructor(
         private readonly extensionUri: vscode.Uri,
         private readonly gitOps: GitOps,
         private repoRootUri?: vscode.Uri,
         private readonly workspaceState?: vscode.Memento,
+        private readonly secrets?: vscode.SecretStorage,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         if (repoRootUri) {
@@ -140,6 +141,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * so the webview receives a fresh draft restore message after the root changes.
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
+        if (this.repositories.some((repository) => repository.root === repoRootUri.fsPath)) {
+            this.setRepositoriesInternal(this.repositories, repoRootUri.fsPath, undefined, {
+                resetActiveState: true,
+            });
+            return;
+        }
         for (const runtime of this.runtimes.values()) {
             this.invalidateRuntime(runtime);
         }
@@ -213,6 +220,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             if (activeRuntime) {
                 this.postToWebview({
                     type: "restoreCommitDraft",
+                    repositoryRoot: activeRuntime.repository.root,
                     message: this.getStoredCommitDraft(activeRuntime),
                 });
             }
@@ -271,9 +279,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return {
             gitOps: runtime?.gitOps ?? this.gitOps,
             refreshData: () => (runtime ? this.refreshData(false, runtime) : Promise.resolve()),
-            refreshGraphData: () => (runtime ? this.refreshGraphData(runtime) : Promise.resolve()),
+            refreshGraphData: () =>
+                runtime && runtime === this.getActiveRuntime()
+                    ? this.refreshGraphData(runtime)
+                    : Promise.resolve(),
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () => this.postToWebview({ type: "committed" }),
+            postCommitted: () =>
+                this.postToWebview({
+                    type: "committed",
+                    ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
+                }),
             maybeOfferPublishBranch: () =>
                 runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
             publishBranch: runtime ? () => this.publishBranch(runtime) : undefined,
@@ -415,7 +430,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             { location: { viewId: CommitPanelViewProvider.viewType } },
             async () => {
                 await this.refreshData(false, runtime);
-                await this.refreshGraphData(runtime);
+                if (runtime === this.getActiveRuntime()) {
+                    await this.refreshGraphData(runtime);
+                }
             },
         );
     }
@@ -430,6 +447,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "update",
+            repositoryRoot: runtime.repository.root,
             files: runtime.files,
             stashes: runtime.stashes,
             selectedStashIndex: runtime.selectedStashIndex,
@@ -460,7 +478,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     ): Promise<void> {
         const refreshStartedAt = Date.now();
         const refreshRequestId = ++runtime.dataRefreshSeq;
-        if (!silent) this.postToWebview({ type: "refreshing", active: true });
+        if (!silent) {
+            this.postToWebview({
+                type: "refreshing",
+                repositoryRoot: runtime.repository.root,
+                active: true,
+            });
+        }
         if (!silent) {
             void Promise.resolve(
                 vscode.commands.executeCommand(
@@ -527,6 +551,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 }
                 this.postToWebview({
                     type: "update",
+                    repositoryRoot: runtime.repository.root,
                     files,
                     stashes,
                     stashFiles,
@@ -549,7 +574,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (remainingMs > 0) {
                     await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
                 }
-                this.postToWebview({ type: "refreshing", active: false });
+                this.postToWebview({
+                    type: "refreshing",
+                    repositoryRoot: runtime.repository.root,
+                    active: false,
+                });
                 void Promise.resolve(
                     vscode.commands.executeCommand(
                         "setContext",
@@ -709,6 +738,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 }
                 this.postToWebview({
                     type: "restoreCommitDraft",
+                    ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
                     message: this.getStoredCommitDraft(runtime),
                 });
                 break;
@@ -845,17 +875,23 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
             case "getLastCommitMessage": {
-                const lastMsg = await (
-                    scopedRuntime()?.gitOps ?? this.gitOps
-                ).getLastCommitMessage();
-                this.postToWebview({ type: "lastCommitMessage", message: lastMsg });
+                const runtime = scopedRuntime();
+                const lastMsg = await (runtime?.gitOps ?? this.gitOps).getLastCommitMessage();
+                this.postToWebview({
+                    type: "lastCommitMessage",
+                    ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
+                    message: lastMsg,
+                });
                 break;
             }
             case "getAmendBranchCommits": {
-                const commits = await (
-                    scopedRuntime()?.gitOps ?? this.gitOps
-                ).getAmendBranchCommits();
-                this.postToWebview({ type: "amendBranchCommits", commits });
+                const runtime = scopedRuntime();
+                const commits = await (runtime?.gitOps ?? this.gitOps).getAmendBranchCommits();
+                this.postToWebview({
+                    type: "amendBranchCommits",
+                    ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
+                    commits,
+                });
                 break;
             }
             case "rollback": {
@@ -915,7 +951,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                             runtime.stashFiles = state.stashFiles;
                             runtime.folderIconsByName = state.folderIconsByName;
                         },
-                        postUpdate: (message) => this.postToWebview(message),
+                        postUpdate: (message) =>
+                            this.postToWebview({
+                                ...message,
+                                repositoryRoot: runtime.repository.root,
+                            }),
                     },
                     msg.index,
                 );
@@ -1117,7 +1157,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showErrorMessage(vscode.l10n.t("No current branch found."));
             return;
         }
-        await runPublishBranchFlow(runtime.gitOps, currentBranch.name, runtime.repository.root);
+        await runPublishBranchFlow(
+            runtime.gitOps,
+            currentBranch.name,
+            runtime.repository.root,
+            this.secrets,
+        );
     }
     /**
      * Reads current-branch upstream, ahead/behind, and remote availability for toolbar state.
