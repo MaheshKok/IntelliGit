@@ -17,6 +17,7 @@ export type CommitChecksValue = CommitChecksSnapshot | "loading";
 
 /** Reducer action for graph state owned by the undocked app shell. */
 export type GraphAction =
+    | { type: "resetRepository" }
     | {
           type: "loadCommits";
           commits: Commit[];
@@ -81,6 +82,7 @@ export interface CommitPanelState {
 
 /** Reducer actions emitted by unified undocked messages and local commit-panel controls. */
 export type CommitPanelAction =
+    | { type: "RESET_REPOSITORY" }
     | {
           type: "SET_FILES_AND_STASHES";
           files: WorkingFile[];
@@ -140,6 +142,8 @@ export function commitPanelReducer(
     action: CommitPanelAction,
 ): CommitPanelState {
     switch (action.type) {
+        case "RESET_REPOSITORY":
+            return initialCommitPanelState;
         case "SET_FILES_AND_STASHES":
             return {
                 ...state,

@@ -327,9 +327,9 @@ const makeBranchesForRoot = vi.hoisted(() => (root: string) => [
 
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/services/repositoryDiscovery", async () => {
-    const actual = await vi.importActual<typeof import("../../../src/services/repositoryDiscovery")>(
-        "../../../src/services/repositoryDiscovery",
-    );
+    const actual = await vi.importActual<
+        typeof import("../../../src/services/repositoryDiscovery")
+    >("../../../src/services/repositoryDiscovery");
     return {
         ...actual,
         discoverGitRepositories: discoverGitRepositoriesSpy,
@@ -1397,6 +1397,153 @@ describe("view providers integration", () => {
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
         expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
         expect(fileCounts.length).toBeGreaterThan(0);
+    });
+
+    it("UndockedViewProvider hydrates and switches repositories through its own runtime root", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const executor = {
+            root: "/repo-a",
+            setRoot: vi.fn((root: string) => {
+                executor.root = root;
+            }),
+        };
+        const callRoots: string[] = [];
+        const gitOps = makeGitOpsMock();
+        gitOps.getBranches = vi.fn(async () => {
+            callRoots.push(`branches:${executor.root}`);
+            return makeBranchesForRoot(executor.root);
+        });
+        gitOps.getLog = vi.fn(async () => {
+            callRoots.push(`log:${executor.root}`);
+            return [];
+        });
+        gitOps.getUnpushedCommitHashes = vi.fn(async () => {
+            callRoots.push(`unpushed:${executor.root}`);
+            return [];
+        });
+        gitOps.getStatus = vi.fn(async () => {
+            callRoots.push(`status:${executor.root}`);
+            return [];
+        });
+        gitOps.getRemotes = vi.fn(async () => {
+            callRoots.push(`remotes:${executor.root}`);
+            return ["origin"];
+        });
+        gitOps.listStashes = vi.fn(async () => {
+            callRoots.push(`stashes:${executor.root}`);
+            return [];
+        });
+        const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+            {},
+            undefined,
+            {
+                executor,
+                repositories: [
+                    { root: "/repo-a", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                selectedRepositoryRoot: "/repo-a",
+                loadRepositoryData: async () => ({
+                    branches: await gitOps.getBranches(),
+                    worktrees: [],
+                }),
+                onSelectedRepositoryRootChanged: async (root: string) => {
+                    await workspaceStore.update("intelligit.undockedSelectedRepositoryRoot", root);
+                },
+            },
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            iconTheme: {
+                initIconThemeData: ReturnType<typeof vi.fn>;
+                getFolderIconsByBranches: ReturnType<typeof vi.fn>;
+                getThemeData: ReturnType<typeof vi.fn>;
+                decorateWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        testProvider.iconTheme = {
+            initIconThemeData: vi.fn(async () => undefined),
+            getFolderIconsByBranches: vi.fn(async () => ({})),
+            getThemeData: vi.fn(() => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            })),
+            decorateWorkingFiles: vi.fn(async (files: unknown) => files),
+            getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
+                detail,
+                folderIconsByName: {},
+            })),
+            dispose: vi.fn(),
+        };
+        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
+
+        postMessageSpy.mockClear();
+        await send({ type: "ready" });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "repositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            selectedRepositoryRoot: "/repo-a",
+        });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            message: "draft A",
+        });
+
+        postMessageSpy.mockClear();
+        callRoots.length = 0;
+        await send({ type: "selectRepository", repositoryRoot: "/repo-b" });
+
+        expect(executor.setRoot).toHaveBeenCalledWith("/repo-b");
+        expect(workspaceStore.update).toHaveBeenCalledWith(
+            "intelligit.undockedSelectedRepositoryRoot",
+            "/repo-b",
+        );
+        expect(callRoots).toEqual(
+            expect.arrayContaining(["branches:/repo-b", "log:/repo-b", "status:/repo-b"]),
+        );
+        expect(callRoots).not.toEqual(expect.arrayContaining(["log:/repo-a", "status:/repo-a"]));
+        const restoreMessages = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "restoreCommitDraft"; message: string } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "restoreCommitDraft",
+            );
+        expect(restoreMessages.at(-1)).toEqual({ type: "restoreCommitDraft", message: "" });
+        expect(restoreMessages).not.toContainEqual({
+            type: "restoreCommitDraft",
+            message: "draft A",
+        });
+
+        executor.setRoot.mockClear();
+        await expect(
+            send({ type: "selectRepository", repositoryRoot: "/missing" }),
+        ).rejects.toThrow("Unknown repository root received from webview.");
+        expect(executor.setRoot).not.toHaveBeenCalled();
+        provider.dispose();
     });
 
     it("UndockedViewProvider drops stale commit-check replies after cache scope changes", async () => {

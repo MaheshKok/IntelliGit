@@ -15,6 +15,7 @@ import type {
     WorkingFile,
 } from "../../../types";
 import type { BranchAction, CommitAction, WorktreeAction } from "../../protocol/commitGraphTypes";
+import type { RepositoryViewIdentity } from "../../protocol/undockedMessages";
 import { BranchColumn } from "../BranchColumn";
 import { CommitList } from "../CommitList";
 import { CommitInfoPane } from "../commit-info/CommitInfoPane";
@@ -22,6 +23,7 @@ import theme from "../commit-panel/theme";
 import { t } from "../shared/i18n";
 import { ThemeIconFontFaces } from "../shared/components/ThemeIconFontFaces";
 import { CommitPanelPane } from "./CommitPanelPane";
+import { RepositoryColumn } from "./RepositoryColumn";
 import { UndockedHeader } from "./UndockedHeader";
 import type { CommitChecksValue, CommitPanelState } from "./commitPanelState";
 
@@ -40,6 +42,8 @@ export interface UndockedLayoutProps {
     branchWidth: number;
     graphWidth: number;
     infoWidth: number;
+    repositories: RepositoryViewIdentity[];
+    selectedRepositoryRoot: string | null;
     branches: Branch[];
     worktrees: GitWorktree[];
     selectedBranch: string | null;
@@ -76,6 +80,7 @@ export interface UndockedLayoutProps {
     onGraphDividerKeyDown: (e: React.KeyboardEvent) => void;
     onRightCommitPanelDividerMouseDown: (e: React.MouseEvent) => void;
     onRightCommitPanelDividerKeyDown: (e: React.KeyboardEvent) => void;
+    handleSelectRepository: (repositoryRoot: string) => void;
     handleSelectCommit: (hash: string) => void;
     handleFilterText: (text: string) => void;
     handleLoadMore: () => void;
@@ -118,6 +123,8 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         branchWidth,
         graphWidth,
         infoWidth,
+        repositories,
+        selectedRepositoryRoot,
         branches,
         worktrees,
         selectedBranch,
@@ -154,6 +161,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         onGraphDividerKeyDown,
         onRightCommitPanelDividerMouseDown,
         onRightCommitPanelDividerKeyDown,
+        handleSelectRepository,
         handleSelectCommit,
         handleFilterText,
         handleLoadMore,
@@ -187,6 +195,12 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
             <Box display="flex" height="100vh" overflow="hidden" flexDirection="column">
                 <UndockedHeader onDock={onDock} />
                 <Box ref={layoutRef} display="flex" flex={1} overflow="hidden" minHeight={0}>
+                    <RepositoryColumn
+                        repositories={repositories}
+                        selectedRepositoryRoot={selectedRepositoryRoot}
+                        onSelectRepository={handleSelectRepository}
+                    />
+
                     {/* Divider and commit panel — only on left side */}
                     {commitPanelPosition === "left" && (
                         <>

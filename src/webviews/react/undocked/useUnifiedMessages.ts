@@ -6,7 +6,11 @@
 
 import { useEffect, useRef } from "react";
 import type React from "react";
-import type { UnifiedInbound, UnifiedOutbound } from "../../protocol/undockedMessages";
+import type {
+    RepositoryViewIdentity,
+    UnifiedInbound,
+    UnifiedOutbound,
+} from "../../protocol/undockedMessages";
 import { getVsCodeApi } from "../shared/vscodeApi";
 import { normalizeSectionWidths, type SectionWidths } from "./sectionWidths";
 import type { CommitPanelAction, GraphAction } from "./commitPanelState";
@@ -24,6 +28,9 @@ export interface UseUnifiedMessagesParams {
     cpDispatch: React.Dispatch<CommitPanelAction>;
     loadingMore: React.MutableRefObject<boolean>;
     selectedHash: string | null;
+    selectedRepositoryRoot: string | null;
+    setRepositories: (repositories: RepositoryViewIdentity[]) => void;
+    setSelectedRepositoryRoot: (root: string) => void;
     markWidthsHydrated: () => void;
     setSectionWidths: (next: SectionWidths) => void;
     layoutRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -41,6 +48,9 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         cpDispatch,
         loadingMore,
         selectedHash,
+        selectedRepositoryRoot,
+        setRepositories,
+        setSelectedRepositoryRoot,
         markWidthsHydrated,
         setSectionWidths,
         layoutRef,
@@ -48,12 +58,28 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     selectedHashRef.current = selectedHash;
+    const selectedRepositoryRootRef = useRef<string | null>(selectedRepositoryRoot);
+    selectedRepositoryRootRef.current = selectedRepositoryRoot;
 
     useEffect(() => {
         const handler = (event: MessageEvent<UnifiedInbound>) => {
             const data = event.data;
 
             switch (data.type) {
+                case "repositories": {
+                    const previousRoot = selectedRepositoryRootRef.current;
+                    setRepositories(data.repositories);
+                    setSelectedRepositoryRoot(data.selectedRepositoryRoot);
+                    if (previousRoot !== data.selectedRepositoryRoot) {
+                        selectedRepositoryRootRef.current = data.selectedRepositoryRoot;
+                        selectedHashRef.current = null;
+                        loadingMore.current = false;
+                        graphDispatch({ type: "resetRepository" });
+                        cpDispatch({ type: "RESET_REPOSITORY" });
+                    }
+                    return;
+                }
+
                 // --- Graph-side messages ---
                 case "loadCommits":
                     loadingMore.current = false;

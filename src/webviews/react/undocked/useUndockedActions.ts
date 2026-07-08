@@ -34,6 +34,7 @@ export interface UseUndockedActionsParams {
 
 /** Callback set consumed by the undocked layout and child panes. */
 export interface UndockedActions {
+    handleSelectRepository: (repositoryRoot: string) => void;
     handleSelectCommit: (hash: string) => void;
     handleFilterText: (text: string) => void;
     handleLoadMore: () => void;
@@ -72,6 +73,14 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         checkedPaths,
         shouldPublishBranch,
     } = params;
+
+    const handleSelectRepository = useCallback((repositoryRoot: string) => {
+        loadingMore.current = false;
+        graphDispatch({ type: "resetRepository" });
+        cpDispatch({ type: "RESET_REPOSITORY" });
+        vscode.postMessage({ type: "selectRepository", repositoryRoot });
+        // react-doctor-disable-next-line react-doctor/exhaustive-deps
+    }, []);
 
     const handleSelectCommit = useCallback((hash: string) => {
         graphDispatch({ type: "selectCommit", hash });
@@ -186,6 +195,7 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
     }, []);
 
     return {
+        handleSelectRepository,
         handleSelectCommit,
         handleFilterText,
         handleLoadMore,

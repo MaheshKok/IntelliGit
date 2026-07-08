@@ -36,6 +36,7 @@ import {
 import { showTimedWarningMessage } from "../utils/notifications";
 
 type BranchDeleteSelection = Array<Branch | string>;
+const UNDOCKED_SELECTED_REPOSITORY_KEY = "intelligit.undockedSelectedRepositoryRoot";
 
 /** Extracts a branch name from current and legacy bulk-delete event payloads. */
 function getBranchSelectionName(branch: Branch | string): string {
@@ -115,6 +116,21 @@ export async function activateRepositoryMode(
     let undockedCommitDetailRequestSeq = 0;
     let repoRootUri = vscode.Uri.file(repoRoot);
     let undocked: UndockedViewProvider | undefined;
+    let undockedSelectedRepositoryRoot =
+        repositories.find(
+            (repository) =>
+                repository.root ===
+                context.workspaceState?.get<string>(UNDOCKED_SELECTED_REPOSITORY_KEY),
+        )?.root ?? activeRepository.root;
+    let undockedBranches: Branch[] = [];
+    let undockedWorktrees: GitWorktree[] = [];
+    let undockedRuntime:
+        | {
+              executor: GitExecutor;
+              gitOps: GitOps;
+              worktreeService: WorktreeService;
+          }
+        | undefined;
 
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
         hostMap: commitCheckHostMap,
@@ -153,6 +169,18 @@ export async function activateRepositoryMode(
     ): void => {
         repositories = nextRepositories;
         commitPanel.setRepositories(nextRepositories, activeRoot ?? undefined);
+        if (
+            !repositories.some((repository) => repository.root === undockedSelectedRepositoryRoot)
+        ) {
+            undockedSelectedRepositoryRoot = resolveUndockedRepository(
+                activeRoot ?? undefined,
+            ).root;
+            void context.workspaceState?.update(
+                UNDOCKED_SELECTED_REPOSITORY_KEY,
+                undockedSelectedRepositoryRoot,
+            );
+        }
+        undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);
     };
 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
@@ -223,6 +251,32 @@ export async function activateRepositoryMode(
     /** Returns the active branch name from the latest refreshed branch snapshot. */
     const getCurrentBranchName = (): string | undefined =>
         currentBranches.find((b) => b.isCurrent)?.name;
+    /** Returns the repository root currently selected by the independent undocked runtime. */
+    const getUndockedSelectedRepositoryRoot = (): string => undockedSelectedRepositoryRoot;
+
+    const resolveUndockedRepository = (root: string | undefined): DiscoveredRepository =>
+        repositories.find((repository) => repository.root === root) ??
+        repositories.find((repository) => repository.root === activeRepository.root) ??
+        activeRepository;
+
+    const loadCurrentUndockedRepositoryData = async (): Promise<{
+        branches: Branch[];
+        worktrees: GitWorktree[];
+    }> => {
+        if (!undockedRuntime) {
+            return { branches: [], worktrees: [] };
+        }
+        const [branches, refreshedWorktrees] = await Promise.all([
+            undockedRuntime.gitOps.getBranches(),
+            undockedRuntime.worktreeService.refresh().catch((err) => {
+                console.error("[IntelliGit] Undocked worktrees refresh failed:", err);
+                return [] as GitWorktree[];
+            }),
+        ]);
+        undockedWorktrees = refreshedWorktrees;
+        undockedBranches = undockedRuntime.worktreeService.decorateBranches(branches);
+        return { branches: undockedBranches, worktrees: undockedWorktrees };
+    };
 
     /** Clears selected commit state from every visible IntelliGit surface at once. */
     const clearSelection = (options?: { loading?: boolean }): void => {
@@ -265,7 +319,9 @@ export async function activateRepositoryMode(
             commitPanel.refresh(),
             refreshService.refreshMergeConflicts(),
         ];
-        if (undocked) {
+        if (undocked && undockedSelectedRepositoryRoot === repoRoot) {
+            undockedBranches = currentBranches;
+            undockedWorktrees = currentWorktrees;
             undocked.setBranches(currentBranches, currentWorktrees);
             refreshes.push(undocked.refresh());
         }
@@ -328,10 +384,7 @@ export async function activateRepositoryMode(
         sidebarGraph.setRepositoryLabel(repository.label);
         commitPanel.setRepositoryRootUri(repoRootUri);
         commitPanel.setRepositoryLabel(repository.label);
-        if (undocked) {
-            undocked.setRepositoryRootUri(repoRootUri);
-            undocked.setRepositoryLabel(repository.label);
-        }
+        undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);
         mergeConflicts.setWorkspaceRoot(repoRootUri);
         resetFileCountBadge();
         refreshService.dispose();
@@ -493,21 +546,55 @@ export async function activateRepositoryMode(
     const ensureUndockedPanel = (): UndockedViewProvider => {
         if (undocked) return undocked;
 
+        const initialUndockedRepository = resolveUndockedRepository(undockedSelectedRepositoryRoot);
+        undockedSelectedRepositoryRoot = initialUndockedRepository.root;
+        const undockedExecutor = new GitExecutor(initialUndockedRepository.root);
+        const undockedGitOps = new GitOps(undockedExecutor);
+        const undockedWorktreeService = new WorktreeService(
+            undockedExecutor,
+            getUndockedSelectedRepositoryRoot,
+        );
+        undockedRuntime = {
+            executor: undockedExecutor,
+            gitOps: undockedGitOps,
+            worktreeService: undockedWorktreeService,
+        };
+        const handleOpenUndockedCommitFileDiff = createOpenCommitFileDiffHandler({
+            executor: undockedExecutor,
+            gitOps: undockedGitOps,
+            getRepoRoot: getUndockedSelectedRepositoryRoot,
+        });
+
         undocked = new UndockedViewProvider(
             context.extensionUri,
-            gitOps,
-            repoRootUri,
+            undockedGitOps,
+            vscode.Uri.file(initialUndockedRepository.root),
             credentialStore,
             context.workspaceState,
             commitCheckHostMap,
             commitCheckSettings,
+            {
+                executor: undockedExecutor,
+                repositories,
+                selectedRepositoryRoot: initialUndockedRepository.root,
+                loadRepositoryData: loadCurrentUndockedRepositoryData,
+                onSelectedRepositoryRootChanged: async (root) => {
+                    undockedSelectedRepositoryRoot = root;
+                    await context.workspaceState?.update(UNDOCKED_SELECTED_REPOSITORY_KEY, root);
+                },
+            },
         );
-        undocked.setRepositoryLabel(activeRepository.label);
+        undocked.setRepositoryLabel(initialUndockedRepository.label);
+        undocked.setRepositories(repositories, initialUndockedRepository.root);
         context.subscriptions.push(undocked);
 
         context.subscriptions.push(
             undocked.onDidDispose(() => {
                 undocked = undefined;
+                undockedRuntime?.worktreeService.dispose();
+                undockedRuntime = undefined;
+                undockedBranches = [];
+                undockedWorktrees = [];
             }),
             undocked.onDockRequested(async () => {
                 await dockIntelliGit();
@@ -515,7 +602,7 @@ export async function activateRepositoryMode(
             undocked.onCommitSelected(async (hash) => {
                 const requestId = ++undockedCommitDetailRequestSeq;
                 try {
-                    const detail = await gitOps.getCommitDetail(hash);
+                    const detail = await undockedGitOps.getCommitDetail(hash);
                     if (requestId === undockedCommitDetailRequestSeq) {
                         undocked?.setCommitDetail(detail);
                     }
@@ -527,12 +614,12 @@ export async function activateRepositoryMode(
                 }
             }),
             undocked.onBranchAction(({ action, branchName }) => {
-                const branch = currentBranches.find((b) => b.name === branchName);
+                const branch = undockedBranches.find((b) => b.name === branchName);
                 if (!branch) return;
                 void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
             }),
             undocked.onWorktreeAction?.(({ action, path: worktreePath }) => {
-                const worktree = currentWorktrees.find(
+                const worktree = undockedWorktrees.find(
                     (candidate) => candidate.path === worktreePath,
                 );
                 if (!worktree) return;
@@ -552,7 +639,7 @@ export async function activateRepositoryMode(
                     new Set(branchSelection.map(getBranchSelectionName)),
                 );
                 const branches = requestedNames
-                    .map((name) => getCurrentBranches().find((branch) => branch.name === name))
+                    .map((name) => undockedBranches.find((branch) => branch.name === name))
                     .filter((branch): branch is Branch => Boolean(branch));
                 if (branches.length !== requestedNames.length) {
                     const found = new Set(branches.map((branch) => branch.name));
@@ -571,11 +658,17 @@ export async function activateRepositoryMode(
                     await handleCommitContextAction({
                         action,
                         hash,
-                        executor,
-                        gitOps,
-                        repoRoot,
-                        currentBranches,
-                        refreshAll: () => refreshService.refreshAll(),
+                        executor: undockedExecutor,
+                        gitOps: undockedGitOps,
+                        repoRoot: getUndockedSelectedRepositoryRoot(),
+                        currentBranches: undockedBranches,
+                        refreshAll: async () => {
+                            if (getUndockedSelectedRepositoryRoot() === repoRoot) {
+                                await refreshService.refreshAll();
+                                return;
+                            }
+                            await loadUndockedData();
+                        },
                     });
                 } catch (error) {
                     const message = getErrorMessage(error);
@@ -585,7 +678,7 @@ export async function activateRepositoryMode(
                     );
                 }
             }),
-            undocked.onOpenCommitFileDiff(handleOpenCommitFileDiff),
+            undocked.onOpenCommitFileDiff(handleOpenUndockedCommitFileDiff),
             undocked.onDidChangeWorkingTree(() => {
                 commitPanel.refreshSilent().catch((err) => {
                     console.error("[IntelliGit] Docked commit panel refresh failed:", err);
@@ -608,9 +701,9 @@ export async function activateRepositoryMode(
      */
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
-        currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
+        const { branches, worktrees } = await loadCurrentUndockedRepositoryData();
         if (!undocked) return;
-        undocked.setBranches(currentBranches, currentWorktrees);
+        undocked.setBranches(branches, worktrees);
         await undocked.refresh();
     };
 

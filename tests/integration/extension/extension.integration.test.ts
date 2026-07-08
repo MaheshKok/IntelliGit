@@ -53,6 +53,7 @@ const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
+const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
 let activeTextEditor: { document: { uri: unknown } } | undefined;
 const closeDocListeners: Array<
     (document: { uri: { scheme: string; toString: () => string } }) => void
@@ -451,6 +452,7 @@ class MockUndockedViewProvider {
     onDidDispose = this.disposeEmitter.event;
     setRepositoryLabel = vi.fn();
     setRepositoryRootUri = vi.fn();
+    setRepositories = vi.fn();
     setBranches = vi.fn();
     setCommitDetail = vi.fn();
     open = vi.fn(async () => undefined);
@@ -595,6 +597,10 @@ vi.mock("vscode", () => ({
             update: configurationUpdate,
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeWorkspaceFolders: vi.fn((listener: () => Promise<void> | void) => {
+            workspaceFolderListeners.push(listener);
+            return { dispose: vi.fn() };
+        }),
         fs: { writeFile },
         openTextDocument,
         registerTextDocumentContentProvider,
@@ -836,6 +842,7 @@ describe("extension integration", () => {
         mockDisposables.length = 0;
         textDocListeners.length = 0;
         activeTextEditorListeners.length = 0;
+        workspaceFolderListeners.length = 0;
         activeTextEditor = undefined;
         closeDocListeners.length = 0;
         saveDocListeners.length = 0;

@@ -35,7 +35,7 @@ import type {
     ThemeIconFont,
     ThemeTreeIcon,
 } from "../../types";
-import type { UnifiedOutbound } from "../protocol/undockedMessages";
+import type { RepositoryViewIdentity, UnifiedOutbound } from "../protocol/undockedMessages";
 
 // --- Helpers ----------------------------------------------------------------
 
@@ -82,6 +82,8 @@ const initialGraphState: GraphState = {
 
 function graphReducer(state: GraphState, action: GraphAction): GraphState {
     switch (action.type) {
+        case "resetRepository":
+            return { ...initialGraphState, iconFonts: state.iconFonts };
         case "loadCommits":
             return {
                 ...state,
@@ -171,6 +173,8 @@ function readInitialWidths(): SectionWidths {
 function App(): React.ReactElement {
     // --- Graph-side state ---
     const [graphState, graphDispatch] = useReducer(graphReducer, initialGraphState);
+    const [repositories, setRepositories] = useState<RepositoryViewIdentity[]>([]);
+    const [selectedRepositoryRoot, setSelectedRepositoryRoot] = useState<string | null>(null);
     const {
         commits,
         branches,
@@ -387,6 +391,9 @@ function App(): React.ReactElement {
         cpDispatch,
         loadingMore,
         selectedHash,
+        selectedRepositoryRoot,
+        setRepositories,
+        setSelectedRepositoryRoot,
         markWidthsHydrated,
         setSectionWidths,
         layoutRef,
@@ -431,6 +438,8 @@ function App(): React.ReactElement {
             branchWidth={branchWidth}
             graphWidth={graphWidth}
             infoWidth={infoWidth}
+            repositories={repositories}
+            selectedRepositoryRoot={selectedRepositoryRoot}
             branches={branches}
             worktrees={worktrees}
             selectedBranch={selectedBranch}
@@ -467,6 +476,7 @@ function App(): React.ReactElement {
             onGraphDividerKeyDown={onGraphDividerKeyDown}
             onRightCommitPanelDividerMouseDown={onRightCommitPanelDividerMouseDown}
             onRightCommitPanelDividerKeyDown={onRightCommitPanelDividerKeyDown}
+            handleSelectRepository={actions.handleSelectRepository}
             handleSelectCommit={actions.handleSelectCommit}
             handleFilterText={actions.handleFilterText}
             handleLoadMore={actions.handleLoadMore}
