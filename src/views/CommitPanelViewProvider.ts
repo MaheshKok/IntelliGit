@@ -2,6 +2,7 @@
 // Shows working tree changes with checkboxes, commit message input,
 // commit/push buttons, amend toggle, and stash management.
 // Frontend is a React + Chakra UI app loaded from dist/webview-commitpanel.js.
+import * as path from "path";
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
@@ -9,7 +10,10 @@ import { buildWebviewShellHtml } from "./webviewHtml";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { abortMergeWithConfirmation } from "./mergeAbort";
-import type { InboundMessage } from "../webviews/protocol/commitPanelMessages";
+import type {
+    CommitPanelRepositorySnapshot,
+    InboundMessage,
+} from "../webviews/protocol/commitPanelMessages";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
 import { runPublishBranchFlow } from "../services/publishService";
@@ -62,10 +66,13 @@ const MIN_VISIBLE_REFRESH_MS = 600;
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
+    private static readonly ignoredWatcherDirs = new Set([".git", "dist", "build", "out"]);
     private view?: vscode.WebviewView;
     private lastFileCount = 0;
     private repositories: DiscoveredRepository[] = [];
     private readonly runtimes = new Map<string, CommitPanelRepositoryRuntime>();
+    private readonly expandedRepositoryRoots = new Set<string>();
+    private readonly runtimeWatchers = new Map<string, vscode.Disposable>();
     private activeRepositoryRoot: string | null = null;
     private themeChangeDisposables: vscode.Disposable[] = [];
     private readonly iconTheme: IconThemeService;
@@ -150,6 +157,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         for (const runtime of this.runtimes.values()) {
             this.invalidateRuntime(runtime);
         }
+        this.disposeAllRuntimeWatchers();
+        this.expandedRepositoryRoots.clear();
         this.runtimes.clear();
         this.setRepositoriesInternal(
             [this.repositoryFromUri(repoRootUri)],
@@ -181,6 +190,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
         for (const [root, runtime] of this.runtimes) {
             if (nextRoots.has(root)) continue;
+            this.expandedRepositoryRoots.delete(root);
+            this.disposeRuntimeWatcher(root);
             this.invalidateRuntime(runtime);
             this.runtimes.delete(root);
         }
@@ -216,7 +227,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.commitDetailFolderIconsByName = {};
             this.branchFolderIconsByName = {};
             this.commitDetailSeq += 1;
-            this.updateViewCount(activeRuntime ? this.countChangedFiles(activeRuntime) : 0);
+            this.updateAggregateChangedFileCount();
             if (activeRuntime) {
                 this.postToWebview({
                     type: "restoreCommitDraft",
@@ -226,12 +237,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
         }
         this.postRepositoryListHydration();
+        this.syncRuntimeWatchers();
+        this.scanInitialCollapsedCounts();
+        if (activeChanged && previousActiveRoot !== null && activeRuntime) {
+            this.scanRepositoryFileCount(activeRuntime);
+        }
     }
 
     private postRepositoryListHydration(): void {
         this.postToWebview({
             type: "setRepositories",
-            repositories: this.repositories,
+            repositories: this.repositories.map((repository) => ({
+                ...repository,
+                changedFileCount: this.countChangedFiles(this.runtimes.get(repository.root)),
+            })),
             activeRepositoryRoot: this.activeRepositoryRoot,
         });
     }
@@ -273,14 +292,207 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private invalidateRuntime(runtime: CommitPanelRepositoryRuntime): void {
         runtime.requestSeq += 1;
         runtime.dataRefreshSeq += 1;
+        runtime.countRefreshSeq += 1;
     }
 
-    private countChangedFiles(runtime: CommitPanelRepositoryRuntime): number {
+    private countChangedFiles(runtime: CommitPanelRepositoryRuntime | undefined): number {
+        if (!runtime) return 0;
         const uniquePaths = new Set<string>();
         for (const file of runtime.files) {
             if (file.status !== "!") uniquePaths.add(file.path);
         }
         return uniquePaths.size;
+    }
+
+    /** Sums non-ignored unique changed paths per repository from cached runtime snapshots. */
+    private aggregateChangedFileCount(): number {
+        let count = 0;
+        for (const runtime of this.runtimes.values()) {
+            count += this.countChangedFiles(runtime);
+        }
+        return count;
+    }
+
+    /** Emits the native badge count using every repository runtime's last-known file snapshot. */
+    private updateAggregateChangedFileCount(): void {
+        const count = this.aggregateChangedFileCount();
+        this._onDidChangeFileCount.fire(count);
+        this.updateViewCount(count);
+    }
+
+    /**
+     * Builds the host-owned snapshot for one repository runtime.
+     *
+     * The active single-repository UI still consumes this as an `update` message; Task 4 can reuse
+     * the same payload for per-row accordion state without re-querying Git.
+     */
+    private snapshotForRuntime(
+        runtime: CommitPanelRepositoryRuntime,
+    ): CommitPanelRepositorySnapshot {
+        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
+        return {
+            repositoryRoot: runtime.repository.root,
+            repositoryLabel: runtime.repository.label,
+            changedFileCount: this.countChangedFiles(runtime),
+            files: runtime.files,
+            stashes: runtime.stashes,
+            stashFiles: runtime.stashFiles,
+            selectedStashIndex: runtime.selectedStashIndex,
+            folderIcon: folderIcons.folderIcon,
+            folderExpandedIcon: folderIcons.folderExpandedIcon,
+            folderIconsByName: runtime.folderIconsByName,
+            iconFonts,
+            currentBranchHasUpstream: runtime.currentBranchHasUpstreamCache,
+            hasRemotes: runtime.hasRemotesCache,
+            currentBranchAhead: runtime.currentBranchAheadCache,
+            currentBranchBehind: runtime.currentBranchBehindCache,
+            currentBranchName: runtime.currentBranchNameCache,
+            currentBranchUpstream: runtime.currentBranchUpstreamCache,
+            refreshing: false,
+            error: null,
+        };
+    }
+
+    /**
+     * Applies webview-expanded repository roots after validating them against host runtimes.
+     *
+     * Newly expanded rows become watched immediately and receive a full runtime refresh; collapsed
+     * rows retain their last scanned count until they are active or expanded again.
+     */
+    private async setExpandedRepositories(value: unknown): Promise<void> {
+        if (!Array.isArray(value)) {
+            throw new Error(`Expected string[] for 'repositoryRoots', got ${typeof value}`);
+        }
+        const nextRoots = new Set<string>();
+        for (const item of value) {
+            const root = assertString(item, "repositoryRoots");
+            if (!this.runtimes.has(root)) {
+                throw new Error("Unknown repository root received from webview.");
+            }
+            nextRoots.add(root);
+        }
+
+        const newlyExpanded = Array.from(nextRoots).filter(
+            (root) => !this.expandedRepositoryRoots.has(root),
+        );
+        this.expandedRepositoryRoots.clear();
+        for (const root of nextRoots) this.expandedRepositoryRoots.add(root);
+        this.syncRuntimeWatchers();
+        await Promise.all(
+            newlyExpanded
+                .map((root) => this.runtimes.get(root))
+                .filter((runtime): runtime is CommitPanelRepositoryRuntime => runtime !== undefined)
+                .map((runtime) => this.refreshRepositoryData(runtime, true)),
+        );
+        this.postRepositoryListHydration();
+    }
+
+    /** Starts one-time status scans for collapsed rows whose count has not been hydrated yet. */
+    private scanInitialCollapsedCounts(): void {
+        for (const runtime of this.runtimes.values()) {
+            if (runtime.hasScannedFileCount) continue;
+            if (runtime.repository.root === this.activeRepositoryRoot) continue;
+            if (this.expandedRepositoryRoots.has(runtime.repository.root)) continue;
+            this.scanRepositoryFileCount(runtime);
+        }
+    }
+
+    /**
+     * Refreshes only the lightweight changed-file count for a collapsed or newly active row.
+     *
+     * The scan is discarded if a full runtime refresh starts before the status result resolves.
+     */
+    private scanRepositoryFileCount(runtime: CommitPanelRepositoryRuntime): void {
+        const dataSeq = runtime.dataRefreshSeq;
+        const countRequestId = ++runtime.countRefreshSeq;
+        void runtime.gitOps
+            .getStatus({ includeIgnored: runtime.showIgnoredFiles })
+            .then((files) => {
+                if (
+                    dataSeq !== runtime.dataRefreshSeq ||
+                    countRequestId !== runtime.countRefreshSeq
+                ) {
+                    return;
+                }
+                runtime.files = files;
+                runtime.hasScannedFileCount = true;
+                this.updateAggregateChangedFileCount();
+                this.postRepositoryListHydration();
+            })
+            .catch(() => {});
+    }
+
+    /** Keeps provider-owned file watchers aligned with the active repository plus expanded rows. */
+    private syncRuntimeWatchers(): void {
+        const desiredRoots = new Set(this.expandedRepositoryRoots);
+        if (this.activeRepositoryRoot !== null) desiredRoots.add(this.activeRepositoryRoot);
+
+        for (const root of Array.from(this.runtimeWatchers.keys())) {
+            if (desiredRoots.has(root)) continue;
+            this.disposeRuntimeWatcher(root);
+        }
+
+        for (const root of desiredRoots) {
+            const runtime = this.runtimes.get(root);
+            if (!runtime || this.runtimeWatchers.has(root)) continue;
+            this.registerRuntimeWatcher(runtime);
+        }
+    }
+
+    /** Registers a repository-scoped filesystem watcher that refreshes only its owning runtime. */
+    private registerRuntimeWatcher(runtime: CommitPanelRepositoryRuntime): void {
+        try {
+            const watcher = vscode.workspace.createFileSystemWatcher(
+                new vscode.RelativePattern(runtime.repoRootUri, "**/*"),
+            );
+            const refresh = (uri: vscode.Uri) => {
+                if (!this.shouldRefreshForWatcherUri(runtime, uri)) return;
+                this.refreshDataWithErrorHandling(true, runtime);
+            };
+            const disposables = [
+                watcher.onDidChange(refresh),
+                watcher.onDidCreate(refresh),
+                watcher.onDidDelete(refresh),
+                watcher,
+            ];
+            this.runtimeWatchers.set(runtime.repository.root, {
+                dispose: () => {
+                    for (const disposable of disposables) {
+                        disposable.dispose();
+                    }
+                },
+            });
+        } catch {
+            /* File watching may be unavailable for virtual or test roots. */
+        }
+    }
+
+    /** Filters watcher events to real working-tree paths and skips noisy generated/Git folders. */
+    private shouldRefreshForWatcherUri(
+        runtime: CommitPanelRepositoryRuntime,
+        uri: vscode.Uri,
+    ): boolean {
+        const relativePath = path.relative(runtime.repository.root, uri.fsPath);
+        if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+            return false;
+        }
+        const [topLevelDir] = relativePath.split(/[\\/]/);
+        return !CommitPanelViewProvider.ignoredWatcherDirs.has(topLevelDir ?? "");
+    }
+
+    /** Disposes the provider-owned watcher for one repository root if it is currently registered. */
+    private disposeRuntimeWatcher(root: string): void {
+        const watcher = this.runtimeWatchers.get(root);
+        if (!watcher) return;
+        watcher.dispose();
+        this.runtimeWatchers.delete(root);
+    }
+
+    /** Disposes every provider-owned repository watcher during root resets and provider teardown. */
+    private disposeAllRuntimeWatchers(): void {
+        for (const root of Array.from(this.runtimeWatchers.keys())) {
+            this.disposeRuntimeWatcher(root);
+        }
     }
 
     private actionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
@@ -409,7 +621,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             if (!webviewView.visible) return;
             const runtime = this.requireActiveRuntime();
             this.postWorkingTreeSnapshot(runtime);
-            this.refreshDataWithErrorHandling(true, runtime);
+            this.refreshAllRepositoriesWithErrorHandling(true);
         });
         this.postRepositoryListHydration();
         this.updateViewCount(this.lastFileCount);
@@ -419,12 +631,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      */
     async refresh(): Promise<void> {
         const runtime = this.requireActiveRuntime();
-        await this.refreshData(false, runtime);
+        await this.refreshAllRepositories(false);
         await this.refreshGraphData(runtime);
     }
     /** Refreshes working-tree data without showing webview or context-key spinner state. */
     async refreshSilent(): Promise<void> {
-        await this.refreshData(true, this.requireActiveRuntime());
+        await this.refreshAllRepositories(true);
     }
     /**
      * Runs a visible refresh for explicit user requests in the Changes view.
@@ -452,24 +664,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * the webview was hidden or loading.
      */
     private postWorkingTreeSnapshot(runtime: CommitPanelRepositoryRuntime): void {
-        const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "update",
-            repositoryRoot: runtime.repository.root,
-            files: runtime.files,
-            stashes: runtime.stashes,
-            selectedStashIndex: runtime.selectedStashIndex,
-            stashFiles: runtime.stashFiles,
-            folderIcon: folderIcons.folderIcon,
-            folderExpandedIcon: folderIcons.folderExpandedIcon,
-            folderIconsByName: runtime.folderIconsByName,
-            iconFonts,
-            currentBranchHasUpstream: runtime.currentBranchHasUpstreamCache,
-            hasRemotes: runtime.hasRemotesCache,
-            currentBranchAhead: runtime.currentBranchAheadCache,
-            currentBranchBehind: runtime.currentBranchBehindCache,
-            currentBranchName: runtime.currentBranchNameCache,
-            currentBranchUpstream: runtime.currentBranchUpstreamCache,
+            ...this.snapshotForRuntime(runtime),
         });
     }
 
@@ -483,6 +680,35 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private async refreshData(
         silent = false,
         runtime: CommitPanelRepositoryRuntime = this.requireActiveRuntime(),
+    ): Promise<void> {
+        await this.refreshRepositoryData(runtime, silent);
+    }
+
+    /** Refreshes the active runtime plus any expanded rows in parallel. */
+    private async refreshAllRepositories(silent: boolean): Promise<void> {
+        const runtimes = this.watchedRuntimes();
+        await Promise.all(runtimes.map((runtime) => this.refreshRepositoryData(runtime, silent)));
+    }
+
+    /** Returns the unique runtime set that should stay fresh in the docked commit panel. */
+    private watchedRuntimes(): CommitPanelRepositoryRuntime[] {
+        const roots = new Set<string>();
+        if (this.activeRepositoryRoot !== null) roots.add(this.activeRepositoryRoot);
+        for (const root of this.expandedRepositoryRoots) roots.add(root);
+        return Array.from(roots)
+            .map((root) => this.runtimes.get(root))
+            .filter((runtime): runtime is CommitPanelRepositoryRuntime => runtime !== undefined);
+    }
+
+    /**
+     * Reloads full working-tree, stash, icon, and branch metadata for exactly one runtime.
+     *
+     * Request sequencing prevents stale async responses from overwriting a later refresh for the
+     * same repository while leaving other repository rows untouched.
+     */
+    private async refreshRepositoryData(
+        runtime: CommitPanelRepositoryRuntime,
+        silent: boolean,
     ): Promise<void> {
         const refreshStartedAt = Date.now();
         const refreshRequestId = ++runtime.dataRefreshSeq;
@@ -519,7 +745,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 })),
             ]);
             const files = await this.iconTheme.decorateWorkingFiles(status).catch(() => status);
-            const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 runtime.selectedStashIndex !== null &&
                 stashes.some((entry) => entry.index === runtime.selectedStashIndex);
@@ -552,29 +777,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 runtime.currentBranchBehindCache = currentBranchStatus.behind;
                 runtime.currentBranchNameCache = currentBranchStatus.name;
                 runtime.currentBranchUpstreamCache = currentBranchStatus.upstream;
-                const count = this.countChangedFiles(runtime);
-                if (runtime === this.getActiveRuntime()) {
-                    this._onDidChangeFileCount.fire(count);
-                    this.updateViewCount(count);
-                }
+                runtime.hasScannedFileCount = true;
+                this.updateAggregateChangedFileCount();
                 this.postToWebview({
                     type: "update",
-                    repositoryRoot: runtime.repository.root,
-                    files,
-                    stashes,
-                    stashFiles,
-                    selectedStashIndex,
-                    folderIcon: folderIcons.folderIcon,
-                    folderExpandedIcon: folderIcons.folderExpandedIcon,
-                    folderIconsByName: runtime.folderIconsByName,
-                    iconFonts,
-                    currentBranchHasUpstream: currentBranchStatus.hasUpstream,
-                    hasRemotes: currentBranchStatus.hasRemotes,
-                    currentBranchAhead: currentBranchStatus.ahead,
-                    currentBranchBehind: currentBranchStatus.behind,
-                    currentBranchName: currentBranchStatus.name,
-                    currentBranchUpstream: currentBranchStatus.upstream,
+                    ...this.snapshotForRuntime(runtime),
                 });
+                this.postRepositoryListHydration();
             }
         } finally {
             if (!silent) {
@@ -742,7 +951,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 this.postRepositoryListHydration();
                 if (runtime) {
                     this.postWorkingTreeSnapshot(runtime);
-                    await this.refreshData(true, runtime);
+                    await this.refreshAllRepositories(true);
                     await this.refreshGraphData(runtime);
                 }
                 this.postToWebview({
@@ -754,6 +963,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             }
             case "refresh":
                 await this.refreshFromUserAction(scopedRuntime());
+                break;
+            case "setExpandedRepositories":
+                await this.setExpandedRepositories(msg.repositoryRoots);
                 break;
             case "abortMerge":
                 await this.abortMerge(scopedRuntime());
@@ -1114,6 +1326,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
      * Releases theme listeners, icon resources, and event emitters owned by the Changes provider.
      */
     dispose(): void {
+        this.disposeAllRuntimeWatchers();
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onDidChangeFileCount.dispose();
@@ -1215,10 +1428,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.postToWebview({ type: "error", message });
         });
     }
+    /** Runs aggregate docked-row refreshes from listeners without leaking rejected promises. */
+    private refreshAllRepositoriesWithErrorHandling(silent = false): void {
+        this.refreshAllRepositories(silent).catch((err) => {
+            const message = getErrorMessage(err);
+            vscode.window.showErrorMessage(message);
+            this.postToWebview({ type: "error", message });
+        });
+    }
     private registerThemeChangeListeners(): void {
         this.themeChangeDisposables.push(
             ...registerThemeChangeListeners(() =>
-                this.refreshDataWithErrorHandling(false, this.getActiveRuntime()),
+                this.refreshAllRepositoriesWithErrorHandling(false),
             ),
         );
     }

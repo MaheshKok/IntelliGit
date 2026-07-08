@@ -33,6 +33,53 @@ interface CommitPanelRepositorySummary {
     root: string;
     /** Stable display label for repository pickers and headings. */
     label: string;
+    /** Last-known non-ignored changed-file count for collapsed repository rows. */
+    changedFileCount: number;
+}
+
+/** Full host-side snapshot for one commit-panel repository runtime. */
+export interface CommitPanelRepositorySnapshot {
+    /** Absolute filesystem path to the Git repository root that produced this snapshot. */
+    repositoryRoot?: string;
+    /** Stable display label for repository rows. */
+    repositoryLabel?: string;
+    /** Last-known non-ignored unique changed-file count for this repository. */
+    changedFileCount?: number;
+    /** Working-tree and index entries parsed from `git status` and numstat output. */
+    files: WorkingFile[];
+    /** Stashed changes parsed from `git stash list`; indices are not stable after refresh. */
+    stashes: StashEntry[];
+    /** Files for `selectedStashIndex`, parsed from `git stash show` output. */
+    stashFiles: WorkingFile[];
+    /** Selected `stash@{n}` index, or `null` when no stash entry is available. */
+    selectedStashIndex: number | null;
+    /** Default collapsed folder icon for file trees when the theme resolves one. */
+    folderIcon?: ThemeTreeIcon;
+    /** Default expanded folder icon for file trees when the theme resolves one. */
+    folderExpandedIcon?: ThemeTreeIcon;
+    /** Folder icon overrides keyed by file-icon-theme folder name. */
+    folderIconsByName?: ThemeFolderIconMap;
+    /** Webview-safe font-face payloads needed to render glyph-based file icons. */
+    iconFonts?: ThemeIconFont[];
+    /**
+     * Whether the current branch has an upstream; absent producers are treated as
+     * `true` so older payloads do not incorrectly switch the UI to Publish Branch.
+     */
+    currentBranchHasUpstream?: boolean;
+    /** Whether the repository has at least one configured remote for fetch operations. */
+    hasRemotes?: boolean;
+    /** Number of commits the current branch is ahead of its upstream, when known. */
+    currentBranchAhead?: number;
+    /** Number of commits the current branch is behind its upstream, when known. */
+    currentBranchBehind?: number;
+    /** Current local branch name, when the repository is not detached. */
+    currentBranchName?: string | null;
+    /** Current branch upstream tracking ref, when configured. */
+    currentBranchUpstream?: string | null;
+    /** Whether this repository is currently running a host refresh. */
+    refreshing?: boolean;
+    /** Last repository-scoped refresh error, or `null` when the latest snapshot is healthy. */
+    error?: string | null;
 }
 
 /**
@@ -52,6 +99,12 @@ export type OutboundMessage =
           /** User event requesting a fresh working-tree and stash snapshot. */
           type: "refresh";
       }>
+    | {
+          /** Repository accordion state sent by the webview so the host can watch expanded rows. */
+          type: "setExpandedRepositories";
+          /** Absolute repository roots that are currently expanded in the docked commit panel. */
+          repositoryRoots: string[];
+      }
     | RepositoryScopedMessage<{
           /** Command aborting the active merge after host confirmation. */
           type: "abortMerge";
@@ -224,41 +277,10 @@ export type InboundMessage =
           /** Active host repository root, or `null` when no repository is selected. */
           activeRepositoryRoot: string | null;
       }
-    | RepositoryIdentifiedMessage<{
+    | ({
           /** State update for working-tree files, stashes, and render-only icon metadata. */
           type: "update";
-          /** Working-tree and index entries parsed from `git status` and numstat output. */
-          files: WorkingFile[];
-          /** Stashed changes parsed from `git stash list`; indices are not stable after refresh. */
-          stashes: StashEntry[];
-          /** Files for `selectedStashIndex`, parsed from `git stash show` output. */
-          stashFiles: WorkingFile[];
-          /** Selected `stash@{n}` index, or `null` when no stash entry is available. */
-          selectedStashIndex: number | null;
-          /** Default collapsed folder icon for file trees when the theme resolves one. */
-          folderIcon?: ThemeTreeIcon;
-          /** Default expanded folder icon for file trees when the theme resolves one. */
-          folderExpandedIcon?: ThemeTreeIcon;
-          /** Folder icon overrides keyed by file-icon-theme folder name. */
-          folderIconsByName?: ThemeFolderIconMap;
-          /** Webview-safe font-face payloads needed to render glyph-based file icons. */
-          iconFonts?: ThemeIconFont[];
-          /**
-           * Whether the current branch has an upstream; absent producers are treated as
-           * `true` so older payloads do not incorrectly switch the UI to Publish Branch.
-           */
-          currentBranchHasUpstream?: boolean;
-          /** Whether the repository has at least one configured remote for fetch operations. */
-          hasRemotes?: boolean;
-          /** Number of commits the current branch is ahead of its upstream, when known. */
-          currentBranchAhead?: number;
-          /** Number of commits the current branch is behind its upstream, when known. */
-          currentBranchBehind?: number;
-          /** Current local branch name, when the repository is not detached. */
-          currentBranchName?: string | null;
-          /** Current branch upstream tracking ref, when configured. */
-          currentBranchUpstream?: string | null;
-      }>
+      } & CommitPanelRepositorySnapshot)
     | RepositoryIdentifiedMessage<{
           /** State update restoring the repository-scoped commit draft from workspace state. */
           type: "restoreCommitDraft";

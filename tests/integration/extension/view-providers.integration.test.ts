@@ -37,6 +37,56 @@ class FakeThemeColor {
     constructor(public readonly id: string) {}
 }
 
+class FakeRelativePattern {
+    constructor(
+        public readonly baseUri: { fsPath?: string; path?: string },
+        public readonly pattern: string,
+    ) {}
+}
+
+class FakeFileSystemWatcher {
+    private changeListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
+    private createListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
+    private deleteListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
+    dispose = vi.fn();
+
+    constructor(public readonly pattern: unknown) {}
+
+    onDidChange = vi.fn((listener: (uri: { fsPath: string; path: string }) => void) => {
+        this.changeListeners.push(listener);
+        return { dispose: vi.fn(() => this.removeListener(this.changeListeners, listener)) };
+    });
+
+    onDidCreate = vi.fn((listener: (uri: { fsPath: string; path: string }) => void) => {
+        this.createListeners.push(listener);
+        return { dispose: vi.fn(() => this.removeListener(this.createListeners, listener)) };
+    });
+
+    onDidDelete = vi.fn((listener: (uri: { fsPath: string; path: string }) => void) => {
+        this.deleteListeners.push(listener);
+        return { dispose: vi.fn(() => this.removeListener(this.deleteListeners, listener)) };
+    });
+
+    trigger(kind: "change" | "create" | "delete", fsPath: string): void {
+        const uri = { fsPath, path: fsPath };
+        const listeners =
+            kind === "change"
+                ? this.changeListeners
+                : kind === "create"
+                  ? this.createListeners
+                  : this.deleteListeners;
+        for (const listener of listeners) listener(uri);
+    }
+
+    private removeListener(
+        listeners: Array<(uri: { fsPath: string; path: string }) => void>,
+        listener: (uri: { fsPath: string; path: string }) => void,
+    ): void {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+    }
+}
+
 const showErrorMessage = vi.fn(async () => undefined);
 const showWarningMessage = vi.fn(async () => undefined);
 const showInformationMessage = vi.fn(async () => undefined);
@@ -44,6 +94,7 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
+const fileSystemWatchers: FakeFileSystemWatcher[] = [];
 const registeredCommands = new Map<string, CommandHandler>();
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
 let activeTextEditor: { document: { uri: unknown } } | undefined;
@@ -113,6 +164,7 @@ const vscodeMock = {
     TreeItem: FakeTreeItem,
     ThemeIcon: FakeThemeIcon,
     ThemeColor: FakeThemeColor,
+    RelativePattern: FakeRelativePattern,
     env: {
         language: "en",
     },
@@ -212,6 +264,11 @@ const vscodeMock = {
             }),
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+        createFileSystemWatcher: vi.fn((pattern: unknown) => {
+            const watcher = new FakeFileSystemWatcher(pattern);
+            fileSystemWatchers.push(watcher);
+            return watcher;
+        }),
     },
     authentication: {
         onDidChangeSessions: vi.fn(() => ({ dispose: vi.fn() })),
@@ -229,6 +286,7 @@ const httpGetJsonSpy = vi.hoisted(() => vi.fn());
 const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 const activeGitRoot = vi.hoisted(() => ({ value: "" }));
+const gitStatusByRoot = vi.hoisted(() => new Map<string, unknown[]>());
 const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
 const branchRefreshControls = vi.hoisted(
     () =>
@@ -261,10 +319,14 @@ const makeBranchesForRoot = vi.hoisted(() => (root: string) => [
 vi.mock("vscode", () => vscodeMock);
 vi.mock("../../../src/git/executor", () => ({
     GitExecutor: class {
-        constructor(public readonly root: string) {
+        public root: string;
+
+        constructor(root: string) {
+            this.root = root;
             activeGitRoot.value = root;
         }
         setRoot = vi.fn((root: string) => {
+            this.root = root;
             activeGitRoot.value = root;
             gitExecutorSetRoot(root);
         });
@@ -272,8 +334,14 @@ vi.mock("../../../src/git/executor", () => ({
 }));
 vi.mock("../../../src/git/operations", () => ({
     GitOps: class {
+        constructor(private readonly executor?: { root?: string }) {}
+
+        private currentRoot(): string {
+            return this.executor?.root ?? activeGitRoot.value;
+        }
+
         getBranches = vi.fn(async () => {
-            const root = activeGitRoot.value;
+            const root = this.currentRoot();
             if (!deferBranchRefreshes.active) return makeBranchesForRoot(root);
             return new Promise<unknown[]>((resolve) => {
                 branchRefreshControls.push({ root, resolve });
@@ -284,7 +352,7 @@ vi.mock("../../../src/git/operations", () => ({
         getRemoteUrl = vi.fn(async () => "https://github.com/owner/repo.git");
         getUnpushedCommitHashes = vi.fn(async () => []);
         hasUncommittedChanges = vi.fn(async () => false);
-        getStatus = vi.fn(async () => []);
+        getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
         listStashes = vi.fn(async () => []);
         getConflictFilesDetailed = vi.fn(async () => []);
     },
@@ -547,6 +615,39 @@ function refreshingStates(): boolean[] {
         .map((message) => message.active);
 }
 
+function lastSetRepositoriesMessage():
+    | {
+          type: "setRepositories";
+          repositories: Array<{ root: string; label: string; changedFileCount: number }>;
+          activeRepositoryRoot: string | null;
+      }
+    | undefined {
+    const messages = postMessageSpy.mock.calls
+        .map(([message]) => message)
+        .filter(
+            (
+                message,
+            ): message is {
+                type: "setRepositories";
+                repositories: Array<{ root: string; label: string; changedFileCount: number }>;
+                activeRepositoryRoot: string | null;
+            } =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "setRepositories",
+        );
+    return messages.at(-1);
+}
+
+function activeWatcherForRoot(root: string): FakeFileSystemWatcher | undefined {
+    return fileSystemWatchers.find((watcher) => {
+        if (watcher.dispose.mock.calls.length > 0) return false;
+        const pattern = watcher.pattern as { baseUri?: { fsPath?: string; path?: string } };
+        return (pattern.baseUri?.fsPath ?? pattern.baseUri?.path) === root;
+    });
+}
+
 // Returns the snapshot from the most recent setCommitChecks postMessage, or undefined
 // if the view never emitted one. Used by the self-hosted GitLab routing tests to assert
 // on the snapshot's state and error text.
@@ -603,9 +704,11 @@ describe("view providers integration", () => {
         activeTextEditorListeners.length = 0;
         activeTextEditor = undefined;
         activeGitRoot.value = "";
+        gitStatusByRoot.clear();
         deferBranchRefreshes.active = false;
         branchRefreshControls.length = 0;
         refreshServiceInstances.length = 0;
+        fileSystemWatchers.length = 0;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -1720,7 +1823,7 @@ describe("view providers integration", () => {
         expect(testProvider.repositories).toEqual([repoB]);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setRepositories",
-            repositories: [repoB],
+            repositories: [{ ...repoB, changedFileCount: 1 }],
             activeRepositoryRoot: repoB.root,
         });
         provider.dispose();
@@ -1769,9 +1872,192 @@ describe("view providers integration", () => {
         });
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setRepositories",
-            repositories: [repoA, repoB],
+            repositories: [
+                { ...repoA, changedFileCount: 0 },
+                { ...repoB, changedFileCount: 0 },
+            ],
             activeRepositoryRoot: repoB.root,
         });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider aggregates changed-file counts across repository runtimes", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+            { path: "src/b.ts", status: "M", staged: true, additions: 2, deletions: 0 },
+            { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
+            { path: "src/c.ts", status: "A", staged: false, additions: 1, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        await flushMicrotasks();
+
+        expect(counts).toContain(3);
+        expect(lastSetRepositoriesMessage()?.repositories).toEqual([
+            { root: "/repo", label: "Repo A", changedFileCount: 1 },
+            { root: "/repo-b", label: "Repo B", changedFileCount: 2 },
+        ]);
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider scans initial collapsed repository counts without full row refresh", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+            { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        await flushMicrotasks();
+
+        expect(lastSetRepositoriesMessage()?.repositories).toEqual([
+            { root: "/repo", label: "Repo A", changedFileCount: 1 },
+            { root: "/repo-b", label: "Repo B", changedFileCount: 1 },
+        ]);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider rejects unknown expanded repository roots", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockClear();
+        showErrorMessage.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/unknown"] });
+
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Unknown repository root received from webview.",
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Unknown repository root received from webview.",
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider watches active and expanded repositories with targeted refreshes", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        await flushMicrotasks();
+
+        expect(activeWatcherForRoot("/repo")).toBeDefined();
+        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+        const activeWatcher = activeWatcherForRoot("/repo");
+        const expandedWatcher = activeWatcherForRoot("/repo-b");
+        expect(activeWatcher).toBeDefined();
+        expect(expandedWatcher).toBeDefined();
+
+        gitOps.getStatus.mockClear();
+        repoBGitOps.getStatus.mockClear();
+        postMessageSpy.mockClear();
+        expandedWatcher!.trigger("change", "/repo-b/src/b.ts");
+        for (let i = 0; i < 10; i += 1) {
+            await flushMicrotasks();
+            if (
+                postMessageSpy.mock.calls.some(([message]) =>
+                    expect
+                        .objectContaining({ type: "update", repositoryRoot: "/repo-b" })
+                        .asymmetricMatch(message),
+                )
+            ) {
+                break;
+            }
+        }
+
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+        );
+
+        gitOps.getStatus.mockClear();
+        repoBGitOps.getStatus.mockClear();
+        postMessageSpy.mockClear();
+        activeWatcher!.trigger("change", "/repo/src/a.ts");
+        for (let i = 0; i < 10; i += 1) {
+            await flushMicrotasks();
+            if (
+                postMessageSpy.mock.calls.some(([message]) =>
+                    expect
+                        .objectContaining({ type: "update", repositoryRoot: "/repo" })
+                        .asymmetricMatch(message),
+                )
+            ) {
+                break;
+            }
+        }
+
+        expect(gitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.getStatus).not.toHaveBeenCalled();
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update", repositoryRoot: "/repo" }),
+        );
+
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: [] });
+        expect(expandedWatcher!.dispose).toHaveBeenCalled();
+        expect(activeWatcherForRoot("/repo")).toBeDefined();
+        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider disposes expanded repository watchers when rows are removed", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+        const expandedWatcher = activeWatcherForRoot("/repo-b");
+        expect(expandedWatcher).toBeDefined();
+
+        provider.setRepositories([{ root: "/repo", label: "Repo A" }], "/repo");
+
+        expect(expandedWatcher!.dispose).toHaveBeenCalled();
+        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
         provider.dispose();
     });
 

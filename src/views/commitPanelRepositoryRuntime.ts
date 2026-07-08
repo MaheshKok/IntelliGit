@@ -32,6 +32,8 @@ export class CommitPanelRepositoryRuntime {
     loadingMore = false;
     requestSeq = 0;
     dataRefreshSeq = 0;
+    countRefreshSeq = 0;
+    hasScannedFileCount = false;
 
     /**
      * Creates a runtime for one repository root.
