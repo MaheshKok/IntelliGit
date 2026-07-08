@@ -790,6 +790,19 @@ describe("view providers integration", () => {
             } as never,
         );
         expect(activeTextEditorListeners).toHaveLength(1);
+        expect(registeredCommands.has("intelligit.sidebarRepositoryIndicator")).toBe(true);
+        expect(registeredCommands.has("intelligit.sidebarRepositoryIndicator.color")).toBe(true);
+        expect(
+            await registeredCommands.get("intelligit.sidebarRepositoryIndicator")!(),
+        ).toBeUndefined();
+        expect(
+            await registeredCommands.get("intelligit.sidebarRepositoryIndicator.color")!(),
+        ).toBeUndefined();
+        expect(executeCommand).toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.hasMultipleRepositories",
+            true,
+        );
         expect(captured.commitPanel!.repositories).toEqual([
             { root: repoA, label: "workspace" },
             { root: repoB, label: "app" },
@@ -839,6 +852,26 @@ describe("view providers integration", () => {
         expect(captured.commitPanel!.expandedRepositoryRoots.has(repoA)).toBe(true);
         expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
         expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
+    });
+
+    it("clears the multi-repository context for single-repository activation", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+
+        await activateRepositoryMode(
+            {
+                extensionUri: vscodeMock.Uri.file("/ext"),
+                subscriptions: [],
+                workspaceState: createMemento(),
+                secrets: {},
+            } as never,
+            [{ root: "/workspace", label: "workspace" }],
+        );
+
+        expect(executeCommand).toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.hasMultipleRepositories",
+            false,
+        );
     });
 
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
@@ -1626,6 +1659,50 @@ describe("view providers integration", () => {
         expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
         provider.dispose();
+    });
+
+    it("CommitGraphViewProvider shows repository labels in the sidebar graph description only when enabled", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const sidebarProvider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+            {
+                scriptFile: "webview-compactcommitgraph.js",
+                title: "Graph",
+                showRepositoryLabel: true,
+            },
+        );
+        const sidebarWebview = createWebviewView();
+
+        sidebarProvider.setRepositoryLabel("repo-a");
+        sidebarProvider.resolveWebviewView(
+            sidebarWebview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        expect(sidebarWebview.view.description).toBe("repo-a");
+        await sidebarWebview.send({ type: "ready" });
+
+        sidebarProvider.setRepositoryLabel("repo-b");
+        expect(sidebarWebview.view.description).toBe("repo-b");
+
+        const fullGraphProvider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+            { title: "Graph" },
+        );
+        const fullGraphWebview = createWebviewView();
+
+        fullGraphProvider.resolveWebviewView(
+            fullGraphWebview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        fullGraphProvider.setRepositoryLabel("repo-a");
+        expect(fullGraphWebview.view.description).toBeUndefined();
     });
 
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {

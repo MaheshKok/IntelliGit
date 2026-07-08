@@ -23,9 +23,11 @@ import { MergeEditorPanel } from "../views/MergeEditorPanel";
 import { RefreshService } from "../views/RefreshService";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
 import {
+    HAS_MULTIPLE_REPOSITORIES_CONTEXT,
     type RepositoryViewProviders,
     SELECTED_REPOSITORY_KEY,
     selectInitialRepository,
+    setViewContext,
     workspaceRoots,
 } from "./common";
 import { registerRepositoryCommands } from "./repositoryCommands";
@@ -83,6 +85,7 @@ export async function activateRepositoryMode(
     viewProviders: RepositoryViewProviders = {},
 ): Promise<void> {
     let repositories = repositoriesForActivation;
+    void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, repositories.length > 1);
     let activeRepository = selectInitialRepository(
         repositories,
         context.workspaceState?.get<string>(SELECTED_REPOSITORY_KEY),
@@ -143,6 +146,7 @@ export async function activateRepositoryMode(
         {
             scriptFile: "webview-compactcommitgraph.js",
             title: vscode.l10n.t("Graph"),
+            showRepositoryLabel: repositories.length > 1,
             hostMap: commitCheckHostMap,
             settings: commitCheckSettings,
         },
@@ -817,6 +821,11 @@ export async function activateRepositoryMode(
 
     context.subscriptions.push(
         mergeConflictsView,
+        vscode.commands.registerCommand("intelligit.sidebarRepositoryIndicator", () => undefined),
+        vscode.commands.registerCommand(
+            "intelligit.sidebarRepositoryIndicator.color",
+            () => undefined,
+        ),
         vscode.commands.registerCommand(
             "intelligit.commitChecks.refreshBadges",
             refreshCommitCheckBadges,

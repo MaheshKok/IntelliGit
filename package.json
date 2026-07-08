@@ -261,6 +261,24 @@
                 }
             },
             {
+                "command": "intelligit.sidebarRepositoryIndicator",
+                "title": "%command.selectRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/select-repository-white.svg",
+                    "dark": "media/icons/select-repository-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.sidebarRepositoryIndicator.color",
+                "title": "%command.selectRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/select-repository-color.svg",
+                    "dark": "media/icons/select-repository-color.svg"
+                }
+            },
+            {
                 "command": "intelligit.checkout",
                 "title": "%command.checkout%",
                 "category": "%intelligit%"
@@ -509,6 +527,14 @@
                     "when": "false"
                 },
                 {
+                    "command": "intelligit.sidebarRepositoryIndicator",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.sidebarRepositoryIndicator.color",
+                    "when": "false"
+                },
+                {
                     "command": "intelligit.graph.sync",
                     "when": "false"
                 },
@@ -590,6 +616,16 @@
                     "command": "intelligit.openUndocked.color",
                     "when": "view == intelligit.commitGraph && config.intelligit.undockableWindowButtonVisability && config.intelligit.icons == color",
                     "group": "navigation"
+                },
+                {
+                    "command": "intelligit.sidebarRepositoryIndicator",
+                    "when": "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons != color",
+                    "group": "navigation@0"
+                },
+                {
+                    "command": "intelligit.sidebarRepositoryIndicator.color",
+                    "when": "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons == color",
+                    "group": "navigation@0"
                 },
                 {
                     "command": "intelligit.graph.sync",

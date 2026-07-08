@@ -24,6 +24,11 @@ export const NO_REPOSITORY_MESSAGE = "No Git repositories found in this workspac
 export const HAS_MERGE_CONFLICTS_CONTEXT = "intelligit.hasMergeConflicts";
 
 /**
+ * VS Code when-clause key that enables UI for multi-repository workspaces.
+ */
+export const HAS_MULTIPLE_REPOSITORIES_CONTEXT = "intelligit.hasMultipleRepositories";
+
+/**
  * Updates a VS Code when-clause context key for IntelliGit views and commands.
  *
  * This is a host-wide side effect and does not create a disposable. Callers may

@@ -151,6 +151,58 @@ describe("extension manifest", () => {
             expect(paletteItem?.when).toBe("false");
             expect(colorPaletteItem?.when).toBe("false");
         }
+
+        const indicator = titleMenu.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator",
+        );
+        const colorIndicator = titleMenu.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
+        );
+        const indicatorContribution = commands.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator",
+        );
+        const colorIndicatorContribution = commands.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
+        );
+        const indicatorPalette = commandPalette.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator",
+        );
+        const colorIndicatorPalette = commandPalette.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
+        );
+
+        expect(indicator?.when).toBe(
+            "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons != color",
+        );
+        expect(colorIndicator?.when).toBe(
+            "view == intelligit.sidebarGraph && intelligit.hasMultipleRepositories && config.intelligit.icons == color",
+        );
+        expect(indicator?.group).toBe("navigation@0");
+        expect(colorIndicator?.group).toBe("navigation@0");
+        expect(indicatorContribution?.icon).toEqual({
+            light: "media/icons/select-repository-white.svg",
+            dark: "media/icons/select-repository-white.svg",
+        });
+        expect(colorIndicatorContribution?.icon).toEqual({
+            light: "media/icons/select-repository-color.svg",
+            dark: "media/icons/select-repository-color.svg",
+        });
+        expect(indicatorPalette?.when).toBe("false");
+        expect(colorIndicatorPalette?.when).toBe("false");
+        expect(
+            titleMenu.find(
+                (entry) =>
+                    entry.command === "intelligit.selectRepository" &&
+                    entry.when?.includes("intelligit.sidebarGraph"),
+            ),
+        ).toBeUndefined();
+        expect(
+            titleMenu.find(
+                (entry) =>
+                    entry.command === "intelligit.selectRepository.color" &&
+                    entry.when?.includes("intelligit.sidebarGraph"),
+            ),
+        ).toBeUndefined();
     });
 
     it("contributes color variants for native commit graph title actions", () => {
