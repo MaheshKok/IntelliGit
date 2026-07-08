@@ -160,6 +160,15 @@ async function hydrateTwoRepositories(): Promise<void> {
     await sendHostMessage(snapshot("/repo-b", "Repo B", "src/b.ts"));
 }
 
+async function hydrateOneRepository(): Promise<void> {
+    await sendHostMessage({
+        type: "setRepositories",
+        repositories: [{ root: "/repo-a", label: "Repo A", changedFileCount: 1 }],
+        activeRepositoryRoot: "/repo-a",
+    });
+    await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
+}
+
 beforeAll(() => {
     Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
         value: true,
@@ -189,6 +198,18 @@ beforeEach(() => {
 });
 
 describe("commit panel multi-repository view", () => {
+    it("keeps a single repository on the direct tab layout", async () => {
+        await renderApp();
+        await hydrateOneRepository();
+
+        expect(document.querySelectorAll('[data-testid="repository-accordion"]')).toHaveLength(0);
+        expect(document.querySelector('[data-testid="tabbar"]')).toBeTruthy();
+        expect(
+            document.querySelector('[data-testid="commit-files"][data-root="/repo-a"]')
+                ?.textContent,
+        ).toBe("src/a.ts");
+    });
+
     it("renders two repository snapshots as two rows", async () => {
         await renderApp();
         await hydrateTwoRepositories();

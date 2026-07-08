@@ -191,13 +191,75 @@ export function RepositoryAccordion({
         setShowIgnoredFiles((value) => !value);
     }, []);
 
+    const commitContent = (
+        <CommitTab
+            repositoryRoot={repository.root || undefined}
+            files={repository.files}
+            commitMessage={repository.commitMessage}
+            isAmend={repository.isAmend}
+            amendBranchCommits={repository.amendBranchCommits}
+            amendBranchHistoryLoaded={repository.amendBranchHistoryLoaded}
+            isRefreshing={repository.isRefreshing}
+            checkedPaths={checkedPaths}
+            onToggleFile={toggleFile}
+            onToggleFolder={toggleFolder}
+            onToggleSection={toggleSection}
+            isAllChecked={isAllChecked}
+            isSomeChecked={isSomeChecked}
+            onMessageChange={handleMessageChange}
+            onAmendChange={handleAmendChange}
+            onCommit={handleCommit}
+            canCommit={canCommit}
+            onPush={handlePush}
+            canPush={canPush}
+            pushLabel={pushLabel}
+            currentBranchName={repository.currentBranchName}
+            currentBranchUpstream={repository.currentBranchUpstream}
+            folderIcon={repository.folderIcon}
+            folderExpandedIcon={repository.folderExpandedIcon}
+            folderIconsByName={repository.folderIconsByName}
+            groupByDir={groupByDir}
+            showIgnoredFiles={showIgnoredFiles}
+            onToggleGroupBy={onToggleGroupBy}
+            onToggleShowIgnoredFiles={handleToggleShowIgnoredFiles}
+        />
+    );
+    const stashContent = (
+        <StashTab
+            repositoryRoot={repository.root || undefined}
+            stashes={repository.stashes}
+            stashFiles={repository.stashFiles}
+            selectedIndex={repository.selectedStashIndex}
+            folderIcon={repository.folderIcon}
+            folderExpandedIcon={repository.folderExpandedIcon}
+            folderIconsByName={repository.folderIconsByName}
+            groupByDir={groupByDir}
+            onToggleGroupBy={onToggleGroupBy}
+        />
+    );
+
+    if (isOnlyRepository) {
+        return (
+            <Flex direction="column" flex={1} minH={0} overflow="hidden">
+                <TabBar
+                    stashCount={repository.stashes.length}
+                    onSync={() => postRepositoryCommand("sync")}
+                    onFetch={() => postRepositoryCommand("fetch")}
+                    onPull={() => postRepositoryCommand("pull")}
+                    onPush={handlePush}
+                    commitContent={commitContent}
+                    stashContent={stashContent}
+                />
+            </Flex>
+        );
+    }
+
     return (
         <Flex
             data-testid="repository-accordion"
             data-repository-root={repository.root}
             direction="column"
-            flex={isOnlyRepository && isExpanded ? 1 : "0 0 auto"}
-            minH={isOnlyRepository ? 0 : undefined}
+            flex="0 0 auto"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
         >
             <Flex
@@ -340,52 +402,8 @@ export function RepositoryAccordion({
                     <Box flex={1} minH={0} overflow="hidden">
                         <TabBar
                             stashCount={repository.stashes.length}
-                            commitContent={
-                                <CommitTab
-                                    repositoryRoot={repository.root || undefined}
-                                    files={repository.files}
-                                    commitMessage={repository.commitMessage}
-                                    isAmend={repository.isAmend}
-                                    amendBranchCommits={repository.amendBranchCommits}
-                                    amendBranchHistoryLoaded={repository.amendBranchHistoryLoaded}
-                                    isRefreshing={repository.isRefreshing}
-                                    checkedPaths={checkedPaths}
-                                    onToggleFile={toggleFile}
-                                    onToggleFolder={toggleFolder}
-                                    onToggleSection={toggleSection}
-                                    isAllChecked={isAllChecked}
-                                    isSomeChecked={isSomeChecked}
-                                    onMessageChange={handleMessageChange}
-                                    onAmendChange={handleAmendChange}
-                                    onCommit={handleCommit}
-                                    canCommit={canCommit}
-                                    onPush={handlePush}
-                                    canPush={canPush}
-                                    pushLabel={pushLabel}
-                                    currentBranchName={repository.currentBranchName}
-                                    currentBranchUpstream={repository.currentBranchUpstream}
-                                    folderIcon={repository.folderIcon}
-                                    folderExpandedIcon={repository.folderExpandedIcon}
-                                    folderIconsByName={repository.folderIconsByName}
-                                    groupByDir={groupByDir}
-                                    showIgnoredFiles={showIgnoredFiles}
-                                    onToggleGroupBy={onToggleGroupBy}
-                                    onToggleShowIgnoredFiles={handleToggleShowIgnoredFiles}
-                                />
-                            }
-                            stashContent={
-                                <StashTab
-                                    repositoryRoot={repository.root || undefined}
-                                    stashes={repository.stashes}
-                                    stashFiles={repository.stashFiles}
-                                    selectedIndex={repository.selectedStashIndex}
-                                    folderIcon={repository.folderIcon}
-                                    folderExpandedIcon={repository.folderExpandedIcon}
-                                    folderIconsByName={repository.folderIconsByName}
-                                    groupByDir={groupByDir}
-                                    onToggleGroupBy={onToggleGroupBy}
-                                />
-                            }
+                            commitContent={commitContent}
+                            stashContent={stashContent}
                         />
                     </Box>
                 </Flex>
