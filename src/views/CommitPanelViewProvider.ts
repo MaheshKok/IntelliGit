@@ -187,9 +187,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const previousActiveRuntime =
             previousActiveRoot !== null ? this.runtimes.get(previousActiveRoot) : undefined;
         const nextRoots = new Set(repositories.map((repository) => repository.root));
+        let repositoryRemoved = false;
 
         for (const [root, runtime] of this.runtimes) {
             if (nextRoots.has(root)) continue;
+            repositoryRemoved = true;
             this.expandedRepositoryRoots.delete(root);
             this.disposeRuntimeWatcher(root);
             this.invalidateRuntime(runtime);
@@ -235,6 +237,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     message: this.getStoredCommitDraft(activeRuntime),
                 });
             }
+        }
+        if (repositoryRemoved && !activeChanged && !options.resetActiveState) {
+            this.updateAggregateChangedFileCount();
         }
         this.postRepositoryListHydration();
         this.syncRuntimeWatchers();

@@ -2043,6 +2043,11 @@ describe("view providers integration", () => {
 
     it("CommitPanelViewProvider disposes expanded repository watchers when rows are removed", async () => {
         const { provider, webview } = await setupCommitPanelProvider();
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
         provider.setRepositories(
             [
                 { root: "/repo", label: "Repo A" },
@@ -2053,11 +2058,15 @@ describe("view providers integration", () => {
         await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
         const expandedWatcher = activeWatcherForRoot("/repo-b");
         expect(expandedWatcher).toBeDefined();
+        expect(counts).toContain(2);
+        counts.length = 0;
 
         provider.setRepositories([{ root: "/repo", label: "Repo A" }], "/repo");
 
+        expect(counts).toEqual([1]);
         expect(expandedWatcher!.dispose).toHaveBeenCalled();
         expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+        disposable.dispose();
         provider.dispose();
     });
 
