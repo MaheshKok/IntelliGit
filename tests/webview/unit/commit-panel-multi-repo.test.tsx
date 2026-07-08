@@ -14,6 +14,15 @@ type StashTabMockProps = {
     repositoryRoot: string;
 };
 
+type TabBarMockProps = {
+    commitContent: React.ReactNode;
+    stashContent: React.ReactNode;
+    onSync?: () => void;
+    onFetch?: () => void;
+    onPull?: () => void;
+    onPush?: () => void;
+};
+
 let postMessage: ReturnType<typeof vi.fn>;
 let webviewState: Record<string, unknown>;
 
@@ -132,8 +141,14 @@ async function renderApp(): Promise<void> {
         ),
     }));
     vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
-        TabBar: (props: { commitContent: React.ReactNode; stashContent: React.ReactNode }) => (
+        TabBar: (props: TabBarMockProps) => (
             <div data-testid="tabbar">
+                <div data-testid="tabbar-actions">
+                    <button aria-label="common.sync" onClick={props.onSync} />
+                    <button aria-label="common.fetch" onClick={props.onFetch} />
+                    <button aria-label="common.pull" onClick={props.onPull} />
+                    <button aria-label="common.push" onClick={props.onPush} />
+                </div>
                 <div>{props.commitContent}</div>
                 <div>{props.stashContent}</div>
             </div>
@@ -273,14 +288,25 @@ describe("commit panel multi-repository view", () => {
         await hydrateTwoRepositories();
         postMessage.mockClear();
 
-        click(header("/repo-b"));
+        click(header("/repo-a"));
         await flush();
         expect(postMessage).toHaveBeenCalledWith({
             type: "setExpandedRepositories",
-            repositoryRoots: ["/repo-a", "/repo-b"],
+            repositoryRoots: [],
         });
+        expect(row("/repo-a").textContent).not.toContain("src/a.ts");
 
-        click(header("/repo-a"));
+        await sendHostMessage({
+            type: "setRepositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A", changedFileCount: 1 },
+                { root: "/repo-b", label: "Repo B", changedFileCount: 1 },
+            ],
+            activeRepositoryRoot: "/repo-a",
+        });
+        expect(row("/repo-a").textContent).not.toContain("src/a.ts");
+
+        click(header("/repo-b"));
         await flush();
         expect(postMessage).toHaveBeenCalledWith({
             type: "setExpandedRepositories",
@@ -299,6 +325,7 @@ describe("commit panel multi-repository view", () => {
         });
         postMessage.mockClear();
 
+        expect(row("/repo-b").querySelector('[data-testid="repository-action-toolbar"]')).toBeNull();
         click(row("/repo-b").querySelector('[aria-label="common.fetch"]'));
         click(row("/repo-b").querySelector('[data-testid="commit-action"][data-root="/repo-b"]'));
 

@@ -223,6 +223,8 @@ export type CommitGraphInbound =
           type: "setBranches";
           /** Branches parsed from `git branch -a`; names are display and action identifiers. */
           branches: Branch[];
+          /** Optional repository label for compact graph headers embedded in multi-repo views. */
+          repositoryLabel?: string | null;
           /** Worktrees parsed from `git worktree list --porcelain -z` for branch navigation. */
           worktrees?: GitWorktree[];
           /** Default collapsed folder icon for branch tree groups when the theme resolves one. */

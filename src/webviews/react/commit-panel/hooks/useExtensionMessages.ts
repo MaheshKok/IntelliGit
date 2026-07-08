@@ -76,6 +76,7 @@ function expandedRootsFor(
     const knownRoots = new Set(repositories.map((repository) => repository.root));
     const retained = state.expandedRepositoryRoots.filter((root) => knownRoots.has(root));
     if (retained.length > 0) return retained;
+    if (state.repositories.length > 0) return [];
     const fallbackRoot = activeRepositoryRoot ?? repositories[0]?.root;
     return fallbackRoot ? [fallbackRoot] : [];
 }

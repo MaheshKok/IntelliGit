@@ -208,11 +208,8 @@ describe("extension manifest", () => {
     });
 
     it("keeps native sidebar color icons matching the commit tab toolbar icons", () => {
-        const repositoryAccordionSource = readFileSync(
-            path.join(
-                process.cwd(),
-                "src/webviews/react/commit-panel/components/RepositoryAccordion.tsx",
-            ),
+        const tabBarSource = readFileSync(
+            path.join(process.cwd(), "src/webviews/react/commit-panel/components/TabBar.tsx"),
             "utf8",
         );
         const icons = [
@@ -251,11 +248,11 @@ describe("extension manifest", () => {
 
         for (const icon of icons) {
             const labelNeedle = `label={t("common.${icon.name}")}`;
-            const start = repositoryAccordionSource.indexOf(labelNeedle);
+            const start = tabBarSource.indexOf(labelNeedle);
             expect(start).toBeGreaterThanOrEqual(0);
-            const end = repositoryAccordionSource.indexOf("</RepositoryActionButton>", start);
+            const end = tabBarSource.indexOf("</GitActionButton>", start);
             expect(end).toBeGreaterThan(start);
-            const iconBlock = repositoryAccordionSource.slice(start, end);
+            const iconBlock = tabBarSource.slice(start, end);
             const svg = readFileSync(
                 path.join(process.cwd(), `media/icons/git-${icon.name}-color.svg`),
                 "utf8",

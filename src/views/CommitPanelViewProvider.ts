@@ -842,6 +842,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({
             type: "setBranches",
             branches: this.branches,
+            repositoryLabel: runtime.repository.label,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: this.branchFolderIconsByName,

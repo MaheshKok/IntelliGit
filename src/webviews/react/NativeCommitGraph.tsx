@@ -33,6 +33,7 @@ interface NativeCommitGraphState {
     unpushedHashes: Set<string>;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
+    repositoryLabel: string | null;
 }
 
 type NativeCommitGraphAction =
@@ -45,7 +46,12 @@ type NativeCommitGraphAction =
           unpushedHashes?: string[];
       }
     | { type: "setSelectedBranch"; branch: string | null }
-    | { type: "setBranches"; branches: Branch[]; commitChecksEnabled?: boolean }
+    | {
+          type: "setBranches";
+          branches: Branch[];
+          commitChecksEnabled?: boolean;
+          repositoryLabel?: string | null;
+      }
     | { type: "loadError"; clearCommits: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
@@ -62,6 +68,7 @@ const initialNativeCommitGraphState: NativeCommitGraphState = {
     unpushedHashes: new Set(),
     commitChecks: new Map(),
     commitChecksEnabled: true,
+    repositoryLabel: null,
 };
 
 function nativeCommitGraphReducer(
@@ -84,6 +91,7 @@ function nativeCommitGraphReducer(
                 ...state,
                 branches: action.branches,
                 commitChecksEnabled: action.commitChecksEnabled ?? true,
+                repositoryLabel: action.repositoryLabel ?? null,
             };
         case "loadError":
             return {
@@ -133,6 +141,7 @@ export function NativeCommitGraph({
         unpushedHashes,
         commitChecks,
         commitChecksEnabled,
+        repositoryLabel,
     } = state;
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
@@ -207,6 +216,7 @@ export function NativeCommitGraph({
                         type: "setBranches",
                         branches: data.branches,
                         commitChecksEnabled: data.commitChecksEnabled,
+                        repositoryLabel: data.repositoryLabel,
                     });
                     break;
                 case "loadError":
@@ -282,6 +292,7 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
+    const headerLabel = repositoryLabel ? `Graph ${repositoryLabel}` : "Graph";
     return (
         <CommitList
             commits={commits}
@@ -301,7 +312,7 @@ export function NativeCommitGraph({
             onSignInForCommitChecks={commitChecksEnabled ? handleSignInForCommitChecks : undefined}
             showSearch={false}
             showAuthorDate={false}
-            headerLabel="Graph"
+            headerLabel={headerLabel}
         />
     );
 }

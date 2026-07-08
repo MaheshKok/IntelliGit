@@ -221,6 +221,16 @@ describe("app logic coverage", () => {
 
         await import("../../../src/webviews/react/CompactCommitGraphApp");
         await flush();
+        expect(document.getElementById("compact-header")?.textContent).toBe("Graph");
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "setBranches", branches: [], repositoryLabel: "Repo A" },
+                }),
+            );
+        });
+        await flush();
 
         act(() => {
             window.dispatchEvent(
@@ -252,7 +262,7 @@ describe("app logic coverage", () => {
         expect(document.getElementById("branch-main")).toBeNull();
         expect(document.getElementById("compact-search")?.textContent).toBe("false");
         expect(document.getElementById("compact-author-date")?.textContent).toBe("false");
-        expect(document.getElementById("compact-header")?.textContent).toBe("Graph");
+        expect(document.getElementById("compact-header")?.textContent).toBe("Graph Repo A");
         expect(document.getElementById("branch-scope")?.textContent).toBe("main");
 
         const types = postMessage.mock.calls.map((c) => c[0]?.type);
