@@ -5,6 +5,16 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-07-08
+
+### Added
+
+- Added multi-repository workspace support with per-repository commit accordions and an undocked repository selector.
+
+### Changed
+
+- Scoped IntelliGit graph views to the active repository selected from the active editor or undocked repository list.
+
 ## [0.15.4] - 2026-07-07
 
 ### Changed
