@@ -481,6 +481,7 @@ function makeGitOpsMock() {
         stashApply: vi.fn(async () => "applied"),
         stashDelete: vi.fn(async () => "deleted"),
         getConflictFilesDetailed: vi.fn(async () => []),
+        abortMerge: vi.fn(async () => undefined),
         getStashFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
     };
@@ -1926,6 +1927,60 @@ describe("view providers integration", () => {
         expect(postMessageSpy).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "loadCommits" }),
         );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes skip graph refresh for non-active abortMerge", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        const workingTreeChanged = vi.fn();
+        const disposable = provider.onDidChangeWorkingTree(workingTreeChanged);
+        gitOps.getLog.mockClear();
+        repoBGitOps.abortMerge.mockClear();
+        repoBGitOps.getStatus.mockClear();
+        repoBGitOps.listStashes.mockClear();
+        repoBGitOps.getLog.mockClear();
+        executeCommand.mockClear();
+        postMessageSpy.mockClear();
+        showWarningMessage.mockResolvedValueOnce("Abort Merge");
+
+        await webview.send({ type: "abortMerge", repositoryRoot: "/repo-b" });
+
+        expect(repoBGitOps.abortMerge).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getLog).not.toHaveBeenCalled();
+        expect(gitOps.getLog).not.toHaveBeenCalled();
+        expect(workingTreeChanged).toHaveBeenCalledTimes(1);
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.mergeConflictsRefresh");
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                repositoryRoot: "/repo-b",
+                files: [expect.objectContaining({ path: "src/b.ts" })],
+            }),
+        );
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "loadCommits" }),
+        );
+        disposable.dispose();
         provider.dispose();
     });
 

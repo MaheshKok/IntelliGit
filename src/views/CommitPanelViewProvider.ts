@@ -1003,7 +1003,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             onConflictStateChanged: async () => {
                 if (runtime) {
                     await this.refreshData(false, runtime);
-                    await this.refreshGraphData(runtime);
+                    if (runtime === this.getActiveRuntime()) {
+                        await this.refreshGraphData(runtime);
+                    }
                 }
                 this._onDidChangeWorkingTree.fire();
                 await vscode.commands.executeCommand("intelligit.mergeConflictsRefresh");
