@@ -310,8 +310,14 @@ export type InboundMessage =
           active: boolean;
       }>
     | {
-          /** General host error event for commit-panel commands. */
+          /** Accepted graph text filter mirrored back to graph UI state. */
+          type: "setFilterText";
+          /** Text filter currently owned by the extension host. */
+          text: string;
+      }
+    | RepositoryIdentifiedMessage<{
+          /** General or repository-scoped host error event for commit-panel commands. */
           type: "error";
           /** User-visible error text normalized by the host. */
           message: string;
-      };
+      }>;

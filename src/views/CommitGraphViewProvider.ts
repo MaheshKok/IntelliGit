@@ -160,6 +160,14 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * Toggles whether the compact graph view should show the active repository label.
+     */
+    setShowRepositoryLabel(showRepositoryLabel: boolean): void {
+        this.options.showRepositoryLabel = showRepositoryLabel;
+        this.applyRepositoryDescription();
+    }
+
+    /**
      * Attaches a freshly resolved VS Code webview view to the commit graph protocol.
      *
      * Each resolution replaces the previous webview, re-registers theme listeners,
@@ -221,6 +229,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                             type: "setSelectedBranch",
                             branch: this.currentBranch,
                         });
+                        this.postToWebview({ type: "setFilterText", text: "" });
                         await this.loadInitial();
                         break;
                     case "branchAction":

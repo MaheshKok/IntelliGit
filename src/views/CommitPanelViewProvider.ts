@@ -635,15 +635,20 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             try {
                 await this.handleMessage(message);
             } catch (err) {
-                const message = getErrorMessage(err);
-                vscode.window.showErrorMessage(message);
-                this.postToWebview({ type: "error", message });
+                const errorMessage = getErrorMessage(err);
+                vscode.window.showErrorMessage(errorMessage);
+                this.postToWebview({
+                    type: "error",
+                    ...this.repositoryScopeForError(message),
+                    message: errorMessage,
+                });
             }
         });
         webviewView.webview.html = this.getHtml(webviewView.webview);
         webviewView.onDidChangeVisibility(() => {
             if (!webviewView.visible) return;
-            const runtime = this.requireActiveRuntime();
+            const runtime = this.getActiveRuntime();
+            if (!runtime) return;
             this.postWorkingTreeSnapshot(runtime);
             this.refreshAllRepositoriesWithErrorHandling(true);
         });
@@ -817,11 +822,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 if (remainingMs > 0) {
                     await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
                 }
-                this.postToWebview({
-                    type: "refreshing",
-                    repositoryRoot: runtime.repository.root,
-                    active: false,
-                });
+                if (refreshRequestId === runtime.dataRefreshSeq) {
+                    this.postToWebview({
+                        type: "refreshing",
+                        repositoryRoot: runtime.repository.root,
+                        active: false,
+                    });
+                }
                 this.visibleRefreshCount = Math.max(0, this.visibleRefreshCount - 1);
                 void Promise.resolve(
                     this.visibleRefreshCount === 0
@@ -960,6 +967,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         text: string,
     ): Promise<void> {
         runtime.filterText = text;
+        this.postToWebview({ type: "setFilterText", text });
         await this.loadInitialGraphCommits(runtime);
     }
     /**
@@ -1038,6 +1046,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     type: "setSelectedBranch",
                     branch: runtime.currentBranch,
                 });
+                this.postToWebview({ type: "setFilterText", text: "" });
                 await this.loadInitialGraphCommits(runtime);
                 break;
             }
@@ -1455,7 +1464,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.refreshData(silent, runtime).catch((err) => {
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(message);
-            this.postToWebview({ type: "error", message });
+            this.postToWebview({ type: "error", repositoryRoot: runtime.repository.root, message });
         });
     }
     /** Runs aggregate docked-row refreshes from listeners without leaking rejected promises. */
@@ -1475,5 +1484,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
     private disposeThemeChangeDisposables(): void {
         disposeAll(this.themeChangeDisposables);
+    }
+
+    /**
+     * Returns repository identity for trusted repository-scoped error payloads.
+     */
+    private repositoryScopeForError(raw: unknown): { repositoryRoot?: string } {
+        if (!raw || typeof raw !== "object") return {};
+        const repositoryRoot = (raw as { repositoryRoot?: unknown }).repositoryRoot;
+        if (typeof repositoryRoot !== "string") return {};
+        return this.runtimes.has(repositoryRoot) ? { repositoryRoot } : {};
     }
 }

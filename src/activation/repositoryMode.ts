@@ -127,6 +127,7 @@ export async function activateRepositoryMode(
         )?.root ?? activeRepository.root;
     let undockedBranches: Branch[] = [];
     let undockedWorktrees: GitWorktree[] = [];
+    let undockedSelectionWrite = Promise.resolve();
     let undockedRuntime:
         | {
               executor: GitExecutor;
@@ -166,12 +167,15 @@ export async function activateRepositoryMode(
     sidebarGraph.setRepositoryLabel(activeRepository.label);
     commitPanel.setRepositoryLabel(activeRepository.label);
     commitPanel.setRepositories(repositories, activeRepository.root);
+    sidebarGraph.setShowRepositoryLabel(repositories.length > 1);
 
     const setKnownRepositories = (
         nextRepositories: DiscoveredRepository[],
         activeRoot: string | null = activeRepository.root,
     ): void => {
         repositories = nextRepositories;
+        void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, repositories.length > 1);
+        sidebarGraph.setShowRepositoryLabel(repositories.length > 1);
         commitPanel.setRepositories(nextRepositories, activeRoot ?? undefined);
         if (
             !repositories.some((repository) => repository.root === undockedSelectedRepositoryRoot)
@@ -338,6 +342,7 @@ export async function activateRepositoryMode(
     };
 
     let activeEditorSwitchSeq = 0;
+    let repositorySwitchSeq = 0;
     let activeEditorSelectionWrite = Promise.resolve();
     type ActiveRepositorySwitchOptions = {
         fromActiveEditor?: boolean;
@@ -375,8 +380,11 @@ export async function activateRepositoryMode(
         repository: DiscoveredRepository,
         options: ActiveRepositorySwitchOptions = {},
     ): Promise<void> => {
+        const switchSeq = ++repositorySwitchSeq;
         if (!options.fromActiveEditor) activeEditorSwitchSeq++;
-        const shouldContinue = options.shouldContinue ?? (() => true);
+        const callerShouldContinue = options.shouldContinue ?? (() => true);
+        const shouldContinue = (): boolean =>
+            switchSeq === repositorySwitchSeq && callerShouldContinue();
         if (!shouldContinue()) return;
 
         activeRepository = repository;
@@ -586,7 +594,16 @@ export async function activateRepositoryMode(
                 loadRepositoryData: loadCurrentUndockedRepositoryData,
                 onSelectedRepositoryRootChanged: async (root) => {
                     undockedSelectedRepositoryRoot = root;
-                    await context.workspaceState?.update(UNDOCKED_SELECTED_REPOSITORY_KEY, root);
+                    undockedSelectionWrite = undockedSelectionWrite
+                        .catch(() => undefined)
+                        .then(async () => {
+                            if (undockedSelectedRepositoryRoot !== root) return;
+                            await context.workspaceState?.update(
+                                UNDOCKED_SELECTED_REPOSITORY_KEY,
+                                root,
+                            );
+                        });
+                    await undockedSelectionWrite;
                 },
             },
         );

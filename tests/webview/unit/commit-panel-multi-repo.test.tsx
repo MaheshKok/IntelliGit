@@ -213,6 +213,57 @@ beforeEach(() => {
 });
 
 describe("commit panel multi-repository view", () => {
+    it("preserves repository checked paths until files hydrate", async () => {
+        vi.doMock("../../../src/webviews/react/commit-panel/hooks/useVsCodeApi", () => ({
+            getVsCodeApi: () => ({
+                postMessage,
+                getState: () => webviewState,
+                setState: (state: Record<string, unknown>) => {
+                    webviewState = state;
+                },
+            }),
+        }));
+        const { createRoot } = await import("react-dom/client");
+        const { useCheckedFiles } = await import(
+            "../../../src/webviews/react/commit-panel/hooks/useCheckedFiles"
+        );
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        const snapshots: string[][] = [];
+        webviewState = { checkedByRepository: { "/repo-a": ["src/a.ts"] } };
+
+        function Harness({ files }: { files: ReturnType<typeof workingFile>[] }): null {
+            const { checkedPaths } = useCheckedFiles(files, "/repo-a");
+            React.useEffect(() => {
+                snapshots.push(Array.from(checkedPaths));
+            }, [checkedPaths]);
+            return null;
+        }
+
+        try {
+            await act(async () => {
+                root.render(<Harness files={[]} />);
+            });
+            await flush();
+
+            expect(webviewState).toEqual({ checkedByRepository: { "/repo-a": ["src/a.ts"] } });
+
+            await act(async () => {
+                root.render(<Harness files={[workingFile("src/a.ts")]} />);
+            });
+            await flush();
+
+            expect(snapshots.at(-1)).toEqual(["src/a.ts"]);
+            expect(webviewState).toEqual({ checkedByRepository: { "/repo-a": ["src/a.ts"] } });
+        } finally {
+            act(() => {
+                root.unmount();
+            });
+            host.remove();
+        }
+    });
+
     it("keeps a single repository on the direct tab layout", async () => {
         await renderApp();
         await hydrateOneRepository();

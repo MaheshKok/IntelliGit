@@ -75,16 +75,18 @@ export function useCheckedFiles(allFiles: WorkingFile[], repositoryRoot?: string
     );
 
     useEffect(() => {
+        if (repositoryRoot && validPaths.size === 0) return;
         // Host file snapshots invalidate stale selections after render; backing state must be pruned.
         // react-doctor-disable-next-line react-doctor/no-derived-state
         setCheckedPaths((prev) => pruneToKnownPaths(prev, validPaths));
-    }, [validPaths]);
+    }, [repositoryRoot, validPaths]);
 
     // Persist to vscode state on every change (merge to preserve other keys)
     useEffect(() => {
         const vscode = getVsCodeApi();
         const prev = vscode.getState() ?? {};
         if (repositoryRoot) {
+            if (validPaths.size === 0) return;
             vscode.setState({
                 ...prev,
                 checkedByRepository: {
@@ -95,7 +97,7 @@ export function useCheckedFiles(allFiles: WorkingFile[], repositoryRoot?: string
             return;
         }
         vscode.setState({ ...prev, checked: Array.from(currentCheckedPaths) });
-    }, [currentCheckedPaths, repositoryRoot]);
+    }, [currentCheckedPaths, repositoryRoot, validPaths]);
 
     const toggleFile = useCallback(
         (path: string) => {

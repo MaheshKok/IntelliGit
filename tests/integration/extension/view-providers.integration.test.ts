@@ -916,6 +916,11 @@ describe("view providers integration", () => {
 
         expect(discoverGitRepositoriesSpy).toHaveBeenCalledWith([repoB]);
         expect(gitExecutorSetRoot).toHaveBeenCalledWith(repoB);
+        expect(executeCommand).toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.hasMultipleRepositories",
+            false,
+        );
         expect(captured.commitPanel!.repositories).toEqual([{ root: repoB, label: "app-b" }]);
         expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
         expect(captured.commitPanel!.runtimes.has(repoA)).toBe(false);
@@ -1593,11 +1598,140 @@ describe("view providers integration", () => {
             message: "draft A",
         });
 
+        postMessageSpy.mockClear();
+        callRoots.length = 0;
+        executor.setRoot.mockClear();
+        provider.setRepositories([{ root: "/repo-a", label: "Repo A" }], "/repo-a");
+        for (let index = 0; index < 12; index += 1) {
+            await flushMicrotasks();
+            if (
+                postMessageSpy.mock.calls.some(([message]) =>
+                    expect
+                        .objectContaining({ type: "restoreCommitDraft", message: "draft A" })
+                        .asymmetricMatch(message),
+                )
+            ) {
+                break;
+            }
+        }
+
+        expect(executor.setRoot).toHaveBeenCalledWith("/repo-a");
+        expect(callRoots).toEqual(
+            expect.arrayContaining(["branches:/repo-a", "log:/repo-a", "status:/repo-a"]),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            message: "draft A",
+        });
+
         executor.setRoot.mockClear();
         await expect(
             send({ type: "selectRepository", repositoryRoot: "/missing" }),
         ).rejects.toThrow("Unknown repository root received from webview.");
         expect(executor.setRoot).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider ignores stale repository switch completions", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const executor = {
+            root: "/repo-a",
+            setRoot: vi.fn((root: string) => {
+                executor.root = root;
+            }),
+        };
+        const callRoots: string[] = [];
+        type BranchRows = ReturnType<typeof makeBranchesForRoot>;
+        let resolveRepoB!: (value: { branches: BranchRows; worktrees: never[] }) => void;
+        const repoBBranches = new Promise<{ branches: BranchRows; worktrees: never[] }>(
+            (resolve) => {
+                resolveRepoB = resolve;
+            },
+        );
+        const gitOps = makeGitOpsMock();
+        gitOps.getLog = vi.fn(async () => {
+            callRoots.push(`log:${executor.root}`);
+            return [];
+        });
+        gitOps.getUnpushedCommitHashes = vi.fn(async () => {
+            callRoots.push(`unpushed:${executor.root}`);
+            return [];
+        });
+        gitOps.getStatus = vi.fn(async () => {
+            callRoots.push(`status:${executor.root}`);
+            return [];
+        });
+        const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+            {},
+            undefined,
+            {
+                executor,
+                repositories: [
+                    { root: "/repo-a", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                selectedRepositoryRoot: "/repo-a",
+                loadRepositoryData: async (root: string) =>
+                    root === "/repo-b"
+                        ? repoBBranches
+                        : { branches: makeBranchesForRoot(root), worktrees: [] },
+                onSelectedRepositoryRootChanged: async (root: string) => {
+                    await workspaceStore.update("intelligit.undockedSelectedRepositoryRoot", root);
+                },
+            },
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            iconTheme: {
+                initIconThemeData: ReturnType<typeof vi.fn>;
+                getFolderIconsByBranches: ReturnType<typeof vi.fn>;
+                getThemeData: ReturnType<typeof vi.fn>;
+                decorateWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        testProvider.iconTheme = {
+            initIconThemeData: vi.fn(async () => undefined),
+            getFolderIconsByBranches: vi.fn(async () => ({})),
+            getThemeData: vi.fn(() => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            })),
+            decorateWorkingFiles: vi.fn(async (files: unknown) => files),
+            getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            dispose: vi.fn(),
+        };
+        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
+
+        const repoBSwitch = send({ type: "selectRepository", repositoryRoot: "/repo-b" });
+        await flushMicrotasks();
+        const repoASwitch = send({ type: "selectRepository", repositoryRoot: "/repo-a" });
+        await repoASwitch;
+        resolveRepoB({ branches: makeBranchesForRoot("/repo-b"), worktrees: [] });
+        await repoBSwitch;
+
+        expect(callRoots).toEqual(
+            expect.arrayContaining(["log:/repo-a", "status:/repo-a"]),
+        );
+        expect(callRoots).not.toEqual(
+            expect.arrayContaining(["log:/repo-b", "status:/repo-b"]),
+        );
+        expect(workspaceStore.get("intelligit.undockedSelectedRepositoryRoot")).toBe("/repo-a");
         provider.dispose();
     });
 
@@ -1687,6 +1821,10 @@ describe("view providers integration", () => {
 
         sidebarProvider.setRepositoryLabel("repo-b");
         expect(sidebarWebview.view.description).toBe("(repo-b)");
+        sidebarProvider.setShowRepositoryLabel(false);
+        expect(sidebarWebview.view.description).toBeUndefined();
+        sidebarProvider.setShowRepositoryLabel(true);
+        expect(sidebarWebview.view.description).toBe("(repo-b)");
 
         const fullGraphProvider = new CommitGraphViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -1757,6 +1895,7 @@ describe("view providers integration", () => {
 
         await webview.send({ type: "filterBranch", branch: "main" });
         expect(branchFilter).toHaveBeenCalledWith("main");
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setFilterText", text: "" });
 
         await webview.send({ type: "branchAction", action: "checkout", branchName: "main" });
         expect(branchAction).toHaveBeenCalledWith({ action: "checkout", branchName: "main" });
@@ -2466,6 +2605,37 @@ describe("view providers integration", () => {
             "git.openChange",
             expect.objectContaining({ fsPath: "/repo-b/src/b.ts" }),
         );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider scopes repository command errors to the selected runtime", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.stashApply.mockRejectedValueOnce(new Error("stash apply failed"));
+        repoBGitOps.getConflictFilesDetailed.mockResolvedValueOnce([]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "stashApply", repositoryRoot: "/repo-b", index: 0 });
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            repositoryRoot: "/repo-b",
+            message: "stash apply failed",
+        });
         provider.dispose();
     });
 

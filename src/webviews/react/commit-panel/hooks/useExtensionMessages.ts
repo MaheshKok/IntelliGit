@@ -319,7 +319,11 @@ export function useExtensionMessages(): [
                     });
                     break;
                 case "error":
-                    dispatch({ type: "SET_ERROR", message: msg.message });
+                    dispatch({
+                        type: "SET_ERROR",
+                        repositoryRoot: msg.repositoryRoot,
+                        message: msg.message,
+                    });
                     break;
             }
         };

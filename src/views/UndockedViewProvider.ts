@@ -151,6 +151,7 @@ export class UndockedViewProvider {
     private offset = 0;
     private loadingMore = false;
     private requestSeq = 0;
+    private repositorySwitchSeq = 0;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
@@ -287,7 +288,17 @@ export class UndockedViewProvider {
             this.repositories[0];
         if (selected) {
             const changed = selected.root !== this.selectedRepositoryRoot;
+            const shouldContinue = changed ? this.beginRepositorySwitch() : undefined;
             this.applyRepositoryRoot(selected, { reset: changed, updateExecutor: changed });
+            if (shouldContinue) {
+                this.sendRepositories();
+                void this.reloadSelectedRepository(shouldContinue).catch((err) => {
+                    const message = getErrorMessage(err);
+                    vscode.window.showErrorMessage(message);
+                    this.postToWebview({ type: "error", message });
+                });
+                return;
+            }
         }
         this.sendRepositories();
     }
@@ -317,14 +328,35 @@ export class UndockedViewProvider {
         if (!repository) {
             throw new Error("Unknown repository root received from webview.");
         }
+        const shouldContinue = this.beginRepositorySwitch();
         this.applyRepositoryRoot(repository, { reset: true, updateExecutor: true });
         await this.onSelectedRepositoryRootChanged?.(repository.root);
+        if (!shouldContinue()) return;
         this.sendRepositories();
+        await this.reloadSelectedRepository(shouldContinue);
+    }
+
+    /**
+     * Starts a repository switch and returns a guard for async continuations spawned by it.
+     */
+    private beginRepositorySwitch(): () => boolean {
+        const requestId = ++this.repositorySwitchSeq;
+        return () => requestId === this.repositorySwitchSeq;
+    }
+
+    /**
+     * Reloads all repository-scoped panels after the selected root changes.
+     */
+    private async reloadSelectedRepository(shouldContinue: () => boolean): Promise<void> {
         await this.iconTheme.initIconThemeData();
-        await this.reloadBranches();
+        if (!shouldContinue()) return;
+        if (!(await this.reloadBranches(shouldContinue))) return;
+        if (!shouldContinue()) return;
         await this.loadInitial();
+        if (!shouldContinue()) return;
         this.postCommitDetailState();
-        await this.refreshCommitPanelData();
+        await this.refreshCommitPanelData(false, shouldContinue);
+        if (!shouldContinue()) return;
         this.postToWebview({
             type: "restoreCommitDraft",
             message: this.getStoredCommitDraft(),
@@ -377,13 +409,15 @@ export class UndockedViewProvider {
         });
     }
 
-    private async reloadBranches(): Promise<void> {
+    private async reloadBranches(shouldContinue: () => boolean = () => true): Promise<boolean> {
         const data = this.loadRepositoryData
             ? await this.loadRepositoryData(this.selectedRepositoryRoot)
             : { branches: await this.gitOps.getBranches(), worktrees: [] };
+        if (!shouldContinue()) return false;
         this.branches = data.branches;
         this.worktrees = data.worktrees ?? [];
-        await this.sendBranches();
+        await this.sendBranches(shouldContinue);
+        return shouldContinue();
     }
 
     private repositoryFromRoot(root: string): RepositoryViewIdentity {
@@ -965,7 +999,10 @@ export class UndockedViewProvider {
      * The selected stash is preserved when still present; otherwise the first stash is selected.
      * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
      */
-    private async refreshCommitPanelData(silent = false): Promise<void> {
+    private async refreshCommitPanelData(
+        silent = false,
+        shouldContinue: () => boolean = () => true,
+    ): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
             // Theme initialization must finish before decorated working-tree files are built.
@@ -995,6 +1032,7 @@ export class UndockedViewProvider {
                 ...files,
                 ...stashFiles,
             ]);
+            if (!shouldContinue()) return;
             this.files = files;
             this.stashes = stashes;
             this.selectedStashIndex = selectedStashIndex;
@@ -1024,16 +1062,19 @@ export class UndockedViewProvider {
                 currentBranchUpstream: currentBranchStatus.upstream,
             });
         } finally {
-            if (!silent) this.postToWebview({ type: "refreshing", active: false });
+            if (!silent && shouldContinue())
+                this.postToWebview({ type: "refreshing", active: false });
         }
     }
     // --- Branch sending -----------------------------------------------------
     /**
      * Sends cached branches with folder icons derived from branch path segments.
      */
-    private async sendBranches(): Promise<void> {
-        this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+    private async sendBranches(shouldContinue: () => boolean = () => true): Promise<void> {
+        const folderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
         const currentBranchStatus = await this.currentBranchStatus();
+        if (!shouldContinue()) return;
+        this.branchFolderIconsByName = folderIconsByName;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -1041,7 +1082,7 @@ export class UndockedViewProvider {
             worktrees: this.worktrees,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
-            folderIconsByName: this.branchFolderIconsByName,
+            folderIconsByName,
             iconFonts,
             currentBranchHasUpstream: currentBranchStatus.hasUpstream,
             hasRemotes: currentBranchStatus.hasRemotes,

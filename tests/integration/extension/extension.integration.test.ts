@@ -310,6 +310,7 @@ class MockCommitGraphViewProvider {
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
     setRepositoryLabel = vi.fn();
+    setShowRepositoryLabel = vi.fn();
     dispose = vi.fn();
 
     /** Emits commit selection from the mocked graph provider. */
@@ -873,6 +874,7 @@ describe("extension integration", () => {
         );
         executorRun.mockImplementation(defaultExecutorRunImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
+        gitOpsState.getRepositoryRoot.mockResolvedValue("/repo");
         gitOpsState.getBranches.mockResolvedValue([
             {
                 name: "main",
@@ -1000,7 +1002,7 @@ describe("extension integration", () => {
     });
 
     it("activates onboarding with initialize action outside the graph view when a workspace is not a Git repository", async () => {
-        gitOpsState.isRepository.mockResolvedValue(false);
+        gitOpsState.getRepositoryRoot.mockRejectedValue(new Error("not a repository"));
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -1025,7 +1027,10 @@ describe("extension integration", () => {
 
     it("initializes Git in an uninitialized workspace and activates repository views without reload", async () => {
         let initialized = false;
-        gitOpsState.isRepository.mockImplementation(async () => initialized);
+        gitOpsState.getRepositoryRoot.mockImplementation(async () => {
+            if (!initialized) throw new Error("not a repository");
+            return "/repo";
+        });
         executorRun.mockImplementation(async (args: string[]) => {
             if (args[0] === "init") {
                 initialized = true;
@@ -1043,7 +1048,7 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.initializeRepository")?.();
 
         expect(executorRun).toHaveBeenCalledWith(["init"]);
-        expect(gitOpsState.isRepository).toHaveBeenCalledTimes(2);
+        expect(gitOpsState.getRepositoryRoot).toHaveBeenCalledTimes(2);
         expect(showInformationMessage).toHaveBeenCalledWith("Repository initialized.");
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
         expect(latestCommitGraphProvider).toBeDefined();
