@@ -6,6 +6,7 @@
 import React, { useEffect, useCallback, useMemo, useRef, useReducer } from "react";
 import { CommitList } from "./CommitList";
 import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
+import { useCommitCheckRequestBatcher } from "./commit-list/useCommitCheckRequestBatcher";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
     CommitAction,
@@ -262,6 +263,9 @@ export function NativeCommitGraph({
         },
         [vscode],
     );
+    const queueCommitCheckRequest = useCommitCheckRequestBatcher(
+        useCallback((message) => vscode.postMessage(message), [vscode]),
+    );
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
@@ -272,9 +276,9 @@ export function NativeCommitGraph({
             if (current === undefined) {
                 dispatch({ type: "markCommitChecksLoading", hash });
             }
-            vscode.postMessage({ type: "requestCommitChecks", hash });
+            queueCommitCheckRequest(hash);
         },
-        [commitChecks, vscode],
+        [commitChecks, queueCommitCheckRequest],
     );
 
     const handleOpenCommitCheckUrl = useCallback(

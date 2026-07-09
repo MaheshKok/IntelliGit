@@ -279,7 +279,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         });
                         break;
                     case "requestCommitChecks":
-                        await this.sendCommitChecks(this.assertGitHash(msg.hash, "hash"));
+                        await this.sendCommitChecksRequest(msg);
                         break;
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
@@ -541,6 +541,23 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private async sendCommitChecks(hash: string): Promise<void> {
         const snapshot = await this.commitChecks.getChecks(hash);
         this.postToWebview({ type: "setCommitChecks", snapshot });
+    }
+
+    private async sendCommitChecksRequest(
+        msg: Extract<CommitGraphOutbound, { type: "requestCommitChecks" }>,
+    ): Promise<void> {
+        const hashes = this.assertCommitCheckHashes(msg);
+        await Promise.all(hashes.map((hash) => this.sendCommitChecks(hash)));
+    }
+
+    private assertCommitCheckHashes(
+        msg: Extract<CommitGraphOutbound, { type: "requestCommitChecks" }>,
+    ): string[] {
+        if (Array.isArray(msg.hashes)) {
+            if (msg.hashes.length === 0) throw new Error("No commit hashes received.");
+            return msg.hashes.map((hash, index) => this.assertGitHash(hash, `hashes[${index}]`));
+        }
+        return [this.assertGitHash(msg.hash, "hash")];
     }
 
     private async openExternalHttpUrl(rawUrl: string): Promise<void> {

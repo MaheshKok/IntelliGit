@@ -168,6 +168,16 @@ export type CommitGraphOutbound =
           type: "requestCommitChecks";
           /** Full Git object ID from the rendered commit row. */
           hash: string;
+          /** Batched full Git object IDs from rendered commit rows. */
+          hashes?: never;
+      }
+    | {
+          /** Request for GitHub check runs and commit statuses for visible commits. */
+          type: "requestCommitChecks";
+          /** Batched full Git object IDs from rendered commit rows. */
+          hashes: string[];
+          /** Full Git object ID from the rendered commit row. */
+          hash?: never;
       }
     | {
           /** Request to open a GitHub check/status target URL outside the webview. */

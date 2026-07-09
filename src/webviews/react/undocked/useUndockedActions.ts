@@ -10,6 +10,7 @@ import type { Branch } from "../../../types";
 import type { BranchAction, CommitAction, WorktreeAction } from "../../protocol/commitGraphTypes";
 import type { UnifiedOutbound } from "../../protocol/undockedMessages";
 import { shouldRequestCommitChecks } from "../commit-list/checksRefresh";
+import { useCommitCheckRequestBatcher } from "../commit-list/useCommitCheckRequestBatcher";
 import { getVsCodeApi } from "../shared/vscodeApi";
 import type { CommitPanelAction, CommitChecksValue, GraphAction } from "./commitPanelState";
 
@@ -73,6 +74,9 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         checkedPaths,
         shouldPublishBranch,
     } = params;
+    const queueCommitCheckRequest = useCommitCheckRequestBatcher(
+        useCallback((message) => vscode.postMessage(message), []),
+    );
 
     const handleSelectRepository = useCallback((repositoryRoot: string) => {
         loadingMore.current = false;
@@ -135,10 +139,10 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         (hash: string) => {
             if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
             graphDispatch({ type: "markCommitChecksLoading", hash });
-            vscode.postMessage({ type: "requestCommitChecks", hash });
+            queueCommitCheckRequest(hash);
         },
         // react-doctor-disable-next-line react-doctor/exhaustive-deps
-        [commitChecks],
+        [commitChecks, queueCommitCheckRequest],
     );
 
     const handleOpenCommitCheckUrl = useCallback((url: string) => {

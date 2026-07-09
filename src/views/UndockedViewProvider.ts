@@ -681,7 +681,7 @@ export class UndockedViewProvider {
                 });
                 break;
             case "requestCommitChecks":
-                await this.sendCommitChecks(assertGitHash(msg.hash, "hash"));
+                await this.sendCommitChecksRequest(msg);
                 break;
             case "openCommitCheckUrl":
                 await this.openExternalHttpUrl(assertString(msg.url, "url"));
@@ -932,6 +932,23 @@ export class UndockedViewProvider {
             return;
         }
         this.postToWebview({ type: "setCommitChecks", snapshot });
+    }
+
+    private async sendCommitChecksRequest(
+        msg: Extract<UnifiedOutbound, { type: "requestCommitChecks" }>,
+    ): Promise<void> {
+        const hashes = this.assertCommitCheckHashes(msg);
+        await Promise.all(hashes.map((hash) => this.sendCommitChecks(hash)));
+    }
+
+    private assertCommitCheckHashes(
+        msg: Extract<UnifiedOutbound, { type: "requestCommitChecks" }>,
+    ): string[] {
+        if (Array.isArray(msg.hashes)) {
+            if (msg.hashes.length === 0) throw new Error("No commit hashes received.");
+            return msg.hashes.map((hash, index) => assertGitHash(hash, `hashes[${index}]`));
+        }
+        return [assertGitHash(msg.hash, "hash")];
     }
 
     private async openExternalHttpUrl(rawUrl: string): Promise<void> {

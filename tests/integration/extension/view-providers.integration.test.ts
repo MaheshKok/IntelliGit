@@ -1807,6 +1807,57 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("UndockedViewProvider accepts batched commit-check requests", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(async (hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, {
+            type: "requestCommitChecks",
+            hashes: ["abc1234", "def5678"],
+        });
+
+        const snapshots = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (
+                    message,
+                ): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "setCommitChecks",
+            )
+            .map((message) => message.snapshot.hash);
+        expect(snapshots).toEqual(expect.arrayContaining(["abc1234", "def5678"]));
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
     it("CommitGraphViewProvider shows repository labels in the sidebar graph description only when enabled", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
@@ -2037,6 +2088,52 @@ describe("view providers integration", () => {
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "none" }),
         });
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider accepts batched commit-check requests", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(async (hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "requestCommitChecks",
+            hashes: ["abc1234", "def5678"],
+        });
+
+        const snapshots = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (
+                    message,
+                ): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "setCommitChecks",
+            )
+            .map((message) => message.snapshot.hash);
+        expect(snapshots).toEqual(expect.arrayContaining(["abc1234", "def5678"]));
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
         provider.dispose();
     });
 

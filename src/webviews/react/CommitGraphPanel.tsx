@@ -21,6 +21,7 @@ import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/type
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
 import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
+import { useCommitCheckRequestBatcher } from "./commit-list/useCommitCheckRequestBatcher";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
@@ -392,19 +393,18 @@ export function CommitGraphPanel({
         },
         [vscode],
     );
+    const queueCommitCheckRequest = useCommitCheckRequestBatcher(
+        useCallback((message) => vscode.postMessage(message), [vscode]),
+    );
 
     const handleRequestCommitChecks = useCallback(
         (hash: string) => {
             const current = commitChecks.get(hash);
             if (!shouldRequestCommitChecks(current)) return;
-            // Only show the spinner on the first fetch. A background refresh of an
-            // already-displayed snapshot keeps the current badge so it does not flicker.
-            if (current === undefined) {
-                dispatch({ type: "markCommitChecksLoading", hash });
-            }
-            vscode.postMessage({ type: "requestCommitChecks", hash });
+            if (current === undefined) dispatch({ type: "markCommitChecksLoading", hash });
+            queueCommitCheckRequest(hash);
         },
-        [commitChecks, vscode],
+        [commitChecks, queueCommitCheckRequest],
     );
 
     const handleOpenCommitCheckUrl = useCallback(
