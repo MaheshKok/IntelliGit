@@ -6,7 +6,7 @@
 import * as vscode from "vscode";
 import type { CommitCheckItem, CommitChecksSnapshot, CommitCheckState } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
-import { httpGetJson, type FetchJson } from "./http";
+import { HttpError, httpGetJson, type FetchJson } from "./http";
 import {
     aggregateState,
     compactText,
@@ -79,6 +79,8 @@ export function normalizeGithubChecks(
 /** GitHub commit-check provider backed by the built-in VS Code GitHub session. */
 export class GitHubProvider implements CommitChecksProvider {
     readonly id = "github" as const;
+    private rateLimitedUntil = 0;
+    private rateLimitError = "";
 
     /**
      * Accepts an injected HTTP boundary and an optional CI/CD include override.
@@ -87,10 +89,12 @@ export class GitHubProvider implements CommitChecksProvider {
      * @param ciCdPattern - Optional include pattern from `commitChecks.ciCdFilter`; when
      *   omitted the built-in `CICD_CHECK_PATTERN` is used. The review-bot exclusion always
      *   applies regardless of this override.
+     * @param now - Injectable clock for tests.
      */
     constructor(
         private readonly fetchJson: FetchJson = httpGetJson,
         private readonly ciCdPattern?: RegExp,
+        private readonly now: () => number = Date.now,
     ) {}
 
     /** Matches any github.com remote; the host map is not consulted for GitHub. */
@@ -118,6 +122,9 @@ export class GitHubProvider implements CommitChecksProvider {
         if (!session) {
             return { hash, state: "none", summary: summaryForState("none"), items: [] };
         }
+        if (this.now() < this.rateLimitedUntil) {
+            return unavailableSnapshot(hash, this.rateLimitError);
+        }
 
         const headers = {
             Accept: "application/vnd.github+json",
@@ -134,6 +141,10 @@ export class GitHubProvider implements CommitChecksProvider {
             this.fetchJson(`${base}/statuses?per_page=100`, headers),
         ]);
 
+        for (const result of [checkRunsResult, statusesResult]) {
+            if (result.status === "rejected") this.rememberRateLimit(result.reason);
+        }
+
         if (checkRunsResult.status === "rejected" && statusesResult.status === "rejected") {
             return unavailableSnapshot(hash, getErrorMessage(checkRunsResult.reason));
         }
@@ -145,6 +156,46 @@ export class GitHubProvider implements CommitChecksProvider {
             this.ciCdPattern,
         );
     }
+
+    private rememberRateLimit(reason: unknown): void {
+        const until = readRateLimitUntil(reason, this.now());
+        if (until <= this.rateLimitedUntil) return;
+        this.rateLimitedUntil = until;
+        this.rateLimitError = getErrorMessage(reason);
+    }
+}
+
+function readRateLimitUntil(reason: unknown, now: number): number {
+    if (
+        !(reason instanceof HttpError) ||
+        (reason.statusCode !== 403 && reason.statusCode !== 429)
+    ) {
+        return 0;
+    }
+    const retryAfter = readRetryAfter(headerValue(reason.headers, "retry-after"), now);
+    if (retryAfter > now) return retryAfter;
+    if (headerValue(reason.headers, "x-ratelimit-remaining") === "0") {
+        const resetSeconds = Number(headerValue(reason.headers, "x-ratelimit-reset"));
+        const resetMs = Number.isFinite(resetSeconds) ? resetSeconds * 1000 : 0;
+        if (resetMs > now) return resetMs;
+    }
+    return reason.statusCode === 429 ? now + 60_000 : 0;
+}
+
+function headerValue(
+    headers: Record<string, string | string[] | undefined>,
+    name: string,
+): string | undefined {
+    const value = headers[name.toLowerCase()];
+    return Array.isArray(value) ? value[0] : value;
+}
+
+function readRetryAfter(value: string | undefined, now: number): number {
+    if (!value) return 0;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds)) return now + seconds * 1000;
+    const dateMs = Date.parse(value);
+    return Number.isFinite(dateMs) ? dateMs : 0;
 }
 
 function cleanRepoRef(owner: string, repo: string): GitHubRepoRef | null {

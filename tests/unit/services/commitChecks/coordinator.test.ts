@@ -450,6 +450,30 @@ describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
         expect(third.state).toBe("success");
     });
 
+    it("shares concurrent fetches for the same hash", async () => {
+        const getChecks = vi.fn(
+            () =>
+                new Promise<CommitChecksSnapshot>((resolve) => {
+                    setTimeout(() => resolve(snapshot("pending")), 0);
+                }),
+        );
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { ttlMs: 15_000 },
+        );
+
+        const [first, second] = await Promise.all([
+            coordinator.getChecks("abc1234"),
+            coordinator.getChecks("abc1234"),
+        ]);
+
+        expect(first).toBe(second);
+        expect(getChecks).toHaveBeenCalledTimes(1);
+    });
+
     it("auto-recovers an unavailable snapshot after the TTL (simulated 429 clears)", async () => {
         let clock = 0;
         const getChecks = vi

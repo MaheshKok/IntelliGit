@@ -52,6 +52,7 @@ export interface CommitChecksCoordinatorOptions {
 /** Resolves a provider per request and caches commit-check snapshots by hash. */
 export class CommitChecksCoordinator {
     private readonly cache = new Map<string, CacheEntry>();
+    private readonly inflight = new Map<string, Promise<CommitChecksSnapshot>>();
     private readonly enabled: boolean;
     private readonly providerEnabled: Partial<Record<ProviderId, boolean>>;
     private readonly ttlMs: number;
@@ -80,6 +81,7 @@ export class CommitChecksCoordinator {
     /** Drops all cached snapshots; called when the active repository changes. */
     clear(): void {
         this.cache.clear();
+        this.inflight.clear();
     }
 
     /** Returns the snapshot for a commit, serving a fresh cache hit or re-fetching. */
@@ -93,9 +95,18 @@ export class CommitChecksCoordinator {
         if (cached && this.isFresh(cached)) {
             return cached.snapshot;
         }
-        const snapshot = await this.fetchFresh(hash);
-        this.cache.set(hash, { snapshot, fetchedAt: this.now() });
-        return snapshot;
+        const inflight = this.inflight.get(hash);
+        if (inflight) return inflight;
+        const request = this.fetchFresh(hash)
+            .then((snapshot) => {
+                this.cache.set(hash, { snapshot, fetchedAt: this.now() });
+                return snapshot;
+            })
+            .finally(() => {
+                this.inflight.delete(hash);
+            });
+        this.inflight.set(hash, request);
+        return request;
     }
 
     /**
