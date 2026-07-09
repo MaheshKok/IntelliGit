@@ -101,7 +101,11 @@ function updateRepository(
             : [...state.repositories, nextRepository];
     const activeRepositoryRoot = state.activeRepositoryRoot ?? root;
     const expandedRepositoryRoots =
-        state.expandedRepositoryRoots.length > 0 ? state.expandedRepositoryRoots : [root];
+        state.expandedRepositoryRoots.length > 0
+            ? state.expandedRepositoryRoots
+            : state.repositories.length > 0
+              ? []
+              : [root];
     return { repositories, activeRepositoryRoot, expandedRepositoryRoots };
 }
 

@@ -208,4 +208,38 @@ describe("useCommitGraphMessages", () => {
             host.remove();
         }
     });
+
+    it("applies host text-filter resets", async () => {
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        const dispatch = vi.fn();
+        const postMessage = vi.fn();
+
+        try {
+            await act(async () => {
+                root.render(
+                    <Harness dispatch={dispatch} postMessage={postMessage} selectedHash={null} />,
+                );
+            });
+
+            act(() => {
+                window.dispatchEvent(
+                    new MessageEvent("message", {
+                        data: {
+                            type: "setFilterText",
+                            text: "",
+                        },
+                    }),
+                );
+            });
+
+            expect(dispatch).toHaveBeenCalledWith({ type: "setFilterText", text: "" });
+        } finally {
+            await act(async () => {
+                root.unmount();
+            });
+            host.remove();
+        }
+    });
 });

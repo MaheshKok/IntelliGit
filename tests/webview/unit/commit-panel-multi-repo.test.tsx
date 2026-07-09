@@ -305,6 +305,8 @@ describe("commit panel multi-repository view", () => {
             activeRepositoryRoot: "/repo-a",
         });
         expect(row("/repo-a").textContent).not.toContain("src/a.ts");
+        await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a2.ts"));
+        expect(row("/repo-a").textContent).not.toContain("src/a2.ts");
 
         click(header("/repo-b"));
         await flush();

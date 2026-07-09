@@ -306,6 +306,7 @@ class MockCommitGraphViewProvider {
     refresh = vi.fn(async () => undefined);
     clearChecksCache = vi.fn();
     filterByBranch = vi.fn(async () => undefined);
+    resetFilters = vi.fn();
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
     setRepositoryLabel = vi.fn();
@@ -2984,6 +2985,20 @@ describe("extension integration", () => {
             );
             expect(latestCommitPanelProvider!.refresh).toHaveBeenCalled();
             expect(latestCommitGraphProvider!.refresh).toHaveBeenCalled();
+            expect(latestCommitGraphProvider!.resetFilters).toHaveBeenCalled();
+            expect(latestSidebarGraphProvider!.resetFilters).toHaveBeenCalled();
+
+            showQuickPick.mockImplementationOnce(async (items: unknown[]) => items[0]);
+            await registeredCommands.get("intelligit.selectRepository")?.();
+
+            expect(context.workspaceState?.update).toHaveBeenCalledWith(
+                SELECTED_REPOSITORY_KEY,
+                firstRepo,
+            );
+            expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("app-a");
+            expect(latestCommitPanelProvider!.setRepositoryRootUri).toHaveBeenCalledWith(
+                expect.objectContaining({ fsPath: firstRepo }),
+            );
         } finally {
             await fs.rm(workspace, { recursive: true, force: true });
         }

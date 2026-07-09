@@ -1782,6 +1782,13 @@ describe("view providers integration", () => {
         await webview.send({ type: "loadMore" });
         expect(gitOps.getLog.mock.calls.length - logCallsBeforePagedFetch).toBe(2);
 
+        provider.resetFilters();
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setSelectedBranch", branch: null });
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setFilterText", text: "" });
+        await provider.refresh();
+        expect(gitOps.getLog.mock.calls.at(-1)?.[1]).toBeUndefined();
+        expect(gitOps.getLog.mock.calls.at(-1)?.[2]).toBeUndefined();
+
         gitOps.getLog.mockRejectedValueOnce(new Error("git failed"));
         await provider.refresh();
         expect(showErrorMessage).toHaveBeenCalledWith(expect.stringContaining("Git log error"));

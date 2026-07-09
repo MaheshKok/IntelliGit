@@ -321,7 +321,18 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.currentBranch = branch;
         this.filterText = "";
         this.postToWebview({ type: "setSelectedBranch", branch });
+        this.postToWebview({ type: "setFilterText", text: "" });
         await this.loadInitial();
+    }
+
+    /**
+     * Clears repository-scoped filters before a different repository root is loaded.
+     */
+    resetFilters(): void {
+        this.currentBranch = null;
+        this.filterText = "";
+        this.postToWebview({ type: "setSelectedBranch", branch: null });
+        this.postToWebview({ type: "setFilterText", text: "" });
     }
 
     /**

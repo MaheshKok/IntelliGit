@@ -264,6 +264,12 @@ export type CommitGraphInbound =
           branch: string | null;
       }
     | {
+          /** State update echoing the text filter that the host accepted. */
+          type: "setFilterText";
+          /** Accepted fixed-text git-log filter. */
+          text: string;
+      }
+    | {
           /** State update containing the currently selected commit detail. */
           type: "setCommitDetail";
           /** Git `show`/`diff-tree` detail snapshot; `detail.hash` is the stable action ID. */

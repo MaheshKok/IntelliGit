@@ -386,6 +386,8 @@ export async function activateRepositoryMode(
         executor.setRoot(repoRoot);
         commitGraph.setRepositoryLabel(repository.label);
         sidebarGraph.setRepositoryLabel(repository.label);
+        commitGraph.resetFilters();
+        sidebarGraph.resetFilters();
         commitPanel.setRepositoryRootUri(repoRootUri);
         commitPanel.setRepositoryLabel(repository.label);
         undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);

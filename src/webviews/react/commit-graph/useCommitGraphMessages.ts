@@ -96,6 +96,9 @@ export function useCommitGraphMessages(params: {
                     selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
                     break;
+                case "setFilterText":
+                    dispatch({ type: "setFilterText", text: data.text });
+                    break;
                 case "setCommitDetail":
                     dispatch({
                         type: "setCommitDetail",
