@@ -25,6 +25,8 @@ export interface CommitChecksProvider {
     readonly id: ProviderId;
     /** Returns a repo reference when this provider serves the remote, else null. */
     match(remoteUrl: string, hostMap: HostMap): ProviderRepoRef | null;
+    /** Returns a stable provider-scoped repository identity for shared caching. */
+    keyFor(ref: ProviderRepoRef): string;
     /** Fetches and normalizes the check snapshot for one commit hash. Must not throw. */
     getChecks(ref: ProviderRepoRef, hash: string): Promise<CommitChecksSnapshot>;
 }

@@ -20,6 +20,11 @@ const PAGE_LIMIT = 100;
 // single commit is already far past realistic. Raise it only if a real repo exceeds it.
 const MAX_PAGES = 5;
 
+interface BitbucketServerRepoRef extends ProviderRepoRef {
+    readonly project: string;
+    readonly repo: string;
+}
+
 // URL parser (exported for unit testing)
 
 /**
@@ -42,14 +47,17 @@ const MAX_PAGES = 5;
  * @returns A repo reference carrying the host, or null when the URL does not
  *   belong to `host` or lacks a project/repo path.
  */
-export function parseBitbucketServerUrl(remoteUrl: string, host: string): ProviderRepoRef | null {
+export function parseBitbucketServerUrl(
+    remoteUrl: string,
+    host: string,
+): BitbucketServerRepoRef | null {
     const trimmed = remoteUrl.trim();
     if (!trimmed) return null;
 
     // SCP-like:  git@<host>:<path>
     const scpMatch = new RegExp(`^git@${escapeRegex(host)}:(.+)$`, "i").exec(trimmed);
     if (scpMatch) {
-        return hasRepoPath(scpMatch[1]) ? { host: host.toLowerCase() } : null;
+        return buildRef(host, scpMatch[1]);
     }
 
     // URL form: only https and ssh schemes are accepted. http is rejected so a
@@ -60,24 +68,28 @@ export function parseBitbucketServerUrl(remoteUrl: string, host: string): Provid
         if (url.hostname.toLowerCase() !== host.toLowerCase()) return null;
         // Strip the Bitbucket Server `/scm` clone prefix before checking for a repo path.
         const path = url.pathname.replace(/^\/scm\//i, "/");
-        return hasRepoPath(path) ? { host: host.toLowerCase() } : null;
+        return buildRef(host, path);
     } catch {
         return null;
     }
 }
 
 /**
- * Reports whether a path string contains at least a project/repo pair.
+ * Builds a Bitbucket Server repo ref from a project/repo path.
  *
+ * @param host - The matched Bitbucket Server host.
  * @param rawPath - The path portion of the remote URL, may include `.git`.
- * @returns True when two or more non-empty segments remain after stripping `.git`.
+ * @returns A repo reference or null when no project/repo pair exists.
  */
-function hasRepoPath(rawPath: string): boolean {
+function buildRef(host: string, rawPath: string): BitbucketServerRepoRef | null {
     const parts = rawPath
         .replace(/\.git$/i, "")
         .split("/")
         .filter(Boolean);
-    return parts.length >= 2;
+    if (parts.length !== 2) return null;
+    const [project, repo] = parts;
+    if (!project || !repo) return null;
+    return { host: host.toLowerCase(), project, repo };
 }
 
 /**
@@ -133,6 +145,12 @@ export class BitbucketServerProvider implements CommitChecksProvider {
             if (ref) return ref;
         }
         return null;
+    }
+
+    /** Returns a stable repository cache key for a parsed Bitbucket Server remote. */
+    keyFor(ref: ProviderRepoRef): string {
+        const { host, project, repo } = ref as BitbucketServerRepoRef;
+        return `bitbucket-server:${host.toLowerCase()}:${project.toLowerCase()}/${repo.toLowerCase()}`;
     }
 
     /**

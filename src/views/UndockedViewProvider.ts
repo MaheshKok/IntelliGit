@@ -37,14 +37,18 @@ import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
 } from "../services/commitChecks/coordinator";
-import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import {
+    commitChecksSettingsFingerprint,
+    type CommitChecksSettings,
+} from "../services/commitChecks/settingsConfig";
+import type { CommitChecksService } from "../services/commitChecks/service";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
 import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
-import type { HostMap } from "../services/commitChecks/types";
+import type { CommitChecksProvider, HostMap } from "../services/commitChecks/types";
 import {
     assertGitHash,
     assertNullableString,
@@ -90,6 +94,8 @@ interface UndockedViewProviderOptions {
     selectedRepositoryRoot?: string;
     loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+    commitChecksService?: CommitChecksService;
+    commitChecksProviders?: readonly CommitChecksProvider[];
 }
 
 /**
@@ -240,7 +246,7 @@ export class UndockedViewProvider {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
-            [
+            options.commitChecksProviders ?? [
                 new GitHubProvider(httpGetJson, commitChecksSettings?.ciCdPattern),
                 new GitLabProvider(httpGetJson, credentialStore, commitChecksSettings?.ciCdPattern),
                 new BitbucketCloudProvider(httpGetJson, credentialStore),
@@ -251,6 +257,8 @@ export class UndockedViewProvider {
                 enabled: commitChecksSettings?.enabled,
                 providerEnabled: commitChecksSettings?.providers,
                 ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+                service: options.commitChecksService,
+                settingsFingerprint: commitChecksSettingsFingerprint(commitChecksSettings),
             },
         );
     }
@@ -390,7 +398,7 @@ export class UndockedViewProvider {
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
         this.commitChecksGeneration += 1;
-        this.commitChecks.clear();
+        this.commitChecks.clearProviderResolution();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -920,7 +928,7 @@ export class UndockedViewProvider {
         // react-doctor-disable-next-line react-doctor/async-defer-await
         const snapshot = await this.commitChecks.getChecks(hash);
         if (generation !== this.commitChecksGeneration) {
-            this.commitChecks.clear();
+            this.commitChecks.clearProviderResolution();
             return;
         }
         this.postToWebview({ type: "setCommitChecks", snapshot });

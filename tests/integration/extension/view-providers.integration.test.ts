@@ -433,6 +433,8 @@ vi.mock("../../../src/utils/fileOps", async () => {
 });
 vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
     GitHubProvider: class {
+        readonly id = "github";
+
         // URL-aware so a self-hosted (non-github.com) remote falls through to the real
         // GitLabProvider in the coordinator. github.com remotes still match first, so the
         // existing github commit-check tests are unaffected.
@@ -440,6 +442,9 @@ vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
             return remoteUrl.includes("github.com")
                 ? { host: "github.com", owner: "owner", repo: "repo" }
                 : null;
+        }
+        keyFor(ref: { host: string; owner: string; repo: string }): string {
+            return `github:${ref.host}:${ref.owner}/${ref.repo}`;
         }
         getChecks(_ref: unknown, hash: string): unknown {
             return providerGetChecks(hash);
@@ -1756,12 +1761,18 @@ describe("view providers integration", () => {
             dispose: vi.fn(),
         };
         let resolveFirst!: (value: unknown) => void;
+        let markFirstFetchStarted!: () => void;
+        const firstFetchStarted = new Promise<void>((resolve) => {
+            markFirstFetchStarted = resolve;
+        });
         providerGetChecks.mockReset();
         providerGetChecks
-            .mockReturnValueOnce(
-                new Promise((resolve) => {
-                    resolveFirst = resolve;
-                }),
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        markFirstFetchStarted();
+                        resolveFirst = resolve;
+                    }),
             )
             .mockResolvedValueOnce({
                 hash: "abc1234",
@@ -1775,6 +1786,7 @@ describe("view providers integration", () => {
             type: "requestCommitChecks",
             hash: "abc1234",
         });
+        await firstFetchStarted;
         provider.clearChecksCache();
         resolveFirst({
             hash: "abc1234",

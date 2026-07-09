@@ -1,17 +1,12 @@
-// Coordinates commit-check providers for one repository. On every request it
-// re-resolves Git remotes (the active repo can change at runtime), picks the first
-// matching provider (origin first), and caches the resulting snapshot per commit
-// hash. Terminal snapshots are served from cache indefinitely; non-terminal states
-// (pending/none/unavailable) are served from cache only within a TTL, so a still-
-// running, just-pushed, or transiently rate-limited commit settles without a manual
-// refresh yet is not re-fetched on every sub-poll request. The whole feature and each
-// provider can be disabled, in which case the matched commit yields no badge.
+// Coordinates commit-check providers for one repository. It resolves the active
+// remote once per repository generation, builds a provider-scoped cache key, and
+// delegates snapshot caching/de-dupe to the shared CommitChecksService.
 
 import type { GitOps } from "../../git/operations";
 import type { CommitChecksSnapshot } from "../../types";
-import { isPendingCheckState } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import { summaryForState, unavailableSnapshot } from "./normalize";
+import { CommitChecksService } from "./service";
 import type { CommitChecksProvider, HostMap, ProviderId, ProviderRepoRef } from "./types";
 
 interface ProviderMatch {
@@ -26,12 +21,6 @@ interface ProviderMatch {
  */
 export const DEFAULT_COMMIT_CHECKS_TTL_MS = 15_000;
 
-/** A cached snapshot tagged with the clock time it was fetched, for TTL comparison. */
-interface CacheEntry {
-    snapshot: CommitChecksSnapshot;
-    fetchedAt: number;
-}
-
 /** Tunable behavior for the coordinator; all fields default to the prior Phase-0 behavior. */
 export interface CommitChecksCoordinatorOptions {
     /** When false, every request returns a none snapshot without touching the network. */
@@ -40,23 +29,26 @@ export interface CommitChecksCoordinatorOptions {
     providerEnabled?: Partial<Record<ProviderId, boolean>>;
     /**
      * Milliseconds a non-terminal snapshot (pending/none/unavailable) is served from cache
-     * before a re-fetch. Defaults to 0 (re-fetch every request, the prior behavior). This
-     * is a throttle, not rate-limit backoff: a still-rate-limited host is re-fetched once
-     * per TTL; the server-sent Retry-After clear-time is not honored (tracked follow-up).
+     * before a re-fetch. Ignored when `service` is supplied because the shared service owns TTL.
      */
     ttlMs?: number;
     /** Injectable clock for tests; defaults to Date.now. */
     now?: () => number;
+    /** Shared cache/de-dupe service; omitted tests get an instance-local service. */
+    service?: CommitChecksService;
+    /** Content-affecting settings fingerprint included in the shared cache key. */
+    settingsFingerprint?: string;
 }
 
-/** Resolves a provider per request and caches commit-check snapshots by hash. */
+/** Resolves the provider for a repository and delegates snapshots to the shared cache. */
 export class CommitChecksCoordinator {
-    private readonly cache = new Map<string, CacheEntry>();
-    private readonly inflight = new Map<string, Promise<CommitChecksSnapshot>>();
     private readonly enabled: boolean;
     private readonly providerEnabled: Partial<Record<ProviderId, boolean>>;
-    private readonly ttlMs: number;
-    private readonly now: () => number;
+    private readonly service: CommitChecksService;
+    private readonly settingsFingerprint: string;
+    private resolvedProvider = false;
+    private providerMatch: ProviderMatch | null = null;
+    private providerGeneration = 0;
 
     /**
      * Builds a coordinator over an ordered provider registry for one repository.
@@ -74,14 +66,22 @@ export class CommitChecksCoordinator {
     ) {
         this.enabled = options.enabled ?? true;
         this.providerEnabled = options.providerEnabled ?? {};
-        this.ttlMs = options.ttlMs ?? 0;
-        this.now = options.now ?? Date.now;
+        this.service =
+            options.service ?? new CommitChecksService({ ttlMs: options.ttlMs, now: options.now });
+        this.settingsFingerprint = options.settingsFingerprint ?? "-";
     }
 
-    /** Drops all cached snapshots; called when the active repository changes. */
+    /** Drops shared cached snapshots; called after credential/settings changes. */
     clear(): void {
-        this.cache.clear();
-        this.inflight.clear();
+        this.clearProviderResolution();
+        this.service.clear();
+    }
+
+    /** Clears only the memoized provider/ref, preserving shared cached snapshots. */
+    clearProviderResolution(): void {
+        this.providerGeneration += 1;
+        this.resolvedProvider = false;
+        this.providerMatch = null;
     }
 
     /** Returns the snapshot for a commit, serving a fresh cache hit or re-fetching. */
@@ -91,33 +91,7 @@ export class CommitChecksCoordinator {
             // never renders the button, so this is defense in depth.
             return this.noneSnapshot(hash);
         }
-        const cached = this.cache.get(hash);
-        if (cached && this.isFresh(cached)) {
-            return cached.snapshot;
-        }
-        const inflight = this.inflight.get(hash);
-        if (inflight) return inflight;
-        const request = this.fetchFresh(hash)
-            .then((snapshot) => {
-                this.cache.set(hash, { snapshot, fetchedAt: this.now() });
-                return snapshot;
-            })
-            .finally(() => {
-                this.inflight.delete(hash);
-            });
-        this.inflight.set(hash, request);
-        return request;
-    }
-
-    /**
-     * Whether a cache entry may still be served. Terminal snapshots are served forever;
-     * non-terminal ones (pending/none/unavailable) only while within the TTL window.
-     */
-    private isFresh(entry: CacheEntry): boolean {
-        const { state } = entry.snapshot;
-        const nonTerminal = isPendingCheckState(state) || state === "unavailable";
-        if (!nonTerminal) return true;
-        return this.now() - entry.fetchedAt < this.ttlMs;
+        return this.fetchFresh(hash);
     }
 
     /** Builds the no-badge snapshot used when the feature or matched provider is disabled. */
@@ -126,11 +100,15 @@ export class CommitChecksCoordinator {
     }
 
     private async fetchFresh(hash: string): Promise<CommitChecksSnapshot> {
+        const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
         try {
             match = await this.resolveProvider();
         } catch (err) {
             return unavailableSnapshot(hash, getErrorMessage(err));
+        }
+        if (providerGeneration !== this.providerGeneration) {
+            return this.noneSnapshot(hash);
         }
         if (!match) {
             // No registered provider matched any remote (an unmapped self-hosted host, or
@@ -146,14 +124,18 @@ export class CommitChecksCoordinator {
             // tied to origin, not to whichever remote happens to be on.
             return this.noneSnapshot(hash);
         }
-        try {
-            return await match.provider.getChecks(match.ref, hash);
-        } catch (err) {
-            return unavailableSnapshot(hash, getErrorMessage(err));
-        }
+        const key = `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}`;
+        return this.service.getOrFetch(key, async () => {
+            try {
+                return await match.provider.getChecks(match.ref, hash);
+            } catch (err) {
+                return unavailableSnapshot(hash, getErrorMessage(err));
+            }
+        });
     }
 
     private async resolveProvider(): Promise<ProviderMatch | null> {
+        if (this.resolvedProvider) return this.providerMatch;
         const remotes = await this.gitOps.getRemotes();
         const ordered = remotes.includes("origin")
             ? ["origin", ...remotes.filter((remote) => remote !== "origin")]
@@ -165,9 +147,15 @@ export class CommitChecksCoordinator {
             if (!url) continue;
             for (const provider of this.providers) {
                 const ref = provider.match(url, this.hostMap);
-                if (ref) return { provider, ref };
+                if (ref) {
+                    this.providerMatch = { provider, ref };
+                    this.resolvedProvider = true;
+                    return this.providerMatch;
+                }
             }
         }
+        this.providerMatch = null;
+        this.resolvedProvider = true;
         return null;
     }
 }

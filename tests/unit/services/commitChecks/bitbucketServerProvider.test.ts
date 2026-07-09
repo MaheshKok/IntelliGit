@@ -9,7 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../../helpers/l10nTestHelper";
 import type { FetchJson } from "../../../../src/services/commitChecks/http";
-import type { HostMap } from "../../../../src/services/commitChecks/types";
+import type { HostMap, ProviderRepoRef } from "../../../../src/services/commitChecks/types";
 
 // Module-level mocks (must appear before the import under test)
 
@@ -86,12 +86,12 @@ function providerForStatus(state: string, token = "bb-token"): BitbucketServerPr
 describe("parseBitbucketServerUrl", () => {
     it("matches the HTTPS clone form with the /scm prefix", () => {
         const ref = parseBitbucketServerUrl("https://bb.acme.com/scm/proj/repo.git", SERVER_HOST);
-        expect(ref).toEqual({ host: SERVER_HOST });
+        expect(ref).toEqual({ host: SERVER_HOST, project: "proj", repo: "repo" });
     });
 
     it("matches the HTTPS form without a /scm prefix", () => {
         const ref = parseBitbucketServerUrl("https://bb.acme.com/proj/repo.git", SERVER_HOST);
-        expect(ref).toEqual({ host: SERVER_HOST });
+        expect(ref).toEqual({ host: SERVER_HOST, project: "proj", repo: "repo" });
     });
 
     it("matches the ssh:// form with an explicit port", () => {
@@ -99,12 +99,12 @@ describe("parseBitbucketServerUrl", () => {
             "ssh://git@bb.acme.com:7999/proj/repo.git",
             SERVER_HOST,
         );
-        expect(ref).toEqual({ host: SERVER_HOST });
+        expect(ref).toEqual({ host: SERVER_HOST, project: "proj", repo: "repo" });
     });
 
     it("matches the SCP-like git@host:path form", () => {
         const ref = parseBitbucketServerUrl("git@bb.acme.com:proj/repo.git", SERVER_HOST);
-        expect(ref).toEqual({ host: SERVER_HOST });
+        expect(ref).toEqual({ host: SERVER_HOST, project: "proj", repo: "repo" });
     });
 
     it("rejects an http:// remote (SSRF guard)", () => {
@@ -133,7 +133,7 @@ describe("parseBitbucketServerUrl", () => {
 
     it("matches case-insensitively on the host", () => {
         const ref = parseBitbucketServerUrl("https://BB.ACME.COM/scm/proj/repo.git", SERVER_HOST);
-        expect(ref).toEqual({ host: SERVER_HOST });
+        expect(ref).toEqual({ host: SERVER_HOST, project: "proj", repo: "repo" });
     });
 });
 
@@ -147,7 +147,17 @@ describe("BitbucketServerProvider.match", () => {
 
     it("matches a remote whose host is mapped to bitbucket-server", () => {
         const ref = provider.match("https://bb.acme.com/scm/proj/repo.git", SERVER_MAP);
-        expect(ref).toEqual({ host: SERVER_HOST });
+        expect(ref).toEqual({ host: SERVER_HOST, project: "proj", repo: "repo" });
+    });
+
+    it("builds a stable lowercase cache key", () => {
+        expect(
+            provider.keyFor({
+                host: "BB.ACME.COM",
+                project: "PROJ",
+                repo: "Repo",
+            } as ProviderRepoRef),
+        ).toBe("bitbucket-server:bb.acme.com:proj/repo");
     });
 
     it("returns null when the host is absent from the HostMap", () => {

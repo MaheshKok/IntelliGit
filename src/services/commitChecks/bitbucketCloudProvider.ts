@@ -128,6 +128,12 @@ export class BitbucketCloudProvider implements CommitChecksProvider {
         return parseBitbucketCloudUrl(remoteUrl);
     }
 
+    /** Returns a stable repository cache key for a parsed Bitbucket Cloud remote. */
+    keyFor(ref: ProviderRepoRef): string {
+        const { host, workspace, repo } = ref as BitbucketCloudRepoRef;
+        return `bitbucket-cloud:${host.toLowerCase()}:${workspace.toLowerCase()}/${repo.toLowerCase()}`;
+    }
+
     /**
      * Fetches commit build statuses from the Bitbucket Cloud API and returns a snapshot.
      *

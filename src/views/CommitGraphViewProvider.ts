@@ -28,14 +28,18 @@ import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
 } from "../services/commitChecks/coordinator";
-import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import {
+    commitChecksSettingsFingerprint,
+    type CommitChecksSettings,
+} from "../services/commitChecks/settingsConfig";
+import type { CommitChecksService } from "../services/commitChecks/service";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
 import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
-import type { HostMap } from "../services/commitChecks/types";
+import type { CommitChecksProvider, HostMap } from "../services/commitChecks/types";
 import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commitPanelActions";
 
 /**
@@ -119,13 +123,15 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             showRepositoryLabel?: boolean;
             hostMap?: HostMap;
             settings?: CommitChecksSettings;
+            commitChecksService?: CommitChecksService;
+            commitChecksProviders?: readonly CommitChecksProvider[];
         } = {},
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         const settings = options.settings;
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
-            [
+            options.commitChecksProviders ?? [
                 new GitHubProvider(httpGetJson, settings?.ciCdPattern),
                 new GitLabProvider(httpGetJson, credentialStore, settings?.ciCdPattern),
                 new BitbucketCloudProvider(httpGetJson, credentialStore),
@@ -136,6 +142,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 enabled: settings?.enabled,
                 providerEnabled: settings?.providers,
                 ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+                service: options.commitChecksService,
+                settingsFingerprint: commitChecksSettingsFingerprint(settings),
             },
         );
     }
@@ -340,6 +348,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     resetFilters(): void {
         this.currentBranch = null;
         this.filterText = "";
+        this.commitChecks.clearProviderResolution();
         this.postToWebview({ type: "setSelectedBranch", branch: null });
         this.postToWebview({ type: "setFilterText", text: "" });
     }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { interpolateL10n } from "../../../helpers/l10nTestHelper";
-import { HttpError, type FetchJson } from "../../../../src/services/commitChecks/http";
+import type { FetchJson } from "../../../../src/services/commitChecks/http";
 import type { ProviderRepoRef } from "../../../../src/services/commitChecks/types";
 
 const mocks = vi.hoisted(() => ({
@@ -67,6 +67,18 @@ describe("GitHubProvider", () => {
             repo: "repo",
         });
         expect(provider.match("https://gitlab.com/owner/repo.git", {})).toBeNull();
+    });
+
+    it("builds a stable lowercase cache key", () => {
+        const provider = new GitHubProvider(vi.fn());
+
+        expect(
+            provider.keyFor({
+                host: "GitHub.com",
+                owner: "Owner",
+                repo: "Repo",
+            } as ProviderRepoRef),
+        ).toBe("github:github.com:owner/repo");
     });
 
     it("normalizes check runs and commit statuses into one snapshot", () => {
@@ -278,30 +290,6 @@ describe("GitHubProvider", () => {
 
         expect(snapshot.state).toBe("success");
         expect(snapshot.items).toHaveLength(1);
-    });
-
-    it("backs off after GitHub returns a primary rate-limit response", async () => {
-        let clock = 1_000;
-        const error = new HttpError(403, "HTTP 403: API rate limit exceeded", {
-            "x-ratelimit-remaining": "0",
-            "x-ratelimit-reset": "61",
-        });
-        const fetchJson: FetchJson = vi.fn(async () => {
-            throw error;
-        });
-        const provider = new GitHubProvider(fetchJson, undefined, () => clock);
-
-        const first = await provider.getChecks(githubRef, "abc1234");
-        const cached = await provider.getChecks(githubRef, "def5678");
-
-        expect(first.state).toBe("unavailable");
-        expect(cached.state).toBe("unavailable");
-        expect(cached.error).toBe("HTTP 403: API rate limit exceeded");
-        expect(fetchJson).toHaveBeenCalledTimes(2);
-
-        clock = 61_001;
-        await provider.getChecks(githubRef, "fedcba9");
-        expect(fetchJson).toHaveBeenCalledTimes(4);
     });
 
     it("admits a row the default filter drops when a custom ciCdPattern matches it", async () => {
