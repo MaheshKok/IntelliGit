@@ -22,6 +22,7 @@ import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServe
 import { httpGetJson, type FetchJson } from "../services/commitChecks/http";
 import { GitHubRequestGate } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
+import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
 import type { CommitChecksProvider } from "../services/commitChecks/types";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
@@ -125,6 +126,7 @@ export async function activateRepositoryMode(
     const commitChecksService = new CommitChecksService({
         ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
         maxEntries: 1_000,
+        persistentCache: new CommitChecksPersistentCache(context.globalState),
     });
     const githubRequestGate = new GitHubRequestGate(4);
     const gatedGithubFetchJson: FetchJson = (url, headers) =>

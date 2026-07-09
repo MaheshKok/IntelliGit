@@ -1,9 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CommitChecksSnapshot } from "../../../../src/types";
 import { CommitChecksService } from "../../../../src/services/commitChecks/service";
+import {
+    CommitChecksPersistentCache,
+    type CommitChecksPersistentState,
+} from "../../../../src/services/commitChecks/persistentCache";
 
 function snapshot(state: CommitChecksSnapshot["state"]): CommitChecksSnapshot {
     return { hash: "abc1234", state, summary: state, items: [] };
+}
+
+function state(): CommitChecksPersistentState {
+    const values = new Map<string, unknown>();
+    return {
+        get: vi.fn((key: string) => values.get(key)),
+        update: vi.fn(async (key: string, value: unknown) => {
+            if (value === undefined) {
+                values.delete(key);
+                return;
+            }
+            values.set(key, value);
+        }),
+    };
 }
 
 describe("CommitChecksService", () => {
@@ -88,6 +106,75 @@ describe("CommitChecksService", () => {
         await service.getOrFetch("github:repo@abc1234:-", firstFetch);
 
         expect(firstFetch).toHaveBeenCalledTimes(2);
+        expect(secondFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("serves terminal snapshots from persistent cache across service instances", async () => {
+        const store = state();
+        const persistentCache = new CommitChecksPersistentCache(store);
+        const first = new CommitChecksService({ persistentCache });
+        const second = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        const firstFetch = vi.fn(async () => snapshot("success"));
+        const secondFetch = vi.fn(async () => snapshot("failure"));
+
+        await first.getOrFetch("github:repo@abc1234:-", firstFetch);
+        const restored = await second.getOrFetch("github:repo@abc1234:-", secondFetch);
+
+        expect(restored.state).toBe("success");
+        expect(firstFetch).toHaveBeenCalledTimes(1);
+        expect(secondFetch).not.toHaveBeenCalled();
+    });
+
+    it("does not persist non-terminal snapshots", async () => {
+        const store = state();
+        const first = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        const second = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        const firstFetch = vi.fn(async () => snapshot("pending"));
+        const secondFetch = vi.fn(async () => snapshot("success"));
+
+        await first.getOrFetch("github:repo@abc1234:-", firstFetch);
+        const fetched = await second.getOrFetch("github:repo@abc1234:-", secondFetch);
+
+        expect(fetched.state).toBe("success");
+        expect(secondFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("misses persistent cache when the settings fingerprint changes", async () => {
+        const store = state();
+        const first = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        const second = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(store),
+        });
+        const firstFetch = vi.fn(async () => snapshot("success"));
+        const secondFetch = vi.fn(async () => snapshot("failure"));
+
+        await first.getOrFetch("github:repo@abc1234:build/i", firstFetch);
+        const fetched = await second.getOrFetch("github:repo@abc1234:deploy/i", secondFetch);
+
+        expect(fetched.state).toBe("failure");
+        expect(secondFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("clear removes persistent snapshots before the next fetch", async () => {
+        const service = new CommitChecksService({
+            persistentCache: new CommitChecksPersistentCache(state()),
+        });
+        const firstFetch = vi.fn(async () => snapshot("success"));
+        const secondFetch = vi.fn(async () => snapshot("failure"));
+
+        await service.getOrFetch("github:repo@abc1234:-", firstFetch);
+        service.clear();
+        const fetched = await service.getOrFetch("github:repo@abc1234:-", secondFetch);
+
+        expect(fetched.state).toBe("failure");
         expect(secondFetch).toHaveBeenCalledTimes(1);
     });
 });

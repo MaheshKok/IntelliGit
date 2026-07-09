@@ -4,6 +4,7 @@
 
 import type { CommitChecksSnapshot } from "../../types";
 import { isPendingCheckState } from "../../types";
+import type { CommitChecksPersistentCache } from "./persistentCache";
 
 /** One cached commit-check snapshot plus freshness bookkeeping. */
 interface CacheEntry {
@@ -11,7 +12,7 @@ interface CacheEntry {
     fetchedAt: number;
 }
 
-/** Runtime cache tuning; persistence is intentionally left for the next phase. */
+/** Runtime and persistent cache tuning. */
 export interface CommitChecksServiceOptions {
     /** TTL for pending/none/unavailable snapshots; terminal snapshots live until evicted. */
     ttlMs?: number;
@@ -19,6 +20,8 @@ export interface CommitChecksServiceOptions {
     maxEntries?: number;
     /** Injectable clock for tests. */
     now?: () => number;
+    /** Optional cross-session terminal snapshot cache. */
+    persistentCache?: CommitChecksPersistentCache;
 }
 
 /** Shared in-memory commit-check cache and in-flight request de-dupe. */
@@ -28,6 +31,8 @@ export class CommitChecksService {
     private readonly ttlMs: number;
     private readonly maxEntries: number;
     private readonly now: () => number;
+    private readonly persistentCache?: CommitChecksPersistentCache;
+    private pendingPersistentClear = Promise.resolve();
     private generation = 0;
 
     /**
@@ -39,6 +44,7 @@ export class CommitChecksService {
         this.ttlMs = options.ttlMs ?? 0;
         this.maxEntries = Math.max(1, Math.floor(options.maxEntries ?? 1_000));
         this.now = options.now ?? Date.now;
+        this.persistentCache = options.persistentCache;
     }
 
     /**
@@ -59,12 +65,24 @@ export class CommitChecksService {
         }
         const inflight = this.inflight.get(key);
         if (inflight) return inflight;
+        if (this.persistentCache) {
+            const persisted = await this.getPersisted(key);
+            if (persisted) {
+                this.cache.set(key, { snapshot: persisted, fetchedAt: this.now() });
+                this.evictOldest();
+                return persisted;
+            }
+        }
+        const newerInflight = this.inflight.get(key);
+        if (newerInflight) return newerInflight;
         const generation = this.generation;
         const request = fetchSnapshot()
-            .then((snapshot) => {
+            .then(async (snapshot) => {
                 if (generation === this.generation) {
-                    this.cache.set(key, { snapshot, fetchedAt: this.now() });
+                    const fetchedAt = this.now();
+                    this.cache.set(key, { snapshot, fetchedAt });
                     this.evictOldest();
+                    await this.persist(key, snapshot, fetchedAt);
                 }
                 return snapshot;
             })
@@ -82,6 +100,10 @@ export class CommitChecksService {
         this.generation += 1;
         this.cache.clear();
         this.inflight.clear();
+        const clear = this.persistentCache?.clear();
+        if (clear) {
+            this.pendingPersistentClear = Promise.resolve(clear).catch(() => undefined);
+        }
     }
 
     private isFresh(entry: CacheEntry): boolean {
@@ -101,6 +123,28 @@ export class CommitChecksService {
             const oldest = this.cache.keys().next().value;
             if (!oldest) return;
             this.cache.delete(oldest);
+        }
+    }
+
+    private async getPersisted(key: string): Promise<CommitChecksSnapshot | undefined> {
+        if (!this.persistentCache) return undefined;
+        try {
+            await this.pendingPersistentClear;
+            return await this.persistentCache.get(key);
+        } catch {
+            return undefined;
+        }
+    }
+
+    private async persist(
+        key: string,
+        snapshot: CommitChecksSnapshot,
+        fetchedAt: number,
+    ): Promise<void> {
+        try {
+            await this.persistentCache?.set(key, snapshot, fetchedAt);
+        } catch {
+            // Persistent cache failure must not break commit-check badges.
         }
     }
 }
