@@ -90,7 +90,7 @@ export interface UndockedLayoutProps {
     handleWorktreeAction: (action: WorktreeAction, path: string) => void;
     handleCommitAction: (action: CommitAction, hash: string) => void;
     handleOpenDiff: (commitHash: string, filePath: string) => void;
-    handleRequestCommitChecks: (hash: string) => void;
+    handleRequestCommitChecks: (hashes: string[], force?: boolean) => void;
     handleOpenCommitCheckUrl: (url: string) => void;
     handleSignInForCommitChecks: (host: string) => void;
     handleMessageChange: (message: string) => void;

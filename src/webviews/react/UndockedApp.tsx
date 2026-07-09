@@ -25,7 +25,7 @@ import {
 import { UndockedLayout } from "./undocked/UndockedLayout";
 import { resizeSectionPair, useColumnPairDrag } from "./undocked/useColumnPairDrag";
 import { useUnifiedMessages } from "./undocked/useUnifiedMessages";
-import { useUndockedActions } from "./undocked/useUndockedActions";
+import { type UndockedActions, useUndockedActions } from "./undocked/useUndockedActions";
 import type {
     Branch,
     Commit,
@@ -408,11 +408,10 @@ function App(): React.ReactElement {
     const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
     // --- Graph and commit-panel callbacks ---
-    const actions = useUndockedActions({
+    const actions: UndockedActions = useUndockedActions({
         graphDispatch,
         cpDispatch,
         loadingMore,
-        commitChecks,
         commitMessage: cpState.commitMessage,
         isAmend: cpState.isAmend,
         checkedPaths,

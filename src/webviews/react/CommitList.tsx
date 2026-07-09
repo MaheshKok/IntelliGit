@@ -60,7 +60,7 @@ interface Props {
     onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;
     onCommitUnhover?: () => void;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
-    onRequestCommitChecks?: (hash: string) => void;
+    onRequestCommitChecks?: (hashes: string[], force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
     onSignInForCommitChecks?: (host: string) => void;
     showSearch?: boolean;
@@ -71,6 +71,8 @@ interface Props {
 /**
  * Renders a virtualized commit list with an aligned canvas lane graph, optional
  * search chrome, branch-scope context actions, and incremental load-more support.
+ * Commit-check demand tracks only the exact viewport and is cleared while this
+ * document is hidden or when the surface unmounts.
  */
 export function CommitList({
     commits,
@@ -103,6 +105,9 @@ export function CommitList({
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
     const isLoadingMoreRef = useRef(false);
+    const isDocumentVisibleRef = useRef(true);
+    const retryTimerRef = useRef<number | null>(null);
+    const onRequestCommitChecksRef = useRef(onRequestCommitChecks);
     // Per-commit budget for re-fetching a "no checks yet" snapshot after a push.
     // Ref initializer is tiny and keeps hook deps unchanged around the polling effect.
     // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
@@ -212,24 +217,80 @@ export function CommitList({
         return { start, end };
     }, [commits.length, scrollTop, viewportHeight]);
 
-    const visibleCommits = useMemo(
+    const renderedCommits = useMemo(
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
-    // Visible-row polling is viewport state synchronization; there is no event handler to move this into.
+
+    const requestRange = useMemo(() => {
+        if (commits.length === 0) return { start: 0, end: 0 };
+        const effectiveHeight = Math.max(ROW_HEIGHT, viewportHeight);
+        return {
+            start: Math.max(0, Math.floor(scrollTop / ROW_HEIGHT)),
+            end: Math.min(commits.length, Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT)),
+        };
+    }, [commits.length, scrollTop, viewportHeight]);
+    const requestedCommitHashes = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    commits
+                        .slice(requestRange.start, requestRange.end)
+                        .map((commit) => commit.hash),
+                ),
+            ),
+        [commits, requestRange.end, requestRange.start],
+    );
+
+    useEffect(() => {
+        const previousCallback = onRequestCommitChecksRef.current;
+        if (previousCallback && !onRequestCommitChecks) previousCallback([], false);
+        onRequestCommitChecksRef.current = onRequestCommitChecks;
+    }, [onRequestCommitChecks]);
+
+    // Viewport changes replace demand once; visibility and unmount lifecycles are handled separately.
     // react-doctor-disable-next-line react-doctor/no-effect-event-handler
     useEffect(() => {
+        if (!onRequestCommitChecks || document.visibilityState === "hidden") return;
+        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+        onRequestCommitChecks(requestedCommitHashes, false);
+    }, [onRequestCommitChecks, requestedCommitHashes]);
+
+    useEffect(() => {
         if (!onRequestCommitChecks) return;
+        const handleVisibilityChange = (): void => {
+            const isVisible = document.visibilityState !== "hidden";
+            isDocumentVisibleRef.current = isVisible;
+            if (!isVisible && retryTimerRef.current !== null) {
+                window.clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
+            }
+            // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+            onRequestCommitChecks(isVisible ? requestedCommitHashes : [], false);
+        };
+        isDocumentVisibleRef.current = document.visibilityState !== "hidden";
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [onRequestCommitChecks, requestedCommitHashes]);
+
+    useEffect(
+        () => () => {
+            onRequestCommitChecksRef.current?.([], false);
+        },
+        [],
+    );
+
+    // Retry scheduling re-publishes the complete viewport so demand ownership never narrows to a subset.
+    // react-doctor-disable-next-line react-doctor/no-effect-event-handler
+    useEffect(() => {
+        if (!onRequestCommitChecks || !isDocumentVisibleRef.current) return;
         const retryHashes: string[] = [];
         const noneHashes: string[] = [];
-        for (const commit of visibleCommits) {
-            const checks = commitChecks?.get(commit.hash);
-            if (!checks) {
-                // Commit-check requests are host IO driven by visibility, not parent state synchronization.
-                // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
-                onRequestCommitChecks(commit.hash);
-                continue;
-            }
+        for (const hash of requestedCommitHashes) {
+            const checks = commitChecks?.get(hash);
+            if (!checks) continue;
             if (checks === "loading") continue;
             if (checks.state === "pending" || checks.state === "unavailable") {
                 // pending: CI is running. unavailable: recoverable (a missing token to
@@ -238,28 +299,39 @@ export function CommitList({
                 // coordinator TTL throttles this to at most one fetch per TTL.
                 // ponytail: unbounded by design; if visible-row volume ever makes the
                 // message count matter, add a budget like the "none" path below.
-                noneCheckRetries.current.delete(commit.hash);
-                retryHashes.push(commit.hash);
-            } else if (checks.state === "none" && !isUnpushedCommit(commit.hash)) {
+                noneCheckRetries.current.delete(hash);
+                retryHashes.push(hash);
+            } else if (checks.state === "none" && !isUnpushedCommit(hash)) {
                 // A just-pushed commit reports no checks until GitHub registers CI;
                 // retry a bounded number of times so status appears without a manual refresh.
-                if ((noneCheckRetries.current.get(commit.hash) ?? 0) < MAX_NONE_REFRESH_ATTEMPTS) {
-                    retryHashes.push(commit.hash);
-                    noneHashes.push(commit.hash);
+                if ((noneCheckRetries.current.get(hash) ?? 0) < MAX_NONE_REFRESH_ATTEMPTS) {
+                    retryHashes.push(hash);
+                    noneHashes.push(hash);
                 }
             } else {
-                noneCheckRetries.current.delete(commit.hash);
+                noneCheckRetries.current.delete(hash);
             }
         }
         if (retryHashes.length === 0) return;
         const timer = window.setTimeout(() => {
+            if (retryTimerRef.current === timer) retryTimerRef.current = null;
+            if (!isDocumentVisibleRef.current) return;
             for (const hash of noneHashes) {
                 noneCheckRetries.current.set(hash, (noneCheckRetries.current.get(hash) ?? 0) + 1);
             }
-            for (const hash of retryHashes) onRequestCommitChecks(hash);
+            onRequestCommitChecks(requestedCommitHashes, noneHashes.length > 0);
         }, PENDING_CHECK_REFRESH_MS);
-        return () => window.clearTimeout(timer);
-    }, [commitChecks, onRequestCommitChecks, visibleCommits, isUnpushedCommit]);
+        retryTimerRef.current = timer;
+        return () => {
+            window.clearTimeout(timer);
+            if (retryTimerRef.current === timer) retryTimerRef.current = null;
+        };
+    }, [commitChecks, isUnpushedCommit, onRequestCommitChecks, requestedCommitHashes]);
+
+    /** Keeps row-triggered loading aligned with this surface's full exact-viewport demand. */
+    const handleRequestCommitChecksFromRow = useCallback(() => {
+        onRequestCommitChecks?.(requestedCommitHashes, false);
+    }, [onRequestCommitChecks, requestedCommitHashes]);
 
     const branchScopeLabel = selectedBranch
         ? t("commit.scope.branch", { branch: selectedBranch })
@@ -324,7 +396,7 @@ export function CommitList({
 
             <CommitListRows
                 commits={commits}
-                visibleCommits={visibleCommits}
+                visibleCommits={renderedCommits}
                 visibleRange={visibleRange}
                 graphWidth={graphWidth}
                 graphRows={graphRows}
@@ -337,7 +409,9 @@ export function CommitList({
                 showAuthorDate={showAuthorDate}
                 commitChecks={commitChecks}
                 onSelectCommit={onSelectCommit}
-                onRequestCommitChecks={onRequestCommitChecks}
+                onRequestCommitChecks={
+                    onRequestCommitChecks ? handleRequestCommitChecksFromRow : undefined
+                }
                 onOpenCommitCheckUrl={onOpenCommitCheckUrl}
                 onSignInForCommitChecks={onSignInForCommitChecks}
                 onCommitHover={onCommitHover}

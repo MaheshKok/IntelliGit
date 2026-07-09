@@ -95,6 +95,11 @@ const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
 const fileSystemWatchers: FakeFileSystemWatcher[] = [];
+const createdWebviewPanels: Array<{
+    panel: Record<string, unknown>;
+    send: (message: unknown) => Promise<void>;
+    dispose: () => void;
+}> = [];
 const registeredCommands = new Map<string, CommandHandler>();
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
 const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
@@ -174,6 +179,7 @@ const vscodeMock = {
         t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
+    ViewColumn: { One: 1 },
     Disposable: class {
         constructor(private readonly disposeCallback: () => void) {}
         dispose(): void {
@@ -225,6 +231,16 @@ const vscodeMock = {
             return activeTextEditor;
         },
         registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        createWebviewPanel: vi.fn(() => {
+            const webview = createWebviewView();
+            const panel = {
+                ...webview.view,
+                reveal: vi.fn(),
+                dispose: vi.fn(() => webview.dispose()),
+            };
+            createdWebviewPanels.push({ panel, send: webview.send, dispose: panel.dispose });
+            return panel;
+        }),
         createTreeView: vi.fn(() => ({
             dispose: vi.fn(),
             badge: undefined,
@@ -735,6 +751,7 @@ describe("view providers integration", () => {
         branchRefreshControls.length = 0;
         refreshServiceInstances.length = 0;
         fileSystemWatchers.length = 0;
+        createdWebviewPanels.length = 0;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -1730,12 +1747,8 @@ describe("view providers integration", () => {
         resolveRepoB({ branches: makeBranchesForRoot("/repo-b"), worktrees: [] });
         await repoBSwitch;
 
-        expect(callRoots).toEqual(
-            expect.arrayContaining(["log:/repo-a", "status:/repo-a"]),
-        );
-        expect(callRoots).not.toEqual(
-            expect.arrayContaining(["log:/repo-b", "status:/repo-b"]),
-        );
+        expect(callRoots).toEqual(expect.arrayContaining(["log:/repo-a", "status:/repo-a"]));
+        expect(callRoots).not.toEqual(expect.arrayContaining(["log:/repo-b", "status:/repo-b"]));
         expect(workspaceStore.get("intelligit.undockedSelectedRepositoryRoot")).toBe("/repo-a");
         provider.dispose();
     });
@@ -1783,8 +1796,8 @@ describe("view providers integration", () => {
         postMessageSpy.mockClear();
 
         const staleRequest = testProvider.handleMessage.call(provider, {
-            type: "requestCommitChecks",
-            hash: "abc1234",
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
         });
         await firstFetchStarted;
         provider.clearChecksCache();
@@ -1799,15 +1812,15 @@ describe("view providers integration", () => {
         expect(lastCommitChecksSnapshot()).toBeUndefined();
 
         await testProvider.handleMessage.call(provider, {
-            type: "requestCommitChecks",
-            hash: "abc1234",
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
         });
         expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
         provider.dispose();
     });
 
-    it("UndockedViewProvider accepts batched commit-check requests", async () => {
+    it("UndockedViewProvider deduplicates visible commit-check hashes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const provider = new UndockedViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -1837,24 +1850,306 @@ describe("view providers integration", () => {
         postMessageSpy.mockClear();
 
         await testProvider.handleMessage.call(provider, {
-            type: "requestCommitChecks",
-            hashes: ["abc1234", "def5678"],
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234", "abc1234", "def5678"],
         });
 
         const snapshots = postMessageSpy.mock.calls
             .map(([message]) => message)
             .filter(
-                (
-                    message,
-                ): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
+                (message): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
                     typeof message === "object" &&
                     message !== null &&
                     "type" in message &&
                     message.type === "setCommitChecks",
             )
             .map((message) => message.snapshot.hash);
-        expect(snapshots).toEqual(expect.arrayContaining(["abc1234", "def5678"]));
+        expect(snapshots).toEqual(["abc1234", "def5678"]);
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider replaces stale visible commit-check demand", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const firstDemand = testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222", "ccc3333"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: [],
+        });
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider invalidates visible demand when the panel disposes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[0],
+            makeGitOpsMock() as unknown as ConstructorParameters<typeof UndockedViewProvider>[1],
+            { fsPath: "/repo", path: "/repo" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[2],
+            makeCredentialStore() as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[3],
+            createMemento() as unknown as ConstructorParameters<typeof UndockedViewProvider>[4],
+        );
+        provider.open();
+        const panel = createdWebviewPanels.at(-1);
+        expect(panel).toBeDefined();
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const demand = panel!.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        panel!.dispose();
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await demand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("bbb2222");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider invalidates visible demand when a filter replaces hash scope", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        const loadedCommits = [
+            {
+                hash: "aaa1111",
+                shortHash: "aaa1111",
+                message: "first visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+            {
+                hash: "bbb2222",
+                shortHash: "bbb2222",
+                message: "second visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-18T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+        ];
+        let resolveFilteredLog!: (commits: typeof loadedCommits) => void;
+        gitOps.getLog.mockResolvedValueOnce(loadedCommits).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFilteredLog = resolve;
+                }),
+        );
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        await testProvider.handleMessage.call(provider, { type: "ready" });
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = resolve;
+                    }),
+            )
+            .mockImplementation(async (hash: string) => ({
+                hash,
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            }));
+        postMessageSpy.mockClear();
+
+        const firstDemand = testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        const filterChange = testProvider.handleMessage.call(provider, {
+            type: "filterText",
+            text: "second",
+        });
+        await vi.waitFor(() => expect(gitOps.getLog).toHaveBeenCalledTimes(2));
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+        resolveFilteredLog([loadedCommits[1]]);
+        await filterChange;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider rejects more than 200 visible commit-check hashes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+
+        await expect(
+            testProvider.handleMessage.call(provider, {
+                type: "requestVisibleCommitChecks",
+                hashes: Array.from({ length: 201 }, (_, index) => index.toString(16)),
+            }),
+        ).rejects.toThrow("Too many visible commit-check hashes.");
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider skips GitHub checks for loaded unpushed commits", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getUnpushedCommitHashes.mockResolvedValue(["abc1234"]);
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        providerGetChecks.mockReset();
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, { type: "ready" });
+        postMessageSpy.mockClear();
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+        });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "none" }));
         provider.dispose();
     });
 
@@ -2037,8 +2332,8 @@ describe("view providers integration", () => {
                 items: [],
             });
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         expect(providerGetChecks).toHaveBeenCalledTimes(1);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
@@ -2080,8 +2375,8 @@ describe("view providers integration", () => {
                 items: [],
             });
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         expect(providerGetChecks).toHaveBeenCalledTimes(1);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
@@ -2091,7 +2386,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitGraphViewProvider accepts batched commit-check requests", async () => {
+    it("CommitGraphViewProvider deduplicates visible commit-check hashes", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
         const gitOps = makeGitOpsMock();
@@ -2116,24 +2411,374 @@ describe("view providers integration", () => {
         postMessageSpy.mockClear();
 
         await webview.send({
-            type: "requestCommitChecks",
-            hashes: ["abc1234", "def5678"],
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234", "abc1234", "def5678"],
         });
 
         const snapshots = postMessageSpy.mock.calls
             .map(([message]) => message)
             .filter(
-                (
-                    message,
-                ): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
+                (message): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
                     typeof message === "object" &&
                     message !== null &&
                     "type" in message &&
                     message.type === "setCommitChecks",
             )
             .map((message) => message.snapshot.hash);
-        expect(snapshots).toEqual(expect.arrayContaining(["abc1234", "def5678"]));
+        expect(snapshots).toEqual(["abc1234", "def5678"]);
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider replaces stale visible commit-check demand", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const firstDemand = webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222", "ccc3333"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: [] });
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider invalidates visible demand when the view disposes", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
+                typeof CommitGraphViewProvider
+            >[0],
+            makeGitOpsMock() as unknown as ConstructorParameters<typeof CommitGraphViewProvider>[1],
+            makeCredentialStore() as unknown as ConstructorParameters<
+                typeof CommitGraphViewProvider
+            >[2],
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as Parameters<typeof provider.resolveWebviewView>[0],
+            {} as Parameters<typeof provider.resolveWebviewView>[1],
+            {} as unknown as Parameters<typeof provider.resolveWebviewView>[2],
+        );
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const demand = webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        webview.dispose();
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await demand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("bbb2222");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider invalidates visible demand when a filter replaces hash scope", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const loadedCommits = [
+            {
+                hash: "aaa1111",
+                shortHash: "aaa1111",
+                message: "first visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+            {
+                hash: "bbb2222",
+                shortHash: "bbb2222",
+                message: "second visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-18T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+        ];
+        let resolveFilteredLog!: (commits: typeof loadedCommits) => void;
+        gitOps.getLog.mockResolvedValueOnce(loadedCommits).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFilteredLog = resolve;
+                }),
+        );
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = resolve;
+                    }),
+            )
+            .mockImplementation(async (hash: string) => ({
+                hash,
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            }));
+        postMessageSpy.mockClear();
+
+        const firstDemand = webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        const filterChange = webview.send({ type: "filterText", text: "second" });
+        await vi.waitFor(() => expect(gitOps.getLog).toHaveBeenCalledTimes(2));
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+        resolveFilteredLog([loadedCommits[1]]);
+        await filterChange;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider rejects more than 200 visible commit-check hashes", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        showErrorMessage.mockClear();
+        providerGetChecks.mockReset();
+
+        await webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: Array.from({ length: 201 }, (_, index) => index.toString(16)),
+        });
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Commit graph error"),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Too many visible commit-check hashes.",
+        });
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider ignores stale commit-check requests after repository reset", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        provider.resetFilters();
+        providerGetChecks.mockReset();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(lastCommitChecksSnapshot()).toBeUndefined();
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider drops an in-flight repository log after reset", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const oldCommits = [
+            {
+                hash: "aaa1111",
+                shortHash: "aaa1111",
+                message: "old repository commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+        ];
+        let resolveOldLog!: (commits: typeof oldCommits) => void;
+        gitOps.getLog.mockImplementationOnce(
+            () =>
+                new Promise<typeof oldCommits>((resolve) => {
+                    resolveOldLog = resolve;
+                }),
+        );
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(async (hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
+
+        const ready = webview.send({ type: "ready" });
+        await vi.waitFor(() => expect(gitOps.getLog).toHaveBeenCalledTimes(1));
+        provider.resetFilters();
+        postMessageSpy.mockClear();
+        resolveOldLog(oldCommits);
+        await ready;
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["aaa1111"] });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "loadCommits" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider skips GitHub checks for loaded unpushed commits", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getUnpushedCommitHashes.mockResolvedValue(["abc1234"]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        providerGetChecks.mockReset();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "none" }));
         provider.dispose();
     });
 
@@ -4034,7 +4679,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
         );
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         // GitHub did not claim the self-hosted remote, so the real GitLab provider handled it.
         expect(providerGetChecks).not.toHaveBeenCalled();
@@ -4067,7 +4712,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
         );
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         expect(providerGetChecks).not.toHaveBeenCalled();
         expect(httpGetJsonSpy).not.toHaveBeenCalled();
@@ -4100,7 +4745,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
         );
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         // The self-hosted host produced the correct GitLab API URL on its own domain.
         expect(httpGetJsonSpy).toHaveBeenCalledTimes(1);

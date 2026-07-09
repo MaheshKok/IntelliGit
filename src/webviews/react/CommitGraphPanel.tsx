@@ -20,8 +20,6 @@ import type {
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
-import { useCommitCheckRequestBatcher } from "./commit-list/useCommitCheckRequestBatcher";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
@@ -393,18 +391,12 @@ export function CommitGraphPanel({
         },
         [vscode],
     );
-    const queueCommitCheckRequest = useCommitCheckRequestBatcher(
-        useCallback((message) => vscode.postMessage(message), [vscode]),
-    );
-
     const handleRequestCommitChecks = useCallback(
-        (hash: string) => {
-            const current = commitChecks.get(hash);
-            if (!shouldRequestCommitChecks(current)) return;
-            if (current === undefined) dispatch({ type: "markCommitChecksLoading", hash });
-            queueCommitCheckRequest(hash);
+        (hashes: string[], force = false) => {
+            for (const hash of hashes) dispatch({ type: "markCommitChecksLoading", hash });
+            vscode.postMessage({ type: "requestVisibleCommitChecks", hashes, force });
         },
-        [commitChecks, queueCommitCheckRequest],
+        [vscode],
     );
 
     const handleOpenCommitCheckUrl = useCallback(

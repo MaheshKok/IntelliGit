@@ -164,20 +164,12 @@ export type CommitGraphOutbound =
           filePath: string;
       }
     | {
-          /** Request for GitHub check runs and commit statuses for one commit. */
-          type: "requestCommitChecks";
-          /** Full Git object ID from the rendered commit row. */
-          hash: string;
-          /** Batched full Git object IDs from rendered commit rows. */
-          hashes?: never;
-      }
-    | {
-          /** Request for GitHub check runs and commit statuses for visible commits. */
-          type: "requestCommitChecks";
-          /** Batched full Git object IDs from rendered commit rows. */
+          /** Replaces this graph surface's current exact-viewport commit-check demand. */
+          type: "requestVisibleCommitChecks";
+          /** Deduplicated full Git object IDs intersecting the exact viewport. */
           hashes: string[];
-          /** Full Git object ID from the rendered commit row. */
-          hash?: never;
+          /** Bypasses fresh snapshots for a bounded pending/current-HEAD retry. */
+          force?: boolean;
       }
     | {
           /** Request to open a GitHub check/status target URL outside the webview. */

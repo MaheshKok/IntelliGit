@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch, Commit, CommitChecksSnapshot, CommitDetail } from "../../../src/types";
 import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../../src/webviews/react/CommitList";
+import { ROW_HEIGHT } from "../../../src/webviews/react/graph";
 import { CommitRow } from "../../../src/webviews/react/commit-list/CommitRow";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
 import { MAX_NONE_REFRESH_ATTEMPTS } from "../../../src/webviews/react/commit-list/checksRefresh";
@@ -486,7 +487,7 @@ describe("low coverage components", () => {
             />,
         );
         await flush();
-        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], false);
 
         const row = Array.from(container.querySelectorAll("div")).find(
             (el) =>
@@ -523,6 +524,177 @@ describe("low coverage components", () => {
         expect(onLoadMore).toHaveBeenCalled();
 
         unmount(root, container);
+    });
+
+    it("CommitList requests checks only for the exact viewport", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commits: Commit[] = Array.from({ length: 30 }, (_, index) => ({
+            hash: `hash-${index.toString().padStart(2, "0")}`,
+            shortHash: `hash-${index.toString().padStart(2, "0")}`,
+            message: `Commit ${index}`,
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: [],
+            refs: [],
+        }));
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * 3);
+
+        try {
+            const { root, container } = mount(
+                <CommitList
+                    commits={commits}
+                    selectedHash={null}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={new Set()}
+                    selectedBranch={null}
+                    onSelectCommit={vi.fn()}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={vi.fn()}
+                    commitChecks={new Map()}
+                    onRequestCommitChecks={onRequestCommitChecks}
+                    onOpenCommitCheckUrl={vi.fn()}
+                />,
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            const viewport = container.querySelector(
+                '[data-testid="commit-list-viewport"]',
+            ) as HTMLDivElement;
+            Object.defineProperty(viewport, "scrollTop", {
+                value: ROW_HEIGHT * 10,
+                configurable: true,
+            });
+            act(() => {
+                viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await flush();
+
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(1);
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith(
+                [commits[10].hash, commits[11].hash, commits[12].hash],
+                false,
+            );
+            expect(onRequestCommitChecks.mock.calls.flatMap(([hashes]) => hashes)).not.toContain(
+                commits[9].hash,
+            );
+            expect(onRequestCommitChecks.mock.calls.flatMap(([hashes]) => hashes)).not.toContain(
+                commits[13].hash,
+            );
+            expect(onRequestCommitChecks.mock.calls).not.toContainEqual([[], false]);
+
+            unmount(root, container);
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith([], false);
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(2);
+        } finally {
+            clientHeight.mockRestore();
+        }
+    });
+
+    it("CommitList deduplicates exact-viewport check demand", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commits: Commit[] = ["duplicate-hash", "duplicate-hash", "unique-hash"].map(
+            (hash, index) => ({
+                hash,
+                shortHash: hash,
+                message: `Commit ${index}`,
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            }),
+        );
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * 3);
+        const originalConsoleError = console.error;
+        const consoleError = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            if (String(args[0]).includes("Encountered two children with the same key")) return;
+            originalConsoleError(...args);
+        });
+
+        try {
+            const { root, container } = mount(
+                <CommitList
+                    commits={commits}
+                    selectedHash={null}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={new Set()}
+                    selectedBranch={null}
+                    onSelectCommit={vi.fn()}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={vi.fn()}
+                    commitChecks={new Map()}
+                    onRequestCommitChecks={onRequestCommitChecks}
+                    onOpenCommitCheckUrl={vi.fn()}
+                />,
+            );
+            await flush();
+
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith(
+                ["duplicate-hash", "unique-hash"],
+                false,
+            );
+
+            unmount(root, container);
+        } finally {
+            consoleError.mockRestore();
+            clientHeight.mockRestore();
+        }
+    });
+
+    it("CommitList clears previous demand when check callbacks are disabled", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commit: Commit = {
+            hash: "aa11bb22",
+            shortHash: "aa11bb22",
+            message: "feat: callback lifecycle",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: [],
+            refs: [],
+        };
+        const renderTree = (
+            callback?: (hashes: string[], force?: boolean) => void,
+        ): React.ReactElement => (
+            <CommitList
+                commits={[commit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set()}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map()}
+                onRequestCommitChecks={callback}
+                onOpenCommitCheckUrl={vi.fn()}
+            />
+        );
+        const { root, container } = mount(renderTree(onRequestCommitChecks));
+        await flush();
+        expect(onRequestCommitChecks).toHaveBeenLastCalledWith([commit.hash], false);
+        onRequestCommitChecks.mockClear();
+
+        act(() => {
+            root.render(renderTree());
+        });
+        await flush();
+
+        expect(onRequestCommitChecks.mock.calls).toEqual([[[], false]]);
+        unmount(root, container);
+        expect(onRequestCommitChecks).toHaveBeenCalledTimes(1);
     });
 
     it("CommitList retries visible pending check snapshots", async () => {
@@ -562,15 +734,77 @@ describe("low coverage components", () => {
             />,
         );
         await flush();
-        expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], false);
+        onRequestCommitChecks.mockClear();
 
         act(() => {
             vi.runOnlyPendingTimers();
         });
 
-        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], false);
         unmount(root, container);
         vi.useRealTimers();
+    });
+
+    it("CommitList keeps demand cleared when hidden before a pending retry", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const visibilityState = vi
+            .spyOn(document, "visibilityState", "get")
+            .mockReturnValue("visible");
+        const commit: Commit = {
+            hash: "aa11bb22",
+            shortHash: "aa11bb22",
+            message: "feat: pending checks",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: ["p1"],
+            refs: [],
+        };
+        const pending: CommitChecksSnapshot = {
+            hash: "aa11bb22",
+            state: "pending",
+            summary: "Checks pending",
+            items: [],
+        };
+
+        try {
+            const { root, container } = mount(
+                <CommitList
+                    commits={[commit]}
+                    selectedHash={null}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={new Set()}
+                    selectedBranch={null}
+                    onSelectCommit={vi.fn()}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={vi.fn()}
+                    commitChecks={new Map([[commit.hash, pending]])}
+                    onRequestCommitChecks={onRequestCommitChecks}
+                    onOpenCommitCheckUrl={vi.fn()}
+                />,
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            visibilityState.mockReturnValue("hidden");
+            act(() => {
+                document.dispatchEvent(new Event("visibilitychange"));
+            });
+            act(() => {
+                vi.runOnlyPendingTimers();
+            });
+
+            expect(onRequestCommitChecks.mock.calls).toEqual([[[], false]]);
+
+            unmount(root, container);
+        } finally {
+            visibilityState.mockRestore();
+            vi.useRealTimers();
+        }
     });
 
     const noChecksCommit: Commit = {
@@ -611,13 +845,14 @@ describe("low coverage components", () => {
             />,
         );
         await flush();
-        expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], false);
+        onRequestCommitChecks.mockClear();
 
         act(() => {
             vi.runOnlyPendingTimers();
         });
 
-        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], true);
         unmount(root, container);
         vi.useRealTimers();
     });
@@ -643,6 +878,8 @@ describe("low coverage components", () => {
             />,
         );
         await flush();
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], false);
+        onRequestCommitChecks.mockClear();
         act(() => {
             vi.runOnlyPendingTimers();
         });
@@ -655,9 +892,10 @@ describe("low coverage components", () => {
     it("CommitList stops retrying none-state checks after the retry budget", async () => {
         vi.useFakeTimers();
         const onRequestCommitChecks = vi.fn();
+        const commits = [noChecksCommit];
         const renderTree = () => (
             <CommitList
-                commits={[noChecksCommit]}
+                commits={commits}
                 selectedHash={null}
                 filterText=""
                 hasMore={false}
@@ -673,6 +911,8 @@ describe("low coverage components", () => {
             />
         );
         const { root, container } = mount(renderTree());
+        await flush();
+        onRequestCommitChecks.mockClear();
         // Each cycle fires one scheduled retry, then re-renders so the effect re-evaluates
         // the budget. One extra cycle proves polling stops once the budget is exhausted.
         for (let i = 0; i < MAX_NONE_REFRESH_ATTEMPTS + 1; i++) {
@@ -685,7 +925,9 @@ describe("low coverage components", () => {
             });
         }
 
-        expect(onRequestCommitChecks).toHaveBeenCalledTimes(MAX_NONE_REFRESH_ATTEMPTS);
+        expect(onRequestCommitChecks.mock.calls.filter(([, force]) => force === true)).toHaveLength(
+            MAX_NONE_REFRESH_ATTEMPTS,
+        );
         unmount(root, container);
         vi.useRealTimers();
     });

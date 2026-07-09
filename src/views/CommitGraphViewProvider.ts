@@ -4,7 +4,7 @@
 
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
-import type { Branch, CommitDetail, GitWorktree, ThemeFolderIconMap } from "../types";
+import type { Branch, Commit, CommitDetail, GitWorktree, ThemeFolderIconMap } from "../types";
 import type {
     BranchAction,
     CommitAction,
@@ -28,6 +28,7 @@ import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
 } from "../services/commitChecks/coordinator";
+import { summaryForState } from "../services/commitChecks/normalize";
 import {
     commitChecksSettingsFingerprint,
     type CommitChecksSettings,
@@ -54,6 +55,7 @@ import { runGitOperationFromPanel, type CommitPanelGitOperation } from "./commit
 export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitGraph";
     public static readonly sidebarViewType = "intelligit.sidebarGraph";
+    private static readonly MAX_VISIBLE_COMMIT_CHECKS = 200;
 
     private view?: vscode.WebviewView;
     private currentBranch: string | null = null;
@@ -68,6 +70,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private selectedCommitDetail: CommitDetail | null = null;
     private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
+    private commitCheckDemandSeq = 0;
+    private loadedCommitHashes = new Set<string>();
+    private checkableCommitHashes = new Set<string>();
+    private constrainCommitCheckHashes = false;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -182,13 +188,15 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * limits local resources to the bundled `dist` directory, and installs the
      * message bridge. The webview may send readiness, pagination, filtering,
      * branch/commit action, and commit-file diff requests; invalid payloads are
-     * surfaced to the user and echoed back as webview errors.
+     * surfaced to the user and echoed back as webview errors. Resolution and teardown
+     * invalidate viewport demand owned by the replaced or disposed view.
      */
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ): void {
+        this.commitCheckDemandSeq += 1;
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
@@ -203,6 +211,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.onDidDispose(() => {
             if (this.view === webviewView) {
+                this.commitCheckDemandSeq += 1;
                 this.view = undefined;
                 this.iconTheme.dispose();
                 this.disposeThemeChangeDisposables();
@@ -231,6 +240,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                         break;
                     case "filterBranch":
                         this.currentBranch = this.assertNullableString(msg.branch, "branch");
+                        this.commitCheckDemandSeq += 1;
                         this.filterText = "";
                         this._onBranchFilterChanged.fire(this.currentBranch);
                         this.postToWebview({
@@ -278,8 +288,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                             ),
                         });
                         break;
-                    case "requestCommitChecks":
-                        await this.sendCommitChecksRequest(msg);
+                    case "requestVisibleCommitChecks":
+                        await this.sendVisibleCommitChecksRequest(msg);
                         break;
                     case "openCommitCheckUrl":
                         await this.openExternalHttpUrl(this.assertString(msg.url, "url"));
@@ -332,9 +342,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * Applies a host-driven branch filter and resets text search before reloading page one.
      *
      * This mirrors webview-originated branch filtering so external branch-tree selections and
-     * in-graph selections share the same selected-branch state.
+     * in-graph selections share the same selected-branch state. Existing viewport demand is
+     * invalidated before the asynchronous graph reload starts.
      */
     async filterByBranch(branch: string | null): Promise<void> {
+        this.commitCheckDemandSeq += 1;
         this.currentBranch = branch;
         this.filterText = "";
         this.postToWebview({ type: "setSelectedBranch", branch });
@@ -346,9 +358,11 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * Clears repository-scoped filters before a different repository root is loaded.
      */
     resetFilters(): void {
+        this.requestSeq += 1;
         this.currentBranch = null;
         this.filterText = "";
         this.commitChecks.clearProviderResolution();
+        this.clearCommitCheckHashScope();
         this.postToWebview({ type: "setSelectedBranch", branch: null });
         this.postToWebview({ type: "setFilterText", text: "" });
     }
@@ -461,6 +475,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             ]);
             if (requestId === this.requestSeq) {
                 this.offset = commits.length;
+                this.replaceCommitCheckHashScope(commits, unpushedHashes);
                 this.postToWebview({
                     type: "loadCommits",
                     commits,
@@ -503,6 +518,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             ]);
             if (requestId === this.requestSeq) {
                 this.offset += commits.length;
+                this.addCommitCheckHashScope(commits, unpushedHashes);
                 this.postToWebview({
                     type: "loadCommits",
                     commits,
@@ -527,9 +543,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Stores the current text filter and reloads the graph from the first page.
+     * Stores the current text filter, invalidates viewport demand, and reloads page one.
      */
     private async filterByText(text: string): Promise<void> {
+        this.commitCheckDemandSeq += 1;
         this.filterText = text;
         await this.loadInitial();
     }
@@ -538,26 +555,102 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage(msg);
     }
 
-    private async sendCommitChecks(hash: string): Promise<void> {
+    /** Fetches one snapshot and drops it when a newer viewport demand supersedes the request. */
+    private async sendCommitChecks(
+        hash: string,
+        generation: number,
+        _force: boolean,
+    ): Promise<void> {
         const snapshot = await this.commitChecks.getChecks(hash);
+        if (generation !== this.commitCheckDemandSeq) return;
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }
 
-    private async sendCommitChecksRequest(
-        msg: Extract<CommitGraphOutbound, { type: "requestCommitChecks" }>,
+    /**
+     * Replaces prior viewport demand and processes its validated hashes sequentially.
+     *
+     * Sequential processing lets a later viewport stop hashes that have not started while the
+     * shared coordinator gate continues to coalesce work across independent view surfaces.
+     */
+    private async sendVisibleCommitChecksRequest(
+        msg: Extract<CommitGraphOutbound, { type: "requestVisibleCommitChecks" }>,
     ): Promise<void> {
-        const hashes = this.assertCommitCheckHashes(msg);
-        await Promise.all(hashes.map((hash) => this.sendCommitChecks(hash)));
+        const generation = ++this.commitCheckDemandSeq;
+        const hashes = this.assertVisibleCommitCheckHashes(msg);
+        for (const hash of hashes) {
+            if (generation !== this.commitCheckDemandSeq) return;
+            await this.sendCommitChecksIfCheckable(hash, generation, msg.force === true);
+        }
     }
 
-    private assertCommitCheckHashes(
-        msg: Extract<CommitGraphOutbound, { type: "requestCommitChecks" }>,
-    ): string[] {
-        if (Array.isArray(msg.hashes)) {
-            if (msg.hashes.length === 0) throw new Error("No commit hashes received.");
-            return msg.hashes.map((hash, index) => this.assertGitHash(hash, `hashes[${index}]`));
+    /**
+     * Enforces loaded and pushed-commit scope before fetching or posting a visible badge.
+     * Synthetic `none` snapshots obey the same demand generation as provider-backed snapshots.
+     */
+    private async sendCommitChecksIfCheckable(
+        hash: string,
+        generation: number,
+        force: boolean,
+    ): Promise<void> {
+        if (!this.constrainCommitCheckHashes) {
+            await this.sendCommitChecks(hash, generation, force);
+            return;
         }
-        return [this.assertGitHash(msg.hash, "hash")];
+        if (!this.loadedCommitHashes.has(hash)) return;
+        if (!this.checkableCommitHashes.has(hash)) {
+            if (generation !== this.commitCheckDemandSeq) return;
+            this.postToWebview({
+                type: "setCommitChecks",
+                snapshot: { hash, state: "none", summary: summaryForState("none"), items: [] },
+            });
+            return;
+        }
+        await this.sendCommitChecks(hash, generation, force);
+    }
+
+    /** Replaces first-page hash scope and invalidates demand tied to the previous graph result. */
+    private replaceCommitCheckHashScope(commits: Commit[], unpushedHashes: string[]): void {
+        this.commitCheckDemandSeq += 1;
+        this.loadedCommitHashes = new Set();
+        this.checkableCommitHashes = new Set();
+        this.constrainCommitCheckHashes = true;
+        this.addCommitCheckHashScope(commits, unpushedHashes);
+    }
+
+    /**
+     * Extends pagination scope without invalidating active viewport demand.
+     * Commits newly identified as unpushed become non-checkable.
+     */
+    private addCommitCheckHashScope(commits: Commit[], unpushedHashes: string[]): void {
+        const unpushed = new Set(unpushedHashes);
+        this.constrainCommitCheckHashes = true;
+        for (const commit of commits) {
+            this.loadedCommitHashes.add(commit.hash);
+            if (unpushed.has(commit.hash)) {
+                this.checkableCommitHashes.delete(commit.hash);
+            } else {
+                this.checkableCommitHashes.add(commit.hash);
+            }
+        }
+    }
+
+    /** Clears repository hash scope and invalidates any in-flight viewport demand. */
+    private clearCommitCheckHashScope(): void {
+        this.commitCheckDemandSeq += 1;
+        this.loadedCommitHashes.clear();
+        this.checkableCommitHashes.clear();
+        this.constrainCommitCheckHashes = true;
+    }
+
+    /** Validates, bounds, and deduplicates untrusted visible hashes from the webview boundary. */
+    private assertVisibleCommitCheckHashes(
+        msg: Extract<CommitGraphOutbound, { type: "requestVisibleCommitChecks" }>,
+    ): string[] {
+        if (!Array.isArray(msg.hashes)) throw new Error("Expected commit-check hashes array.");
+        if (msg.hashes.length > CommitGraphViewProvider.MAX_VISIBLE_COMMIT_CHECKS) {
+            throw new Error("Too many visible commit-check hashes.");
+        }
+        return Array.from(new Set(msg.hashes.map((hash) => this.assertGitHash(hash, "hashes"))));
     }
 
     private async openExternalHttpUrl(rawUrl: string): Promise<void> {
@@ -718,9 +811,10 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Releases theme resources and event emitters owned by the graph provider.
+     * Invalidates commit-check demand and releases resources owned by the graph provider.
      */
     dispose(): void {
+        this.commitCheckDemandSeq += 1;
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
