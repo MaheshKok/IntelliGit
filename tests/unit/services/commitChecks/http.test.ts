@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock specifier must match the source import ("https", not "node:https").
 vi.mock("https");
 
-import { httpGetJson } from "../../../../src/services/commitChecks/http";
+import { HttpError, httpGetJson } from "../../../../src/services/commitChecks/http";
 
 interface FakeRequest extends EventEmitter {
     setTimeout: ReturnType<typeof vi.fn>;
@@ -28,9 +28,16 @@ function makeRequest(): FakeRequest {
     return req;
 }
 
-function makeResponse(statusCode: number | undefined): EventEmitter & { statusCode?: number } {
-    const res = new EventEmitter() as EventEmitter & { statusCode?: number };
+function makeResponse(
+    statusCode: number | undefined,
+    headers: Record<string, string | string[] | undefined> = {},
+): EventEmitter & { statusCode?: number; headers: Record<string, string | string[] | undefined> } {
+    const res = new EventEmitter() as EventEmitter & {
+        statusCode?: number;
+        headers: Record<string, string | string[] | undefined>;
+    };
     res.statusCode = statusCode;
+    res.headers = headers;
     return res;
 }
 
@@ -79,9 +86,9 @@ describe("httpGetJson", () => {
         await expect(promise).resolves.toEqual({});
     });
 
-    it("rejects on a non-2xx status with a truncated body and no headers", async () => {
+    it("rejects on a non-2xx status with a truncated body and response headers", async () => {
         const req = makeRequest();
-        const res = makeResponse(404);
+        const res = makeResponse(404, { "x-ratelimit-remaining": "0" });
         stubGet(req, res);
 
         const promise = httpGetJson("https://api.test/x", { Authorization: "Bearer secret" });
@@ -89,6 +96,10 @@ describe("httpGetJson", () => {
         res.emit("end");
 
         await expect(promise).rejects.toThrow("HTTP 404: Not Found");
+        await expect(promise).rejects.toMatchObject({
+            statusCode: 404,
+            headers: { "x-ratelimit-remaining": "0" },
+        } satisfies Partial<HttpError>);
         // The token must never appear in the rejection.
         await expect(promise).rejects.not.toThrow(/secret/);
     });
