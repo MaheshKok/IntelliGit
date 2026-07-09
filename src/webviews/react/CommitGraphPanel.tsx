@@ -268,10 +268,12 @@ export function CommitGraphPanel({
         }
     });
     const loadingMore = useRef(false);
-    const currentBranchName = useMemo(
-        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+    const currentBranch = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
     );
+    const currentBranchName = currentBranch?.name ?? null;
+    const currentBranchHeadHash = currentBranch?.hash ?? null;
     const onDividerMouseDown = useColumnDrag(
         branchWidth,
         setBranchWidth,
@@ -464,6 +466,7 @@ export function CommitGraphPanel({
                             unpushedHashes={unpushedHashes}
                             selectedBranch={selectedBranch}
                             currentBranchName={currentBranchName}
+                            currentBranchHeadHash={currentBranchHeadHash}
                             onSelectCommit={handleSelectCommit}
                             onFilterText={handleFilterText}
                             onLoadMore={handleLoadMore}

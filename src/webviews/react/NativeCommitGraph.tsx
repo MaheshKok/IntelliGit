@@ -141,10 +141,12 @@ export function NativeCommitGraph({
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
     selectedHashRef.current = selectedHash;
-    const currentBranchName = useMemo(
-        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+    const currentBranch = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
     );
+    const currentBranchName = currentBranch?.name ?? null;
+    const currentBranchHeadHash = currentBranch?.hash ?? null;
 
     useEffect(() => {
         if (sendReady) {
@@ -290,6 +292,7 @@ export function NativeCommitGraph({
             unpushedHashes={unpushedHashes}
             selectedBranch={selectedBranch}
             currentBranchName={currentBranchName}
+            currentBranchHeadHash={currentBranchHeadHash}
             onSelectCommit={handleSelectCommit}
             onFilterText={handleFilterText}
             onLoadMore={handleLoadMore}

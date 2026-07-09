@@ -53,6 +53,7 @@ export interface UndockedLayoutProps {
     hasMore: boolean;
     unpushedHashes: Set<string>;
     currentBranchName: string | null;
+    currentBranchHeadHash: string | null;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
     selectedDetail: CommitDetail | null;
@@ -134,6 +135,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         hasMore,
         unpushedHashes,
         currentBranchName,
+        currentBranchHeadHash,
         commitChecks,
         commitChecksEnabled,
         selectedDetail,
@@ -308,6 +310,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                     unpushedHashes={unpushedHashes}
                                     selectedBranch={selectedBranch}
                                     currentBranchName={currentBranchName}
+                                    currentBranchHeadHash={currentBranchHeadHash}
                                     onSelectCommit={handleSelectCommit}
                                     onFilterText={handleFilterText}
                                     onLoadMore={handleLoadMore}

@@ -197,10 +197,12 @@ function App(): React.ReactElement {
         commitChecksEnabled,
     } = graphState;
     const loadingMore = useRef(false);
-    const currentBranchName = useMemo(
-        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+    const currentBranch = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
     );
+    const currentBranchName = currentBranch?.name ?? null;
+    const currentBranchHeadHash = currentBranch?.hash ?? null;
 
     // Guards the cross-session width persistence: stays false until either the
     // extension restores saved widths or the user actually drags a divider.
@@ -448,6 +450,7 @@ function App(): React.ReactElement {
             hasMore={hasMore}
             unpushedHashes={unpushedHashes}
             currentBranchName={currentBranchName}
+            currentBranchHeadHash={currentBranchHeadHash}
             commitChecks={commitChecks}
             commitChecksEnabled={commitChecksEnabled}
             selectedDetail={selectedDetail}
