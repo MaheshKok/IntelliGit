@@ -2,10 +2,11 @@
 
 import React, { act, useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Branch, Commit, CommitChecksSnapshot } from "../../../src/types";
+import type { Branch, Commit, CommitChecksSnapshot, CommitDetail } from "../../../src/types";
 import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../../src/webviews/react/CommitList";
 import { CommitRow } from "../../../src/webviews/react/commit-list/CommitRow";
+import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
 import { MAX_NONE_REFRESH_ATTEMPTS } from "../../../src/webviews/react/commit-list/checksRefresh";
 import { useDragResize } from "../../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../../src/webviews/react/shared/components/ContextMenu";
@@ -34,6 +35,34 @@ beforeEach(() => {
 });
 
 describe("low coverage components", () => {
+    it("CommitInfoPane shows aggregate changed-file stats in the header", () => {
+        const detail: CommitDetail = {
+            hash: "abc1234",
+            shortHash: "abc1234",
+            message: "Update files",
+            body: "",
+            author: "Mahesh Kokare",
+            email: "mahesh@example.com",
+            date: "2026-07-08T12:00:00.000Z",
+            parentHashes: [],
+            refs: [],
+            files: [
+                { path: "src/a.ts", status: "M", additions: 2, deletions: 1 },
+                { path: "README.md", status: "A", additions: 5, deletions: 0 },
+            ],
+        };
+
+        const { root, container } = mount(<CommitInfoPane detail={detail} />);
+        const changedFilesHeader = Array.from(container.querySelectorAll('[role="button"]')).find(
+            (element) => element.textContent?.includes("Changed Files"),
+        );
+
+        expect(changedFilesHeader?.textContent).toContain("+7");
+        expect(changedFilesHeader?.textContent).toContain("-1");
+
+        unmount(root, container);
+    });
+
     it("useDragResize clamps initial height to container bounds", () => {
         function Harness(): React.ReactElement {
             const ref = useRef<HTMLDivElement | null>(null);

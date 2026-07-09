@@ -15,6 +15,7 @@ import type { TreeEntry } from "../types";
 import { t } from "../../shared/i18n";
 
 interface Props {
+    repositoryRoot?: string;
     stashes: StashEntry[];
     stashFiles: WorkingFile[];
     selectedIndex: number | null;
@@ -47,6 +48,7 @@ interface ExpandedDirsState {
  * directory expansion, context menu, and drag-to-resize state.
  */
 export function StashTab({
+    repositoryRoot,
     stashes,
     stashFiles,
     selectedIndex,
@@ -102,10 +104,14 @@ export function StashTab({
                 setLocalExpansion(null, false);
             } else {
                 setLocalExpansion(index, true);
-                vscode.postMessage({ type: "stashSelect", index });
+                vscode.postMessage({
+                    type: "stashSelect",
+                    ...(repositoryRoot ? { repositoryRoot } : {}),
+                    index,
+                });
             }
         },
-        [expandedIndex, setLocalExpansion, vscode],
+        [expandedIndex, repositoryRoot, setLocalExpansion, vscode],
     );
 
     const handleStashAction = useCallback(
@@ -113,18 +119,35 @@ export function StashTab({
             if (index === null) return;
             switch (kind) {
                 case "apply":
-                    vscode.postMessage({ type: "stashApply", index });
+                    vscode.postMessage({
+                        type: "stashApply",
+                        ...(repositoryRoot ? { repositoryRoot } : {}),
+                        index,
+                    });
                     return;
                 case "pop":
-                    vscode.postMessage({ type: "stashPop", index });
+                    vscode.postMessage({
+                        type: "stashPop",
+                        ...(repositoryRoot ? { repositoryRoot } : {}),
+                        index,
+                    });
                     return;
                 case "delete":
-                    vscode.postMessage({ type: "stashDelete", index });
+                    vscode.postMessage({
+                        type: "stashDelete",
+                        ...(repositoryRoot ? { repositoryRoot } : {}),
+                        index,
+                    });
                     return;
                 case "showDiff": {
                     const firstFile = selectedIndex === index ? stashFiles[0]?.path : undefined;
                     if (firstFile) {
-                        vscode.postMessage({ type: "showStashDiff", index, path: firstFile });
+                        vscode.postMessage({
+                            type: "showStashDiff",
+                            ...(repositoryRoot ? { repositoryRoot } : {}),
+                            index,
+                            path: firstFile,
+                        });
                     }
                     return;
                 }
@@ -134,7 +157,7 @@ export function StashTab({
                 }
             }
         },
-        [selectedIndex, stashFiles, vscode],
+        [repositoryRoot, selectedIndex, stashFiles, vscode],
     );
 
     const toggleDir = useCallback(
@@ -163,9 +186,14 @@ export function StashTab({
 
     const handleShowStashDiff = useCallback(
         (index: number, path: string) => {
-            vscode.postMessage({ type: "showStashDiff", index, path });
+            vscode.postMessage({
+                type: "showStashDiff",
+                ...(repositoryRoot ? { repositoryRoot } : {}),
+                index,
+                path,
+            });
         },
-        [vscode],
+        [repositoryRoot, vscode],
     );
 
     const handleStashContextMenu = useCallback(
@@ -174,11 +202,15 @@ export function StashTab({
             event.stopPropagation();
             if (expandedIndex !== index) {
                 setLocalExpansion(index, true);
-                vscode.postMessage({ type: "stashSelect", index });
+                vscode.postMessage({
+                    type: "stashSelect",
+                    ...(repositoryRoot ? { repositoryRoot } : {}),
+                    index,
+                });
             }
             setContextMenu({ x: event.clientX, y: event.clientY, index });
         },
-        [expandedIndex, setLocalExpansion, vscode],
+        [expandedIndex, repositoryRoot, setLocalExpansion, vscode],
     );
 
     const [fileTreeHeight, setFileTreeHeight] = useState(150);

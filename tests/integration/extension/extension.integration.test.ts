@@ -52,6 +52,9 @@ const registerWebviewPanelSerializer = vi.fn(() => ({ dispose: vi.fn() }));
 const registerTextDocumentContentProvider = vi.fn(() => ({ dispose: vi.fn() }));
 const createTerminal = vi.fn(() => ({ show: vi.fn(), sendText: vi.fn() }));
 const textDocListeners: Array<() => void> = [];
+const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
+const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
+let activeTextEditor: { document: { uri: unknown } } | undefined;
 const closeDocListeners: Array<
     (document: { uri: { scheme: string; toString: () => string } }) => void
 > = [];
@@ -303,9 +306,11 @@ class MockCommitGraphViewProvider {
     refresh = vi.fn(async () => undefined);
     clearChecksCache = vi.fn();
     filterByBranch = vi.fn(async () => undefined);
+    resetFilters = vi.fn();
     setCommitDetail = vi.fn();
     clearCommitDetail = vi.fn();
     setRepositoryLabel = vi.fn();
+    setShowRepositoryLabel = vi.fn();
     dispose = vi.fn();
 
     /** Emits commit selection from the mocked graph provider. */
@@ -380,6 +385,7 @@ class MockCommitPanelViewProvider {
     refreshSilent = vi.fn(async () => {
         await commitPanelRefreshHook?.(this);
     });
+    setRepositories = vi.fn();
     setRepositoryRootUri = vi.fn();
     setRepositoryLabel = vi.fn();
     setBranches = vi.fn();
@@ -448,6 +454,7 @@ class MockUndockedViewProvider {
     onDidDispose = this.disposeEmitter.event;
     setRepositoryLabel = vi.fn();
     setRepositoryRootUri = vi.fn();
+    setRepositories = vi.fn();
     setBranches = vi.fn();
     setCommitDetail = vi.fn();
     open = vi.fn(async () => undefined);
@@ -527,6 +534,15 @@ vi.mock("vscode", () => ({
     window: {
         registerWebviewViewProvider,
         registerWebviewPanelSerializer,
+        get activeTextEditor() {
+            return activeTextEditor;
+        },
+        onDidChangeActiveTextEditor: vi.fn(
+            (listener: (editor?: { document: { uri: unknown } }) => void) => {
+                activeTextEditorListeners.push(listener);
+                return { dispose: vi.fn() };
+            },
+        ),
         createTreeView: vi.fn((id: string) => {
             const view: MockTreeView = {
                 badge: initialTreeViewBadges.get(id),
@@ -583,6 +599,10 @@ vi.mock("vscode", () => ({
             update: configurationUpdate,
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeWorkspaceFolders: vi.fn((listener: () => Promise<void> | void) => {
+            workspaceFolderListeners.push(listener);
+            return { dispose: vi.fn() };
+        }),
         fs: { writeFile },
         openTextDocument,
         registerTextDocumentContentProvider,
@@ -823,6 +843,9 @@ describe("extension integration", () => {
         registeredCommands.clear();
         mockDisposables.length = 0;
         textDocListeners.length = 0;
+        activeTextEditorListeners.length = 0;
+        workspaceFolderListeners.length = 0;
+        activeTextEditor = undefined;
         closeDocListeners.length = 0;
         saveDocListeners.length = 0;
         createFileListeners.length = 0;
@@ -851,6 +874,7 @@ describe("extension integration", () => {
         );
         executorRun.mockImplementation(defaultExecutorRunImpl);
         gitOpsState.isRepository.mockResolvedValue(true);
+        gitOpsState.getRepositoryRoot.mockResolvedValue("/repo");
         gitOpsState.getBranches.mockResolvedValue([
             {
                 name: "main",
@@ -978,7 +1002,7 @@ describe("extension integration", () => {
     });
 
     it("activates onboarding with initialize action outside the graph view when a workspace is not a Git repository", async () => {
-        gitOpsState.isRepository.mockResolvedValue(false);
+        gitOpsState.getRepositoryRoot.mockRejectedValue(new Error("not a repository"));
         const { activate } = await import("../../../src/extension");
         const context = {
             extensionUri: { fsPath: "/ext", path: "/ext" },
@@ -1003,7 +1027,10 @@ describe("extension integration", () => {
 
     it("initializes Git in an uninitialized workspace and activates repository views without reload", async () => {
         let initialized = false;
-        gitOpsState.isRepository.mockImplementation(async () => initialized);
+        gitOpsState.getRepositoryRoot.mockImplementation(async () => {
+            if (!initialized) throw new Error("not a repository");
+            return "/repo";
+        });
         executorRun.mockImplementation(async (args: string[]) => {
             if (args[0] === "init") {
                 initialized = true;
@@ -1021,7 +1048,7 @@ describe("extension integration", () => {
         await registeredCommands.get("intelligit.initializeRepository")?.();
 
         expect(executorRun).toHaveBeenCalledWith(["init"]);
-        expect(gitOpsState.isRepository).toHaveBeenCalledTimes(2);
+        expect(gitOpsState.getRepositoryRoot).toHaveBeenCalledTimes(2);
         expect(showInformationMessage).toHaveBeenCalledWith("Repository initialized.");
         expect(executeCommandFallback).not.toHaveBeenCalledWith("workbench.action.reloadWindow");
         expect(latestCommitGraphProvider).toBeDefined();
@@ -2928,6 +2955,7 @@ describe("extension integration", () => {
     });
 
     it("switches the active repository from the selector", async () => {
+        const { SELECTED_REPOSITORY_KEY } = await import("../../../src/activation/common");
         const { activate } = await import("../../../src/extension");
         const workspace = await fs.realpath(
             await fs.mkdtemp(path.join(os.tmpdir(), "intelligit-workspace-")),
@@ -2947,16 +2975,35 @@ describe("extension integration", () => {
             const context = {
                 extensionUri: { fsPath: "/ext", path: "/ext" },
                 subscriptions: [],
+                workspaceState: createWorkspaceState(),
             } as unknown as MockExtensionContext;
             await activate(context);
             await registeredCommands.get("intelligit.selectRepository")?.();
 
+            expect(context.workspaceState?.update).toHaveBeenCalledWith(
+                SELECTED_REPOSITORY_KEY,
+                secondRepo,
+            );
             expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("app-b");
             expect(latestCommitPanelProvider!.setRepositoryRootUri).toHaveBeenCalledWith(
                 expect.objectContaining({ fsPath: secondRepo }),
             );
             expect(latestCommitPanelProvider!.refresh).toHaveBeenCalled();
             expect(latestCommitGraphProvider!.refresh).toHaveBeenCalled();
+            expect(latestCommitGraphProvider!.resetFilters).toHaveBeenCalled();
+            expect(latestSidebarGraphProvider!.resetFilters).toHaveBeenCalled();
+
+            showQuickPick.mockImplementationOnce(async (items: unknown[]) => items[0]);
+            await registeredCommands.get("intelligit.selectRepository")?.();
+
+            expect(context.workspaceState?.update).toHaveBeenCalledWith(
+                SELECTED_REPOSITORY_KEY,
+                firstRepo,
+            );
+            expect(latestCommitGraphProvider!.setRepositoryLabel).toHaveBeenCalledWith("app-a");
+            expect(latestCommitPanelProvider!.setRepositoryRootUri).toHaveBeenCalledWith(
+                expect.objectContaining({ fsPath: firstRepo }),
+            );
         } finally {
             await fs.rm(workspace, { recursive: true, force: true });
         }

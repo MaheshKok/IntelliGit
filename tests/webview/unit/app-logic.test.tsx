@@ -3,6 +3,10 @@
 import React, { act } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BranchAction } from "../../../src/webviews/protocol/commitGraphTypes";
+import type {
+    MultiRepositoryCommitPanelState,
+    RepositoryCommitPanelState,
+} from "../../../src/webviews/react/commit-panel/types";
 
 function setupRoot(): void {
     document.body.innerHTML = "";
@@ -15,6 +19,41 @@ async function flush(): Promise<void> {
     await act(async () => {
         await Promise.resolve();
     });
+}
+
+function makeCommitPanelState(
+    overrides: Partial<RepositoryCommitPanelState> = {},
+): MultiRepositoryCommitPanelState {
+    const root = overrides.root ?? "/repo";
+    const repository: RepositoryCommitPanelState = {
+        files: [],
+        stashes: [],
+        stashFiles: [],
+        selectedStashIndex: null,
+        commitMessage: "",
+        isAmend: false,
+        amendBranchCommits: [],
+        amendBranchHistoryLoaded: false,
+        iconFonts: [],
+        isRefreshing: false,
+        error: null,
+        currentBranchHasUpstream: true,
+        hasRemotes: true,
+        currentBranchAhead: 0,
+        currentBranchBehind: 0,
+        currentBranchName: "main",
+        currentBranchUpstream: "origin/main",
+        folderIconsByName: {},
+        changedFileCount: 0,
+        label: "Repo",
+        ...overrides,
+        root,
+    };
+    return {
+        repositories: [repository],
+        activeRepositoryRoot: root,
+        expandedRepositoryRoots: [root],
+    };
 }
 
 beforeAll(() => {
@@ -182,6 +221,16 @@ describe("app logic coverage", () => {
 
         await import("../../../src/webviews/react/CompactCommitGraphApp");
         await flush();
+        expect(document.getElementById("compact-header")?.textContent).toBe("Graph");
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "setBranches", branches: [], repositoryLabel: "Repo A" },
+                }),
+            );
+        });
+        await flush();
 
         act(() => {
             window.dispatchEvent(
@@ -232,7 +281,7 @@ describe("app logic coverage", () => {
 
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
             useExtensionMessages: () => [
-                {
+                makeCommitPanelState({
                     files: [
                         {
                             path: "src/a.ts",
@@ -258,7 +307,8 @@ describe("app logic coverage", () => {
                     currentBranchBehind: 0,
                     currentBranchName: "main",
                     currentBranchUpstream: "origin/main",
-                },
+                    changedFileCount: 1,
+                }),
                 dispatch,
             ],
         }));
@@ -343,20 +393,29 @@ describe("app logic coverage", () => {
 
         expect(dispatch).toHaveBeenCalledWith({
             type: "SET_COMMIT_MESSAGE",
+            repositoryRoot: "/repo",
             message: "next message",
         });
-        expect(dispatch).toHaveBeenCalledWith({ type: "SET_AMEND", isAmend: true });
-        expect(postMessage).toHaveBeenCalledWith({ type: "getLastCommitMessage" });
+        expect(dispatch).toHaveBeenCalledWith({
+            type: "SET_AMEND",
+            repositoryRoot: "/repo",
+            isAmend: true,
+        });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "getLastCommitMessage",
+            repositoryRoot: "/repo",
+        });
         expect(postMessage).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "commitSelected",
+                repositoryRoot: "/repo",
                 message: "feat: message",
                 amend: false,
                 push: false,
                 paths: ["src/a.ts"],
             }),
         );
-        expect(postMessage).toHaveBeenCalledWith({ type: "push" });
+        expect(postMessage).toHaveBeenCalledWith({ type: "push", repositoryRoot: "/repo" });
     });
 
     it("CommitPanelApp routes unpublished branch pushes through publish flow", async () => {
@@ -364,7 +423,7 @@ describe("app logic coverage", () => {
 
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
             useExtensionMessages: () => [
-                {
+                makeCommitPanelState({
                     files: [],
                     stashes: [],
                     stashFiles: [],
@@ -382,7 +441,7 @@ describe("app logic coverage", () => {
                     currentBranchBehind: 0,
                     currentBranchName: "master",
                     currentBranchUpstream: null,
-                },
+                }),
                 vi.fn(),
             ],
         }));
@@ -440,7 +499,10 @@ describe("app logic coverage", () => {
             push?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(postMessage).toHaveBeenCalledWith({ type: "publishBranch" });
+        expect(postMessage).toHaveBeenCalledWith({
+            type: "publishBranch",
+            repositoryRoot: "/repo",
+        });
     });
 
     it("CommitPanelApp defaults groupByDir to true when getState returns undefined", async () => {
@@ -449,7 +511,7 @@ describe("app logic coverage", () => {
 
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
             useExtensionMessages: () => [
-                {
+                makeCommitPanelState({
                     files: [],
                     stashes: [],
                     stashFiles: [],
@@ -467,7 +529,7 @@ describe("app logic coverage", () => {
                     currentBranchBehind: 0,
                     currentBranchName: "main",
                     currentBranchUpstream: "origin/main",
-                },
+                }),
                 vi.fn(),
             ],
         }));
@@ -513,7 +575,7 @@ describe("app logic coverage", () => {
 
         vi.doMock("../../../src/webviews/react/commit-panel/hooks/useExtensionMessages", () => ({
             useExtensionMessages: () => [
-                {
+                makeCommitPanelState({
                     files: [
                         {
                             path: "src/a.ts",
@@ -539,7 +601,8 @@ describe("app logic coverage", () => {
                     currentBranchBehind: 0,
                     currentBranchName: "main",
                     currentBranchUpstream: "origin/main",
-                },
+                    changedFileCount: 1,
+                }),
                 vi.fn(),
             ],
         }));

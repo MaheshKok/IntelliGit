@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
+type CommandHandler = (...args: unknown[]) => unknown;
 
 class FakeEventEmitter<T> {
     private listeners: Array<(value: T) => void> = [];
@@ -36,6 +37,56 @@ class FakeThemeColor {
     constructor(public readonly id: string) {}
 }
 
+class FakeRelativePattern {
+    constructor(
+        public readonly baseUri: { fsPath?: string; path?: string },
+        public readonly pattern: string,
+    ) {}
+}
+
+class FakeFileSystemWatcher {
+    private changeListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
+    private createListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
+    private deleteListeners: Array<(uri: { fsPath: string; path: string }) => void> = [];
+    dispose = vi.fn();
+
+    constructor(public readonly pattern: unknown) {}
+
+    onDidChange = vi.fn((listener: (uri: { fsPath: string; path: string }) => void) => {
+        this.changeListeners.push(listener);
+        return { dispose: vi.fn(() => this.removeListener(this.changeListeners, listener)) };
+    });
+
+    onDidCreate = vi.fn((listener: (uri: { fsPath: string; path: string }) => void) => {
+        this.createListeners.push(listener);
+        return { dispose: vi.fn(() => this.removeListener(this.createListeners, listener)) };
+    });
+
+    onDidDelete = vi.fn((listener: (uri: { fsPath: string; path: string }) => void) => {
+        this.deleteListeners.push(listener);
+        return { dispose: vi.fn(() => this.removeListener(this.deleteListeners, listener)) };
+    });
+
+    trigger(kind: "change" | "create" | "delete", fsPath: string): void {
+        const uri = { fsPath, path: fsPath };
+        const listeners =
+            kind === "change"
+                ? this.changeListeners
+                : kind === "create"
+                  ? this.createListeners
+                  : this.deleteListeners;
+        for (const listener of listeners) listener(uri);
+    }
+
+    private removeListener(
+        listeners: Array<(uri: { fsPath: string; path: string }) => void>,
+        listener: (uri: { fsPath: string; path: string }) => void,
+    ): void {
+        const index = listeners.indexOf(listener);
+        if (index >= 0) listeners.splice(index, 1);
+    }
+}
+
 const showErrorMessage = vi.fn(async () => undefined);
 const showWarningMessage = vi.fn(async () => undefined);
 const showInformationMessage = vi.fn(async () => undefined);
@@ -43,6 +94,12 @@ const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
+const fileSystemWatchers: FakeFileSystemWatcher[] = [];
+const registeredCommands = new Map<string, CommandHandler>();
+const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
+const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
+const workspaceFolderDisposables: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
+let activeTextEditor: { document: { uri: unknown } } | undefined;
 const withProgress = vi.fn(
     async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
         task(
@@ -71,11 +128,45 @@ function createMemento(initial: Record<string, unknown> = {}) {
     };
 }
 
+function createControlledMemento(initial: Record<string, unknown> = {}) {
+    const store = new Map<string, unknown>(Object.entries(initial));
+    const pendingUpdates: Array<{
+        key: string;
+        value: unknown | undefined;
+        resolved?: boolean;
+        resolve: () => void;
+    }> = [];
+    return {
+        memento: {
+            get: vi.fn((key: string) => store.get(key)),
+            update: vi.fn(
+                (key: string, value: unknown | undefined) =>
+                    new Promise<void>((resolve) => {
+                        pendingUpdates.push({
+                            key,
+                            value,
+                            resolve: () => {
+                                if (value === undefined) {
+                                    store.delete(key);
+                                } else {
+                                    store.set(key, value);
+                                }
+                                resolve();
+                            },
+                        });
+                    }),
+            ),
+        },
+        pendingUpdates,
+    };
+}
+
 const vscodeMock = {
     EventEmitter: FakeEventEmitter,
     TreeItem: FakeTreeItem,
     ThemeIcon: FakeThemeIcon,
     ThemeColor: FakeThemeColor,
+    RelativePattern: FakeRelativePattern,
     env: {
         language: "en",
     },
@@ -83,9 +174,25 @@ const vscodeMock = {
         t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
+    Disposable: class {
+        constructor(private readonly disposeCallback: () => void) {}
+        dispose(): void {
+            this.disposeCallback();
+        }
+    },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     Uri: {
-        parse: (value: string): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
+        file: (
+            value: string,
+        ): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
+            fsPath: value,
+            path: value,
+            scheme: "file",
+            toString: () => value,
+        }),
+        parse: (
+            value: string,
+        ): { fsPath: string; path: string; scheme: string; toString: () => string } => ({
             fsPath: value,
             path: value,
             scheme: value.split(":", 1)[0],
@@ -114,10 +221,33 @@ const vscodeMock = {
         showInformationMessage,
         showTextDocument,
         withProgress,
+        get activeTextEditor() {
+            return activeTextEditor;
+        },
+        registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        createTreeView: vi.fn(() => ({
+            dispose: vi.fn(),
+            badge: undefined,
+            description: undefined,
+        })),
+        onDidChangeActiveTextEditor: vi.fn(
+            (listener: (editor?: { document: { uri: unknown } }) => void) => {
+                activeTextEditorListeners.push(listener);
+                return { dispose: vi.fn() };
+            },
+        ),
         onDidChangeActiveColorTheme: vi.fn(() => ({ dispose: vi.fn() })),
     },
     commands: {
-        executeCommand,
+        registerCommand: vi.fn((id: string, handler: CommandHandler) => {
+            registeredCommands.set(id, handler);
+            return { dispose: vi.fn() };
+        }),
+        executeCommand: vi.fn(async (id: string, ...args: unknown[]) => {
+            const handler = registeredCommands.get(id);
+            if (handler) return handler(...args);
+            return executeCommand(id, ...args);
+        }),
     },
     workspace: {
         get workspaceFolders() {
@@ -129,6 +259,12 @@ const vscodeMock = {
             workspaceState.workspaceFolders = value;
         },
         openTextDocument,
+        onDidChangeWorkspaceFolders: vi.fn((listener: () => Promise<void> | void) => {
+            workspaceFolderListeners.push(listener);
+            const disposable = { dispose: vi.fn() };
+            workspaceFolderDisposables.push(disposable);
+            return disposable;
+        }),
         getConfiguration: vi.fn(() => ({
             get: vi.fn((key: string) => {
                 if (key === "workbench.sideBar.location") return "left";
@@ -136,6 +272,14 @@ const vscodeMock = {
             }),
         })),
         onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+        createFileSystemWatcher: vi.fn((pattern: unknown) => {
+            const watcher = new FakeFileSystemWatcher(pattern);
+            fileSystemWatchers.push(watcher);
+            return watcher;
+        }),
+    },
+    authentication: {
+        onDidChangeSessions: vi.fn(() => ({ dispose: vi.fn() })),
     },
 };
 
@@ -147,8 +291,112 @@ const providerGetChecks = vi.hoisted(() => vi.fn());
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
+const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
+const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
+const activeGitRoot = vi.hoisted(() => ({ value: "" }));
+const gitStatusByRoot = vi.hoisted(() => new Map<string, unknown[]>());
+const discoverGitRepositoriesSpy = vi.hoisted(() => vi.fn(async () => []));
+const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
+const branchRefreshControls = vi.hoisted(
+    () =>
+        [] as Array<{
+            root: string;
+            resolved?: boolean;
+            resolve: (branches: unknown[]) => void;
+        }>,
+);
+const refreshServiceInstances = vi.hoisted(
+    () =>
+        [] as Array<{
+            root: string;
+            registerFileWatchers: ReturnType<typeof vi.fn>;
+            dispose: ReturnType<typeof vi.fn>;
+        }>,
+);
+const makeBranchesForRoot = vi.hoisted(() => (root: string) => [
+    {
+        name: `branch-${root.split(/[\\/]/).pop() ?? root}`,
+        hash: "abc1234",
+        isRemote: false,
+        isCurrent: true,
+        upstream: "origin/main",
+        ahead: 0,
+        behind: 0,
+    },
+]);
 
 vi.mock("vscode", () => vscodeMock);
+vi.mock("../../../src/services/repositoryDiscovery", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../../src/services/repositoryDiscovery")
+    >("../../../src/services/repositoryDiscovery");
+    return {
+        ...actual,
+        discoverGitRepositories: discoverGitRepositoriesSpy,
+    };
+});
+vi.mock("../../../src/git/executor", () => ({
+    GitExecutor: class {
+        public root: string;
+
+        constructor(root: string) {
+            this.root = root;
+            activeGitRoot.value = root;
+        }
+        setRoot = vi.fn((root: string) => {
+            this.root = root;
+            activeGitRoot.value = root;
+            gitExecutorSetRoot(root);
+        });
+    },
+}));
+vi.mock("../../../src/git/operations", () => ({
+    GitOps: class {
+        constructor(private readonly executor?: { root?: string }) {}
+
+        private currentRoot(): string {
+            return this.executor?.root ?? activeGitRoot.value;
+        }
+
+        getBranches = vi.fn(async () => {
+            const root = this.currentRoot();
+            if (!deferBranchRefreshes.active) return makeBranchesForRoot(root);
+            return new Promise<unknown[]>((resolve) => {
+                branchRefreshControls.push({ root, resolve });
+            });
+        });
+        getLog = vi.fn(async () => []);
+        getRemotes = vi.fn(async () => ["origin"]);
+        getRemoteUrl = vi.fn(async () => "https://github.com/owner/repo.git");
+        getUnpushedCommitHashes = vi.fn(async () => []);
+        hasUncommittedChanges = vi.fn(async () => false);
+        getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
+        listStashes = vi.fn(async () => []);
+        getConflictFilesDetailed = vi.fn(async () => []);
+    },
+}));
+vi.mock("../../../src/services/worktreeService", () => ({
+    WorktreeService: class {
+        refresh = vi.fn(async () => []);
+        decorateBranches = vi.fn((branches: unknown[]) => branches);
+        dispose = vi.fn();
+    },
+}));
+vi.mock("../../../src/views/RefreshService", () => ({
+    RefreshService: class {
+        constructor(
+            _deps: unknown,
+            public readonly root: string,
+        ) {
+            refreshServiceInstances.push(this);
+        }
+        refreshMergeConflicts = vi.fn(async () => undefined);
+        refreshConflictUi = vi.fn(async () => undefined);
+        refreshAll = vi.fn(async () => undefined);
+        registerFileWatchers = vi.fn();
+        dispose = vi.fn();
+    },
+}));
 vi.mock("../../../src/utils/notifications", () => ({
     runWithNotificationProgress: vi.fn(
         async (_message: string, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
@@ -202,6 +450,9 @@ vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
 // module-level function). Self-hosted-routing tests set a per-test resolved value.
 vi.mock("../../../src/services/commitChecks/http", () => ({
     httpGetJson: httpGetJsonSpy,
+}));
+vi.mock("../../../src/services/publishService", () => ({
+    runPublishBranchFlow: runPublishBranchFlowSpy,
 }));
 
 function createWebviewView() {
@@ -286,6 +537,7 @@ function makeGitOpsMock() {
         getRemotes: vi.fn(async () => ["origin"]),
         getRemoteUrl: vi.fn(async () => "https://github.com/owner/repo.git"),
         getUnpushedCommitHashes: vi.fn(async () => ["abc1234"]),
+        hasAnyCommits: vi.fn(async () => true),
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => [
             { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 0 },
@@ -315,6 +567,7 @@ function makeGitOpsMock() {
         stashApply: vi.fn(async () => "applied"),
         stashDelete: vi.fn(async () => "deleted"),
         getConflictFilesDetailed: vi.fn(async () => []),
+        abortMerge: vi.fn(async () => undefined),
         getStashFilePatch: vi.fn(async () => "diff --git a b"),
         getFileHistory: vi.fn(async () => "history line"),
     };
@@ -337,6 +590,14 @@ function makeCredentialStoreWithToken(token: string) {
     return {
         get: vi.fn(async () => token),
         set: vi.fn(async () => undefined),
+        delete: vi.fn(async () => undefined),
+    };
+}
+
+function makeSecretStorage() {
+    return {
+        get: vi.fn(async () => undefined),
+        store: vi.fn(async () => undefined),
         delete: vi.fn(async () => undefined),
     };
 }
@@ -372,6 +633,39 @@ function refreshingStates(): boolean[] {
         .map((message) => message.active);
 }
 
+function lastSetRepositoriesMessage():
+    | {
+          type: "setRepositories";
+          repositories: Array<{ root: string; label: string; changedFileCount: number }>;
+          activeRepositoryRoot: string | null;
+      }
+    | undefined {
+    const messages = postMessageSpy.mock.calls
+        .map(([message]) => message)
+        .filter(
+            (
+                message,
+            ): message is {
+                type: "setRepositories";
+                repositories: Array<{ root: string; label: string; changedFileCount: number }>;
+                activeRepositoryRoot: string | null;
+            } =>
+                typeof message === "object" &&
+                message !== null &&
+                "type" in message &&
+                message.type === "setRepositories",
+        );
+    return messages.at(-1);
+}
+
+function activeWatcherForRoot(root: string): FakeFileSystemWatcher | undefined {
+    return fileSystemWatchers.find((watcher) => {
+        if (watcher.dispose.mock.calls.length > 0) return false;
+        const pattern = watcher.pattern as { baseUri?: { fsPath?: string; path?: string } };
+        return (pattern.baseUri?.fsPath ?? pattern.baseUri?.path) === root;
+    });
+}
+
 // Returns the snapshot from the most recent setCommitChecks postMessage, or undefined
 // if the view never emitted one. Used by the self-hosted GitLab routing tests to assert
 // on the snapshot's state and error text.
@@ -398,6 +692,7 @@ function lastCommitChecksSnapshot():
 
 async function setupCommitPanelProvider(
     configure?: (gitOps: ReturnType<typeof makeGitOpsMock>) => void,
+    options: { secrets?: ReturnType<typeof makeSecretStorage> } = {},
 ) {
     const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
     const gitOps = makeGitOpsMock();
@@ -408,6 +703,7 @@ async function setupCommitPanelProvider(
         gitOps as unknown as object,
         { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
         draftStore as unknown as object,
+        options.secrets as unknown as object,
     );
     const webview = createWebviewView();
     provider.resolveWebviewView(
@@ -422,6 +718,18 @@ async function setupCommitPanelProvider(
 describe("view providers integration", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        registeredCommands.clear();
+        activeTextEditorListeners.length = 0;
+        workspaceFolderListeners.length = 0;
+        workspaceFolderDisposables.length = 0;
+        activeTextEditor = undefined;
+        activeGitRoot.value = "";
+        gitStatusByRoot.clear();
+        discoverGitRepositoriesSpy.mockResolvedValue([]);
+        deferBranchRefreshes.active = false;
+        branchRefreshControls.length = 0;
+        refreshServiceInstances.length = 0;
+        fileSystemWatchers.length = 0;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -430,6 +738,319 @@ describe("view providers integration", () => {
             summary: "All checks passed",
             items: [],
         }));
+    });
+
+    it("graph active repository follows the active editor without mutating commit accordion expansion", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace";
+        const repoB = "/workspace/packages/app";
+        const captured: {
+            commitGraph?: {
+                clearCommitDetail: () => void;
+                refresh: () => Promise<void>;
+                setRepositoryLabel: (label: string) => void;
+            };
+            sidebarGraph?: {
+                clearCommitDetail: () => void;
+                refresh: () => Promise<void>;
+                setRepositoryLabel: (label: string) => void;
+            };
+            commitPanel?: {
+                activeRepositoryRoot: string | null;
+                expandedRepositoryRoots: Set<string>;
+                repositories: Array<{ root: string; label: string }>;
+                runtimes: Map<string, unknown>;
+                setRepositoryLabel: (label: string) => void;
+                setRepositoryRootUri: (uri: { fsPath: string }) => void;
+            };
+        } = {};
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [],
+            workspaceState: createMemento(),
+            secrets: {},
+        };
+
+        await activateRepositoryMode(
+            context as never,
+            [
+                { root: repoA, label: "workspace" },
+                { root: repoB, label: "app" },
+            ],
+            {
+                commitGraph: {
+                    setProvider: (provider: unknown) => (captured.commitGraph = provider as never),
+                },
+                sidebarGraph: {
+                    setProvider: (provider: unknown) => (captured.sidebarGraph = provider as never),
+                },
+                commitPanel: {
+                    setProvider: (provider: unknown) => (captured.commitPanel = provider as never),
+                },
+            } as never,
+        );
+        expect(activeTextEditorListeners).toHaveLength(1);
+        expect(registeredCommands.has("intelligit.sidebarRepositoryIndicator")).toBe(true);
+        expect(registeredCommands.has("intelligit.sidebarRepositoryIndicator.color")).toBe(true);
+        expect(
+            await registeredCommands.get("intelligit.sidebarRepositoryIndicator")!(),
+        ).toBeUndefined();
+        expect(
+            await registeredCommands.get("intelligit.sidebarRepositoryIndicator.color")!(),
+        ).toBeUndefined();
+        expect(executeCommand).toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.hasMultipleRepositories",
+            true,
+        );
+        expect(captured.commitPanel!.repositories).toEqual([
+            { root: repoA, label: "workspace" },
+            { root: repoB, label: "app" },
+        ]);
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoA);
+        expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
+        expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
+
+        const commitGraphLabelSpy = vi.spyOn(captured.commitGraph!, "setRepositoryLabel");
+        const sidebarGraphLabelSpy = vi.spyOn(captured.sidebarGraph!, "setRepositoryLabel");
+        const commitGraphClearSpy = vi.spyOn(captured.commitGraph!, "clearCommitDetail");
+        const sidebarGraphClearSpy = vi.spyOn(captured.sidebarGraph!, "clearCommitDetail");
+        const commitGraphRefreshSpy = vi.spyOn(captured.commitGraph!, "refresh");
+        const sidebarGraphRefreshSpy = vi.spyOn(captured.sidebarGraph!, "refresh");
+        const commitPanelRootSpy = vi.spyOn(captured.commitPanel!, "setRepositoryRootUri");
+        const commitPanelLabelSpy = vi.spyOn(captured.commitPanel!, "setRepositoryLabel");
+        captured.commitPanel!.expandedRepositoryRoots.add(repoA);
+        gitExecutorSetRoot.mockClear();
+
+        const fireActiveEditor = async (uri: unknown): Promise<void> => {
+            activeTextEditorListeners.forEach((listener) => listener({ document: { uri } }));
+            for (let index = 0; index < 5; index += 1) {
+                await flushMicrotasks();
+            }
+        };
+
+        await fireActiveEditor({ scheme: "untitled", fsPath: `${repoB}/src/file.ts` });
+        await fireActiveEditor(vscodeMock.Uri.file("/other/src/file.ts"));
+
+        expect(gitExecutorSetRoot).not.toHaveBeenCalledWith(repoB);
+        expect(commitGraphClearSpy).not.toHaveBeenCalled();
+        expect(sidebarGraphClearSpy).not.toHaveBeenCalled();
+        expect(commitPanelRootSpy).not.toHaveBeenCalled();
+
+        await fireActiveEditor(vscodeMock.Uri.file(`${repoB}/src/file.ts`));
+
+        expect(gitExecutorSetRoot).toHaveBeenCalledWith(repoB);
+        expect(commitGraphLabelSpy).toHaveBeenCalledWith("app");
+        expect(sidebarGraphLabelSpy).toHaveBeenCalledWith("app");
+        expect(commitGraphClearSpy).toHaveBeenCalled();
+        expect(sidebarGraphClearSpy).toHaveBeenCalled();
+        expect(commitGraphRefreshSpy).toHaveBeenCalled();
+        expect(sidebarGraphRefreshSpy).toHaveBeenCalled();
+        expect(commitPanelRootSpy).toHaveBeenCalledWith(expect.objectContaining({ fsPath: repoB }));
+        expect(commitPanelLabelSpy).toHaveBeenCalledWith("app");
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
+        expect(captured.commitPanel!.expandedRepositoryRoots.has(repoA)).toBe(true);
+        expect(captured.commitPanel!.runtimes.has(repoA)).toBe(true);
+        expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
+    });
+
+    it("clears the multi-repository context for single-repository activation", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+
+        await activateRepositoryMode(
+            {
+                extensionUri: vscodeMock.Uri.file("/ext"),
+                subscriptions: [],
+                workspaceState: createMemento(),
+                secrets: {},
+            } as never,
+            [{ root: "/workspace", label: "workspace" }],
+        );
+
+        expect(executeCommand).toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.hasMultipleRepositories",
+            false,
+        );
+    });
+
+    it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [] as unknown[],
+            workspaceState: createMemento(),
+            secrets: {},
+        };
+        const captured: {
+            commitPanel?: {
+                activeRepositoryRoot: string | null;
+                repositories: Array<{ root: string; label: string }>;
+                runtimes: Map<string, unknown>;
+            };
+        } = {};
+
+        await activateRepositoryMode(
+            context as never,
+            [
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ],
+            {
+                commitPanel: {
+                    setProvider: (provider: unknown) => (captured.commitPanel = provider as never),
+                },
+            } as never,
+        );
+        expect(workspaceFolderListeners).toHaveLength(1);
+        expect(context.subscriptions).toContain(workspaceFolderDisposables[0]);
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoA);
+        gitExecutorSetRoot.mockClear();
+
+        workspaceState.workspaceFolders = [{ uri: { fsPath: repoB, path: repoB } }];
+        discoverGitRepositoriesSpy.mockResolvedValueOnce([{ root: repoB, label: "app-b" }]);
+        await workspaceFolderListeners[0]();
+        await flushMicrotasks();
+
+        expect(discoverGitRepositoriesSpy).toHaveBeenCalledWith([repoB]);
+        expect(gitExecutorSetRoot).toHaveBeenCalledWith(repoB);
+        expect(executeCommand).toHaveBeenCalledWith(
+            "setContext",
+            "intelligit.hasMultipleRepositories",
+            false,
+        );
+        expect(captured.commitPanel!.repositories).toEqual([{ root: repoB, label: "app-b" }]);
+        expect(captured.commitPanel!.activeRepositoryRoot).toBe(repoB);
+        expect(captured.commitPanel!.runtimes.has(repoA)).toBe(false);
+        expect(captured.commitPanel!.runtimes.has(repoB)).toBe(true);
+    });
+
+    it("registers startup active-editor repository watchers once", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        activeTextEditor = {
+            document: { uri: vscodeMock.Uri.file(`${repoB}/src/file.ts`) },
+        };
+
+        await activateRepositoryMode(
+            {
+                extensionUri: vscodeMock.Uri.file("/ext"),
+                subscriptions: [],
+                workspaceState: createMemento(),
+                secrets: {},
+            } as never,
+            [
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ],
+        );
+
+        const repoBRefreshServices = refreshServiceInstances.filter(
+            (instance) => instance.root === repoB,
+        );
+        expect(repoBRefreshServices).toHaveLength(1);
+        expect(repoBRefreshServices[0].registerFileWatchers).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the latest active-editor repository when earlier refreshes finish last", async () => {
+        const { SELECTED_REPOSITORY_KEY } = await import("../../../src/activation/common");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const initialRepo = "/workspace/app-c";
+        const repoA = "/workspace/app-a";
+        const repoB = "/workspace/app-b";
+        const captured: {
+            commitGraph?: { setBranches: (branches: unknown[], worktrees: unknown[]) => void };
+            commitPanel?: { setRepositoryRootUri: (uri: { fsPath: string }) => void };
+        } = {};
+        const controlledWorkspaceStore = createControlledMemento();
+        const context = {
+            extensionUri: vscodeMock.Uri.file("/ext"),
+            subscriptions: [],
+            workspaceState: controlledWorkspaceStore.memento,
+            secrets: {},
+        };
+
+        await activateRepositoryMode(
+            context as never,
+            [
+                { root: initialRepo, label: "app-c" },
+                { root: repoA, label: "app-a" },
+                { root: repoB, label: "app-b" },
+            ],
+            {
+                commitGraph: {
+                    setProvider: (provider: unknown) => (captured.commitGraph = provider as never),
+                },
+                commitPanel: {
+                    setProvider: (provider: unknown) => (captured.commitPanel = provider as never),
+                },
+            } as never,
+        );
+
+        const commitGraphBranchesSpy = vi.spyOn(captured.commitGraph!, "setBranches");
+        const commitPanelRootSpy = vi.spyOn(captured.commitPanel!, "setRepositoryRootUri");
+        deferBranchRefreshes.active = true;
+        const resolvePendingUpdatesFor = async (root: string): Promise<void> => {
+            let resolvedAny = true;
+            while (resolvedAny) {
+                resolvedAny = false;
+                for (const update of controlledWorkspaceStore.pendingUpdates.filter(
+                    (candidate) => !candidate.resolved && candidate.value === root,
+                )) {
+                    update.resolved = true;
+                    update.resolve();
+                    resolvedAny = true;
+                }
+                await flushMicrotasks();
+            }
+        };
+        const resolveBranchRefreshesFor = async (root: string): Promise<void> => {
+            let resolvedAny = true;
+            while (resolvedAny) {
+                resolvedAny = false;
+                for (const control of branchRefreshControls.filter(
+                    (candidate) => !candidate.resolved && candidate.root === root,
+                )) {
+                    control.resolved = true;
+                    control.resolve(makeBranchesForRoot(root));
+                    resolvedAny = true;
+                }
+                await flushMicrotasks();
+            }
+        };
+
+        activeTextEditorListeners.forEach((listener) =>
+            listener({ document: { uri: vscodeMock.Uri.file(`${repoA}/src/a.ts`) } }),
+        );
+        await flushMicrotasks();
+        await resolveBranchRefreshesFor(repoA);
+        expect(
+            controlledWorkspaceStore.pendingUpdates.some(
+                (update) => !update.resolved && update.value === repoA,
+            ),
+        ).toBe(true);
+
+        activeTextEditorListeners.forEach((listener) =>
+            listener({ document: { uri: vscodeMock.Uri.file(`${repoB}/src/b.ts`) } }),
+        );
+        await flushMicrotasks();
+
+        await resolveBranchRefreshesFor(repoB);
+        await resolvePendingUpdatesFor(repoB);
+        await resolvePendingUpdatesFor(repoA);
+        await resolvePendingUpdatesFor(repoB);
+
+        const latestBranches = commitGraphBranchesSpy.mock.calls.at(-1)?.[0] as
+            | Array<{ name: string }>
+            | undefined;
+        expect(commitPanelRootSpy).toHaveBeenLastCalledWith(
+            expect.objectContaining({ fsPath: repoB }),
+        );
+        expect(latestBranches?.[0]?.name).toBe("branch-app-b");
+        expect(controlledWorkspaceStore.memento.get(SELECTED_REPOSITORY_KEY)).toBe(repoB);
     });
 
     it("OnboardingViewProvider renders clone and open-folder actions when no workspace is open", async () => {
@@ -838,6 +1459,282 @@ describe("view providers integration", () => {
         expect(fileCounts.length).toBeGreaterThan(0);
     });
 
+    it("UndockedViewProvider hydrates and switches repositories through its own runtime root", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const executor = {
+            root: "/repo-a",
+            setRoot: vi.fn((root: string) => {
+                executor.root = root;
+            }),
+        };
+        const callRoots: string[] = [];
+        const gitOps = makeGitOpsMock();
+        gitOps.getBranches = vi.fn(async () => {
+            callRoots.push(`branches:${executor.root}`);
+            return makeBranchesForRoot(executor.root);
+        });
+        gitOps.getLog = vi.fn(async () => {
+            callRoots.push(`log:${executor.root}`);
+            return [];
+        });
+        gitOps.getUnpushedCommitHashes = vi.fn(async () => {
+            callRoots.push(`unpushed:${executor.root}`);
+            return [];
+        });
+        gitOps.getStatus = vi.fn(async () => {
+            callRoots.push(`status:${executor.root}`);
+            return [];
+        });
+        gitOps.getRemotes = vi.fn(async () => {
+            callRoots.push(`remotes:${executor.root}`);
+            return ["origin"];
+        });
+        gitOps.listStashes = vi.fn(async () => {
+            callRoots.push(`stashes:${executor.root}`);
+            return [];
+        });
+        const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+            {},
+            undefined,
+            {
+                executor,
+                repositories: [
+                    { root: "/repo-a", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                selectedRepositoryRoot: "/repo-a",
+                loadRepositoryData: async () => ({
+                    branches: await gitOps.getBranches(),
+                    worktrees: [],
+                }),
+                onSelectedRepositoryRootChanged: async (root: string) => {
+                    await workspaceStore.update("intelligit.undockedSelectedRepositoryRoot", root);
+                },
+            },
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            iconTheme: {
+                initIconThemeData: ReturnType<typeof vi.fn>;
+                getFolderIconsByBranches: ReturnType<typeof vi.fn>;
+                getThemeData: ReturnType<typeof vi.fn>;
+                decorateWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        testProvider.iconTheme = {
+            initIconThemeData: vi.fn(async () => undefined),
+            getFolderIconsByBranches: vi.fn(async () => ({})),
+            getThemeData: vi.fn(() => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            })),
+            decorateWorkingFiles: vi.fn(async (files: unknown) => files),
+            getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
+                detail,
+                folderIconsByName: {},
+            })),
+            dispose: vi.fn(),
+        };
+        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
+
+        postMessageSpy.mockClear();
+        await send({ type: "ready" });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "repositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            selectedRepositoryRoot: "/repo-a",
+        });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            message: "draft A",
+        });
+
+        postMessageSpy.mockClear();
+        callRoots.length = 0;
+        await send({ type: "selectRepository", repositoryRoot: "/repo-b" });
+
+        expect(executor.setRoot).toHaveBeenCalledWith("/repo-b");
+        expect(workspaceStore.update).toHaveBeenCalledWith(
+            "intelligit.undockedSelectedRepositoryRoot",
+            "/repo-b",
+        );
+        expect(callRoots).toEqual(
+            expect.arrayContaining(["branches:/repo-b", "log:/repo-b", "status:/repo-b"]),
+        );
+        expect(callRoots).not.toEqual(expect.arrayContaining(["log:/repo-a", "status:/repo-a"]));
+        const restoreMessages = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "restoreCommitDraft"; message: string } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "restoreCommitDraft",
+            );
+        expect(restoreMessages.at(-1)).toEqual({ type: "restoreCommitDraft", message: "" });
+        expect(restoreMessages).not.toContainEqual({
+            type: "restoreCommitDraft",
+            message: "draft A",
+        });
+
+        postMessageSpy.mockClear();
+        callRoots.length = 0;
+        executor.setRoot.mockClear();
+        provider.setRepositories([{ root: "/repo-a", label: "Repo A" }], "/repo-a");
+        for (let index = 0; index < 12; index += 1) {
+            await flushMicrotasks();
+            if (
+                postMessageSpy.mock.calls.some(([message]) =>
+                    expect
+                        .objectContaining({ type: "restoreCommitDraft", message: "draft A" })
+                        .asymmetricMatch(message),
+                )
+            ) {
+                break;
+            }
+        }
+
+        expect(executor.setRoot).toHaveBeenCalledWith("/repo-a");
+        expect(callRoots).toEqual(
+            expect.arrayContaining(["branches:/repo-a", "log:/repo-a", "status:/repo-a"]),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            message: "draft A",
+        });
+
+        executor.setRoot.mockClear();
+        await expect(
+            send({ type: "selectRepository", repositoryRoot: "/missing" }),
+        ).rejects.toThrow("Unknown repository root received from webview.");
+        expect(executor.setRoot).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider ignores stale repository switch completions", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const executor = {
+            root: "/repo-a",
+            setRoot: vi.fn((root: string) => {
+                executor.root = root;
+            }),
+        };
+        const callRoots: string[] = [];
+        type BranchRows = ReturnType<typeof makeBranchesForRoot>;
+        let resolveRepoB!: (value: { branches: BranchRows; worktrees: never[] }) => void;
+        const repoBBranches = new Promise<{ branches: BranchRows; worktrees: never[] }>(
+            (resolve) => {
+                resolveRepoB = resolve;
+            },
+        );
+        const gitOps = makeGitOpsMock();
+        gitOps.getLog = vi.fn(async () => {
+            callRoots.push(`log:${executor.root}`);
+            return [];
+        });
+        gitOps.getUnpushedCommitHashes = vi.fn(async () => {
+            callRoots.push(`unpushed:${executor.root}`);
+            return [];
+        });
+        gitOps.getStatus = vi.fn(async () => {
+            callRoots.push(`status:${executor.root}`);
+            return [];
+        });
+        const workspaceStore = createMemento({ "commitDraft:/repo-a": "draft A" });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+            {},
+            undefined,
+            {
+                executor,
+                repositories: [
+                    { root: "/repo-a", label: "Repo A" },
+                    { root: "/repo-b", label: "Repo B" },
+                ],
+                selectedRepositoryRoot: "/repo-a",
+                loadRepositoryData: async (root: string) =>
+                    root === "/repo-b"
+                        ? repoBBranches
+                        : { branches: makeBranchesForRoot(root), worktrees: [] },
+                onSelectedRepositoryRootChanged: async (root: string) => {
+                    await workspaceStore.update("intelligit.undockedSelectedRepositoryRoot", root);
+                },
+            },
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            iconTheme: {
+                initIconThemeData: ReturnType<typeof vi.fn>;
+                getFolderIconsByBranches: ReturnType<typeof vi.fn>;
+                getThemeData: ReturnType<typeof vi.fn>;
+                decorateWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        testProvider.iconTheme = {
+            initIconThemeData: vi.fn(async () => undefined),
+            getFolderIconsByBranches: vi.fn(async () => ({})),
+            getThemeData: vi.fn(() => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            })),
+            decorateWorkingFiles: vi.fn(async (files: unknown) => files),
+            getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            dispose: vi.fn(),
+        };
+        const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
+
+        const repoBSwitch = send({ type: "selectRepository", repositoryRoot: "/repo-b" });
+        await flushMicrotasks();
+        const repoASwitch = send({ type: "selectRepository", repositoryRoot: "/repo-a" });
+        await repoASwitch;
+        resolveRepoB({ branches: makeBranchesForRoot("/repo-b"), worktrees: [] });
+        await repoBSwitch;
+
+        expect(callRoots).toEqual(
+            expect.arrayContaining(["log:/repo-a", "status:/repo-a"]),
+        );
+        expect(callRoots).not.toEqual(
+            expect.arrayContaining(["log:/repo-b", "status:/repo-b"]),
+        );
+        expect(workspaceStore.get("intelligit.undockedSelectedRepositoryRoot")).toBe("/repo-a");
+        provider.dispose();
+    });
+
     it("UndockedViewProvider drops stale commit-check replies after cache scope changes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const provider = new UndockedViewProvider(
@@ -898,6 +1795,54 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider shows repository labels in the sidebar graph description only when enabled", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const sidebarProvider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+            {
+                scriptFile: "webview-compactcommitgraph.js",
+                title: "Graph",
+                showRepositoryLabel: true,
+            },
+        );
+        const sidebarWebview = createWebviewView();
+
+        sidebarProvider.setRepositoryLabel("repo-a");
+        sidebarProvider.resolveWebviewView(
+            sidebarWebview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        expect(sidebarWebview.view.description).toBe("(repo-a)");
+        await sidebarWebview.send({ type: "ready" });
+
+        sidebarProvider.setRepositoryLabel("repo-b");
+        expect(sidebarWebview.view.description).toBe("(repo-b)");
+        sidebarProvider.setShowRepositoryLabel(false);
+        expect(sidebarWebview.view.description).toBeUndefined();
+        sidebarProvider.setShowRepositoryLabel(true);
+        expect(sidebarWebview.view.description).toBe("(repo-b)");
+
+        const fullGraphProvider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+            { title: "Graph" },
+        );
+        const fullGraphWebview = createWebviewView();
+
+        fullGraphProvider.resolveWebviewView(
+            fullGraphWebview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        fullGraphProvider.setRepositoryLabel("repo-a");
+        expect(fullGraphWebview.view.description).toBeUndefined();
+    });
+
     it("CommitGraphViewProvider handles webview events and refresh/load flows", async () => {
         const { CommitGraphViewProvider } =
             await import("../../../src/views/CommitGraphViewProvider");
@@ -950,6 +1895,7 @@ describe("view providers integration", () => {
 
         await webview.send({ type: "filterBranch", branch: "main" });
         expect(branchFilter).toHaveBeenCalledWith("main");
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setFilterText", text: "" });
 
         await webview.send({ type: "branchAction", action: "checkout", branchName: "main" });
         expect(branchAction).toHaveBeenCalledWith({ action: "checkout", branchName: "main" });
@@ -974,6 +1920,13 @@ describe("view providers integration", () => {
         await webview.send({ type: "filterText", text: "feat" });
         await webview.send({ type: "loadMore" });
         expect(gitOps.getLog.mock.calls.length - logCallsBeforePagedFetch).toBe(2);
+
+        provider.resetFilters();
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setSelectedBranch", branch: null });
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setFilterText", text: "" });
+        await provider.refresh();
+        expect(gitOps.getLog.mock.calls.at(-1)?.[1]).toBeUndefined();
+        expect(gitOps.getLog.mock.calls.at(-1)?.[2]).toBeUndefined();
 
         gitOps.getLog.mockRejectedValueOnce(new Error("git failed"));
         await provider.refresh();
@@ -1276,6 +2229,684 @@ describe("view providers integration", () => {
         expect(postMessageSpy).not.toHaveBeenCalledWith(
             expect.objectContaining({ type: "update" }),
         );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes retain unchanged roots and drop removed roots", async () => {
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        const repoA = { root: "/repo-a", label: "Repo A" };
+        const repoB = { root: "/repo-b", label: "Repo B" };
+        postMessageSpy.mockClear();
+
+        provider.setRepositories([repoA, repoB], repoA.root);
+        const testProvider = provider as unknown as {
+            activeRepositoryRoot: string | null;
+            repositories: Array<{ root: string; label: string }>;
+            runtimes: Map<
+                string,
+                {
+                    files: Array<{
+                        path: string;
+                        status: string;
+                        staged: boolean;
+                        additions: number;
+                        deletions: number;
+                    }>;
+                }
+            >;
+        };
+        const runtimeA = testProvider.runtimes.get(repoA.root);
+        const runtimeB = testProvider.runtimes.get(repoB.root);
+        expect(runtimeA).toBeDefined();
+        expect(runtimeB).toBeDefined();
+        runtimeB!.files = [
+            { path: "src/b.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ];
+
+        provider.setRepositories([repoB]);
+
+        expect(testProvider.runtimes.has(repoA.root)).toBe(false);
+        expect(testProvider.runtimes.get(repoB.root)).toBe(runtimeB);
+        expect(testProvider.activeRepositoryRoot).toBe(repoB.root);
+        expect(testProvider.repositories).toEqual([repoB]);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setRepositories",
+            repositories: [{ ...repoB, changedFileCount: 1 }],
+            activeRepositoryRoot: repoB.root,
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes preserve hydrated roots when active root changes", async () => {
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            createMemento() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        const repoA = { root: "/repo-a", label: "Repo A" };
+        const repoB = { root: "/repo-b", label: "Repo B" };
+        provider.setRepositories([repoA, repoB], repoA.root);
+        const testProvider = provider as unknown as {
+            activeRepositoryRoot: string | null;
+            runtimes: Map<string, unknown>;
+        };
+        const runtimeA = testProvider.runtimes.get(repoA.root);
+        const runtimeB = testProvider.runtimes.get(repoB.root);
+        expect(runtimeA).toBeDefined();
+        expect(runtimeB).toBeDefined();
+        postMessageSpy.mockClear();
+
+        provider.setRepositoryRootUri({ fsPath: repoB.root, path: repoB.root } as unknown as {
+            fsPath: string;
+            path: string;
+        });
+
+        expect(testProvider.runtimes.get(repoA.root)).toBe(runtimeA);
+        expect(testProvider.runtimes.get(repoB.root)).toBe(runtimeB);
+        expect(testProvider.activeRepositoryRoot).toBe(repoB.root);
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "restoreCommitDraft",
+            repositoryRoot: repoB.root,
+            message: "",
+        });
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setRepositories",
+            repositories: [
+                { ...repoA, changedFileCount: 0 },
+                { ...repoB, changedFileCount: 0 },
+            ],
+            activeRepositoryRoot: repoB.root,
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider aggregates changed-file counts across repository runtimes", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+            { path: "src/b.ts", status: "M", staged: true, additions: 2, deletions: 0 },
+            { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
+            { path: "src/c.ts", status: "A", staged: false, additions: 1, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        await flushMicrotasks();
+
+        expect(counts).toContain(3);
+        expect(lastSetRepositoriesMessage()?.repositories).toEqual([
+            { root: "/repo", label: "Repo A", changedFileCount: 1 },
+            { root: "/repo-b", label: "Repo B", changedFileCount: 2 },
+        ]);
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider scans initial collapsed repository counts without full row refresh", async () => {
+        const { provider } = await setupCommitPanelProvider();
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+            { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
+        ]);
+        postMessageSpy.mockClear();
+
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        await flushMicrotasks();
+
+        expect(lastSetRepositoriesMessage()?.repositories).toEqual([
+            { root: "/repo", label: "Repo A", changedFileCount: 1 },
+            { root: "/repo-b", label: "Repo B", changedFileCount: 1 },
+        ]);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider rejects unknown expanded repository roots", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockClear();
+        showErrorMessage.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/unknown"] });
+
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Unknown repository root received from webview.",
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Unknown repository root received from webview.",
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider watches expanded non-active repositories with targeted refreshes", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        await flushMicrotasks();
+
+        expect(activeWatcherForRoot("/repo")).toBeUndefined();
+        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+        const expandedWatcher = activeWatcherForRoot("/repo-b");
+        expect(activeWatcherForRoot("/repo")).toBeUndefined();
+        expect(expandedWatcher).toBeDefined();
+
+        gitOps.getStatus.mockClear();
+        repoBGitOps.getStatus.mockClear();
+        postMessageSpy.mockClear();
+        expandedWatcher!.trigger("change", "/repo-b/src/b.ts");
+        for (let i = 0; i < 10; i += 1) {
+            await flushMicrotasks();
+            if (
+                postMessageSpy.mock.calls.some(([message]) =>
+                    expect
+                        .objectContaining({ type: "update", repositoryRoot: "/repo-b" })
+                        .asymmetricMatch(message),
+                )
+            ) {
+                break;
+            }
+        }
+
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "update", repositoryRoot: "/repo-b" }),
+        );
+
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: [] });
+        expect(expandedWatcher!.dispose).toHaveBeenCalled();
+        expect(activeWatcherForRoot("/repo")).toBeUndefined();
+        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider disposes expanded repository watchers when rows are removed", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+        const expandedWatcher = activeWatcherForRoot("/repo-b");
+        expect(expandedWatcher).toBeDefined();
+        expect(counts).toContain(2);
+        counts.length = 0;
+
+        provider.setRepositories([{ root: "/repo", label: "Repo A" }], "/repo");
+
+        expect(counts).toEqual([1]);
+        expect(expandedWatcher!.dispose).toHaveBeenCalled();
+        expect(activeWatcherForRoot("/repo-b")).toBeUndefined();
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("Unknown repository showDiff is rejected before Git or git.openChange", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        gitOps.getStatus.mockClear();
+        executeCommand.mockClear();
+        showErrorMessage.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "showDiff", repositoryRoot: "/unknown", path: "src/a.ts" });
+
+        expect(gitOps.getStatus).not.toHaveBeenCalled();
+        expect(executeCommand).not.toHaveBeenCalledWith("git.openChange", expect.anything());
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Unknown repository root received from webview.",
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Unknown repository root received from webview.",
+        });
+        provider.dispose();
+    });
+
+    it("Unknown repository openCommitFileDiff is rejected before firing the graph event", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        const openCommitFileDiff = vi.fn();
+        const disposable = provider.onOpenCommitFileDiff(openCommitFileDiff);
+        showErrorMessage.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "openCommitFileDiff",
+            repositoryRoot: "/unknown",
+            commitHash: "abc1234",
+            filePath: "src/a.ts",
+        });
+
+        expect(openCommitFileDiff).not.toHaveBeenCalled();
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            "Unknown repository root received from webview.",
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Unknown repository root received from webview.",
+        });
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route scoped actions through selected runtime GitOps and root", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.stageFiles.mockClear();
+        repoBGitOps.stageFiles.mockClear();
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "stageFiles",
+            repositoryRoot: "/repo-b",
+            paths: ["src/b.ts"],
+        });
+
+        expect(repoBGitOps.stageFiles).toHaveBeenCalledWith(["src/b.ts"]);
+        expect(gitOps.stageFiles).not.toHaveBeenCalled();
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                repositoryRoot: "/repo-b",
+                files: [expect.objectContaining({ path: "src/b.ts" })],
+            }),
+        );
+
+        executeCommand.mockClear();
+        await webview.send({
+            type: "showDiff",
+            repositoryRoot: "/repo-b",
+            path: "src/b.ts",
+        });
+        expect(executeCommand).toHaveBeenCalledWith(
+            "git.openChange",
+            expect.objectContaining({ fsPath: "/repo-b/src/b.ts" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider scopes repository command errors to the selected runtime", async () => {
+        const { provider, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.stashApply.mockRejectedValueOnce(new Error("stash apply failed"));
+        repoBGitOps.getConflictFilesDetailed.mockResolvedValueOnce([]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "stashApply", repositoryRoot: "/repo-b", index: 0 });
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            repositoryRoot: "/repo-b",
+            message: "stash apply failed",
+        });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes skip graph refresh for non-active scoped actions", async () => {
+        vi.useFakeTimers();
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.getLog.mockClear();
+        repoBGitOps.fetch.mockClear();
+        repoBGitOps.getStatus.mockClear();
+        repoBGitOps.listStashes.mockClear();
+        repoBGitOps.getLog.mockClear();
+        postMessageSpy.mockClear();
+
+        try {
+            const fetch = webview.send({ type: "fetch", repositoryRoot: "/repo-b" });
+            await vi.advanceTimersByTimeAsync(1_000);
+            await fetch;
+        } finally {
+            vi.useRealTimers();
+        }
+
+        expect(repoBGitOps.fetch).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getLog).not.toHaveBeenCalled();
+        expect(gitOps.getLog).not.toHaveBeenCalled();
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                repositoryRoot: "/repo-b",
+                files: [expect.objectContaining({ path: "src/b.ts" })],
+            }),
+        );
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "loadCommits" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes skip graph refresh for non-active abortMerge", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        const workingTreeChanged = vi.fn();
+        const disposable = provider.onDidChangeWorkingTree(workingTreeChanged);
+        gitOps.getLog.mockClear();
+        repoBGitOps.abortMerge.mockClear();
+        repoBGitOps.getStatus.mockClear();
+        repoBGitOps.listStashes.mockClear();
+        repoBGitOps.getLog.mockClear();
+        executeCommand.mockClear();
+        postMessageSpy.mockClear();
+        showWarningMessage.mockResolvedValueOnce("Abort Merge");
+
+        await webview.send({ type: "abortMerge", repositoryRoot: "/repo-b" });
+
+        expect(repoBGitOps.abortMerge).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getStatus).toHaveBeenCalledWith({ includeIgnored: false });
+        expect(repoBGitOps.listStashes).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getLog).not.toHaveBeenCalled();
+        expect(gitOps.getLog).not.toHaveBeenCalled();
+        expect(workingTreeChanged).toHaveBeenCalledTimes(1);
+        expect(executeCommand).toHaveBeenCalledWith("intelligit.mergeConflictsRefresh");
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                repositoryRoot: "/repo-b",
+                files: [expect.objectContaining({ path: "src/b.ts" })],
+            }),
+        );
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "loadCommits" }),
+        );
+        disposable.dispose();
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route scoped publishBranch through selected runtime", async () => {
+        const secrets = makeSecretStorage();
+        const { provider, gitOps, webview } = await setupCommitPanelProvider(undefined, {
+            secrets,
+        });
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getBranches.mockResolvedValue([
+            {
+                name: "feature-b",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.hasAnyCommits.mockClear();
+        gitOps.getBranches.mockClear();
+        repoBGitOps.hasAnyCommits.mockClear();
+        repoBGitOps.getBranches.mockClear();
+        executeCommand.mockClear();
+        runPublishBranchFlowSpy.mockClear();
+
+        await webview.send({ type: "publishBranch", repositoryRoot: "/repo-b" });
+
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(1);
+        expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
+        expect(gitOps.getBranches).not.toHaveBeenCalled();
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(
+            repoBGitOps,
+            "feature-b",
+            "/repo-b",
+            secrets,
+        );
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route unpublished push publish through selected runtime", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getBranches.mockResolvedValue([
+            {
+                name: "feature-b",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        repoBGitOps.getStatus.mockResolvedValue([]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        gitOps.hasAnyCommits.mockClear();
+        gitOps.getBranches.mockClear();
+        gitOps.push.mockClear();
+        repoBGitOps.hasAnyCommits.mockClear();
+        repoBGitOps.getBranches.mockClear();
+        repoBGitOps.push.mockClear();
+        executeCommand.mockClear();
+        runPublishBranchFlowSpy.mockClear();
+
+        await webview.send({ type: "push", repositoryRoot: "/repo-b" });
+
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(1);
+        expect(repoBGitOps.getBranches).toHaveBeenCalled();
+        expect(repoBGitOps.push).not.toHaveBeenCalled();
+        expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
+        expect(gitOps.getBranches).not.toHaveBeenCalled();
+        expect(gitOps.push).not.toHaveBeenCalled();
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(
+            repoBGitOps,
+            "feature-b",
+            "/repo-b",
+            undefined,
+        );
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider repository runtimes route post-commit publish prompt through selected runtime", async () => {
+        const { provider, gitOps } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getBranches.mockResolvedValue([
+            {
+                name: "feature-b",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: true,
+                ahead: 0,
+                behind: 0,
+            },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const testProvider = provider as unknown as {
+            maybeOfferPublishBranch(runtime: unknown): Promise<void>;
+            runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+        };
+        const runtimeB = testProvider.runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        showInformationMessage.mockResolvedValueOnce("Publish Branch...");
+        gitOps.hasAnyCommits.mockClear();
+        gitOps.getBranches.mockClear();
+        repoBGitOps.hasAnyCommits.mockClear();
+        repoBGitOps.getBranches.mockClear();
+        executeCommand.mockClear();
+        runPublishBranchFlowSpy.mockClear();
+
+        await testProvider.maybeOfferPublishBranch(runtimeB);
+
+        expect(showInformationMessage).toHaveBeenCalledWith(
+            'Branch "{branch}" has not been published.',
+            "Publish Branch...",
+        );
+        expect(repoBGitOps.hasAnyCommits).toHaveBeenCalledTimes(2);
+        expect(repoBGitOps.getBranches).toHaveBeenCalledTimes(2);
+        expect(gitOps.hasAnyCommits).not.toHaveBeenCalled();
+        expect(gitOps.getBranches).not.toHaveBeenCalled();
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(
+            repoBGitOps,
+            "feature-b",
+            "/repo-b",
+            undefined,
+        );
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
         provider.dispose();
     });
 
@@ -1599,6 +3230,88 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider keeps global refresh context active until overlapping visible repository refreshes finish", async () => {
+        const { provider, gitOps, webview } = await setupCommitPanelProvider();
+        const repoBGitOps = makeGitOpsMock();
+        repoBGitOps.getStatus.mockResolvedValue([
+            { path: "src/b.ts", status: "M", staged: false, additions: 2, deletions: 0 },
+        ]);
+        provider.setRepositories(
+            [
+                { root: "/repo", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo",
+        );
+        const runtimeB = (
+            provider as unknown as {
+                runtimes: Map<string, { gitOps: ReturnType<typeof makeGitOpsMock> }>;
+            }
+        ).runtimes.get("/repo-b");
+        expect(runtimeB).toBeDefined();
+        runtimeB!.gitOps = repoBGitOps;
+        await webview.send({ type: "setExpandedRepositories", repositoryRoots: ["/repo-b"] });
+        postMessageSpy.mockClear();
+        executeCommand.mockClear();
+
+        type StatusFile = {
+            path: string;
+            status: "M";
+            staged: false;
+            additions: number;
+            deletions: number;
+        };
+        let resolveActiveStatus: (files: StatusFile[]) => void = () => {};
+        let resolveExpandedStatus: (files: StatusFile[]) => void = () => {};
+        const activeStatus = new Promise<StatusFile[]>((resolve) => {
+            resolveActiveStatus = resolve;
+        });
+        const expandedStatus = new Promise<StatusFile[]>((resolve) => {
+            resolveExpandedStatus = resolve;
+        });
+        gitOps.getStatus.mockImplementationOnce(() => activeStatus);
+        repoBGitOps.getStatus.mockImplementationOnce(() => expandedStatus);
+
+        vi.useFakeTimers();
+        try {
+            const refresh = provider.refresh();
+            await vi.advanceTimersByTimeAsync(0);
+
+            expect(executeCommand).toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                true,
+            );
+
+            resolveActiveStatus([
+                { path: "active.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            ]);
+            await flushMicrotasks();
+            await vi.advanceTimersByTimeAsync(600);
+
+            expect(executeCommand).not.toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
+
+            resolveExpandedStatus([
+                { path: "expanded.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+            ]);
+            await flushMicrotasks();
+            await refresh;
+
+            expect(executeCommand).toHaveBeenCalledWith(
+                "setContext",
+                "intelligit.commitPanel.refreshing",
+                false,
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider marks unpublished branches and routes publish action", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         gitOps.getBranches.mockResolvedValue([
@@ -1628,7 +3341,8 @@ describe("view providers integration", () => {
                 currentBranchHasUpstream: false,
             }),
         );
-        expect(executeCommand).toHaveBeenCalledWith("intelligit.publishBranch");
+        expect(runPublishBranchFlowSpy).toHaveBeenCalledWith(gitOps, "main", "/repo", undefined);
+        expect(executeCommand).not.toHaveBeenCalledWith("intelligit.publishBranch");
         provider.dispose();
     });
 
@@ -1673,6 +3387,7 @@ describe("view providers integration", () => {
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "lastCommitMessage",
+            repositoryRoot: "/repo",
             message: "last message",
         });
 
@@ -1680,6 +3395,7 @@ describe("view providers integration", () => {
         expect(gitOps.getAmendBranchCommits).toHaveBeenCalled();
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "amendBranchCommits",
+            repositoryRoot: "/repo",
             commits: [
                 { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
             ],
@@ -1709,6 +3425,7 @@ describe("view providers integration", () => {
 
         expect(postMessageSpy).toHaveBeenCalledWith({
             type: "restoreCommitDraft",
+            repositoryRoot: "/repo",
             message: "draft from storage",
         });
 

@@ -1,121 +1,253 @@
-// Listens for messages from the extension host and dispatches actions
-// to a useReducer-based state. Sends "ready" on mount.
+// Message bridge between the VS Code extension host and commit panel React app.
 
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, type Dispatch } from "react";
 import { getVsCodeApi } from "./useVsCodeApi";
-import type { CommitPanelState, CommitPanelAction, InboundMessage } from "../types";
+import type {
+    CommitPanelAction,
+    CommitPanelRepositorySummary,
+    InboundMessage,
+    MultiRepositoryCommitPanelState,
+    RepositoryCommitPanelState,
+} from "../types";
+import type { WorkingFile } from "../../../../types";
 
-const initialState: CommitPanelState = {
-    files: [],
-    stashes: [],
-    stashFiles: [],
-    selectedStashIndex: null,
-    folderIcon: undefined,
-    folderExpandedIcon: undefined,
-    folderIconsByName: undefined,
-    iconFonts: [],
-    commitMessage: "",
-    isAmend: false,
-    amendBranchCommits: [],
-    amendBranchHistoryLoaded: false,
-    isRefreshing: false,
-    error: null,
-    currentBranchHasUpstream: true,
-    hasRemotes: true,
-    currentBranchAhead: 0,
-    currentBranchBehind: 0,
-    currentBranchName: null,
-    currentBranchUpstream: null,
+const LEGACY_REPOSITORY_ROOT = "";
+
+function createRepositoryState(
+    root: string,
+    label: string,
+    changedFileCount: number = 0,
+): RepositoryCommitPanelState {
+    return {
+        root,
+        label,
+        changedFileCount,
+        files: [],
+        stashes: [],
+        stashFiles: [],
+        selectedStashIndex: null,
+        folderIcon: undefined,
+        folderExpandedIcon: undefined,
+        folderIconsByName: {},
+        iconFonts: [],
+        commitMessage: "",
+        isAmend: false,
+        amendBranchCommits: [],
+        amendBranchHistoryLoaded: false,
+        isRefreshing: false,
+        error: null,
+        currentBranchHasUpstream: true,
+        hasRemotes: true,
+        currentBranchAhead: 0,
+        currentBranchBehind: 0,
+        currentBranchName: null,
+        currentBranchUpstream: null,
+    };
+}
+
+const initialState: MultiRepositoryCommitPanelState = {
+    repositories: [],
+    activeRepositoryRoot: null,
+    expandedRepositoryRoots: [],
 };
 
-function reducer(state: CommitPanelState, action: CommitPanelAction): CommitPanelState {
+function countChangedFiles(files: WorkingFile[]): number {
+    const paths = new Set<string>();
+    for (const file of files) {
+        if (file.status !== "!") paths.add(file.path);
+    }
+    return paths.size;
+}
+
+function targetRoot(state: MultiRepositoryCommitPanelState, repositoryRoot?: string): string {
+    return (
+        repositoryRoot ??
+        state.activeRepositoryRoot ??
+        state.repositories[0]?.root ??
+        LEGACY_REPOSITORY_ROOT
+    );
+}
+
+function expandedRootsFor(
+    state: MultiRepositoryCommitPanelState,
+    repositories: CommitPanelRepositorySummary[],
+    activeRepositoryRoot: string | null,
+): string[] {
+    const knownRoots = new Set(repositories.map((repository) => repository.root));
+    const retained = state.expandedRepositoryRoots.filter((root) => knownRoots.has(root));
+    if (retained.length > 0) return retained;
+    if (state.repositories.length > 0) return [];
+    const fallbackRoot = activeRepositoryRoot ?? repositories[0]?.root;
+    return fallbackRoot ? [fallbackRoot] : [];
+}
+
+function updateRepository(
+    state: MultiRepositoryCommitPanelState,
+    repositoryRoot: string | undefined,
+    update: (repository: RepositoryCommitPanelState) => RepositoryCommitPanelState,
+): MultiRepositoryCommitPanelState {
+    const root = targetRoot(state, repositoryRoot);
+    const index = state.repositories.findIndex((repository) => repository.root === root);
+    const existing =
+        index >= 0
+            ? state.repositories[index]
+            : createRepositoryState(root, root === LEGACY_REPOSITORY_ROOT ? "" : root);
+    const nextRepository = update(existing);
+    const repositories =
+        index >= 0
+            ? state.repositories.map((repository, currentIndex) =>
+                  currentIndex === index ? nextRepository : repository,
+              )
+            : [...state.repositories, nextRepository];
+    const activeRepositoryRoot = state.activeRepositoryRoot ?? root;
+    const expandedRepositoryRoots =
+        state.expandedRepositoryRoots.length > 0
+            ? state.expandedRepositoryRoots
+            : state.repositories.length > 0
+              ? []
+              : [root];
+    return { repositories, activeRepositoryRoot, expandedRepositoryRoots };
+}
+
+function updateRepositoryMetadata(
+    repository: RepositoryCommitPanelState,
+    summary: CommitPanelRepositorySummary,
+): RepositoryCommitPanelState {
+    return {
+        ...repository,
+        root: summary.root,
+        label: summary.label,
+        changedFileCount: summary.changedFileCount,
+    };
+}
+
+function reducer(
+    state: MultiRepositoryCommitPanelState,
+    action: CommitPanelAction,
+): MultiRepositoryCommitPanelState {
     switch (action.type) {
-        case "SET_FILES_AND_STASHES":
+        case "SET_REPOSITORIES": {
+            const roots = new Set(action.repositories.map((repository) => repository.root));
+            const activeRepositoryRoot =
+                action.activeRepositoryRoot !== null && roots.has(action.activeRepositoryRoot)
+                    ? action.activeRepositoryRoot
+                    : (action.repositories[0]?.root ?? null);
+            return {
+                repositories: action.repositories.map((summary) => {
+                    const existing = state.repositories.find(
+                        (repository) => repository.root === summary.root,
+                    );
+                    return updateRepositoryMetadata(
+                        existing ?? createRepositoryState(summary.root, summary.label),
+                        summary,
+                    );
+                }),
+                activeRepositoryRoot,
+                expandedRepositoryRoots: expandedRootsFor(
+                    state,
+                    action.repositories,
+                    activeRepositoryRoot,
+                ),
+            };
+        }
+        case "SET_EXPANDED_REPOSITORIES": {
+            const knownRoots = new Set(state.repositories.map((repository) => repository.root));
             return {
                 ...state,
+                expandedRepositoryRoots: action.repositoryRoots.filter((root) =>
+                    knownRoots.has(root),
+                ),
+            };
+        }
+        case "SET_FILES_AND_STASHES":
+            return updateRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
+                label: action.repositoryLabel ?? repository.label,
+                changedFileCount: action.changedFileCount ?? countChangedFiles(action.files),
                 files: action.files,
                 stashes: action.stashes,
                 stashFiles: action.stashFiles,
                 selectedStashIndex: action.selectedStashIndex,
-                folderIcon: action.folderIcon ?? state.folderIcon,
-                folderExpandedIcon: action.folderExpandedIcon ?? state.folderExpandedIcon,
-                folderIconsByName: action.folderIconsByName ?? state.folderIconsByName,
-                iconFonts: action.iconFonts ?? state.iconFonts,
+                folderIcon: action.folderIcon ?? repository.folderIcon,
+                folderExpandedIcon: action.folderExpandedIcon ?? repository.folderExpandedIcon,
+                folderIconsByName: action.folderIconsByName ?? repository.folderIconsByName,
+                iconFonts: action.iconFonts ?? repository.iconFonts,
                 currentBranchHasUpstream: action.currentBranchHasUpstream,
-                hasRemotes: action.hasRemotes ?? state.hasRemotes,
+                hasRemotes: action.hasRemotes ?? repository.hasRemotes,
                 currentBranchAhead: action.currentBranchAhead,
                 currentBranchBehind: action.currentBranchBehind,
                 currentBranchName:
                     action.currentBranchName !== undefined
                         ? action.currentBranchName
-                        : state.currentBranchName,
+                        : repository.currentBranchName,
                 currentBranchUpstream:
                     action.currentBranchUpstream !== undefined
                         ? action.currentBranchUpstream
-                        : state.currentBranchUpstream,
-                error: null,
-            };
+                        : repository.currentBranchUpstream,
+                isRefreshing: action.refreshing ?? repository.isRefreshing,
+                error: action.error ?? null,
+            }));
         case "SET_REFRESHING":
-            if (action.active && state.isAmend) {
-                return {
-                    ...state,
-                    isRefreshing: true,
-                    amendBranchCommits: [],
-                    amendBranchHistoryLoaded: false,
-                };
-            }
-            return { ...state, isRefreshing: action.active };
+            return updateRepository(state, action.repositoryRoot, (repository) => {
+                if (action.active && repository.isAmend) {
+                    return {
+                        ...repository,
+                        isRefreshing: true,
+                        amendBranchCommits: [],
+                        amendBranchHistoryLoaded: false,
+                    };
+                }
+                return { ...repository, isRefreshing: action.active };
+            });
         case "RESTORE_COMMIT_DRAFT":
-            return { ...state, commitMessage: action.message };
         case "SET_LAST_COMMIT_MESSAGE":
-            return { ...state, commitMessage: action.message };
+        case "SET_COMMIT_MESSAGE":
+            return updateRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
+                commitMessage: action.message,
+            }));
         case "COMMITTED":
-            return {
-                ...state,
+            return updateRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
                 commitMessage: "",
                 isAmend: false,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,
-            };
+            }));
         case "SET_ERROR":
-            return { ...state, error: action.message };
-        case "SET_COMMIT_MESSAGE":
-            return { ...state, commitMessage: action.message };
+            return updateRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
+                error: action.message,
+            }));
         case "SET_AMEND":
-            if (action.isAmend) {
-                return {
-                    ...state,
-                    isAmend: true,
-                    amendBranchCommits: [],
-                    amendBranchHistoryLoaded: false,
-                };
-            }
-            return {
-                ...state,
-                isAmend: false,
+            return updateRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
+                isAmend: action.isAmend,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,
-            };
+            }));
         case "SET_AMEND_BRANCH_COMMITS":
-            if (!state.isAmend) {
-                return state;
-            }
-            return {
-                ...state,
-                amendBranchCommits: action.commits,
-                amendBranchHistoryLoaded: true,
-            };
+            return updateRepository(state, action.repositoryRoot, (repository) => {
+                if (!repository.isAmend) return repository;
+                return {
+                    ...repository,
+                    amendBranchCommits: action.commits,
+                    amendBranchHistoryLoaded: true,
+                };
+            });
     }
 }
 
 /**
- * Connects the commit-panel reducer to extension-host webview messages.
+ * Subscribes to extension-host commit-panel messages and exposes reducer state.
  *
- * The hook sends the initial `ready` message on mount, applies host snapshots to
- * local reducer state, and ignores late amend-history payloads once amend mode is
- * no longer active.
+ * Host snapshots are merged by repository root. Rootless messages target the
+ * active repository so the docked panel remains compatible with older producers.
  */
-export function useExtensionMessages(): [CommitPanelState, React.Dispatch<CommitPanelAction>] {
+export function useExtensionMessages(): [
+    MultiRepositoryCommitPanelState,
+    Dispatch<CommitPanelAction>,
+] {
     const [state, dispatch] = useReducer(reducer, initialState);
 
     useEffect(() => {
@@ -124,9 +256,19 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
         const handler = (event: MessageEvent<InboundMessage>) => {
             const msg = event.data;
             switch (msg.type) {
+                case "setRepositories":
+                    dispatch({
+                        type: "SET_REPOSITORIES",
+                        repositories: msg.repositories,
+                        activeRepositoryRoot: msg.activeRepositoryRoot,
+                    });
+                    break;
                 case "update":
                     dispatch({
                         type: "SET_FILES_AND_STASHES",
+                        repositoryRoot: msg.repositoryRoot,
+                        repositoryLabel: msg.repositoryLabel,
+                        changedFileCount: msg.changedFileCount,
                         files: msg.files,
                         stashes: msg.stashes,
                         stashFiles: msg.stashFiles,
@@ -141,25 +283,47 @@ export function useExtensionMessages(): [CommitPanelState, React.Dispatch<Commit
                         currentBranchBehind: msg.currentBranchBehind ?? 0,
                         currentBranchName: msg.currentBranchName,
                         currentBranchUpstream: msg.currentBranchUpstream,
+                        refreshing: msg.refreshing,
+                        error: msg.error,
                     });
                     break;
                 case "restoreCommitDraft":
-                    dispatch({ type: "RESTORE_COMMIT_DRAFT", message: msg.message });
+                    dispatch({
+                        type: "RESTORE_COMMIT_DRAFT",
+                        repositoryRoot: msg.repositoryRoot,
+                        message: msg.message,
+                    });
                     break;
                 case "lastCommitMessage":
-                    dispatch({ type: "SET_LAST_COMMIT_MESSAGE", message: msg.message });
+                    dispatch({
+                        type: "SET_LAST_COMMIT_MESSAGE",
+                        repositoryRoot: msg.repositoryRoot,
+                        message: msg.message,
+                    });
                     break;
                 case "amendBranchCommits":
-                    dispatch({ type: "SET_AMEND_BRANCH_COMMITS", commits: msg.commits });
+                    dispatch({
+                        type: "SET_AMEND_BRANCH_COMMITS",
+                        repositoryRoot: msg.repositoryRoot,
+                        commits: msg.commits,
+                    });
                     break;
                 case "committed":
-                    dispatch({ type: "COMMITTED" });
+                    dispatch({ type: "COMMITTED", repositoryRoot: msg.repositoryRoot });
                     break;
                 case "refreshing":
-                    dispatch({ type: "SET_REFRESHING", active: msg.active });
+                    dispatch({
+                        type: "SET_REFRESHING",
+                        repositoryRoot: msg.repositoryRoot,
+                        active: msg.active,
+                    });
                     break;
                 case "error":
-                    dispatch({ type: "SET_ERROR", message: msg.message });
+                    dispatch({
+                        type: "SET_ERROR",
+                        repositoryRoot: msg.repositoryRoot,
+                        message: msg.message,
+                    });
                     break;
             }
         };

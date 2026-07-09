@@ -45,7 +45,11 @@ type NativeCommitGraphAction =
           unpushedHashes?: string[];
       }
     | { type: "setSelectedBranch"; branch: string | null }
-    | { type: "setBranches"; branches: Branch[]; commitChecksEnabled?: boolean }
+    | {
+          type: "setBranches";
+          branches: Branch[];
+          commitChecksEnabled?: boolean;
+      }
     | { type: "loadError"; clearCommits: boolean }
     | { type: "setCommitChecks"; snapshot: CommitChecksSnapshot }
     | { type: "markCommitChecksLoading"; hash: string }
@@ -201,6 +205,9 @@ export function NativeCommitGraph({
                 case "setSelectedBranch":
                     selectFirstOnNextLoadRef.current = true;
                     dispatch({ type: "setSelectedBranch", branch: data.branch ?? null });
+                    break;
+                case "setFilterText":
+                    dispatch({ type: "setFilterText", text: data.text });
                     break;
                 case "setBranches":
                     dispatch({

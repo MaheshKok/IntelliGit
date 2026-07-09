@@ -70,9 +70,7 @@ describe("extension manifest", () => {
         expect(commands.some((entry) => entry.command === "intelligit.fileShowHistory")).toBe(
             false,
         );
-        expect(commands.some((entry) => entry.command === "intelligit.fileRefreshing")).toBe(
-            false,
-        );
+        expect(commands.some((entry) => entry.command === "intelligit.fileRefreshing")).toBe(false);
         expect(itemFor("intelligit.fileShowHistory")).toBeUndefined();
         expect(itemFor("intelligit.fileDelete")?.when).toBe(
             "webviewId == 'intelligit.commitPanel' && webviewSection == 'file'",
@@ -153,6 +151,52 @@ describe("extension manifest", () => {
             expect(paletteItem?.when).toBe("false");
             expect(colorPaletteItem?.when).toBe("false");
         }
+
+        const indicator = titleMenu.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator",
+        );
+        const colorIndicator = titleMenu.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
+        );
+        const indicatorContribution = commands.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator",
+        );
+        const colorIndicatorContribution = commands.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
+        );
+        const indicatorPalette = commandPalette.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator",
+        );
+        const colorIndicatorPalette = commandPalette.find(
+            (entry) => entry.command === "intelligit.sidebarRepositoryIndicator.color",
+        );
+
+        expect(indicator).toBeUndefined();
+        expect(colorIndicator).toBeUndefined();
+        expect(indicatorContribution?.icon).toEqual({
+            light: "media/icons/select-repository-white.svg",
+            dark: "media/icons/select-repository-white.svg",
+        });
+        expect(colorIndicatorContribution?.icon).toEqual({
+            light: "media/icons/select-repository-color.svg",
+            dark: "media/icons/select-repository-color.svg",
+        });
+        expect(indicatorPalette?.when).toBe("false");
+        expect(colorIndicatorPalette?.when).toBe("false");
+        expect(
+            titleMenu.find(
+                (entry) =>
+                    entry.command === "intelligit.selectRepository" &&
+                    entry.when?.includes("intelligit.sidebarGraph"),
+            ),
+        ).toBeUndefined();
+        expect(
+            titleMenu.find(
+                (entry) =>
+                    entry.command === "intelligit.selectRepository.color" &&
+                    entry.when?.includes("intelligit.sidebarGraph"),
+            ),
+        ).toBeUndefined();
     });
 
     it("contributes color variants for native commit graph title actions", () => {
@@ -249,7 +293,7 @@ describe("extension manifest", () => {
         ] as const;
 
         for (const icon of icons) {
-            const labelNeedle = `<GitActionButton label={t("common.${icon.name}")}`;
+            const labelNeedle = `label={t("common.${icon.name}")}`;
             const start = tabBarSource.indexOf(labelNeedle);
             expect(start).toBeGreaterThanOrEqual(0);
             const end = tabBarSource.indexOf("</GitActionButton>", start);

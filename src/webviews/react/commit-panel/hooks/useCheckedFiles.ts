@@ -14,12 +14,37 @@ interface CheckedFilesAPI {
     isSomeChecked: (files: WorkingFile[]) => boolean;
 }
 
+type SavedWebviewState = Record<string, unknown> | undefined;
+
 function pruneToKnownPaths(paths: Set<string>, validPaths: Set<string>): Set<string> {
     const next = new Set<string>();
     for (const path of paths) {
         if (validPaths.has(path)) next.add(path);
     }
     return next.size === paths.size ? paths : next;
+}
+
+function stringArray(value: unknown): string[] {
+    return Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string")
+        : [];
+}
+
+function savedCheckedPaths(saved: SavedWebviewState, repositoryRoot?: string): string[] {
+    if (repositoryRoot) {
+        const byRepository = saved?.checkedByRepository;
+        if (byRepository && typeof byRepository === "object" && !Array.isArray(byRepository)) {
+            return stringArray((byRepository as Record<string, unknown>)[repositoryRoot]);
+        }
+    }
+    return stringArray(saved?.checked);
+}
+
+function savedCheckedByRepository(saved: SavedWebviewState): Record<string, unknown> {
+    const byRepository = saved?.checkedByRepository;
+    return byRepository && typeof byRepository === "object" && !Array.isArray(byRepository)
+        ? { ...byRepository }
+        : {};
 }
 
 function buildSelectablePathSet(files: WorkingFile[]): Set<string> {
@@ -37,12 +62,11 @@ function buildSelectablePathSet(files: WorkingFile[]): Set<string> {
  * new file snapshot, and toggled by exact path so grouped folders and top-level
  * sections can share the same all-or-none behavior.
  */
-export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
+export function useCheckedFiles(allFiles: WorkingFile[], repositoryRoot?: string): CheckedFilesAPI {
     const [checkedPaths, setCheckedPaths] = useState<Set<string>>(() => {
         const vscode = getVsCodeApi();
         const saved = vscode.getState();
-        const arr = (saved as { checked?: string[] } | undefined)?.checked;
-        return new Set(arr ?? []);
+        return new Set(savedCheckedPaths(saved, repositoryRoot));
     });
     const validPaths = useMemo(() => buildSelectablePathSet(allFiles), [allFiles]);
     const currentCheckedPaths = useMemo(
@@ -51,17 +75,29 @@ export function useCheckedFiles(allFiles: WorkingFile[]): CheckedFilesAPI {
     );
 
     useEffect(() => {
+        if (repositoryRoot && validPaths.size === 0) return;
         // Host file snapshots invalidate stale selections after render; backing state must be pruned.
         // react-doctor-disable-next-line react-doctor/no-derived-state
         setCheckedPaths((prev) => pruneToKnownPaths(prev, validPaths));
-    }, [validPaths]);
+    }, [repositoryRoot, validPaths]);
 
     // Persist to vscode state on every change (merge to preserve other keys)
     useEffect(() => {
         const vscode = getVsCodeApi();
         const prev = vscode.getState() ?? {};
+        if (repositoryRoot) {
+            if (validPaths.size === 0) return;
+            vscode.setState({
+                ...prev,
+                checkedByRepository: {
+                    ...savedCheckedByRepository(prev),
+                    [repositoryRoot]: Array.from(currentCheckedPaths),
+                },
+            });
+            return;
+        }
         vscode.setState({ ...prev, checked: Array.from(currentCheckedPaths) });
-    }, [currentCheckedPaths]);
+    }, [currentCheckedPaths, repositoryRoot, validPaths]);
 
     const toggleFile = useCallback(
         (path: string) => {

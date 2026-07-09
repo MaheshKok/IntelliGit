@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.15.4",
+    "version": "0.16.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -261,6 +261,24 @@
                 }
             },
             {
+                "command": "intelligit.sidebarRepositoryIndicator",
+                "title": "%command.selectRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/select-repository-white.svg",
+                    "dark": "media/icons/select-repository-white.svg"
+                }
+            },
+            {
+                "command": "intelligit.sidebarRepositoryIndicator.color",
+                "title": "%command.selectRepository%",
+                "category": "%intelligit%",
+                "icon": {
+                    "light": "media/icons/select-repository-color.svg",
+                    "dark": "media/icons/select-repository-color.svg"
+                }
+            },
+            {
                 "command": "intelligit.checkout",
                 "title": "%command.checkout%",
                 "category": "%intelligit%"
@@ -506,6 +524,14 @@
                 },
                 {
                     "command": "intelligit.openUndocked.color",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.sidebarRepositoryIndicator",
+                    "when": "false"
+                },
+                {
+                    "command": "intelligit.sidebarRepositoryIndicator.color",
                     "when": "false"
                 },
                 {

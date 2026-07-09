@@ -14,6 +14,7 @@ interface CommitPanelActionDeps {
     fireWorkingTreeChanged: () => void;
     postCommitted: () => void;
     maybeOfferPublishBranch: () => Promise<void>;
+    publishBranch?: () => Promise<void>;
 }
 
 /**
@@ -151,7 +152,7 @@ export async function commitAndPushFromPanel(
 export async function runGitOperationFromPanel(
     deps: Pick<
         CommitPanelActionDeps,
-        "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged"
+        "gitOps" | "refreshData" | "refreshGraphData" | "fireWorkingTreeChanged" | "publishBranch"
     >,
     operation: CommitPanelGitOperation,
 ): Promise<void> {
@@ -166,7 +167,8 @@ export async function runGitOperationFromPanel(
         if (operation === "push") {
             // Publishing must finish before commit-panel and graph refresh read branch state.
             // react-doctor-disable-next-line react-doctor/async-parallel
-            await vscode.commands.executeCommand("intelligit.publishBranch");
+            await (deps.publishBranch?.() ??
+                vscode.commands.executeCommand("intelligit.publishBranch"));
             await deps.refreshData();
             await deps.refreshGraphData?.();
             deps.fireWorkingTreeChanged();

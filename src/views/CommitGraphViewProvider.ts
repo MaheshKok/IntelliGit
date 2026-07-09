@@ -68,6 +68,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
+    private repositoryLabel: string | null = null;
     private readonly iconTheme: IconThemeService;
     private readonly _onCommitSelected = new vscode.EventEmitter<string>();
     readonly onCommitSelected = this._onCommitSelected.event;
@@ -115,6 +116,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         private readonly options: {
             scriptFile?: string;
             title?: string;
+            showRepositoryLabel?: boolean;
             hostMap?: HostMap;
             settings?: CommitChecksSettings;
         } = {},
@@ -150,13 +152,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Accepts repository label updates while keeping the graph view description available.
-     *
-     * The commit graph does not render the repository name in the VS Code title area; clearing the
-     * description prevents stale labels when activation switches repositories underneath the view.
+     * Stores the active repository label for compact multi-repository graph chrome.
      */
-    setRepositoryLabel(_label: string): void {
-        if (this.view) this.view.description = undefined;
+    setRepositoryLabel(label: string): void {
+        this.repositoryLabel = label.trim() || null;
+        this.applyRepositoryDescription();
+    }
+
+    /**
+     * Toggles whether the compact graph view should show the active repository label.
+     */
+    setShowRepositoryLabel(showRepositoryLabel: boolean): void {
+        this.options.showRepositoryLabel = showRepositoryLabel;
+        this.applyRepositoryDescription();
     }
 
     /**
@@ -176,7 +184,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.disposeThemeChangeDisposables();
         this.iconTheme.dispose();
         this.view = webviewView;
-        webviewView.description = undefined;
+        this.applyRepositoryDescription();
 
         webviewView.webview.options = {
             enableScripts: true,
@@ -221,6 +229,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                             type: "setSelectedBranch",
                             branch: this.currentBranch,
                         });
+                        this.postToWebview({ type: "setFilterText", text: "" });
                         await this.loadInitial();
                         break;
                     case "branchAction":
@@ -321,7 +330,18 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.currentBranch = branch;
         this.filterText = "";
         this.postToWebview({ type: "setSelectedBranch", branch });
+        this.postToWebview({ type: "setFilterText", text: "" });
         await this.loadInitial();
+    }
+
+    /**
+     * Clears repository-scoped filters before a different repository root is loaded.
+     */
+    resetFilters(): void {
+        this.currentBranch = null;
+        this.filterText = "";
+        this.postToWebview({ type: "setSelectedBranch", branch: null });
+        this.postToWebview({ type: "setFilterText", text: "" });
     }
 
     /**
@@ -658,6 +678,17 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
             title: this.options.title ?? "Commit Graph",
             backgroundVar: "var(--vscode-editor-background)",
         });
+    }
+
+    /**
+     * Mirrors the active repository name into the VS Code-owned view header suffix.
+     */
+    private applyRepositoryDescription(): void {
+        if (!this.view) return;
+        this.view.description =
+            this.options.showRepositoryLabel && this.repositoryLabel
+                ? `(${this.repositoryLabel})`
+                : undefined;
     }
 
     /**

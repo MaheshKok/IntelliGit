@@ -389,11 +389,17 @@ export class GitOps {
      * than blocking the status view. Ignored files are included only when callers opt in because Git
      * can return large ignored directories.
      */
-    async getStatus(options: { includeIgnored?: boolean } = {}): Promise<WorkingFile[]> {
+    async getStatus(
+        options: { includeIgnored?: boolean; withStats?: boolean } = {},
+    ): Promise<WorkingFile[]> {
         const statusArgs = ["status", "--porcelain=v1", "-z", "-uall"];
         if (options.includeIgnored) statusArgs.push("--ignored");
         const result = await this.executor.run(statusArgs);
         const files = parseWorkingTreeStatus(result);
+        // Callers that only need the changed-file set (e.g. collapsed multi-repository
+        // row counts) pass `withStats: false` to skip the two numstat subprocesses,
+        // turning a three-process status into a single one per repository.
+        if (options.withStats === false) return files;
         const applyNumstat = (
             output: string,
             staged: boolean,

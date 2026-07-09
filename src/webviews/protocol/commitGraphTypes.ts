@@ -223,6 +223,8 @@ export type CommitGraphInbound =
           type: "setBranches";
           /** Branches parsed from `git branch -a`; names are display and action identifiers. */
           branches: Branch[];
+          /** Optional repository label for compact graph headers embedded in multi-repo views. */
+          repositoryLabel?: string | null;
           /** Worktrees parsed from `git worktree list --porcelain -z` for branch navigation. */
           worktrees?: GitWorktree[];
           /** Default collapsed folder icon for branch tree groups when the theme resolves one. */
@@ -260,6 +262,12 @@ export type CommitGraphInbound =
           type: "setSelectedBranch";
           /** Accepted Git branch name, or `null` when the filter was cleared or became stale. */
           branch: string | null;
+      }
+    | {
+          /** State update echoing the text filter that the host accepted. */
+          type: "setFilterText";
+          /** Accepted fixed-text git-log filter. */
+          text: string;
       }
     | {
           /** State update containing the currently selected commit detail. */

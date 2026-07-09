@@ -7,7 +7,10 @@ import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { WorktreeService } from "../services/worktreeService";
-import type { DiscoveredRepository } from "../services/repositoryDiscovery";
+import {
+    discoverGitRepositories,
+    type DiscoveredRepository,
+} from "../services/repositoryDiscovery";
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
 import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
@@ -20,9 +23,12 @@ import { MergeEditorPanel } from "../views/MergeEditorPanel";
 import { RefreshService } from "../views/RefreshService";
 import { UndockedViewProvider } from "../views/UndockedViewProvider";
 import {
+    HAS_MULTIPLE_REPOSITORIES_CONTEXT,
     type RepositoryViewProviders,
     SELECTED_REPOSITORY_KEY,
     selectInitialRepository,
+    setViewContext,
+    workspaceRoots,
 } from "./common";
 import { registerRepositoryCommands } from "./repositoryCommands";
 import {
@@ -32,10 +38,31 @@ import {
 import { showTimedWarningMessage } from "../utils/notifications";
 
 type BranchDeleteSelection = Array<Branch | string>;
+const UNDOCKED_SELECTED_REPOSITORY_KEY = "intelligit.undockedSelectedRepositoryRoot";
 
 /** Extracts a branch name from current and legacy bulk-delete event payloads. */
 function getBranchSelectionName(branch: Branch | string): string {
     return typeof branch === "string" ? branch : branch.name;
+}
+
+/**
+ * Returns the deepest discovered repository that contains a file URI.
+ *
+ * Non-file editors and files outside known repositories are ignored so
+ * transient editor switches do not disturb the active IntelliGit root.
+ */
+function repositoryForFileUri(
+    uri: vscode.Uri | undefined,
+    knownRepositories: DiscoveredRepository[],
+): DiscoveredRepository | undefined {
+    if (!uri || uri.scheme !== "file") return undefined;
+    const filePath = path.resolve(uri.fsPath);
+    return knownRepositories
+        .filter((repo) => {
+            const root = path.resolve(repo.root);
+            return filePath === root || filePath.startsWith(root + path.sep);
+        })
+        .sort((a, b) => b.root.length - a.root.length)[0];
 }
 
 /**
@@ -58,6 +85,7 @@ export async function activateRepositoryMode(
     viewProviders: RepositoryViewProviders = {},
 ): Promise<void> {
     let repositories = repositoriesForActivation;
+    void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, repositories.length > 1);
     let activeRepository = selectInitialRepository(
         repositories,
         context.workspaceState?.get<string>(SELECTED_REPOSITORY_KEY),
@@ -91,6 +119,22 @@ export async function activateRepositoryMode(
     let undockedCommitDetailRequestSeq = 0;
     let repoRootUri = vscode.Uri.file(repoRoot);
     let undocked: UndockedViewProvider | undefined;
+    let undockedSelectedRepositoryRoot =
+        repositories.find(
+            (repository) =>
+                repository.root ===
+                context.workspaceState?.get<string>(UNDOCKED_SELECTED_REPOSITORY_KEY),
+        )?.root ?? activeRepository.root;
+    let undockedBranches: Branch[] = [];
+    let undockedWorktrees: GitWorktree[] = [];
+    let undockedSelectionWrite = Promise.resolve();
+    let undockedRuntime:
+        | {
+              executor: GitExecutor;
+              gitOps: GitOps;
+              worktreeService: WorktreeService;
+          }
+        | undefined;
 
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
         hostMap: commitCheckHostMap,
@@ -103,6 +147,7 @@ export async function activateRepositoryMode(
         {
             scriptFile: "webview-compactcommitgraph.js",
             title: vscode.l10n.t("Graph"),
+            showRepositoryLabel: repositories.length > 1,
             hostMap: commitCheckHostMap,
             settings: commitCheckSettings,
         },
@@ -113,6 +158,7 @@ export async function activateRepositoryMode(
         gitOps,
         repoRootUri,
         context.workspaceState,
+        context.secrets,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
@@ -120,6 +166,30 @@ export async function activateRepositoryMode(
     commitGraph.setRepositoryLabel(activeRepository.label);
     sidebarGraph.setRepositoryLabel(activeRepository.label);
     commitPanel.setRepositoryLabel(activeRepository.label);
+    commitPanel.setRepositories(repositories, activeRepository.root);
+    sidebarGraph.setShowRepositoryLabel(repositories.length > 1);
+
+    const setKnownRepositories = (
+        nextRepositories: DiscoveredRepository[],
+        activeRoot: string | null = activeRepository.root,
+    ): void => {
+        repositories = nextRepositories;
+        void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, repositories.length > 1);
+        sidebarGraph.setShowRepositoryLabel(repositories.length > 1);
+        commitPanel.setRepositories(nextRepositories, activeRoot ?? undefined);
+        if (
+            !repositories.some((repository) => repository.root === undockedSelectedRepositoryRoot)
+        ) {
+            undockedSelectedRepositoryRoot = resolveUndockedRepository(
+                activeRoot ?? undefined,
+            ).root;
+            void context.workspaceState?.update(
+                UNDOCKED_SELECTED_REPOSITORY_KEY,
+                undockedSelectedRepositoryRoot,
+            );
+        }
+        undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);
+    };
 
     const mergeConflictsView = vscode.window.createTreeView("intelligit.mergeConflicts", {
         treeDataProvider: mergeConflicts,
@@ -172,8 +242,14 @@ export async function activateRepositoryMode(
         );
 
     let refreshService = createRefreshService(repoRoot);
+    let refreshServiceWatchersRegistered = false;
     /** Returns the currently active refresh coordinator after repository switches replace it. */
     const getRefreshService = (): RefreshService => refreshService;
+    const registerRefreshServiceWatchers = (): void => {
+        if (refreshServiceWatchersRegistered) return;
+        refreshService.registerFileWatchers();
+        refreshServiceWatchersRegistered = true;
+    };
     /** Returns the repository root currently bound to command handlers. */
     const getRepoRoot = (): string => repoRoot;
     /** Returns the latest decorated branch snapshot shared by host command handlers. */
@@ -183,6 +259,32 @@ export async function activateRepositoryMode(
     /** Returns the active branch name from the latest refreshed branch snapshot. */
     const getCurrentBranchName = (): string | undefined =>
         currentBranches.find((b) => b.isCurrent)?.name;
+    /** Returns the repository root currently selected by the independent undocked runtime. */
+    const getUndockedSelectedRepositoryRoot = (): string => undockedSelectedRepositoryRoot;
+
+    const resolveUndockedRepository = (root: string | undefined): DiscoveredRepository =>
+        repositories.find((repository) => repository.root === root) ??
+        repositories.find((repository) => repository.root === activeRepository.root) ??
+        activeRepository;
+
+    const loadCurrentUndockedRepositoryData = async (): Promise<{
+        branches: Branch[];
+        worktrees: GitWorktree[];
+    }> => {
+        if (!undockedRuntime) {
+            return { branches: [], worktrees: [] };
+        }
+        const [branches, refreshedWorktrees] = await Promise.all([
+            undockedRuntime.gitOps.getBranches(),
+            undockedRuntime.worktreeService.refresh().catch((err) => {
+                console.error("[IntelliGit] Undocked worktrees refresh failed:", err);
+                return [] as GitWorktree[];
+            }),
+        ]);
+        undockedWorktrees = refreshedWorktrees;
+        undockedBranches = undockedRuntime.worktreeService.decorateBranches(branches);
+        return { branches: undockedBranches, worktrees: undockedWorktrees };
+    };
 
     /** Clears selected commit state from every visible IntelliGit surface at once. */
     const clearSelection = (options?: { loading?: boolean }): void => {
@@ -198,7 +300,10 @@ export async function activateRepositoryMode(
      * Repository switches clear selection before calling this. Failures propagate to
      * the caller; background initial refreshes attach their own logging handlers.
      */
-    const refreshActiveRepository = async (): Promise<void> => {
+    const refreshActiveRepositoryWithGuard = async (
+        shouldContinue: () => boolean = () => true,
+        afterBranchDataApplied?: () => Promise<void>,
+    ): Promise<boolean> => {
         const [branches, refreshedWorktrees] = await Promise.all([
             gitOps.getBranches(),
             worktreeService.refresh().catch((err) => {
@@ -206,22 +311,62 @@ export async function activateRepositoryMode(
                 return [] as GitWorktree[];
             }),
         ]);
+        if (!shouldContinue()) return false;
         currentWorktrees = refreshedWorktrees;
         currentBranches = worktreeService.decorateBranches(branches);
         commitGraph.setBranches(currentBranches, currentWorktrees);
         sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
+        if (afterBranchDataApplied) {
+            await afterBranchDataApplied();
+            if (!shouldContinue()) return false;
+        }
         const refreshes: Array<Promise<void>> = [
             commitGraph.refresh(),
             sidebarGraph.refresh(),
             commitPanel.refresh(),
             refreshService.refreshMergeConflicts(),
         ];
-        if (undocked) {
+        if (undocked && undockedSelectedRepositoryRoot === repoRoot) {
+            undockedBranches = currentBranches;
+            undockedWorktrees = currentWorktrees;
             undocked.setBranches(currentBranches, currentWorktrees);
             refreshes.push(undocked.refresh());
         }
         await Promise.all(refreshes);
+        return shouldContinue();
+    };
+
+    const refreshActiveRepository = async (): Promise<void> => {
+        await refreshActiveRepositoryWithGuard();
+    };
+
+    let activeEditorSwitchSeq = 0;
+    let repositorySwitchSeq = 0;
+    let activeEditorSelectionWrite = Promise.resolve();
+    type ActiveRepositorySwitchOptions = {
+        fromActiveEditor?: boolean;
+        persistSelectionAfterBranchData?: boolean;
+        shouldContinue?: () => boolean;
+    };
+    const persistActiveEditorSelection = async (
+        root: string,
+        shouldContinue: () => boolean,
+    ): Promise<void> => {
+        const write = activeEditorSelectionWrite
+            .catch(() => undefined)
+            .then(async () => {
+                if (!shouldContinue()) return;
+                await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, root);
+                if (!shouldContinue()) {
+                    await context.workspaceState?.update(
+                        SELECTED_REPOSITORY_KEY,
+                        activeRepository.root,
+                    );
+                }
+            });
+        activeEditorSelectionWrite = write;
+        await write;
     };
 
     /**
@@ -231,7 +376,17 @@ export async function activateRepositoryMode(
      * badge state, persisted workspace selection, and refresh service watchers
      * before loading fresh data for the selected repository.
      */
-    const setActiveRepository = async (repository: DiscoveredRepository): Promise<void> => {
+    const setActiveRepository = async (
+        repository: DiscoveredRepository,
+        options: ActiveRepositorySwitchOptions = {},
+    ): Promise<void> => {
+        const switchSeq = ++repositorySwitchSeq;
+        if (!options.fromActiveEditor) activeEditorSwitchSeq++;
+        const callerShouldContinue = options.shouldContinue ?? (() => true);
+        const shouldContinue = (): boolean =>
+            switchSeq === repositorySwitchSeq && callerShouldContinue();
+        if (!shouldContinue()) return;
+
         activeRepository = repository;
         repoRoot = repository.root;
         repoRootUri = vscode.Uri.file(repoRoot);
@@ -239,21 +394,76 @@ export async function activateRepositoryMode(
         executor.setRoot(repoRoot);
         commitGraph.setRepositoryLabel(repository.label);
         sidebarGraph.setRepositoryLabel(repository.label);
+        commitGraph.resetFilters();
+        sidebarGraph.resetFilters();
         commitPanel.setRepositoryRootUri(repoRootUri);
         commitPanel.setRepositoryLabel(repository.label);
-        if (undocked) {
-            undocked.setRepositoryRootUri(repoRootUri);
-            undocked.setRepositoryLabel(repository.label);
-        }
+        undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);
         mergeConflicts.setWorkspaceRoot(repoRootUri);
         resetFileCountBadge();
         refreshService.dispose();
         refreshService = createRefreshService(repoRoot);
-        refreshService.registerFileWatchers();
-        await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+        refreshServiceWatchersRegistered = false;
+        registerRefreshServiceWatchers();
+        if (!options.persistSelectionAfterBranchData) {
+            await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
+            if (!shouldContinue()) return;
+        }
         clearSelection();
-        await refreshActiveRepository();
+        const persistSelectionAfterBranchDataApplied = options.persistSelectionAfterBranchData
+            ? async (): Promise<void> => {
+                  await persistActiveEditorSelection(repoRoot, shouldContinue);
+              }
+            : undefined;
+        if (
+            !(await refreshActiveRepositoryWithGuard(
+                shouldContinue,
+                persistSelectionAfterBranchDataApplied,
+            ))
+        ) {
+            return;
+        }
     };
+
+    const updateActiveRepositoryFromEditor = async (editor?: vscode.TextEditor): Promise<void> => {
+        const repository = repositoryForFileUri(editor?.document.uri, repositories);
+        if (!repository || repository.root === activeRepository.root) return;
+        const switchSeq = ++activeEditorSwitchSeq;
+        const isLatestEditorSwitch = (): boolean => switchSeq === activeEditorSwitchSeq;
+        await setActiveRepository(repository, {
+            fromActiveEditor: true,
+            persistSelectionAfterBranchData: true,
+            shouldContinue: isLatestEditorSwitch,
+        });
+    };
+
+    const refreshDiscoveredRepositories = async (): Promise<void> => {
+        const nextRepositories = await discoverGitRepositories(workspaceRoots());
+        const currentActive = nextRepositories.find(
+            (repository) => repository.root === activeRepository.root,
+        );
+        if (currentActive || nextRepositories.length === 0) {
+            setKnownRepositories(nextRepositories, currentActive?.root ?? activeRepository.root);
+            return;
+        }
+        const fallbackRepository = nextRepositories[0];
+        setKnownRepositories(nextRepositories, fallbackRepository.root);
+        await setActiveRepository(fallbackRepository);
+    };
+
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor((editor) => {
+            void updateActiveRepositoryFromEditor(editor).catch((err) => {
+                console.error("[IntelliGit] Failed to update active repository from editor:", err);
+            });
+        }),
+        vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+            await refreshDiscoveredRepositories().catch((err) => {
+                console.error("[IntelliGit] Failed to refresh repositories:", err);
+            });
+        }),
+    );
+    await updateActiveRepositoryFromEditor(vscode.window.activeTextEditor);
 
     /**
      * Opens IntelliGit's native three-way merge editor for a repository-relative conflict file.
@@ -350,21 +560,64 @@ export async function activateRepositoryMode(
     const ensureUndockedPanel = (): UndockedViewProvider => {
         if (undocked) return undocked;
 
+        const initialUndockedRepository = resolveUndockedRepository(undockedSelectedRepositoryRoot);
+        undockedSelectedRepositoryRoot = initialUndockedRepository.root;
+        const undockedExecutor = new GitExecutor(initialUndockedRepository.root);
+        const undockedGitOps = new GitOps(undockedExecutor);
+        const undockedWorktreeService = new WorktreeService(
+            undockedExecutor,
+            getUndockedSelectedRepositoryRoot,
+        );
+        undockedRuntime = {
+            executor: undockedExecutor,
+            gitOps: undockedGitOps,
+            worktreeService: undockedWorktreeService,
+        };
+        const handleOpenUndockedCommitFileDiff = createOpenCommitFileDiffHandler({
+            executor: undockedExecutor,
+            gitOps: undockedGitOps,
+            getRepoRoot: getUndockedSelectedRepositoryRoot,
+        });
+
         undocked = new UndockedViewProvider(
             context.extensionUri,
-            gitOps,
-            repoRootUri,
+            undockedGitOps,
+            vscode.Uri.file(initialUndockedRepository.root),
             credentialStore,
             context.workspaceState,
             commitCheckHostMap,
             commitCheckSettings,
+            {
+                executor: undockedExecutor,
+                repositories,
+                selectedRepositoryRoot: initialUndockedRepository.root,
+                loadRepositoryData: loadCurrentUndockedRepositoryData,
+                onSelectedRepositoryRootChanged: async (root) => {
+                    undockedSelectedRepositoryRoot = root;
+                    undockedSelectionWrite = undockedSelectionWrite
+                        .catch(() => undefined)
+                        .then(async () => {
+                            if (undockedSelectedRepositoryRoot !== root) return;
+                            await context.workspaceState?.update(
+                                UNDOCKED_SELECTED_REPOSITORY_KEY,
+                                root,
+                            );
+                        });
+                    await undockedSelectionWrite;
+                },
+            },
         );
-        undocked.setRepositoryLabel(activeRepository.label);
+        undocked.setRepositoryLabel(initialUndockedRepository.label);
+        undocked.setRepositories(repositories, initialUndockedRepository.root);
         context.subscriptions.push(undocked);
 
         context.subscriptions.push(
             undocked.onDidDispose(() => {
                 undocked = undefined;
+                undockedRuntime?.worktreeService.dispose();
+                undockedRuntime = undefined;
+                undockedBranches = [];
+                undockedWorktrees = [];
             }),
             undocked.onDockRequested(async () => {
                 await dockIntelliGit();
@@ -372,7 +625,7 @@ export async function activateRepositoryMode(
             undocked.onCommitSelected(async (hash) => {
                 const requestId = ++undockedCommitDetailRequestSeq;
                 try {
-                    const detail = await gitOps.getCommitDetail(hash);
+                    const detail = await undockedGitOps.getCommitDetail(hash);
                     if (requestId === undockedCommitDetailRequestSeq) {
                         undocked?.setCommitDetail(detail);
                     }
@@ -384,12 +637,12 @@ export async function activateRepositoryMode(
                 }
             }),
             undocked.onBranchAction(({ action, branchName }) => {
-                const branch = currentBranches.find((b) => b.name === branchName);
+                const branch = undockedBranches.find((b) => b.name === branchName);
                 if (!branch) return;
                 void vscode.commands.executeCommand(`intelligit.${action}`, { branch });
             }),
             undocked.onWorktreeAction?.(({ action, path: worktreePath }) => {
-                const worktree = currentWorktrees.find(
+                const worktree = undockedWorktrees.find(
                     (candidate) => candidate.path === worktreePath,
                 );
                 if (!worktree) return;
@@ -409,7 +662,7 @@ export async function activateRepositoryMode(
                     new Set(branchSelection.map(getBranchSelectionName)),
                 );
                 const branches = requestedNames
-                    .map((name) => getCurrentBranches().find((branch) => branch.name === name))
+                    .map((name) => undockedBranches.find((branch) => branch.name === name))
                     .filter((branch): branch is Branch => Boolean(branch));
                 if (branches.length !== requestedNames.length) {
                     const found = new Set(branches.map((branch) => branch.name));
@@ -428,11 +681,17 @@ export async function activateRepositoryMode(
                     await handleCommitContextAction({
                         action,
                         hash,
-                        executor,
-                        gitOps,
-                        repoRoot,
-                        currentBranches,
-                        refreshAll: () => refreshService.refreshAll(),
+                        executor: undockedExecutor,
+                        gitOps: undockedGitOps,
+                        repoRoot: getUndockedSelectedRepositoryRoot(),
+                        currentBranches: undockedBranches,
+                        refreshAll: async () => {
+                            if (getUndockedSelectedRepositoryRoot() === repoRoot) {
+                                await refreshService.refreshAll();
+                                return;
+                            }
+                            await loadUndockedData();
+                        },
                     });
                 } catch (error) {
                     const message = getErrorMessage(error);
@@ -442,7 +701,7 @@ export async function activateRepositoryMode(
                     );
                 }
             }),
-            undocked.onOpenCommitFileDiff(handleOpenCommitFileDiff),
+            undocked.onOpenCommitFileDiff(handleOpenUndockedCommitFileDiff),
             undocked.onDidChangeWorkingTree(() => {
                 commitPanel.refreshSilent().catch((err) => {
                     console.error("[IntelliGit] Docked commit panel refresh failed:", err);
@@ -465,9 +724,9 @@ export async function activateRepositoryMode(
      */
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
-        currentBranches = worktreeService.decorateBranches(await gitOps.getBranches());
+        const { branches, worktrees } = await loadCurrentUndockedRepositoryData();
         if (!undocked) return;
-        undocked.setBranches(currentBranches, currentWorktrees);
+        undocked.setBranches(branches, worktrees);
         await undocked.refresh();
     };
 
@@ -581,6 +840,11 @@ export async function activateRepositoryMode(
 
     context.subscriptions.push(
         mergeConflictsView,
+        vscode.commands.registerCommand("intelligit.sidebarRepositoryIndicator", () => undefined),
+        vscode.commands.registerCommand(
+            "intelligit.sidebarRepositoryIndicator.color",
+            () => undefined,
+        ),
         vscode.commands.registerCommand(
             "intelligit.commitChecks.refreshBadges",
             refreshCommitCheckBadges,
@@ -654,7 +918,7 @@ export async function activateRepositoryMode(
         worktreeService,
         getRepoRoot,
         setRepositories: (nextRepositories) => {
-            repositories = nextRepositories;
+            setKnownRepositories(nextRepositories);
         },
         getCurrentBranches,
         getCurrentBranchName,
@@ -688,7 +952,7 @@ export async function activateRepositoryMode(
     refreshService.refreshMergeConflicts().catch((err) => {
         console.error("Initial merge conflicts refresh failed:", err);
     });
-    refreshService.registerFileWatchers();
+    registerRefreshServiceWatchers();
 
     context.subscriptions.push(
         fileCountBadgeSubscription,

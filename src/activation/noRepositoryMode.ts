@@ -7,6 +7,7 @@ import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
 import { OnboardingViewProvider } from "../views/OnboardingViewProvider";
 import {
     HAS_MERGE_CONFLICTS_CONTEXT,
+    HAS_MULTIPLE_REPOSITORIES_CONTEXT,
     initializeRepository,
     NO_REPOSITORY_MESSAGE,
     type RepositoryViewProviders,
@@ -44,6 +45,7 @@ export function activateNoRepositoryMode(
     deps: NoRepositoryModeDeps,
 ): void {
     let repositories: DiscoveredRepository[] = [];
+    void setViewContext(HAS_MULTIPLE_REPOSITORIES_CONTEXT, false);
     const noRepositoryDisposables: vscode.Disposable[] = [];
     let repositoryModeActivated = false;
     let repositoryModeActivationPromise: Promise<void> | undefined;

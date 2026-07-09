@@ -10,6 +10,14 @@ import type {
 } from "./commitPanelMessages";
 import type { CommitGraphInbound } from "./commitGraphTypes";
 
+/** Minimal repository identity sent to the undocked repository selector. */
+export interface RepositoryViewIdentity {
+    /** Absolute filesystem path to the Git repository root. */
+    root: string;
+    /** Stable display label for repository rows. */
+    label: string;
+}
+
 /**
  * Messages sent from the extension host to the undocked editor-tab webview.
  *
@@ -21,6 +29,14 @@ import type { CommitGraphInbound } from "./commitGraphTypes";
 export type UnifiedInbound =
     | CommitGraphInbound
     | CommitPanelInbound
+    | {
+          /** Repository list hydration for the fixed far-left undocked selector. */
+          type: "repositories";
+          /** Known Git repositories that the undocked runtime can switch between. */
+          repositories: RepositoryViewIdentity[];
+          /** Repository root currently bound to the undocked runtime. */
+          selectedRepositoryRoot: string;
+      }
     | {
           /** Layout setting event resolved from IntelliGit/workbench configuration. */
           type: "settings";
@@ -54,6 +70,12 @@ type GraphOutbound =
     | {
           /** Lifecycle event requesting initial graph, commit-panel, layout, and draft state. */
           type: "ready";
+      }
+    | {
+          /** Repository selector event requesting a dedicated undocked runtime root switch. */
+          type: "selectRepository";
+          /** Absolute repository root previously supplied by the host. */
+          repositoryRoot: string;
       }
     | {
           /** Selection event for the commit whose detail panes should be loaded. */

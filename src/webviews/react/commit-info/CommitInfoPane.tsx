@@ -25,6 +25,11 @@ import {
 type TreeEntry = GenericTreeEntry<CommitFile>;
 type TreeFolder = GenericTreeFolder<CommitFile>;
 
+interface FileStats {
+    additions: number;
+    deletions: number;
+}
+
 interface CommitScopedExpandedDirs {
     commitHash: string | null;
     dirs: Set<string>;
@@ -60,6 +65,16 @@ const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
     whiteSpace: "nowrap",
     border: 0,
 };
+
+function sumCommitFileStats(files: CommitFile[]): FileStats {
+    return files.reduce<FileStats>(
+        (stats, file) => ({
+            additions: stats.additions + file.additions,
+            deletions: stats.deletions + file.deletions,
+        }),
+        { additions: 0, deletions: 0 },
+    );
+}
 
 function CommitRefRow({
     kind,
@@ -300,11 +315,13 @@ function SectionHeader({
     label,
     expanded,
     onToggle,
+    stats,
     borderBottom = false,
 }: {
     label: string;
     expanded: boolean;
     onToggle?: () => void;
+    stats?: FileStats;
     borderBottom?: boolean;
 }): React.ReactElement {
     return (
@@ -334,7 +351,26 @@ function SectionHeader({
                     : undefined
             }
         >
-            <ChevronIcon expanded={expanded} /> {label}
+            <ChevronIcon expanded={expanded} />
+            <Box as="span">{label}</Box>
+            {stats && (stats.additions > 0 || stats.deletions > 0) && (
+                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
+                    {stats.additions > 0 && (
+                        <Box
+                            as="span"
+                            color="var(--intelligit-pycharm-added)"
+                            mr={stats.deletions > 0 ? "4px" : "0"}
+                        >
+                            +{stats.additions}
+                        </Box>
+                    )}
+                    {stats.deletions > 0 && (
+                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
+                            -{stats.deletions}
+                        </Box>
+                    )}
+                </Box>
+            )}
         </Box>
     );
 }
@@ -366,12 +402,15 @@ function CommitChangedFilesPanel({
     onSelectFile: (path: string) => void;
     onOpenDiff?: (commitHash: string, filePath: string) => void;
 }): React.ReactElement {
+    const stats = sumCommitFileStats(detail.files);
+
     return (
         <>
             <SectionHeader
                 label={t("commitInfo.changedFiles")}
                 expanded={!filesCollapsed}
                 onToggle={onToggleFiles}
+                stats={stats}
                 borderBottom={true}
             />
             {!filesCollapsed && (

@@ -2,6 +2,7 @@
 // and commit panel into a single unified view. Used when the user enables
 // intelligit.undockableWindow to allow dragging to a second monitor.
 import * as vscode from "vscode";
+import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -27,7 +28,11 @@ import type {
     CommitAction,
     WorktreeAction,
 } from "../webviews/protocol/commitGraphTypes";
-import type { UnifiedOutbound, UnifiedInbound } from "../webviews/protocol/undockedMessages";
+import type {
+    RepositoryViewIdentity,
+    UnifiedOutbound,
+    UnifiedInbound,
+} from "../webviews/protocol/undockedMessages";
 import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
@@ -72,6 +77,19 @@ interface PersistedColumnWidths {
     graphWidth: number;
     infoWidth: number;
     commitPanelWidth: number;
+}
+
+interface UndockedRepositoryData {
+    branches: Branch[];
+    worktrees?: GitWorktree[];
+}
+
+interface UndockedViewProviderOptions {
+    executor?: Pick<GitExecutor, "setRoot">;
+    repositories?: RepositoryViewIdentity[];
+    selectedRepositoryRoot?: string;
+    loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
+    onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
 }
 
 /**
@@ -119,15 +137,21 @@ export class UndockedViewProvider {
     public static readonly viewType = "intelligit.undocked";
     private panel?: vscode.WebviewPanel;
     private readonly gitOps: GitOps;
+    private readonly executor?: Pick<GitExecutor, "setRoot">;
+    private readonly loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
+    private readonly onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
     private repositoryLabel = "";
+    private repositories: RepositoryViewIdentity[] = [];
+    private selectedRepositoryRoot: string;
     // Graph-side state
     private currentBranch: string | null = null;
     private filterText = "";
     private offset = 0;
     private loadingMore = false;
     private requestSeq = 0;
+    private repositorySwitchSeq = 0;
     private readonly PAGE_SIZE = 500;
     private branches: Branch[] = [];
     private worktrees: GitWorktree[] = [];
@@ -196,9 +220,23 @@ export class UndockedViewProvider {
         private readonly workspaceState?: vscode.Memento,
         hostMap: HostMap = {},
         private readonly commitChecksSettings?: CommitChecksSettings,
+        options: UndockedViewProviderOptions = {},
     ) {
         this.gitOps = gitOps;
-        this.repoRootUri = repoRootUri;
+        this.executor = options.executor;
+        this.loadRepositoryData = options.loadRepositoryData;
+        this.onSelectedRepositoryRootChanged = options.onSelectedRepositoryRootChanged;
+        this.repositories =
+            options.repositories && options.repositories.length > 0
+                ? options.repositories
+                : [this.repositoryFromRoot(repoRootUri.fsPath)];
+        this.selectedRepositoryRoot =
+            this.findRepository(options.selectedRepositoryRoot ?? repoRootUri.fsPath)?.root ??
+            this.findRepository(repoRootUri.fsPath)?.root ??
+            this.repositories[0]?.root ??
+            repoRootUri.fsPath;
+        this.repoRootUri = vscode.Uri.file(this.selectedRepositoryRoot);
+        this.executor?.setRoot(this.selectedRepositoryRoot);
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
@@ -235,6 +273,36 @@ export class UndockedViewProvider {
         this.repositoryLabel = label;
         if (this.panel) this.panel.title = `IntelliGit — ${label}`;
     }
+
+    /**
+     * Replaces known repositories while preserving the selected undocked root when possible.
+     */
+    setRepositories(
+        repositories: RepositoryViewIdentity[],
+        selectedRepositoryRoot = this.selectedRepositoryRoot,
+    ): void {
+        this.repositories = repositories;
+        const selected =
+            this.findRepository(selectedRepositoryRoot) ??
+            this.findRepository(this.selectedRepositoryRoot) ??
+            this.repositories[0];
+        if (selected) {
+            const changed = selected.root !== this.selectedRepositoryRoot;
+            const shouldContinue = changed ? this.beginRepositorySwitch() : undefined;
+            this.applyRepositoryRoot(selected, { reset: changed, updateExecutor: changed });
+            if (shouldContinue) {
+                this.sendRepositories();
+                void this.reloadSelectedRepository(shouldContinue).catch((err) => {
+                    const message = getErrorMessage(err);
+                    vscode.window.showErrorMessage(message);
+                    this.postToWebview({ type: "error", message });
+                });
+                return;
+            }
+        }
+        this.sendRepositories();
+    }
+
     /**
      * Switches the undocked panel to a new active repository and clears repository-scoped caches.
      *
@@ -242,7 +310,72 @@ export class UndockedViewProvider {
      * are reset so subsequent refreshes cannot display rows from the previous repository.
      */
     setRepositoryRootUri(repoRootUri: vscode.Uri): void {
-        this.repoRootUri = repoRootUri;
+        this.applyRepositoryRoot(
+            this.findRepository(repoRootUri.fsPath) ?? this.repositoryFromRoot(repoRootUri.fsPath),
+            { reset: true, updateExecutor: false },
+        );
+    }
+
+    /**
+     * Switches the dedicated undocked runtime to a known repository root.
+     *
+     * Unknown roots are rejected before the executor moves. Successful switches reset repository
+     * caches, persist selection through the caller callback, reload branches, reload the first graph
+     * page, refresh the commit-panel snapshot, and restore the selected repository draft.
+     */
+    async setActiveRepositoryRoot(root: string): Promise<void> {
+        const repository = this.findRepository(root);
+        if (!repository) {
+            throw new Error("Unknown repository root received from webview.");
+        }
+        const shouldContinue = this.beginRepositorySwitch();
+        this.applyRepositoryRoot(repository, { reset: true, updateExecutor: true });
+        await this.onSelectedRepositoryRootChanged?.(repository.root);
+        if (!shouldContinue()) return;
+        this.sendRepositories();
+        await this.reloadSelectedRepository(shouldContinue);
+    }
+
+    /**
+     * Starts a repository switch and returns a guard for async continuations spawned by it.
+     */
+    private beginRepositorySwitch(): () => boolean {
+        const requestId = ++this.repositorySwitchSeq;
+        return () => requestId === this.repositorySwitchSeq;
+    }
+
+    /**
+     * Reloads all repository-scoped panels after the selected root changes.
+     */
+    private async reloadSelectedRepository(shouldContinue: () => boolean): Promise<void> {
+        await this.iconTheme.initIconThemeData();
+        if (!shouldContinue()) return;
+        if (!(await this.reloadBranches(shouldContinue))) return;
+        if (!shouldContinue()) return;
+        await this.loadInitial();
+        if (!shouldContinue()) return;
+        this.postCommitDetailState();
+        await this.refreshCommitPanelData(false, shouldContinue);
+        if (!shouldContinue()) return;
+        this.postToWebview({
+            type: "restoreCommitDraft",
+            message: this.getStoredCommitDraft(),
+        });
+    }
+
+    private applyRepositoryRoot(
+        repository: RepositoryViewIdentity,
+        options: { reset: boolean; updateExecutor: boolean },
+    ): void {
+        this.selectedRepositoryRoot = repository.root;
+        this.repoRootUri = vscode.Uri.file(repository.root);
+        this.repositoryLabel = repository.label;
+        if (this.panel) this.panel.title = `IntelliGit — ${repository.label}`;
+        if (options.updateExecutor) this.executor?.setRoot(repository.root);
+        if (options.reset) this.resetRepositoryScopedState();
+    }
+
+    private resetRepositoryScopedState(): void {
         this.requestSeq += 1;
         this.commitDetailSeq += 1;
         this.files = [];
@@ -275,6 +408,39 @@ export class UndockedViewProvider {
             );
         });
     }
+
+    private async reloadBranches(shouldContinue: () => boolean = () => true): Promise<boolean> {
+        const data = this.loadRepositoryData
+            ? await this.loadRepositoryData(this.selectedRepositoryRoot)
+            : { branches: await this.gitOps.getBranches(), worktrees: [] };
+        if (!shouldContinue()) return false;
+        this.branches = data.branches;
+        this.worktrees = data.worktrees ?? [];
+        await this.sendBranches(shouldContinue);
+        return shouldContinue();
+    }
+
+    private repositoryFromRoot(root: string): RepositoryViewIdentity {
+        const parts = root.split(/[\\/]/).filter(Boolean);
+        return {
+            root,
+            label: parts[parts.length - 1] ?? root,
+        };
+    }
+
+    private findRepository(root: string | undefined): RepositoryViewIdentity | undefined {
+        if (!root) return undefined;
+        return this.repositories.find((repository) => repository.root === root);
+    }
+
+    private sendRepositories(): void {
+        this.postToWebview({
+            type: "repositories",
+            repositories: this.repositories,
+            selectedRepositoryRoot: this.selectedRepositoryRoot,
+        });
+    }
+
     /**
      * Caches the selected commit detail and decorates it with icon metadata asynchronously.
      *
@@ -436,6 +602,7 @@ export class UndockedViewProvider {
                 // never overwrites them with its pre-restore equal widths.
                 this.sendPersistedColumnWidths();
                 this.sendSettings();
+                this.sendRepositories();
                 await this.iconTheme.initIconThemeData();
                 await this.sendBranches();
                 await this.loadInitial();
@@ -445,6 +612,11 @@ export class UndockedViewProvider {
                     type: "restoreCommitDraft",
                     message: this.getStoredCommitDraft(),
                 });
+                break;
+            case "selectRepository":
+                await this.setActiveRepositoryRoot(
+                    assertString(msg.repositoryRoot, "repositoryRoot"),
+                );
                 break;
             case "selectCommit":
                 this._onCommitSelected.fire(assertGitHash(msg.hash, "hash"));
@@ -827,7 +999,10 @@ export class UndockedViewProvider {
      * The selected stash is preserved when still present; otherwise the first stash is selected.
      * Non-silent calls emit `refreshing` messages so the undocked UI can show action feedback.
      */
-    private async refreshCommitPanelData(silent = false): Promise<void> {
+    private async refreshCommitPanelData(
+        silent = false,
+        shouldContinue: () => boolean = () => true,
+    ): Promise<void> {
         if (!silent) this.postToWebview({ type: "refreshing", active: true });
         try {
             // Theme initialization must finish before decorated working-tree files are built.
@@ -857,6 +1032,7 @@ export class UndockedViewProvider {
                 ...files,
                 ...stashFiles,
             ]);
+            if (!shouldContinue()) return;
             this.files = files;
             this.stashes = stashes;
             this.selectedStashIndex = selectedStashIndex;
@@ -886,16 +1062,19 @@ export class UndockedViewProvider {
                 currentBranchUpstream: currentBranchStatus.upstream,
             });
         } finally {
-            if (!silent) this.postToWebview({ type: "refreshing", active: false });
+            if (!silent && shouldContinue())
+                this.postToWebview({ type: "refreshing", active: false });
         }
     }
     // --- Branch sending -----------------------------------------------------
     /**
      * Sends cached branches with folder icons derived from branch path segments.
      */
-    private async sendBranches(): Promise<void> {
-        this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+    private async sendBranches(shouldContinue: () => boolean = () => true): Promise<void> {
+        const folderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
         const currentBranchStatus = await this.currentBranchStatus();
+        if (!shouldContinue()) return;
+        this.branchFolderIconsByName = folderIconsByName;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -903,7 +1082,7 @@ export class UndockedViewProvider {
             worktrees: this.worktrees,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
-            folderIconsByName: this.branchFolderIconsByName,
+            folderIconsByName,
             iconFonts,
             currentBranchHasUpstream: currentBranchStatus.hasUpstream,
             hasRemotes: currentBranchStatus.hasRemotes,
