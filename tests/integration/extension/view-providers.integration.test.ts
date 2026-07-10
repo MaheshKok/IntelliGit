@@ -296,6 +296,7 @@ const vscodeMock = {
         }),
     },
     authentication: {
+        getSession: githubSessionGet,
         onDidChangeSessions: vi.fn((listener: (event: { provider: { id: string } }) => void) => {
             authSessionListeners.push(listener);
             return { dispose: vi.fn() };
@@ -307,6 +308,11 @@ const deleteFileWithFallback = vi.fn(async () => true);
 // Spy on the GitHub provider's network boundary so the real CommitChecksCoordinator
 // runs inside the view provider (exercising its cache/re-fetch logic end-to-end).
 const providerGetChecks = vi.hoisted(() => vi.fn());
+const useRealGitHubCommitChecks = vi.hoisted(() => ({ value: false }));
+const githubProviderCalls = vi.hoisted(() => [] as string[]);
+const githubProviderRoots = vi.hoisted(() => [] as string[]);
+const githubProviderKeys = vi.hoisted(() => [] as string[]);
+const githubSessionGet = vi.hoisted(() => vi.fn());
 // Network boundary for the real GitLabProvider. Mocked so self-hosted-routing tests
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
@@ -324,6 +330,8 @@ const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 const activeGitRoot = vi.hoisted(() => ({ value: "" }));
 const gitStatusByRoot = vi.hoisted(() => new Map<string, unknown[]>());
+const gitLogByRoot = vi.hoisted(() => new Map<string, unknown[]>());
+const gitRemoteUrlByRoot = vi.hoisted(() => new Map<string, string>());
 const discoverGitRepositoriesSpy = vi.hoisted(() => vi.fn(async () => []));
 const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
 const branchRefreshControls = vi.hoisted(
@@ -394,9 +402,11 @@ vi.mock("../../../src/git/operations", () => ({
                 branchRefreshControls.push({ root, resolve });
             });
         });
-        getLog = vi.fn(async () => []);
+        getLog = vi.fn(async () => gitLogByRoot.get(this.currentRoot()) ?? []);
         getRemotes = vi.fn(async () => ["origin"]);
-        getRemoteUrl = vi.fn(async () => "https://github.com/owner/repo.git");
+        getRemoteUrl = vi.fn(async () =>
+            gitRemoteUrlByRoot.get(this.currentRoot()) ?? "https://github.com/owner/repo.git",
+        );
         getUnpushedCommitHashes = vi.fn(async () => []);
         hasUncommittedChanges = vi.fn(async () => false);
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
@@ -460,43 +470,75 @@ vi.mock("../../../src/utils/fileOps", async () => {
         deleteFileWithFallback,
     };
 });
-vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
-    GitHubProvider: class {
-        readonly id = "github";
+vi.mock("../../../src/services/commitChecks/githubProvider", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../../src/services/commitChecks/githubProvider")
+    >("../../../src/services/commitChecks/githubProvider");
+    return {
+        ...actual,
+        GitHubProvider: class {
+            readonly id = "github";
+            private readonly real: InstanceType<typeof actual.GitHubProvider>;
 
-        // URL-aware so a self-hosted (non-github.com) remote falls through to the real
-        // GitLabProvider in the coordinator. github.com remotes still match first, so the
-        // existing github commit-check tests are unaffected.
-        match(remoteUrl: string): { host: string; owner: string; repo: string } | null {
-            return remoteUrl.includes("github.com")
-                ? { host: "github.com", owner: "owner", repo: "repo" }
-                : null;
-        }
-        keyFor(ref: { host: string; owner: string; repo: string }): string {
-            return `github:${ref.host}:${ref.owner}/${ref.repo}`;
-        }
-        getChecks(_ref: unknown, hash: string): unknown {
-            return providerGetChecks(hash);
-        }
-    },
-}));
+            constructor(...args: ConstructorParameters<typeof actual.GitHubProvider>) {
+                this.real = new actual.GitHubProvider(...args);
+            }
+
+            match(remoteUrl: string, hostMap: Record<string, string>): { host: string; owner: string; repo: string } | null {
+                if (useRealGitHubCommitChecks.value) return this.real.match(remoteUrl, hostMap);
+                return remoteUrl.includes("github.com")
+                    ? { host: "github.com", owner: "owner", repo: "repo" }
+                    : null;
+            }
+            keyFor(ref: { host: string; owner: string; repo: string }): string {
+                if (useRealGitHubCommitChecks.value) return this.real.keyFor(ref);
+                return `github:${ref.host}:${ref.owner}/${ref.repo}`;
+            }
+            getChecks(...args: Parameters<typeof actual.GitHubProvider.prototype.getChecks>): unknown {
+                if (useRealGitHubCommitChecks.value) {
+                    githubProviderCalls.push(args[1]);
+                    githubProviderRoots.push(activeGitRoot.value);
+                    githubProviderKeys.push(this.real.keyFor(args[0]));
+                    return this.real.getChecks(...args);
+                }
+                return providerGetChecks(args[1]);
+            }
+        },
+    };
+});
 // Mock the GitLabProvider's network boundary (the view providers inject this exact
 // module-level function). Self-hosted-routing tests set a per-test resolved value.
 vi.mock("../../../src/services/commitChecks/http", () => ({
     createHttpGetJson: createHttpGetJsonSpy,
     httpGetJson: httpGetJsonSpy,
 }));
-vi.mock("../../../src/services/commitChecks/requestGate", () => ({
-    GitHubRequestGate: class {
-        readonly observeResponse = vi.fn();
-        readonly reset = vi.fn();
-        readonly run = vi.fn(async (task: () => Promise<unknown>) => task());
+vi.mock("../../../src/services/commitChecks/requestGate", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../../src/services/commitChecks/requestGate")
+    >("../../../src/services/commitChecks/requestGate");
+    type ActualGate = InstanceType<typeof actual.GitHubRequestGate>;
+    return {
+        ...actual,
+        GitHubRequestGate: class {
+            private readonly realGate: ActualGate | undefined;
+            readonly observeResponse = vi.fn(
+                (metadata: Parameters<ActualGate["observeResponse"]>[0]) =>
+                    this.realGate?.observeResponse(metadata),
+            );
+            readonly reset = vi.fn(() => this.realGate?.reset());
+            readonly run = vi.fn((task: () => Promise<unknown>) =>
+                this.realGate ? this.realGate.run(task) : task(),
+            );
 
-        constructor(_limit: number) {
-            githubRequestGateInstances.push(this);
-        }
-    },
-}));
+            constructor(limit: number) {
+                this.realGate = useRealGitHubCommitChecks.value
+                    ? new actual.GitHubRequestGate(limit)
+                    : undefined;
+                githubRequestGateInstances.push(this);
+            }
+        },
+    };
+});
 vi.mock("../../../src/services/publishService", () => ({
     runPublishBranchFlow: runPublishBranchFlowSpy,
 }));
@@ -770,9 +812,16 @@ describe("view providers integration", () => {
         workspaceFolderDisposables.length = 0;
         authSessionListeners.length = 0;
         githubRequestGateInstances.length = 0;
+        githubProviderCalls.length = 0;
+        githubProviderRoots.length = 0;
+        githubProviderKeys.length = 0;
+        useRealGitHubCommitChecks.value = false;
+        githubSessionGet.mockReset();
         activeTextEditor = undefined;
         activeGitRoot.value = "";
         gitStatusByRoot.clear();
+        gitLogByRoot.clear();
+        gitRemoteUrlByRoot.clear();
         discoverGitRepositoriesSpy.mockResolvedValue([]);
         deferBranchRefreshes.active = false;
         branchRefreshControls.length = 0;
@@ -2500,6 +2549,324 @@ describe("view providers integration", () => {
             snapshot: expect.objectContaining({ state: "none" }),
         });
         provider.dispose();
+    });
+
+    it("composes verified idle retry protocol with real GitHub provider traffic", async () => {
+        let graph:
+            | {
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+                  dispose: () => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+            const repositories = Array.from({ length: 30 }, (_, index) => ({
+                root: `/workspace/repository-${index}`,
+                label: `repository-${index}`,
+            }));
+            const activeHashes = Array.from({ length: 12 }, (_, index) =>
+                index.toString(16).padStart(40, "0"),
+            );
+            useRealGitHubCommitChecks.value = true;
+            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
+            createHttpGetJsonSpy.mockImplementation(
+                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                    async (url: string, headers: Record<string, string>) => {
+                        onResponse({
+                            headers: {
+                                "x-ratelimit-limit": "5000",
+                                "x-ratelimit-remaining": "4999",
+                            },
+                        });
+                        return httpGetJsonSpy(url, headers);
+                    },
+            );
+            httpGetJsonSpy.mockImplementation(async (url: string) =>
+                url.includes("/check-runs") ? { check_runs: [] } : [],
+            );
+            for (const [index, repository] of repositories.entries()) {
+                const hashes =
+                    index === 0
+                        ? activeHashes
+                        : [(index + 128).toString(16).padStart(40, "0")];
+                gitRemoteUrlByRoot.set(
+                    repository.root,
+                    `https://github.com/owner/repository-${index}.git`,
+                );
+                gitLogByRoot.set(
+                    repository.root,
+                    hashes.map((hash) => ({
+                        hash,
+                        shortHash: hash.slice(0, 7),
+                        message: `commit ${hash}`,
+                        author: "Mahesh",
+                        email: "m@example.com",
+                        date: "2026-07-10T00:00:00Z",
+                        parentHashes: [],
+                        refs: [],
+                    })),
+                );
+            }
+            providerGetChecks.mockReset();
+            providerGetChecks.mockImplementation(async (hash: string) => ({
+                hash,
+                state: "none",
+                summary: "No checks found",
+                items: [],
+            }));
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: makeSecretStorage(),
+                } as never,
+                repositories,
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+            // Replay the exact protocol emitted by the paired CommitList timer test. Its
+            // initial one-row demand is followed by the stable exact viewport, then its
+            // automatic +30s/+60s forced head retries. None is a cache hit in the second
+            // message, so host output has 15 snapshots while provider work remains 14.
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [activeHashes[0]],
+                force: false,
+            });
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: activeHashes,
+                force: false,
+            });
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [activeHashes[0]],
+                force: true,
+            });
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [activeHashes[0]],
+                force: true,
+            });
+
+            expect(githubProviderCalls).toEqual([...activeHashes, activeHashes[0], activeHashes[0]]);
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(28);
+            expect(githubProviderKeys).toEqual(Array(14).fill("github:github.com:owner/repository-0"));
+            for (const repository of repositories.slice(1)) {
+                expect(gitLogByRoot.get(repository.root)).toHaveLength(1);
+                expect(githubProviderKeys).not.toContain(
+                    `github:github.com:owner/${repository.label}`,
+                );
+            }
+            const snapshots = postMessageSpy.mock.calls
+                .map(([message]) => message)
+                .filter(
+                    (message): message is { type: "setCommitChecks"; snapshot: { state: string } } =>
+                        typeof message === "object" &&
+                        message !== null &&
+                        "type" in message &&
+                        message.type === "setCommitChecks",
+                )
+                .map((message) => message.snapshot);
+            expect(snapshots).toHaveLength(15);
+            expect(snapshots.every((snapshot) => snapshot.state === "none")).toBe(true);
+        } finally {
+            graph?.dispose();
+        }
+    });
+
+    it("composes verified pending retry protocol with bounded real GitHub traffic", async () => {
+        let graph:
+            | {
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+                  dispose: () => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+            const activeHashes = Array.from({ length: 12 }, (_, index) =>
+                (index + 16).toString(16).padStart(40, "0"),
+            );
+            const repositories = [{ root: "/workspace/active", label: "active" }];
+            useRealGitHubCommitChecks.value = true;
+            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
+            createHttpGetJsonSpy.mockImplementation(
+                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                    async (url: string, headers: Record<string, string>) => {
+                        const response = await httpGetJsonSpy(url, headers);
+                        onResponse({
+                            headers: {
+                                "x-ratelimit-limit": "5000",
+                                "x-ratelimit-remaining": "4999",
+                            },
+                        });
+                        return response;
+                    },
+            );
+            httpGetJsonSpy.mockImplementation(async (url: string) =>
+                url.includes("/check-runs")
+                    ? { check_runs: [{ name: "CI", status: "queued" }] }
+                    : [],
+            );
+            gitLogByRoot.set(
+                repositories[0].root,
+                activeHashes.map((hash) => ({
+                    hash,
+                    shortHash: hash.slice(0, 7),
+                    message: `commit ${hash}`,
+                    author: "Mahesh",
+                    email: "m@example.com",
+                    date: "2026-07-10T00:00:00Z",
+                    parentHashes: [],
+                    refs: [],
+                })),
+            );
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: makeSecretStorage(),
+                } as never,
+                repositories,
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+            await webview.send({ type: "requestVisibleCommitChecks", hashes: activeHashes });
+            // The paired CommitList test proves automatic force demand at +30/+60/+120 seconds.
+            // Feed only those verified emissions into the extension host; no user refresh occurs.
+            for (let retry = 0; retry < 3; retry += 1) {
+                await webview.send({
+                    type: "requestVisibleCommitChecks",
+                    hashes: activeHashes,
+                    force: true,
+                });
+            }
+
+            const fetchesByHash = new Map<string, number>();
+            for (const hash of githubProviderCalls) {
+                fetchesByHash.set(hash, (fetchesByHash.get(hash) ?? 0) + 1);
+            }
+            expect(fetchesByHash.size).toBe(activeHashes.length);
+            expect([...fetchesByHash.values()].every((count) => count <= 4)).toBe(true);
+            expect(githubProviderCalls.length).toBeLessThanOrEqual(48);
+            expect(httpGetJsonSpy.mock.calls.length).toBeLessThanOrEqual(96);
+
+            const providerCallsAfterFinalRetry = githubProviderCalls.length;
+            const httpCallsAfterFinalRetry = httpGetJsonSpy.mock.calls.length;
+            // The host owns no retry timer. The paired UI test advances one hour and emits no
+            // further protocol demand; without such a message this real host remains idle.
+            await Promise.resolve();
+            expect(githubProviderCalls).toHaveLength(providerCallsAfterFinalRetry);
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(httpCallsAfterFinalRetry);
+        } finally {
+            graph?.dispose();
+        }
+    });
+
+    it("blocks queued GitHub HTTP work after a low-quota response", async () => {
+        vi.useFakeTimers();
+        let graph:
+            | {
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+                  dispose: () => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+            const activeHashes = Array.from({ length: 12 }, (_, index) =>
+                (index + 32).toString(16).padStart(40, "0"),
+            );
+            const repositories = [{ root: "/workspace/active", label: "active" }];
+            useRealGitHubCommitChecks.value = true;
+            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
+            const responseEvents: string[] = [];
+            createHttpGetJsonSpy.mockImplementation(
+                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                    async (url: string, headers: Record<string, string>) => {
+                        const response = await httpGetJsonSpy(url, headers);
+                        responseEvents.push("response");
+                        onResponse({
+                            headers: {
+                                "x-ratelimit-limit": "5000",
+                                "x-ratelimit-remaining": "100",
+                                "x-ratelimit-reset": "9999999999",
+                            },
+                        });
+                        responseEvents.push("observed");
+                        return response;
+                    },
+            );
+            httpGetJsonSpy.mockImplementation(async (url: string) =>
+                url.includes("/check-runs") ? { check_runs: [] } : [],
+            );
+            gitLogByRoot.set(
+                repositories[0].root,
+                activeHashes.map((hash) => ({
+                    hash,
+                    shortHash: hash.slice(0, 7),
+                    message: `commit ${hash}`,
+                    author: "Mahesh",
+                    email: "m@example.com",
+                    date: "2026-07-10T00:00:00Z",
+                    parentHashes: [],
+                    refs: [],
+                })),
+            );
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: makeSecretStorage(),
+                } as never,
+                repositories,
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+            await webview.send({ type: "requestVisibleCommitChecks", hashes: [activeHashes[0]] });
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(2);
+            expect(responseEvents).toEqual(["response", "observed", "response", "observed"]);
+
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: activeHashes.slice(1),
+            });
+
+            expect(githubProviderCalls).toEqual(activeHashes);
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(2);
+        } finally {
+            graph?.dispose();
+            vi.useRealTimers();
+        }
     });
 
     it("CommitGraphViewProvider deduplicates visible commit-check hashes", async () => {
