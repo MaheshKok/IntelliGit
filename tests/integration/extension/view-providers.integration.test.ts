@@ -104,6 +104,7 @@ const registeredCommands = new Map<string, CommandHandler>();
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
 const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
 const workspaceFolderDisposables: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
+const authSessionListeners: Array<(event: { provider: { id: string } }) => void> = [];
 let activeTextEditor: { document: { uri: unknown } } | undefined;
 const withProgress = vi.fn(
     async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
@@ -295,7 +296,10 @@ const vscodeMock = {
         }),
     },
     authentication: {
-        onDidChangeSessions: vi.fn(() => ({ dispose: vi.fn() })),
+        onDidChangeSessions: vi.fn((listener: (event: { provider: { id: string } }) => void) => {
+            authSessionListeners.push(listener);
+            return { dispose: vi.fn() };
+        }),
     },
 };
 
@@ -307,6 +311,15 @@ const providerGetChecks = vi.hoisted(() => vi.fn());
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
+const createHttpGetJsonSpy = vi.hoisted(() => vi.fn(() => httpGetJsonSpy));
+const githubRequestGateInstances = vi.hoisted(
+    () =>
+        [] as Array<{
+            observeResponse: ReturnType<typeof vi.fn>;
+            reset: ReturnType<typeof vi.fn>;
+            run: ReturnType<typeof vi.fn>;
+        }>,
+);
 const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 const activeGitRoot = vi.hoisted(() => ({ value: "" }));
@@ -470,7 +483,19 @@ vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
 // Mock the GitLabProvider's network boundary (the view providers inject this exact
 // module-level function). Self-hosted-routing tests set a per-test resolved value.
 vi.mock("../../../src/services/commitChecks/http", () => ({
+    createHttpGetJson: createHttpGetJsonSpy,
     httpGetJson: httpGetJsonSpy,
+}));
+vi.mock("../../../src/services/commitChecks/requestGate", () => ({
+    GitHubRequestGate: class {
+        readonly observeResponse = vi.fn();
+        readonly reset = vi.fn();
+        readonly run = vi.fn(async (task: () => Promise<unknown>) => task());
+
+        constructor(_limit: number) {
+            githubRequestGateInstances.push(this);
+        }
+    },
 }));
 vi.mock("../../../src/services/publishService", () => ({
     runPublishBranchFlow: runPublishBranchFlowSpy,
@@ -743,6 +768,8 @@ describe("view providers integration", () => {
         activeTextEditorListeners.length = 0;
         workspaceFolderListeners.length = 0;
         workspaceFolderDisposables.length = 0;
+        authSessionListeners.length = 0;
+        githubRequestGateInstances.length = 0;
         activeTextEditor = undefined;
         activeGitRoot.value = "";
         gitStatusByRoot.clear();
@@ -894,6 +921,32 @@ describe("view providers integration", () => {
             "intelligit.hasMultipleRepositories",
             false,
         );
+    });
+
+    it("resets only the GitHub request gate when GitHub authentication changes", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        await activateRepositoryMode(
+            {
+                extensionUri: vscodeMock.Uri.file("/ext"),
+                subscriptions: [],
+                workspaceState: createMemento(),
+                secrets: {},
+            } as never,
+            [{ root: "/workspace", label: "workspace" }],
+        );
+
+        const gate = githubRequestGateInstances[0];
+        expect(gate).toBeDefined();
+        await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+        expect(gate.reset).not.toHaveBeenCalled();
+
+        authSessionListeners[0]({ provider: { id: "gitlab" } });
+        await flushMicrotasks();
+        expect(gate.reset).not.toHaveBeenCalled();
+
+        authSessionListeners[0]({ provider: { id: "github" } });
+        await flushMicrotasks();
+        expect(gate.reset).toHaveBeenCalledTimes(1);
     });
 
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {

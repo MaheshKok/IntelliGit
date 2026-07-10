@@ -18,7 +18,7 @@ import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
-import { httpGetJson, type FetchJson } from "../services/commitChecks/http";
+import { createHttpGetJson, httpGetJson, type FetchJson } from "../services/commitChecks/http";
 import { GitHubRequestGate } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
@@ -132,8 +132,11 @@ export async function activateRepositoryMode(
         }),
     });
     const githubRequestGate = new GitHubRequestGate(4);
+    const githubHttpGetJson = createHttpGetJson((metadata) => {
+        githubRequestGate.observeResponse(metadata);
+    });
     const gatedGithubFetchJson: FetchJson = (url, headers) =>
-        githubRequestGate.run(() => httpGetJson(url, headers));
+        githubRequestGate.run(() => githubHttpGetJson(url, headers));
     const commitChecksProviders: readonly CommitChecksProvider[] = [
         new GitHubProvider(gatedGithubFetchJson, commitCheckSettings.ciCdPattern),
         new GitLabProvider(httpGetJson, credentialStore, commitCheckSettings.ciCdPattern),
@@ -884,6 +887,7 @@ export async function activateRepositoryMode(
         ),
         vscode.authentication.onDidChangeSessions((event) => {
             if (event.provider.id !== "github") return;
+            githubRequestGate.reset();
             refreshCommitCheckBadges().catch((err) => {
                 console.error("[IntelliGit] GitHub commit-check refresh failed:", err);
             });

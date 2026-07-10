@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock specifier must match the source import ("https", not "node:https").
 vi.mock("https");
 
-import { HttpError, httpGetJson } from "../../../../src/services/commitChecks/http";
+import {
+    createHttpGetJson,
+    HttpError,
+    httpGetJson,
+} from "../../../../src/services/commitChecks/http";
 
 interface FakeRequest extends EventEmitter {
     setTimeout: ReturnType<typeof vi.fn>;
@@ -73,6 +77,44 @@ describe("httpGetJson", () => {
             { headers: { Authorization: "Bearer t" } },
             expect.any(Function),
         );
+    });
+
+    it("observes token-free response metadata without changing a successful JSON result", async () => {
+        const req = makeRequest();
+        const headers = {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "99",
+            "x-ratelimit-reset": "3600",
+        };
+        const res = makeResponse(200, headers);
+        const observe = vi.fn();
+        stubGet(req, res);
+
+        const fetchJson = createHttpGetJson(observe);
+        const promise = fetchJson("https://api.test/x", { Authorization: "Bearer secret" });
+        res.emit("data", Buffer.from('{"a":1}'));
+        res.emit("end");
+
+        await expect(promise).resolves.toEqual({ a: 1 });
+        expect(observe).toHaveBeenCalledTimes(1);
+        expect(observe).toHaveBeenCalledWith({ statusCode: 200, headers });
+    });
+
+    it("swallows response observer failures", async () => {
+        const req = makeRequest();
+        const res = makeResponse(200);
+        const observe = vi.fn(() => {
+            throw new Error("observer failed");
+        });
+        stubGet(req, res);
+
+        const promise = createHttpGetJson(observe)("https://api.test/x", {});
+        res.emit("data", Buffer.from('{"a":1}'));
+        res.emit("end");
+
+        await expect(promise).resolves.toEqual({ a: 1 });
+        expect(observe).toHaveBeenCalledTimes(1);
+        expect(observe).toHaveBeenCalledWith({ statusCode: 200, headers: {} });
     });
 
     it("resolves an empty object when the body is empty", async () => {
