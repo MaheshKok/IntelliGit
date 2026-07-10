@@ -3242,6 +3242,256 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider restores cached changed-file counts before status scans finish", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        let resolveStatus!: (files: unknown[]) => void;
+        const pendingStatus = new Promise<unknown[]>((resolve) => {
+            resolveStatus = resolve;
+        });
+        gitStatusByRoot.set("/repo-b", pendingStatus);
+        const memento = createMemento({
+            "intelligit.changedFileCounts.v1": {
+                schemaVersion: 1,
+                entries: [
+                    { root: "/repo-a", includeIgnored: false, count: 2, updatedAt: 1_000 },
+                    { root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 1_000 },
+                ],
+            },
+        });
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            memento as unknown as object,
+        );
+        const webview = createWebviewView();
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+
+        expect(provider.getLastKnownFileCount()).toBe(5);
+        expect(counts).toContain(5);
+        expect(lastSetRepositoriesMessage()?.repositories).toEqual([
+            { root: "/repo-a", label: "Repo A", changedFileCount: 2 },
+            { root: "/repo-b", label: "Repo B", changedFileCount: 3 },
+        ]);
+
+        resolveStatus([
+            { path: "src/b.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+            { path: "src/c.ts", status: "A", staged: false, additions: 0, deletions: 0 },
+            { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
+        ]);
+        for (let index = 0; index < 10; index += 1) {
+            await flushMicrotasks();
+            if (provider.getLastKnownFileCount() === 4) break;
+        }
+
+        expect(provider.getLastKnownFileCount()).toBe(4);
+        expect(memento.update).toHaveBeenLastCalledWith(
+            "intelligit.changedFileCounts.v1",
+            expect.objectContaining({
+                schemaVersion: 1,
+                entries: expect.arrayContaining([
+                    expect.objectContaining({ root: "/repo-b", count: 2, updatedAt: 1_000 }),
+                ]),
+            }),
+        );
+
+        disposable.dispose();
+        provider.dispose();
+        vi.useRealTimers();
+    });
+
+    it("CommitPanelViewProvider refreshes in-memory cache freshness without rewriting unchanged counts", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+            { path: "src/c.ts", status: "A", staged: false, additions: 0, deletions: 0 },
+            { path: "src/d.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+        ]);
+        const memento = createMemento({
+            "intelligit.changedFileCounts.v1": {
+                schemaVersion: 1,
+                entries: [{ root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 0 }],
+            },
+        });
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            memento as unknown as object,
+        );
+
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+        for (let index = 0; index < 10; index += 1) {
+            await flushMicrotasks();
+            const stored = (
+                provider as unknown as {
+                    storedChangedFileCounts: Map<string, { updatedAt: number }>;
+                }
+            ).storedChangedFileCounts.get("/repo-b\u0000tracked");
+            if (stored?.updatedAt === 1_000) break;
+        }
+
+        expect(
+            (
+                provider as unknown as {
+                    storedChangedFileCounts: Map<string, { updatedAt: number; count: number }>;
+                }
+            ).storedChangedFileCounts.get("/repo-b\u0000tracked"),
+        ).toEqual(expect.objectContaining({ count: 3, updatedAt: 1_000 }));
+        expect(memento.update).not.toHaveBeenCalled();
+
+        provider.dispose();
+        vi.useRealTimers();
+    });
+
+    it("CommitPanelViewProvider keeps valid stale cache when a count scan fails", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        gitStatusByRoot.set("/repo-b", Promise.reject(new Error("status failed")));
+        const memento = createMemento({
+            "intelligit.changedFileCounts.v1": {
+                schemaVersion: 1,
+                entries: [
+                    { root: "/repo-a", includeIgnored: false, count: 0, updatedAt: 1_000 },
+                    { root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 1_000 },
+                ],
+            },
+        });
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            memento as unknown as object,
+        );
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+        await flushMicrotasks();
+
+        expect(provider.getLastKnownFileCount()).toBe(3);
+        expect(
+            (
+                provider as unknown as {
+                    runtimes: Map<string, { lastKnownChangedFileCount: number | null }>;
+                }
+            ).runtimes.get("/repo-a")?.lastKnownChangedFileCount,
+        ).toBe(0);
+        expect(memento.update).not.toHaveBeenCalled();
+
+        provider.dispose();
+        vi.useRealTimers();
+    });
+
+    it("CommitPanelViewProvider ignores invalid cache entries and does not clear aggregate on active switches", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            createMemento({
+                "intelligit.changedFileCounts.v1": {
+                    schemaVersion: 1,
+                    entries: [
+                        { root: "/repo-a", includeIgnored: false, count: 2, updatedAt: 1_000 },
+                        { root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 1_000 },
+                        {
+                            root: "/expired",
+                            includeIgnored: false,
+                            count: 9,
+                            updatedAt: 1_000 - 31 * 24 * 60 * 60 * 1_000,
+                        },
+                        { root: "/negative", includeIgnored: false, count: -1, updatedAt: 1_000 },
+                        {
+                            root: "/fractional",
+                            includeIgnored: false,
+                            count: 1.5,
+                            updatedAt: 1_000,
+                        },
+                    ],
+                },
+            }) as unknown as object,
+        );
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+                { root: "/expired", label: "Expired" },
+                { root: "/negative", label: "Negative" },
+                { root: "/fractional", label: "Fractional" },
+            ],
+            "/repo-a",
+        );
+        expect(provider.getLastKnownFileCount()).toBe(5);
+
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as unknown as {
+            fsPath: string;
+            path: string;
+        });
+        expect(counts).not.toContain(0);
+        expect(provider.getLastKnownFileCount()).toBe(5);
+
+        provider.setRepositories([{ root: "/repo-a", label: "Repo A" }], "/repo-a");
+        expect(provider.getLastKnownFileCount()).toBe(2);
+
+        disposable.dispose();
+        provider.dispose();
+
+        const wrongSchemaProvider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            createMemento({
+                "intelligit.changedFileCounts.v1": {
+                    schemaVersion: 2,
+                    entries: [
+                        { root: "/repo-a", includeIgnored: false, count: 7, updatedAt: 1_000 },
+                    ],
+                },
+            }) as unknown as object,
+        );
+        wrongSchemaProvider.setRepositories([{ root: "/repo-a", label: "Repo A" }], "/repo-a");
+        expect(wrongSchemaProvider.getLastKnownFileCount()).toBe(0);
+        wrongSchemaProvider.dispose();
+        vi.useRealTimers();
+    });
+
     it("CommitPanelViewProvider scans initial collapsed repository counts without full row refresh", async () => {
         const { provider } = await setupCommitPanelProvider();
         gitStatusByRoot.set("/repo-b", [

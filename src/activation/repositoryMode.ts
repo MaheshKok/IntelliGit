@@ -242,10 +242,8 @@ export async function activateRepositoryMode(
                   }
                 : undefined;
     };
-    /** Clears stale badge state before the first panel count event arrives. */
-    const resetFileCountBadge = (): void => updateFileCountBadge(0);
-    resetFileCountBadge();
     const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
+    updateFileCountBadge(commitPanel.getLastKnownFileCount());
 
     /**
      * Creates the refresh coordinator for the currently active repository root.
@@ -407,7 +405,7 @@ export async function activateRepositoryMode(
      * Switches all repository-scoped services and providers to a newly selected root.
      *
      * Updates the shared executor, provider labels/root URIs, merge-conflict tree,
-     * badge state, persisted workspace selection, and refresh service watchers
+     * persisted workspace selection, and refresh service watchers
      * before loading fresh data for the selected repository.
      */
     const setActiveRepository = async (
@@ -434,7 +432,6 @@ export async function activateRepositoryMode(
         commitPanel.setRepositoryLabel(repository.label);
         undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);
         mergeConflicts.setWorkspaceRoot(repoRootUri);
-        resetFileCountBadge();
         refreshService.dispose();
         refreshService = createRefreshService(repoRoot);
         refreshServiceWatchersRegistered = false;
