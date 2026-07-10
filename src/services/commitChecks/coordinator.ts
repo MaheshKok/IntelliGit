@@ -6,7 +6,7 @@ import type { GitOps } from "../../git/operations";
 import type { CommitChecksSnapshot } from "../../types";
 import { getErrorMessage } from "../../utils/errors";
 import { summaryForState, unavailableSnapshot } from "./normalize";
-import { CommitChecksService } from "./service";
+import { CommitChecksService, type CommitChecksFetchOptions } from "./service";
 import type { CommitChecksProvider, HostMap, ProviderId, ProviderRepoRef } from "./types";
 
 interface ProviderMatch {
@@ -15,9 +15,10 @@ interface ProviderMatch {
 }
 
 /**
- * Default cache TTL for non-terminal snapshots, aligned with the webview poll interval
+ * Default cache TTL for pending snapshots, aligned with the webview poll interval
  * (`PENDING_CHECK_REFRESH_MS`, 15s). Sub-poll bursts (scroll/re-render) serve cache while
- * the 15s poll still re-fetches; tunable host-side. Tests pass an explicit `ttlMs`.
+ * the 15s poll still re-fetches; tunable host-side. `none` and `unavailable` use separate
+ * `CommitChecksService` defaults. Tests pass an explicit `ttlMs`.
  */
 export const DEFAULT_COMMIT_CHECKS_TTL_MS = 15_000;
 
@@ -28,8 +29,8 @@ export interface CommitChecksCoordinatorOptions {
     /** Per-provider toggle; a provider id mapped to false yields no badge for its remote. */
     providerEnabled?: Partial<Record<ProviderId, boolean>>;
     /**
-     * Milliseconds a non-terminal snapshot (pending/none/unavailable) is served from cache
-     * before a re-fetch. Ignored when `service` is supplied because the shared service owns TTL.
+     * Milliseconds a pending snapshot is served from L1 before a re-fetch. `none` and
+     * `unavailable` use separate service options/defaults. Ignored when `service` is supplied.
      */
     ttlMs?: number;
     /** Injectable clock for tests; defaults to Date.now. */
@@ -84,14 +85,22 @@ export class CommitChecksCoordinator {
         this.providerMatch = null;
     }
 
-    /** Returns the snapshot for a commit, serving a fresh cache hit or re-fetching. */
-    async getChecks(hash: string): Promise<CommitChecksSnapshot> {
+    /**
+     * Returns the snapshot for a commit, serving a fresh cache hit unless a forced refresh is set.
+     *
+     * @param hash - Full Git commit hash requested by a visible graph row.
+     * @param options - Cache refresh controls, including forced cache-layer bypasses.
+     */
+    async getChecks(
+        hash: string,
+        options: CommitChecksFetchOptions = {},
+    ): Promise<CommitChecksSnapshot> {
         if (!this.enabled) {
             // Feature off: no badge, no remote resolution, no network. The webview also
             // never renders the button, so this is defense in depth.
             return this.noneSnapshot(hash);
         }
-        return this.fetchFresh(hash);
+        return this.fetchFresh(hash, options);
     }
 
     /** Builds the no-badge snapshot used when the feature or matched provider is disabled. */
@@ -99,7 +108,16 @@ export class CommitChecksCoordinator {
         return { hash, state: "none", summary: summaryForState("none"), items: [] };
     }
 
-    private async fetchFresh(hash: string): Promise<CommitChecksSnapshot> {
+    /**
+     * Resolves the provider-scoped key and delegates cache policy to the shared service.
+     *
+     * @param hash - Full Git commit hash requested by a visible graph row.
+     * @param options - Cache-refresh intent forwarded unchanged to the shared service.
+     */
+    private async fetchFresh(
+        hash: string,
+        options: CommitChecksFetchOptions,
+    ): Promise<CommitChecksSnapshot> {
         const providerGeneration = this.providerGeneration;
         let match: ProviderMatch | null;
         try {
@@ -125,13 +143,17 @@ export class CommitChecksCoordinator {
             return this.noneSnapshot(hash);
         }
         const key = `${match.provider.keyFor(match.ref)}@${hash}:${this.settingsFingerprint}`;
-        return this.service.getOrFetch(key, async () => {
-            try {
-                return await match.provider.getChecks(match.ref, hash);
-            } catch (err) {
-                return unavailableSnapshot(hash, getErrorMessage(err));
-            }
-        });
+        return this.service.getOrFetch(
+            key,
+            async () => {
+                try {
+                    return await match.provider.getChecks(match.ref, hash);
+                } catch (err) {
+                    return unavailableSnapshot(hash, getErrorMessage(err));
+                }
+            },
+            options,
+        );
     }
 
     private async resolveProvider(): Promise<ProviderMatch | null> {

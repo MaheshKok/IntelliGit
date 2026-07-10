@@ -939,16 +939,22 @@ export class UndockedViewProvider {
         await this.loadInitial();
     }
 
-    /** Fetches one snapshot and suppresses cache- or viewport-stale results. */
+    /**
+     * Fetches one permitted snapshot and posts it only if cache and viewport generations still match.
+     *
+     * @param hash - Checked commit hash within the selected repository graph.
+     * @param demandGeneration - Viewport demand generation that owns the reply.
+     * @param force - Whether this webview request must bypass fresh cache layers.
+     */
     private async sendCommitChecks(
         hash: string,
         demandGeneration: number,
-        _force: boolean,
+        force: boolean,
     ): Promise<void> {
         const cacheGeneration = this.commitChecksGeneration;
         // Generation guard must run after the provider returns its snapshot.
         // react-doctor-disable-next-line react-doctor/async-defer-await
-        const snapshot = await this.commitChecks.getChecks(hash);
+        const snapshot = await this.commitChecks.getChecks(hash, { force });
         if (cacheGeneration !== this.commitChecksGeneration) {
             this.commitChecks.clearProviderResolution();
             return;

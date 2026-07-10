@@ -164,6 +164,8 @@ describe("CommitChecksCoordinator", () => {
         const coordinator = new CommitChecksCoordinator(
             makeGitOps({ origin: "git@github.com:owner/repo.git" }),
             [provider],
+            {},
+            { ttlMs: 0 },
         );
 
         const first = await coordinator.getChecks("abc1234");
@@ -182,6 +184,8 @@ describe("CommitChecksCoordinator", () => {
         const coordinator = new CommitChecksCoordinator(
             makeGitOps({ origin: "git@github.com:owner/repo.git" }),
             [provider],
+            {},
+            { ttlMs: 0 },
         );
 
         await coordinator.getChecks("abc1234");
@@ -191,7 +195,7 @@ describe("CommitChecksCoordinator", () => {
         expect(second.state).toBe("success");
     });
 
-    it("re-fetches a cached none snapshot (checks not registered yet)", async () => {
+    it("serves a cached none snapshot within the default one-hour TTL", async () => {
         const getChecks = vi
             .fn()
             .mockResolvedValueOnce(snapshot("none"))
@@ -205,8 +209,8 @@ describe("CommitChecksCoordinator", () => {
         await coordinator.getChecks("abc1234");
         const second = await coordinator.getChecks("abc1234");
 
-        expect(getChecks).toHaveBeenCalledTimes(2);
-        expect(second.state).toBe("pending");
+        expect(getChecks).toHaveBeenCalledTimes(1);
+        expect(second.state).toBe("none");
     });
 
     it("clear() drops the cache so the next call re-fetches", async () => {
@@ -596,6 +600,25 @@ describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
         expect(getChecks).toHaveBeenCalledTimes(1);
     });
 
+    it("forwards a forced request through the shared cache service", async () => {
+        const getChecks = vi
+            .fn()
+            .mockResolvedValueOnce(snapshot("success"))
+            .mockResolvedValueOnce(snapshot("failure"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+        );
+
+        await coordinator.getChecks("abc1234");
+        await expect(coordinator.getChecks("abc1234", { force: true })).resolves.toMatchObject({
+            state: "failure",
+        });
+
+        expect(getChecks).toHaveBeenCalledTimes(2);
+    });
+
     it("auto-recovers an unavailable snapshot after the TTL (simulated 429 clears)", async () => {
         let clock = 0;
         const getChecks = vi
@@ -607,7 +630,7 @@ describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
             makeGitOps({ origin: "git@github.com:owner/repo.git" }),
             [provider],
             {},
-            { ttlMs: 10_000, now: () => clock },
+            { service: new CommitChecksService({ unavailableTtlMs: 10_000, now: () => clock }) },
         );
 
         await coordinator.getChecks("abc1234");

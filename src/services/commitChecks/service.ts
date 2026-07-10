@@ -3,7 +3,6 @@
 // are keyed globally so the same repo/SHA is fetched once.
 
 import type { CommitChecksSnapshot } from "../../types";
-import { isPendingCheckState } from "../../types";
 import type { CommitChecksPersistentCache } from "./persistentCache";
 
 /** One cached commit-check snapshot plus freshness bookkeeping. */
@@ -14,21 +13,33 @@ interface CacheEntry {
 
 /** Runtime and persistent cache tuning. */
 export interface CommitChecksServiceOptions {
-    /** TTL for pending/none/unavailable snapshots; terminal snapshots live until evicted. */
+    /** TTL for pending snapshots; preserved for existing callers. */
     ttlMs?: number;
+    /** TTL for no-check snapshots before the provider is consulted again. */
+    noneTtlMs?: number;
+    /** TTL for unavailable snapshots before retrying a recoverable provider failure. */
+    unavailableTtlMs?: number;
     /** Maximum in-memory entries retained across repository switches. */
     maxEntries?: number;
     /** Injectable clock for tests. */
     now?: () => number;
-    /** Optional cross-session terminal snapshot cache. */
+    /** Optional cross-session terminal and no-check snapshot cache. */
     persistentCache?: CommitChecksPersistentCache;
+}
+
+/** Controls whether a commit-check request may use fresh cache snapshots. */
+export interface CommitChecksFetchOptions {
+    /** When true, bypasses fresh L1/L2 snapshots but retains in-flight de-duplication. */
+    force?: boolean;
 }
 
 /** Shared in-memory commit-check cache and in-flight request de-dupe. */
 export class CommitChecksService {
     private readonly cache = new Map<string, CacheEntry>();
     private readonly inflight = new Map<string, Promise<CommitChecksSnapshot>>();
-    private readonly ttlMs: number;
+    private readonly pendingTtlMs: number;
+    private readonly noneTtlMs: number;
+    private readonly unavailableTtlMs: number;
     private readonly maxEntries: number;
     private readonly now: () => number;
     private readonly persistentCache?: CommitChecksPersistentCache;
@@ -41,7 +52,9 @@ export class CommitChecksService {
      * @param options - TTL, capacity, and clock overrides.
      */
     constructor(options: CommitChecksServiceOptions = {}) {
-        this.ttlMs = options.ttlMs ?? 0;
+        this.pendingTtlMs = options.ttlMs ?? 30_000;
+        this.noneTtlMs = options.noneTtlMs ?? 60 * 60 * 1000;
+        this.unavailableTtlMs = options.unavailableTtlMs ?? 15 * 60 * 1000;
         this.maxEntries = Math.max(1, Math.floor(options.maxEntries ?? 1_000));
         this.now = options.now ?? Date.now;
         this.persistentCache = options.persistentCache;
@@ -52,20 +65,22 @@ export class CommitChecksService {
      *
      * @param key - Provider/repo/settings/commit cache key.
      * @param fetchSnapshot - Fetcher invoked only on cache and in-flight miss.
+     * @param options - Cache refresh controls, including forced L1/L2 bypasses.
      * @returns The cached or freshly fetched snapshot.
      */
     async getOrFetch(
         key: string,
         fetchSnapshot: () => Promise<CommitChecksSnapshot>,
+        options: CommitChecksFetchOptions = {},
     ): Promise<CommitChecksSnapshot> {
         const cached = this.cache.get(key);
-        if (cached && this.isFresh(cached)) {
+        if (!options.force && cached && this.isFresh(cached)) {
             this.touch(key, cached);
             return cached.snapshot;
         }
         const inflight = this.inflight.get(key);
         if (inflight) return inflight;
-        if (this.persistentCache) {
+        if (!options.force && this.persistentCache) {
             const persisted = await this.getPersisted(key);
             if (persisted) {
                 this.cache.set(key, { snapshot: persisted, fetchedAt: this.now() });
@@ -108,9 +123,11 @@ export class CommitChecksService {
 
     private isFresh(entry: CacheEntry): boolean {
         const { state } = entry.snapshot;
-        const nonTerminal = isPendingCheckState(state) || state === "unavailable";
-        if (!nonTerminal) return true;
-        return this.now() - entry.fetchedAt < this.ttlMs;
+        const ageMs = this.now() - entry.fetchedAt;
+        if (state === "pending") return ageMs < this.pendingTtlMs;
+        if (state === "none") return ageMs < this.noneTtlMs;
+        if (state === "unavailable") return ageMs < this.unavailableTtlMs;
+        return true;
     }
 
     private touch(key: string, entry: CacheEntry): void {

@@ -14,7 +14,6 @@ import {
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
 import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
-import { DEFAULT_COMMIT_CHECKS_TTL_MS } from "../services/commitChecks/coordinator";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
@@ -124,9 +123,13 @@ export async function activateRepositoryMode(
         );
     }
     const commitChecksService = new CommitChecksService({
-        ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+        ttlMs: 30_000,
+        noneTtlMs: 60 * 60 * 1000,
+        unavailableTtlMs: 15 * 60 * 1000,
         maxEntries: 1_000,
-        persistentCache: new CommitChecksPersistentCache(context.globalState),
+        persistentCache: new CommitChecksPersistentCache(context.globalState, {
+            noneMaxAgeMs: 60 * 60 * 1000,
+        }),
     });
     const githubRequestGate = new GitHubRequestGate(4);
     const gatedGithubFetchJson: FetchJson = (url, headers) =>

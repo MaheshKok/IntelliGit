@@ -1,13 +1,13 @@
-// Persistent terminal commit-check cache. This sits behind the shared runtime
-// service and stores only settled snapshots, bounded by age and LRU size.
+// Persistent commit-check cache. This sits behind the shared runtime service
+// and stores terminal plus no-check snapshots, bounded by age and LRU size.
 
 import type { CommitChecksSnapshot, CommitCheckState } from "../../types";
-import { isPendingCheckState } from "../../types";
 
 const SCHEMA_VERSION = 1;
 const DEFAULT_STORAGE_KEY = "intelligit.commitChecks.cache.v1";
 const DEFAULT_MAX_ENTRIES = 2_000;
 const DEFAULT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_NONE_MAX_AGE_MS = 60 * 60 * 1000;
 
 /** Minimal VS Code Memento shape used by the persistent cache. */
 export interface CommitChecksPersistentState {
@@ -15,14 +15,16 @@ export interface CommitChecksPersistentState {
     update(key: string, value: unknown): Thenable<void> | Promise<void> | void;
 }
 
-/** Persistent cache tuning. Defaults match the Phase 2 plan. */
+/** Persistent cache tuning for settled snapshots that survive extension restarts. */
 export interface CommitChecksPersistentCacheOptions {
     /** Memento key used for the single cache payload. */
     storageKey?: string;
-    /** Maximum terminal snapshots retained across sessions. */
+    /** Maximum persisted snapshots retained across sessions. */
     maxEntries?: number;
     /** Maximum age for persisted terminal snapshots. */
     maxAgeMs?: number;
+    /** Maximum age for a persisted no-check snapshot. */
+    noneMaxAgeMs?: number;
     /** Injectable clock for tests. */
     now?: () => number;
 }
@@ -40,11 +42,12 @@ interface PersistedPayload {
     entries: PersistedCommitChecksEntry[];
 }
 
-/** VS Code globalState-backed cache for terminal commit-check snapshots. */
+/** VS Code globalState-backed cache for terminal and no-check commit-check snapshots. */
 export class CommitChecksPersistentCache {
     private readonly storageKey: string;
     private readonly maxEntries: number;
     private readonly maxAgeMs: number;
+    private readonly noneMaxAgeMs: number;
     private readonly now: () => number;
 
     /**
@@ -60,11 +63,15 @@ export class CommitChecksPersistentCache {
         this.storageKey = options.storageKey ?? DEFAULT_STORAGE_KEY;
         this.maxEntries = Math.max(1, Math.floor(options.maxEntries ?? DEFAULT_MAX_ENTRIES));
         this.maxAgeMs = Math.max(0, Math.floor(options.maxAgeMs ?? DEFAULT_MAX_AGE_MS));
+        this.noneMaxAgeMs = Math.max(
+            0,
+            Math.floor(options.noneMaxAgeMs ?? DEFAULT_NONE_MAX_AGE_MS),
+        );
         this.now = options.now ?? Date.now;
     }
 
     /**
-     * Returns a valid terminal snapshot and bumps its LRU timestamp.
+     * Returns a valid persisted snapshot and bumps its LRU timestamp.
      *
      * @param key - Composite provider/repo/commit/settings key.
      * @returns The persisted snapshot, or undefined on miss/expiry/corruption.
@@ -79,7 +86,7 @@ export class CommitChecksPersistentCache {
     }
 
     /**
-     * Persists a terminal snapshot; non-terminal states are ignored.
+     * Persists an eligible snapshot; pending and unavailable states are ignored.
      *
      * @param key - Composite provider/repo/commit/settings key.
      * @param snapshot - Snapshot returned by a provider.
@@ -130,13 +137,14 @@ export class CommitChecksPersistentCache {
     private isUsable(entry: PersistedCommitChecksEntry): boolean {
         if (entry.schemaVersion !== SCHEMA_VERSION) return false;
         if (!isPersistentCommitCheckState(entry.snapshot.state)) return false;
-        return this.now() - entry.fetchedAt <= this.maxAgeMs;
+        const maxAgeMs = entry.snapshot.state === "none" ? this.noneMaxAgeMs : this.maxAgeMs;
+        return this.now() - entry.fetchedAt <= maxAgeMs;
     }
 }
 
-/** Returns true for states safe to persist across sessions. */
+/** Returns true unless a snapshot is pending or temporarily unavailable. */
 export function isPersistentCommitCheckState(state: CommitCheckState): boolean {
-    return !isPendingCheckState(state) && state !== "unavailable";
+    return state !== "pending" && state !== "unavailable";
 }
 
 function isPayload(value: unknown): value is PersistedPayload {

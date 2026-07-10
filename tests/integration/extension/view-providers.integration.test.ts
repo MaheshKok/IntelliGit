@@ -1820,6 +1820,57 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("UndockedViewProvider forwards forced commit-check refreshes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "pending",
+                summary: "Checks pending",
+                items: [],
+            })
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            });
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+        });
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+            force: true,
+        });
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
+        provider.dispose();
+    });
+
     it("UndockedViewProvider deduplicates visible commit-check hashes", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const provider = new UndockedViewProvider(
@@ -2293,7 +2344,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitGraphViewProvider serves a cached pending snapshot for a sub-poll burst (TTL throttle)", async () => {
+    it("CommitGraphViewProvider serves a cached pending snapshot until a forced refresh", async () => {
         // Production wiring uses a non-zero TTL (DEFAULT_COMMIT_CHECKS_TTL_MS ~15s), so two
         // back-to-back requests for the same hash within that window serve cache rather than
         // re-fetching on every webview re-render. The after-TTL re-fetch is covered by the
@@ -2339,6 +2390,18 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "pending" }),
+        });
+
+        await webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+            force: true,
+        });
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setCommitChecks",
+            snapshot: expect.objectContaining({ state: "success" }),
         });
         provider.dispose();
     });

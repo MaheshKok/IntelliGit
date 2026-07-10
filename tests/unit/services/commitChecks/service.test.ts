@@ -127,22 +127,131 @@ describe("CommitChecksService", () => {
         expect(secondFetch).not.toHaveBeenCalled();
     });
 
-    it("does not persist non-terminal snapshots", async () => {
+    it("persists none snapshots for one hour across service instances, then expires them", async () => {
+        let clock = 0;
         const store = state();
+        const key = "github:repo@abc1234:-";
         const first = new CommitChecksService({
+            now: () => clock,
+            persistentCache: new CommitChecksPersistentCache(store, { now: () => clock }),
+        });
+        const firstFetch = vi.fn(async () => snapshot("none"));
+
+        await first.getOrFetch(key, firstFetch);
+        clock = 60 * 60 * 1000 - 1;
+        const withinHourFetch = vi.fn(async () => snapshot("success"));
+        const withinHour = new CommitChecksService({
+            now: () => clock,
+            persistentCache: new CommitChecksPersistentCache(store, { now: () => clock }),
+        });
+
+        await expect(withinHour.getOrFetch(key, withinHourFetch)).resolves.toMatchObject({
+            state: "none",
+        });
+        expect(withinHourFetch).not.toHaveBeenCalled();
+
+        clock = 60 * 60 * 1000 + 1;
+        const afterHourFetch = vi.fn(async () => snapshot("success"));
+        const afterHour = new CommitChecksService({
+            now: () => clock,
+            persistentCache: new CommitChecksPersistentCache(store, { now: () => clock }),
+        });
+
+        await expect(afterHour.getOrFetch(key, afterHourFetch)).resolves.toMatchObject({
+            state: "success",
+        });
+        expect(afterHourFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not persist pending or unavailable snapshots", async () => {
+        const store = state();
+        for (const nonPersistentState of ["pending", "unavailable"] as const) {
+            const first = new CommitChecksService({
+                persistentCache: new CommitChecksPersistentCache(store),
+            });
+            const second = new CommitChecksService({
+                persistentCache: new CommitChecksPersistentCache(store),
+            });
+            const firstFetch = vi.fn(async () => snapshot(nonPersistentState));
+            const secondFetch = vi.fn(async () => snapshot("success"));
+            const key = `github:repo@abc1234:${nonPersistentState}`;
+
+            await first.getOrFetch(key, firstFetch);
+            const fetched = await second.getOrFetch(key, secondFetch);
+
+            expect(fetched.state).toBe("success");
+            expect(secondFetch).toHaveBeenCalledTimes(1);
+        }
+    });
+
+    it("keeps unavailable snapshots fresh in L1 for the default fifteen minutes", async () => {
+        let clock = 0;
+        const service = new CommitChecksService({ now: () => clock });
+        const fetchSnapshot = vi
+            .fn()
+            .mockResolvedValueOnce(snapshot("unavailable"))
+            .mockResolvedValueOnce(snapshot("success"));
+
+        await service.getOrFetch("github:repo@abc1234:-", fetchSnapshot);
+        clock = 15 * 60 * 1000 - 1;
+        await expect(
+            service.getOrFetch("github:repo@abc1234:-", fetchSnapshot),
+        ).resolves.toMatchObject({ state: "unavailable" });
+        expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+
+        clock = 15 * 60 * 1000 + 1;
+        await expect(
+            service.getOrFetch("github:repo@abc1234:-", fetchSnapshot),
+        ).resolves.toMatchObject({ state: "success" });
+        expect(fetchSnapshot).toHaveBeenCalledTimes(2);
+    });
+
+    it("forces a fetch past fresh L1 and L2 snapshots", async () => {
+        const store = state();
+        const key = "github:repo@abc1234:-";
+        const service = new CommitChecksService({
             persistentCache: new CommitChecksPersistentCache(store),
         });
-        const second = new CommitChecksService({
+        await service.getOrFetch(key, vi.fn(async () => snapshot("success")));
+
+        const l1ForcedFetch = vi.fn(async () => snapshot("failure"));
+        await expect(service.getOrFetch(key, l1ForcedFetch, { force: true })).resolves.toMatchObject({
+            state: "failure",
+        });
+        expect(l1ForcedFetch).toHaveBeenCalledTimes(1);
+
+        const coldService = new CommitChecksService({
             persistentCache: new CommitChecksPersistentCache(store),
         });
-        const firstFetch = vi.fn(async () => snapshot("pending"));
-        const secondFetch = vi.fn(async () => snapshot("success"));
+        const l2ForcedFetch = vi.fn(async () => snapshot("unknown"));
+        await expect(coldService.getOrFetch(key, l2ForcedFetch, { force: true })).resolves.toMatchObject({
+            state: "unknown",
+        });
+        expect(l2ForcedFetch).toHaveBeenCalledTimes(1);
+    });
 
-        await first.getOrFetch("github:repo@abc1234:-", firstFetch);
-        const fetched = await second.getOrFetch("github:repo@abc1234:-", secondFetch);
+    it("shares one in-flight fetch between forced requests", async () => {
+        const service = new CommitChecksService();
+        const key = "github:repo@abc1234:-";
+        await service.getOrFetch(key, vi.fn(async () => snapshot("success")));
+        let resolveFetch!: (value: CommitChecksSnapshot) => void;
+        const forcedFetch = vi.fn(
+            () =>
+                new Promise<CommitChecksSnapshot>((resolve) => {
+                    resolveFetch = resolve;
+                }),
+        );
 
-        expect(fetched.state).toBe("success");
-        expect(secondFetch).toHaveBeenCalledTimes(1);
+        const first = service.getOrFetch(key, forcedFetch, { force: true });
+        const second = service.getOrFetch(key, forcedFetch, { force: true });
+        await vi.waitFor(() => expect(forcedFetch).toHaveBeenCalledTimes(1));
+        resolveFetch(snapshot("failure"));
+
+        await expect(Promise.all([first, second])).resolves.toEqual([
+            expect.objectContaining({ state: "failure" }),
+            expect.objectContaining({ state: "failure" }),
+        ]);
+        expect(forcedFetch).toHaveBeenCalledTimes(1);
     });
 
     it("misses persistent cache when the settings fingerprint changes", async () => {

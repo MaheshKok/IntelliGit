@@ -555,13 +555,19 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage(msg);
     }
 
-    /** Fetches one snapshot and drops it when a newer viewport demand supersedes the request. */
+    /**
+     * Fetches one permitted snapshot and posts it only while this viewport demand remains current.
+     *
+     * @param hash - Checked commit hash within the active graph data.
+     * @param generation - Viewport demand generation that owns the reply.
+     * @param force - Whether this webview request must bypass fresh cache layers.
+     */
     private async sendCommitChecks(
         hash: string,
         generation: number,
-        _force: boolean,
+        force: boolean,
     ): Promise<void> {
-        const snapshot = await this.commitChecks.getChecks(hash);
+        const snapshot = await this.commitChecks.getChecks(hash, { force });
         if (generation !== this.commitCheckDemandSeq) return;
         this.postToWebview({ type: "setCommitChecks", snapshot });
     }

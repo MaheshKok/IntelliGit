@@ -25,12 +25,30 @@ function state(): CommitChecksPersistentState {
 }
 
 describe("CommitChecksPersistentCache", () => {
-    it("stores only terminal states", () => {
+    it("stores every state except pending and unavailable", () => {
         expect(isPersistentCommitCheckState("success")).toBe(true);
         expect(isPersistentCommitCheckState("unknown")).toBe(true);
+        expect(isPersistentCommitCheckState("none")).toBe(true);
         expect(isPersistentCommitCheckState("pending")).toBe(false);
-        expect(isPersistentCommitCheckState("none")).toBe(false);
         expect(isPersistentCommitCheckState("unavailable")).toBe(false);
+    });
+
+    it("expires none snapshots before terminal snapshots", async () => {
+        let clock = 0;
+        const cache = new CommitChecksPersistentCache(state(), {
+            maxAgeMs: 100,
+            noneMaxAgeMs: 10,
+            now: () => clock,
+        });
+
+        await cache.set("github:repo@none:-", snapshot("none"));
+        await cache.set("github:repo@success:-", snapshot("success"));
+        clock = 5;
+        await expect(cache.get("github:repo@none:-")).resolves.toMatchObject({ state: "none" });
+
+        clock = 11;
+        await expect(cache.get("github:repo@none:-")).resolves.toBeUndefined();
+        await expect(cache.get("github:repo@success:-")).resolves.toMatchObject({ state: "success" });
     });
 
     it("ignores expired terminal snapshots", async () => {
