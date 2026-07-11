@@ -134,13 +134,15 @@ export async function activateRepositoryMode(
     const requestGateRegistry = new CommitChecksRequestGateRegistry(
         vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
     );
-    const fetchFor = (providerId: ProviderId): FetchJson => {
-        const fetchJson = createHttpGetJson((response) => {
-            requestGateRegistry.observeResponse(providerId, response);
-        });
-        return (url, headers) =>
-            requestGateRegistry.run(providerId, url, () => fetchJson(url, headers));
-    };
+    const fetchFor =
+        (providerId: ProviderId): FetchJson =>
+        (url, headers) =>
+            requestGateRegistry.run(providerId, url, (generation) => {
+                const fetchJson = createHttpGetJson((response) => {
+                    requestGateRegistry.observeResponse(providerId, response, generation);
+                });
+                return fetchJson(url, headers);
+            });
     const commitChecksProviders: readonly CommitChecksProvider[] = [
         new GitHubProvider(fetchFor("github"), commitCheckSettings.ciCdPattern),
         new GitLabProvider(fetchFor("gitlab"), credentialStore, commitCheckSettings.ciCdPattern),

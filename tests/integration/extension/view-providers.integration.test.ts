@@ -1081,6 +1081,119 @@ describe("view providers integration", () => {
         expect(registry.reset).toHaveBeenCalledTimes(2);
     });
 
+    it("ignores delayed GitLab rate metadata after credential badge refresh", async () => {
+        let graph:
+            | {
+                  clearChecksCache: () => void;
+                  dispose: () => void;
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            const root = "/workspace";
+            const firstHash = "a".repeat(40);
+            const secondHash = "b".repeat(40);
+            let firstResponse:
+                | ((metadata: { url: string; statusCode: number; headers: Record<string, string> }) => void)
+                | undefined;
+            let releaseFirstRequest: (() => void) | undefined;
+            let markFirstRequestStarted: (() => void) | undefined;
+            let requestsStarted = 0;
+            const firstRequestStarted = new Promise<void>((resolve) => {
+                markFirstRequestStarted = resolve;
+            });
+            useRealGitHubCommitChecks.value = true;
+            commitChecksConfiguration.hostMap = { "gitlab-stale.example": "gitlab" };
+            gitRemoteUrlByRoot.set(root, "https://gitlab-stale.example/group/repo.git");
+            gitLogByRoot.set(
+                root,
+                [firstHash, secondHash].map((hash) => ({
+                    hash,
+                    shortHash: hash.slice(0, 7),
+                    message: `commit ${hash}`,
+                    author: "Mahesh",
+                    email: "m@example.com",
+                    date: "2026-07-10T00:00:00Z",
+                    parentHashes: [],
+                    refs: [],
+                })),
+            );
+            createHttpGetJsonSpy.mockImplementation(
+                (
+                    onResponse: (metadata: {
+                        url: string;
+                        statusCode: number;
+                        headers: Record<string, string>;
+                    }) => void,
+                ) =>
+                    async (url: string) => {
+                        requestsStarted += 1;
+                        if (requestsStarted === 1) {
+                            firstResponse = onResponse;
+                            markFirstRequestStarted?.();
+                            await new Promise<void>((resolve) => {
+                                releaseFirstRequest = resolve;
+                            });
+                            return [];
+                        }
+                        onResponse({ url, statusCode: 200, headers: {} });
+                        return [];
+                    },
+            );
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: {
+                        get: vi.fn(async () => "provider-token"),
+                        store: vi.fn(async () => undefined),
+                        delete: vi.fn(async () => undefined),
+                    },
+                } as never,
+                [{ root, label: "workspace" }],
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+
+            const firstRequest = webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [firstHash],
+            });
+            await firstRequestStarted;
+            await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+            expect(requestsStarted).toBe(1);
+
+            firstResponse?.({
+                url: "https://gitlab-stale.example/api/v4/projects/group%2Frepo/repository/commits/statuses",
+                statusCode: 200,
+                headers: {
+                    "ratelimit-limit": "1000",
+                    "ratelimit-remaining": "100",
+                    "ratelimit-reset": String(Math.ceil((Date.now() + 60_000) / 1000)),
+                },
+            });
+            releaseFirstRequest?.();
+            await firstRequest;
+
+            graph!.clearChecksCache();
+            await webview.send({ type: "requestVisibleCommitChecks", hashes: [secondHash] });
+            expect(requestsStarted).toBe(2);
+        } finally {
+            graph?.dispose();
+        }
+    });
+
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         const repoA = "/workspace/app-a";
@@ -3034,8 +3147,6 @@ describe("view providers integration", () => {
                     },
                 } as never,
             );
-            expect(createHttpGetJsonSpy).toHaveBeenCalledTimes(4);
-
             const webview = createWebviewView();
             graph!.resolveWebviewView(webview.view, {}, {});
             await webview.send({ type: "ready" });

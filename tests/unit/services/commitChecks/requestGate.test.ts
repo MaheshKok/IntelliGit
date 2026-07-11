@@ -359,4 +359,47 @@ describe("CommitChecksRequestGateRegistry", () => {
         registry.reset();
         await expect(registry.run("gitlab", cooledUrl, async () => "reset")).resolves.toBe("reset");
     });
+
+    it("ignores old-generation metadata that arrives after reset", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+        const url = "https://gitlab.example.test/api/v4/projects/1/statuses/main";
+        let generation: number | undefined;
+        let releaseOldRequest: (() => void) | undefined;
+        let markOldRequestStarted: (() => void) | undefined;
+        const oldRequestStarted = new Promise<void>((resolve) => {
+            markOldRequestStarted = resolve;
+        });
+        const oldRequest = registry.run("gitlab", url, async (taskGeneration: number) => {
+            generation = taskGeneration;
+            markOldRequestStarted?.();
+            await new Promise<void>((resolve) => {
+                releaseOldRequest = resolve;
+            });
+        });
+
+        await oldRequestStarted;
+        registry.reset();
+        registry.observeResponse(
+            "gitlab",
+            {
+                url,
+                statusCode: 200,
+                headers: {
+                    "ratelimit-limit": "1000",
+                    "ratelimit-remaining": "100",
+                    "ratelimit-reset": String(Math.ceil((Date.now() + 60_000) / 1000)),
+                },
+            },
+            generation,
+        );
+        const postResetTask = vi.fn(async () => "ok");
+
+        try {
+            await expect(registry.run("gitlab", url, postResetTask)).resolves.toBe("ok");
+            expect(postResetTask).toHaveBeenCalledTimes(1);
+        } finally {
+            releaseOldRequest?.();
+            await oldRequest;
+        }
+    });
 });

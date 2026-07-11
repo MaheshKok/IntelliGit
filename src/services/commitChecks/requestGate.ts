@@ -38,11 +38,17 @@ export class CommitChecksRequestGateRegistry {
      *
      * @param providerId - Commit-check provider that owns the request.
      * @param url - Full API URL used to determine the origin-specific bucket.
-     * @param task - HTTP task; never invoked while its bucket is blocked.
+     * @param task - HTTP task; never invoked while its bucket is blocked. It receives the bucket
+     *   generation captured after acquiring capacity, which response observers use to reject stale
+     *   metadata after a reset.
      * @returns The HTTP task result.
      * @throws HttpError with status 429 while the bucket is cooling down.
      */
-    run<T>(providerId: ProviderId, url: string, task: () => Promise<T>): Promise<T> {
+    run<T>(
+        providerId: ProviderId,
+        url: string,
+        task: (generation: number) => Promise<T>,
+    ): Promise<T> {
         return this.gateFor(providerId, url).run(task);
     }
 
@@ -51,9 +57,24 @@ export class CommitChecksRequestGateRegistry {
      *
      * @param providerId - Commit-check provider that received the response.
      * @param metadata - Response facts emitted by the shared HTTP helper.
+     * @param generation - Optional task generation. Tagged production metadata is ignored when a
+     *   reset has advanced the live bucket generation.
      */
-    observeResponse(providerId: ProviderId, metadata: HttpResponseMetadata): void {
-        this.gateFor(providerId, metadata.url).observeResponse(metadata);
+    observeResponse(
+        providerId: ProviderId,
+        metadata: HttpResponseMetadata,
+        generation?: number,
+    ): void {
+        const key = this.keyFor(providerId, metadata.url);
+        const gate = this.gates.get(key);
+        if (gate) {
+            gate.observeResponse(metadata, generation);
+            return;
+        }
+        // Legacy callers do not tag metadata, so preserve their ability to seed a bucket. Tagged
+        // metadata is always from an already-started task and must not recreate a reset bucket.
+        if (generation === undefined)
+            this.gateFor(providerId, metadata.url).observeResponse(metadata);
     }
 
     /**
@@ -70,7 +91,7 @@ export class CommitChecksRequestGateRegistry {
     }
 
     private gateFor(providerId: ProviderId, url: string): ProviderRequestGate {
-        const key = `${providerId}:${new URL(url).origin.toLowerCase()}`;
+        const key = this.keyFor(providerId, url);
         let gate = this.gates.get(key);
         if (!gate) {
             gate = new ProviderRequestGate(
@@ -82,6 +103,10 @@ export class CommitChecksRequestGateRegistry {
             this.gates.set(key, gate);
         }
         return gate;
+    }
+
+    private keyFor(providerId: ProviderId, url: string): string {
+        return `${providerId}:${new URL(url).origin.toLowerCase()}`;
     }
 }
 
@@ -148,6 +173,7 @@ class ProviderRequestGate {
     private cooldownUntil = 0;
     private cooldownError = "";
     private readonly startedAt: number[] = [];
+    private generation = 0;
     private rateLimit = 0;
     private rateRemaining: number | undefined;
     private rateResetAt = 0;
@@ -159,7 +185,7 @@ class ProviderRequestGate {
         private readonly now: () => number,
     ) {}
 
-    async run<T>(task: () => Promise<T>): Promise<T> {
+    async run<T>(task: (generation: number) => Promise<T>): Promise<T> {
         this.pruneStartedAt();
         this.throwIfCoolingDown();
         this.throwIfRequestBudgetExhausted();
@@ -169,7 +195,7 @@ class ProviderRequestGate {
             this.throwIfCoolingDown();
             this.throwIfRequestBudgetExhausted();
             this.startedAt.push(this.now());
-            return await task();
+            return await task(this.generation);
         } catch (err) {
             this.rememberCooldown(err);
             throw err;
@@ -178,7 +204,8 @@ class ProviderRequestGate {
         }
     }
 
-    observeResponse(metadata: HttpResponseMetadata): void {
+    observeResponse(metadata: HttpResponseMetadata, generation?: number): void {
+        if (generation !== undefined && generation !== this.generation) return;
         if (metadata.statusCode === 429) {
             this.activateGenericCooldown(readCooldownUntil(metadata, this.providerId, this.now()));
             return;
@@ -206,6 +233,7 @@ class ProviderRequestGate {
     }
 
     reset(): void {
+        this.generation += 1;
         this.startedAt.length = 0;
         this.rateLimit = 0;
         this.rateRemaining = undefined;
