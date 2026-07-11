@@ -174,7 +174,7 @@ describe("webview ui smoke", () => {
             />,
         );
         expect(leafHtml).toContain("feature");
-        expect(leafHtml).toContain("Checked out in another worktree");
+        expect(leafHtml).not.toContain("Checked out in another worktree");
     });
 
     it("renders commit panel primitives", () => {

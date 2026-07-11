@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.3] - 2026-07-11
+
+### Fixed
+
+- Show the worktree marker only beside the active worktree, remove it from branch rows, and omit the context menu for the active worktree.
+
 ## [0.17.2] - 2026-07-11
 
 ### Fixed

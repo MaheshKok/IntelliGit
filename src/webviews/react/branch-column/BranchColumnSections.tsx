@@ -10,7 +10,6 @@ import type { RemoteGroup, TreeNode } from "./types";
 import { BranchTreeNodeRow } from "./components/BranchTreeNodeRow";
 import { BranchSectionHeader } from "./components/BranchSectionHeader";
 import { RepoIcon, TagRightIcon, WorktreeSmallIcon } from "../shared/components/Icons";
-import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
 import {
     DEFAULT_BRANCH_ICON_YELLOW,
@@ -257,18 +256,23 @@ function WorktreeRow({
             data-worktree-path={worktree.path}
             title={worktree.path}
             onClick={activate}
-            onContextMenu={(event) => onContextMenu(event, worktree)}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                if (!worktree.isCurrent) onContextMenu(event, worktree);
+            }}
             onKeyDown={(event) => {
                 if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
                     event.preventDefault();
-                    onOpenContextMenu(event.currentTarget, worktree);
+                    if (!worktree.isCurrent) onOpenContextMenu(event.currentTarget, worktree);
                 }
             }}
             style={{ ...ROW_STYLE, paddingLeft: TREE_INDENT_STEP }}
         >
-            <WorktreeSmallIcon
-                color={worktree.isCurrent ? DEFAULT_BRANCH_ICON_YELLOW : JETBRAINS_UI.color.branch}
-            />
+            {worktree.isCurrent ? (
+                <WorktreeSmallIcon color={DEFAULT_BRANCH_ICON_YELLOW} />
+            ) : (
+                <span aria-hidden="true" style={{ width: 18, flexShrink: 0 }} />
+            )}
             {/* Pure label highlighter, not a component invocation. */}
             {/* react-doctor-disable-next-line react-doctor/no-render-in-render */}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(label, filterNeedle)}</span>

@@ -130,14 +130,14 @@ describe("BranchColumn integration", () => {
         },
     ];
 
-    function renderBranchColumn(options: { worktrees?: GitWorktree[] } = {}) {
+    function renderBranchColumn(options: { branches?: Branch[]; worktrees?: GitWorktree[] } = {}) {
         const onSelectBranch = vi.fn();
         const onBranchAction = vi.fn();
         const onDeleteBranches = vi.fn();
         const onWorktreeAction = vi.fn();
         const mounted = mount(
             <BranchColumn
-                branches={branches}
+                branches={options.branches ?? branches}
                 worktrees={options.worktrees}
                 selectedBranch={null}
                 onSelectBranch={onSelectBranch}
@@ -398,6 +398,105 @@ describe("BranchColumn integration", () => {
             "Unlock Worktree",
             "Move Worktree...",
         ]);
+
+        unmount(root, container);
+    });
+
+    it("shows the worktree icon only for the active worktree, not branch rows", () => {
+        const worktreeBranches: Branch[] = [
+            {
+                name: "checked-out-here",
+                hash: "abc1234",
+                isRemote: false,
+                isCurrent: true,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: true,
+                ahead: 0,
+                behind: 0,
+            },
+            {
+                name: "checked-out-there",
+                hash: "def5678",
+                isRemote: false,
+                isCurrent: false,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+                ahead: 0,
+                behind: 0,
+            },
+        ];
+        const worktrees: GitWorktree[] = [
+            {
+                path: "/tmp/intelligit-current",
+                head: "abc1234",
+                branch: "checked-out-here",
+                state: "linked",
+                isMain: false,
+                isCurrent: true,
+                isLocked: false,
+                isPrunable: false,
+            },
+            {
+                path: "/tmp/intelligit-other",
+                head: "def5678",
+                branch: "checked-out-there",
+                state: "linked",
+                isMain: false,
+                isCurrent: false,
+                isLocked: false,
+                isPrunable: false,
+            },
+        ];
+        const { root, container } = renderBranchColumn({ branches: worktreeBranches, worktrees });
+
+        for (const name of ["checked-out-here", "checked-out-there"]) {
+            const row = branchRows(container, name).find((candidate) => candidate.textContent === name);
+            expect(row?.querySelector("[aria-label]")).toBeNull();
+        }
+        expect(
+            container.querySelector('[data-worktree-path="/tmp/intelligit-current"] svg'),
+        ).toBeTruthy();
+        expect(
+            container.querySelector('[data-worktree-path="/tmp/intelligit-other"] svg'),
+        ).toBeNull();
+
+        unmount(root, container);
+    });
+
+    it("does not show a context menu for the active worktree", () => {
+        const worktrees: GitWorktree[] = [
+            {
+                path: "/tmp/intelligit-current",
+                head: "abc1234",
+                branch: "main",
+                state: "linked",
+                isMain: false,
+                isCurrent: true,
+                isLocked: false,
+                isPrunable: false,
+            },
+        ];
+        const { root, container } = renderBranchColumn({ worktrees });
+        const row = container.querySelector(
+            '[data-worktree-path="/tmp/intelligit-current"]',
+        ) as HTMLElement;
+
+        act(() => {
+            row.dispatchEvent(
+                new MouseEvent("contextmenu", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 120,
+                    clientY: 40,
+                }),
+            );
+        });
+        expect(contextMenuItems()).toHaveLength(0);
+
+        act(() => {
+            row.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ContextMenu" }));
+        });
+        expect(contextMenuItems()).toHaveLength(0);
 
         unmount(root, container);
     });

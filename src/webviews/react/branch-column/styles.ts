@@ -169,13 +169,6 @@ export const TRACKING_BADGE_STYLE: CSSProperties = {
     flexShrink: 0,
 };
 
-export const WORKTREE_BADGE_STYLE: CSSProperties = {
-    marginLeft: 6,
-    display: "inline-flex",
-    alignItems: "center",
-    flexShrink: 0,
-};
-
 export const TRACKING_PUSH_STYLE: CSSProperties = {
     display: "inline-flex",
     alignItems: "center",

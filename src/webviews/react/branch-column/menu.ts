@@ -92,7 +92,9 @@ export function getBulkBranchMenuItems(): MenuItem[] {
 
 /** Builds the context-menu model for one worktree row using the native tree's capability rules. */
 export function getWorktreeMenuItems(worktree: GitWorktree): WorktreeMenuItem[] {
-    const items: WorktreeMenuItem[] = [{ label: t("branch.menu.openWorktree"), action: "open" }];
+    const items: WorktreeMenuItem[] = [
+        { label: t("branch.menu.openWorktree"), action: "open", disabled: worktree.isCurrent },
+    ];
     const canMutate = !worktree.isMain && !worktree.isCurrent;
     if (canMutate || worktree.isLocked) {
         items.push(worktreeSeparator("sep-worktree-open"));

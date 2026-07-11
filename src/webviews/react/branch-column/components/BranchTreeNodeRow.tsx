@@ -8,13 +8,11 @@ import {
     PushArrowIcon,
     StarIcon,
     TagRightIcon,
-    WorktreeSmallIcon,
 } from "../../shared/components/Icons";
 import { TreeFolderIcon } from "../../shared/components/TreeIcons";
 import { JETBRAINS_UI } from "../../shared/tokens";
 import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { getSettings } from "../../shared/settings";
-import { t } from "../../shared/i18n";
 import {
     BRANCH_TREE_GUIDE_BASE,
     BRANCH_TREE_INDENT_BASE,
@@ -26,7 +24,6 @@ import {
     TRACKING_BADGE_STYLE,
     TRACKING_PULL_STYLE,
     TRACKING_PUSH_STYLE,
-    WORKTREE_BADGE_STYLE,
 } from "../styles";
 import type { TreeNode } from "../types";
 
@@ -158,26 +155,6 @@ function TrackingBadge({ branch }: { branch: Branch }): React.ReactElement | nul
                 </span>
             )}
             {tooltipPos && <span style={tooltipStyle}>{tooltipText}</span>}
-        </span>
-    );
-}
-
-/** Shows worktree occupancy without adding another branch-row action target. */
-function WorktreeBadge({ branch }: { branch: Branch }): React.ReactElement | null {
-    if (!branch.isCheckedOutInWorktree) return null;
-    const label = branch.isCurrentWorktree
-        ? t("branch.worktreeBadge.current")
-        : t("branch.worktreeBadge.other");
-    return (
-        <span aria-label={label} title={label} style={WORKTREE_BADGE_STYLE}>
-            <WorktreeSmallIcon
-                color={
-                    branch.isCurrentWorktree
-                        ? DEFAULT_BRANCH_ICON_YELLOW
-                        : JETBRAINS_UI.color.branch
-                }
-                style={{ marginRight: 0 }}
-            />
         </span>
     );
 }
@@ -331,7 +308,6 @@ export function BranchTreeNodeRow({
             {/* Pure label highlighter, not a component invocation. */}
             {/* react-doctor-disable-next-line react-doctor/no-render-in-render */}
             <span style={NODE_LABEL_STYLE}>{renderHighlightedLabel(node.label, filterNeedle)}</span>
-            {node.branch && <WorktreeBadge branch={node.branch} />}
             {node.branch && <TrackingBadge branch={node.branch} />}
         </button>
     );
