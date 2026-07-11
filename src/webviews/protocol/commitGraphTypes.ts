@@ -164,10 +164,12 @@ export type CommitGraphOutbound =
           filePath: string;
       }
     | {
-          /** Request for GitHub check runs and commit statuses for one commit. */
-          type: "requestCommitChecks";
-          /** Full Git object ID from the rendered commit row. */
-          hash: string;
+          /** Replaces this graph surface's current exact-viewport commit-check demand. */
+          type: "requestVisibleCommitChecks";
+          /** Deduplicated full Git object IDs intersecting the exact viewport. */
+          hashes: string[];
+          /** Bypasses fresh snapshots for a bounded pending/current-HEAD retry. */
+          force?: boolean;
       }
     | {
           /** Request to open a GitHub check/status target URL outside the webview. */
@@ -306,4 +308,16 @@ export type CommitGraphInbound =
           type: "setCommitChecks";
           /** Normalized snapshot keyed by `snapshot.hash`. */
           snapshot: CommitChecksSnapshot;
+      }
+    | {
+          /**
+           * Host-driven visibility signal for the graph surface. Webviews cannot
+           * trust `document.visibilityState` inside a VS Code iframe (it stays
+           * `"visible"` while the view/tab is hidden), so the host forwards real
+           * `WebviewView`/`WebviewPanel` visibility. Withholding demand while
+           * hidden prevents commit-check polling against a hidden surface.
+           */
+          type: "setViewVisibility";
+          /** `true` when the hosting view/panel is currently visible. */
+          visible: boolean;
       };

@@ -20,7 +20,6 @@ import type {
 import type { OutboundMessage as CommitPanelOutbound } from "./commit-panel/types";
 import type { VsCodeApi } from "./shared/vscodeApi";
 import { CommitInfoPane } from "./commit-info/CommitInfoPane";
-import { shouldRequestCommitChecks } from "./commit-list/checksRefresh";
 import { ThemeIconFontFaces } from "./shared/components/ThemeIconFontFaces";
 import { JETBRAINS_UI } from "./shared/tokens";
 import { useCommitGraphMessages } from "./commit-graph/useCommitGraphMessages";
@@ -269,10 +268,13 @@ export function CommitGraphPanel({
         }
     });
     const loadingMore = useRef(false);
-    const currentBranchName = useMemo(
-        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+    const [viewVisible, setViewVisible] = useState(true);
+    const currentBranch = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
     );
+    const currentBranchName = currentBranch?.name ?? null;
+    const currentBranchHeadHash = currentBranch?.hash ?? null;
     const onDividerMouseDown = useColumnDrag(
         branchWidth,
         setBranchWidth,
@@ -288,7 +290,14 @@ export function CommitGraphPanel({
         true,
     );
 
-    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore, selectedHash });
+    useCommitGraphMessages({
+        vscode,
+        dispatch,
+        sendReady,
+        loadingMore,
+        selectedHash,
+        setViewVisible,
+    });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -392,19 +401,12 @@ export function CommitGraphPanel({
         },
         [vscode],
     );
-
     const handleRequestCommitChecks = useCallback(
-        (hash: string) => {
-            const current = commitChecks.get(hash);
-            if (!shouldRequestCommitChecks(current)) return;
-            // Only show the spinner on the first fetch. A background refresh of an
-            // already-displayed snapshot keeps the current badge so it does not flicker.
-            if (current === undefined) {
-                dispatch({ type: "markCommitChecksLoading", hash });
-            }
-            vscode.postMessage({ type: "requestCommitChecks", hash });
+        (hashes: string[], force = false) => {
+            for (const hash of hashes) dispatch({ type: "markCommitChecksLoading", hash });
+            vscode.postMessage({ type: "requestVisibleCommitChecks", hashes, force });
         },
-        [commitChecks, vscode],
+        [vscode],
     );
 
     const handleOpenCommitCheckUrl = useCallback(
@@ -472,6 +474,7 @@ export function CommitGraphPanel({
                             unpushedHashes={unpushedHashes}
                             selectedBranch={selectedBranch}
                             currentBranchName={currentBranchName}
+                            currentBranchHeadHash={currentBranchHeadHash}
                             onSelectCommit={handleSelectCommit}
                             onFilterText={handleFilterText}
                             onLoadMore={handleLoadMore}
@@ -486,6 +489,7 @@ export function CommitGraphPanel({
                             onSignInForCommitChecks={
                                 commitChecksEnabled ? handleSignInForCommitChecks : undefined
                             }
+                            isViewVisible={viewVisible}
                         />
                     </div>
                     <button

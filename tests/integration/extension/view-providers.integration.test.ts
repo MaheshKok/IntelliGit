@@ -95,10 +95,17 @@ const executeCommand = vi.fn(async () => undefined);
 const openTextDocument = vi.fn(async (arg) => arg);
 const postMessageSpy = vi.fn();
 const fileSystemWatchers: FakeFileSystemWatcher[] = [];
+const createdWebviewPanels: Array<{
+    panel: Record<string, unknown>;
+    send: (message: unknown) => Promise<void>;
+    setViewState: (visible: boolean) => void;
+    dispose: () => void;
+}> = [];
 const registeredCommands = new Map<string, CommandHandler>();
 const activeTextEditorListeners: Array<(editor?: { document: { uri: unknown } }) => void> = [];
 const workspaceFolderListeners: Array<() => Promise<void> | void> = [];
 const workspaceFolderDisposables: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
+const authSessionListeners: Array<(event: { provider: { id: string } }) => void> = [];
 let activeTextEditor: { document: { uri: unknown } } | undefined;
 const withProgress = vi.fn(
     async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) =>
@@ -174,6 +181,7 @@ const vscodeMock = {
         t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
+    ViewColumn: { One: 1 },
     Disposable: class {
         constructor(private readonly disposeCallback: () => void) {}
         dispose(): void {
@@ -225,6 +233,29 @@ const vscodeMock = {
             return activeTextEditor;
         },
         registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+        createWebviewPanel: vi.fn(() => {
+            const webview = createWebviewView();
+            let viewStateHandler: (() => void) | undefined;
+            const panel = {
+                ...webview.view,
+                reveal: vi.fn(),
+                onDidChangeViewState: vi.fn((cb: () => void) => {
+                    viewStateHandler = cb;
+                    return { dispose: vi.fn() };
+                }),
+                dispose: vi.fn(() => webview.dispose()),
+            };
+            createdWebviewPanels.push({
+                panel,
+                send: webview.send,
+                setViewState: (visible: boolean) => {
+                    panel.visible = visible;
+                    viewStateHandler?.();
+                },
+                dispose: panel.dispose,
+            });
+            return panel;
+        }),
         createTreeView: vi.fn(() => ({
             dispose: vi.fn(),
             badge: undefined,
@@ -279,7 +310,11 @@ const vscodeMock = {
         }),
     },
     authentication: {
-        onDidChangeSessions: vi.fn(() => ({ dispose: vi.fn() })),
+        getSession: githubSessionGet,
+        onDidChangeSessions: vi.fn((listener: (event: { provider: { id: string } }) => void) => {
+            authSessionListeners.push(listener);
+            return { dispose: vi.fn() };
+        }),
     },
 };
 
@@ -287,14 +322,30 @@ const deleteFileWithFallback = vi.fn(async () => true);
 // Spy on the GitHub provider's network boundary so the real CommitChecksCoordinator
 // runs inside the view provider (exercising its cache/re-fetch logic end-to-end).
 const providerGetChecks = vi.hoisted(() => vi.fn());
+const useRealGitHubCommitChecks = vi.hoisted(() => ({ value: false }));
+const githubProviderCalls = vi.hoisted(() => [] as string[]);
+const githubProviderRoots = vi.hoisted(() => [] as string[]);
+const githubProviderKeys = vi.hoisted(() => [] as string[]);
+const githubSessionGet = vi.hoisted(() => vi.fn());
 // Network boundary for the real GitLabProvider. Mocked so self-hosted-routing tests
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
+const createHttpGetJsonSpy = vi.hoisted(() => vi.fn(() => httpGetJsonSpy));
+const githubRequestGateInstances = vi.hoisted(
+    () =>
+        [] as Array<{
+            observeResponse: ReturnType<typeof vi.fn>;
+            reset: ReturnType<typeof vi.fn>;
+            run: ReturnType<typeof vi.fn>;
+        }>,
+);
 const runPublishBranchFlowSpy = vi.hoisted(() => vi.fn(async () => undefined));
 const gitExecutorSetRoot = vi.hoisted(() => vi.fn());
 const activeGitRoot = vi.hoisted(() => ({ value: "" }));
 const gitStatusByRoot = vi.hoisted(() => new Map<string, unknown[]>());
+const gitLogByRoot = vi.hoisted(() => new Map<string, unknown[]>());
+const gitRemoteUrlByRoot = vi.hoisted(() => new Map<string, string>());
 const discoverGitRepositoriesSpy = vi.hoisted(() => vi.fn(async () => []));
 const deferBranchRefreshes = vi.hoisted(() => ({ active: false }));
 const branchRefreshControls = vi.hoisted(
@@ -365,9 +416,12 @@ vi.mock("../../../src/git/operations", () => ({
                 branchRefreshControls.push({ root, resolve });
             });
         });
-        getLog = vi.fn(async () => []);
+        getLog = vi.fn(async () => gitLogByRoot.get(this.currentRoot()) ?? []);
         getRemotes = vi.fn(async () => ["origin"]);
-        getRemoteUrl = vi.fn(async () => "https://github.com/owner/repo.git");
+        getRemoteUrl = vi.fn(
+            async () =>
+                gitRemoteUrlByRoot.get(this.currentRoot()) ?? "https://github.com/owner/repo.git",
+        );
         getUnpushedCommitHashes = vi.fn(async () => []);
         hasUncommittedChanges = vi.fn(async () => false);
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
@@ -431,26 +485,80 @@ vi.mock("../../../src/utils/fileOps", async () => {
         deleteFileWithFallback,
     };
 });
-vi.mock("../../../src/services/commitChecks/githubProvider", () => ({
-    GitHubProvider: class {
-        // URL-aware so a self-hosted (non-github.com) remote falls through to the real
-        // GitLabProvider in the coordinator. github.com remotes still match first, so the
-        // existing github commit-check tests are unaffected.
-        match(remoteUrl: string): { host: string; owner: string; repo: string } | null {
-            return remoteUrl.includes("github.com")
-                ? { host: "github.com", owner: "owner", repo: "repo" }
-                : null;
-        }
-        getChecks(_ref: unknown, hash: string): unknown {
-            return providerGetChecks(hash);
-        }
-    },
-}));
+vi.mock("../../../src/services/commitChecks/githubProvider", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../../src/services/commitChecks/githubProvider")
+    >("../../../src/services/commitChecks/githubProvider");
+    return {
+        ...actual,
+        GitHubProvider: class {
+            readonly id = "github";
+            private readonly real: InstanceType<typeof actual.GitHubProvider>;
+
+            constructor(...args: ConstructorParameters<typeof actual.GitHubProvider>) {
+                this.real = new actual.GitHubProvider(...args);
+            }
+
+            match(
+                remoteUrl: string,
+                hostMap: Record<string, string>,
+            ): { host: string; owner: string; repo: string } | null {
+                if (useRealGitHubCommitChecks.value) return this.real.match(remoteUrl, hostMap);
+                return remoteUrl.includes("github.com")
+                    ? { host: "github.com", owner: "owner", repo: "repo" }
+                    : null;
+            }
+            keyFor(ref: { host: string; owner: string; repo: string }): string {
+                if (useRealGitHubCommitChecks.value) return this.real.keyFor(ref);
+                return `github:${ref.host}:${ref.owner}/${ref.repo}`;
+            }
+            getChecks(
+                ...args: Parameters<typeof actual.GitHubProvider.prototype.getChecks>
+            ): unknown {
+                if (useRealGitHubCommitChecks.value) {
+                    githubProviderCalls.push(args[1]);
+                    githubProviderRoots.push(activeGitRoot.value);
+                    githubProviderKeys.push(this.real.keyFor(args[0]));
+                    return this.real.getChecks(...args);
+                }
+                return providerGetChecks(args[1]);
+            }
+        },
+    };
+});
 // Mock the GitLabProvider's network boundary (the view providers inject this exact
 // module-level function). Self-hosted-routing tests set a per-test resolved value.
 vi.mock("../../../src/services/commitChecks/http", () => ({
+    createHttpGetJson: createHttpGetJsonSpy,
     httpGetJson: httpGetJsonSpy,
 }));
+vi.mock("../../../src/services/commitChecks/requestGate", async () => {
+    const actual = await vi.importActual<
+        typeof import("../../../src/services/commitChecks/requestGate")
+    >("../../../src/services/commitChecks/requestGate");
+    type ActualGate = InstanceType<typeof actual.GitHubRequestGate>;
+    return {
+        ...actual,
+        GitHubRequestGate: class {
+            private readonly realGate: ActualGate | undefined;
+            readonly observeResponse = vi.fn(
+                (metadata: Parameters<ActualGate["observeResponse"]>[0]) =>
+                    this.realGate?.observeResponse(metadata),
+            );
+            readonly reset = vi.fn(() => this.realGate?.reset());
+            readonly run = vi.fn((task: () => Promise<unknown>) =>
+                this.realGate ? this.realGate.run(task) : task(),
+            );
+
+            constructor(limit: number) {
+                this.realGate = useRealGitHubCommitChecks.value
+                    ? new actual.GitHubRequestGate(limit)
+                    : undefined;
+                githubRequestGateInstances.push(this);
+            }
+        },
+    };
+});
 vi.mock("../../../src/services/publishService", () => ({
     runPublishBranchFlow: runPublishBranchFlowSpy,
 }));
@@ -722,14 +830,24 @@ describe("view providers integration", () => {
         activeTextEditorListeners.length = 0;
         workspaceFolderListeners.length = 0;
         workspaceFolderDisposables.length = 0;
+        authSessionListeners.length = 0;
+        githubRequestGateInstances.length = 0;
+        githubProviderCalls.length = 0;
+        githubProviderRoots.length = 0;
+        githubProviderKeys.length = 0;
+        useRealGitHubCommitChecks.value = false;
+        githubSessionGet.mockReset();
         activeTextEditor = undefined;
         activeGitRoot.value = "";
         gitStatusByRoot.clear();
+        gitLogByRoot.clear();
+        gitRemoteUrlByRoot.clear();
         discoverGitRepositoriesSpy.mockResolvedValue([]);
         deferBranchRefreshes.active = false;
         branchRefreshControls.length = 0;
         refreshServiceInstances.length = 0;
         fileSystemWatchers.length = 0;
+        createdWebviewPanels.length = 0;
         workspaceState.workspaceFolders = [{ uri: { fsPath: "/repo", path: "/repo" } }];
         showWarningMessage.mockResolvedValue(undefined);
         providerGetChecks.mockImplementation(async (hash: string) => ({
@@ -872,6 +990,32 @@ describe("view providers integration", () => {
             "intelligit.hasMultipleRepositories",
             false,
         );
+    });
+
+    it("resets only the GitHub request gate when GitHub authentication changes", async () => {
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        await activateRepositoryMode(
+            {
+                extensionUri: vscodeMock.Uri.file("/ext"),
+                subscriptions: [],
+                workspaceState: createMemento(),
+                secrets: {},
+            } as never,
+            [{ root: "/workspace", label: "workspace" }],
+        );
+
+        const gate = githubRequestGateInstances[0];
+        expect(gate).toBeDefined();
+        await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
+        expect(gate.reset).not.toHaveBeenCalled();
+
+        authSessionListeners[0]({ provider: { id: "gitlab" } });
+        await flushMicrotasks();
+        expect(gate.reset).not.toHaveBeenCalled();
+
+        authSessionListeners[0]({ provider: { id: "github" } });
+        await flushMicrotasks();
+        expect(gate.reset).toHaveBeenCalledTimes(1);
     });
 
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
@@ -1725,12 +1869,8 @@ describe("view providers integration", () => {
         resolveRepoB({ branches: makeBranchesForRoot("/repo-b"), worktrees: [] });
         await repoBSwitch;
 
-        expect(callRoots).toEqual(
-            expect.arrayContaining(["log:/repo-a", "status:/repo-a"]),
-        );
-        expect(callRoots).not.toEqual(
-            expect.arrayContaining(["log:/repo-b", "status:/repo-b"]),
-        );
+        expect(callRoots).toEqual(expect.arrayContaining(["log:/repo-a", "status:/repo-a"]));
+        expect(callRoots).not.toEqual(expect.arrayContaining(["log:/repo-b", "status:/repo-b"]));
         expect(workspaceStore.get("intelligit.undockedSelectedRepositoryRoot")).toBe("/repo-a");
         provider.dispose();
     });
@@ -1756,12 +1896,18 @@ describe("view providers integration", () => {
             dispose: vi.fn(),
         };
         let resolveFirst!: (value: unknown) => void;
+        let markFirstFetchStarted!: () => void;
+        const firstFetchStarted = new Promise<void>((resolve) => {
+            markFirstFetchStarted = resolve;
+        });
         providerGetChecks.mockReset();
         providerGetChecks
-            .mockReturnValueOnce(
-                new Promise((resolve) => {
-                    resolveFirst = resolve;
-                }),
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        markFirstFetchStarted();
+                        resolveFirst = resolve;
+                    }),
             )
             .mockResolvedValueOnce({
                 hash: "abc1234",
@@ -1772,9 +1918,10 @@ describe("view providers integration", () => {
         postMessageSpy.mockClear();
 
         const staleRequest = testProvider.handleMessage.call(provider, {
-            type: "requestCommitChecks",
-            hash: "abc1234",
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
         });
+        await firstFetchStarted;
         provider.clearChecksCache();
         resolveFirst({
             hash: "abc1234",
@@ -1787,11 +1934,395 @@ describe("view providers integration", () => {
         expect(lastCommitChecksSnapshot()).toBeUndefined();
 
         await testProvider.handleMessage.call(provider, {
-            type: "requestCommitChecks",
-            hash: "abc1234",
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
         });
         expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
         expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider forwards forced commit-check refreshes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "pending",
+                summary: "Checks pending",
+                items: [],
+            })
+            .mockResolvedValueOnce({
+                hash: "abc1234",
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            });
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+        });
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+            force: true,
+        });
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "success" }));
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider deduplicates visible commit-check hashes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(async (hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234", "abc1234", "def5678"],
+        });
+
+        const snapshots = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "setCommitChecks",
+            )
+            .map((message) => message.snapshot.hash);
+        expect(snapshots).toEqual(["abc1234", "def5678"]);
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider replaces stale visible commit-check demand", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const firstDemand = testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222", "ccc3333"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: [],
+        });
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider invalidates visible demand when the panel disposes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[0],
+            makeGitOpsMock() as unknown as ConstructorParameters<typeof UndockedViewProvider>[1],
+            { fsPath: "/repo", path: "/repo" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[2],
+            makeCredentialStore() as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[3],
+            createMemento() as unknown as ConstructorParameters<typeof UndockedViewProvider>[4],
+        );
+        provider.open();
+        const panel = createdWebviewPanels.at(-1);
+        expect(panel).toBeDefined();
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const demand = panel!.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        panel!.dispose();
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await demand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("bbb2222");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider invalidates visible demand when a filter replaces hash scope", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        const loadedCommits = [
+            {
+                hash: "aaa1111",
+                shortHash: "aaa1111",
+                message: "first visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+            {
+                hash: "bbb2222",
+                shortHash: "bbb2222",
+                message: "second visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-18T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+        ];
+        let resolveFilteredLog!: (commits: typeof loadedCommits) => void;
+        gitOps.getLog.mockResolvedValueOnce(loadedCommits).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFilteredLog = resolve;
+                }),
+        );
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        await testProvider.handleMessage.call(provider, { type: "ready" });
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = resolve;
+                    }),
+            )
+            .mockImplementation(async (hash: string) => ({
+                hash,
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            }));
+        postMessageSpy.mockClear();
+
+        const firstDemand = testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        const filterChange = testProvider.handleMessage.call(provider, {
+            type: "filterText",
+            text: "second",
+        });
+        await vi.waitFor(() => expect(gitOps.getLog).toHaveBeenCalledTimes(2));
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+        resolveFilteredLog([loadedCommits[1]]);
+        await filterChange;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider rejects more than 200 visible commit-check hashes", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+
+        await expect(
+            testProvider.handleMessage.call(provider, {
+                type: "requestVisibleCommitChecks",
+                hashes: Array.from({ length: 201 }, (_, index) => index.toString(16)),
+            }),
+        ).rejects.toThrow("Too many visible commit-check hashes.");
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider skips GitHub checks for loaded unpushed commits", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getUnpushedCommitHashes.mockResolvedValue(["abc1234"]);
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = {
+            webview: { postMessage: postMessageSpy },
+            dispose: vi.fn(),
+        };
+        providerGetChecks.mockReset();
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, { type: "ready" });
+        postMessageSpy.mockClear();
+        await testProvider.handleMessage.call(provider, {
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+        });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "none" }));
         provider.dispose();
     });
 
@@ -1935,7 +2466,71 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitGraphViewProvider serves a cached pending snapshot for a sub-poll burst (TTL throttle)", async () => {
+    it("CommitGraphViewProvider sends initial and changed host visibility to the webview", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        postMessageSpy.mockClear();
+        await webview.send({ type: "ready" });
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        postMessageSpy.mockClear();
+        webview.setVisible(false);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: false });
+
+        postMessageSpy.mockClear();
+        webview.setVisible(true);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider sends initial and changed panel visibility to the webview", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[0],
+            makeGitOpsMock() as unknown as ConstructorParameters<typeof UndockedViewProvider>[1],
+            { fsPath: "/repo", path: "/repo" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[2],
+            makeCredentialStore() as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[3],
+            createMemento() as unknown as ConstructorParameters<typeof UndockedViewProvider>[4],
+        );
+        provider.open();
+        const panel = createdWebviewPanels.at(-1);
+        expect(panel).toBeDefined();
+
+        postMessageSpy.mockClear();
+        await panel!.send({ type: "ready" });
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        postMessageSpy.mockClear();
+        panel!.setViewState(false);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: false });
+
+        postMessageSpy.mockClear();
+        panel!.setViewState(true);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider serves a cached pending snapshot until a forced refresh", async () => {
         // Production wiring uses a non-zero TTL (DEFAULT_COMMIT_CHECKS_TTL_MS ~15s), so two
         // back-to-back requests for the same hash within that window serve cache rather than
         // re-fetching on every webview re-render. The after-TTL re-fetch is covered by the
@@ -1974,13 +2569,25 @@ describe("view providers integration", () => {
                 items: [],
             });
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         expect(providerGetChecks).toHaveBeenCalledTimes(1);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "pending" }),
+        });
+
+        await webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234"],
+            force: true,
+        });
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        expect(postMessageSpy).toHaveBeenLastCalledWith({
+            type: "setCommitChecks",
+            snapshot: expect.objectContaining({ state: "success" }),
         });
         provider.dispose();
     });
@@ -2017,14 +2624,737 @@ describe("view providers integration", () => {
                 items: [],
             });
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         expect(providerGetChecks).toHaveBeenCalledTimes(1);
         expect(postMessageSpy).toHaveBeenLastCalledWith({
             type: "setCommitChecks",
             snapshot: expect.objectContaining({ state: "none" }),
         });
+        provider.dispose();
+    });
+
+    it("composes verified idle retry protocol with real GitHub provider traffic", async () => {
+        let graph:
+            | {
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+                  dispose: () => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            const repositories = Array.from({ length: 30 }, (_, index) => ({
+                root: `/workspace/repository-${index}`,
+                label: `repository-${index}`,
+            }));
+            const activeHashes = Array.from({ length: 12 }, (_, index) =>
+                index.toString(16).padStart(40, "0"),
+            );
+            useRealGitHubCommitChecks.value = true;
+            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
+            createHttpGetJsonSpy.mockImplementation(
+                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                    async (url: string, headers: Record<string, string>) => {
+                        onResponse({
+                            headers: {
+                                "x-ratelimit-limit": "5000",
+                                "x-ratelimit-remaining": "4999",
+                            },
+                        });
+                        return httpGetJsonSpy(url, headers);
+                    },
+            );
+            httpGetJsonSpy.mockImplementation(async (url: string) =>
+                url.includes("/check-runs") ? { check_runs: [] } : [],
+            );
+            for (const [index, repository] of repositories.entries()) {
+                const hashes =
+                    index === 0 ? activeHashes : [(index + 128).toString(16).padStart(40, "0")];
+                gitRemoteUrlByRoot.set(
+                    repository.root,
+                    `https://github.com/owner/repository-${index}.git`,
+                );
+                gitLogByRoot.set(
+                    repository.root,
+                    hashes.map((hash) => ({
+                        hash,
+                        shortHash: hash.slice(0, 7),
+                        message: `commit ${hash}`,
+                        author: "Mahesh",
+                        email: "m@example.com",
+                        date: "2026-07-10T00:00:00Z",
+                        parentHashes: [],
+                        refs: [],
+                    })),
+                );
+            }
+            providerGetChecks.mockReset();
+            providerGetChecks.mockImplementation(async (hash: string) => ({
+                hash,
+                state: "none",
+                summary: "No checks found",
+                items: [],
+            }));
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: makeSecretStorage(),
+                } as never,
+                repositories,
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+            // Replay the exact protocol emitted by the paired CommitList timer test. Its
+            // initial one-row demand is followed by the stable exact viewport, then its
+            // automatic +30s/+60s forced head retries. None is a cache hit in the second
+            // message, so host output has 15 snapshots while provider work remains 14.
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [activeHashes[0]],
+                force: false,
+            });
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: activeHashes,
+                force: false,
+            });
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [activeHashes[0]],
+                force: true,
+            });
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: [activeHashes[0]],
+                force: true,
+            });
+
+            expect(githubProviderCalls).toEqual([
+                ...activeHashes,
+                activeHashes[0],
+                activeHashes[0],
+            ]);
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(28);
+            expect(githubProviderKeys).toEqual(
+                Array(14).fill("github:github.com:owner/repository-0"),
+            );
+            for (const repository of repositories.slice(1)) {
+                expect(gitLogByRoot.get(repository.root)).toHaveLength(1);
+                expect(githubProviderKeys).not.toContain(
+                    `github:github.com:owner/${repository.label}`,
+                );
+            }
+            const snapshots = postMessageSpy.mock.calls
+                .map(([message]) => message)
+                .filter(
+                    (
+                        message,
+                    ): message is { type: "setCommitChecks"; snapshot: { state: string } } =>
+                        typeof message === "object" &&
+                        message !== null &&
+                        "type" in message &&
+                        message.type === "setCommitChecks",
+                )
+                .map((message) => message.snapshot);
+            expect(snapshots).toHaveLength(15);
+            expect(snapshots.every((snapshot) => snapshot.state === "none")).toBe(true);
+        } finally {
+            graph?.dispose();
+        }
+    });
+
+    it("composes verified pending retry protocol with bounded real GitHub traffic", async () => {
+        let graph:
+            | {
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+                  dispose: () => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            const activeHashes = Array.from({ length: 12 }, (_, index) =>
+                (index + 16).toString(16).padStart(40, "0"),
+            );
+            const repositories = [{ root: "/workspace/active", label: "active" }];
+            useRealGitHubCommitChecks.value = true;
+            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
+            createHttpGetJsonSpy.mockImplementation(
+                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                    async (url: string, headers: Record<string, string>) => {
+                        const response = await httpGetJsonSpy(url, headers);
+                        onResponse({
+                            headers: {
+                                "x-ratelimit-limit": "5000",
+                                "x-ratelimit-remaining": "4999",
+                            },
+                        });
+                        return response;
+                    },
+            );
+            httpGetJsonSpy.mockImplementation(async (url: string) =>
+                url.includes("/check-runs")
+                    ? { check_runs: [{ name: "CI", status: "queued" }] }
+                    : [],
+            );
+            gitLogByRoot.set(
+                repositories[0].root,
+                activeHashes.map((hash) => ({
+                    hash,
+                    shortHash: hash.slice(0, 7),
+                    message: `commit ${hash}`,
+                    author: "Mahesh",
+                    email: "m@example.com",
+                    date: "2026-07-10T00:00:00Z",
+                    parentHashes: [],
+                    refs: [],
+                })),
+            );
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: makeSecretStorage(),
+                } as never,
+                repositories,
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+            await webview.send({ type: "requestVisibleCommitChecks", hashes: activeHashes });
+            // The paired CommitList test proves automatic force demand at +30/+60/+120 seconds.
+            // Feed only those verified emissions into the extension host; no user refresh occurs.
+            for (let retry = 0; retry < 3; retry += 1) {
+                await webview.send({
+                    type: "requestVisibleCommitChecks",
+                    hashes: activeHashes,
+                    force: true,
+                });
+            }
+
+            const fetchesByHash = new Map<string, number>();
+            for (const hash of githubProviderCalls) {
+                fetchesByHash.set(hash, (fetchesByHash.get(hash) ?? 0) + 1);
+            }
+            expect(fetchesByHash.size).toBe(activeHashes.length);
+            expect([...fetchesByHash.values()].every((count) => count <= 4)).toBe(true);
+            expect(githubProviderCalls.length).toBeLessThanOrEqual(48);
+            expect(httpGetJsonSpy.mock.calls.length).toBeLessThanOrEqual(96);
+
+            const providerCallsAfterFinalRetry = githubProviderCalls.length;
+            const httpCallsAfterFinalRetry = httpGetJsonSpy.mock.calls.length;
+            // The host owns no retry timer. The paired UI test advances one hour and emits no
+            // further protocol demand; without such a message this real host remains idle.
+            await Promise.resolve();
+            expect(githubProviderCalls).toHaveLength(providerCallsAfterFinalRetry);
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(httpCallsAfterFinalRetry);
+        } finally {
+            graph?.dispose();
+        }
+    });
+
+    it("blocks queued GitHub HTTP work after a low-quota response", async () => {
+        vi.useFakeTimers();
+        let graph:
+            | {
+                  resolveWebviewView: (view: object, context: object, token: object) => void;
+                  dispose: () => void;
+              }
+            | undefined;
+        try {
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
+            const activeHashes = Array.from({ length: 12 }, (_, index) =>
+                (index + 32).toString(16).padStart(40, "0"),
+            );
+            const repositories = [{ root: "/workspace/active", label: "active" }];
+            useRealGitHubCommitChecks.value = true;
+            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
+            const responseEvents: string[] = [];
+            createHttpGetJsonSpy.mockImplementation(
+                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                    async (url: string, headers: Record<string, string>) => {
+                        const response = await httpGetJsonSpy(url, headers);
+                        responseEvents.push("response");
+                        onResponse({
+                            headers: {
+                                "x-ratelimit-limit": "5000",
+                                "x-ratelimit-remaining": "100",
+                                "x-ratelimit-reset": "9999999999",
+                            },
+                        });
+                        responseEvents.push("observed");
+                        return response;
+                    },
+            );
+            httpGetJsonSpy.mockImplementation(async (url: string) =>
+                url.includes("/check-runs") ? { check_runs: [] } : [],
+            );
+            gitLogByRoot.set(
+                repositories[0].root,
+                activeHashes.map((hash) => ({
+                    hash,
+                    shortHash: hash.slice(0, 7),
+                    message: `commit ${hash}`,
+                    author: "Mahesh",
+                    email: "m@example.com",
+                    date: "2026-07-10T00:00:00Z",
+                    parentHashes: [],
+                    refs: [],
+                })),
+            );
+
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    globalState: createMemento(),
+                    secrets: makeSecretStorage(),
+                } as never,
+                repositories,
+                {
+                    commitGraph: {
+                        setProvider: (provider: unknown) => (graph = provider as typeof graph),
+                    },
+                } as never,
+            );
+
+            const webview = createWebviewView();
+            graph!.resolveWebviewView(webview.view, {}, {});
+            await webview.send({ type: "ready" });
+            await webview.send({ type: "requestVisibleCommitChecks", hashes: [activeHashes[0]] });
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(2);
+            expect(responseEvents).toEqual(["response", "observed", "response", "observed"]);
+
+            await webview.send({
+                type: "requestVisibleCommitChecks",
+                hashes: activeHashes.slice(1),
+            });
+
+            expect(githubProviderCalls).toEqual(activeHashes);
+            expect(httpGetJsonSpy).toHaveBeenCalledTimes(2);
+        } finally {
+            graph?.dispose();
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitGraphViewProvider deduplicates visible commit-check hashes", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(async (hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["abc1234", "abc1234", "def5678"],
+        });
+
+        const snapshots = postMessageSpy.mock.calls
+            .map(([message]) => message)
+            .filter(
+                (message): message is { type: "setCommitChecks"; snapshot: { hash: string } } =>
+                    typeof message === "object" &&
+                    message !== null &&
+                    "type" in message &&
+                    message.type === "setCommitChecks",
+            )
+            .map((message) => message.snapshot.hash);
+        expect(snapshots).toEqual(["abc1234", "def5678"]);
+        expect(providerGetChecks).toHaveBeenCalledTimes(2);
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider replaces stale visible commit-check demand", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const firstDemand = webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222", "ccc3333"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: [] });
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider invalidates visible demand when the view disposes", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
+                typeof CommitGraphViewProvider
+            >[0],
+            makeGitOpsMock() as unknown as ConstructorParameters<typeof CommitGraphViewProvider>[1],
+            makeCredentialStore() as unknown as ConstructorParameters<
+                typeof CommitGraphViewProvider
+            >[2],
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as Parameters<typeof provider.resolveWebviewView>[0],
+            {} as Parameters<typeof provider.resolveWebviewView>[1],
+            {} as unknown as Parameters<typeof provider.resolveWebviewView>[2],
+        );
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFirst = resolve;
+                }),
+        );
+        postMessageSpy.mockClear();
+
+        const demand = webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        webview.dispose();
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await demand;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(providerGetChecks).not.toHaveBeenCalledWith("bbb2222");
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider invalidates visible demand when a filter replaces hash scope", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const loadedCommits = [
+            {
+                hash: "aaa1111",
+                shortHash: "aaa1111",
+                message: "first visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+            {
+                hash: "bbb2222",
+                shortHash: "bbb2222",
+                message: "second visible commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-18T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+        ];
+        let resolveFilteredLog!: (commits: typeof loadedCommits) => void;
+        gitOps.getLog.mockResolvedValueOnce(loadedCommits).mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    resolveFilteredLog = resolve;
+                }),
+        );
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        let resolveFirst!: (snapshot: {
+            hash: string;
+            state: "success";
+            summary: string;
+            items: never[];
+        }) => void;
+        providerGetChecks.mockReset();
+        providerGetChecks
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolveFirst = resolve;
+                    }),
+            )
+            .mockImplementation(async (hash: string) => ({
+                hash,
+                state: "success",
+                summary: "All checks passed",
+                items: [],
+            }));
+        postMessageSpy.mockClear();
+
+        const firstDemand = webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: ["aaa1111", "bbb2222"],
+        });
+        await vi.waitFor(() => expect(providerGetChecks).toHaveBeenCalledWith("aaa1111"));
+        const filterChange = webview.send({ type: "filterText", text: "second" });
+        await vi.waitFor(() => expect(gitOps.getLog).toHaveBeenCalledTimes(2));
+        resolveFirst({
+            hash: "aaa1111",
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        });
+        await firstDemand;
+        resolveFilteredLog([loadedCommits[1]]);
+        await filterChange;
+
+        expect(providerGetChecks).toHaveBeenCalledTimes(1);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "setCommitChecks",
+                snapshot: expect.objectContaining({ hash: "aaa1111" }),
+            }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider rejects more than 200 visible commit-check hashes", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        showErrorMessage.mockClear();
+        providerGetChecks.mockReset();
+
+        await webview.send({
+            type: "requestVisibleCommitChecks",
+            hashes: Array.from({ length: 201 }, (_, index) => index.toString(16)),
+        });
+
+        expect(showErrorMessage).toHaveBeenCalledWith(
+            expect.stringContaining("Commit graph error"),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "error",
+            message: "Too many visible commit-check hashes.",
+        });
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider ignores stale commit-check requests after repository reset", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        provider.resetFilters();
+        providerGetChecks.mockReset();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(lastCommitChecksSnapshot()).toBeUndefined();
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider drops an in-flight repository log after reset", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        const oldCommits = [
+            {
+                hash: "aaa1111",
+                shortHash: "aaa1111",
+                message: "old repository commit",
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            },
+        ];
+        let resolveOldLog!: (commits: typeof oldCommits) => void;
+        gitOps.getLog.mockImplementationOnce(
+            () =>
+                new Promise<typeof oldCommits>((resolve) => {
+                    resolveOldLog = resolve;
+                }),
+        );
+        gitOps.getUnpushedCommitHashes.mockResolvedValue([]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        providerGetChecks.mockReset();
+        providerGetChecks.mockImplementation(async (hash: string) => ({
+            hash,
+            state: "success",
+            summary: "All checks passed",
+            items: [],
+        }));
+
+        const ready = webview.send({ type: "ready" });
+        await vi.waitFor(() => expect(gitOps.getLog).toHaveBeenCalledTimes(1));
+        provider.resetFilters();
+        postMessageSpy.mockClear();
+        resolveOldLog(oldCommits);
+        await ready;
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["aaa1111"] });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "loadCommits" }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitGraphViewProvider skips GitHub checks for loaded unpushed commits", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const gitOps = makeGitOpsMock();
+        gitOps.getUnpushedCommitHashes.mockResolvedValue(["abc1234"]);
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+        await webview.send({ type: "ready" });
+        providerGetChecks.mockReset();
+        postMessageSpy.mockClear();
+
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
+
+        expect(providerGetChecks).not.toHaveBeenCalled();
+        expect(lastCommitChecksSnapshot()).toEqual(expect.objectContaining({ state: "none" }));
         provider.dispose();
     });
 
@@ -2370,6 +3700,256 @@ describe("view providers integration", () => {
         ]);
         disposable.dispose();
         provider.dispose();
+    });
+
+    it("CommitPanelViewProvider restores cached changed-file counts before status scans finish", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        let resolveStatus!: (files: unknown[]) => void;
+        const pendingStatus = new Promise<unknown[]>((resolve) => {
+            resolveStatus = resolve;
+        });
+        gitStatusByRoot.set("/repo-b", pendingStatus);
+        const memento = createMemento({
+            "intelligit.changedFileCounts.v1": {
+                schemaVersion: 1,
+                entries: [
+                    { root: "/repo-a", includeIgnored: false, count: 2, updatedAt: 1_000 },
+                    { root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 1_000 },
+                ],
+            },
+        });
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            memento as unknown as object,
+        );
+        const webview = createWebviewView();
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+
+        expect(provider.getLastKnownFileCount()).toBe(5);
+        expect(counts).toContain(5);
+        expect(lastSetRepositoriesMessage()?.repositories).toEqual([
+            { root: "/repo-a", label: "Repo A", changedFileCount: 2 },
+            { root: "/repo-b", label: "Repo B", changedFileCount: 3 },
+        ]);
+
+        resolveStatus([
+            { path: "src/b.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+            { path: "src/c.ts", status: "A", staged: false, additions: 0, deletions: 0 },
+            { path: "ignored.log", status: "!", staged: false, additions: 0, deletions: 0 },
+        ]);
+        for (let index = 0; index < 10; index += 1) {
+            await flushMicrotasks();
+            if (provider.getLastKnownFileCount() === 4) break;
+        }
+
+        expect(provider.getLastKnownFileCount()).toBe(4);
+        expect(memento.update).toHaveBeenLastCalledWith(
+            "intelligit.changedFileCounts.v1",
+            expect.objectContaining({
+                schemaVersion: 1,
+                entries: expect.arrayContaining([
+                    expect.objectContaining({ root: "/repo-b", count: 2, updatedAt: 1_000 }),
+                ]),
+            }),
+        );
+
+        disposable.dispose();
+        provider.dispose();
+        vi.useRealTimers();
+    });
+
+    it("CommitPanelViewProvider refreshes in-memory cache freshness without rewriting unchanged counts", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        gitStatusByRoot.set("/repo-b", [
+            { path: "src/b.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+            { path: "src/c.ts", status: "A", staged: false, additions: 0, deletions: 0 },
+            { path: "src/d.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+        ]);
+        const memento = createMemento({
+            "intelligit.changedFileCounts.v1": {
+                schemaVersion: 1,
+                entries: [{ root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 0 }],
+            },
+        });
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            memento as unknown as object,
+        );
+
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+        for (let index = 0; index < 10; index += 1) {
+            await flushMicrotasks();
+            const stored = (
+                provider as unknown as {
+                    storedChangedFileCounts: Map<string, { updatedAt: number }>;
+                }
+            ).storedChangedFileCounts.get("/repo-b\u0000tracked");
+            if (stored?.updatedAt === 1_000) break;
+        }
+
+        expect(
+            (
+                provider as unknown as {
+                    storedChangedFileCounts: Map<string, { updatedAt: number; count: number }>;
+                }
+            ).storedChangedFileCounts.get("/repo-b\u0000tracked"),
+        ).toEqual(expect.objectContaining({ count: 3, updatedAt: 1_000 }));
+        expect(memento.update).not.toHaveBeenCalled();
+
+        provider.dispose();
+        vi.useRealTimers();
+    });
+
+    it("CommitPanelViewProvider keeps valid stale cache when a count scan fails", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        gitStatusByRoot.set("/repo-b", Promise.reject(new Error("status failed")));
+        const memento = createMemento({
+            "intelligit.changedFileCounts.v1": {
+                schemaVersion: 1,
+                entries: [
+                    { root: "/repo-a", includeIgnored: false, count: 0, updatedAt: 1_000 },
+                    { root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 1_000 },
+                ],
+            },
+        });
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            memento as unknown as object,
+        );
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+            ],
+            "/repo-a",
+        );
+        await flushMicrotasks();
+
+        expect(provider.getLastKnownFileCount()).toBe(3);
+        expect(
+            (
+                provider as unknown as {
+                    runtimes: Map<string, { lastKnownChangedFileCount: number | null }>;
+                }
+            ).runtimes.get("/repo-a")?.lastKnownChangedFileCount,
+        ).toBe(0);
+        expect(memento.update).not.toHaveBeenCalled();
+
+        provider.dispose();
+        vi.useRealTimers();
+    });
+
+    it("CommitPanelViewProvider ignores invalid cache entries and does not clear aggregate on active switches", async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(1_000));
+        const { CommitPanelViewProvider } =
+            await import("../../../src/views/CommitPanelViewProvider");
+        const provider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            createMemento({
+                "intelligit.changedFileCounts.v1": {
+                    schemaVersion: 1,
+                    entries: [
+                        { root: "/repo-a", includeIgnored: false, count: 2, updatedAt: 1_000 },
+                        { root: "/repo-b", includeIgnored: false, count: 3, updatedAt: 1_000 },
+                        {
+                            root: "/expired",
+                            includeIgnored: false,
+                            count: 9,
+                            updatedAt: 1_000 - 31 * 24 * 60 * 60 * 1_000,
+                        },
+                        { root: "/negative", includeIgnored: false, count: -1, updatedAt: 1_000 },
+                        {
+                            root: "/fractional",
+                            includeIgnored: false,
+                            count: 1.5,
+                            updatedAt: 1_000,
+                        },
+                    ],
+                },
+            }) as unknown as object,
+        );
+        const counts: number[] = [];
+        const disposable = provider.onDidChangeFileCount((count) => counts.push(count));
+        provider.setRepositories(
+            [
+                { root: "/repo-a", label: "Repo A" },
+                { root: "/repo-b", label: "Repo B" },
+                { root: "/expired", label: "Expired" },
+                { root: "/negative", label: "Negative" },
+                { root: "/fractional", label: "Fractional" },
+            ],
+            "/repo-a",
+        );
+        expect(provider.getLastKnownFileCount()).toBe(5);
+
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as unknown as {
+            fsPath: string;
+            path: string;
+        });
+        expect(counts).not.toContain(0);
+        expect(provider.getLastKnownFileCount()).toBe(5);
+
+        provider.setRepositories([{ root: "/repo-a", label: "Repo A" }], "/repo-a");
+        expect(provider.getLastKnownFileCount()).toBe(2);
+
+        disposable.dispose();
+        provider.dispose();
+
+        const wrongSchemaProvider = new CommitPanelViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            undefined,
+            createMemento({
+                "intelligit.changedFileCounts.v1": {
+                    schemaVersion: 2,
+                    entries: [
+                        { root: "/repo-a", includeIgnored: false, count: 7, updatedAt: 1_000 },
+                    ],
+                },
+            }) as unknown as object,
+        );
+        wrongSchemaProvider.setRepositories([{ root: "/repo-a", label: "Repo A" }], "/repo-a");
+        expect(wrongSchemaProvider.getLastKnownFileCount()).toBe(0);
+        wrongSchemaProvider.dispose();
+        vi.useRealTimers();
     });
 
     it("CommitPanelViewProvider scans initial collapsed repository counts without full row refresh", async () => {
@@ -3925,7 +5505,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
         );
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         // GitHub did not claim the self-hosted remote, so the real GitLab provider handled it.
         expect(providerGetChecks).not.toHaveBeenCalled();
@@ -3958,7 +5538,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
         );
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         expect(providerGetChecks).not.toHaveBeenCalled();
         expect(httpGetJsonSpy).not.toHaveBeenCalled();
@@ -3991,7 +5571,7 @@ describe("view providers integration", () => {
             {} as unknown as object,
         );
 
-        await webview.send({ type: "requestCommitChecks", hash: "abc1234" });
+        await webview.send({ type: "requestVisibleCommitChecks", hashes: ["abc1234"] });
 
         // The self-hosted host produced the correct GitLab API URL on its own domain.
         expect(httpGetJsonSpy).toHaveBeenCalledTimes(1);

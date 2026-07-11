@@ -9,7 +9,7 @@ import { ContextMenu } from "./shared/components/ContextMenu";
 import { ClearIcon, SearchIcon } from "./shared/components/Icons";
 import { getCommitMenuItems } from "./commit-list/commitMenu";
 import { CommitListRows } from "./commit-list/CommitListRows";
-import { MAX_NONE_REFRESH_ATTEMPTS } from "./commit-list/checksRefresh";
+import { commitHashesMatch, retryDelaysForCommitChecks } from "./commit-list/checksRefresh";
 import { useCommitGraphCanvas } from "./commit-list/useCommitGraphCanvas";
 import { isCommitAction, type CommitAction } from "../protocol/commitGraphTypes";
 import { JETBRAINS_UI } from "./shared/tokens";
@@ -30,7 +30,6 @@ import {
 
 const MIN_PREFIX_LENGTH = 7;
 const MAX_GRAPH_WIDTH = JETBRAINS_UI.graph.maxWidth;
-const PENDING_CHECK_REFRESH_MS = 15_000;
 
 /**
  * Allows cherry-pick actions when the graph is scoped to a non-current branch,
@@ -53,6 +52,7 @@ interface Props {
     unpushedHashes: Set<string>;
     selectedBranch: string | null;
     currentBranchName?: string | null;
+    currentBranchHeadHash?: string | null;
     onSelectCommit: (hash: string) => void;
     onFilterText: (text: string) => void;
     onLoadMore: () => void | Promise<void>;
@@ -60,17 +60,31 @@ interface Props {
     onCommitHover?: (commit: Commit, event: React.MouseEvent) => void;
     onCommitUnhover?: () => void;
     commitChecks?: ReadonlyMap<string, CommitChecksSnapshot | "loading">;
-    onRequestCommitChecks?: (hash: string) => void;
+    onRequestCommitChecks?: (hashes: string[], force?: boolean) => void;
     onOpenCommitCheckUrl?: (url: string) => void;
     onSignInForCommitChecks?: (host: string) => void;
     showSearch?: boolean;
     showAuthorDate?: boolean;
     headerLabel?: string;
+    /**
+     * Host-driven visibility of the surface embedding this list. Defaults to
+     * `true`. Commit-check demand is withheld and retry timers stay disarmed
+     * while `false`, because `document.visibilityState` is unreliable inside a
+     * VS Code webview iframe (it reports `"visible"` even when the view/tab is
+     * hidden). Hosts forward real `WebviewView`/`WebviewPanel` visibility.
+     */
+    isViewVisible?: boolean;
 }
+
+type RetryAttempt = { state: CommitChecksSnapshot["state"]; attempt: number };
 
 /**
  * Renders a virtualized commit list with an aligned canvas lane graph, optional
  * search chrome, branch-scope context actions, and incremental load-more support.
+ * Commit-check demand tracks only the exact viewport and is cleared while the
+ * host reports the surface hidden (`isViewVisible === false`) or when the
+ * surface unmounts. Pending snapshots and a pushed current HEAD use bounded
+ * retry schedules.
  */
 export function CommitList({
     commits,
@@ -80,6 +94,7 @@ export function CommitList({
     unpushedHashes,
     selectedBranch,
     currentBranchName,
+    currentBranchHeadHash,
     onSelectCommit,
     onFilterText,
     onLoadMore,
@@ -93,6 +108,7 @@ export function CommitList({
     showSearch = true,
     showAuthorDate = true,
     headerLabel,
+    isViewVisible = true,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -103,10 +119,10 @@ export function CommitList({
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
     const isLoadingMoreRef = useRef(false);
-    // Per-commit budget for re-fetching a "no checks yet" snapshot after a push.
-    // Ref initializer is tiny and keeps hook deps unchanged around the polling effect.
+    const retryTimerRef = useRef<number | null>(null);
+    const onRequestCommitChecksRef = useRef(onRequestCommitChecks);
     // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
-    const noneCheckRetries = useRef<Map<string, number>>(new Map());
+    const checkRetryAttempts = useRef(new Map<string, RetryAttempt>());
 
     const graphRows = useMemo(() => computeGraph(commits), [commits]);
     const maxCols = useMemo(
@@ -212,54 +228,146 @@ export function CommitList({
         return { start, end };
     }, [commits.length, scrollTop, viewportHeight]);
 
-    const visibleCommits = useMemo(
+    const renderedCommits = useMemo(
         () => commits.slice(visibleRange.start, visibleRange.end),
         [commits, visibleRange.end, visibleRange.start],
     );
-    // Visible-row polling is viewport state synchronization; there is no event handler to move this into.
+
+    const requestRange = useMemo(() => {
+        if (commits.length === 0) return { start: 0, end: 0 };
+        const effectiveHeight = Math.max(ROW_HEIGHT, viewportHeight);
+        return {
+            start: Math.max(0, Math.floor(scrollTop / ROW_HEIGHT)),
+            end: Math.min(commits.length, Math.ceil((scrollTop + effectiveHeight) / ROW_HEIGHT)),
+        };
+    }, [commits.length, scrollTop, viewportHeight]);
+    const requestedCommitHashes = useMemo(
+        () =>
+            Array.from(
+                new Set(
+                    commits
+                        .slice(requestRange.start, requestRange.end)
+                        .map((commit) => commit.hash),
+                ),
+            ),
+        [commits, requestRange.end, requestRange.start],
+    );
+
+    useEffect(() => {
+        const previousCallback = onRequestCommitChecksRef.current;
+        if (previousCallback && !onRequestCommitChecks) previousCallback([], false);
+        onRequestCommitChecksRef.current = onRequestCommitChecks;
+    }, [onRequestCommitChecks]);
+
+    // Replaces this surface's exact-viewport demand whenever the viewport changes
+    // or host visibility flips. Withholds demand (posts []) while hidden; the
+    // retry effect below clears any armed timer via its cleanup on the same flip.
     // react-doctor-disable-next-line react-doctor/no-effect-event-handler
     useEffect(() => {
         if (!onRequestCommitChecks) return;
-        const retryHashes: string[] = [];
-        const noneHashes: string[] = [];
-        for (const commit of visibleCommits) {
-            const checks = commitChecks?.get(commit.hash);
-            if (!checks) {
-                // Commit-check requests are host IO driven by visibility, not parent state synchronization.
-                // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
-                onRequestCommitChecks(commit.hash);
-                continue;
-            }
-            if (checks === "loading") continue;
-            if (checks.state === "pending" || checks.state === "unavailable") {
-                // pending: CI is running. unavailable: recoverable (a missing token to
-                // sign in for, or a transient host error such as a 429 that may clear).
-                // Both re-poll unbounded and drop any "no checks yet" budget — the
-                // coordinator TTL throttles this to at most one fetch per TTL.
-                // ponytail: unbounded by design; if visible-row volume ever makes the
-                // message count matter, add a budget like the "none" path below.
-                noneCheckRetries.current.delete(commit.hash);
-                retryHashes.push(commit.hash);
-            } else if (checks.state === "none" && !isUnpushedCommit(commit.hash)) {
-                // A just-pushed commit reports no checks until GitHub registers CI;
-                // retry a bounded number of times so status appears without a manual refresh.
-                if ((noneCheckRetries.current.get(commit.hash) ?? 0) < MAX_NONE_REFRESH_ATTEMPTS) {
-                    retryHashes.push(commit.hash);
-                    noneHashes.push(commit.hash);
+        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+        onRequestCommitChecks(isViewVisible ? requestedCommitHashes : [], false);
+    }, [onRequestCommitChecks, requestedCommitHashes, isViewVisible]);
+
+    useEffect(
+        () => () => {
+            onRequestCommitChecksRef.current?.([], false);
+        },
+        [],
+    );
+
+    // Retry scheduling is bounded per visible hash and never publishes hidden demand.
+    // react-doctor-disable-next-line react-doctor/no-effect-event-handler
+    useEffect(() => {
+        if (!onRequestCommitChecks || !isViewVisible) return;
+
+        /** Arms one timer for the earliest remaining interval and advances only due hashes. */
+        const scheduleNextRetry = (): void => {
+            let nextDelay: number | undefined;
+
+            for (const hash of requestedCommitHashes) {
+                const snapshot = commitChecks?.get(hash);
+                if (!snapshot || snapshot === "loading") {
+                    checkRetryAttempts.current.delete(hash);
+                    continue;
                 }
-            } else {
-                noneCheckRetries.current.delete(commit.hash);
+
+                const schedule = retryDelaysForCommitChecks(snapshot, {
+                    isCurrentHead:
+                        currentBranchHeadHash !== null &&
+                        currentBranchHeadHash !== undefined &&
+                        commitHashesMatch(hash, currentBranchHeadHash),
+                    isUnpushed: isUnpushedCommit(hash),
+                });
+                if (schedule.length === 0) {
+                    checkRetryAttempts.current.delete(hash);
+                    continue;
+                }
+
+                const previous = checkRetryAttempts.current.get(hash);
+                const attempt =
+                    previous?.state === snapshot.state
+                        ? previous
+                        : { state: snapshot.state, attempt: 0 };
+                checkRetryAttempts.current.set(hash, attempt);
+                const delay = schedule[attempt.attempt];
+                if (delay !== undefined && (nextDelay === undefined || delay < nextDelay)) {
+                    nextDelay = delay;
+                }
             }
-        }
-        if (retryHashes.length === 0) return;
-        const timer = window.setTimeout(() => {
-            for (const hash of noneHashes) {
-                noneCheckRetries.current.set(hash, (noneCheckRetries.current.get(hash) ?? 0) + 1);
+
+            if (nextDelay === undefined) return;
+            const dueDelay = nextDelay;
+            const timer = window.setTimeout(() => {
+                if (retryTimerRef.current === timer) retryTimerRef.current = null;
+
+                const dueHashes: string[] = [];
+                for (const hash of requestedCommitHashes) {
+                    const snapshot = commitChecks?.get(hash);
+                    if (!snapshot || snapshot === "loading") continue;
+                    const attempt = checkRetryAttempts.current.get(hash);
+                    if (!attempt || attempt.state !== snapshot.state) continue;
+                    const schedule = retryDelaysForCommitChecks(snapshot, {
+                        isCurrentHead:
+                            currentBranchHeadHash !== null &&
+                            currentBranchHeadHash !== undefined &&
+                            commitHashesMatch(hash, currentBranchHeadHash),
+                        isUnpushed: isUnpushedCommit(hash),
+                    });
+                    if (schedule[attempt.attempt] !== dueDelay) continue;
+                    checkRetryAttempts.current.set(hash, {
+                        state: snapshot.state,
+                        attempt: attempt.attempt + 1,
+                    });
+                    dueHashes.push(hash);
+                }
+
+                if (dueHashes.length > 0) onRequestCommitChecks(dueHashes, true);
+                scheduleNextRetry();
+            }, dueDelay);
+            retryTimerRef.current = timer;
+        };
+
+        scheduleNextRetry();
+        return () => {
+            if (retryTimerRef.current !== null) {
+                window.clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
             }
-            for (const hash of retryHashes) onRequestCommitChecks(hash);
-        }, PENDING_CHECK_REFRESH_MS);
-        return () => window.clearTimeout(timer);
-    }, [commitChecks, onRequestCommitChecks, visibleCommits, isUnpushedCommit]);
+        };
+    }, [
+        commitChecks,
+        currentBranchHeadHash,
+        isViewVisible,
+        isUnpushedCommit,
+        onRequestCommitChecks,
+        requestedCommitHashes,
+    ]);
+
+    /** Keeps row-triggered loading aligned with this surface's full exact-viewport demand. */
+    const handleRequestCommitChecksFromRow = useCallback(() => {
+        onRequestCommitChecks?.(requestedCommitHashes, false);
+    }, [onRequestCommitChecks, requestedCommitHashes]);
 
     const branchScopeLabel = selectedBranch
         ? t("commit.scope.branch", { branch: selectedBranch })
@@ -324,7 +432,7 @@ export function CommitList({
 
             <CommitListRows
                 commits={commits}
-                visibleCommits={visibleCommits}
+                visibleCommits={renderedCommits}
                 visibleRange={visibleRange}
                 graphWidth={graphWidth}
                 graphRows={graphRows}
@@ -337,7 +445,9 @@ export function CommitList({
                 showAuthorDate={showAuthorDate}
                 commitChecks={commitChecks}
                 onSelectCommit={onSelectCommit}
-                onRequestCommitChecks={onRequestCommitChecks}
+                onRequestCommitChecks={
+                    onRequestCommitChecks ? handleRequestCommitChecksFromRow : undefined
+                }
                 onOpenCommitCheckUrl={onOpenCommitCheckUrl}
                 onSignInForCommitChecks={onSignInForCommitChecks}
                 onCommitHover={onCommitHover}

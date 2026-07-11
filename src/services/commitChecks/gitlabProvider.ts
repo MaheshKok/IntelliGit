@@ -182,6 +182,12 @@ export class GitLabProvider implements CommitChecksProvider {
         return null;
     }
 
+    /** Returns a stable repository cache key for a parsed GitLab remote. */
+    keyFor(ref: ProviderRepoRef): string {
+        const { host, owner, repo } = ref as GitLabRepoRef;
+        return `gitlab:${host.toLowerCase()}:${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    }
+
     /**
      * Fetches commit statuses from the GitLab API and returns a normalized snapshot.
      *

@@ -9,6 +9,17 @@ import * as https from "https";
 /** Network boundary used by providers; the only thing tests mock. */
 export type FetchJson = (url: string, headers: Record<string, string>) => Promise<unknown>;
 
+/**
+ * Token-free response facts exposed to rate-limit observers.
+ *
+ * Request headers are intentionally excluded because they can contain credentials. Consumers must
+ * treat these server-supplied values as advisory scheduling data, never as trusted authorization.
+ */
+export interface HttpResponseMetadata {
+    statusCode: number;
+    headers: Record<string, string | string[] | undefined>;
+}
+
 /** HTTP failure that keeps response metadata needed for provider backoff. */
 export class HttpError extends Error {
     /**
@@ -28,38 +39,55 @@ export class HttpError extends Error {
     }
 }
 
-/** Performs an HTTPS GET with a 15s timeout, rejecting on any non-2xx status or invalid JSON. */
-export const httpGetJson: FetchJson = (url, headers) => {
-    return new Promise((resolve, reject) => {
-        const req = https.get(url, { headers }, (res) => {
-            const chunks: Buffer[] = [];
-            res.on("data", (chunk: Buffer | string) => {
-                chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
+/**
+ * Creates an HTTPS JSON getter with an optional response observer.
+ *
+ * The observer receives only response metadata after the response ends and before status/JSON
+ * handling. Observer failures are ignored so quota telemetry cannot interrupt provider IO.
+ */
+export function createHttpGetJson(
+    onResponse?: (metadata: HttpResponseMetadata) => void,
+): FetchJson {
+    return (url, headers) => {
+        return new Promise((resolve, reject) => {
+            const req = https.get(url, { headers }, (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer | string) => {
+                    chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk);
+                });
+                res.on("end", () => {
+                    req.setTimeout(0);
+                    const data = Buffer.concat(chunks).toString("utf8");
+                    const statusCode = res.statusCode ?? 0;
+                    try {
+                        onResponse?.({ statusCode, headers: res.headers });
+                    } catch {
+                        // Observers are non-critical quota telemetry.
+                    }
+                    if (statusCode < 200 || statusCode >= 300) {
+                        reject(
+                            new HttpError(
+                                statusCode,
+                                `HTTP ${statusCode}: ${data.slice(0, 200)}`,
+                                res.headers,
+                            ),
+                        );
+                        return;
+                    }
+                    try {
+                        resolve(data ? JSON.parse(data) : {});
+                    } catch {
+                        reject(new Error("Invalid JSON response"));
+                    }
+                });
             });
-            res.on("end", () => {
-                req.setTimeout(0);
-                const data = Buffer.concat(chunks).toString("utf8");
-                const statusCode = res.statusCode ?? 0;
-                if (statusCode < 200 || statusCode >= 300) {
-                    reject(
-                        new HttpError(
-                            statusCode,
-                            `HTTP ${statusCode}: ${data.slice(0, 200)}`,
-                            res.headers,
-                        ),
-                    );
-                    return;
-                }
-                try {
-                    resolve(data ? JSON.parse(data) : {});
-                } catch {
-                    reject(new Error("Invalid JSON response"));
-                }
+            req.on("error", reject);
+            req.setTimeout(15000, () => {
+                req.destroy(new Error("HTTP request timed out"));
             });
         });
-        req.on("error", reject);
-        req.setTimeout(15000, () => {
-            req.destroy(new Error("HTTP request timed out"));
-        });
-    });
-};
+    };
+}
+
+/** Default provider-agnostic HTTPS JSON getter. */
+export const httpGetJson = createHttpGetJson();

@@ -34,6 +34,13 @@ export class CommitPanelRepositoryRuntime {
     dataRefreshSeq = 0;
     countRefreshSeq = 0;
     hasScannedFileCount = false;
+    /**
+     * Holds a persisted or freshly scanned changed-file count until `files` becomes authoritative.
+     *
+     * `null` means no count has been restored or scanned yet. A non-null value is safe to display
+     * while a status request is pending; successful scans replace it with the unique file count.
+     */
+    lastKnownChangedFileCount: number | null = null;
 
     /**
      * Creates a runtime for one repository root.

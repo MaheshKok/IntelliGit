@@ -14,6 +14,15 @@ import {
 import { CredentialStore } from "../services/commitChecks/credentialStore";
 import { normalizeHostMap } from "../services/commitChecks/hostConfig";
 import { normalizeCommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import { GitHubProvider } from "../services/commitChecks/githubProvider";
+import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
+import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
+import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
+import { createHttpGetJson, httpGetJson, type FetchJson } from "../services/commitChecks/http";
+import { GitHubRequestGate } from "../services/commitChecks/requestGate";
+import { CommitChecksService } from "../services/commitChecks/service";
+import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
+import type { CommitChecksProvider } from "../services/commitChecks/types";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -113,6 +122,27 @@ export async function activateRepositoryMode(
             ),
         );
     }
+    const commitChecksService = new CommitChecksService({
+        ttlMs: 30_000,
+        noneTtlMs: 60 * 60 * 1000,
+        unavailableTtlMs: 15 * 60 * 1000,
+        maxEntries: 1_000,
+        persistentCache: new CommitChecksPersistentCache(context.globalState, {
+            noneMaxAgeMs: 60 * 60 * 1000,
+        }),
+    });
+    const githubRequestGate = new GitHubRequestGate(4);
+    const githubHttpGetJson = createHttpGetJson((metadata) => {
+        githubRequestGate.observeResponse(metadata);
+    });
+    const gatedGithubFetchJson: FetchJson = (url, headers) =>
+        githubRequestGate.run(() => githubHttpGetJson(url, headers));
+    const commitChecksProviders: readonly CommitChecksProvider[] = [
+        new GitHubProvider(gatedGithubFetchJson, commitCheckSettings.ciCdPattern),
+        new GitLabProvider(httpGetJson, credentialStore, commitCheckSettings.ciCdPattern),
+        new BitbucketCloudProvider(httpGetJson, credentialStore),
+        new BitbucketServerProvider(httpGetJson, credentialStore),
+    ];
 
     let currentBranches: Branch[] = [];
     let currentWorktrees: GitWorktree[] = [];
@@ -139,6 +169,8 @@ export async function activateRepositoryMode(
     const commitGraph = new CommitGraphViewProvider(context.extensionUri, gitOps, credentialStore, {
         hostMap: commitCheckHostMap,
         settings: commitCheckSettings,
+        commitChecksService,
+        commitChecksProviders,
     });
     const sidebarGraph = new CommitGraphViewProvider(
         context.extensionUri,
@@ -150,6 +182,8 @@ export async function activateRepositoryMode(
             showRepositoryLabel: repositories.length > 1,
             hostMap: commitCheckHostMap,
             settings: commitCheckSettings,
+            commitChecksService,
+            commitChecksProviders,
         },
     );
     const commitInfo = new CommitInfoViewProvider(context.extensionUri);
@@ -208,10 +242,8 @@ export async function activateRepositoryMode(
                   }
                 : undefined;
     };
-    /** Clears stale badge state before the first panel count event arrives. */
-    const resetFileCountBadge = (): void => updateFileCountBadge(0);
-    resetFileCountBadge();
     const fileCountBadgeSubscription = commitPanel.onDidChangeFileCount(updateFileCountBadge);
+    updateFileCountBadge(commitPanel.getLastKnownFileCount());
 
     /**
      * Creates the refresh coordinator for the currently active repository root.
@@ -373,7 +405,7 @@ export async function activateRepositoryMode(
      * Switches all repository-scoped services and providers to a newly selected root.
      *
      * Updates the shared executor, provider labels/root URIs, merge-conflict tree,
-     * badge state, persisted workspace selection, and refresh service watchers
+     * persisted workspace selection, and refresh service watchers
      * before loading fresh data for the selected repository.
      */
     const setActiveRepository = async (
@@ -400,7 +432,6 @@ export async function activateRepositoryMode(
         commitPanel.setRepositoryLabel(repository.label);
         undocked?.setRepositories(repositories, undockedSelectedRepositoryRoot);
         mergeConflicts.setWorkspaceRoot(repoRootUri);
-        resetFileCountBadge();
         refreshService.dispose();
         refreshService = createRefreshService(repoRoot);
         refreshServiceWatchersRegistered = false;
@@ -592,6 +623,8 @@ export async function activateRepositoryMode(
                 repositories,
                 selectedRepositoryRoot: initialUndockedRepository.root,
                 loadRepositoryData: loadCurrentUndockedRepositoryData,
+                commitChecksService,
+                commitChecksProviders,
                 onSelectedRepositoryRootChanged: async (root) => {
                     undockedSelectedRepositoryRoot = root;
                     undockedSelectionWrite = undockedSelectionWrite
@@ -851,6 +884,7 @@ export async function activateRepositoryMode(
         ),
         vscode.authentication.onDidChangeSessions((event) => {
             if (event.provider.id !== "github") return;
+            githubRequestGate.reset();
             refreshCommitCheckBadges().catch((err) => {
                 console.error("[IntelliGit] GitHub commit-check refresh failed:", err);
             });

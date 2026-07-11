@@ -9,9 +9,8 @@ import type React from "react";
 import type { Branch } from "../../../types";
 import type { BranchAction, CommitAction, WorktreeAction } from "../../protocol/commitGraphTypes";
 import type { UnifiedOutbound } from "../../protocol/undockedMessages";
-import { shouldRequestCommitChecks } from "../commit-list/checksRefresh";
 import { getVsCodeApi } from "../shared/vscodeApi";
-import type { CommitPanelAction, CommitChecksValue, GraphAction } from "./commitPanelState";
+import type { CommitPanelAction, GraphAction } from "./commitPanelState";
 
 const vscode = getVsCodeApi<UnifiedOutbound, Record<string, unknown>>();
 
@@ -25,7 +24,6 @@ export interface UseUndockedActionsParams {
     graphDispatch: React.Dispatch<GraphAction>;
     cpDispatch: React.Dispatch<CommitPanelAction>;
     loadingMore: React.MutableRefObject<boolean>;
-    commitChecks: Map<string, CommitChecksValue>;
     commitMessage: string;
     isAmend: boolean;
     checkedPaths: Set<string>;
@@ -44,7 +42,7 @@ export interface UndockedActions {
     handleWorktreeAction: (action: WorktreeAction, path: string) => void;
     handleCommitAction: (action: CommitAction, hash: string) => void;
     handleOpenDiff: (commitHash: string, filePath: string) => void;
-    handleRequestCommitChecks: (hash: string) => void;
+    handleRequestCommitChecks: (hashes: string[], force?: boolean) => void;
     handleOpenCommitCheckUrl: (url: string) => void;
     handleSignInForCommitChecks: (host: string) => void;
     handleMessageChange: (message: string) => void;
@@ -67,13 +65,11 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
         graphDispatch,
         cpDispatch,
         loadingMore,
-        commitChecks,
         commitMessage,
         isAmend,
         checkedPaths,
         shouldPublishBranch,
     } = params;
-
     const handleSelectRepository = useCallback((repositoryRoot: string) => {
         loadingMore.current = false;
         graphDispatch({ type: "resetRepository" });
@@ -132,13 +128,12 @@ export function useUndockedActions(params: UseUndockedActionsParams): UndockedAc
     }, []);
 
     const handleRequestCommitChecks = useCallback(
-        (hash: string) => {
-            if (!shouldRequestCommitChecks(commitChecks.get(hash))) return;
-            graphDispatch({ type: "markCommitChecksLoading", hash });
-            vscode.postMessage({ type: "requestCommitChecks", hash });
+        (hashes: string[], force = false) => {
+            for (const hash of hashes) graphDispatch({ type: "markCommitChecksLoading", hash });
+            vscode.postMessage({ type: "requestVisibleCommitChecks", hashes, force });
         },
         // react-doctor-disable-next-line react-doctor/exhaustive-deps
-        [commitChecks],
+        [graphDispatch],
     );
 
     const handleOpenCommitCheckUrl = useCallback((url: string) => {

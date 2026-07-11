@@ -25,7 +25,7 @@ import {
 import { UndockedLayout } from "./undocked/UndockedLayout";
 import { resizeSectionPair, useColumnPairDrag } from "./undocked/useColumnPairDrag";
 import { useUnifiedMessages } from "./undocked/useUnifiedMessages";
-import { useUndockedActions } from "./undocked/useUndockedActions";
+import { type UndockedActions, useUndockedActions } from "./undocked/useUndockedActions";
 import type {
     Branch,
     Commit,
@@ -197,10 +197,12 @@ function App(): React.ReactElement {
         commitChecksEnabled,
     } = graphState;
     const loadingMore = useRef(false);
-    const currentBranchName = useMemo(
-        () => branches.find((branch) => branch.isCurrent && !branch.isRemote)?.name ?? null,
+    const currentBranch = useMemo(
+        () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
     );
+    const currentBranchName = currentBranch?.name ?? null;
+    const currentBranchHeadHash = currentBranch?.hash ?? null;
 
     // Guards the cross-session width persistence: stays false until either the
     // extension restores saved widths or the user actually drags a divider.
@@ -279,6 +281,7 @@ function App(): React.ReactElement {
     const [commitPanelPosition, setCommitPanelPosition] = useState<"left" | "right">(
         () => getSettings().commitWindowPosition,
     );
+    const [viewVisible, setViewVisible] = useState(true);
 
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnPairDrag(
@@ -398,6 +401,7 @@ function App(): React.ReactElement {
         setSectionWidths,
         layoutRef,
         setCommitPanelPosition,
+        setViewVisible,
     });
 
     const canCommit = canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
@@ -408,11 +412,10 @@ function App(): React.ReactElement {
     const pushLabel = shouldPublishBranch ? "commit.action.publishAndPush" : "common.push";
 
     // --- Graph and commit-panel callbacks ---
-    const actions = useUndockedActions({
+    const actions: UndockedActions = useUndockedActions({
         graphDispatch,
         cpDispatch,
         loadingMore,
-        commitChecks,
         commitMessage: cpState.commitMessage,
         isAmend: cpState.isAmend,
         checkedPaths,
@@ -449,8 +452,10 @@ function App(): React.ReactElement {
             hasMore={hasMore}
             unpushedHashes={unpushedHashes}
             currentBranchName={currentBranchName}
+            currentBranchHeadHash={currentBranchHeadHash}
             commitChecks={commitChecks}
             commitChecksEnabled={commitChecksEnabled}
+            isViewVisible={viewVisible}
             selectedDetail={selectedDetail}
             commitDetailLoading={commitDetailLoading}
             branchFolderIcon={branchFolderIcon}

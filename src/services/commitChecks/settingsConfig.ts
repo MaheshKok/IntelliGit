@@ -60,6 +60,17 @@ export function normalizeCommitChecksSettings(raw: unknown): CommitChecksSetting
 }
 
 /**
+ * Returns the content-affecting settings fingerprint used in commit-check cache keys.
+ *
+ * @param settings - Validated commit-check settings.
+ * @returns Stable fingerprint for settings that change provider snapshot contents.
+ */
+export function commitChecksSettingsFingerprint(settings?: CommitChecksSettings): string {
+    const pattern = settings?.ciCdPattern;
+    return pattern ? `${pattern.source}/${pattern.flags}` : "-";
+}
+
+/**
  * Type guard for a non-null, non-array object (a config map, not a scalar or list).
  *
  * @param value - The candidate value.

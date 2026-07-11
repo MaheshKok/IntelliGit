@@ -53,8 +53,10 @@ export interface UndockedLayoutProps {
     hasMore: boolean;
     unpushedHashes: Set<string>;
     currentBranchName: string | null;
+    currentBranchHeadHash: string | null;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
+    isViewVisible: boolean;
     selectedDetail: CommitDetail | null;
     commitDetailLoading: boolean;
     branchFolderIcon?: ThemeTreeIcon;
@@ -90,7 +92,7 @@ export interface UndockedLayoutProps {
     handleWorktreeAction: (action: WorktreeAction, path: string) => void;
     handleCommitAction: (action: CommitAction, hash: string) => void;
     handleOpenDiff: (commitHash: string, filePath: string) => void;
-    handleRequestCommitChecks: (hash: string) => void;
+    handleRequestCommitChecks: (hashes: string[], force?: boolean) => void;
     handleOpenCommitCheckUrl: (url: string) => void;
     handleSignInForCommitChecks: (host: string) => void;
     handleMessageChange: (message: string) => void;
@@ -134,8 +136,10 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         hasMore,
         unpushedHashes,
         currentBranchName,
+        currentBranchHeadHash,
         commitChecks,
         commitChecksEnabled,
+        isViewVisible,
         selectedDetail,
         commitDetailLoading,
         branchFolderIcon,
@@ -308,6 +312,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                     unpushedHashes={unpushedHashes}
                                     selectedBranch={selectedBranch}
                                     currentBranchName={currentBranchName}
+                                    currentBranchHeadHash={currentBranchHeadHash}
                                     onSelectCommit={handleSelectCommit}
                                     onFilterText={handleFilterText}
                                     onLoadMore={handleLoadMore}
@@ -324,6 +329,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                             ? handleSignInForCommitChecks
                                             : undefined
                                     }
+                                    isViewVisible={isViewVisible}
                                 />
                             </div>
 

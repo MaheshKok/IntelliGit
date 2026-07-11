@@ -12,6 +12,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { CommitChecksCoordinator } from "../../../../src/services/commitChecks/coordinator";
+import { CommitChecksService } from "../../../../src/services/commitChecks/service";
 import { BitbucketServerProvider } from "../../../../src/services/commitChecks/bitbucketServerProvider";
 import { CredentialStore } from "../../../../src/services/commitChecks/credentialStore";
 
@@ -36,6 +37,7 @@ function makeProvider(
         match: vi.fn((url: string, _hostMap: HostMap): ProviderRepoRef | null =>
             url.includes(matchSubstring) ? { host: matchSubstring } : null,
         ),
+        keyFor: vi.fn((ref: ProviderRepoRef) => `${id}:${ref.host}`),
         getChecks,
     };
 }
@@ -162,6 +164,8 @@ describe("CommitChecksCoordinator", () => {
         const coordinator = new CommitChecksCoordinator(
             makeGitOps({ origin: "git@github.com:owner/repo.git" }),
             [provider],
+            {},
+            { ttlMs: 0 },
         );
 
         const first = await coordinator.getChecks("abc1234");
@@ -180,6 +184,8 @@ describe("CommitChecksCoordinator", () => {
         const coordinator = new CommitChecksCoordinator(
             makeGitOps({ origin: "git@github.com:owner/repo.git" }),
             [provider],
+            {},
+            { ttlMs: 0 },
         );
 
         await coordinator.getChecks("abc1234");
@@ -189,7 +195,7 @@ describe("CommitChecksCoordinator", () => {
         expect(second.state).toBe("success");
     });
 
-    it("re-fetches a cached none snapshot (checks not registered yet)", async () => {
+    it("serves a cached none snapshot within the default one-hour TTL", async () => {
         const getChecks = vi
             .fn()
             .mockResolvedValueOnce(snapshot("none"))
@@ -203,8 +209,8 @@ describe("CommitChecksCoordinator", () => {
         await coordinator.getChecks("abc1234");
         const second = await coordinator.getChecks("abc1234");
 
-        expect(getChecks).toHaveBeenCalledTimes(2);
-        expect(second.state).toBe("pending");
+        expect(getChecks).toHaveBeenCalledTimes(1);
+        expect(second.state).toBe("none");
     });
 
     it("clear() drops the cache so the next call re-fetches", async () => {
@@ -218,6 +224,126 @@ describe("CommitChecksCoordinator", () => {
         await coordinator.getChecks("abc1234");
         coordinator.clear();
         await coordinator.getChecks("abc1234");
+
+        expect(getChecks).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not fetch when provider resolution is cleared during an older request", async () => {
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        let resolveRemoteUrl!: (url: string) => void;
+        let remoteUrlRequested!: () => void;
+        const remoteUrlRequest = new Promise<void>((resolve) => {
+            remoteUrlRequested = resolve;
+        });
+        const gitOps = {
+            getRemotes: vi.fn(async () => ["origin"]),
+            getRemoteUrl: vi.fn(() => {
+                remoteUrlRequested();
+                return new Promise<string>((resolve) => {
+                    resolveRemoteUrl = resolve;
+                });
+            }),
+        } as unknown as GitOps;
+        const coordinator = new CommitChecksCoordinator(gitOps, [provider]);
+
+        const staleRequest = coordinator.getChecks("abc1234");
+        await remoteUrlRequest;
+        coordinator.clear();
+        resolveRemoteUrl("git@github.com:owner/repo.git");
+
+        await expect(staleRequest).resolves.toEqual(expect.objectContaining({ state: "none" }));
+        expect(getChecks).not.toHaveBeenCalled();
+
+        await coordinator.getChecks("abc1234");
+        expect(getChecks).toHaveBeenCalledTimes(1);
+    });
+
+    it("shares in-flight fetches across coordinators backed by one service", async () => {
+        const service = new CommitChecksService({ ttlMs: 15_000 });
+        const getChecks = vi.fn(
+            () =>
+                new Promise<CommitChecksSnapshot>((resolve) => {
+                    setTimeout(() => resolve(snapshot("pending")), 0);
+                }),
+        );
+        const provider = makeProvider("github", "github.com", getChecks);
+        const first = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { service },
+        );
+        const second = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { service },
+        );
+
+        const [firstSnapshot, secondSnapshot] = await Promise.all([
+            first.getChecks("abc1234"),
+            second.getChecks("abc1234"),
+        ]);
+
+        expect(firstSnapshot).toBe(secondSnapshot);
+        expect(getChecks).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not cross-serve the same SHA for different repository keys", async () => {
+        const service = new CommitChecksService({ ttlMs: 15_000 });
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider: CommitChecksProvider = {
+            id: "github",
+            match: vi.fn((url: string) => {
+                const repo = url.includes("repo-a") ? "repo-a" : "repo-b";
+                return { host: "github.com", owner: "owner", repo } as ProviderRepoRef;
+            }),
+            keyFor: vi.fn((ref: ProviderRepoRef) => {
+                const repoRef = ref as ProviderRepoRef & { owner: string; repo: string };
+                return `github:${repoRef.host}:${repoRef.owner}/${repoRef.repo}`;
+            }),
+            getChecks,
+        };
+        const repoA = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo-a.git" }),
+            [provider],
+            {},
+            { service },
+        );
+        const repoB = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo-b.git" }),
+            [provider],
+            {},
+            { service },
+        );
+
+        await repoA.getChecks("abc1234");
+        await repoB.getChecks("abc1234");
+        await repoA.getChecks("abc1234");
+
+        expect(getChecks).toHaveBeenCalledTimes(2);
+    });
+
+    it("uses the settings fingerprint in the shared cache key", async () => {
+        const service = new CommitChecksService({ ttlMs: 15_000 });
+        const getChecks = vi.fn(async () => snapshot("success"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const defaultFilter = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { service, settingsFingerprint: "build/i" },
+        );
+        const customFilter = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+            {},
+            { service, settingsFingerprint: "deploy/i" },
+        );
+
+        await defaultFilter.getChecks("abc1234");
+        await customFilter.getChecks("abc1234");
 
         expect(getChecks).toHaveBeenCalledTimes(2);
     });
@@ -474,6 +600,25 @@ describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
         expect(getChecks).toHaveBeenCalledTimes(1);
     });
 
+    it("forwards a forced request through the shared cache service", async () => {
+        const getChecks = vi
+            .fn()
+            .mockResolvedValueOnce(snapshot("success"))
+            .mockResolvedValueOnce(snapshot("failure"));
+        const provider = makeProvider("github", "github.com", getChecks);
+        const coordinator = new CommitChecksCoordinator(
+            makeGitOps({ origin: "git@github.com:owner/repo.git" }),
+            [provider],
+        );
+
+        await coordinator.getChecks("abc1234");
+        await expect(coordinator.getChecks("abc1234", { force: true })).resolves.toMatchObject({
+            state: "failure",
+        });
+
+        expect(getChecks).toHaveBeenCalledTimes(2);
+    });
+
     it("auto-recovers an unavailable snapshot after the TTL (simulated 429 clears)", async () => {
         let clock = 0;
         const getChecks = vi
@@ -485,7 +630,7 @@ describe("CommitChecksCoordinator — TTL throttle (fake clock)", () => {
             makeGitOps({ origin: "git@github.com:owner/repo.git" }),
             [provider],
             {},
-            { ttlMs: 10_000, now: () => clock },
+            { service: new CommitChecksService({ unavailableTtlMs: 10_000, now: () => clock }) },
         );
 
         await coordinator.getChecks("abc1234");

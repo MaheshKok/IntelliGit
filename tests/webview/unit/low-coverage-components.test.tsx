@@ -3,11 +3,17 @@
 import React, { act, useRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch, Commit, CommitChecksSnapshot, CommitDetail } from "../../../src/types";
+import { GitHubRequestGate } from "../../../src/services/commitChecks/requestGate";
 import { BranchColumn } from "../../../src/webviews/react/BranchColumn";
 import { CommitList } from "../../../src/webviews/react/CommitList";
+import { ROW_HEIGHT } from "../../../src/webviews/react/graph";
 import { CommitRow } from "../../../src/webviews/react/commit-list/CommitRow";
 import { CommitInfoPane } from "../../../src/webviews/react/commit-info/CommitInfoPane";
-import { MAX_NONE_REFRESH_ATTEMPTS } from "../../../src/webviews/react/commit-list/checksRefresh";
+import {
+    commitHashesMatch,
+    HEAD_NONE_CHECK_RETRY_DELAYS_MS,
+    PENDING_CHECK_RETRY_DELAYS_MS,
+} from "../../../src/webviews/react/commit-list/checksRefresh";
 import { useDragResize } from "../../../src/webviews/react/commit-panel/hooks/useDragResize";
 import { ContextMenu } from "../../../src/webviews/react/shared/components/ContextMenu";
 import {
@@ -486,7 +492,7 @@ describe("low coverage components", () => {
             />,
         );
         await flush();
-        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
+        expect(onRequestCommitChecks).toHaveBeenCalledWith(["aa11bb22"], false);
 
         const row = Array.from(container.querySelectorAll("div")).find(
             (el) =>
@@ -525,7 +531,481 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
-    it("CommitList retries visible pending check snapshots", async () => {
+    it("CommitList requests checks only for the exact viewport", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commits: Commit[] = Array.from({ length: 30 }, (_, index) => ({
+            hash: `hash-${index.toString().padStart(2, "0")}`,
+            shortHash: `hash-${index.toString().padStart(2, "0")}`,
+            message: `Commit ${index}`,
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: [],
+            refs: [],
+        }));
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * 3);
+
+        try {
+            const { root, container } = mount(
+                <CommitList
+                    commits={commits}
+                    selectedHash={null}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={new Set()}
+                    selectedBranch={null}
+                    onSelectCommit={vi.fn()}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={vi.fn()}
+                    commitChecks={new Map()}
+                    onRequestCommitChecks={onRequestCommitChecks}
+                    onOpenCommitCheckUrl={vi.fn()}
+                />,
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            const viewport = container.querySelector(
+                '[data-testid="commit-list-viewport"]',
+            ) as HTMLDivElement;
+            Object.defineProperty(viewport, "scrollTop", {
+                value: ROW_HEIGHT * 10,
+                configurable: true,
+            });
+            act(() => {
+                viewport.dispatchEvent(new Event("scroll", { bubbles: true }));
+            });
+            await flush();
+
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(1);
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith(
+                [commits[10].hash, commits[11].hash, commits[12].hash],
+                false,
+            );
+            expect(onRequestCommitChecks.mock.calls.flatMap(([hashes]) => hashes)).not.toContain(
+                commits[9].hash,
+            );
+            expect(onRequestCommitChecks.mock.calls.flatMap(([hashes]) => hashes)).not.toContain(
+                commits[13].hash,
+            );
+            expect(onRequestCommitChecks.mock.calls).not.toContainEqual([[], false]);
+
+            unmount(root, container);
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith([], false);
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(2);
+        } finally {
+            clientHeight.mockRestore();
+        }
+    });
+
+    it("CommitList deduplicates exact-viewport check demand", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commits: Commit[] = ["duplicate-hash", "duplicate-hash", "unique-hash"].map(
+            (hash, index) => ({
+                hash,
+                shortHash: hash,
+                message: `Commit ${index}`,
+                author: "Mahesh",
+                email: "m@example.com",
+                date: "2026-02-19T00:00:00Z",
+                parentHashes: [],
+                refs: [],
+            }),
+        );
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * 3);
+        const originalConsoleError = console.error;
+        const consoleError = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+            if (String(args[0]).includes("Encountered two children with the same key")) return;
+            originalConsoleError(...args);
+        });
+
+        try {
+            const { root, container } = mount(
+                <CommitList
+                    commits={commits}
+                    selectedHash={null}
+                    filterText=""
+                    hasMore={false}
+                    unpushedHashes={new Set()}
+                    selectedBranch={null}
+                    onSelectCommit={vi.fn()}
+                    onFilterText={vi.fn()}
+                    onLoadMore={vi.fn()}
+                    onCommitAction={vi.fn()}
+                    commitChecks={new Map()}
+                    onRequestCommitChecks={onRequestCommitChecks}
+                    onOpenCommitCheckUrl={vi.fn()}
+                />,
+            );
+            await flush();
+
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith(
+                ["duplicate-hash", "unique-hash"],
+                false,
+            );
+
+            unmount(root, container);
+        } finally {
+            consoleError.mockRestore();
+            clientHeight.mockRestore();
+        }
+    });
+
+    it("CommitList clears previous demand when check callbacks are disabled", async () => {
+        const onRequestCommitChecks = vi.fn();
+        const commit: Commit = {
+            hash: "aa11bb22",
+            shortHash: "aa11bb22",
+            message: "feat: callback lifecycle",
+            author: "Mahesh",
+            email: "m@example.com",
+            date: "2026-02-19T00:00:00Z",
+            parentHashes: [],
+            refs: [],
+        };
+        const renderTree = (
+            callback?: (hashes: string[], force?: boolean) => void,
+        ): React.ReactElement => (
+            <CommitList
+                commits={[commit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set()}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map()}
+                onRequestCommitChecks={callback}
+                onOpenCommitCheckUrl={vi.fn()}
+            />
+        );
+        const { root, container } = mount(renderTree(onRequestCommitChecks));
+        await flush();
+        expect(onRequestCommitChecks).toHaveBeenLastCalledWith([commit.hash], false);
+        onRequestCommitChecks.mockClear();
+
+        act(() => {
+            root.render(renderTree());
+        });
+        await flush();
+
+        expect(onRequestCommitChecks.mock.calls).toEqual([[[], false]]);
+        unmount(root, container);
+        expect(onRequestCommitChecks).toHaveBeenCalledTimes(1);
+    });
+
+    const retryCommit: Commit = {
+        hash: "aa11bb22",
+        shortHash: "aa11bb22",
+        message: "feat: bounded checks retry",
+        author: "Mahesh",
+        email: "m@example.com",
+        date: "2026-02-19T00:00:00Z",
+        parentHashes: ["p1"],
+        refs: [],
+    };
+
+    const checksSnapshot = (
+        hash: string,
+        state: CommitChecksSnapshot["state"],
+    ): CommitChecksSnapshot => ({
+        hash,
+        state,
+        summary: `Checks ${state}`,
+        items: [],
+    });
+
+    const renderRetryCommitList = (options: {
+        commits?: Commit[];
+        snapshots: CommitChecksSnapshot[];
+        currentBranchHeadHash?: string | null;
+        unpushedHashes?: Set<string>;
+        onRequestCommitChecks: (hashes: string[], force?: boolean) => void;
+    }): React.ReactElement => (
+        <CommitList
+            commits={options.commits ?? [retryCommit]}
+            selectedHash={null}
+            filterText=""
+            hasMore={false}
+            unpushedHashes={options.unpushedHashes ?? new Set()}
+            selectedBranch={null}
+            currentBranchHeadHash={options.currentBranchHeadHash}
+            onSelectCommit={vi.fn()}
+            onFilterText={vi.fn()}
+            onLoadMore={vi.fn()}
+            onCommitAction={vi.fn()}
+            commitChecks={new Map(options.snapshots.map((snapshot) => [snapshot.hash, snapshot]))}
+            onRequestCommitChecks={options.onRequestCommitChecks}
+            onOpenCommitCheckUrl={vi.fn()}
+        />
+    );
+
+    it("CommitList emits automatic current-HEAD none retry protocol over three idle minutes", async () => {
+        vi.useFakeTimers();
+        const commits = Array.from({ length: 12 }, (_, index) => ({
+            ...retryCommit,
+            hash: index.toString(16).padStart(40, "0"),
+            shortHash: index.toString(16).padStart(7, "0"),
+        }));
+        const head = commits[0].hash;
+        const fetchJson = vi.fn(async (url: string) =>
+            url.includes("/check-runs") ? { check_runs: [] } : [],
+        );
+        const gate = new GitHubRequestGate(4);
+        const providerFetches: string[] = [];
+        const cachedSnapshots = new Map<string, CommitChecksSnapshot>();
+        const inFlightSnapshots = new Map<string, Promise<CommitChecksSnapshot>>();
+        const snapshots: CommitChecksSnapshot[] = [];
+        const requests: Promise<void>[] = [];
+        const getSnapshot = async (hash: string, force: boolean | undefined) => {
+            const cached = !force ? cachedSnapshots.get(hash) : undefined;
+            if (cached) return cached;
+            const inFlight = !force ? inFlightSnapshots.get(hash) : undefined;
+            if (inFlight) return inFlight;
+            const fetch = (async () => {
+                providerFetches.push(hash);
+                await Promise.all([
+                    gate.run(() => fetchJson(`/check-runs/${hash}`, {})),
+                    gate.run(() => fetchJson(`/statuses/${hash}`, {})),
+                ]);
+                const snapshot: CommitChecksSnapshot = {
+                    hash,
+                    state: "none",
+                    summary: "No checks found",
+                    items: [],
+                };
+                cachedSnapshots.set(hash, snapshot);
+                return snapshot;
+            })();
+            if (!force) inFlightSnapshots.set(hash, fetch);
+            try {
+                return await fetch;
+            } finally {
+                if (!force) inFlightSnapshots.delete(hash);
+            }
+        };
+        const onRequestCommitChecks = vi.fn((hashes: string[], force?: boolean) => {
+            const request = Promise.all(
+                hashes.map(async (hash) => {
+                    snapshots.push(await getSnapshot(hash, force));
+                }),
+            ).then(() => undefined);
+            requests.push(request);
+        });
+        const settleRequests = async (): Promise<void> => {
+            await flush();
+            await Promise.all(requests.splice(0));
+            await flush();
+        };
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * commits.length);
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    commits,
+                    snapshots: commits.map((commit) => checksSnapshot(commit.hash, "none")),
+                    currentBranchHeadHash: head,
+                    onRequestCommitChecks,
+                }),
+            );
+            await settleRequests();
+
+            act(() => vi.advanceTimersByTime(30_000));
+            await settleRequests();
+            act(() => vi.advanceTimersByTime(60_000));
+            await settleRequests();
+            act(() => vi.advanceTimersByTime(90_000));
+            await settleRequests();
+
+            expect(onRequestCommitChecks.mock.calls).toEqual([
+                [[head], false],
+                [commits.map((commit) => commit.hash), false],
+                [[head], true],
+                [[head], true],
+            ]);
+            // This relay consumes the emitted protocol only. GitHub provider/HTTP totals are
+            // asserted by the paired extension-host composition test.
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            clientHeight.mockRestore();
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList emits automatic visible pending retries through the final 120-second delay", async () => {
+        vi.useFakeTimers();
+        const commits = Array.from({ length: 12 }, (_, index) => ({
+            ...retryCommit,
+            hash: (index + 16).toString(16).padStart(40, "0"),
+            shortHash: (index + 16).toString(16).padStart(7, "0"),
+        }));
+        const fetchJson = vi.fn(async () => ({ check_runs: [] }));
+        const gate = new GitHubRequestGate(4);
+        const providerFetches: string[] = [];
+        const cachedSnapshots = new Map<string, CommitChecksSnapshot>();
+        const inFlightSnapshots = new Map<string, Promise<CommitChecksSnapshot>>();
+        const snapshots: CommitChecksSnapshot[] = [];
+        const requests: Promise<void>[] = [];
+        const getSnapshot = async (hash: string, force: boolean | undefined) => {
+            const cached = !force ? cachedSnapshots.get(hash) : undefined;
+            if (cached) return cached;
+            const inFlight = !force ? inFlightSnapshots.get(hash) : undefined;
+            if (inFlight) return inFlight;
+            const fetch = (async () => {
+                providerFetches.push(hash);
+                await Promise.all([
+                    gate.run(() => fetchJson(`/check-runs/${hash}`, {})),
+                    gate.run(() => fetchJson(`/statuses/${hash}`, {})),
+                ]);
+                const snapshot: CommitChecksSnapshot = {
+                    hash,
+                    state: "pending",
+                    summary: "Checks pending",
+                    items: [],
+                };
+                cachedSnapshots.set(hash, snapshot);
+                return snapshot;
+            })();
+            if (!force) inFlightSnapshots.set(hash, fetch);
+            try {
+                return await fetch;
+            } finally {
+                if (!force) inFlightSnapshots.delete(hash);
+            }
+        };
+        const onRequestCommitChecks = vi.fn((hashes: string[], force?: boolean) => {
+            const request = Promise.all(
+                hashes.map(async (hash) => snapshots.push(await getSnapshot(hash, force))),
+            ).then(() => undefined);
+            requests.push(request);
+        });
+        const settleRequests = async (): Promise<void> => {
+            await flush();
+            await Promise.all(requests.splice(0));
+            await flush();
+        };
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * commits.length);
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    commits,
+                    snapshots: commits.map((commit) => checksSnapshot(commit.hash, "pending")),
+                    onRequestCommitChecks,
+                }),
+            );
+            await settleRequests();
+
+            for (const delay of PENDING_CHECK_RETRY_DELAYS_MS) {
+                act(() => vi.advanceTimersByTime(delay));
+                await settleRequests();
+            }
+
+            expect(PENDING_CHECK_RETRY_DELAYS_MS.at(-1)).toBe(120_000);
+            expect(onRequestCommitChecks.mock.calls.filter(([, force]) => force === true)).toEqual([
+                [commits.map((commit) => commit.hash), true],
+                [commits.map((commit) => commit.hash), true],
+                [commits.map((commit) => commit.hash), true],
+            ]);
+            expect(vi.getTimerCount()).toBe(0);
+
+            const callsAfterFinalRetry = onRequestCommitChecks.mock.calls.length;
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            await settleRequests();
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(callsAfterFinalRetry);
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            clientHeight.mockRestore();
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList retries a visible pending snapshot at bounded cumulative intervals", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            expect(PENDING_CHECK_RETRY_DELAYS_MS).toEqual([30_000, 60_000, 120_000]);
+            mounted = mount(
+                renderRetryCommitList({
+                    snapshots: [checksSnapshot(retryCommit.hash, "pending")],
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(30_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([[[retryCommit.hash], true]]);
+
+            act(() => vi.advanceTimersByTime(60_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([
+                [[retryCommit.hash], true],
+                [[retryCommit.hash], true],
+            ]);
+
+            act(() => vi.advanceTimersByTime(120_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([
+                [[retryCommit.hash], true],
+                [[retryCommit.hash], true],
+                [[retryCommit.hash], true],
+            ]);
+            expect(vi.getTimerCount()).toBe(0);
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(3);
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList does not retry a pending snapshot outside the exact viewport", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const offscreenCommit = { ...retryCommit, hash: "offscreen", shortHash: "offscreen" };
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT);
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    commits: [retryCommit, offscreenCommit],
+                    snapshots: [checksSnapshot(offscreenCommit.hash, "pending")],
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            clientHeight.mockRestore();
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList clears demand and disarms retries when the host reports hidden", async () => {
         vi.useFakeTimers();
         const onRequestCommitChecks = vi.fn();
         const commit: Commit = {
@@ -544,7 +1024,7 @@ describe("low coverage components", () => {
             summary: "Checks pending",
             items: [],
         };
-        const { root, container } = mount(
+        const renderTree = (isViewVisible: boolean): React.ReactElement => (
             <CommitList
                 commits={[commit]}
                 selectedHash={null}
@@ -556,137 +1036,215 @@ describe("low coverage components", () => {
                 onFilterText={vi.fn()}
                 onLoadMore={vi.fn()}
                 onCommitAction={vi.fn()}
-                commitChecks={new Map([["aa11bb22", pending]])}
+                commitChecks={new Map([[commit.hash, pending]])}
                 onRequestCommitChecks={onRequestCommitChecks}
                 onOpenCommitCheckUrl={vi.fn()}
-            />,
-        );
-        await flush();
-        expect(onRequestCommitChecks).not.toHaveBeenCalled();
-
-        act(() => {
-            vi.runOnlyPendingTimers();
-        });
-
-        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
-        unmount(root, container);
-        vi.useRealTimers();
-    });
-
-    const noChecksCommit: Commit = {
-        hash: "aa11bb22",
-        shortHash: "aa11bb22",
-        message: "feat: pushed, checks not registered yet",
-        author: "Mahesh",
-        email: "m@example.com",
-        date: "2026-02-19T00:00:00Z",
-        parentHashes: ["p1"],
-        refs: [],
-    };
-    const noChecksSnapshot: CommitChecksSnapshot = {
-        hash: "aa11bb22",
-        state: "none",
-        summary: "No checks found",
-        items: [],
-    };
-
-    it("CommitList retries none-state checks for a pushed commit", async () => {
-        vi.useFakeTimers();
-        const onRequestCommitChecks = vi.fn();
-        const { root, container } = mount(
-            <CommitList
-                commits={[noChecksCommit]}
-                selectedHash={null}
-                filterText=""
-                hasMore={false}
-                unpushedHashes={new Set()}
-                selectedBranch={null}
-                onSelectCommit={vi.fn()}
-                onFilterText={vi.fn()}
-                onLoadMore={vi.fn()}
-                onCommitAction={vi.fn()}
-                commitChecks={new Map([["aa11bb22", noChecksSnapshot]])}
-                onRequestCommitChecks={onRequestCommitChecks}
-                onOpenCommitCheckUrl={vi.fn()}
-            />,
-        );
-        await flush();
-        expect(onRequestCommitChecks).not.toHaveBeenCalled();
-
-        act(() => {
-            vi.runOnlyPendingTimers();
-        });
-
-        expect(onRequestCommitChecks).toHaveBeenCalledWith("aa11bb22");
-        unmount(root, container);
-        vi.useRealTimers();
-    });
-
-    it("CommitList does not retry none-state checks for an unpushed commit", async () => {
-        vi.useFakeTimers();
-        const onRequestCommitChecks = vi.fn();
-        const { root, container } = mount(
-            <CommitList
-                commits={[noChecksCommit]}
-                selectedHash={null}
-                filterText=""
-                hasMore={false}
-                unpushedHashes={new Set(["aa11bb22"])}
-                selectedBranch={null}
-                onSelectCommit={vi.fn()}
-                onFilterText={vi.fn()}
-                onLoadMore={vi.fn()}
-                onCommitAction={vi.fn()}
-                commitChecks={new Map([["aa11bb22", noChecksSnapshot]])}
-                onRequestCommitChecks={onRequestCommitChecks}
-                onOpenCommitCheckUrl={vi.fn()}
-            />,
-        );
-        await flush();
-        act(() => {
-            vi.runOnlyPendingTimers();
-        });
-
-        expect(onRequestCommitChecks).not.toHaveBeenCalled();
-        unmount(root, container);
-        vi.useRealTimers();
-    });
-
-    it("CommitList stops retrying none-state checks after the retry budget", async () => {
-        vi.useFakeTimers();
-        const onRequestCommitChecks = vi.fn();
-        const renderTree = () => (
-            <CommitList
-                commits={[noChecksCommit]}
-                selectedHash={null}
-                filterText=""
-                hasMore={false}
-                unpushedHashes={new Set()}
-                selectedBranch={null}
-                onSelectCommit={vi.fn()}
-                onFilterText={vi.fn()}
-                onLoadMore={vi.fn()}
-                onCommitAction={vi.fn()}
-                commitChecks={new Map([["aa11bb22", noChecksSnapshot]])}
-                onRequestCommitChecks={onRequestCommitChecks}
-                onOpenCommitCheckUrl={vi.fn()}
+                isViewVisible={isViewVisible}
             />
         );
-        const { root, container } = mount(renderTree());
-        // Each cycle fires one scheduled retry, then re-renders so the effect re-evaluates
-        // the budget. One extra cycle proves polling stops once the budget is exhausted.
-        for (let i = 0; i < MAX_NONE_REFRESH_ATTEMPTS + 1; i++) {
+
+        try {
+            // Visible mount posts demand for the viewport and arms a pending retry timer.
+            const { root, container } = mount(renderTree(true));
+            await flush();
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith([commit.hash], false);
+            onRequestCommitChecks.mockClear();
+
+            // Host reports the surface hidden: demand is withheld (posts []) and the
+            // pending retry timer is disarmed so no hidden demand is ever published.
+            act(() => {
+                root.render(renderTree(false));
+            });
             await flush();
             act(() => {
                 vi.runOnlyPendingTimers();
             });
-            act(() => {
-                root.render(renderTree());
-            });
-        }
 
-        expect(onRequestCommitChecks).toHaveBeenCalledTimes(MAX_NONE_REFRESH_ATTEMPTS);
-        unmount(root, container);
-        vi.useRealTimers();
+            expect(onRequestCommitChecks.mock.calls).toEqual([[[], false]]);
+
+            unmount(root, container);
+        } finally {
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList retries none only for the visible current HEAD", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            expect(HEAD_NONE_CHECK_RETRY_DELAYS_MS).toEqual([30_000, 60_000]);
+            mounted = mount(
+                renderRetryCommitList({
+                    snapshots: [checksSnapshot(retryCommit.hash, "none")],
+                    currentBranchHeadHash: retryCommit.hash,
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(30_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([[[retryCommit.hash], true]]);
+
+            act(() => vi.advanceTimersByTime(60_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([
+                [[retryCommit.hash], true],
+                [[retryCommit.hash], true],
+            ]);
+            expect(vi.getTimerCount()).toBe(0);
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).toHaveBeenCalledTimes(2);
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList matches an abbreviated current HEAD to a full commit hash", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const fullHash = "c61d044fd4aa852166c3c385fbf31aed980967cf";
+        const commit = { ...retryCommit, hash: fullHash, shortHash: fullHash.slice(0, 7) };
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            expect(commitHashesMatch(fullHash, fullHash.slice(0, 1))).toBe(false);
+            mounted = mount(
+                renderRetryCommitList({
+                    commits: [commit],
+                    snapshots: [checksSnapshot(fullHash, "none")],
+                    currentBranchHeadHash: commit.shortHash,
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(30_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([[[fullHash], true]]);
+
+            act(() => vi.advanceTimersByTime(60_000));
+            expect(onRequestCommitChecks.mock.calls).toEqual([
+                [[fullHash], true],
+                [[fullHash], true],
+            ]);
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList does not retry none for a non-HEAD commit", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    snapshots: [checksSnapshot(retryCommit.hash, "none")],
+                    currentBranchHeadHash: "different-head",
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList does not retry none for an unpushed current HEAD", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    snapshots: [checksSnapshot(retryCommit.hash, "none")],
+                    currentBranchHeadHash: retryCommit.hash,
+                    unpushedHashes: new Set([retryCommit.hash]),
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList does not retry unavailable snapshots", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    snapshots: [checksSnapshot(retryCommit.hash, "unavailable")],
+                    currentBranchHeadHash: retryCommit.hash,
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            vi.useRealTimers();
+        }
+    });
+
+    it("CommitList does not retry terminal snapshots", async () => {
+        vi.useFakeTimers();
+        const onRequestCommitChecks = vi.fn();
+        const commits = (["success", "failure", "skipped"] as const).map((state) => ({
+            ...retryCommit,
+            hash: state,
+            shortHash: state,
+        }));
+        const clientHeight = vi
+            .spyOn(HTMLElement.prototype, "clientHeight", "get")
+            .mockReturnValue(ROW_HEIGHT * commits.length);
+        let mounted: ReturnType<typeof mount> | undefined;
+        try {
+            mounted = mount(
+                renderRetryCommitList({
+                    commits,
+                    snapshots: commits.map((commit) =>
+                        checksSnapshot(commit.hash, commit.hash as CommitChecksSnapshot["state"]),
+                    ),
+                    currentBranchHeadHash: commits[0].hash,
+                    onRequestCommitChecks,
+                }),
+            );
+            await flush();
+            onRequestCommitChecks.mockClear();
+
+            act(() => vi.advanceTimersByTime(60 * 60 * 1_000));
+            expect(onRequestCommitChecks).not.toHaveBeenCalled();
+        } finally {
+            if (mounted) unmount(mounted.root, mounted.container);
+            act(() => vi.runOnlyPendingTimers());
+            clientHeight.mockRestore();
+            vi.useRealTimers();
+        }
     });
 });

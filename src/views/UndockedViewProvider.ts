@@ -17,6 +17,7 @@ import {
 } from "../webviews/protocol/commitGraphTypes";
 import type {
     Branch,
+    Commit,
     CommitDetail,
     GitWorktree,
     StashEntry,
@@ -37,14 +38,19 @@ import {
     CommitChecksCoordinator,
     DEFAULT_COMMIT_CHECKS_TTL_MS,
 } from "../services/commitChecks/coordinator";
-import type { CommitChecksSettings } from "../services/commitChecks/settingsConfig";
+import { summaryForState } from "../services/commitChecks/normalize";
+import {
+    commitChecksSettingsFingerprint,
+    type CommitChecksSettings,
+} from "../services/commitChecks/settingsConfig";
+import type { CommitChecksService } from "../services/commitChecks/service";
 import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
 import { httpGetJson } from "../services/commitChecks/http";
 import type { CredentialStore } from "../services/commitChecks/credentialStore";
-import type { HostMap } from "../services/commitChecks/types";
+import type { CommitChecksProvider, HostMap } from "../services/commitChecks/types";
 import {
     assertGitHash,
     assertNullableString,
@@ -90,6 +96,8 @@ interface UndockedViewProviderOptions {
     selectedRepositoryRoot?: string;
     loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+    commitChecksService?: CommitChecksService;
+    commitChecksProviders?: readonly CommitChecksProvider[];
 }
 
 /**
@@ -135,6 +143,7 @@ function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | u
  */
 export class UndockedViewProvider {
     public static readonly viewType = "intelligit.undocked";
+    private static readonly MAX_VISIBLE_COMMIT_CHECKS = 200;
     private panel?: vscode.WebviewPanel;
     private readonly gitOps: GitOps;
     private readonly executor?: Pick<GitExecutor, "setRoot">;
@@ -159,6 +168,10 @@ export class UndockedViewProvider {
     private commitDetailLoading = false;
     private readonly commitChecks: CommitChecksCoordinator;
     private commitChecksGeneration = 0;
+    private commitCheckDemandSeq = 0;
+    private loadedCommitHashes = new Set<string>();
+    private checkableCommitHashes = new Set<string>();
+    private constrainCommitCheckHashes = false;
     private folderIconsByName: ThemeFolderIconMap = {};
     private branchFolderIconsByName: ThemeFolderIconMap = {};
     private commitDetailSeq = 0;
@@ -240,7 +253,7 @@ export class UndockedViewProvider {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.commitChecks = new CommitChecksCoordinator(
             this.gitOps,
-            [
+            options.commitChecksProviders ?? [
                 new GitHubProvider(httpGetJson, commitChecksSettings?.ciCdPattern),
                 new GitLabProvider(httpGetJson, credentialStore, commitChecksSettings?.ciCdPattern),
                 new BitbucketCloudProvider(httpGetJson, credentialStore),
@@ -251,6 +264,8 @@ export class UndockedViewProvider {
                 enabled: commitChecksSettings?.enabled,
                 providerEnabled: commitChecksSettings?.providers,
                 ttlMs: DEFAULT_COMMIT_CHECKS_TTL_MS,
+                service: options.commitChecksService,
+                settingsFingerprint: commitChecksSettingsFingerprint(commitChecksSettings),
             },
         );
     }
@@ -390,7 +405,8 @@ export class UndockedViewProvider {
         this.folderIconsByName = {};
         this.branchFolderIconsByName = {};
         this.commitChecksGeneration += 1;
-        this.commitChecks.clear();
+        this.commitChecks.clearProviderResolution();
+        this.clearCommitCheckHashScope();
         this.filterText = "";
         this.offset = 0;
         this.loadingMore = false;
@@ -513,13 +529,15 @@ export class UndockedViewProvider {
      *
      * A new panel attaches icon-theme resources, registers theme/configuration listeners, and
      * installs the unified message bridge. Reopening an existing panel only reveals it so webview
-     * state retained by VS Code is preserved.
+     * state retained by VS Code is preserved. Fresh creation and teardown invalidate viewport
+     * demand owned by the previous panel lifecycle.
      */
     open(): void {
         if (this.panel) {
             this.panel.reveal();
             return;
         }
+        this.commitCheckDemandSeq += 1;
         this.panel = vscode.window.createWebviewPanel(
             UndockedViewProvider.viewType,
             `IntelliGit — ${this.repositoryLabel}`,
@@ -534,6 +552,7 @@ export class UndockedViewProvider {
         this.registerThemeChangeListeners();
         this.panel.webview.html = this.getHtml(this.panel.webview);
         this.panel.onDidDispose(() => {
+            this.commitCheckDemandSeq += 1;
             this.panel = undefined;
             this.iconTheme.dispose();
             this.disposeThemeChangeDisposables();
@@ -548,11 +567,20 @@ export class UndockedViewProvider {
                 this.postToWebview({ type: "error", message });
             }
         });
+        // Forward real panel visibility; the retained webview cannot trust
+        // document.visibilityState, so demand must be gated by the host signal.
+        this.panel.onDidChangeViewState(() => {
+            this.postToWebview({
+                type: "setViewVisibility",
+                visible: this.panel?.visible ?? false,
+            });
+        });
     }
     /**
-     * Disposes the undocked panel, theme listeners, icon resolver, and all host event emitters.
+     * Invalidates commit-check demand and disposes the panel, theme resources, and host emitters.
      */
     dispose(): void {
+        this.commitCheckDemandSeq += 1;
         this.iconTheme.dispose();
         this.disposeThemeChangeDisposables();
         this._onCommitSelected.dispose();
@@ -597,6 +625,10 @@ export class UndockedViewProvider {
         switch (msg.type) {
             // Graph-side
             case "ready":
+                this.postToWebview({
+                    type: "setViewVisibility",
+                    visible: this.panel?.visible ?? false,
+                });
                 // Restore column widths first, before the slow git operations
                 // below, so the webview applies saved widths immediately and
                 // never overwrites them with its pre-restore equal widths.
@@ -629,6 +661,7 @@ export class UndockedViewProvider {
                 break;
             case "filterBranch":
                 this.currentBranch = assertNullableString(msg.branch, "branch");
+                this.commitCheckDemandSeq += 1;
                 this.filterText = "";
                 this.postToWebview({
                     type: "setSelectedBranch",
@@ -672,8 +705,8 @@ export class UndockedViewProvider {
                     filePath: assertRepoRelativePath(assertString(msg.filePath, "filePath")),
                 });
                 break;
-            case "requestCommitChecks":
-                await this.sendCommitChecks(assertGitHash(msg.hash, "hash"));
+            case "requestVisibleCommitChecks":
+                await this.sendVisibleCommitChecksRequest(msg);
                 break;
             case "openCommitCheckUrl":
                 await this.openExternalHttpUrl(assertString(msg.url, "url"));
@@ -856,6 +889,7 @@ export class UndockedViewProvider {
             ]);
             if (requestId !== this.requestSeq) return;
             this.offset = commits.length;
+            this.replaceCommitCheckHashScope(commits, unpushedHashes);
             this.postToWebview({
                 type: "loadCommits",
                 commits,
@@ -891,6 +925,7 @@ export class UndockedViewProvider {
             ]);
             if (requestId !== this.requestSeq) return;
             this.offset += commits.length;
+            this.addCommitCheckHashScope(commits, unpushedHashes);
             this.postToWebview({
                 type: "loadCommits",
                 commits,
@@ -909,21 +944,122 @@ export class UndockedViewProvider {
             }
         }
     }
+    /** Stores the current text filter, invalidates viewport demand, and reloads page one. */
     private async filterByText(text: string): Promise<void> {
+        this.commitCheckDemandSeq += 1;
         this.filterText = text;
         await this.loadInitial();
     }
 
-    private async sendCommitChecks(hash: string): Promise<void> {
-        const generation = this.commitChecksGeneration;
+    /**
+     * Fetches one permitted snapshot and posts it only if cache and viewport generations still match.
+     *
+     * @param hash - Checked commit hash within the selected repository graph.
+     * @param demandGeneration - Viewport demand generation that owns the reply.
+     * @param force - Whether this webview request must bypass fresh cache layers.
+     */
+    private async sendCommitChecks(
+        hash: string,
+        demandGeneration: number,
+        force: boolean,
+    ): Promise<void> {
+        const cacheGeneration = this.commitChecksGeneration;
         // Generation guard must run after the provider returns its snapshot.
         // react-doctor-disable-next-line react-doctor/async-defer-await
-        const snapshot = await this.commitChecks.getChecks(hash);
-        if (generation !== this.commitChecksGeneration) {
-            this.commitChecks.clear();
+        const snapshot = await this.commitChecks.getChecks(hash, { force });
+        if (cacheGeneration !== this.commitChecksGeneration) {
+            this.commitChecks.clearProviderResolution();
             return;
         }
+        if (demandGeneration !== this.commitCheckDemandSeq) return;
         this.postToWebview({ type: "setCommitChecks", snapshot });
+    }
+
+    /**
+     * Replaces prior viewport demand and processes its validated hashes sequentially.
+     *
+     * Sequential processing lets a later viewport stop hashes that have not started while the
+     * shared coordinator gate continues to coalesce work across independent view surfaces.
+     */
+    private async sendVisibleCommitChecksRequest(
+        msg: Extract<UnifiedOutbound, { type: "requestVisibleCommitChecks" }>,
+    ): Promise<void> {
+        const generation = ++this.commitCheckDemandSeq;
+        const hashes = this.assertVisibleCommitCheckHashes(msg);
+        for (const hash of hashes) {
+            if (generation !== this.commitCheckDemandSeq) return;
+            await this.sendCommitChecksIfCheckable(hash, generation, msg.force === true);
+        }
+    }
+
+    /**
+     * Enforces loaded and pushed-commit scope before fetching or posting a visible badge.
+     * Synthetic `none` snapshots obey the same demand generation as provider-backed snapshots.
+     */
+    private async sendCommitChecksIfCheckable(
+        hash: string,
+        generation: number,
+        force: boolean,
+    ): Promise<void> {
+        if (!this.constrainCommitCheckHashes) {
+            await this.sendCommitChecks(hash, generation, force);
+            return;
+        }
+        if (!this.loadedCommitHashes.has(hash)) return;
+        if (!this.checkableCommitHashes.has(hash)) {
+            if (generation !== this.commitCheckDemandSeq) return;
+            this.postToWebview({
+                type: "setCommitChecks",
+                snapshot: { hash, state: "none", summary: summaryForState("none"), items: [] },
+            });
+            return;
+        }
+        await this.sendCommitChecks(hash, generation, force);
+    }
+
+    /** Replaces first-page hash scope and invalidates demand tied to the previous graph result. */
+    private replaceCommitCheckHashScope(commits: Commit[], unpushedHashes: string[]): void {
+        this.commitCheckDemandSeq += 1;
+        this.loadedCommitHashes = new Set();
+        this.checkableCommitHashes = new Set();
+        this.constrainCommitCheckHashes = true;
+        this.addCommitCheckHashScope(commits, unpushedHashes);
+    }
+
+    /**
+     * Extends pagination scope without invalidating active viewport demand.
+     * Commits newly identified as unpushed become non-checkable.
+     */
+    private addCommitCheckHashScope(commits: Commit[], unpushedHashes: string[]): void {
+        const unpushed = new Set(unpushedHashes);
+        this.constrainCommitCheckHashes = true;
+        for (const commit of commits) {
+            this.loadedCommitHashes.add(commit.hash);
+            if (unpushed.has(commit.hash)) {
+                this.checkableCommitHashes.delete(commit.hash);
+            } else {
+                this.checkableCommitHashes.add(commit.hash);
+            }
+        }
+    }
+
+    /** Clears repository hash scope and invalidates any in-flight viewport demand. */
+    private clearCommitCheckHashScope(): void {
+        this.commitCheckDemandSeq += 1;
+        this.loadedCommitHashes.clear();
+        this.checkableCommitHashes.clear();
+        this.constrainCommitCheckHashes = true;
+    }
+
+    /** Validates, bounds, and deduplicates untrusted visible hashes from the webview boundary. */
+    private assertVisibleCommitCheckHashes(
+        msg: Extract<UnifiedOutbound, { type: "requestVisibleCommitChecks" }>,
+    ): string[] {
+        if (!Array.isArray(msg.hashes)) throw new Error("Expected commit-check hashes array.");
+        if (msg.hashes.length > UndockedViewProvider.MAX_VISIBLE_COMMIT_CHECKS) {
+            throw new Error("Too many visible commit-check hashes.");
+        }
+        return Array.from(new Set(msg.hashes.map((hash) => assertGitHash(hash, "hashes"))));
     }
 
     private async openExternalHttpUrl(rawUrl: string): Promise<void> {

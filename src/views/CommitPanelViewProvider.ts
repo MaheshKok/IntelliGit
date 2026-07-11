@@ -62,6 +62,18 @@ const MIN_VISIBLE_REFRESH_MS = 600;
 // repository's first render. ponytail: fixed cap, revisit only if a profiler asks.
 const COLLAPSED_COUNT_SCAN_CONCURRENCY = 6;
 
+interface StoredChangedFileCount {
+    root: string;
+    includeIgnored: boolean;
+    count: number;
+    updatedAt: number;
+}
+
+interface StoredChangedFileCountsPayload {
+    schemaVersion: number;
+    entries: StoredChangedFileCount[];
+}
+
 /**
  * Hosts the sidebar Changes webview and its embedded commit graph protocol.
  *
@@ -72,6 +84,10 @@ const COLLAPSED_COUNT_SCAN_CONCURRENCY = 6;
 export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "intelligit.commitPanel";
     private static readonly COMMIT_DRAFT_KEY_PREFIX = "commitDraft:";
+    private static readonly CHANGED_FILE_COUNTS_KEY = "intelligit.changedFileCounts.v1";
+    private static readonly CHANGED_FILE_COUNTS_SCHEMA_VERSION = 1;
+    private static readonly MAX_STORED_CHANGED_FILE_COUNTS = 100;
+    private static readonly MAX_STORED_CHANGED_FILE_COUNT_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
     private static readonly ignoredWatcherDirs = new Set([".git", "dist", "build", "out"]);
     private view?: vscode.WebviewView;
     private lastFileCount = 0;
@@ -79,6 +95,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private readonly runtimes = new Map<string, CommitPanelRepositoryRuntime>();
     private readonly expandedRepositoryRoots = new Set<string>();
     private readonly runtimeWatchers = new Map<string, vscode.Disposable>();
+    private readonly storedChangedFileCounts = new Map<string, StoredChangedFileCount>();
+    private changedFileCountsWrite = Promise.resolve();
     private activeRepositoryRoot: string | null = null;
     private visibleRefreshCount = 0;
     private themeChangeDisposables: vscode.Disposable[] = [];
@@ -128,6 +146,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private readonly secrets?: vscode.SecretStorage,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
+        this.loadStoredChangedFileCounts();
         if (repoRootUri) {
             this.setRepositoriesInternal(
                 [this.repositoryFromUri(repoRootUri)],
@@ -194,11 +213,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const previousActiveRuntime =
             previousActiveRoot !== null ? this.runtimes.get(previousActiveRoot) : undefined;
         const nextRoots = new Set(repositories.map((repository) => repository.root));
-        let repositoryRemoved = false;
 
         for (const [root, runtime] of this.runtimes) {
             if (nextRoots.has(root)) continue;
-            repositoryRemoved = true;
             this.expandedRepositoryRoots.delete(root);
             this.disposeRuntimeWatcher(root);
             this.invalidateRuntime(runtime);
@@ -212,10 +229,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 continue;
             }
             const gitOps = repository.root === activeRoot ? activeGitOps : undefined;
-            this.runtimes.set(
-                repository.root,
-                new CommitPanelRepositoryRuntime(repository, gitOps),
-            );
+            const runtime = new CommitPanelRepositoryRuntime(repository, gitOps);
+            runtime.lastKnownChangedFileCount = this.getStoredChangedFileCount(runtime);
+            this.runtimes.set(repository.root, runtime);
         }
 
         this.repositories = repositories;
@@ -229,6 +245,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const activeChanged = previousActiveRoot !== this.activeRepositoryRoot;
         if (activeChanged && previousActiveRuntime) this.invalidateRuntime(previousActiveRuntime);
 
+        this.updateAggregateChangedFileCount();
+
         const activeRuntime = this.getActiveRuntime();
         this.repoRootUri = activeRuntime?.repoRootUri;
         if (activeChanged || options.resetActiveState) {
@@ -236,7 +254,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.commitDetailFolderIconsByName = {};
             this.branchFolderIconsByName = {};
             this.commitDetailSeq += 1;
-            this.updateAggregateChangedFileCount();
             if (activeRuntime) {
                 this.postToWebview({
                     type: "restoreCommitDraft",
@@ -244,9 +261,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     message: this.getStoredCommitDraft(activeRuntime),
                 });
             }
-        }
-        if (repositoryRemoved && !activeChanged && !options.resetActiveState) {
-            this.updateAggregateChangedFileCount();
         }
         this.postRepositoryListHydration();
         this.syncRuntimeWatchers();
@@ -309,11 +323,134 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     private countChangedFiles(runtime: CommitPanelRepositoryRuntime | undefined): number {
         if (!runtime) return 0;
+        if (!runtime.hasScannedFileCount && runtime.lastKnownChangedFileCount !== null) {
+            return runtime.lastKnownChangedFileCount;
+        }
         const uniquePaths = new Set<string>();
         for (const file of runtime.files) {
             if (file.status !== "!") uniquePaths.add(file.path);
         }
         return uniquePaths.size;
+    }
+
+    /** Loads validated workspace-state counts once so startup rendering does not await Git. */
+    private loadStoredChangedFileCounts(): void {
+        const payload = this.workspaceState?.get<unknown>(
+            CommitPanelViewProvider.CHANGED_FILE_COUNTS_KEY,
+        );
+        if (!this.isStoredChangedFileCountsPayload(payload)) return;
+        for (const entry of payload.entries) {
+            if (!this.isStoredChangedFileCount(entry)) continue;
+            if (this.isStoredChangedFileCountStale(entry)) continue;
+            this.storedChangedFileCounts.set(this.storedChangedFileCountKey(entry), entry);
+        }
+        this.pruneStoredChangedFileCounts();
+    }
+
+    /** Returns the persisted count for this runtime's root and ignored-files mode. */
+    private getStoredChangedFileCount(runtime: CommitPanelRepositoryRuntime): number | null {
+        return (
+            this.storedChangedFileCounts.get(
+                this.storedChangedFileCountKey({
+                    root: runtime.repository.root,
+                    includeIgnored: runtime.showIgnoredFiles,
+                }),
+            )?.count ?? null
+        );
+    }
+
+    /** Updates the in-memory cache immediately, then serializes its workspace-state write. */
+    private storeChangedFileCount(runtime: CommitPanelRepositoryRuntime): void {
+        const entry: StoredChangedFileCount = {
+            root: runtime.repository.root,
+            includeIgnored: runtime.showIgnoredFiles,
+            count: this.countChangedFiles(runtime),
+            updatedAt: Date.now(),
+        };
+        const key = this.storedChangedFileCountKey(entry);
+        const existing = this.storedChangedFileCounts.get(key);
+        if (existing?.count === entry.count) {
+            this.storedChangedFileCounts.set(key, entry);
+            this.pruneStoredChangedFileCounts();
+            return;
+        }
+        this.storedChangedFileCounts.set(key, entry);
+        this.pruneStoredChangedFileCounts();
+        const payload: StoredChangedFileCountsPayload = {
+            schemaVersion: CommitPanelViewProvider.CHANGED_FILE_COUNTS_SCHEMA_VERSION,
+            entries: Array.from(this.storedChangedFileCounts.values()),
+        };
+        this.changedFileCountsWrite = this.changedFileCountsWrite
+            .catch(() => undefined)
+            .then(() =>
+                this.workspaceState?.update(
+                    CommitPanelViewProvider.CHANGED_FILE_COUNTS_KEY,
+                    payload,
+                ),
+            )
+            .catch(() => undefined);
+    }
+
+    /** Drops expired entries and retains the newest bounded set before serialization. */
+    private pruneStoredChangedFileCounts(): void {
+        const entries = Array.from(this.storedChangedFileCounts.values())
+            .filter((entry) => !this.isStoredChangedFileCountStale(entry))
+            .sort((left, right) => right.updatedAt - left.updatedAt)
+            .slice(0, CommitPanelViewProvider.MAX_STORED_CHANGED_FILE_COUNTS);
+        this.storedChangedFileCounts.clear();
+        for (const entry of entries) {
+            this.storedChangedFileCounts.set(this.storedChangedFileCountKey(entry), entry);
+        }
+    }
+
+    /** Validates the outer workspace-state envelope before accepting individual entries. */
+    private isStoredChangedFileCountsPayload(
+        value: unknown,
+    ): value is StoredChangedFileCountsPayload {
+        if (!value || typeof value !== "object") return false;
+        const payload = value as { schemaVersion?: unknown; entries?: unknown };
+        return (
+            payload.schemaVersion === CommitPanelViewProvider.CHANGED_FILE_COUNTS_SCHEMA_VERSION &&
+            Array.isArray(payload.entries)
+        );
+    }
+
+    /** Validates one untrusted persisted entry without accepting path or count coercions. */
+    private isStoredChangedFileCount(value: unknown): value is StoredChangedFileCount {
+        if (!value || typeof value !== "object") return false;
+        const entry = value as Partial<StoredChangedFileCount>;
+        return (
+            typeof entry.root === "string" &&
+            entry.root.length > 0 &&
+            typeof entry.includeIgnored === "boolean" &&
+            typeof entry.count === "number" &&
+            Number.isFinite(entry.count) &&
+            Number.isInteger(entry.count) &&
+            entry.count >= 0 &&
+            typeof entry.updatedAt === "number" &&
+            Number.isFinite(entry.updatedAt)
+        );
+    }
+
+    /** Limits accepted cache entries to the current 30-day lifetime and rejects future clocks. */
+    private isStoredChangedFileCountStale(entry: StoredChangedFileCount): boolean {
+        const now = Date.now();
+        return (
+            entry.updatedAt > now ||
+            now - entry.updatedAt > CommitPanelViewProvider.MAX_STORED_CHANGED_FILE_COUNT_AGE_MS
+        );
+    }
+
+    /** Keeps ignored and tracked counts distinct for a repository root. */
+    private storedChangedFileCountKey(
+        entry: Pick<StoredChangedFileCount, "root" | "includeIgnored">,
+    ): string {
+        return `${entry.root}\u0000${entry.includeIgnored ? "ignored" : "tracked"}`;
+    }
+
+    /** Returns current workspace aggregate without waiting for a Git refresh. */
+    getLastKnownFileCount(): number {
+        return this.aggregateChangedFileCount();
     }
 
     /** Sums non-ignored unique changed paths per repository from cached runtime snapshots. */
@@ -437,6 +574,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 }
                 runtime.files = files;
                 runtime.hasScannedFileCount = true;
+                runtime.lastKnownChangedFileCount = this.countChangedFiles(runtime);
+                this.storeChangedFileCount(runtime);
                 this.updateAggregateChangedFileCount();
                 this.postRepositoryListHydration();
             })
@@ -809,6 +948,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 runtime.currentBranchNameCache = currentBranchStatus.name;
                 runtime.currentBranchUpstreamCache = currentBranchStatus.upstream;
                 runtime.hasScannedFileCount = true;
+                runtime.lastKnownChangedFileCount = this.countChangedFiles(runtime);
+                this.storeChangedFileCount(runtime);
                 this.updateAggregateChangedFileCount();
                 this.postToWebview({
                     type: "update",

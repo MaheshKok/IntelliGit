@@ -5,6 +5,26 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] - 2026-07-09
+
+### Fixed
+
+- Limited GitHub commit-check loading to exact visible graph rows with bounded pending and current-HEAD retries, preventing idle multi-repository workspaces from exhausting the shared REST quota.
+- Cached no-check results across reloads and stopped background requests before GitHub's remaining quota reaches zero.
+- Restored last-known multi-repository changed-file counts immediately on startup while fresh Git status scans reconcile the result.
+
+## [0.17.0] - 2026-07-09
+
+### Added
+
+- Shared commit-check caching and in-flight request deduplication across graph, sidebar, and undocked views.
+- Persisted terminal commit-check snapshots across window reloads with bounded age and LRU eviction.
+- Batched visible commit-check requests from graph webviews to reduce host message bursts.
+
+### Fixed
+
+- Routed GitHub commit-check requests through a shared concurrency and cooldown gate to avoid duplicate rate-limit bursts across views.
+
 ## [0.16.1] - 2026-07-09
 
 ### Fixed
