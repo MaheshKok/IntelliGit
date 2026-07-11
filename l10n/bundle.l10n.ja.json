@@ -410,5 +410,6 @@
     "Abort the current merge? Local conflict resolutions will be discarded.": "現在のマージを中止しますか？ローカルのコンフリクト解決は破棄されます。",
     "Aborting merge...": "マージを中止しています...",
     "Merge aborted.": "マージが中止されました。",
-    "Abort merge failed: {message}": "マージの中止に失敗しました: {message}"
+    "Abort merge failed: {message}": "マージの中止に失敗しました: {message}",
+    "Commit-check requests are temporarily paused due to rate limiting.": "レート制限のため、コミットチェックのリクエストは一時停止されています。"
 }

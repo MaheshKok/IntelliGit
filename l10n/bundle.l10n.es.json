@@ -410,5 +410,6 @@
     "Abort the current merge? Local conflict resolutions will be discarded.": "¿Cancelar la fusión actual? Se descartarán las resoluciones de conflictos locales.",
     "Aborting merge...": "Cancelando fusión...",
     "Merge aborted.": "Fusión cancelada.",
-    "Abort merge failed: {message}": "Error al cancelar la fusión: {message}"
+    "Abort merge failed: {message}": "Error al cancelar la fusión: {message}",
+    "Commit-check requests are temporarily paused due to rate limiting.": "Las solicitudes de comprobación de confirmaciones están temporalmente en pausa debido a un límite de frecuencia."
 }

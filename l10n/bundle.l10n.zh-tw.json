@@ -410,5 +410,6 @@
     "Abort the current merge? Local conflict resolutions will be discarded.": "中止目前合併？本機衝突解決方案將被丟棄。",
     "Aborting merge...": "正在中止合併...",
     "Merge aborted.": "合併已中止。",
-    "Abort merge failed: {message}": "中止合併失敗：{message}"
+    "Abort merge failed: {message}": "中止合併失敗：{message}",
+    "Commit-check requests are temporarily paused due to rate limiting.": "由於速率限制，提交檢查請求已暫停。"
 }

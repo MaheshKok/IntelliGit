@@ -42,6 +42,7 @@
     "Cloned successfully, but could not clean the remote URL. You may want to verify the origin remote in .git/config.": "Cloned successfully, but could not clean the remote URL. You may want to verify the origin remote in .git/config.",
     "Cloning {repo}...": "Cloning {repo}...",
     "Commit": "Commit",
+    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting.",
     "Commit hash, tag, or ref name": "Commit hash, tag, or ref name",
     "Commit message updated.": "Commit message updated.",
     "Commit status": "Commit status",

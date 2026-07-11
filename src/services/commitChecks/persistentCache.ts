@@ -49,6 +49,7 @@ export class CommitChecksPersistentCache {
     private readonly maxAgeMs: number;
     private readonly noneMaxAgeMs: number;
     private readonly now: () => number;
+    private operations: Promise<void> = Promise.resolve();
 
     /**
      * Creates a bounded persistent cache.
@@ -77,12 +78,14 @@ export class CommitChecksPersistentCache {
      * @returns The persisted snapshot, or undefined on miss/expiry/corruption.
      */
     async get(key: string): Promise<CommitChecksSnapshot | undefined> {
-        const payload = this.read();
-        const entry = payload.entries.find((candidate) => candidate.key === key);
-        if (!entry || !this.isUsable(entry)) return undefined;
-        entry.lastAccessedAt = this.now();
-        await this.write(this.trim(payload));
-        return entry.snapshot;
+        return this.enqueue(async () => {
+            const payload = this.read();
+            const entry = payload.entries.find((candidate) => candidate.key === key);
+            if (!entry || !this.isUsable(entry)) return undefined;
+            entry.lastAccessedAt = this.now();
+            await this.write(this.trim(payload));
+            return entry.snapshot;
+        });
     }
 
     /**
@@ -94,18 +97,20 @@ export class CommitChecksPersistentCache {
      */
     async set(key: string, snapshot: CommitChecksSnapshot, fetchedAt = this.now()): Promise<void> {
         if (!isPersistentCommitCheckState(snapshot.state)) return;
-        const payload = this.read();
-        const entry: PersistedCommitChecksEntry = {
-            key,
-            snapshot,
-            fetchedAt,
-            lastAccessedAt: this.now(),
-            schemaVersion: SCHEMA_VERSION,
-        };
-        const entries = payload.entries.filter((candidate) => candidate.key !== key);
-        await this.write(
-            this.trim({ schemaVersion: SCHEMA_VERSION, entries: [...entries, entry] }),
-        );
+        await this.enqueue(async () => {
+            const payload = this.read();
+            const entry: PersistedCommitChecksEntry = {
+                key,
+                snapshot,
+                fetchedAt,
+                lastAccessedAt: this.now(),
+                schemaVersion: SCHEMA_VERSION,
+            };
+            const entries = payload.entries.filter((candidate) => candidate.key !== key);
+            await this.write(
+                this.trim({ schemaVersion: SCHEMA_VERSION, entries: [...entries, entry] }),
+            );
+        });
     }
 
     /** Clears all persisted commit-check snapshots. */
@@ -124,6 +129,16 @@ export class CommitChecksPersistentCache {
 
     private async write(payload: PersistedPayload): Promise<void> {
         await this.state.update(this.storageKey, payload);
+    }
+
+    /** Serializes storage read-modify-write operations without poisoning later work after a failure. */
+    private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.operations.then(operation, operation);
+        this.operations = result.then(
+            () => undefined,
+            () => undefined,
+        );
+        return result;
     }
 
     private trim(payload: PersistedPayload): PersistedPayload {

@@ -18,11 +18,11 @@ import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
-import { createHttpGetJson, httpGetJson, type FetchJson } from "../services/commitChecks/http";
-import { GitHubRequestGate } from "../services/commitChecks/requestGate";
+import { createHttpGetJson, type FetchJson } from "../services/commitChecks/http";
+import { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
-import type { CommitChecksProvider } from "../services/commitChecks/types";
+import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -131,17 +131,23 @@ export async function activateRepositoryMode(
             noneMaxAgeMs: 60 * 60 * 1000,
         }),
     });
-    const githubRequestGate = new GitHubRequestGate(4);
-    const githubHttpGetJson = createHttpGetJson((metadata) => {
-        githubRequestGate.observeResponse(metadata);
-    });
-    const gatedGithubFetchJson: FetchJson = (url, headers) =>
-        githubRequestGate.run(() => githubHttpGetJson(url, headers));
+    const requestGateRegistry = new CommitChecksRequestGateRegistry(
+        vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
+    );
+    const fetchFor =
+        (providerId: ProviderId): FetchJson =>
+        (url, headers) =>
+            requestGateRegistry.run(providerId, url, (generation) => {
+                const fetchJson = createHttpGetJson((response) => {
+                    requestGateRegistry.observeResponse(providerId, response, generation);
+                });
+                return fetchJson(url, headers);
+            });
     const commitChecksProviders: readonly CommitChecksProvider[] = [
-        new GitHubProvider(gatedGithubFetchJson, commitCheckSettings.ciCdPattern),
-        new GitLabProvider(httpGetJson, credentialStore, commitCheckSettings.ciCdPattern),
-        new BitbucketCloudProvider(httpGetJson, credentialStore),
-        new BitbucketServerProvider(httpGetJson, credentialStore),
+        new GitHubProvider(fetchFor("github"), commitCheckSettings.ciCdPattern),
+        new GitLabProvider(fetchFor("gitlab"), credentialStore, commitCheckSettings.ciCdPattern),
+        new BitbucketCloudProvider(fetchFor("bitbucket-cloud"), credentialStore),
+        new BitbucketServerProvider(fetchFor("bitbucket-server"), credentialStore),
     ];
 
     let currentBranches: Branch[] = [];
@@ -855,7 +861,7 @@ export async function activateRepositoryMode(
     }
 
     /**
-     * Drops cached commit-check snapshots and re-renders every graph surface.
+     * Clears commit-check request state, drops cached snapshots, and re-renders every graph surface.
      *
      * Fired by the sign-in/sign-out commands after a credential change. A stored
      * "unavailable" snapshot is a terminal state the coordinator never re-fetches,
@@ -864,6 +870,7 @@ export async function activateRepositoryMode(
      * re-render, which makes the webview re-request checks.
      */
     const refreshCommitCheckBadges = async (): Promise<void> => {
+        requestGateRegistry.reset();
         commitGraph.clearChecksCache();
         sidebarGraph.clearChecksCache();
         undocked?.clearChecksCache();
@@ -884,7 +891,6 @@ export async function activateRepositoryMode(
         ),
         vscode.authentication.onDidChangeSessions((event) => {
             if (event.provider.id !== "github") return;
-            githubRequestGate.reset();
             refreshCommitCheckBadges().catch((err) => {
                 console.error("[IntelliGit] GitHub commit-check refresh failed:", err);
             });

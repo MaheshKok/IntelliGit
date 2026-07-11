@@ -505,7 +505,10 @@ Use stable layout dimensions and no nested cards.
 Replace single `useCheckedFiles(state.files)` with a keyed structure:
 
 ```ts
-const checkedByRepository = useMemo(() => new Map<string, Set<string>>(), []);
+const [checkedByRepository, setCheckedByRepository] = useState<Record<string, Set<string>>>({});
+
+const updateCheckedPaths = (repositoryRoot: string, paths: Set<string>) =>
+    setCheckedByRepository((current) => ({ ...current, [repositoryRoot]: new Set(paths) }));
 ```
 
 or a tiny hook:
@@ -516,6 +519,7 @@ useCheckedFilesByRepository(repositories)
 
 Behavior:
 - selecting files in repo A never checks files in repo B;
+- selections are updated immutably so checkbox changes re-render;
 - checked paths are cleared when that repo's file list no longer contains them.
 
 - [ ] **Step 4: Send `repositoryRoot` from every repo body action**
