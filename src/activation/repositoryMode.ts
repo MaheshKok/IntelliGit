@@ -859,7 +859,7 @@ export async function activateRepositoryMode(
     }
 
     /**
-     * Drops cached commit-check snapshots and re-renders every graph surface.
+     * Clears commit-check request state, drops cached snapshots, and re-renders every graph surface.
      *
      * Fired by the sign-in/sign-out commands after a credential change. A stored
      * "unavailable" snapshot is a terminal state the coordinator never re-fetches,
@@ -868,6 +868,7 @@ export async function activateRepositoryMode(
      * re-render, which makes the webview re-request checks.
      */
     const refreshCommitCheckBadges = async (): Promise<void> => {
+        requestGateRegistry.reset();
         commitGraph.clearChecksCache();
         sidebarGraph.clearChecksCache();
         undocked?.clearChecksCache();
@@ -888,7 +889,6 @@ export async function activateRepositoryMode(
         ),
         vscode.authentication.onDidChangeSessions((event) => {
             if (event.provider.id !== "github") return;
-            requestGateRegistry.reset();
             refreshCommitCheckBadges().catch((err) => {
                 console.error("[IntelliGit] GitHub commit-check refresh failed:", err);
             });

@@ -296,4 +296,67 @@ describe("CommitChecksRequestGateRegistry", () => {
         ).resolves.toBe("isolated");
         expect(isolatedHostTask).toHaveBeenCalledTimes(1);
     });
+
+    it("retains a busy bucket through reset so a fifth task waits for an original release", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+        const url = "https://gitlab.example.test/api/v4/projects/1/statuses/main";
+        const releases: Array<() => void> = [];
+        let active = 0;
+        let maxActive = 0;
+        let started = 0;
+        const blockingTask = async (): Promise<void> => {
+            started += 1;
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            await new Promise<void>((resolve) => releases.push(resolve));
+            active -= 1;
+        };
+
+        const originalTasks = Array.from({ length: 4 }, () =>
+            registry.run("gitlab", url, blockingTask),
+        );
+        for (let index = 0; index < 8 && started < 4; index += 1) {
+            await Promise.resolve();
+        }
+        expect(started).toBe(4);
+
+        registry.reset();
+        const fifthTask = registry.run("gitlab", url, blockingTask);
+        for (let index = 0; index < 8; index += 1) {
+            await Promise.resolve();
+        }
+        expect(started).toBe(4);
+        expect(maxActive).toBe(4);
+
+        releases.shift()?.();
+        for (let index = 0; index < 8 && started < 5; index += 1) {
+            await Promise.resolve();
+        }
+        expect(started).toBe(5);
+        expect(maxActive).toBe(4);
+
+        while (releases.length > 0) releases.shift()?.();
+        await Promise.all([...originalTasks, fifthTask]);
+    });
+
+    it("clears an idle cooldown without sharing it with another self-hosted host", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE, () => 1_000);
+        const cooledUrl = "https://git.alpha.example.test/api/v4/projects/1/statuses/main";
+        const isolatedUrl = "https://git.beta.example.test/api/v4/projects/1/statuses/main";
+
+        await expect(
+            registry.run("gitlab", cooledUrl, async () => {
+                throw new HttpError(429, "HTTP 429: slow down", { "retry-after": "60" });
+            }),
+        ).rejects.toThrow("HTTP 429: slow down");
+        await expect(registry.run("gitlab", cooledUrl, async () => "blocked")).rejects.toMatchObject({
+            statusCode: 429,
+        });
+        await expect(registry.run("gitlab", isolatedUrl, async () => "isolated")).resolves.toBe(
+            "isolated",
+        );
+
+        registry.reset();
+        await expect(registry.run("gitlab", cooledUrl, async () => "reset")).resolves.toBe("reset");
+    });
 });

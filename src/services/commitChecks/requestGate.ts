@@ -56,10 +56,17 @@ export class CommitChecksRequestGateRegistry {
         this.gateFor(providerId, metadata.url).observeResponse(metadata);
     }
 
-    /** Clears every provider/API-origin bucket after a credential or configuration change. */
+    /**
+     * Clears quota and cooldown state after a credential or configuration change.
+     *
+     * Idle buckets are discarded, while busy buckets retain their active tasks and waiters so a
+     * reset cannot create a second concurrency pool for the same provider/API origin.
+     */
     reset(): void {
-        for (const gate of this.gates.values()) gate.reset();
-        this.gates.clear();
+        for (const [key, gate] of this.gates) {
+            gate.reset();
+            if (gate.isIdle()) this.gates.delete(key);
+        }
     }
 
     private gateFor(providerId: ProviderId, url: string): ProviderRequestGate {
@@ -205,6 +212,11 @@ class ProviderRequestGate {
         this.rateResetAt = 0;
         this.cooldownUntil = 0;
         this.cooldownError = "";
+    }
+
+    /** Returns whether this bucket has neither in-flight tasks nor queued waiters. */
+    isIdle(): boolean {
+        return this.active === 0 && this.waiters.length === 0;
     }
 
     private observeGitHubResponse(metadata: HttpResponseMetadata): void {

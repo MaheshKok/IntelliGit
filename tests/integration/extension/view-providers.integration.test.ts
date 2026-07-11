@@ -540,10 +540,16 @@ vi.mock("../../../src/services/commitChecks/githubProvider", async () => {
 });
 // Mock the GitLabProvider's network boundary (the view providers inject this exact
 // module-level function). Self-hosted-routing tests set a per-test resolved value.
-vi.mock("../../../src/services/commitChecks/http", () => ({
-    createHttpGetJson: createHttpGetJsonSpy,
-    httpGetJson: httpGetJsonSpy,
-}));
+vi.mock("../../../src/services/commitChecks/http", async () => {
+    const actual = await vi.importActual<typeof import("../../../src/services/commitChecks/http")>(
+        "../../../src/services/commitChecks/http",
+    );
+    return {
+        ...actual,
+        createHttpGetJson: createHttpGetJsonSpy,
+        httpGetJson: httpGetJsonSpy,
+    };
+});
 vi.mock("../../../src/services/commitChecks/requestGate", async () => {
     const actual = await vi.importActual<
         typeof import("../../../src/services/commitChecks/requestGate")
@@ -1031,8 +1037,9 @@ describe("view providers integration", () => {
         );
     });
 
-    it("resets the request-gate registry only after GitHub authentication changes", async () => {
+    it("resets non-GitHub cooldowns through badge refresh while retaining GitHub session refresh", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        useRealGitHubCommitChecks.value = true;
         await activateRepositoryMode(
             {
                 extensionUri: vscodeMock.Uri.file("/ext"),
@@ -1045,16 +1052,33 @@ describe("view providers integration", () => {
 
         const registry = requestGateRegistryInstances[0];
         expect(registry).toBeDefined();
+        const gitlabUrl = "https://gitlab.example.test/api/v4/projects/1/statuses/main";
+        registry.observeResponse("gitlab", {
+            url: gitlabUrl,
+            statusCode: 200,
+            headers: {
+                "ratelimit-limit": "1000",
+                "ratelimit-remaining": "100",
+                "ratelimit-reset": String(Math.ceil((Date.now() + 60_000) / 1000)),
+            },
+        });
+        const task = vi.fn(async () => "ok");
+        await expect(registry.run("gitlab", gitlabUrl, task)).rejects.toMatchObject({
+            statusCode: 429,
+        });
+        expect(task).not.toHaveBeenCalled();
+
         await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
-        expect(registry.reset).not.toHaveBeenCalled();
+        expect(registry.reset).toHaveBeenCalledTimes(1);
+        await expect(registry.run("gitlab", gitlabUrl, task)).resolves.toBe("ok");
 
         authSessionListeners[0]({ provider: { id: "gitlab" } });
         await flushMicrotasks();
-        expect(registry.reset).not.toHaveBeenCalled();
+        expect(registry.reset).toHaveBeenCalledTimes(1);
 
         authSessionListeners[0]({ provider: { id: "github" } });
         await flushMicrotasks();
-        expect(registry.reset).toHaveBeenCalledTimes(1);
+        expect(registry.reset).toHaveBeenCalledTimes(2);
     });
 
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
