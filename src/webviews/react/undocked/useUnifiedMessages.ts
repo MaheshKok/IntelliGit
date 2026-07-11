@@ -35,6 +35,7 @@ export interface UseUnifiedMessagesParams {
     setSectionWidths: (next: SectionWidths) => void;
     layoutRef: React.MutableRefObject<HTMLDivElement | null>;
     setCommitPanelPosition: (pos: "left" | "right") => void;
+    setViewVisible: (visible: boolean) => void;
 }
 
 /**
@@ -55,6 +56,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
         setSectionWidths,
         layoutRef,
         setCommitPanelPosition,
+        setViewVisible,
     } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     selectedHashRef.current = selectedHash;
@@ -147,6 +149,10 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
 
                 case "setCommitChecks":
                     graphDispatch({ type: "setCommitChecks", snapshot: data.snapshot });
+                    return;
+
+                case "setViewVisibility":
+                    setViewVisible(data.visible);
                     return;
 
                 case "loadError":

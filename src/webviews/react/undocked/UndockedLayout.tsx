@@ -56,6 +56,7 @@ export interface UndockedLayoutProps {
     currentBranchHeadHash: string | null;
     commitChecks: Map<string, CommitChecksValue>;
     commitChecksEnabled: boolean;
+    isViewVisible: boolean;
     selectedDetail: CommitDetail | null;
     commitDetailLoading: boolean;
     branchFolderIcon?: ThemeTreeIcon;
@@ -138,6 +139,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
         currentBranchHeadHash,
         commitChecks,
         commitChecksEnabled,
+        isViewVisible,
         selectedDetail,
         commitDetailLoading,
         branchFolderIcon,
@@ -327,6 +329,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                                             ? handleSignInForCommitChecks
                                             : undefined
                                     }
+                                    isViewVisible={isViewVisible}
                                 />
                             </div>
 

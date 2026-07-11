@@ -281,6 +281,7 @@ function App(): React.ReactElement {
     const [commitPanelPosition, setCommitPanelPosition] = useState<"left" | "right">(
         () => getSettings().commitWindowPosition,
     );
+    const [viewVisible, setViewVisible] = useState(true);
 
     // --- Drag handlers ---
     const onBranchDividerMouseDown = useColumnPairDrag(
@@ -400,6 +401,7 @@ function App(): React.ReactElement {
         setSectionWidths,
         layoutRef,
         setCommitPanelPosition,
+        setViewVisible,
     });
 
     const canCommit = canRunCommitAction(cpState.isAmend, checkedPaths.size, cpState.commitMessage);
@@ -453,6 +455,7 @@ function App(): React.ReactElement {
             currentBranchHeadHash={currentBranchHeadHash}
             commitChecks={commitChecks}
             commitChecksEnabled={commitChecksEnabled}
+            isViewVisible={viewVisible}
             selectedDetail={selectedDetail}
             commitDetailLoading={commitDetailLoading}
             branchFolderIcon={branchFolderIcon}

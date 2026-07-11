@@ -268,6 +268,7 @@ export function CommitGraphPanel({
         }
     });
     const loadingMore = useRef(false);
+    const [viewVisible, setViewVisible] = useState(true);
     const currentBranch = useMemo(
         () => branches.find((branch) => branch.isCurrent && !branch.isRemote),
         [branches],
@@ -289,7 +290,14 @@ export function CommitGraphPanel({
         true,
     );
 
-    useCommitGraphMessages({ vscode, dispatch, sendReady, loadingMore, selectedHash });
+    useCommitGraphMessages({
+        vscode,
+        dispatch,
+        sendReady,
+        loadingMore,
+        selectedHash,
+        setViewVisible,
+    });
 
     const handleBranchDividerKeyDown = useCallback((event: React.KeyboardEvent) => {
         if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -481,6 +489,7 @@ export function CommitGraphPanel({
                             onSignInForCommitChecks={
                                 commitChecksEnabled ? handleSignInForCommitChecks : undefined
                             }
+                            isViewVisible={viewVisible}
                         />
                     </div>
                     <button

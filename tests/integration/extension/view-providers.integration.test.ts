@@ -98,6 +98,7 @@ const fileSystemWatchers: FakeFileSystemWatcher[] = [];
 const createdWebviewPanels: Array<{
     panel: Record<string, unknown>;
     send: (message: unknown) => Promise<void>;
+    setViewState: (visible: boolean) => void;
     dispose: () => void;
 }> = [];
 const registeredCommands = new Map<string, CommandHandler>();
@@ -234,12 +235,25 @@ const vscodeMock = {
         registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
         createWebviewPanel: vi.fn(() => {
             const webview = createWebviewView();
+            let viewStateHandler: (() => void) | undefined;
             const panel = {
                 ...webview.view,
                 reveal: vi.fn(),
+                onDidChangeViewState: vi.fn((cb: () => void) => {
+                    viewStateHandler = cb;
+                    return { dispose: vi.fn() };
+                }),
                 dispose: vi.fn(() => webview.dispose()),
             };
-            createdWebviewPanels.push({ panel, send: webview.send, dispose: panel.dispose });
+            createdWebviewPanels.push({
+                panel,
+                send: webview.send,
+                setViewState: (visible: boolean) => {
+                    panel.visible = visible;
+                    viewStateHandler?.();
+                },
+                dispose: panel.dispose,
+            });
             return panel;
         }),
         createTreeView: vi.fn(() => ({
@@ -404,8 +418,9 @@ vi.mock("../../../src/git/operations", () => ({
         });
         getLog = vi.fn(async () => gitLogByRoot.get(this.currentRoot()) ?? []);
         getRemotes = vi.fn(async () => ["origin"]);
-        getRemoteUrl = vi.fn(async () =>
-            gitRemoteUrlByRoot.get(this.currentRoot()) ?? "https://github.com/owner/repo.git",
+        getRemoteUrl = vi.fn(
+            async () =>
+                gitRemoteUrlByRoot.get(this.currentRoot()) ?? "https://github.com/owner/repo.git",
         );
         getUnpushedCommitHashes = vi.fn(async () => []);
         hasUncommittedChanges = vi.fn(async () => false);
@@ -484,7 +499,10 @@ vi.mock("../../../src/services/commitChecks/githubProvider", async () => {
                 this.real = new actual.GitHubProvider(...args);
             }
 
-            match(remoteUrl: string, hostMap: Record<string, string>): { host: string; owner: string; repo: string } | null {
+            match(
+                remoteUrl: string,
+                hostMap: Record<string, string>,
+            ): { host: string; owner: string; repo: string } | null {
                 if (useRealGitHubCommitChecks.value) return this.real.match(remoteUrl, hostMap);
                 return remoteUrl.includes("github.com")
                     ? { host: "github.com", owner: "owner", repo: "repo" }
@@ -494,7 +512,9 @@ vi.mock("../../../src/services/commitChecks/githubProvider", async () => {
                 if (useRealGitHubCommitChecks.value) return this.real.keyFor(ref);
                 return `github:${ref.host}:${ref.owner}/${ref.repo}`;
             }
-            getChecks(...args: Parameters<typeof actual.GitHubProvider.prototype.getChecks>): unknown {
+            getChecks(
+                ...args: Parameters<typeof actual.GitHubProvider.prototype.getChecks>
+            ): unknown {
                 if (useRealGitHubCommitChecks.value) {
                     githubProviderCalls.push(args[1]);
                     githubProviderRoots.push(activeGitRoot.value);
@@ -2446,6 +2466,70 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitGraphViewProvider sends initial and changed host visibility to the webview", async () => {
+        const { CommitGraphViewProvider } =
+            await import("../../../src/views/CommitGraphViewProvider");
+        const provider = new CommitGraphViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            makeCredentialStore() as unknown as object,
+        );
+        const webview = createWebviewView();
+        provider.resolveWebviewView(
+            webview.view as unknown as object,
+            {} as unknown as object,
+            {} as unknown as object,
+        );
+
+        postMessageSpy.mockClear();
+        await webview.send({ type: "ready" });
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        postMessageSpy.mockClear();
+        webview.setVisible(false);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: false });
+
+        postMessageSpy.mockClear();
+        webview.setVisible(true);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider sends initial and changed panel visibility to the webview", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[0],
+            makeGitOpsMock() as unknown as ConstructorParameters<typeof UndockedViewProvider>[1],
+            { fsPath: "/repo", path: "/repo" } as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[2],
+            makeCredentialStore() as unknown as ConstructorParameters<
+                typeof UndockedViewProvider
+            >[3],
+            createMemento() as unknown as ConstructorParameters<typeof UndockedViewProvider>[4],
+        );
+        provider.open();
+        const panel = createdWebviewPanels.at(-1);
+        expect(panel).toBeDefined();
+
+        postMessageSpy.mockClear();
+        await panel!.send({ type: "ready" });
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        postMessageSpy.mockClear();
+        panel!.setViewState(false);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: false });
+
+        postMessageSpy.mockClear();
+        panel!.setViewState(true);
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "setViewVisibility", visible: true });
+
+        provider.dispose();
+    });
+
     it("CommitGraphViewProvider serves a cached pending snapshot until a forced refresh", async () => {
         // Production wiring uses a non-zero TTL (DEFAULT_COMMIT_CHECKS_TTL_MS ~15s), so two
         // back-to-back requests for the same hash within that window serve cache rather than
@@ -2559,7 +2643,8 @@ describe("view providers integration", () => {
               }
             | undefined;
         try {
-            const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
             const repositories = Array.from({ length: 30 }, (_, index) => ({
                 root: `/workspace/repository-${index}`,
                 label: `repository-${index}`,
@@ -2586,9 +2671,7 @@ describe("view providers integration", () => {
             );
             for (const [index, repository] of repositories.entries()) {
                 const hashes =
-                    index === 0
-                        ? activeHashes
-                        : [(index + 128).toString(16).padStart(40, "0")];
+                    index === 0 ? activeHashes : [(index + 128).toString(16).padStart(40, "0")];
                 gitRemoteUrlByRoot.set(
                     repository.root,
                     `https://github.com/owner/repository-${index}.git`,
@@ -2659,9 +2742,15 @@ describe("view providers integration", () => {
                 force: true,
             });
 
-            expect(githubProviderCalls).toEqual([...activeHashes, activeHashes[0], activeHashes[0]]);
+            expect(githubProviderCalls).toEqual([
+                ...activeHashes,
+                activeHashes[0],
+                activeHashes[0],
+            ]);
             expect(httpGetJsonSpy).toHaveBeenCalledTimes(28);
-            expect(githubProviderKeys).toEqual(Array(14).fill("github:github.com:owner/repository-0"));
+            expect(githubProviderKeys).toEqual(
+                Array(14).fill("github:github.com:owner/repository-0"),
+            );
             for (const repository of repositories.slice(1)) {
                 expect(gitLogByRoot.get(repository.root)).toHaveLength(1);
                 expect(githubProviderKeys).not.toContain(
@@ -2671,7 +2760,9 @@ describe("view providers integration", () => {
             const snapshots = postMessageSpy.mock.calls
                 .map(([message]) => message)
                 .filter(
-                    (message): message is { type: "setCommitChecks"; snapshot: { state: string } } =>
+                    (
+                        message,
+                    ): message is { type: "setCommitChecks"; snapshot: { state: string } } =>
                         typeof message === "object" &&
                         message !== null &&
                         "type" in message &&
@@ -2693,7 +2784,8 @@ describe("view providers integration", () => {
               }
             | undefined;
         try {
-            const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
             const activeHashes = Array.from({ length: 12 }, (_, index) =>
                 (index + 16).toString(16).padStart(40, "0"),
             );
@@ -2792,7 +2884,8 @@ describe("view providers integration", () => {
               }
             | undefined;
         try {
-            const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+            const { activateRepositoryMode } =
+                await import("../../../src/activation/repositoryMode");
             const activeHashes = Array.from({ length: 12 }, (_, index) =>
                 (index + 32).toString(16).padStart(40, "0"),
             );

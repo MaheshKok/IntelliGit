@@ -3,7 +3,7 @@
 // same virtual scrolling. Keeps its own state management to match the
 // extension-host message contract.
 
-import React, { useEffect, useCallback, useMemo, useRef, useReducer } from "react";
+import React, { useEffect, useCallback, useMemo, useRef, useReducer, useState } from "react";
 import { CommitList } from "./CommitList";
 import type { Branch, Commit, CommitChecksSnapshot } from "../../types";
 import type {
@@ -137,6 +137,7 @@ export function NativeCommitGraph({
         commitChecks,
         commitChecksEnabled,
     } = state;
+    const [isViewVisible, setIsViewVisible] = useState(true);
     const loadingMore = useRef(false);
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
@@ -225,6 +226,9 @@ export function NativeCommitGraph({
                 case "setCommitChecks":
                     dispatch({ type: "setCommitChecks", snapshot: data.snapshot });
                     break;
+                case "setViewVisibility":
+                    setIsViewVisible(data.visible);
+                    break;
             }
         };
 
@@ -301,6 +305,7 @@ export function NativeCommitGraph({
             onRequestCommitChecks={commitChecksEnabled ? handleRequestCommitChecks : undefined}
             onOpenCommitCheckUrl={commitChecksEnabled ? handleOpenCommitCheckUrl : undefined}
             onSignInForCommitChecks={commitChecksEnabled ? handleSignInForCommitChecks : undefined}
+            isViewVisible={isViewVisible}
             showSearch={false}
             showAuthorDate={false}
             headerLabel="Graph"

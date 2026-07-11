@@ -112,7 +112,7 @@ Split "which repository" (a per-view concern) from "cache, de-dupe, and gate"
 (a shared concern). The shared layer is the single source of truth per user
 token; the per-view layer stays repository-scoped.
 
-```
+```text
  commitGraph   sidebarGraph   undocked
       \             |            /
        \            |           /   getChecks(hash)  (unchanged view API)
@@ -157,7 +157,7 @@ the composite key for correctness, not merely for the persistent cache.
 
 Key format:
 
-```
+```text
 ${provider.keyFor(ref)}@${sha}:${settingsFp}
 # example:  github:github.com:owner/repo@abc123:-
 ```

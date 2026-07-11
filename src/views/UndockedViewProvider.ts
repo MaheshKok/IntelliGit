@@ -567,6 +567,14 @@ export class UndockedViewProvider {
                 this.postToWebview({ type: "error", message });
             }
         });
+        // Forward real panel visibility; the retained webview cannot trust
+        // document.visibilityState, so demand must be gated by the host signal.
+        this.panel.onDidChangeViewState(() => {
+            this.postToWebview({
+                type: "setViewVisibility",
+                visible: this.panel?.visible ?? false,
+            });
+        });
     }
     /**
      * Invalidates commit-check demand and disposes the panel, theme resources, and host emitters.
@@ -617,6 +625,10 @@ export class UndockedViewProvider {
         switch (msg.type) {
             // Graph-side
             case "ready":
+                this.postToWebview({
+                    type: "setViewVisibility",
+                    visible: this.panel?.visible ?? false,
+                });
                 // Restore column widths first, before the slow git operations
                 // below, so the webview applies saved widths immediately and
                 // never overwrites them with its pre-restore equal widths.

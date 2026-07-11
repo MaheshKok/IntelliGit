@@ -66,6 +66,14 @@ interface Props {
     showSearch?: boolean;
     showAuthorDate?: boolean;
     headerLabel?: string;
+    /**
+     * Host-driven visibility of the surface embedding this list. Defaults to
+     * `true`. Commit-check demand is withheld and retry timers stay disarmed
+     * while `false`, because `document.visibilityState` is unreliable inside a
+     * VS Code webview iframe (it reports `"visible"` even when the view/tab is
+     * hidden). Hosts forward real `WebviewView`/`WebviewPanel` visibility.
+     */
+    isViewVisible?: boolean;
 }
 
 type RetryAttempt = { state: CommitChecksSnapshot["state"]; attempt: number };
@@ -73,9 +81,10 @@ type RetryAttempt = { state: CommitChecksSnapshot["state"]; attempt: number };
 /**
  * Renders a virtualized commit list with an aligned canvas lane graph, optional
  * search chrome, branch-scope context actions, and incremental load-more support.
- * Commit-check demand tracks only the exact viewport and is cleared while this
- * document is hidden or when the surface unmounts. Pending snapshots and a
- * pushed current HEAD use bounded retry schedules.
+ * Commit-check demand tracks only the exact viewport and is cleared while the
+ * host reports the surface hidden (`isViewVisible === false`) or when the
+ * surface unmounts. Pending snapshots and a pushed current HEAD use bounded
+ * retry schedules.
  */
 export function CommitList({
     commits,
@@ -99,6 +108,7 @@ export function CommitList({
     showSearch = true,
     showAuthorDate = true,
     headerLabel,
+    isViewVisible = true,
 }: Props): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -108,11 +118,7 @@ export function CommitList({
     );
     const [scrollTop, setScrollTop] = useState(0);
     const [viewportHeight, setViewportHeight] = useState(0);
-    const [isDocumentVisible, setIsDocumentVisible] = useState(
-        () => document.visibilityState !== "hidden",
-    );
     const isLoadingMoreRef = useRef(false);
-    const isDocumentVisibleRef = useRef(isDocumentVisible);
     const retryTimerRef = useRef<number | null>(null);
     const onRequestCommitChecksRef = useRef(onRequestCommitChecks);
     // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
@@ -253,33 +259,15 @@ export function CommitList({
         onRequestCommitChecksRef.current = onRequestCommitChecks;
     }, [onRequestCommitChecks]);
 
-    // Viewport changes replace demand once; visibility and unmount lifecycles are handled separately.
+    // Replaces this surface's exact-viewport demand whenever the viewport changes
+    // or host visibility flips. Withholds demand (posts []) while hidden; the
+    // retry effect below clears any armed timer via its cleanup on the same flip.
     // react-doctor-disable-next-line react-doctor/no-effect-event-handler
     useEffect(() => {
-        if (!onRequestCommitChecks || document.visibilityState === "hidden") return;
-        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
-        onRequestCommitChecks(requestedCommitHashes, false);
-    }, [onRequestCommitChecks, requestedCommitHashes]);
-
-    useEffect(() => {
         if (!onRequestCommitChecks) return;
-        const handleVisibilityChange = (): void => {
-            const isVisible = document.visibilityState !== "hidden";
-            isDocumentVisibleRef.current = isVisible;
-            setIsDocumentVisible(isVisible);
-            if (!isVisible && retryTimerRef.current !== null) {
-                window.clearTimeout(retryTimerRef.current);
-                retryTimerRef.current = null;
-            }
-            // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
-            onRequestCommitChecks(isVisible ? requestedCommitHashes : [], false);
-        };
-        isDocumentVisibleRef.current = document.visibilityState !== "hidden";
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-        return () => {
-            document.removeEventListener("visibilitychange", handleVisibilityChange);
-        };
-    }, [onRequestCommitChecks, requestedCommitHashes]);
+        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+        onRequestCommitChecks(isViewVisible ? requestedCommitHashes : [], false);
+    }, [onRequestCommitChecks, requestedCommitHashes, isViewVisible]);
 
     useEffect(
         () => () => {
@@ -291,7 +279,7 @@ export function CommitList({
     // Retry scheduling is bounded per visible hash and never publishes hidden demand.
     // react-doctor-disable-next-line react-doctor/no-effect-event-handler
     useEffect(() => {
-        if (!onRequestCommitChecks || !isDocumentVisible) return;
+        if (!onRequestCommitChecks || !isViewVisible) return;
 
         /** Arms one timer for the earliest remaining interval and advances only due hashes. */
         const scheduleNextRetry = (): void => {
@@ -332,7 +320,6 @@ export function CommitList({
             const dueDelay = nextDelay;
             const timer = window.setTimeout(() => {
                 if (retryTimerRef.current === timer) retryTimerRef.current = null;
-                if (!isDocumentVisibleRef.current) return;
 
                 const dueHashes: string[] = [];
                 for (const hash of requestedCommitHashes) {
@@ -371,7 +358,7 @@ export function CommitList({
     }, [
         commitChecks,
         currentBranchHeadHash,
-        isDocumentVisible,
+        isViewVisible,
         isUnpushedCommit,
         onRequestCommitChecks,
         requestedCommitHashes,

@@ -220,10 +220,20 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtml(webviewView.webview);
 
+        // Forward real host visibility; the webview iframe cannot trust
+        // document.visibilityState (it stays "visible" while the view is hidden).
+        webviewView.onDidChangeVisibility(() => {
+            this.postToWebview({ type: "setViewVisibility", visible: webviewView.visible });
+        });
+
         webviewView.webview.onDidReceiveMessage(async (msg: CommitGraphOutbound) => {
             try {
                 switch (msg.type) {
                     case "ready":
+                        this.postToWebview({
+                            type: "setViewVisibility",
+                            visible: webviewView.visible,
+                        });
                         await this.iconTheme.initIconThemeData();
                         await this.sendBranches();
                         await this.loadInitial();

@@ -308,4 +308,16 @@ export type CommitGraphInbound =
           type: "setCommitChecks";
           /** Normalized snapshot keyed by `snapshot.hash`. */
           snapshot: CommitChecksSnapshot;
+      }
+    | {
+          /**
+           * Host-driven visibility signal for the graph surface. Webviews cannot
+           * trust `document.visibilityState` inside a VS Code iframe (it stays
+           * `"visible"` while the view/tab is hidden), so the host forwards real
+           * `WebviewView`/`WebviewPanel` visibility. Withholding demand while
+           * hidden prevents commit-check polling against a hidden surface.
+           */
+          type: "setViewVisibility";
+          /** `true` when the hosting view/panel is currently visible. */
+          visible: boolean;
       };

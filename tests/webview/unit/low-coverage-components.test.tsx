@@ -1005,12 +1005,9 @@ describe("low coverage components", () => {
         }
     });
 
-    it("CommitList keeps demand cleared when hidden before a pending retry", async () => {
+    it("CommitList clears demand and disarms retries when the host reports hidden", async () => {
         vi.useFakeTimers();
         const onRequestCommitChecks = vi.fn();
-        const visibilityState = vi
-            .spyOn(document, "visibilityState", "get")
-            .mockReturnValue("visible");
         const commit: Commit = {
             hash: "aa11bb22",
             shortHash: "aa11bb22",
@@ -1027,32 +1024,38 @@ describe("low coverage components", () => {
             summary: "Checks pending",
             items: [],
         };
+        const renderTree = (isViewVisible: boolean): React.ReactElement => (
+            <CommitList
+                commits={[commit]}
+                selectedHash={null}
+                filterText=""
+                hasMore={false}
+                unpushedHashes={new Set()}
+                selectedBranch={null}
+                onSelectCommit={vi.fn()}
+                onFilterText={vi.fn()}
+                onLoadMore={vi.fn()}
+                onCommitAction={vi.fn()}
+                commitChecks={new Map([[commit.hash, pending]])}
+                onRequestCommitChecks={onRequestCommitChecks}
+                onOpenCommitCheckUrl={vi.fn()}
+                isViewVisible={isViewVisible}
+            />
+        );
 
         try {
-            const { root, container } = mount(
-                <CommitList
-                    commits={[commit]}
-                    selectedHash={null}
-                    filterText=""
-                    hasMore={false}
-                    unpushedHashes={new Set()}
-                    selectedBranch={null}
-                    onSelectCommit={vi.fn()}
-                    onFilterText={vi.fn()}
-                    onLoadMore={vi.fn()}
-                    onCommitAction={vi.fn()}
-                    commitChecks={new Map([[commit.hash, pending]])}
-                    onRequestCommitChecks={onRequestCommitChecks}
-                    onOpenCommitCheckUrl={vi.fn()}
-                />,
-            );
+            // Visible mount posts demand for the viewport and arms a pending retry timer.
+            const { root, container } = mount(renderTree(true));
             await flush();
+            expect(onRequestCommitChecks).toHaveBeenLastCalledWith([commit.hash], false);
             onRequestCommitChecks.mockClear();
 
-            visibilityState.mockReturnValue("hidden");
+            // Host reports the surface hidden: demand is withheld (posts []) and the
+            // pending retry timer is disarmed so no hidden demand is ever published.
             act(() => {
-                document.dispatchEvent(new Event("visibilitychange"));
+                root.render(renderTree(false));
             });
+            await flush();
             act(() => {
                 vi.runOnlyPendingTimers();
             });
@@ -1061,7 +1064,6 @@ describe("low coverage components", () => {
 
             unmount(root, container);
         } finally {
-            visibilityState.mockRestore();
             act(() => vi.runOnlyPendingTimers());
             vi.useRealTimers();
         }
@@ -1227,10 +1229,7 @@ describe("low coverage components", () => {
                 renderRetryCommitList({
                     commits,
                     snapshots: commits.map((commit) =>
-                        checksSnapshot(
-                            commit.hash,
-                            commit.hash as CommitChecksSnapshot["state"],
-                        ),
+                        checksSnapshot(commit.hash, commit.hash as CommitChecksSnapshot["state"]),
                     ),
                     currentBranchHeadHash: commits[0].hash,
                     onRequestCommitChecks,

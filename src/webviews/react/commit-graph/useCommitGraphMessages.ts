@@ -19,8 +19,9 @@ export function useCommitGraphMessages(params: {
     sendReady: boolean;
     loadingMore: React.MutableRefObject<boolean>;
     selectedHash: string | null;
+    setViewVisible: (visible: boolean) => void;
 }): void {
-    const { vscode, dispatch, sendReady, loadingMore, selectedHash } = params;
+    const { vscode, dispatch, sendReady, loadingMore, selectedHash, setViewVisible } = params;
     const selectedHashRef = useRef<string | null>(selectedHash);
     const selectFirstOnNextLoadRef = useRef(false);
     selectedHashRef.current = selectedHash;
@@ -114,6 +115,9 @@ export function useCommitGraphMessages(params: {
                     break;
                 case "setCommitChecks":
                     dispatch({ type: "setCommitChecks", snapshot: data.snapshot });
+                    break;
+                case "setViewVisibility":
+                    setViewVisible(data.visible);
                     break;
                 case "loadError":
                     selectFirstOnNextLoadRef.current = false;
