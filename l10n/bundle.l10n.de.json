@@ -411,5 +411,5 @@
     "Aborting merge...": "Zusammenführung wird abgebrochen...",
     "Merge aborted.": "Zusammenführung abgebrochen.",
     "Abort merge failed: {message}": "Abbruch der Zusammenführung fehlgeschlagen: {message}",
-    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
+    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-Check-Anfragen sind aufgrund einer Ratenbegrenzung vorübergehend pausiert."
 }

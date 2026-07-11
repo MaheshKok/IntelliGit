@@ -411,5 +411,5 @@
     "Aborting merge...": "Przerywanie scalania...",
     "Merge aborted.": "Scalanie przerwane.",
     "Abort merge failed: {message}": "Przerwanie scalania nie powiodło się: {message}",
-    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
+    "Commit-check requests are temporarily paused due to rate limiting.": "Żądania sprawdzania commitów są tymczasowo wstrzymane z powodu limitu żądań."
 }

@@ -411,5 +411,5 @@
     "Aborting merge...": "Abandon de la fusion...",
     "Merge aborted.": "Fusion abandonnée.",
     "Abort merge failed: {message}": "Échec de l'abandon de la fusion : {message}",
-    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
+    "Commit-check requests are temporarily paused due to rate limiting.": "Les requêtes de vérification des validations sont temporairement suspendues en raison d’une limitation de débit."
 }

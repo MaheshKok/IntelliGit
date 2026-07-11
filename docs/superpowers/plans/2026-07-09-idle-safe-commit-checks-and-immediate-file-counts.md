@@ -1321,7 +1321,7 @@ If a listed script is absent, state that fact and run the closest existing valid
 - [ ] **Step 2: Run Extension Host smoke test**
 
 1. Use VS Code launch configuration `Run Extension`; it runs `bun run build` first.
-2. In the Extension Development Host, open `/Users/maheshkokare/PycharmProjects`.
+2. In the Extension Development Host, open `<workspace-root>`.
 3. Open IntelliGit and leave graph visible without scrolling or selecting a repository for five minutes.
 4. Confirm no raw `HTTP 403` appears.
 5. Confirm only active repository rows receive commit-check badges.
@@ -1353,7 +1353,7 @@ Do not declare the incident fixed from green unit tests alone. Manual untouched-
 Prepend:
 
 ```markdown
-## [0.17.1] - 2026-07-09
+## [0.17.2] - 2026-07-11
 
 ### Fixed
 
@@ -1364,7 +1364,7 @@ Prepend:
 
 - [ ] **Step 5: Bump version only now**
 
-Change `package.json` version from `0.17.0` to `0.17.1`. Do not edit dependency versions.
+Change `package.json` version from `0.17.1` to `0.17.2`. Do not edit dependency versions.
 
 - [ ] **Step 6: Run release checks**
 

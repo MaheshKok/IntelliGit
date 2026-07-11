@@ -411,5 +411,5 @@
     "Aborting merge...": "マージを中止しています...",
     "Merge aborted.": "マージが中止されました。",
     "Abort merge failed: {message}": "マージの中止に失敗しました: {message}",
-    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
+    "Commit-check requests are temporarily paused due to rate limiting.": "レート制限のため、コミットチェックのリクエストは一時停止されています。"
 }

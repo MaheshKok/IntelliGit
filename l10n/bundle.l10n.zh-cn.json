@@ -411,5 +411,5 @@
     "Aborting merge...": "正在中止合并...",
     "Merge aborted.": "合并已中止。",
     "Abort merge failed: {message}": "中止合并失败：{message}",
-    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
+    "Commit-check requests are temporarily paused due to rate limiting.": "由于速率限制，提交检查请求已暂时暂停。"
 }
