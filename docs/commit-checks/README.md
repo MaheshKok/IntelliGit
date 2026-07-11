@@ -90,17 +90,28 @@ Notes:
 
 ## Rate limits and caching
 
-The coordinator caches each commit's snapshot by SHA:
+Commit checks share runtime caching and in-flight request de-duplication across graph
+surfaces. Cache keys remain provider and repository scoped (as well as commit and
+settings scoped), so snapshots from different providers or repositories are never
+shared. Eligible settled and no-check snapshots can also be retained across extension
+restarts; pending and unavailable snapshots are not persisted.
 
-- Terminal `success` / `failure` snapshots are cached indefinitely.
-- `pending`, `none`, and recoverable `unavailable` snapshots are served from cache
-  within a fixed TTL (`DEFAULT_COMMIT_CHECKS_TTL_MS`, 15 seconds). Scrolling and
-  re-renders within the TTL reuse the cached snapshot; the 15-second graph poll
-  re-fetches once the TTL elapses.
+Automatic HTTP requests pass through a gate for each provider/API-origin pair. Every
+gate allows four concurrent requests and starts no more than 300 automatic requests in
+an hour. It also honors provider-specific response signals:
 
-This is a **throttle, not server-driven backoff**: it guarantees at most one request
-per commit per TTL, but it does not read a server-sent `Retry-After` / rate-limit-reset
-header. While a host stays rate-limited (HTTP 429, surfaced as `unavailable`), the
-badge still re-fetches once per TTL and auto-recovers after the limit clears, rather
-than honoring an exact server clear-time. Literal `Retry-After` handling is a tracked
-follow-up; see `docs/commit-checks/implementation-runbook.md` for the upgrade path.
+- **GitHub:** one shared `api.github.com` scope. GitHub quota metadata preserves a
+  reserve, and reset or retry signals start a cooldown.
+- **GitLab:** one scope per configured API host. It uses the same concurrency and
+  client budget, then honors server `RateLimit` remaining/reset data and `Retry-After`.
+  It does not assume a server quota when that metadata is absent.
+- **Bitbucket Cloud:** one shared `api.bitbucket.org` scope. It uses the same
+  concurrency and client budget, with `X-RateLimit-NearLimit` and `Retry-After`
+  driving cooldowns.
+- **Bitbucket Server/Data Center:** one scope per configured API host. It uses the
+  same concurrency and client budget, then cools down on HTTP 429 and `Retry-After`;
+  if no retry time is supplied, the fallback is 60 seconds. It does not infer an
+  instance quota.
+
+A bare HTTP 403 from GitLab or either Bitbucket provider remains an authentication or
+availability result, not a quota cooldown.
