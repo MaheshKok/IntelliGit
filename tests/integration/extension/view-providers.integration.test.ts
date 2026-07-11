@@ -1081,7 +1081,7 @@ describe("view providers integration", () => {
         expect(registry.reset).toHaveBeenCalledTimes(2);
     });
 
-    it("ignores delayed GitLab rate metadata after credential badge refresh", async () => {
+    it("ignores delayed GitLab rate metadata and errors after credential badge refresh", async () => {
         let graph:
             | {
                   clearChecksCache: () => void;
@@ -1092,13 +1092,14 @@ describe("view providers integration", () => {
         try {
             const { activateRepositoryMode } =
                 await import("../../../src/activation/repositoryMode");
+            const { HttpError } = await import("../../../src/services/commitChecks/http");
             const root = "/workspace";
             const firstHash = "a".repeat(40);
             const secondHash = "b".repeat(40);
             let firstResponse:
                 | ((metadata: { url: string; statusCode: number; headers: Record<string, string> }) => void)
                 | undefined;
-            let releaseFirstRequest: (() => void) | undefined;
+            let rejectFirstRequest: ((reason?: unknown) => void) | undefined;
             let markFirstRequestStarted: (() => void) | undefined;
             let requestsStarted = 0;
             const firstRequestStarted = new Promise<void>((resolve) => {
@@ -1133,8 +1134,8 @@ describe("view providers integration", () => {
                         if (requestsStarted === 1) {
                             firstResponse = onResponse;
                             markFirstRequestStarted?.();
-                            await new Promise<void>((resolve) => {
-                                releaseFirstRequest = resolve;
+                            await new Promise<void>((_resolve, reject) => {
+                                rejectFirstRequest = reject;
                             });
                             return [];
                         }
@@ -1183,7 +1184,9 @@ describe("view providers integration", () => {
                     "ratelimit-reset": String(Math.ceil((Date.now() + 60_000) / 1000)),
                 },
             });
-            releaseFirstRequest?.();
+            rejectFirstRequest?.(
+                new HttpError(429, "HTTP 429: slow down", { "retry-after": "60" }),
+            );
             await firstRequest;
 
             graph!.clearChecksCache();

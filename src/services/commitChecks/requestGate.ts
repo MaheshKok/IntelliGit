@@ -190,14 +190,17 @@ class ProviderRequestGate {
         this.throwIfCoolingDown();
         this.throwIfRequestBudgetExhausted();
         await this.acquire();
+        let taskGeneration: number | undefined;
         try {
             this.pruneStartedAt();
             this.throwIfCoolingDown();
             this.throwIfRequestBudgetExhausted();
+            const generation = this.generation;
+            taskGeneration = generation;
             this.startedAt.push(this.now());
-            return await task(this.generation);
+            return await task(generation);
         } catch (err) {
-            this.rememberCooldown(err);
+            if (taskGeneration === this.generation) this.rememberCooldown(err);
             throw err;
         } finally {
             this.release();

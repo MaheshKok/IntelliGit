@@ -402,4 +402,30 @@ describe("CommitChecksRequestGateRegistry", () => {
             await oldRequest;
         }
     });
+
+    it("ignores an old-generation retry-after error after reset", async () => {
+        const registry = new CommitChecksRequestGateRegistry(COOLDOWN_MESSAGE);
+        const url = "https://gitlab.example.test/api/v4/projects/1/statuses/main";
+        let rejectOldRequest: ((reason?: unknown) => void) | undefined;
+        let markOldRequestStarted: (() => void) | undefined;
+        const oldRequestStarted = new Promise<void>((resolve) => {
+            markOldRequestStarted = resolve;
+        });
+        const oldRequest = registry.run("gitlab", url, async () => {
+            markOldRequestStarted?.();
+            await new Promise<void>((_resolve, reject) => {
+                rejectOldRequest = reject;
+            });
+        });
+        const staleRateError = new HttpError(429, "HTTP 429: slow down", { "retry-after": "60" });
+
+        await oldRequestStarted;
+        registry.reset();
+        rejectOldRequest?.(staleRateError);
+        await expect(oldRequest).rejects.toBe(staleRateError);
+
+        const postResetTask = vi.fn(async () => "ok");
+        await expect(registry.run("gitlab", url, postResetTask)).resolves.toBe("ok");
+        expect(postResetTask).toHaveBeenCalledTimes(1);
+    });
 });
