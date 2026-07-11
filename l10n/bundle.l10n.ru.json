@@ -410,5 +410,6 @@
     "Abort the current merge? Local conflict resolutions will be discarded.": "Прервать текущее слияние? Локальные разрешения конфликтов будут отменены.",
     "Aborting merge...": "Прерывание слияния...",
     "Merge aborted.": "Слияние прервано.",
-    "Abort merge failed: {message}": "Не удалось прервать слияние: {message}"
+    "Abort merge failed: {message}": "Не удалось прервать слияние: {message}",
+    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
 }

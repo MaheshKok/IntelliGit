@@ -299,6 +299,7 @@ const vscodeMock = {
         getConfiguration: vi.fn(() => ({
             get: vi.fn((key: string) => {
                 if (key === "workbench.sideBar.location") return "left";
+                if (key === "commitChecks.hosts") return commitChecksConfiguration.hostMap;
                 return undefined;
             }),
         })),
@@ -327,12 +328,23 @@ const githubProviderCalls = vi.hoisted(() => [] as string[]);
 const githubProviderRoots = vi.hoisted(() => [] as string[]);
 const githubProviderKeys = vi.hoisted(() => [] as string[]);
 const githubSessionGet = vi.hoisted(() => vi.fn());
+const commitChecksConfiguration = vi.hoisted(() => ({
+    hostMap: undefined as Record<string, string> | undefined,
+}));
 // Network boundary for the real GitLabProvider. Mocked so self-hosted-routing tests
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
 // the GitLab path (GitHub matches first), so this stays uninvoked there.
 const httpGetJsonSpy = vi.hoisted(() => vi.fn());
 const createHttpGetJsonSpy = vi.hoisted(() => vi.fn(() => httpGetJsonSpy));
 const githubRequestGateInstances = vi.hoisted(
+    () =>
+        [] as Array<{
+            observeResponse: ReturnType<typeof vi.fn>;
+            reset: ReturnType<typeof vi.fn>;
+            run: ReturnType<typeof vi.fn>;
+        }>,
+);
+const requestGateRegistryInstances = vi.hoisted(
     () =>
         [] as Array<{
             observeResponse: ReturnType<typeof vi.fn>;
@@ -537,8 +549,33 @@ vi.mock("../../../src/services/commitChecks/requestGate", async () => {
         typeof import("../../../src/services/commitChecks/requestGate")
     >("../../../src/services/commitChecks/requestGate");
     type ActualGate = InstanceType<typeof actual.GitHubRequestGate>;
+    type ActualRegistry = InstanceType<typeof actual.CommitChecksRequestGateRegistry>;
     return {
         ...actual,
+        CommitChecksRequestGateRegistry: class {
+            private readonly realRegistry: ActualRegistry | undefined;
+            readonly observeResponse = vi.fn(
+                (...args: Parameters<ActualRegistry["observeResponse"]>) =>
+                    this.realRegistry?.observeResponse(...args),
+            );
+            readonly reset = vi.fn(() => this.realRegistry?.reset());
+            readonly run = vi.fn(
+                (
+                    providerId: Parameters<ActualRegistry["run"]>[0],
+                    url: string,
+                    task: () => Promise<unknown>,
+                ) => (this.realRegistry ? this.realRegistry.run(providerId, url, task) : task()),
+            );
+
+            constructor(
+                ...args: ConstructorParameters<typeof actual.CommitChecksRequestGateRegistry>
+            ) {
+                this.realRegistry = useRealGitHubCommitChecks.value
+                    ? new actual.CommitChecksRequestGateRegistry(...args)
+                    : undefined;
+                requestGateRegistryInstances.push(this);
+            }
+        },
         GitHubRequestGate: class {
             private readonly realGate: ActualGate | undefined;
             readonly observeResponse = vi.fn(
@@ -832,10 +869,12 @@ describe("view providers integration", () => {
         workspaceFolderDisposables.length = 0;
         authSessionListeners.length = 0;
         githubRequestGateInstances.length = 0;
+        requestGateRegistryInstances.length = 0;
         githubProviderCalls.length = 0;
         githubProviderRoots.length = 0;
         githubProviderKeys.length = 0;
         useRealGitHubCommitChecks.value = false;
+        commitChecksConfiguration.hostMap = undefined;
         githubSessionGet.mockReset();
         activeTextEditor = undefined;
         activeGitRoot.value = "";
@@ -992,7 +1031,7 @@ describe("view providers integration", () => {
         );
     });
 
-    it("resets only the GitHub request gate when GitHub authentication changes", async () => {
+    it("resets the request-gate registry only after GitHub authentication changes", async () => {
         const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
         await activateRepositoryMode(
             {
@@ -1004,18 +1043,18 @@ describe("view providers integration", () => {
             [{ root: "/workspace", label: "workspace" }],
         );
 
-        const gate = githubRequestGateInstances[0];
-        expect(gate).toBeDefined();
+        const registry = requestGateRegistryInstances[0];
+        expect(registry).toBeDefined();
         await registeredCommands.get("intelligit.commitChecks.refreshBadges")!();
-        expect(gate.reset).not.toHaveBeenCalled();
+        expect(registry.reset).not.toHaveBeenCalled();
 
         authSessionListeners[0]({ provider: { id: "gitlab" } });
         await flushMicrotasks();
-        expect(gate.reset).not.toHaveBeenCalled();
+        expect(registry.reset).not.toHaveBeenCalled();
 
         authSessionListeners[0]({ provider: { id: "github" } });
         await flushMicrotasks();
-        expect(gate.reset).toHaveBeenCalledTimes(1);
+        expect(registry.reset).toHaveBeenCalledTimes(1);
     });
 
     it("workspace folder changes refresh repository rows and fall back when the active repository disappears", async () => {
@@ -2658,6 +2697,8 @@ describe("view providers integration", () => {
                 (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
                     async (url: string, headers: Record<string, string>) => {
                         onResponse({
+                            url,
+                            statusCode: 200,
                             headers: {
                                 "x-ratelimit-limit": "5000",
                                 "x-ratelimit-remaining": "4999",
@@ -2797,6 +2838,8 @@ describe("view providers integration", () => {
                     async (url: string, headers: Record<string, string>) => {
                         const response = await httpGetJsonSpy(url, headers);
                         onResponse({
+                            url,
+                            statusCode: 200,
                             headers: {
                                 "x-ratelimit-limit": "5000",
                                 "x-ratelimit-remaining": "4999",
@@ -2875,43 +2918,65 @@ describe("view providers integration", () => {
         }
     });
 
-    it("blocks queued GitHub HTTP work after a low-quota response", async () => {
+    it("shares activation request safeguards across GitLab and Bitbucket providers", async () => {
         vi.useFakeTimers();
         let graph:
             | {
                   resolveWebviewView: (view: object, context: object, token: object) => void;
+                  clearChecksCache: () => void;
                   dispose: () => void;
               }
             | undefined;
         try {
             const { activateRepositoryMode } =
                 await import("../../../src/activation/repositoryMode");
-            const activeHashes = Array.from({ length: 12 }, (_, index) =>
-                (index + 32).toString(16).padStart(40, "0"),
-            );
             const repositories = [{ root: "/workspace/active", label: "active" }];
             useRealGitHubCommitChecks.value = true;
-            githubSessionGet.mockResolvedValue({ accessToken: "gh-token" });
-            const responseEvents: string[] = [];
+            commitChecksConfiguration.hostMap = {
+                "gitlab-rate.example": "gitlab",
+                "gitlab-other.example": "gitlab",
+                "gitlab-auth.example": "gitlab",
+                "bitbucket-rate.example": "bitbucket-server",
+                "bitbucket-other.example": "bitbucket-server",
+            };
+            const activeHashes = ["a", "b", "c", "d", "e", "f", "1", "2", "3", "4"].map((value) =>
+                value.repeat(40),
+            );
+            const httpStarts: string[] = [];
             createHttpGetJsonSpy.mockImplementation(
-                (onResponse: (metadata: { headers: Record<string, string> }) => void) =>
+                (
+                    onResponse: (metadata: {
+                        url: string;
+                        statusCode: number;
+                        headers: Record<string, string>;
+                    }) => void,
+                ) =>
                     async (url: string, headers: Record<string, string>) => {
-                        const response = await httpGetJsonSpy(url, headers);
-                        responseEvents.push("response");
-                        onResponse({
-                            headers: {
-                                "x-ratelimit-limit": "5000",
-                                "x-ratelimit-remaining": "100",
-                                "x-ratelimit-reset": "9999999999",
-                            },
-                        });
-                        responseEvents.push("observed");
-                        return response;
+                        httpStarts.push(url);
+                        const host = new URL(url).host;
+                        if (host === "gitlab-auth.example") {
+                            onResponse({ url, statusCode: 403, headers: {} });
+                            throw new Error("HTTP 403: denied");
+                        }
+                        if (host === "gitlab-rate.example" || host === "bitbucket-rate.example") {
+                            onResponse({ url, statusCode: 429, headers: { "retry-after": "60" } });
+                        } else if (host === "api.bitbucket.org") {
+                            onResponse({
+                                url,
+                                statusCode: 200,
+                                headers: { "x-ratelimit-nearlimit": "true" },
+                            });
+                        } else {
+                            onResponse({ url, statusCode: 200, headers: {} });
+                        }
+                        return httpGetJsonSpy(url, headers);
                     },
             );
-            httpGetJsonSpy.mockImplementation(async (url: string) =>
-                url.includes("/check-runs") ? { check_runs: [] } : [],
-            );
+            httpGetJsonSpy.mockImplementation(async (url: string) => {
+                if (url.includes("api.bitbucket.org")) return { values: [] };
+                if (url.includes("rest/build-status")) return { values: [], isLastPage: true };
+                return [];
+            });
             gitLogByRoot.set(
                 repositories[0].root,
                 activeHashes.map((hash) => ({
@@ -2932,7 +2997,11 @@ describe("view providers integration", () => {
                     subscriptions: [],
                     workspaceState: createMemento(),
                     globalState: createMemento(),
-                    secrets: makeSecretStorage(),
+                    secrets: {
+                        get: vi.fn(async () => "provider-token"),
+                        store: vi.fn(async () => undefined),
+                        delete: vi.fn(async () => undefined),
+                    },
                 } as never,
                 repositories,
                 {
@@ -2941,21 +3010,40 @@ describe("view providers integration", () => {
                     },
                 } as never,
             );
+            expect(createHttpGetJsonSpy).toHaveBeenCalledTimes(4);
 
             const webview = createWebviewView();
             graph!.resolveWebviewView(webview.view, {}, {});
             await webview.send({ type: "ready" });
-            await webview.send({ type: "requestVisibleCommitChecks", hashes: [activeHashes[0]] });
-            expect(httpGetJsonSpy).toHaveBeenCalledTimes(2);
-            expect(responseEvents).toEqual(["response", "observed", "response", "observed"]);
+            const request = async (remoteUrl: string, hash: string): Promise<void> => {
+                gitRemoteUrlByRoot.set(repositories[0].root, remoteUrl);
+                graph!.clearChecksCache();
+                await webview.send({ type: "requestVisibleCommitChecks", hashes: [hash] });
+            };
 
-            await webview.send({
-                type: "requestVisibleCommitChecks",
-                hashes: activeHashes.slice(1),
-            });
+            await request("https://gitlab-rate.example/group/repo.git", activeHashes[0]);
+            expect(httpStarts).toHaveLength(1);
+            await request("https://gitlab-rate.example/group/repo.git", activeHashes[1]);
+            expect(httpStarts).toHaveLength(1);
+            await request("https://gitlab-other.example/group/repo.git", activeHashes[2]);
+            expect(httpStarts).toHaveLength(2);
 
-            expect(githubProviderCalls).toEqual(activeHashes);
-            expect(httpGetJsonSpy).toHaveBeenCalledTimes(2);
+            await request("https://gitlab-auth.example/group/repo.git", activeHashes[3]);
+            expect(lastCommitChecksSnapshot()?.state).toBe("unavailable");
+            await request("https://gitlab-auth.example/group/repo.git", activeHashes[4]);
+            expect(httpStarts).toHaveLength(4);
+
+            await request("https://bitbucket.org/workspace/repo.git", activeHashes[5]);
+            expect(httpStarts).toHaveLength(5);
+            await request("https://bitbucket.org/workspace/repo.git", activeHashes[6]);
+            expect(httpStarts).toHaveLength(5);
+
+            await request("https://bitbucket-rate.example/scm/PROJ/repo.git", activeHashes[7]);
+            expect(httpStarts).toHaveLength(6);
+            await request("https://bitbucket-rate.example/scm/PROJ/repo.git", activeHashes[8]);
+            expect(httpStarts).toHaveLength(6);
+            await request("https://bitbucket-other.example/scm/PROJ/repo.git", activeHashes[9]);
+            expect(httpStarts).toHaveLength(7);
         } finally {
             graph?.dispose();
             vi.useRealTimers();

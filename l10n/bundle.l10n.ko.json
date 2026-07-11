@@ -410,5 +410,6 @@
     "Abort the current merge? Local conflict resolutions will be discarded.": "현재 병합을 중단하시겠습니까? 로컬 충돌 해결 사항이 삭제됩니다.",
     "Aborting merge...": "병합 중단 중...",
     "Merge aborted.": "병합이 중단되었습니다.",
-    "Abort merge failed: {message}": "병합 중단 실패: {message}"
+    "Abort merge failed: {message}": "병합 중단 실패: {message}",
+    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
 }

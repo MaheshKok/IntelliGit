@@ -410,5 +410,6 @@
     "Abort the current merge? Local conflict resolutions will be discarded.": "Anular a mesclagem atual? As resoluções de conflitos locais serão descartadas.",
     "Aborting merge...": "Anulando mesclagem...",
     "Merge aborted.": "Mesclagem anulada.",
-    "Abort merge failed: {message}": "Falha ao anular a mesclagem: {message}"
+    "Abort merge failed: {message}": "Falha ao anular a mesclagem: {message}",
+    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-check requests are temporarily paused due to rate limiting."
 }

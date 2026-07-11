@@ -18,11 +18,11 @@ import { GitHubProvider } from "../services/commitChecks/githubProvider";
 import { GitLabProvider } from "../services/commitChecks/gitlabProvider";
 import { BitbucketCloudProvider } from "../services/commitChecks/bitbucketCloudProvider";
 import { BitbucketServerProvider } from "../services/commitChecks/bitbucketServerProvider";
-import { createHttpGetJson, httpGetJson, type FetchJson } from "../services/commitChecks/http";
-import { GitHubRequestGate } from "../services/commitChecks/requestGate";
+import { createHttpGetJson, type FetchJson } from "../services/commitChecks/http";
+import { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
-import type { CommitChecksProvider } from "../services/commitChecks/types";
+import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
 import { CommitPanelViewProvider } from "../views/CommitPanelViewProvider";
@@ -131,17 +131,21 @@ export async function activateRepositoryMode(
             noneMaxAgeMs: 60 * 60 * 1000,
         }),
     });
-    const githubRequestGate = new GitHubRequestGate(4);
-    const githubHttpGetJson = createHttpGetJson((metadata) => {
-        githubRequestGate.observeResponse(metadata);
-    });
-    const gatedGithubFetchJson: FetchJson = (url, headers) =>
-        githubRequestGate.run(() => githubHttpGetJson(url, headers));
+    const requestGateRegistry = new CommitChecksRequestGateRegistry(
+        vscode.l10n.t("Commit-check requests are temporarily paused due to rate limiting."),
+    );
+    const fetchFor = (providerId: ProviderId): FetchJson => {
+        const fetchJson = createHttpGetJson((response) => {
+            requestGateRegistry.observeResponse(providerId, response);
+        });
+        return (url, headers) =>
+            requestGateRegistry.run(providerId, url, () => fetchJson(url, headers));
+    };
     const commitChecksProviders: readonly CommitChecksProvider[] = [
-        new GitHubProvider(gatedGithubFetchJson, commitCheckSettings.ciCdPattern),
-        new GitLabProvider(httpGetJson, credentialStore, commitCheckSettings.ciCdPattern),
-        new BitbucketCloudProvider(httpGetJson, credentialStore),
-        new BitbucketServerProvider(httpGetJson, credentialStore),
+        new GitHubProvider(fetchFor("github"), commitCheckSettings.ciCdPattern),
+        new GitLabProvider(fetchFor("gitlab"), credentialStore, commitCheckSettings.ciCdPattern),
+        new BitbucketCloudProvider(fetchFor("bitbucket-cloud"), credentialStore),
+        new BitbucketServerProvider(fetchFor("bitbucket-server"), credentialStore),
     ];
 
     let currentBranches: Branch[] = [];
@@ -884,7 +888,7 @@ export async function activateRepositoryMode(
         ),
         vscode.authentication.onDidChangeSessions((event) => {
             if (event.provider.id !== "github") return;
-            githubRequestGate.reset();
+            requestGateRegistry.reset();
             refreshCommitCheckBadges().catch((err) => {
                 console.error("[IntelliGit] GitHub commit-check refresh failed:", err);
             });
