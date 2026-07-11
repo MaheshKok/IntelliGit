@@ -247,7 +247,12 @@ describe("CommitChecksRequestGateRegistry", () => {
         const cooldownTask = vi.fn(async () => "ok");
 
         await expect(
-            registry.run("bitbucket-server", url, async () => {
+            registry.run("bitbucket-server", url, async (generation) => {
+                registry.observeResponse(
+                    "bitbucket-server",
+                    { url, statusCode: 429, headers: { "retry-after": "60" } },
+                    generation,
+                );
                 throw new HttpError(429, "HTTP 429: slow down", { "retry-after": "60" });
             }),
         ).rejects.toThrow("HTTP 429: slow down");
@@ -259,7 +264,12 @@ describe("CommitChecksRequestGateRegistry", () => {
 
         clock = 61_001;
         await expect(
-            registry.run("bitbucket-server", url, async () => {
+            registry.run("bitbucket-server", url, async (generation) => {
+                registry.observeResponse(
+                    "bitbucket-server",
+                    { url, statusCode: 403, headers: {} },
+                    generation,
+                );
                 throw new HttpError(403, "HTTP 403: forbidden", {});
             }),
         ).rejects.toThrow("HTTP 403: forbidden");

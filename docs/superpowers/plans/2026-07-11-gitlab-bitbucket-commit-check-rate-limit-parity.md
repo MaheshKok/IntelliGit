@@ -66,17 +66,18 @@ A gate cooldown continues to surface through the existing unavailable snapshot p
 const NOW = 1_700_000_000_000;
 
 function registryAt(now = NOW): CommitChecksRequestGateRegistry {
-    return new CommitChecksRequestGateRegistry({
-        now: () => now,
-        cooldownMessage: "Commit-check requests are temporarily paused due to rate limiting.",
-    });
+    return new CommitChecksRequestGateRegistry(
+        "Commit-check requests are temporarily paused due to rate limiting.",
+        () => now,
+    );
 }
 
 function metadata(
     url = "https://api.example.test/checks",
     headers: Record<string, string> = {},
+    statusCode = 200,
 ): HttpResponseMetadata {
-    return { url, statusCode: 200, headers };
+    return { url, statusCode, headers };
 }
 ~~~
 
@@ -112,7 +113,12 @@ it("uses Retry-After for a Data Center 429 and ignores a bare 403", async () => 
     const gates = registryAt();
 
     await expect(
-        gates.run("bitbucket-server", "https://bb.acme.test/rest/x", async () => {
+        gates.run("bitbucket-server", "https://bb.acme.test/rest/x", async (generation) => {
+            gates.observeResponse(
+                "bitbucket-server",
+                metadata("https://bb.acme.test/rest/x", { "retry-after": "120" }, 429),
+                generation,
+            );
             throw new HttpError(429, "HTTP 429", { "retry-after": "120" });
         }),
     ).rejects.toMatchObject({ statusCode: 429 });
@@ -123,7 +129,12 @@ it("uses Retry-After for a Data Center 429 and ignores a bare 403", async () => 
 
     const fresh = registryAt();
     await expect(
-        fresh.run("bitbucket-server", "https://bb.acme.test/rest/x", async () => {
+        fresh.run("bitbucket-server", "https://bb.acme.test/rest/x", async (generation) => {
+            fresh.observeResponse(
+                "bitbucket-server",
+                metadata("https://bb.acme.test/rest/x", {}, 403),
+                generation,
+            );
             throw new HttpError(403, "HTTP 403", {});
         }),
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -157,34 +168,53 @@ Expected: FAIL because CommitChecksRequestGateRegistry and non-GitHub response p
 Keep the semaphore, FIFO waiter queue, rolling start timestamps, and cooldown state in one small gate. Add only the registry required for host isolation.
 
 ~~~ts
-export interface CommitChecksRequestGateOptions {
-    readonly limit?: number;
-    readonly now?: () => number;
-    readonly cooldownMessage: string;
-}
-
 export class CommitChecksRequestGateRegistry {
-    private readonly gates = new Map<string, CommitChecksRequestGate>();
+    private readonly gates = new Map<string, ProviderRequestGate>();
 
-    constructor(private readonly options: CommitChecksRequestGateOptions) {}
+    constructor(
+        private readonly cooldownMessage: string,
+        private readonly now: () => number = Date.now,
+    ) {}
 
-    run<T>(providerId: ProviderId, url: string, task: () => Promise<T>): Promise<T> {
+    run<T>(
+        providerId: ProviderId,
+        url: string,
+        task: (generation: number) => Promise<T>,
+    ): Promise<T> {
         return this.gateFor(providerId, url).run(task);
     }
 
-    observeResponse(providerId: ProviderId, response: HttpResponseMetadata): void {
-        this.gateFor(providerId, response.url).observeResponse(response);
+    observeResponse(
+        providerId: ProviderId,
+        response: HttpResponseMetadata,
+        generation?: number,
+    ): void {
+        const key = gateKey(providerId, response.url);
+        const gate = this.gates.get(key);
+        if (gate) {
+            gate.observeResponse(response, generation);
+            return;
+        }
+        if (generation === undefined) this.gateFor(providerId, response.url).observeResponse(response);
     }
 
     reset(): void {
-        this.gates.clear();
+        for (const [key, gate] of this.gates) {
+            gate.reset();
+            if (gate.isIdle()) this.gates.delete(key);
+        }
     }
 
-    private gateFor(providerId: ProviderId, url: string): CommitChecksRequestGate {
+    private gateFor(providerId: ProviderId, url: string): ProviderRequestGate {
         const key = gateKey(providerId, url);
         let gate = this.gates.get(key);
         if (!gate) {
-            gate = new CommitChecksRequestGate(providerId, this.options);
+            gate = new ProviderRequestGate(
+                providerId,
+                MAX_CONCURRENT_REQUESTS,
+                this.cooldownMessage,
+                this.now,
+            );
             this.gates.set(key, gate);
         }
         return gate;
