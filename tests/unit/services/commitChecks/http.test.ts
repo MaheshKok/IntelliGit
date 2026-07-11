@@ -97,7 +97,11 @@ describe("httpGetJson", () => {
 
         await expect(promise).resolves.toEqual({ a: 1 });
         expect(observe).toHaveBeenCalledTimes(1);
-        expect(observe).toHaveBeenCalledWith({ statusCode: 200, headers });
+        expect(observe).toHaveBeenCalledWith({
+            url: "https://api.test/x",
+            statusCode: 200,
+            headers,
+        });
     });
 
     it("swallows response observer failures", async () => {
@@ -114,7 +118,11 @@ describe("httpGetJson", () => {
 
         await expect(promise).resolves.toEqual({ a: 1 });
         expect(observe).toHaveBeenCalledTimes(1);
-        expect(observe).toHaveBeenCalledWith({ statusCode: 200, headers: {} });
+        expect(observe).toHaveBeenCalledWith({
+            url: "https://api.test/x",
+            statusCode: 200,
+            headers: {},
+        });
     });
 
     it("resolves an empty object when the body is empty", async () => {

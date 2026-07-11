@@ -16,6 +16,8 @@ export type FetchJson = (url: string, headers: Record<string, string>) => Promis
  * treat these server-supplied values as advisory scheduling data, never as trusted authorization.
  */
 export interface HttpResponseMetadata {
+    /** Full request URL, used only to scope provider rate-limit state by API origin. */
+    readonly url: string;
     statusCode: number;
     headers: Record<string, string | string[] | undefined>;
 }
@@ -60,7 +62,7 @@ export function createHttpGetJson(
                     const data = Buffer.concat(chunks).toString("utf8");
                     const statusCode = res.statusCode ?? 0;
                     try {
-                        onResponse?.({ statusCode, headers: res.headers });
+                        onResponse?.({ url, statusCode, headers: res.headers });
                     } catch {
                         // Observers are non-critical quota telemetry.
                     }
