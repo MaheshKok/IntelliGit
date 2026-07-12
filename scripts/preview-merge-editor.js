@@ -91,6 +91,11 @@ body {
 }
 </style>
 <script>
+// The merge scroll driver draws in requestAnimationFrame, which Chrome suspends
+// for hidden tabs — headless/screenshot tooling would never get a frame. The
+// preview swaps in a timeout-based shim so frames always run.
+window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 16);
+window.cancelAnimationFrame = (id) => window.clearTimeout(id);
 const sampleConflictData = ${JSON.stringify(sampleConflictData)};
 function postSampleConflictData() {
   window.dispatchEvent(new MessageEvent("message", {

@@ -255,15 +255,15 @@ describe("MergeEditorApp", () => {
         expect(
             document.querySelectorAll('[data-conflict-id="0"] .conflict-actions-right .action-btn'),
         ).toHaveLength(2);
-        expect(document.querySelector('[data-conflict-id="0"] .conflict-ours')?.className).toContain(
-            "accepted-pane",
-        );
-        expect(document.querySelector('[data-conflict-id="0"] .conflict-result')?.className).not.toContain(
-            "accepted-pane",
-        );
-        expect(document.querySelector('[data-conflict-id="0"] .conflict-result')?.className).toContain(
-            "unresolved",
-        );
+        expect(
+            document.querySelector('[data-conflict-id="0"] .conflict-ours')?.className,
+        ).toContain("accepted-pane");
+        expect(
+            document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
+        ).not.toContain("accepted-pane");
+        expect(
+            document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
+        ).toContain("unresolved");
         expect(
             document.querySelector('[data-conflict-id="0"] .result-insertion-marker.marker-bottom'),
         ).not.toBeNull();
@@ -350,6 +350,44 @@ describe("MergeEditorApp", () => {
         expect(connectors).toHaveLength(2);
         expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
+    });
+
+    it("attaches the viewport ResizeObserver to the scroller once conflict data mounts it", async () => {
+        // The scroller only exists after data arrives (the loading branch renders
+        // no .merge-content), so viewport tracking must attach at that point —
+        // otherwise panel resizes leave viewport height and gutter x-ranges stale
+        // and ribbons get culled against a dead viewport.
+        const observed: Element[] = [];
+        class RecordingResizeObserver {
+            observe(target: Element): void {
+                observed.push(target);
+            }
+            unobserve(): void {}
+            disconnect(): void {}
+        }
+        Object.defineProperty(globalThis, "ResizeObserver", {
+            configurable: true,
+            value: RecordingResizeObserver,
+        });
+        try {
+            installVsCodeMock();
+            createRootHost();
+
+            await act(async () => {
+                await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+            });
+            await flush();
+            expect(observed).toHaveLength(0);
+
+            dispatchHostMessage({ type: "setConflictData", data: twoConflictData() });
+            await flush();
+
+            const content = document.querySelector(".merge-content");
+            expect(content).not.toBeNull();
+            expect(observed).toContain(content);
+        } finally {
+            delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+        }
     });
 
     it("edits the result pane manually and applies the edited content", async () => {

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildVerticalLayout,
     paneOffsetForCanonical,
+    ribbonPathD,
     type MergePane,
     type SegmentPaneLines,
 } from "../../../src/webviews/react/merge-editor/mergeScrollLayout";
@@ -101,15 +102,9 @@ describe("paneOffsetForCanonical", () => {
         const viewport = 200;
         const conflictIndex = 1;
         const conflictTop = largeLayout.canonicalTopPx[conflictIndex];
-        const conflictBottom =
-            conflictTop + largeLayout.canonicalHPx[conflictIndex];
+        const conflictBottom = conflictTop + largeLayout.canonicalHPx[conflictIndex];
         const visibleExtent = (pane: MergePane, canonicalScroll: number) => {
-            const offset = paneOffsetForCanonical(
-                largeLayout,
-                pane,
-                canonicalScroll,
-                viewport,
-            );
+            const offset = paneOffsetForCanonical(largeLayout, pane, canonicalScroll, viewport);
             const top = largeLayout.paneTopPx[pane][conflictIndex] - offset;
             return { top, bottom: top + largeLayout.paneHPx[pane][conflictIndex] };
         };
@@ -126,5 +121,47 @@ describe("paneOffsetForCanonical", () => {
         expect(visibleExtent("left", conflictBottom).bottom).toBe(0);
         expect(visibleExtent("middle", conflictBottom).bottom).toBe(0);
         expect(visibleExtent("right", conflictBottom).bottom).toBe(0);
+    });
+});
+
+// Connector ribbon geometry: both long edges are cubic Béziers with horizontal
+// end tangents and control points at 30% / 70% of the horizontal span
+// (IntelliJ's curve-trapezium contract), so a ribbon leaves and meets the
+// rectangular pane bands without a kink. Expected strings are hand-computed
+// from that contract, not read back from the implementation.
+// Not exercised: x1 < x0 and non-finite inputs — gutter measurement always
+// yields a finite left-to-right span, and offscreen culling happens upstream.
+describe("ribbonPathD", () => {
+    it("emits flat-tangent cubic edges with control points at 30% and 70% of the span", () => {
+        // span 100..200 → controls at x=130 and x=170; each control keeps its
+        // endpoint's y (flat tangents), bottom edge runs right-to-left.
+        expect(ribbonPathD(100, 200, 10, 50, 30, 90)).toBe(
+            "M 100,10 C 130,10 170,30 200,30 L 200,90 C 170,90 130,50 100,50 Z",
+        );
+    });
+
+    it("degenerates to straight horizontal edges when both sides align", () => {
+        expect(ribbonPathD(100, 200, 10, 50, 10, 50)).toBe(
+            "M 100,10 C 130,10 170,10 200,10 L 200,50 C 170,50 130,50 100,50 Z",
+        );
+    });
+
+    it("preserves fractional offsets so ribbons track sub-pixel pane positions", () => {
+        expect(ribbonPathD(100, 200, 10.5, 50.25, 30.75, 90.5)).toBe(
+            "M 100,10.5 C 130,10.5 170,30.75 200,30.75 L 200,90.5 C 170,90.5 130,50.25 100,50.25 Z",
+        );
+    });
+
+    it("collapses to a curved wedge when the far side has zero height", () => {
+        // bTop == bBot: an insertion pointing at a line between rows.
+        expect(ribbonPathD(0, 10, 20, 60, 40, 40)).toBe(
+            "M 0,20 C 3,20 7,40 10,40 L 10,40 C 7,40 3,60 0,60 Z",
+        );
+    });
+
+    it("handles negative coordinates for hunks scrolled above the viewport", () => {
+        expect(ribbonPathD(0, 10, -30, -10, -20, 0)).toBe(
+            "M 0,-30 C 3,-30 7,-20 10,-20 L 10,0 C 7,0 3,-10 0,-10 Z",
+        );
     });
 });

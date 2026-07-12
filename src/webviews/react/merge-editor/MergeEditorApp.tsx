@@ -57,6 +57,7 @@ import {
 import {
     buildVerticalLayout,
     paneOffsetForCanonical,
+    ribbonPathD,
     type MergeVerticalLayout,
     type MergePane,
     type SegmentPaneLines,
@@ -135,8 +136,9 @@ function readPxVar(element: Element, name: string): number {
 }
 
 /**
- * Sets one connector ribbon's path across a gutter. Empty result targets render
- * as a thin filled trapezoid so insertion hunks stay visible without a full row.
+ * Sets one connector ribbon's curved path across a gutter. Empty result targets
+ * render as a thin filled wedge so insertion hunks stay visible without a full
+ * row.
  */
 function setRibbonPath(
     path: SVGPathElement | undefined,
@@ -165,8 +167,7 @@ function setRibbonPath(
     }
 
     path.style.display = "";
-    path.classList.remove("merge-connector-line");
-    path.setAttribute("d", `M ${x0},${aTop} L ${x1},${bTop} L ${x1},${bBot} L ${x0},${aBot} Z`);
+    path.setAttribute("d", ribbonPathD(x0, x1, aTop, aBot, bTop, bBot));
 }
 
 // --- VS Code API ---
@@ -616,7 +617,11 @@ function App() {
     }, [layout, connectors, measureViewport, measureGutters, scheduleMergeFrame]);
 
     // Track viewport height (pane-offset clamp + ribbon culling) and gutter
-    // x-ranges across resizes. jsdom lacks ResizeObserver, so guard it.
+    // x-ranges across resizes. jsdom lacks ResizeObserver, so guard it. Keyed on
+    // hasConflictData because the scroller only mounts with data: the mount-time
+    // run finds no element, so it must re-attach once the loading branch is
+    // replaced or resizes would leave the viewport geometry stale.
+    const hasConflictData = state.data !== null;
     useEffect(() => {
         measureViewport();
         if (typeof ResizeObserver === "undefined") return;
@@ -629,7 +634,7 @@ function App() {
         });
         observer.observe(content);
         return () => observer.disconnect();
-    }, [measureViewport, measureGutters, scheduleMergeFrame]);
+    }, [hasConflictData, measureViewport, measureGutters, scheduleMergeFrame]);
 
     // `vFrameRef` is a stable ref; this cleanup is unmount-only.
     // react-doctor-disable-next-line react-doctor/exhaustive-deps

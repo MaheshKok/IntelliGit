@@ -156,3 +156,31 @@ export function paneOffsetForCanonical(
     const maxOffset = Math.max(0, paneTotalPx[pane] - viewportH);
     return clamp(raw, 0, maxOffset);
 }
+
+/** Horizontal control-point proximity (fraction of the span) for ribbon curves. */
+const RIBBON_CTRL_PROXIMITY_X = 0.3;
+
+/**
+ * Builds the SVG path for one connector ribbon spanning `x0..x1`, joining the
+ * hunk edge `aTop..aBot` (near pane) to `bTop..bBot` (far pane). Both long
+ * edges are cubic Béziers with horizontal end tangents — control points at
+ * 30% / 70% of the span, IntelliJ's curve-trapezium geometry — so the ribbon
+ * meets each pane's rectangular band without a kink and flexes smoothly while
+ * proportional scrolling slides the panes apart. Aligned sides degenerate to
+ * straight edges; a zero-height side collapses the ribbon into a wedge.
+ */
+export function ribbonPathD(
+    x0: number,
+    x1: number,
+    aTop: number,
+    aBot: number,
+    bTop: number,
+    bBot: number,
+): string {
+    const cA = x0 + (x1 - x0) * RIBBON_CTRL_PROXIMITY_X;
+    const cB = x0 + (x1 - x0) * (1 - RIBBON_CTRL_PROXIMITY_X);
+    return (
+        `M ${x0},${aTop} C ${cA},${aTop} ${cB},${bTop} ${x1},${bTop}` +
+        ` L ${x1},${bBot} C ${cB},${bBot} ${cA},${aBot} ${x0},${aBot} Z`
+    );
+}

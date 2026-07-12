@@ -413,24 +413,7 @@
 .merge-connector.variant-deletion {
     fill: var(--merge-deleted-block-bg);
 }
-/* Hairline connectors keep the brighter word palette: band colors are too dim
-   for a 1px stroke. */
-.merge-connector.merge-connector-line {
-    fill: none;
-    stroke: var(--pycharm-conflict);
-    stroke-width: 1px;
-}
-.merge-connector.merge-connector-line.variant-insertion {
-    stroke: var(--pycharm-inserted);
-}
-.merge-connector.merge-connector-line.variant-modification {
-    stroke: var(--pycharm-modified);
-}
-.merge-connector.merge-connector-line.variant-deletion {
-    stroke: var(--pycharm-deleted);
-}
-/* Accepted-side ribbons dim to a quiet "done" marker; opacity (not
-   fill-opacity) so paired hairline strokes dim too. */
+/* Accepted-side ribbons dim to a quiet "done" marker. */
 .merge-connector.connector-resolved {
     opacity: 0.45;
 }
