@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildVerticalLayout,
     paneOffsetForCanonical,
+    ribbonOutlineD,
     ribbonPathD,
     type MergePane,
     type SegmentPaneLines,
@@ -189,6 +190,61 @@ describe("ribbonPathD", () => {
         expect(ribbonPathD({ x0: 100, curveX0: 100, curveX1: 200, x1: 200 }, 10, 50, 30, 90)).toBe(
             "M 100,10 L 100,10 C 130,10 170,30 200,30 L 200,30" +
                 " L 200,90 L 200,90 C 170,90 130,50 100,50 L 100,50 Z",
+        );
+    });
+});
+
+// Resolved-hunk contour, PyCharm's "settled" rendering: an unfilled dotted
+// outline tracing the source block, the divider curve, and the result extent.
+// The path is three subpaths — top edge, bottom edge, and one vertical closure
+// on the resolved side's outer pane edge (inset 0.5px so a 1px stroke is not
+// clipped at the pane boundary) — with NO closing Z, so stroking it never
+// draws vertical seams at the divider joints. Here the span's x0/x1 are pane
+// OUTER edges (not gutter starts); the curve zone stays the divider strip and
+// uses the same 30% / 70% control-point contract as the filled ribbon.
+describe("ribbonOutlineD", () => {
+    // Strip 140..170 (width 30) → controls at x=149 and x=161.
+    const SPAN = { x0: 0, curveX0: 140, curveX1: 170, x1: 300 };
+
+    it("traces open top/bottom edges and closes on the a-side pane edge", () => {
+        expect(ribbonOutlineD(SPAN, 10, 50, 30, 90, "a")).toBe(
+            "M 0,10 L 140,10 C 149,10 161,30 170,30 L 300,30" +
+                " M 0,50 L 140,50 C 149,50 161,90 170,90 L 300,90" +
+                " M 0.5,10 L 0.5,50",
+        );
+    });
+
+    it("closes on the b-side pane edge for right-pane resolutions", () => {
+        expect(ribbonOutlineD(SPAN, 10, 50, 30, 90, "b")).toBe(
+            "M 0,10 L 140,10 C 149,10 161,30 170,30 L 300,30" +
+                " M 0,50 L 140,50 C 149,50 161,90 170,90 L 300,90" +
+                " M 299.5,30 L 299.5,90",
+        );
+    });
+
+    it("degenerates to straight dotted rails when both sides align", () => {
+        expect(ribbonOutlineD(SPAN, 10, 50, 10, 50, "a")).toBe(
+            "M 0,10 L 140,10 C 149,10 161,10 170,10 L 300,10" +
+                " M 0,50 L 140,50 C 149,50 161,50 170,50 L 300,50" +
+                " M 0.5,10 L 0.5,50",
+        );
+    });
+
+    it("collapses both edges onto one curve when the target has zero height", () => {
+        // bTop == bBot (a wedge to an insertion point): the closure on side b
+        // is a zero-length vertical at the shared y.
+        expect(ribbonOutlineD(SPAN, 20, 60, 40, 40, "b")).toBe(
+            "M 0,20 L 140,20 C 149,20 161,40 170,40 L 300,40" +
+                " M 0,60 L 140,60 C 149,60 161,40 170,40 L 300,40" +
+                " M 299.5,40 L 299.5,40",
+        );
+    });
+
+    it("handles negative coordinates for hunks scrolled above the viewport", () => {
+        expect(ribbonOutlineD(SPAN, -30, -10, -20, 0, "a")).toBe(
+            "M 0,-30 L 140,-30 C 149,-30 161,-20 170,-20 L 300,-20" +
+                " M 0,-10 L 140,-10 C 149,-10 161,0 170,0 L 300,0" +
+                " M 0.5,-30 L 0.5,-10",
         );
     });
 });

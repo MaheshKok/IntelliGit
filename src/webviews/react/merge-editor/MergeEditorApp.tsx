@@ -56,10 +56,13 @@ import {
 } from "./segments";
 import {
     buildVerticalLayout,
+    LINE_HEIGHT_PX,
     paneOffsetForCanonical,
+    ribbonOutlineD,
     ribbonPathD,
     type MergeVerticalLayout,
     type MergePane,
+    type RibbonSide,
     type RibbonSpan,
     type SegmentPaneLines,
 } from "./mergeScrollLayout";
@@ -74,51 +77,87 @@ const EMPTY_SEGMENTS: MergeSegment[] = [];
 const LINE_PADDING_PX = 18;
 
 const MERGE_PANES: readonly MergePane[] = ["left", "middle", "right"];
-/* connector-resolved dims the accepted side's ribbon to a quiet "done" marker
-   so it does not read as a still-pending insertion next to the neutral result. */
-const ACCEPTED_CONNECTOR_CLASS = "variant-insertion connector-resolved";
-
-interface ConnectorClassPair {
-    leftColorClass?: string;
-    rightColorClass?: string;
-}
-
-type RibbonLineSide = "a" | "b";
 
 const RIBBON_LINE_TARGET_HEIGHT_PX = 3;
 
-interface ConnectorRenderSpec extends ConnectorClassPair {
+/** Row extent of one side's target inside the stacked result block (in lines). */
+interface ResultSlice {
+    top: number;
+    count: number;
+}
+
+/** One divider side of a hunk's connector: color, settled state, and target. */
+interface ConnectorSideSpec {
+    colorClass: string;
+    /** Settled (accepted/discarded): drawn as PyCharm's dotted contour, not a band. */
+    resolved: boolean;
+    /** Sub-extent of the result the side maps to; whole block when absent. */
+    midSlice?: ResultSlice;
+}
+
+interface ConnectorRenderSpec {
     id: number;
     index: number;
     middleLineTarget: boolean;
+    left: ConnectorSideSpec;
+    right: ConnectorSideSpec;
 }
 
-function connectorClassPair(
+/**
+ * Derives both connector sides for a hunk, PyCharm-style: a pending side keeps
+ * its filled suggestion band; a settled side (accepted into the result,
+ * discarded via X, or dropped with "none") turns into a dotted contour so the
+ * hunk stays traceable across panes after the decision. Stacking both sides
+ * settles both ribbons and points each at its own slice of the result.
+ */
+function connectorSideSpecs(
     segment: ConflictSegment,
     resolution: HunkResolution | undefined,
-    editedLines: string[] | undefined,
     dismissed: HunkSideDismissal | undefined,
-): ConnectorClassPair {
-    if (editedLines !== undefined || resolution === "none") return {};
-    if (resolution === "both" || resolution === "both-reversed") return {};
-
+): { left: ConnectorSideSpec; right: ConnectorSideSpec } {
     const pendingClass = connectorClass(segment);
-    if (resolution === "ours") {
+    const resolvedClass = `${pendingClass} connector-resolved`;
+    if (resolution === "both" || resolution === "both-reversed") {
+        const oursLen = segment.oursLines.length;
+        const theirsLen = segment.theirsLines.length;
+        const oursFirst = resolution === "both";
         return {
-            leftColorClass: ACCEPTED_CONNECTOR_CLASS,
-            rightColorClass: dismissed?.theirs ? undefined : pendingClass,
+            left: {
+                colorClass: resolvedClass,
+                resolved: true,
+                midSlice: { top: oursFirst ? 0 : theirsLen, count: oursLen },
+            },
+            right: {
+                colorClass: resolvedClass,
+                resolved: true,
+                midSlice: { top: oursFirst ? oursLen : 0, count: theirsLen },
+            },
         };
     }
-    if (resolution === "theirs") {
-        return {
-            leftColorClass: dismissed?.ours ? undefined : pendingClass,
-            rightColorClass: ACCEPTED_CONNECTOR_CLASS,
-        };
-    }
+    const leftResolved = resolution === "ours" || resolution === "none" || dismissed?.ours === true;
+    const rightResolved =
+        resolution === "theirs" || resolution === "none" || dismissed?.theirs === true;
     return {
-        leftColorClass: dismissed?.ours ? undefined : pendingClass,
-        rightColorClass: dismissed?.theirs ? undefined : pendingClass,
+        left: {
+            colorClass: leftResolved ? resolvedClass : pendingClass,
+            resolved: leftResolved,
+        },
+        right: {
+            colorClass: rightResolved ? resolvedClass : pendingClass,
+            resolved: rightResolved,
+        },
     };
+}
+
+/** Maps a side's result slice to pixel extents inside the middle block. */
+function sliceExtent(
+    midTop: number,
+    midBot: number,
+    slice: ResultSlice | undefined,
+): { top: number; bot: number } {
+    if (!slice) return { top: midTop, bot: midBot };
+    const top = midTop + slice.top * LINE_HEIGHT_PX;
+    return { top, bot: top + slice.count * LINE_HEIGHT_PX };
 }
 
 function resultIsLineTarget(
@@ -136,26 +175,44 @@ function readPxVar(element: Element, name: string): number {
     return Number.isFinite(value) ? value : 0;
 }
 
+/** Horizontal spans for one divider: filled band vs resolved contour x-zones. */
+interface DividerSpans {
+    /** Gutter-to-gutter span the filled suggestion band covers. */
+    band: RibbonSpan;
+    /** Pane-outer-edge span the resolved dotted contour traces. */
+    contour: RibbonSpan;
+}
+
+/** Per-ribbon draw options: thin insertion target and/or settled contour mode. */
+interface RibbonDrawOptions {
+    /** Collapse this side to a thin insertion-target wedge (empty result). */
+    lineSide?: RibbonSide;
+    /** Draw the dotted resolved contour, closed on this side's pane edge. */
+    outlineEdge?: RibbonSide;
+}
+
 /**
- * Sets one connector ribbon's path across a gutter: flat under the pane
- * gutters, curved only in the divider strip. Empty result targets render as a
- * thin filled wedge so insertion hunks stay visible without a full row.
+ * Sets one connector ribbon's path across a gutter. Pending sides draw the
+ * filled band (flat under the pane gutters, curved only in the divider strip);
+ * resolved sides draw the dotted contour across the pane outer edges instead.
+ * Empty result targets render as a thin wedge so insertion hunks stay visible
+ * without a full row.
  */
 function setRibbonPath(
     path: SVGPathElement | undefined,
-    span: RibbonSpan,
+    spans: DividerSpans,
     aTop: number,
     aBot: number,
     bTop: number,
     bBot: number,
     viewportH: number,
-    lineSide?: RibbonLineSide,
+    options: RibbonDrawOptions = {},
 ): void {
     if (!path) return;
-    if (lineSide === "a") {
+    if (options.lineSide === "a") {
         aBot = aTop + RIBBON_LINE_TARGET_HEIGHT_PX;
     }
-    if (lineSide === "b") {
+    if (options.lineSide === "b") {
         bBot = bTop + RIBBON_LINE_TARGET_HEIGHT_PX;
     }
 
@@ -167,7 +224,12 @@ function setRibbonPath(
     }
 
     path.style.display = "";
-    path.setAttribute("d", ribbonPathD(span, aTop, aBot, bTop, bBot));
+    path.setAttribute(
+        "d",
+        options.outlineEdge
+            ? ribbonOutlineD(spans.contour, aTop, aBot, bTop, bBot, options.outlineEdge)
+            : ribbonPathD(spans.band, aTop, aBot, bTop, bBot),
+    );
 }
 
 // --- VS Code API ---
@@ -223,9 +285,10 @@ function App() {
     const connectorPaths = useMemo(() => new Map<string, SVGPathElement>(), []);
     // Ribbon spans (viewport-relative) across each divider; measured on
     // layout/resize so the per-frame draw only recomputes y.
-    const gutterXRef = useRef<{ left: RibbonSpan; right: RibbonSpan }>({
-        left: { x0: 0, curveX0: 0, curveX1: 0, x1: 0 },
-        right: { x0: 0, curveX0: 0, curveX1: 0, x1: 0 },
+    const emptySpan = (): RibbonSpan => ({ x0: 0, curveX0: 0, curveX1: 0, x1: 0 });
+    const gutterXRef = useRef<{ left: DividerSpans; right: DividerSpans }>({
+        left: { band: emptySpan(), contour: emptySpan() },
+        right: { band: emptySpan(), contour: emptySpan() },
     });
     const viewportHRef = useRef(0);
     const layoutRef = useRef<MergeVerticalLayout | null>(null);
@@ -297,18 +360,37 @@ function App() {
         };
         const leftEdge = left.offsetLeft + left.offsetWidth;
         const middleEdge = middle.offsetLeft + middle.offsetWidth;
+        const rightEdge = right.offsetLeft + right.offsetWidth;
+        // Band spans stop at the gutters; contour spans (resolved hunks) run
+        // pane-edge to pane-edge so the dotted trace crosses the whole block.
         gutterXRef.current = {
             left: {
-                x0: leftEdge - gutterWidth(left, true),
-                curveX0: leftEdge,
-                curveX1: middle.offsetLeft,
-                x1: middle.offsetLeft + gutterWidth(middle, false),
+                band: {
+                    x0: leftEdge - gutterWidth(left, true),
+                    curveX0: leftEdge,
+                    curveX1: middle.offsetLeft,
+                    x1: middle.offsetLeft + gutterWidth(middle, false),
+                },
+                contour: {
+                    x0: left.offsetLeft,
+                    curveX0: leftEdge,
+                    curveX1: middle.offsetLeft,
+                    x1: middleEdge,
+                },
             },
             right: {
-                x0: middleEdge,
-                curveX0: middleEdge,
-                curveX1: right.offsetLeft,
-                x1: right.offsetLeft + gutterWidth(right, true),
+                band: {
+                    x0: middleEdge,
+                    curveX0: middleEdge,
+                    curveX1: right.offsetLeft,
+                    x1: right.offsetLeft + gutterWidth(right, true),
+                },
+                contour: {
+                    x0: middle.offsetLeft,
+                    curveX0: middleEdge,
+                    curveX1: right.offsetLeft,
+                    x1: rightEdge,
+                },
             },
         };
     }, []);
@@ -317,33 +399,42 @@ function App() {
         (offsets: Record<MergePane, number>, viewportH: number) => {
             const layout = layoutRef.current;
             if (!layout) return;
-            const { left: leftSpan, right: rightSpan } = gutterXRef.current;
-            for (const { id, index, middleLineTarget } of connectorsRef.current) {
+            const { left: leftSpans, right: rightSpans } = gutterXRef.current;
+            for (const { id, index, middleLineTarget, left, right } of connectorsRef.current) {
                 const oursTop = layout.paneTopPx.left[index] - offsets.left;
                 const oursBot = oursTop + layout.paneHPx.left[index];
                 const midTop = layout.paneTopPx.middle[index] - offsets.middle;
                 const midBot = midTop + layout.paneHPx.middle[index];
                 const theirsTop = layout.paneTopPx.right[index] - offsets.right;
                 const theirsBot = theirsTop + layout.paneHPx.right[index];
+                // Stacked resolutions point each side at its own result slice.
+                const leftTarget = sliceExtent(midTop, midBot, left.midSlice);
+                const rightSource = sliceExtent(midTop, midBot, right.midSlice);
                 setRibbonPath(
                     connectorPaths.get(`${id}-left`),
-                    leftSpan,
+                    leftSpans,
                     oursTop,
                     oursBot,
-                    midTop,
-                    midBot,
+                    leftTarget.top,
+                    leftTarget.bot,
                     viewportH,
-                    middleLineTarget ? "b" : undefined,
+                    {
+                        lineSide: middleLineTarget ? "b" : undefined,
+                        outlineEdge: left.resolved ? "a" : undefined,
+                    },
                 );
                 setRibbonPath(
                     connectorPaths.get(`${id}-right`),
-                    rightSpan,
-                    midTop,
-                    midBot,
+                    rightSpans,
+                    rightSource.top,
+                    rightSource.bot,
                     theirsTop,
                     theirsBot,
                     viewportH,
-                    middleLineTarget ? "a" : undefined,
+                    {
+                        lineSide: middleLineTarget ? "a" : undefined,
+                        outlineEdge: right.resolved ? "b" : undefined,
+                    },
                 );
             }
         },
@@ -582,9 +673,11 @@ function App() {
         return buildVerticalLayout(paneLines);
     }, [renderedSegments]);
 
-    // Conflict hunks the connector ribbons link across panes. `index` is the
-    // segment index into the layout tables; `colorClass` matches the block band.
-    const connectors = useMemo(
+    // Hunks the connector ribbons link across panes — every conflict segment,
+    // including one-sided green/blue/gray changes (PyCharm connects those too).
+    // Manually edited hunks and untouched auto-merges carry no ribbons; `index`
+    // is the segment index into the layout tables.
+    const connectors = useMemo<ConnectorRenderSpec[]>(
         () =>
             renderedSegments
                 .filter(
@@ -592,8 +685,11 @@ function App() {
                         item,
                     ): item is (typeof renderedSegments)[number] & { segment: ConflictSegment } =>
                         item.segment.type === "conflict" &&
-                        isTrueConflict(item.segment) &&
-                        state.edits[item.segment.id] === undefined,
+                        state.edits[item.segment.id] === undefined &&
+                        !(
+                            item.segment.autoResolvedLines !== undefined &&
+                            state.resolutions[item.segment.id] === undefined
+                        ),
                 )
                 .map((item) => ({
                     id: item.segment.id,
@@ -603,25 +699,20 @@ function App() {
                         state.resolutions[item.segment.id],
                         state.edits[item.segment.id],
                     ),
-                    ...connectorClassPair(
+                    ...connectorSideSpecs(
                         item.segment,
                         state.resolutions[item.segment.id],
-                        state.edits[item.segment.id],
                         state.dismissals[item.segment.id],
                     ),
-                }))
-                .filter(
-                    (item) =>
-                        item.leftColorClass !== undefined || item.rightColorClass !== undefined,
-                ),
+                })),
         [renderedSegments, state.resolutions, state.edits, state.dismissals],
     );
     const connectorSpecs: ConnectorSpec[] = useMemo(
         () =>
-            connectors.map(({ id, leftColorClass, rightColorClass, middleLineTarget }) => ({
+            connectors.map(({ id, left, right, middleLineTarget }) => ({
                 id,
-                leftColorClass,
-                rightColorClass,
+                leftColorClass: left.colorClass,
+                rightColorClass: right.colorClass,
                 middleLineTarget,
             })),
         [connectors],

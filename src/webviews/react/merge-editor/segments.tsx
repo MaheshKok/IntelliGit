@@ -618,10 +618,15 @@ function deriveConflictView(
     const oursInResult = isOurs || isBoth;
     const theirsInResult = isTheirs || isBoth;
     // A side is "dismissed" when the user discarded it (X) without accepting the
-    // opposite side. Acceptance overrides dismissal, so a side in the result is
-    // never treated as dismissed. A manual edit supersedes both.
-    const oursDismissed = !isEdited && !oursInResult && dismissed?.ours === true;
-    const theirsDismissed = !isEdited && !theirsInResult && dismissed?.theirs === true;
+    // opposite side. Resolving to "none" discards BOTH sides (the reducer clears
+    // per-side dismissals then), so it must read as dismissed too — otherwise the
+    // settled blocks would keep their suggestion bands and controls. Acceptance
+    // overrides dismissal, so a side in the result is never treated as
+    // dismissed. A manual edit supersedes both.
+    const bothDiscarded = !isEdited && resolution === "none";
+    const oursDismissed = !isEdited && !oursInResult && (dismissed?.ours === true || bothDiscarded);
+    const theirsDismissed =
+        !isEdited && !theirsInResult && (dismissed?.theirs === true || bothDiscarded);
     const isAutoMerged =
         segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
     const isResolved =

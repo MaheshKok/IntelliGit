@@ -81,6 +81,17 @@ async function flushShikiInit(): Promise<void> {
     });
 }
 
+/**
+ * Waits out jsdom's ~16ms requestAnimationFrame timer so the merge scroll
+ * driver's scheduled frame runs and connector path `d` attributes are set.
+ * The microtask-only `flush()` never reaches macrotask-backed rAF callbacks.
+ */
+async function flushAnimationFrame(): Promise<void> {
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+}
+
 /** Conflict payload with two true conflicts separated by common code. */
 function twoConflictData(): unknown {
     return {
@@ -275,10 +286,16 @@ describe("MergeEditorApp", () => {
         expect(
             document.querySelector('[data-conflict-id="0"] .source-insertion-marker.marker-right'),
         ).toBeNull();
+        // The accepted left side keeps its conflict color but flips to the
+        // dotted resolved contour; the right suggestion stays a filled band.
+        // (Path `d` shapes are asserted in the insert-conflict test whose hunk
+        // sits at y=0 — this hunk is culled under jsdom's zero-height viewport.)
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(connectors).toHaveLength(2);
-        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[0].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
         expect(
             document.querySelector('[data-conflict-id="0"] .conflict-theirs')?.className,
         ).not.toContain("accepted-pane");
@@ -324,6 +341,7 @@ describe("MergeEditorApp", () => {
         await flush();
 
         expect(document.querySelector(".result-insertion-marker.marker-top")).not.toBeNull();
+        await flushAnimationFrame();
         const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(pendingConnectors).toHaveLength(2);
         expect(
@@ -346,10 +364,18 @@ describe("MergeEditorApp", () => {
             document.querySelector(".source-insertion-marker.marker-left.marker-bottom"),
         ).not.toBeNull();
         expect(document.querySelector(".source-insertion-marker.marker-right")).toBeNull();
+        // This hunk sits at y=0, so the frame actually draws it: the accepted
+        // left side must switch to the open dotted contour (subpaths, no Z)
+        // while the pending right side keeps the closed filled band.
+        await flushAnimationFrame();
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(connectors).toHaveLength(2);
-        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[0].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(connectors[0].getAttribute("d")?.trim().endsWith("Z")).toBe(false);
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
+        expect(connectors[1].getAttribute("d")?.trim().endsWith("Z")).toBe(true);
     });
 
     it("attaches the viewport ResizeObserver to the scroller once conflict data mounts it", async () => {
@@ -792,11 +818,14 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
-        // The dismissed left side loses its ribbon; only the still-offered
-        // right suggestion keeps its pending conflict connector.
+        // The dismissed left side keeps a dotted resolved trace (PyCharm's
+        // ignored style); the still-offered right suggestion stays a pending
+        // filled connector.
         const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
-        expect(pendingConnectors).toHaveLength(1);
-        expect(pendingConnectors[0].getAttribute("class")).toContain("change-conflict");
+        expect(pendingConnectors).toHaveLength(2);
+        expect(pendingConnectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(pendingConnectors[1].getAttribute("class")).toContain("change-conflict");
+        expect(pendingConnectors[1].getAttribute("class")).not.toContain("connector-resolved");
 
         // The right side only enters the result when the user explicitly accepts it.
         clickButton("Accept right block");
@@ -859,12 +888,14 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
-        // The dismissed right side loses its ribbon; the accepted left keeps a
-        // dimmed "done" connector instead of a pending suggestion ribbon.
+        // Both sides are settled (left accepted, right dismissed): each keeps a
+        // dotted resolved contour in the conflict color, no pending bands left.
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
-        expect(connectors).toHaveLength(1);
-        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
-        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(connectors).toHaveLength(2);
+        for (const connector of Array.from(connectors)) {
+            expect(connector.getAttribute("class")).toContain("change-conflict");
+            expect(connector.getAttribute("class")).toContain("connector-resolved");
+        }
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -912,8 +943,14 @@ describe("MergeEditorApp", () => {
         clickButton("Ignore right block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
-        // A fully discarded hunk points at nothing: no ribbons remain.
-        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
+        // A fully discarded hunk keeps two dotted traces pointing at the thin
+        // insertion line where the block used to be — PyCharm's ignored style —
+        // instead of vanishing entirely.
+        const discardedConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(discardedConnectors).toHaveLength(2);
+        for (const connector of Array.from(discardedConnectors)) {
+            expect(connector.getAttribute("class")).toContain("connector-resolved");
+        }
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({

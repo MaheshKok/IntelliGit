@@ -414,9 +414,26 @@
 .merge-connector.variant-deletion {
     fill: var(--merge-deleted-block-bg);
 }
-/* Accepted-side ribbons dim to a quiet "done" marker. */
+/* Settled sides (accepted / discarded) trade the filled band for PyCharm's
+   dotted contour: an unfilled outline tracing the source block, the divider
+   curve, and the result extent, so a decided hunk stays traceable without
+   competing with pending suggestions. Strokes brighten the band color so 1px
+   dots stay legible on the editor background. Ordered after the variant fill
+   rules so fill:none wins the specificity tie. */
 .merge-connector.connector-resolved {
-    opacity: 0.45;
+    fill: none;
+    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+}
+.merge-connector.variant-insertion.connector-resolved {
+    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
+}
+.merge-connector.variant-modification.connector-resolved {
+    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
+}
+.merge-connector.variant-deletion.connector-resolved {
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;
@@ -838,8 +855,13 @@
     background: transparent;
 }
 /* One-sided hunks are auto-resolved, so their result pane can be "resolved"
-   without meaning "green accepted"; keep non-green variant colors where useful.
-   User edits win via the .edited tint below. */
+   without meaning "green accepted"; keep the variant colors so the result band
+   matches its source band and connector ribbon. User edits win via the .edited
+   tint below. */
+.variant-insertion .conflict-result.resolved:not(.edited) .real-code-line::before,
+.variant-insertion .conflict-result.resolved:not(.edited) .real-line-row {
+    background: var(--merge-inserted-block-bg);
+}
 .variant-modification .conflict-result.resolved:not(.edited) .real-code-line::before,
 .variant-modification .conflict-result.resolved:not(.edited) .real-line-row {
     background: var(--merge-modified-block-bg);
@@ -869,6 +891,28 @@
 }
 .conflict-column.dismissed {
     opacity: 0.5;
+}
+/* Settled blocks are framed by the dotted SVG contour instead of the solid
+   hunk boundary: doubled chrome reads as a still-pending suggestion. Applies
+   to accepted/dismissed source panes and to the result once nothing is
+   pending against it; an active hunk keeps only its focus ring. */
+.segment-conflict.change-conflict:has(> .conflict-column.accepted),
+.segment-conflict.change-conflict:has(> .conflict-column.dismissed),
+.segment-conflict.change-conflict.resolved:has(.conflict-result.resolved) {
+    box-shadow: none;
+}
+.segment-conflict.change-conflict.active:has(> .conflict-column.accepted),
+.segment-conflict.change-conflict.active:has(> .conflict-column.dismissed),
+.segment-conflict.change-conflict.resolved.active:has(.conflict-result.resolved) {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
+}
+/* A dismissed-only side has no resolution yet, so its wrapper is still
+   .unresolved — strip the red number/gutter bands the unresolved rules paint
+   so the discarded block shows only its dotted contour. */
+.segment-conflict.change-conflict.unresolved:has(> .conflict-column.dismissed) .line-numbers,
+.segment-conflict.change-conflict.unresolved:has(> .conflict-column.dismissed) .line-number-row,
+.segment-conflict.change-conflict.unresolved:has(> .conflict-column.dismissed) .code-block::before {
+    background: transparent;
 }
 
 .result-editable {
@@ -1063,7 +1107,8 @@
     background: var(--pycharm-conflict);
 }
 .variant-insertion .conflict-ours .word-diff-change,
-.variant-insertion .conflict-theirs .word-diff-change {
+.variant-insertion .conflict-theirs .word-diff-change,
+.variant-insertion .conflict-result .word-diff-change {
     background: var(--pycharm-inserted);
 }
 .variant-modification .word-diff-change {

@@ -76,6 +76,32 @@ const sampleConflictData = {
         },
         {
             type: "common",
+            lines: ["}", "", "warmCache(): void {"],
+        },
+        {
+            // One-sided green insertion: only ours added lines.
+            type: "conflict",
+            id: 10,
+            changeKind: "ours-only",
+            baseLines: [],
+            oursLines: ['  logger.debug("cache warm start");', '  logger.debug("cache ready");'],
+            theirsLines: [],
+        },
+        {
+            type: "common",
+            lines: ["  cache.prime();", "}"],
+        },
+        {
+            // One-sided blue modification: only theirs rewrote the line.
+            type: "conflict",
+            id: 11,
+            changeKind: "theirs-only",
+            baseLines: ["  return cache.get(key);"],
+            oursLines: ["  return cache.get(key);"],
+            theirsLines: ["  return cache.fetch(key, { ttl: 60 });"],
+        },
+        {
+            type: "common",
             // Filler so the document exceeds the viewport and the preview can
             // exercise scroll-driven ribbon redraws, not just the first frame.
             lines: Array.from({ length: 40 }, (unused, i) => `  trace("scroll filler ${i}");`),
