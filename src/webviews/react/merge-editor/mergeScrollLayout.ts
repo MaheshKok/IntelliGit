@@ -205,20 +205,16 @@ export function ribbonPathD(
     );
 }
 
-/** The two vertical edges a connector joins: "a" is the near pane, "b" the far. */
-export type RibbonSide = "a" | "b";
-
 /**
  * Builds the SVG path for a RESOLVED hunk's connector, PyCharm-style: instead
- * of a filled band, an unfilled contour meant to be stroked dotted. Three
- * subpaths: the top edge (`aTop` → `bTop`), the bottom edge (`aBot` → `bBot`)
- * — both flat outside the divider strip and curved across it with the same
- * 30% / 70% Bézier controls as {@link ribbonPathD} — plus one vertical closure
- * on `edgeSide`'s outer pane edge. For this contour the span's `x0`/`x1` are
- * pane OUTER edges (the trace runs across the whole source block and result
- * extent), not gutter starts. No subpath closes with `Z`, so stroking never
- * draws seams at the divider joints; the closure is inset 0.5px so a 1px
- * stroke is not clipped at the pane boundary.
+ * of a filled band, an unfilled contour meant to be stroked dotted. Two closed
+ * rectangles — the a-block over `x0..curveX0` at `aTop..aBot` and the b-block
+ * over `curveX1..x1` at `bTop..bBot` — linked by an open pair of divider
+ * curves with the same 30% / 70% Bézier controls as {@link ribbonPathD}. The
+ * rectangles wrap each block inside its own pane only, so no dotted edge ever
+ * crosses a pane it does not belong to; the outer verticals are inset 0.5px so
+ * a 1px stroke is not clipped at the pane boundaries. A zero-height block
+ * degenerates to a dotted line at the insertion point.
  */
 export function ribbonOutlineD(
     span: RibbonSpan,
@@ -226,21 +222,15 @@ export function ribbonOutlineD(
     aBot: number,
     bTop: number,
     bBot: number,
-    edgeSide: RibbonSide,
 ): string {
     const { x0, curveX0, curveX1, x1 } = span;
     const width = curveX1 - curveX0;
     const cA = curveX0 + width * RIBBON_CTRL_PROXIMITY_X;
     const cB = curveX0 + width * (1 - RIBBON_CTRL_PROXIMITY_X);
-    const edge =
-        edgeSide === "a"
-            ? `M ${x0 + 0.5},${aTop} L ${x0 + 0.5},${aBot}`
-            : `M ${x1 - 0.5},${bTop} L ${x1 - 0.5},${bBot}`;
     return (
-        `M ${x0},${aTop} L ${curveX0},${aTop}` +
-        ` C ${cA},${aTop} ${cB},${bTop} ${curveX1},${bTop} L ${x1},${bTop}` +
-        ` M ${x0},${aBot} L ${curveX0},${aBot}` +
-        ` C ${cA},${aBot} ${cB},${bBot} ${curveX1},${bBot} L ${x1},${bBot}` +
-        ` ${edge}`
+        `M ${x0 + 0.5},${aTop} L ${curveX0},${aTop} L ${curveX0},${aBot} L ${x0 + 0.5},${aBot} Z` +
+        ` M ${curveX0},${aTop} C ${cA},${aTop} ${cB},${bTop} ${curveX1},${bTop}` +
+        ` M ${curveX0},${aBot} C ${cA},${aBot} ${cB},${bBot} ${curveX1},${bBot}` +
+        ` M ${curveX1},${bTop} L ${x1 - 0.5},${bTop} L ${x1 - 0.5},${bBot} L ${curveX1},${bBot} Z`
     );
 }

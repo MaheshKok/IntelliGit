@@ -20,6 +20,10 @@ for (const asset of assets) {
     }
 }
 
+// Mirrors the user's real config.ts merge: an unchanged-on-one-side import
+// conflict, a 4-line constant conflict (both stacked reproduces the reported
+// contour issues), a tall one-sided green insertion (right-divider wedge), and
+// a theirs-only insertion (left-divider artifacts).
 const sampleConflictData = {
     filePath: "src/config.ts",
     oursLabel: "main",
@@ -30,75 +34,94 @@ const sampleConflictData = {
         {
             type: "common",
             lines: [
-                'getDatabaseConfig(): Readonly<AppConfig["database"]> {',
-                "  return Object.freeze({ ...this.config.database });",
-                "}",
-                "",
+                "// ============================================",
+                "// SECTION 1: Imports and Constants",
+                "// ============================================",
+                'import * as fs from "fs";',
+                'import * as path from "path";',
             ],
         },
         {
+            // Ours kept base's yaml import; theirs swapped it for toml.
             type: "conflict",
-            id: 8,
+            id: 1,
             changeKind: "conflict",
-            baseLines: ["exportConfig(): string {"],
+            baseLines: ['import * as yaml from "yaml";'],
+            oursLines: ['import * as yaml from "yaml";'],
+            theirsLines: ['import * as toml from "toml";'],
+        },
+        {
+            type: "common",
+            lines: [""],
+        },
+        {
+            type: "conflict",
+            id: 2,
+            changeKind: "conflict",
+            baseLines: [
+                'const CONFIG_FILE_NAME = "app.config.json";',
+                'const ENV_PREFIX = "APP_";',
+                "const MAX_CACHE_SIZE = 100;",
+                'const DEFAULT_LOG_LEVEL = "info";',
+            ],
             oursLines: [
-                "exportToYaml(): string { return yaml.stringify(this.config); } // long left line for horizontal scroll",
+                'const CONFIG_FILE_NAME = "app.config.yaml";',
+                'const ENV_PREFIX = "MYAPP_";',
+                "const MAX_CACHE_SIZE = 500;",
+                'const DEFAULT_LOG_LEVEL = "debug";',
             ],
             theirsLines: [
-                "reload(): AppConfig {",
-                "  this.config = this.loadDefaults();",
-                "  return this.loadFromFile();",
-                "}",
-                "",
-                "validate(): string[] {",
-                "  const errors: string[] = [];",
-                '  if (this.config.port < 1) errors.push("Port must be between 1 and 65535");',
-                "  return errors;",
-                "}",
+                'const CONFIG_FILE_NAME = "app.config.toml";',
+                'const ENV_PREFIX = "SVC_";',
+                "const MAX_CACHE_SIZE = 250;",
+                'const DEFAULT_LOG_LEVEL = "warn";',
             ],
         },
         {
             type: "common",
-            lines: ["}", "loadFromEnv(): void {"],
+            lines: ["", "// SECTION 2: Types", "interface AppConfig {", "  port: number;", "}"],
         },
         {
+            // Tall one-sided green insertion: only ours added mergeConfig.
             type: "conflict",
-            id: 9,
-            changeKind: "conflict",
-            baseLines: ['  const raw = process.env["APP_PORT"];'],
-            oursLines: [
-                '  const envPort = process.env["MYAPP_PORT"];',
-                "  if (envPort) {",
-                "    this.config.port = parseInt(envPort, 10);",
-                "  }",
-            ],
-            theirsLines: ['  const envPort = process.env["SVC_PORT"];'],
-        },
-        {
-            type: "common",
-            lines: ["}", "", "warmCache(): void {"],
-        },
-        {
-            // One-sided green insertion: only ours added lines.
-            type: "conflict",
-            id: 10,
+            id: 3,
             changeKind: "ours-only",
             baseLines: [],
-            oursLines: ['  logger.debug("cache warm start");', '  logger.debug("cache ready");'],
+            oursLines: [
+                "private mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {",
+                "  return {",
+                "    ...base,",
+                "    ...override,",
+                "    database: {",
+                "      ...base.database,",
+                "      ...(override.database ?? {}),",
+                "    },",
+                "    features: {",
+                "      ...base.features,",
+                "      ...(override.features ?? {}),",
+                "    },",
+                "  };",
+                "}",
+            ],
             theirsLines: [],
         },
         {
             type: "common",
-            lines: ["  cache.prime();", "}"],
+            lines: ["", "loadFromEnv(): void {", '  const envPort = process.env["PORT"];', "}"],
         },
         {
-            // One-sided blue modification: only theirs rewrote the line.
+            // Theirs-only insertion: envHost handling added on the right.
             type: "conflict",
-            id: 11,
+            id: 4,
             changeKind: "theirs-only",
-            baseLines: ["  return cache.get(key);"],
-            oursLines: ["  return cache.get(key);"],
-            theirsLines: ["  return cache.fetch(key, { ttl: 60 });"],
+            baseLines: [],
+            oursLines: [],
+            theirsLines: [
+                '  const envHost = process.env["HOST"];',
+                "  if (envHost) {",
+                "    this.config.host = envHost;",
+                "  }",
+            ],
         },
         {
             type: "common",

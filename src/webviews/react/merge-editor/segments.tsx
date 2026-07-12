@@ -561,7 +561,6 @@ interface ConflictView {
     isAutoMerged: boolean;
     isResolved: boolean;
     resultIsUnresolved: boolean;
-    resultInsertionMarker: "top" | "bottom" | undefined;
     showLeftActions: boolean;
     showRightActions: boolean;
     leftAppend: boolean;
@@ -638,23 +637,6 @@ function deriveConflictView(
         segment.changeKind === "conflict" &&
         !isEdited &&
         ((isOurs && !theirsDismissed) || (isTheirs && !oursDismissed));
-    const hasPendingInsertionTarget =
-        segment.changeKind === "conflict" &&
-        !isEdited &&
-        segment.autoResolvedLines === undefined &&
-        ((!oursInResult && !theirsInResult && segment.baseLines.length === 0) ||
-            (isOurs && !theirsDismissed) ||
-            (isTheirs && !oursDismissed));
-    const acceptedResultLineCount = isOurs
-        ? segment.oursLines.length
-        : isTheirs
-          ? segment.theirsLines.length
-          : 0;
-    const resultInsertionMarker = hasPendingInsertionTarget
-        ? (!oursInResult && !theirsInResult) || acceptedResultLineCount === 0
-            ? "top"
-            : "bottom"
-        : undefined;
     return {
         isEdited,
         isOurs,
@@ -666,7 +648,6 @@ function deriveConflictView(
         isAutoMerged,
         isResolved,
         resultIsUnresolved,
-        resultInsertionMarker,
         // A side's controls show only while that side is still pending: not yet
         // in the result and not discarded. Accepting one side leaves the other
         // side's accept button available to append (stack) below it; discarding
@@ -906,12 +887,6 @@ export const OursConflictBlock = React.memo(function OursConflictBlock({
                     wordHighlight={highlightWords}
                     compareLines={view.oursInResult ? undefined : segment.baseLines}
                 />
-                {view.oursInResult && view.resultInsertionMarker ? (
-                    <div
-                        className={`source-insertion-marker marker-left marker-${view.resultInsertionMarker} variant-insertion`}
-                        aria-hidden="true"
-                    />
-                ) : null}
                 {view.showLeftActions ? (
                     <LeftHunkActions
                         segmentId={segment.id}
@@ -984,12 +959,6 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
                     compareLines={view.resultCompareLines}
                     onCommit={(lines) => onEditResult(segment.id, lines)}
                 />
-                {view.resultInsertionMarker ? (
-                    <div
-                        className={`result-insertion-marker marker-${view.resultInsertionMarker} variant-insertion`}
-                        aria-hidden="true"
-                    />
-                ) : null}
             </div>
         </div>
     );
@@ -1056,12 +1025,6 @@ export const TheirsConflictBlock = React.memo(function TheirsConflictBlock({
                     wordHighlight={highlightWords}
                     compareLines={view.theirsInResult ? undefined : segment.baseLines}
                 />
-                {view.theirsInResult && view.resultInsertionMarker ? (
-                    <div
-                        className={`source-insertion-marker marker-right marker-${view.resultInsertionMarker} variant-insertion`}
-                        aria-hidden="true"
-                    />
-                ) : null}
             </div>
         </div>
     );
@@ -1074,7 +1037,6 @@ export interface ConnectorSpec {
     id: number;
     leftColorClass?: string;
     rightColorClass?: string;
-    middleLineTarget: boolean;
 }
 
 /** Color class for a hunk's connector ribbon, matching its block band. */

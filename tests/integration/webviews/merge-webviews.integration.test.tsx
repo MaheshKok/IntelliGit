@@ -275,17 +275,10 @@ describe("MergeEditorApp", () => {
         expect(
             document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
         ).toContain("unresolved");
-        expect(
-            document.querySelector('[data-conflict-id="0"] .result-insertion-marker.marker-bottom'),
-        ).not.toBeNull();
-        expect(
-            document.querySelector(
-                '[data-conflict-id="0"] .source-insertion-marker.marker-left.marker-bottom',
-            ),
-        ).not.toBeNull();
-        expect(
-            document.querySelector('[data-conflict-id="0"] .source-insertion-marker.marker-right'),
-        ).toBeNull();
+        // The old standalone insertion-marker bars are gone: the pending
+        // side's ribbon itself tapers to the append edge instead.
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
+        expect(document.querySelector(".source-insertion-marker")).toBeNull();
         // The accepted left side keeps its conflict color but flips to the
         // dotted resolved contour; the right suggestion stays a filled band.
         // (Path `d` shapes are asserted in the insert-conflict test whose hunk
@@ -309,7 +302,7 @@ describe("MergeEditorApp", () => {
         });
     });
 
-    it("shows a thin result insertion marker for pending insert conflicts", async () => {
+    it("draws pending insert conflicts as thin-line bands and accepted sides as contours", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -340,41 +333,39 @@ describe("MergeEditorApp", () => {
         });
         await flush();
 
-        expect(document.querySelector(".result-insertion-marker.marker-top")).not.toBeNull();
+        // No standalone insertion-marker bars anymore: the empty result target
+        // itself draws as a 3px-line band (this hunk sits at y=0, so the frame
+        // actually draws under jsdom's zero-height viewport).
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
         await flushAnimationFrame();
         const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(pendingConnectors).toHaveLength(2);
-        expect(
-            Array.from(pendingConnectors).every((connector) =>
-                connector.getAttribute("d")?.trim().endsWith("Z"),
-            ),
-        ).toBe(true);
-        expect(
-            Array.from(pendingConnectors).some((connector) =>
-                connector.classList.contains("merge-connector-line"),
-            ),
-        ).toBe(false);
+        for (const connector of pendingConnectors) {
+            const d = connector.getAttribute("d")?.trim() ?? "";
+            // A pending band is one closed subpath, its empty result side
+            // clamped to the 3px insertion line.
+            expect(d.endsWith("Z")).toBe(true);
+            expect(d.match(/M /g)).toHaveLength(1);
+            expect(d).toContain(",3 ");
+        }
 
         clickButton("Accept left block");
         await flush();
 
-        expect(document.querySelector(".result-insertion-marker.marker-top")).toBeNull();
-        expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
-        expect(
-            document.querySelector(".source-insertion-marker.marker-left.marker-bottom"),
-        ).not.toBeNull();
-        expect(document.querySelector(".source-insertion-marker.marker-right")).toBeNull();
-        // This hunk sits at y=0, so the frame actually draws it: the accepted
-        // left side must switch to the open dotted contour (subpaths, no Z)
-        // while the pending right side keeps the closed filled band.
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
+        expect(document.querySelector(".source-insertion-marker")).toBeNull();
+        // The accepted left side switches to the dotted linked-block contour
+        // (two closed rectangles + two open divider curves = 4 subpaths) while
+        // the pending right side keeps the single closed filled band.
         await flushAnimationFrame();
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(connectors).toHaveLength(2);
         expect(connectors[0].getAttribute("class")).toContain("change-conflict");
         expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
-        expect(connectors[0].getAttribute("d")?.trim().endsWith("Z")).toBe(false);
+        expect(connectors[0].getAttribute("d")?.match(/M /g)).toHaveLength(4);
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
         expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
+        expect(connectors[1].getAttribute("d")?.match(/M /g)).toHaveLength(1);
         expect(connectors[1].getAttribute("d")?.trim().endsWith("Z")).toBe(true);
     });
 
@@ -714,14 +705,12 @@ describe("MergeEditorApp", () => {
         // Accept right first, then append left below it: theirs comes before ours.
         clickButton("Accept right block");
         await flush();
-        expect(document.querySelector(".result-insertion-marker.variant-insertion")).not.toBeNull();
         clickButton("Append left block below the result");
         await flush();
 
         expect(document.body.textContent).toContain("0 unresolved");
         expect(document.querySelector(".conflict-actions-left")).toBeNull();
         expect(document.querySelector(".conflict-actions-right")).toBeNull();
-        expect(document.querySelector(".result-insertion-marker")).toBeNull();
         expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
         expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
 
@@ -732,7 +721,7 @@ describe("MergeEditorApp", () => {
         });
     });
 
-    it("shows the append marker at the top after accepting an empty side", async () => {
+    it("clamps the ribbons to thin lines after accepting an empty side", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -765,12 +754,19 @@ describe("MergeEditorApp", () => {
 
         clickButton("Accept left block");
         await flush();
+        await flushAnimationFrame();
 
-        const marker = document.querySelector<HTMLElement>(
-            ".result-insertion-marker.variant-insertion",
-        );
-        expect(marker).not.toBeNull();
-        expect(marker?.className).toContain("marker-top");
+        // Accepting the empty left side empties the result: the settled left
+        // contour and the pending right band both collapse their zero-height
+        // sides to the 3px insertion line instead of vanishing (the hunk sits
+        // at y=0, so jsdom's zero-height viewport still draws it).
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(2);
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(connectors[0].getAttribute("d")).toContain(",3 ");
+        expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
+        expect(connectors[1].getAttribute("d")).toContain(",3 ");
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
     });
 
     it("discards only the left side on left X and leaves the right suggestion offered", async () => {

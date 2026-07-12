@@ -27,7 +27,6 @@
     --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, #0d1522 76%);
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
-    --merge-insertion-marker-height: 3px;
     --merge-line-number-gutter: 37px;
     --merge-action-gutter: 44px;
 
@@ -400,19 +399,27 @@
     z-index: 1;
 }
 /* Ribbon fills reuse the block-band palette so a hunk's band and its connector
-   read as one continuous region across the gutters. */
+   read as one continuous region across the gutters — but translucent with a
+   1px solid edge stroke, PyCharm-style: steep or overlapping ribbons (blocks
+   pushed apart by proportional scrolling) then read as distinct layered
+   ribbons instead of fusing into an opaque wall in the divider strip. The
+   in-pane row bands stay opaque; only the SVG connector is see-through. */
 .merge-connector {
-    fill: var(--merge-conflict-ribbon-bg);
-    stroke: none;
+    fill: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 55%, transparent);
+    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
+    stroke-width: 1;
 }
 .merge-connector.variant-insertion {
-    fill: var(--merge-inserted-block-bg);
+    fill: color-mix(in srgb, var(--merge-inserted-block-bg) 55%, transparent);
+    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
 }
 .merge-connector.variant-modification {
-    fill: var(--merge-modified-block-bg);
+    fill: color-mix(in srgb, var(--merge-modified-block-bg) 55%, transparent);
+    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
 }
 .merge-connector.variant-deletion {
-    fill: var(--merge-deleted-block-bg);
+    fill: color-mix(in srgb, var(--merge-deleted-block-bg) 55%, transparent);
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
 }
 /* Settled sides (accepted / discarded) trade the filled band for PyCharm's
    dotted contour: an unfilled outline tracing the source block, the divider
@@ -696,46 +703,6 @@
 .conflict-column {
     position: relative;
     overflow: visible;
-}
-.result-insertion-marker {
-    position: absolute;
-    left: 0;
-    width: var(--merge-line-number-gutter);
-    height: var(--merge-insertion-marker-height);
-    background: var(--pycharm-conflict);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--pycharm-conflict) 40%, transparent);
-    pointer-events: none;
-    z-index: 6;
-}
-.result-insertion-marker.marker-top {
-    top: 0;
-}
-.result-insertion-marker.marker-bottom {
-    bottom: 0;
-}
-.result-insertion-marker.variant-insertion {
-    background: var(--pycharm-conflict);
-}
-.source-insertion-marker {
-    position: absolute;
-    width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
-    height: var(--merge-insertion-marker-height);
-    background: var(--pycharm-conflict);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--pycharm-conflict) 40%, transparent);
-    pointer-events: none;
-    z-index: 6;
-}
-.source-insertion-marker.marker-left {
-    right: 0;
-}
-.source-insertion-marker.marker-right {
-    left: 0;
-}
-.source-insertion-marker.marker-top {
-    top: 0;
-}
-.source-insertion-marker.marker-bottom {
-    bottom: 0;
 }
 .merge-horizontal-scroll {
     position: absolute;

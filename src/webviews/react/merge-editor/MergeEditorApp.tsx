@@ -62,7 +62,6 @@ import {
     ribbonPathD,
     type MergeVerticalLayout,
     type MergePane,
-    type RibbonSide,
     type RibbonSpan,
     type SegmentPaneLines,
 } from "./mergeScrollLayout";
@@ -98,7 +97,6 @@ interface ConnectorSideSpec {
 interface ConnectorRenderSpec {
     id: number;
     index: number;
-    middleLineTarget: boolean;
     left: ConnectorSideSpec;
     right: ConnectorSideSpec;
 }
@@ -108,7 +106,10 @@ interface ConnectorRenderSpec {
  * its filled suggestion band; a settled side (accepted into the result,
  * discarded via X, or dropped with "none") turns into a dotted contour so the
  * hunk stays traceable across panes after the decision. Stacking both sides
- * settles both ribbons and points each at its own slice of the result.
+ * settles both ribbons and points each at its own slice of the result. While
+ * exactly one side is accepted, the other side — pending append or discarded —
+ * points at the zero-height append edge below the accepted lines instead of
+ * re-wrapping the whole result block.
  */
 function connectorSideSpecs(
     segment: ConflictSegment,
@@ -141,10 +142,14 @@ function connectorSideSpecs(
         left: {
             colorClass: leftResolved ? resolvedClass : pendingClass,
             resolved: leftResolved,
+            midSlice:
+                resolution === "theirs" ? { top: segment.theirsLines.length, count: 0 } : undefined,
         },
         right: {
             colorClass: rightResolved ? resolvedClass : pendingClass,
             resolved: rightResolved,
+            midSlice:
+                resolution === "ours" ? { top: segment.oursLines.length, count: 0 } : undefined,
         },
     };
 }
@@ -158,15 +163,6 @@ function sliceExtent(
     if (!slice) return { top: midTop, bot: midBot };
     const top = midTop + slice.top * LINE_HEIGHT_PX;
     return { top, bot: top + slice.count * LINE_HEIGHT_PX };
-}
-
-function resultIsLineTarget(
-    segment: ConflictSegment,
-    resolution: HunkResolution | undefined,
-    editedLines: string[] | undefined,
-): boolean {
-    if (editedLines !== undefined) return false;
-    return getEffectiveResultLines(segment, resolution, editedLines).length === 0;
 }
 
 /** Reads a numeric px-valued CSS variable used by merge-editor geometry. */
@@ -183,20 +179,13 @@ interface DividerSpans {
     contour: RibbonSpan;
 }
 
-/** Per-ribbon draw options: thin insertion target and/or settled contour mode. */
-interface RibbonDrawOptions {
-    /** Collapse this side to a thin insertion-target wedge (empty result). */
-    lineSide?: RibbonSide;
-    /** Draw the dotted resolved contour, closed on this side's pane edge. */
-    outlineEdge?: RibbonSide;
-}
-
 /**
  * Sets one connector ribbon's path across a gutter. Pending sides draw the
  * filled band (flat under the pane gutters, curved only in the divider strip);
- * resolved sides draw the dotted contour across the pane outer edges instead.
- * Empty result targets render as a thin wedge so insertion hunks stay visible
- * without a full row.
+ * resolved sides draw the dotted linked-block contour instead. Any zero-height
+ * side — an empty result, an untouched pane of a one-sided hunk, or an append
+ * edge — is clamped to a thin line so insertion targets stay visible without a
+ * full row, PyCharm-style.
  */
 function setRibbonPath(
     path: SVGPathElement | undefined,
@@ -206,13 +195,13 @@ function setRibbonPath(
     bTop: number,
     bBot: number,
     viewportH: number,
-    options: RibbonDrawOptions = {},
+    outline: boolean,
 ): void {
     if (!path) return;
-    if (options.lineSide === "a") {
+    if (aBot - aTop < RIBBON_LINE_TARGET_HEIGHT_PX) {
         aBot = aTop + RIBBON_LINE_TARGET_HEIGHT_PX;
     }
-    if (options.lineSide === "b") {
+    if (bBot - bTop < RIBBON_LINE_TARGET_HEIGHT_PX) {
         bBot = bTop + RIBBON_LINE_TARGET_HEIGHT_PX;
     }
 
@@ -226,8 +215,8 @@ function setRibbonPath(
     path.style.display = "";
     path.setAttribute(
         "d",
-        options.outlineEdge
-            ? ribbonOutlineD(spans.contour, aTop, aBot, bTop, bBot, options.outlineEdge)
+        outline
+            ? ribbonOutlineD(spans.contour, aTop, aBot, bTop, bBot)
             : ribbonPathD(spans.band, aTop, aBot, bTop, bBot),
     );
 }
@@ -361,20 +350,25 @@ function App() {
         const leftEdge = left.offsetLeft + left.offsetWidth;
         const middleEdge = middle.offsetLeft + middle.offsetWidth;
         const rightEdge = right.offsetLeft + right.offsetWidth;
-        // Band spans stop at the gutters; contour spans (resolved hunks) run
-        // pane-edge to pane-edge so the dotted trace crosses the whole block.
+        const leftContentEnd = leftEdge - gutterWidth(left, true);
+        const middleContentStart = middle.offsetLeft + gutterWidth(middle, false);
+        const rightContentStart = right.offsetLeft + gutterWidth(right, true);
+        // Band spans stop at the gutters. Contour spans (resolved hunks) wrap
+        // each block's pane CONTENT in a closed dotted rectangle and let the
+        // linking curves sweep the whole gutter+divider zone between them, so
+        // no dotted edge crosses a pane it does not belong to.
         gutterXRef.current = {
             left: {
                 band: {
-                    x0: leftEdge - gutterWidth(left, true),
+                    x0: leftContentEnd,
                     curveX0: leftEdge,
                     curveX1: middle.offsetLeft,
-                    x1: middle.offsetLeft + gutterWidth(middle, false),
+                    x1: middleContentStart,
                 },
                 contour: {
                     x0: left.offsetLeft,
-                    curveX0: leftEdge,
-                    curveX1: middle.offsetLeft,
+                    curveX0: leftContentEnd,
+                    curveX1: middleContentStart,
                     x1: middleEdge,
                 },
             },
@@ -383,12 +377,12 @@ function App() {
                     x0: middleEdge,
                     curveX0: middleEdge,
                     curveX1: right.offsetLeft,
-                    x1: right.offsetLeft + gutterWidth(right, true),
+                    x1: rightContentStart,
                 },
                 contour: {
-                    x0: middle.offsetLeft,
+                    x0: middleContentStart,
                     curveX0: middleEdge,
-                    curveX1: right.offsetLeft,
+                    curveX1: rightContentStart,
                     x1: rightEdge,
                 },
             },
@@ -400,14 +394,16 @@ function App() {
             const layout = layoutRef.current;
             if (!layout) return;
             const { left: leftSpans, right: rightSpans } = gutterXRef.current;
-            for (const { id, index, middleLineTarget, left, right } of connectorsRef.current) {
+            for (const { id, index, left, right } of connectorsRef.current) {
                 const oursTop = layout.paneTopPx.left[index] - offsets.left;
                 const oursBot = oursTop + layout.paneHPx.left[index];
                 const midTop = layout.paneTopPx.middle[index] - offsets.middle;
                 const midBot = midTop + layout.paneHPx.middle[index];
                 const theirsTop = layout.paneTopPx.right[index] - offsets.right;
                 const theirsBot = theirsTop + layout.paneHPx.right[index];
-                // Stacked resolutions point each side at its own result slice.
+                // Stacked resolutions point each side at its own result slice;
+                // a lone accepted side leaves the other side a zero-height
+                // append-edge slice.
                 const leftTarget = sliceExtent(midTop, midBot, left.midSlice);
                 const rightSource = sliceExtent(midTop, midBot, right.midSlice);
                 setRibbonPath(
@@ -418,10 +414,7 @@ function App() {
                     leftTarget.top,
                     leftTarget.bot,
                     viewportH,
-                    {
-                        lineSide: middleLineTarget ? "b" : undefined,
-                        outlineEdge: left.resolved ? "a" : undefined,
-                    },
+                    left.resolved,
                 );
                 setRibbonPath(
                     connectorPaths.get(`${id}-right`),
@@ -431,10 +424,7 @@ function App() {
                     theirsTop,
                     theirsBot,
                     viewportH,
-                    {
-                        lineSide: middleLineTarget ? "a" : undefined,
-                        outlineEdge: right.resolved ? "b" : undefined,
-                    },
+                    right.resolved,
                 );
             }
         },
@@ -694,11 +684,6 @@ function App() {
                 .map((item) => ({
                     id: item.segment.id,
                     index: item.index,
-                    middleLineTarget: resultIsLineTarget(
-                        item.segment,
-                        state.resolutions[item.segment.id],
-                        state.edits[item.segment.id],
-                    ),
                     ...connectorSideSpecs(
                         item.segment,
                         state.resolutions[item.segment.id],
@@ -709,11 +694,10 @@ function App() {
     );
     const connectorSpecs: ConnectorSpec[] = useMemo(
         () =>
-            connectors.map(({ id, left, right, middleLineTarget }) => ({
+            connectors.map(({ id, left, right }) => ({
                 id,
                 leftColorClass: left.colorClass,
                 rightColorClass: right.colorClass,
-                middleLineTarget,
             })),
         [connectors],
     );
