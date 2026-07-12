@@ -400,27 +400,27 @@
     overflow: visible;
     z-index: 1;
 }
-/* Ribbon fills reuse the block-band palette so a hunk's band and its connector
-   read as one continuous region across the gutters — but translucent with a
-   1px solid edge stroke, PyCharm-style: steep or overlapping ribbons (blocks
-   pushed apart by proportional scrolling) then read as distinct layered
-   ribbons instead of fusing into an opaque wall in the divider strip. The
-   in-pane row bands stay opaque; only the SVG connector is see-through. */
+/* Ribbon fills use the block-band color at full strength — no translucency —
+   so a hunk's band, its gutter strips, and its divider curve read as one
+   continuous region across all three panes, PyCharm-style. The muted block
+   palette keeps overlapping ribbons legible at full opacity, and the 1px
+   brightened edge stroke keeps individual ribbons traceable where they
+   cross. */
 .merge-connector {
-    fill: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 55%, transparent);
+    fill: var(--merge-conflict-ribbon-bg);
     stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
     stroke-width: 1;
 }
 .merge-connector.variant-insertion {
-    fill: color-mix(in srgb, var(--merge-inserted-block-bg) 55%, transparent);
+    fill: var(--merge-inserted-block-bg);
     stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
 }
 .merge-connector.variant-modification {
-    fill: color-mix(in srgb, var(--merge-modified-block-bg) 55%, transparent);
+    fill: var(--merge-modified-block-bg);
     stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
 }
 .merge-connector.variant-deletion {
-    fill: color-mix(in srgb, var(--merge-deleted-block-bg) 55%, transparent);
+    fill: var(--merge-deleted-block-bg);
     stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
 }
 /* Settled sides (accepted / discarded) trade the filled band for PyCharm's
@@ -631,9 +631,6 @@
 }
 .segment-common .code-line {
     color: var(--vscode-editor-foreground);
-}
-.segment-common .code-line-content {
-    opacity: 0.62;
 }
 
 .segment-conflict {
