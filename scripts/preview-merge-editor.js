@@ -61,6 +61,25 @@ const sampleConflictData = {
             type: "common",
             lines: ["}", "loadFromEnv(): void {"],
         },
+        {
+            type: "conflict",
+            id: 9,
+            changeKind: "conflict",
+            baseLines: ['  const raw = process.env["APP_PORT"];'],
+            oursLines: [
+                '  const envPort = process.env["MYAPP_PORT"];',
+                "  if (envPort) {",
+                "    this.config.port = parseInt(envPort, 10);",
+                "  }",
+            ],
+            theirsLines: ['  const envPort = process.env["SVC_PORT"];'],
+        },
+        {
+            type: "common",
+            // Filler so the document exceeds the viewport and the preview can
+            // exercise scroll-driven ribbon redraws, not just the first frame.
+            lines: Array.from({ length: 40 }, (unused, i) => `  trace("scroll filler ${i}");`),
+        },
     ],
 };
 
