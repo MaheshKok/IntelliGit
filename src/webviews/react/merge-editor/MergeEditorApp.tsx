@@ -60,6 +60,7 @@ import {
     ribbonPathD,
     type MergeVerticalLayout,
     type MergePane,
+    type RibbonSpan,
     type SegmentPaneLines,
 } from "./mergeScrollLayout";
 import { buildLineNumberValues } from "./lineNumbers";
@@ -136,14 +137,13 @@ function readPxVar(element: Element, name: string): number {
 }
 
 /**
- * Sets one connector ribbon's curved path across a gutter. Empty result targets
- * render as a thin filled wedge so insertion hunks stay visible without a full
- * row.
+ * Sets one connector ribbon's path across a gutter: flat under the pane
+ * gutters, curved only in the divider strip. Empty result targets render as a
+ * thin filled wedge so insertion hunks stay visible without a full row.
  */
 function setRibbonPath(
     path: SVGPathElement | undefined,
-    x0: number,
-    x1: number,
+    span: RibbonSpan,
     aTop: number,
     aBot: number,
     bTop: number,
@@ -167,7 +167,7 @@ function setRibbonPath(
     }
 
     path.style.display = "";
-    path.setAttribute("d", ribbonPathD(x0, x1, aTop, aBot, bTop, bBot));
+    path.setAttribute("d", ribbonPathD(span, aTop, aBot, bTop, bBot));
 }
 
 // --- VS Code API ---
@@ -221,11 +221,12 @@ function App() {
         right: null,
     });
     const connectorPaths = useMemo(() => new Map<string, SVGPathElement>(), []);
-    // Gutter x-ranges (viewport-relative) the connector ribbons span; measured
-    // on layout/resize so the per-frame draw only recomputes y.
-    const gutterXRef = useRef<{ leftX0: number; leftX1: number; rightX0: number; rightX1: number }>(
-        { leftX0: 0, leftX1: 0, rightX0: 0, rightX1: 0 },
-    );
+    // Ribbon spans (viewport-relative) across each divider; measured on
+    // layout/resize so the per-frame draw only recomputes y.
+    const gutterXRef = useRef<{ left: RibbonSpan; right: RibbonSpan }>({
+        left: { x0: 0, curveX0: 0, curveX1: 0, x1: 0 },
+        right: { x0: 0, curveX0: 0, curveX1: 0, x1: 0 },
+    });
     const viewportHRef = useRef(0);
     const layoutRef = useRef<MergeVerticalLayout | null>(null);
     // Conflict hunks the ribbons link, kept in a ref so the rAF draw reads the
@@ -271,18 +272,44 @@ function App() {
         content.style.setProperty("--merge-viewport-h", `${h}px`);
     }, []);
 
-    // Gutter x-ranges are viewport-relative and change only on layout/resize, so
-    // measure them once here and let the per-frame draw recompute only y.
+    // Ribbon spans are viewport-relative and change only on layout/resize, so
+    // measure them once here and let the per-frame draw recompute only y. The
+    // flat zones run under the source panes' trailing/leading gutters and the
+    // result pane's line numbers; the curve zones are exactly the divider
+    // strips between columns, PyCharm-style.
     const measureGutters = useCallback(() => {
         const { left, middle, right } = columnRefs.current;
         if (!left || !middle || !right) return;
-        const lineGutter = readPxVar(left, "--merge-line-number-gutter");
-        const sourceGutter = lineGutter + readPxVar(left, "--merge-action-gutter");
+        // Each pane's rendered .line-numbers element is its full divider-facing
+        // gutter: the side panes' grid track already includes the action strip,
+        // the result pane's is numbers only. Measure it directly — the runtime
+        // line-number width is a max()/calc() expression parseFloat cannot
+        // resolve — and fall back to the static CSS vars when a pane happens to
+        // render no numbered block.
+        const gutterWidth = (col: HTMLElement, withActions: boolean): number => {
+            const numbers = col.querySelector<HTMLElement>(".line-numbers");
+            // offsetWidth can read 0 while content-visibility keeps the block's
+            // layout skipped (deep scroll + resize) — fall back rather than
+            // collapse the ribbon's flat zones to nothing.
+            if (numbers && numbers.offsetWidth > 0) return numbers.offsetWidth;
+            const fallback = readPxVar(col, "--merge-line-number-gutter");
+            return withActions ? fallback + readPxVar(col, "--merge-action-gutter") : fallback;
+        };
+        const leftEdge = left.offsetLeft + left.offsetWidth;
+        const middleEdge = middle.offsetLeft + middle.offsetWidth;
         gutterXRef.current = {
-            leftX0: left.offsetLeft + left.offsetWidth - sourceGutter,
-            leftX1: middle.offsetLeft + lineGutter,
-            rightX0: middle.offsetLeft + middle.offsetWidth,
-            rightX1: right.offsetLeft + sourceGutter,
+            left: {
+                x0: leftEdge - gutterWidth(left, true),
+                curveX0: leftEdge,
+                curveX1: middle.offsetLeft,
+                x1: middle.offsetLeft + gutterWidth(middle, false),
+            },
+            right: {
+                x0: middleEdge,
+                curveX0: middleEdge,
+                curveX1: right.offsetLeft,
+                x1: right.offsetLeft + gutterWidth(right, true),
+            },
         };
     }, []);
 
@@ -290,7 +317,7 @@ function App() {
         (offsets: Record<MergePane, number>, viewportH: number) => {
             const layout = layoutRef.current;
             if (!layout) return;
-            const { leftX0, leftX1, rightX0, rightX1 } = gutterXRef.current;
+            const { left: leftSpan, right: rightSpan } = gutterXRef.current;
             for (const { id, index, middleLineTarget } of connectorsRef.current) {
                 const oursTop = layout.paneTopPx.left[index] - offsets.left;
                 const oursBot = oursTop + layout.paneHPx.left[index];
@@ -300,8 +327,7 @@ function App() {
                 const theirsBot = theirsTop + layout.paneHPx.right[index];
                 setRibbonPath(
                     connectorPaths.get(`${id}-left`),
-                    leftX0,
-                    leftX1,
+                    leftSpan,
                     oursTop,
                     oursBot,
                     midTop,
@@ -311,8 +337,7 @@ function App() {
                 );
                 setRibbonPath(
                     connectorPaths.get(`${id}-right`),
-                    rightX0,
-                    rightX1,
+                    rightSpan,
                     midTop,
                     midBot,
                     theirsTop,

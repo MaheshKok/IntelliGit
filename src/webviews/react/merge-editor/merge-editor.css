@@ -373,9 +373,10 @@
        line numbers and action glyphs (z-index applies to flex items). */
     z-index: 2;
 }
-/* Separator rail; hunk ribbons supply red only where conflict rows exist. */
+/* Divider strip between panes; hunk ribbons curve across exactly this zone
+   (PyCharm's divider width), so it stays wide enough for the S-bend to read. */
 .merge-gutter {
-    flex: 0 0 16px;
+    flex: 0 0 28px;
     align-self: stretch;
     background: transparent;
     z-index: 3;

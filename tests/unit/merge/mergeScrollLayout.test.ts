@@ -124,44 +124,71 @@ describe("paneOffsetForCanonical", () => {
     });
 });
 
-// Connector ribbon geometry: both long edges are cubic Béziers with horizontal
-// end tangents and control points at 30% / 70% of the horizontal span
-// (IntelliJ's curve-trapezium contract), so a ribbon leaves and meets the
-// rectangular pane bands without a kink. Expected strings are hand-computed
-// from that contract, not read back from the implementation.
-// Not exercised: x1 < x0 and non-finite inputs — gutter measurement always
-// yields a finite left-to-right span, and offscreen culling happens upstream.
+// Connector ribbon geometry, PyCharm's divider anatomy: the band stays a flat
+// rectangle under the near gutter (x0..curveX0) and the far gutter
+// (curveX1..x1); ONLY the divider strip (curveX0..curveX1) curves, using cubic
+// Béziers with horizontal end tangents and control points at 30% / 70% of the
+// strip (IntelliJ's curve-trapezium contract). Expected strings are
+// hand-computed from that contract, not read back from the implementation.
+// Not exercised: reversed spans and non-finite inputs — gutter measurement
+// always yields finite left-to-right x's, and offscreen culling happens
+// upstream.
 describe("ribbonPathD", () => {
-    it("emits flat-tangent cubic edges with control points at 30% and 70% of the span", () => {
-        // span 100..200 → controls at x=130 and x=170; each control keeps its
-        // endpoint's y (flat tangents), bottom edge runs right-to-left.
-        expect(ribbonPathD(100, 200, 10, 50, 30, 90)).toBe(
-            "M 100,10 C 130,10 170,30 200,30 L 200,90 C 170,90 130,50 100,50 Z",
+    // Strip 140..170 (width 30) → controls at x=149 and x=161.
+    const SPAN = { x0: 100, curveX0: 140, curveX1: 170, x1: 200 };
+
+    it("keeps gutter bands rectangular and curves only across the divider strip", () => {
+        expect(ribbonPathD(SPAN, 10, 50, 30, 90)).toBe(
+            "M 100,10 L 140,10 C 149,10 161,30 170,30 L 200,30" +
+                " L 200,90 L 170,90 C 161,90 149,50 140,50 L 100,50 Z",
         );
     });
 
     it("degenerates to straight horizontal edges when both sides align", () => {
-        expect(ribbonPathD(100, 200, 10, 50, 10, 50)).toBe(
-            "M 100,10 C 130,10 170,10 200,10 L 200,50 C 170,50 130,50 100,50 Z",
+        expect(ribbonPathD(SPAN, 10, 50, 10, 50)).toBe(
+            "M 100,10 L 140,10 C 149,10 161,10 170,10 L 200,10" +
+                " L 200,50 L 170,50 C 161,50 149,50 140,50 L 100,50 Z",
         );
     });
 
     it("preserves fractional offsets so ribbons track sub-pixel pane positions", () => {
-        expect(ribbonPathD(100, 200, 10.5, 50.25, 30.75, 90.5)).toBe(
-            "M 100,10.5 C 130,10.5 170,30.75 200,30.75 L 200,90.5 C 170,90.5 130,50.25 100,50.25 Z",
+        expect(ribbonPathD(SPAN, 10.5, 50.25, 30.75, 90.5)).toBe(
+            "M 100,10.5 L 140,10.5 C 149,10.5 161,30.75 170,30.75 L 200,30.75" +
+                " L 200,90.5 L 170,90.5 C 161,90.5 149,50.25 140,50.25 L 100,50.25 Z",
         );
     });
 
     it("collapses to a curved wedge when the far side has zero height", () => {
-        // bTop == bBot: an insertion pointing at a line between rows.
-        expect(ribbonPathD(0, 10, 20, 60, 40, 40)).toBe(
-            "M 0,20 C 3,20 7,40 10,40 L 10,40 C 7,40 3,60 0,60 Z",
+        // bTop == bBot: an insertion pointing at a line between rows. Strip
+        // 10..20 (width 10) → controls at x=13 and x=17.
+        expect(ribbonPathD({ x0: 0, curveX0: 10, curveX1: 20, x1: 30 }, 20, 60, 40, 40)).toBe(
+            "M 0,20 L 10,20 C 13,20 17,40 20,40 L 30,40" +
+                " L 30,40 L 20,40 C 17,40 13,60 10,60 L 0,60 Z",
         );
     });
 
     it("handles negative coordinates for hunks scrolled above the viewport", () => {
-        expect(ribbonPathD(0, 10, -30, -10, -20, 0)).toBe(
-            "M 0,-30 C 3,-30 7,-20 10,-20 L 10,0 C 7,0 3,-10 0,-10 Z",
+        expect(ribbonPathD({ x0: 0, curveX0: 10, curveX1: 20, x1: 30 }, -30, -10, -20, 0)).toBe(
+            "M 0,-30 L 10,-30 C 13,-30 17,-20 20,-20 L 30,-20" +
+                " L 30,0 L 20,0 C 17,0 13,-10 10,-10 L 0,-10 Z",
+        );
+    });
+
+    it("degenerates to a vertical seam when the divider strip has zero width", () => {
+        // curveX0 == curveX1: all curve x's collapse onto the shared edge, so
+        // the "curve" is a vertical joint between the two flat bands.
+        expect(ribbonPathD({ x0: 100, curveX0: 150, curveX1: 150, x1: 200 }, 10, 50, 30, 90)).toBe(
+            "M 100,10 L 150,10 C 150,10 150,30 150,30 L 200,30" +
+                " L 200,90 L 150,90 C 150,90 150,50 150,50 L 100,50 Z",
+        );
+    });
+
+    it("supports zero-width gutter bands, reducing to a pure divider curve", () => {
+        // A side with no gutter (e.g. the result pane's trailing edge) sets
+        // x0 == curveX0; the flat segment degenerates to a zero-length line.
+        expect(ribbonPathD({ x0: 100, curveX0: 100, curveX1: 200, x1: 200 }, 10, 50, 30, 90)).toBe(
+            "M 100,10 L 100,10 C 130,10 170,30 200,30 L 200,30" +
+                " L 200,90 L 200,90 C 170,90 130,50 100,50 L 100,50 Z",
         );
     });
 });
