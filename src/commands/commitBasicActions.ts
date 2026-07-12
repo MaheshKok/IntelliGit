@@ -134,25 +134,40 @@ export async function checkoutRevision(ctx: CommitActionContext): Promise<void> 
 export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void> {
     const resetLabel = vscode.l10n.t("Reset");
     const resetModes = [
-        { label: "soft", mode: "soft" },
-        { label: "mixed", mode: "mixed" },
-        { label: "hard", mode: "hard" },
-        { label: "merge", mode: "merge" },
-        { label: "keep", mode: "keep" },
+        { label: vscode.l10n.t("soft"), mode: "soft" },
+        { label: vscode.l10n.t("mixed"), mode: "mixed" },
+        { label: vscode.l10n.t("hard"), mode: "hard" },
+        { label: vscode.l10n.t("merge"), mode: "merge" },
+        { label: vscode.l10n.t("keep"), mode: "keep" },
     ] as const;
     const pickedResetMode = await vscode.window.showQuickPick(resetModes, { title: resetLabel });
     if (!pickedResetMode) return;
     const resetMode = pickedResetMode.mode;
 
     const confirmationMessages: Record<(typeof resetModes)[number]["mode"], string> = {
-        soft: "Soft reset current branch to {short}? This moves HEAD but preserves the index and working tree.",
-        mixed: "Mixed reset current branch to {short}? This resets the index but preserves working-tree changes.",
-        hard: "Hard reset current branch to {short}? This resets the index and working tree and permanently discards uncommitted changes.",
-        merge: "Merge reset current branch to {short}? This resets the index and updates changed files while preserving non-conflicting local changes.",
-        keep: "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.",
+        soft: vscode.l10n.t(
+            "Soft reset current branch to {short}? This moves HEAD but preserves the index and working tree.",
+            { short: ctx.short },
+        ),
+        mixed: vscode.l10n.t(
+            "Mixed reset current branch to {short}? This resets the index but preserves working-tree changes.",
+            { short: ctx.short },
+        ),
+        hard: vscode.l10n.t(
+            "Hard reset current branch to {short}? This resets the index and working tree and permanently discards uncommitted changes.",
+            { short: ctx.short },
+        ),
+        merge: vscode.l10n.t(
+            "Merge reset current branch to {short}? This resets the index and updates changed files while preserving non-conflicting local changes.",
+            { short: ctx.short },
+        ),
+        keep: vscode.l10n.t(
+            "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.",
+            { short: ctx.short },
+        ),
     };
     const confirm = await vscode.window.showWarningMessage(
-        vscode.l10n.t(confirmationMessages[resetMode], { short: ctx.short }),
+        confirmationMessages[resetMode],
         { modal: true },
         resetLabel,
     );

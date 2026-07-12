@@ -164,7 +164,6 @@
     "Checked out revision {short}.": "Revision {short} ausgecheckt.",
     "Checkout failed: {message}": "Checkout fehlgeschlagen: {message}",
     "Reset": "Zurücksetzen",
-    "Hard reset current branch to {short}? This will reset the index and working tree and permanently discard any uncommitted changes.": "Aktuellen Branch auf {short} zurücksetzen? Dadurch werden der Index und der Arbeitsbaum zurückgesetzt und alle nicht gespeicherten Änderungen dauerhaft verworfen.",
     "Reset current branch to {short}.": "Aktuellen Branch auf {short} zurückgesetzt.",
     "Reset failed: {message}": "Zurücksetzen fehlgeschlagen: {message}",
     "Revert": "Revert",
@@ -411,5 +410,15 @@
     "Aborting merge...": "Zusammenführung wird abgebrochen...",
     "Merge aborted.": "Zusammenführung abgebrochen.",
     "Abort merge failed: {message}": "Abbruch der Zusammenführung fehlgeschlagen: {message}",
-    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-Check-Anfragen sind aufgrund einer Ratenbegrenzung vorübergehend pausiert."
+    "Commit-check requests are temporarily paused due to rate limiting.": "Commit-Check-Anfragen sind aufgrund einer Ratenbegrenzung vorübergehend pausiert.",
+    "Soft reset current branch to {short}? This moves HEAD but preserves the index and working tree.": "Soft reset current branch to {short}? This moves HEAD but preserves the index and working tree.",
+    "Mixed reset current branch to {short}? This resets the index but preserves working-tree changes.": "Mixed reset current branch to {short}? This resets the index but preserves working-tree changes.",
+    "Hard reset current branch to {short}? This resets the index and working tree and permanently discards uncommitted changes.": "Hard reset current branch to {short}? This resets the index and working tree and permanently discards uncommitted changes.",
+    "Merge reset current branch to {short}? This resets the index and updates changed files while preserving non-conflicting local changes.": "Merge reset current branch to {short}? This resets the index and updates changed files while preserving non-conflicting local changes.",
+    "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.": "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.",
+    "soft": "soft",
+    "mixed": "mixed",
+    "hard": "hard",
+    "merge": "merge",
+    "keep": "keep"
 }
