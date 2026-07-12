@@ -42,11 +42,14 @@ const sampleConflictData = {
             ],
         },
         {
-            // Ours kept base's yaml import; theirs swapped it for toml.
+            // Ours and theirs each added a different import where base had
+            // nothing: zero-height middle, so FIX 2's cross-middle thin line
+            // is exercised here instead of the (no longer representative)
+            // unchanged-on-one-side case.
             type: "conflict",
             id: 1,
             changeKind: "conflict",
-            baseLines: ['import * as yaml from "yaml";'],
+            baseLines: [],
             oursLines: ['import * as yaml from "yaml";'],
             theirsLines: ['import * as toml from "toml";'],
         },

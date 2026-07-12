@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+    bandSpansForMiddleGap,
     buildVerticalLayout,
     paneOffsetForCanonical,
     ribbonOutlineD,
@@ -254,5 +255,54 @@ describe("ribbonOutlineD", () => {
                 " M 150,50 C 150,50 150,90 150,90" +
                 " M 150,30 L 199.5,30 L 199.5,90 L 150,90 Z",
         );
+    });
+});
+
+// A hunk whose result has no rows (both sides changed a spot the base left
+// empty) draws no in-pane band in the middle column, so the pending sides'
+// divider bands must extend across the gap themselves or the 3px thin line
+// stops dead at the middle pane's content edges instead of reading as one
+// continuous PyCharm line through all three panels. Settled sides are left
+// alone — their dotted contour already spans the middle via the result
+// rectangle in ribbonOutlineD.
+describe("bandSpansForMiddleGap", () => {
+    const leftBand = { x0: 426, curveX0: 508, curveX1: 536, x1: 572 };
+    const rightBand = { x0: 1042, curveX0: 1042, curveX1: 1070, x1: 1151 };
+
+    it("returns the input spans unchanged (same reference) when the middle pane has rows, regardless of pending flags", () => {
+        const bothPending = bandSpansForMiddleGap(leftBand, rightBand, false, true, true);
+        expect(bothPending.left).toBe(leftBand);
+        expect(bothPending.right).toBe(rightBand);
+
+        const neitherPending = bandSpansForMiddleGap(leftBand, rightBand, false, false, false);
+        expect(neitherPending.left).toBe(leftBand);
+        expect(neitherPending.right).toBe(rightBand);
+    });
+
+    it("extends the left band across the gap to the right band's start when only the left side is pending", () => {
+        const result = bandSpansForMiddleGap(leftBand, rightBand, true, true, false);
+        expect(result.left).toEqual({ x0: 426, curveX0: 508, curveX1: 536, x1: 1042 });
+        expect(result.right).toBe(rightBand);
+        // The function must not mutate its inputs.
+        expect(leftBand).toEqual({ x0: 426, curveX0: 508, curveX1: 536, x1: 572 });
+    });
+
+    it("extends the right band across the gap to the left band's end when only the right side is pending", () => {
+        const result = bandSpansForMiddleGap(leftBand, rightBand, true, false, true);
+        expect(result.right).toEqual({ x0: 572, curveX0: 1042, curveX1: 1070, x1: 1151 });
+        expect(result.left).toBe(leftBand);
+        expect(rightBand).toEqual({ x0: 1042, curveX0: 1042, curveX1: 1070, x1: 1151 });
+    });
+
+    it("extends only the left band when both sides are pending, so translucent fills do not double-paint the gap", () => {
+        const result = bandSpansForMiddleGap(leftBand, rightBand, true, true, true);
+        expect(result.left).toEqual({ x0: 426, curveX0: 508, curveX1: 536, x1: 1042 });
+        expect(result.right).toBe(rightBand);
+    });
+
+    it("leaves both bands unchanged when neither side is pending, even with an empty middle", () => {
+        const result = bandSpansForMiddleGap(leftBand, rightBand, true, false, false);
+        expect(result.left).toBe(leftBand);
+        expect(result.right).toBe(rightBand);
     });
 });

@@ -561,6 +561,8 @@ interface ConflictView {
     isAutoMerged: boolean;
     isResolved: boolean;
     resultIsUnresolved: boolean;
+    /** One-sided hunk explicitly settled by the user: its result rows drop the variant fill. */
+    resultSettled: boolean;
     showLeftActions: boolean;
     showRightActions: boolean;
     leftAppend: boolean;
@@ -637,6 +639,14 @@ function deriveConflictView(
         segment.changeKind === "conflict" &&
         !isEdited &&
         ((isOurs && !theirsDismissed) || (isTheirs && !oursDismissed));
+    // A one-sided hunk is auto-included in the result the moment it loads
+    // (isResolved is unconditionally true for changeKind !== "conflict"), but
+    // it only counts as the user's DECISION once a resolution is actually set
+    // — an explicit accept/discard, not the initial auto-include. Only then
+    // does PyCharm drop the variant wash and show the result as plain merged
+    // text under its dotted contour.
+    const resultSettled =
+        segment.changeKind !== "conflict" && resolution !== undefined && !isEdited;
     return {
         isEdited,
         isOurs,
@@ -648,6 +658,7 @@ function deriveConflictView(
         isAutoMerged,
         isResolved,
         resultIsUnresolved,
+        resultSettled,
         // A side's controls show only while that side is still pending: not yet
         // in the result and not discarded. Accepting one side leaves the other
         // side's accept button available to append (stack) below it; discarding
@@ -954,7 +965,7 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
                     lineNumbers={lineNumbers}
                     className={`conflict-result ${
                         view.resultIsUnresolved || !view.isResolved ? "unresolved" : "resolved"
-                    } ${view.isEdited ? "edited" : ""}`}
+                    } ${view.isEdited ? "edited" : ""} ${view.resultSettled ? "settled" : ""}`}
                     wordHighlight={highlightWords}
                     compareLines={view.resultCompareLines}
                     onCommit={(lines) => onEditResult(segment.id, lines)}

@@ -955,6 +955,107 @@ describe("MergeEditorApp", () => {
         });
     });
 
+    it("draws exactly one connector per one-sided hunk, on its contributing divider only", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "ours-only",
+                        oursLines: ["added();"],
+                        theirsLines: [],
+                        baseLines: [],
+                    },
+                    {
+                        type: "conflict",
+                        id: 1,
+                        changeKind: "theirs-only",
+                        oursLines: [],
+                        theirsLines: ["incoming();"],
+                        baseLines: [],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // PyCharm links a one-sided hunk only across the divider its change
+        // came from: an ours-only hunk has no suggestion on the right, a
+        // theirs-only hunk none on the left. Drawing both (the old bug) left a
+        // stray wedge/stub converging on the pane with nothing to suggest —
+        // two hunks would render four paths instead of two.
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(2);
+        for (const connector of Array.from(connectors)) {
+            expect(connector.getAttribute("class")).toContain("variant-insertion");
+            expect(connector.getAttribute("class")).not.toContain("connector-resolved");
+        }
+    });
+
+    it("drops the variant fill from a one-sided result once the user explicitly settles it", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "ours-only",
+                        oursLines: ["added();"],
+                        theirsLines: [],
+                        baseLines: [],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Auto-included but not yet explicitly decided: the result still
+        // reads as the pending variant fill, not a settled plain merge.
+        const resultBlockBefore = document.querySelector('[data-conflict-id="0"] .conflict-result');
+        expect(resultBlockBefore?.className).toContain("resolved");
+        expect(resultBlockBefore?.className).not.toContain("settled");
+
+        clickButton("Accept left block");
+        await flush();
+
+        // The user made an explicit decision: the result drops the green wash
+        // and reads as plain merged text under its dotted contour.
+        const resultBlockAfter = document.querySelector('[data-conflict-id="0"] .conflict-result');
+        expect(resultBlockAfter?.className).toContain("settled");
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(1);
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+    });
+
     it("resolves conflicts with Ctrl+Arrow side shortcuts, auto-advances, and applies with Ctrl+Enter", async () => {
         const vscode = installVsCodeMock();
         createRootHost();

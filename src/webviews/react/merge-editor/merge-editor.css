@@ -13,14 +13,16 @@
     --merge-warning: #f2c572;
     --merge-danger: #d86c6c;
     --merge-ok: #79c18d;
-    /* PyCharm Darcula merge palette: strong changed-region bands, with word
-       fragments using the same family at full intensity. */
+    /* PyCharm Darcula merge palette: the block/ribbon wash is a muted maroon
+       so it reads as a background tint, while changed-word fragments (see
+       .word-diff-change below) carry the same family at full intensity on
+       top of it. */
     --pycharm-conflict: #4b1515;
     --pycharm-inserted: #3d6f4e;
     --pycharm-modified: #1c6978;
     --pycharm-deleted: #565b62;
-    --merge-conflict-ribbon-bg: var(--pycharm-conflict);
-    --merge-conflict-block-bg: var(--merge-conflict-ribbon-bg);
+    --merge-conflict-block-bg: #3a2a32;
+    --merge-conflict-ribbon-bg: var(--merge-conflict-block-bg);
     --merge-inserted-block-bg: #264b33;
     --merge-modified-block-bg: #13404b;
     --merge-deleted-block-bg: #3f444b;
@@ -824,17 +826,20 @@
 /* One-sided hunks are auto-resolved, so their result pane can be "resolved"
    without meaning "green accepted"; keep the variant colors so the result band
    matches its source band and connector ribbon. User edits win via the .edited
-   tint below. */
-.variant-insertion .conflict-result.resolved:not(.edited) .real-code-line::before,
-.variant-insertion .conflict-result.resolved:not(.edited) .real-line-row {
+   tint below. Once the user explicitly settles the hunk (.settled, set when a
+   resolution is actually chosen rather than just auto-included) the decision
+   is made: the result drops the variant wash and reads as plain merged text
+   under its dotted contour, PyCharm-style. */
+.variant-insertion .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
+.variant-insertion .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
     background: var(--merge-inserted-block-bg);
 }
-.variant-modification .conflict-result.resolved:not(.edited) .real-code-line::before,
-.variant-modification .conflict-result.resolved:not(.edited) .real-line-row {
+.variant-modification .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
+.variant-modification .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
     background: var(--merge-modified-block-bg);
 }
-.variant-deletion .conflict-result.resolved:not(.edited) .real-code-line::before,
-.variant-deletion .conflict-result.resolved:not(.edited) .real-line-row {
+.variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
+.variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
     background: var(--merge-deleted-block-bg);
 }
 /* An accepted source pane drops its conflict band (the choice now lives in the

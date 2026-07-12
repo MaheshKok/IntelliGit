@@ -55,6 +55,7 @@ import {
     type OverviewMarker,
 } from "./segments";
 import {
+    bandSpansForMiddleGap,
     buildVerticalLayout,
     LINE_HEIGHT_PX,
     paneOffsetForCanonical,
@@ -97,8 +98,8 @@ interface ConnectorSideSpec {
 interface ConnectorRenderSpec {
     id: number;
     index: number;
-    left: ConnectorSideSpec;
-    right: ConnectorSideSpec;
+    left?: ConnectorSideSpec;
+    right?: ConnectorSideSpec;
 }
 
 /**
@@ -109,20 +110,24 @@ interface ConnectorRenderSpec {
  * settles both ribbons and points each at its own slice of the result. While
  * exactly one side is accepted, the other side — pending append or discarded —
  * points at the zero-height append edge below the accepted lines instead of
- * re-wrapping the whole result block.
+ * re-wrapping the whole result block. A one-sided hunk (`ours-only` /
+ * `theirs-only`) has no suggestion on its non-contributing divider — PyCharm
+ * links only the side that actually changed — so that side is omitted from
+ * the returned spec entirely rather than drawn as a stray empty connector.
  */
 function connectorSideSpecs(
     segment: ConflictSegment,
     resolution: HunkResolution | undefined,
     dismissed: HunkSideDismissal | undefined,
-): { left: ConnectorSideSpec; right: ConnectorSideSpec } {
+): { left?: ConnectorSideSpec; right?: ConnectorSideSpec } {
     const pendingClass = connectorClass(segment);
     const resolvedClass = `${pendingClass} connector-resolved`;
+    let sides: { left: ConnectorSideSpec; right: ConnectorSideSpec };
     if (resolution === "both" || resolution === "both-reversed") {
         const oursLen = segment.oursLines.length;
         const theirsLen = segment.theirsLines.length;
         const oursFirst = resolution === "both";
-        return {
+        sides = {
             left: {
                 colorClass: resolvedClass,
                 resolved: true,
@@ -134,24 +139,31 @@ function connectorSideSpecs(
                 midSlice: { top: oursFirst ? oursLen : 0, count: theirsLen },
             },
         };
+    } else {
+        const leftResolved =
+            resolution === "ours" || resolution === "none" || dismissed?.ours === true;
+        const rightResolved =
+            resolution === "theirs" || resolution === "none" || dismissed?.theirs === true;
+        sides = {
+            left: {
+                colorClass: leftResolved ? resolvedClass : pendingClass,
+                resolved: leftResolved,
+                midSlice:
+                    resolution === "theirs"
+                        ? { top: segment.theirsLines.length, count: 0 }
+                        : undefined,
+            },
+            right: {
+                colorClass: rightResolved ? resolvedClass : pendingClass,
+                resolved: rightResolved,
+                midSlice:
+                    resolution === "ours" ? { top: segment.oursLines.length, count: 0 } : undefined,
+            },
+        };
     }
-    const leftResolved = resolution === "ours" || resolution === "none" || dismissed?.ours === true;
-    const rightResolved =
-        resolution === "theirs" || resolution === "none" || dismissed?.theirs === true;
-    return {
-        left: {
-            colorClass: leftResolved ? resolvedClass : pendingClass,
-            resolved: leftResolved,
-            midSlice:
-                resolution === "theirs" ? { top: segment.theirsLines.length, count: 0 } : undefined,
-        },
-        right: {
-            colorClass: rightResolved ? resolvedClass : pendingClass,
-            resolved: rightResolved,
-            midSlice:
-                resolution === "ours" ? { top: segment.oursLines.length, count: 0 } : undefined,
-        },
-    };
+    if (segment.changeKind === "ours-only") return { left: sides.left };
+    if (segment.changeKind === "theirs-only") return { right: sides.right };
+    return sides;
 }
 
 /** Maps a side's result slice to pixel extents inside the middle block. */
@@ -401,31 +413,52 @@ function App() {
                 const midBot = midTop + layout.paneHPx.middle[index];
                 const theirsTop = layout.paneTopPx.right[index] - offsets.right;
                 const theirsBot = theirsTop + layout.paneHPx.right[index];
-                // Stacked resolutions point each side at its own result slice;
-                // a lone accepted side leaves the other side a zero-height
-                // append-edge slice.
-                const leftTarget = sliceExtent(midTop, midBot, left.midSlice);
-                const rightSource = sliceExtent(midTop, midBot, right.midSlice);
-                setRibbonPath(
-                    connectorPaths.get(`${id}-left`),
-                    leftSpans,
-                    oursTop,
-                    oursBot,
-                    leftTarget.top,
-                    leftTarget.bot,
-                    viewportH,
-                    left.resolved,
+                // A hunk whose result has no rows (both sides changed a spot
+                // the base left empty) draws no in-pane band in the middle
+                // column; extend the pending side's divider band across the
+                // gap so the thin insertion line reads as one continuous
+                // PyCharm line instead of stopping at the middle pane's
+                // content edges.
+                const middleEmpty = midBot - midTop <= 0;
+                const gapBands = bandSpansForMiddleGap(
+                    leftSpans.band,
+                    rightSpans.band,
+                    middleEmpty,
+                    left !== undefined && !left.resolved,
+                    right !== undefined && !right.resolved,
                 );
-                setRibbonPath(
-                    connectorPaths.get(`${id}-right`),
-                    rightSpans,
-                    rightSource.top,
-                    rightSource.bot,
-                    theirsTop,
-                    theirsBot,
-                    viewportH,
-                    right.resolved,
-                );
+                // One-sided hunks (ours-only / theirs-only) carry a
+                // suggestion on only one divider — connectorSideSpecs already
+                // omitted the other side, so only draw the side present.
+                if (left) {
+                    // Stacked resolutions point each side at its own result
+                    // slice; a lone accepted side leaves the other side a
+                    // zero-height append-edge slice.
+                    const leftTarget = sliceExtent(midTop, midBot, left.midSlice);
+                    setRibbonPath(
+                        connectorPaths.get(`${id}-left`),
+                        { band: gapBands.left, contour: leftSpans.contour },
+                        oursTop,
+                        oursBot,
+                        leftTarget.top,
+                        leftTarget.bot,
+                        viewportH,
+                        left.resolved,
+                    );
+                }
+                if (right) {
+                    const rightSource = sliceExtent(midTop, midBot, right.midSlice);
+                    setRibbonPath(
+                        connectorPaths.get(`${id}-right`),
+                        { band: gapBands.right, contour: rightSpans.contour },
+                        rightSource.top,
+                        rightSource.bot,
+                        theirsTop,
+                        theirsBot,
+                        viewportH,
+                        right.resolved,
+                    );
+                }
             }
         },
         [connectorPaths],
@@ -696,8 +729,8 @@ function App() {
         () =>
             connectors.map(({ id, left, right }) => ({
                 id,
-                leftColorClass: left.colorClass,
-                rightColorClass: right.colorClass,
+                leftColorClass: left?.colorClass,
+                rightColorClass: right?.colorClass,
             })),
         [connectors],
     );

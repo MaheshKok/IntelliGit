@@ -234,3 +234,25 @@ export function ribbonOutlineD(
         ` M ${curveX1},${bTop} L ${x1 - 0.5},${bTop} L ${x1 - 0.5},${bBot} L ${curveX1},${bBot} Z`
     );
 }
+
+/**
+ * Extends pending band spans across the middle pane when a hunk has no
+ * result rows, so the clamped thin line reads as one continuous PyCharm
+ * line through all three panels instead of stopping at the middle pane's
+ * content edges. Only pending (filled-band) sides extend — a settled
+ * side's dotted contour already spans the middle via its result
+ * rectangle. When both sides are pending only the left band extends, so
+ * translucent fills do not double-paint the shared middle run.
+ */
+export function bandSpansForMiddleGap(
+    leftBand: RibbonSpan,
+    rightBand: RibbonSpan,
+    middleEmpty: boolean,
+    leftPending: boolean,
+    rightPending: boolean,
+): { left: RibbonSpan; right: RibbonSpan } {
+    if (!middleEmpty) return { left: leftBand, right: rightBand };
+    const left = leftPending ? { ...leftBand, x1: rightBand.x0 } : leftBand;
+    const right = rightPending && !leftPending ? { ...rightBand, x0: leftBand.x1 } : rightBand;
+    return { left, right };
+}
