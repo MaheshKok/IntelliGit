@@ -126,25 +126,74 @@ export async function checkoutRevision(ctx: CommitActionContext): Promise<void> 
 }
 
 /**
- * Hard-resets the current branch, index, and working tree to the selected commit.
+ * Resets the current branch to the selected commit using a user-selected Git reset mode.
  *
- * The modal prompt is the guard for the destructive working-tree/index mutation. Errors are caught
- * and shown to the user, and the views refresh after a confirmed reset attempt regardless of Git
- * success.
+ * Picker or confirmation dismissal performs no Git work and does not refresh views. A confirmed
+ * reset reports Git failures safely and refreshes views once after the Git attempt.
  */
 export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void> {
     const resetLabel = vscode.l10n.t("Reset");
-    const confirm = await vscode.window.showWarningMessage(
-        vscode.l10n.t(
-            "Hard reset current branch to {short}? This will reset the index and working tree and permanently discard any uncommitted changes.",
+    const resetModes = [
+        {
+            label: vscode.l10n.t("soft"),
+            description: vscode.l10n.t("Move HEAD only; keep index and working tree."),
+            mode: "soft",
+        },
+        {
+            label: vscode.l10n.t("mixed"),
+            description: vscode.l10n.t("Reset index; keep working-tree changes."),
+            mode: "mixed",
+        },
+        {
+            label: vscode.l10n.t("hard"),
+            description: vscode.l10n.t("Discard index and working-tree changes."),
+            mode: "hard",
+        },
+        {
+            label: vscode.l10n.t("merge"),
+            description: vscode.l10n.t("Keep non-conflicting local changes."),
+            mode: "merge",
+        },
+        {
+            label: vscode.l10n.t("keep"),
+            description: vscode.l10n.t("Abort if affected files have local changes."),
+            mode: "keep",
+        },
+    ] as const;
+    const pickedResetMode = await vscode.window.showQuickPick(resetModes, { title: resetLabel });
+    if (!pickedResetMode) return;
+    const resetMode = pickedResetMode.mode;
+
+    const confirmationMessages: Record<(typeof resetModes)[number]["mode"], string> = {
+        soft: vscode.l10n.t(
+            "Soft reset current branch to {short}? This moves HEAD but preserves the index and working tree.",
             { short: ctx.short },
         ),
+        mixed: vscode.l10n.t(
+            "Mixed reset current branch to {short}? This resets the index but preserves working-tree changes.",
+            { short: ctx.short },
+        ),
+        hard: vscode.l10n.t(
+            "Hard reset current branch to {short}? This resets the index and working tree and permanently discards uncommitted changes.",
+            { short: ctx.short },
+        ),
+        merge: vscode.l10n.t(
+            "Merge reset current branch to {short}? This resets the index and updates changed files while preserving non-conflicting local changes.",
+            { short: ctx.short },
+        ),
+        keep: vscode.l10n.t(
+            "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.",
+            { short: ctx.short },
+        ),
+    };
+    const confirm = await vscode.window.showWarningMessage(
+        confirmationMessages[resetMode],
         { modal: true },
         resetLabel,
     );
     if (confirm !== resetLabel) return;
     try {
-        await ctx.executor.run(["reset", "--hard", ctx.validatedHash]);
+        await ctx.executor.run(["reset", `--${resetMode}`, ctx.validatedHash]);
         showTimedInformationMessage(
             vscode.l10n.t("Reset current branch to {short}.", { short: ctx.short }),
         );

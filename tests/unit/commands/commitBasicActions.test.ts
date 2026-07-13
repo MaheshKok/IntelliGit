@@ -30,6 +30,7 @@ const vscodeMock = vi.hoisted(() => ({
         showInformationMessage: vi.fn(),
         showErrorMessage: vi.fn(),
         showInputBox: vi.fn(),
+        showQuickPick: vi.fn(),
         showSaveDialog: vi.fn(),
     },
 }));
@@ -98,6 +99,7 @@ const warn = asMock(vscode.window.showWarningMessage);
 const info = asMock(vscode.window.showInformationMessage);
 const errorMsg = asMock(vscode.window.showErrorMessage);
 const inputBox = asMock(vscode.window.showInputBox);
+const quickPick = asMock(vscode.window.showQuickPick);
 const saveDialog = asMock(vscode.window.showSaveDialog);
 const writeText = asMock(vscode.env.clipboard.writeText);
 const writeFile = asMock(vscode.workspace.fs.writeFile);
@@ -297,7 +299,67 @@ describe("checkoutRevision", () => {
 });
 
 describe("resetCurrentToHere", () => {
-    it("does nothing when the destructive reset is not confirmed", async () => {
+    it.each([
+        ["soft", "--soft"],
+        ["mixed", "--mixed"],
+        ["hard", "--hard"],
+        ["merge", "--merge"],
+        ["keep", "--keep"],
+    ] as const)("runs a %s reset to the hash and refreshes on confirmation", async (mode, flag) => {
+        quickPick.mockImplementation(async (items: unknown[]) =>
+            (items as Array<{ mode: string }>).find((item) => item.mode === mode),
+        );
+        warn.mockResolvedValue("Reset");
+        const ctx = makeCtx();
+        await resetCurrentToHere(ctx);
+        expect(quickPick).toHaveBeenCalledWith(
+            [
+                {
+                    label: "soft",
+                    description: "Move HEAD only; keep index and working tree.",
+                    mode: "soft",
+                },
+                {
+                    label: "mixed",
+                    description: "Reset index; keep working-tree changes.",
+                    mode: "mixed",
+                },
+                {
+                    label: "hard",
+                    description: "Discard index and working-tree changes.",
+                    mode: "hard",
+                },
+                {
+                    label: "merge",
+                    description: "Keep non-conflicting local changes.",
+                    mode: "merge",
+                },
+                {
+                    label: "keep",
+                    description: "Abort if affected files have local changes.",
+                    mode: "keep",
+                },
+            ],
+            expect.any(Object),
+        );
+        expect(runOf(ctx)).toHaveBeenCalledWith(["reset", flag, HASH]);
+        expect(info).toHaveBeenCalledTimes(1);
+        expect(refreshOf(ctx)).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not run Git or refresh when the reset-mode picker is cancelled", async () => {
+        quickPick.mockResolvedValue(undefined);
+        const ctx = makeCtx();
+        await resetCurrentToHere(ctx);
+        expect(warn).not.toHaveBeenCalled();
+        expect(runOf(ctx)).not.toHaveBeenCalled();
+        expect(refreshOf(ctx)).not.toHaveBeenCalled();
+    });
+
+    it("does not run Git or refresh when the selected reset mode is not confirmed", async () => {
+        quickPick.mockImplementation(async (items: unknown[]) =>
+            (items as Array<{ mode: string }>).find((item) => item.mode === "hard"),
+        );
         warn.mockResolvedValue(undefined);
         const ctx = makeCtx();
         await resetCurrentToHere(ctx);
@@ -305,21 +367,15 @@ describe("resetCurrentToHere", () => {
         expect(refreshOf(ctx)).not.toHaveBeenCalled();
     });
 
-    it("runs a hard reset to the hash and refreshes on confirmation", async () => {
-        warn.mockResolvedValue("Reset");
-        const ctx = makeCtx();
-        await resetCurrentToHere(ctx);
-        expect(runOf(ctx)).toHaveBeenCalledWith(["reset", "--hard", HASH]);
-        expect(info).toHaveBeenCalledTimes(1);
-        expect(refreshOf(ctx)).toHaveBeenCalledTimes(1);
-    });
-
     it("reports a reset failure and still refreshes", async () => {
+        quickPick.mockImplementation(async (items: unknown[]) =>
+            (items as Array<{ mode: string }>).find((item) => item.mode === "merge"),
+        );
         warn.mockResolvedValue("Reset");
         const ctx = makeCtx();
         runOf(ctx).mockRejectedValue(new Error("locked"));
         await resetCurrentToHere(ctx);
-        expect(errorMsg).toHaveBeenCalledTimes(1);
+        expect(errorMsg).toHaveBeenCalledWith("Reset failed: locked");
         expect(refreshOf(ctx)).toHaveBeenCalledTimes(1);
     });
 });

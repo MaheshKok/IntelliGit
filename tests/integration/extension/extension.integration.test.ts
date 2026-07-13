@@ -2886,6 +2886,7 @@ describe("extension integration", () => {
                 if (args[0] === "reset" && args[1] === "--hard") throw new Error("reset failed");
                 return defaultExecutorRunImpl(args);
             });
+            showQuickPick.mockImplementationOnce(async (items: unknown[]) => items[2]);
             const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
             try {
                 latestCommitGraphProvider!.emitCommitAction({
