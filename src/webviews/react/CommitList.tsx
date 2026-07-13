@@ -86,6 +86,7 @@ type RetryAttempt = { state: CommitChecksSnapshot["state"]; attempt: number };
  * surface unmounts. Pending snapshots and a pushed current HEAD use bounded
  * retry schedules.
  */
+// react-doctor-disable-next-line react-doctor/no-giant-component, react-doctor/no-many-boolean-props
 export function CommitList({
     commits,
     selectedHash,

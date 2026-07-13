@@ -82,10 +82,10 @@ export function useCheckedFiles(allFiles: WorkingFile[], repositoryRoot?: string
     }, [repositoryRoot, validPaths]);
 
     // Persist to vscode state on every change (merge to preserve other keys).
-    // react-doctor-disable-next-line react-doctor/no-event-handler
     useEffect(() => {
         const vscode = getVsCodeApi();
         const prev = vscode.getState() ?? {};
+        // react-doctor-disable-next-line react-doctor/no-event-handler
         if (repositoryRoot) {
             if (validPaths.size === 0) return;
             vscode.setState({

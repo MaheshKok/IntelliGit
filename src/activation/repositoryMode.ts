@@ -346,6 +346,8 @@ export async function activateRepositoryMode(
         shouldContinue: () => boolean = () => true,
         afterBranchDataApplied?: () => Promise<void>,
     ): Promise<boolean> => {
+        if (!shouldContinue()) return false;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const [branches, refreshedWorktrees] = await Promise.all([
             gitOps.getBranches(),
             worktreeService.refresh().catch((err) => {
@@ -360,6 +362,8 @@ export async function activateRepositoryMode(
         sidebarGraph.setBranches(currentBranches, currentWorktrees);
         commitPanel.setBranches(currentBranches);
         if (afterBranchDataApplied) {
+            if (!shouldContinue()) return false;
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             await afterBranchDataApplied();
             if (!shouldContinue()) return false;
         }
@@ -447,6 +451,8 @@ export async function activateRepositoryMode(
         refreshServiceWatchersRegistered = false;
         registerRefreshServiceWatchers();
         if (!options.persistSelectionAfterBranchData) {
+            if (!shouldContinue()) return;
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             await context.workspaceState?.update(SELECTED_REPOSITORY_KEY, repoRoot);
             if (!shouldContinue()) return;
         }
@@ -767,6 +773,8 @@ export async function activateRepositoryMode(
      */
     const loadUndockedData = async (): Promise<void> => {
         if (!undocked) return;
+        // The panel can be disposed while loading; the post-await guard prevents stale updates.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const { branches, worktrees } = await loadCurrentUndockedRepositoryData();
         if (!undocked) return;
         undocked.setBranches(branches, worktrees);
