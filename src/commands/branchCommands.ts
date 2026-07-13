@@ -757,7 +757,17 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 const branch = item.branch;
                 const name = branch?.name;
                 if (!name) return;
-                if (branch.isCheckedOutInWorktree && !branch.isCurrentWorktree) return;
+                if (branch.isCheckedOutInWorktree && !branch.isCurrentWorktree) {
+                    await vscode.window.showWarningMessage(
+                        vscode.l10n.t(
+                            "Cannot delete '{branch}' because it is currently checked out. Switch to another branch and try again.",
+                            { branch: name },
+                        ),
+                        { modal: true },
+                        vscode.l10n.t("OK"),
+                    );
+                    return;
+                }
                 if (!validateBranchArg(name)) return;
                 const newName = await vscode.window.showInputBox({
                     prompt: vscode.l10n.t("Rename {branch} to", { branch: name }),

@@ -1482,6 +1482,30 @@ describe("extension integration", () => {
         );
     });
 
+    it("rename warns instead of prompting for a branch checked out in another worktree", async () => {
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+        showInputBox.mockClear();
+        showWarningMessage.mockClear();
+
+        await requireCommand("intelligit.renameBranch")({
+            branch: {
+                name: "feature-worktree",
+                isRemote: false,
+                isCheckedOutInWorktree: true,
+                isCurrentWorktree: false,
+            },
+        });
+
+        expect(showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("feature-worktree"),
+            { modal: true },
+            "OK",
+        );
+        expect(showInputBox).not.toHaveBeenCalled();
+        expect(executorRun).not.toHaveBeenCalledWith(["branch", "-m", expect.anything()]);
+    });
+
     it("rejects stale branch names from graph bulk delete without deleting a subset", async () => {
         await activateExtensionForCommandTests();
         executorRun.mockClear();

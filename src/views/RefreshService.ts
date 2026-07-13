@@ -94,8 +94,12 @@ export class RefreshService implements vscode.Disposable {
     ) {}
 
     /** Refresh the merge-conflict tree and expose the conflict badge/context state. */
-    async refreshMergeConflicts(): Promise<void> {
+    async refreshMergeConflicts(shouldContinue: () => boolean = () => true): Promise<void> {
+        if (!shouldContinue()) return;
+        // The switch guard after the refresh prevents stale conflict context updates.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const count = await this.deps.mergeConflicts.refresh();
+        if (!shouldContinue()) return;
         this.deps.mergeConflictsView.description = count > 0 ? `${count}` : "";
         await vscode.commands.executeCommand(
             "setContext",

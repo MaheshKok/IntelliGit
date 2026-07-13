@@ -384,12 +384,16 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * clearing it so detail panels can survive branch or working-tree updates until the host
      * publishes a new selection.
      */
-    async refresh(): Promise<void> {
+    async refresh(shouldContinue: () => boolean = () => true): Promise<void> {
+        if (!shouldContinue()) return;
         // Theme data must be current before branch/log payloads are decorated.
-        // react-doctor-disable-next-line react-doctor/async-parallel
+        // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
-        await this.sendBranches();
-        await this.loadInitial();
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        await this.sendBranches(shouldContinue);
+        if (!shouldContinue()) return;
+        await this.loadInitial(shouldContinue);
     }
 
     /**
@@ -430,8 +434,9 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * Theme data is read from the attached {@link IconThemeService}; callers should initialize
      * or refresh the service first when responding to webview readiness or theme changes.
      */
-    private async sendBranches(): Promise<void> {
+    private async sendBranches(shouldContinue: () => boolean = () => true): Promise<void> {
         this.branchFolderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
+        if (!shouldContinue()) return;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
         this.postToWebview({
             type: "setBranches",
@@ -463,7 +468,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
      * branch. `requestSeq` coalesces overlapping filter, refresh, and pagination operations so
      * only the latest Git log response can update the offset or webview state.
      */
-    private async loadInitial(): Promise<void> {
+    private async loadInitial(shouldContinue: () => boolean = () => true): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
         this.loadingMore = false;
@@ -483,7 +488,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId === this.requestSeq) {
+            if (requestId === this.requestSeq && shouldContinue()) {
                 this.offset = commits.length;
                 this.replaceCommitCheckHashScope(commits, unpushedHashes);
                 this.postToWebview({
@@ -495,7 +500,7 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
                 });
             }
         } catch (err) {
-            if (requestId === this.requestSeq) {
+            if (requestId === this.requestSeq && shouldContinue()) {
                 const message = getErrorMessage(err);
                 vscode.window.showErrorMessage(
                     vscode.l10n.t("Git log error: {message}", { message }),

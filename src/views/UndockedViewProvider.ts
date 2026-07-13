@@ -503,13 +503,19 @@ export class UndockedViewProvider {
     /**
      * Refreshes graph branches/commits and commit-panel data for the current repository.
      */
-    async refresh(): Promise<void> {
+    async refresh(shouldContinue: () => boolean = () => true): Promise<void> {
+        if (!shouldContinue()) return;
         // Theme data must be current before branch and commit payloads are decorated.
-        // react-doctor-disable-next-line react-doctor/async-parallel
+        // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
-        await this.sendBranches();
-        await this.loadInitial();
-        await this.refreshCommitPanelData(false);
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        await this.sendBranches(shouldContinue);
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        await this.loadInitial(shouldContinue);
+        if (!shouldContinue()) return;
+        await this.refreshCommitPanelData(false, shouldContinue);
     }
 
     /** Refreshes graph and commit-panel data without showing commit-panel refresh feedback. */
@@ -876,7 +882,7 @@ export class UndockedViewProvider {
     /**
      * Loads the first graph page and ignores stale results from superseded requests.
      */
-    private async loadInitial(): Promise<void> {
+    private async loadInitial(shouldContinue: () => boolean = () => true): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
         this.loadingMore = false;
@@ -896,7 +902,7 @@ export class UndockedViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId !== this.requestSeq) return;
+            if (requestId !== this.requestSeq || !shouldContinue()) return;
             this.offset = commits.length;
             this.replaceCommitCheckHashScope(commits, unpushedHashes);
             this.postToWebview({
@@ -907,7 +913,7 @@ export class UndockedViewProvider {
                 unpushedHashes,
             });
         } catch (err) {
-            if (requestId !== this.requestSeq) return;
+            if (requestId !== this.requestSeq || !shouldContinue()) return;
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
             this.postToWebview({ type: "loadError", message });

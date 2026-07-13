@@ -313,19 +313,32 @@ export async function activateRepositoryMode(
         branches: Branch[];
         worktrees: GitWorktree[];
     }> => {
-        if (!undockedRuntime) {
+        const runtime = undockedRuntime;
+        if (!runtime) {
             return { branches: [], worktrees: [] };
         }
         const [branches, refreshedWorktrees] = await Promise.all([
-            undockedRuntime.gitOps.getBranches(),
-            undockedRuntime.worktreeService.refresh().catch((err) => {
+            runtime.gitOps.getBranches(),
+            runtime.worktreeService.refresh().catch((err) => {
                 console.error("[IntelliGit] Undocked worktrees refresh failed:", err);
                 return [] as GitWorktree[];
             }),
         ]);
-        undockedWorktrees = refreshedWorktrees;
-        undockedBranches = undockedRuntime.worktreeService.decorateBranches(branches);
-        return { branches: undockedBranches, worktrees: undockedWorktrees };
+        return {
+            branches: runtime.worktreeService.decorateBranches(branches),
+            worktrees: refreshedWorktrees,
+        };
+    };
+
+    /** Stores undocked branch data only while the panel that requested it remains active. */
+    const commitUndockedRepositoryData = (
+        panel: UndockedViewProvider,
+        data: { branches: Branch[]; worktrees: GitWorktree[] },
+    ): boolean => {
+        if (undocked !== panel) return false;
+        undockedBranches = data.branches;
+        undockedWorktrees = data.worktrees;
+        return true;
     };
 
     /** Clears selected commit state from every visible IntelliGit surface at once. */
@@ -368,16 +381,17 @@ export async function activateRepositoryMode(
             if (!shouldContinue()) return false;
         }
         const refreshes: Array<Promise<void>> = [
-            commitGraph.refresh(),
-            sidebarGraph.refresh(),
-            commitPanel.refresh(),
-            refreshService.refreshMergeConflicts(),
+            commitGraph.refresh(shouldContinue),
+            sidebarGraph.refresh(shouldContinue),
+            commitPanel.refresh(shouldContinue),
+            refreshService.refreshMergeConflicts(shouldContinue),
         ];
         if (undocked && undockedSelectedRepositoryRoot === repoRoot) {
+            const panel = undocked;
             undockedBranches = currentBranches;
             undockedWorktrees = currentWorktrees;
-            undocked.setBranches(currentBranches, currentWorktrees);
-            refreshes.push(undocked.refresh());
+            panel.setBranches(currentBranches, currentWorktrees);
+            refreshes.push(panel.refresh(() => shouldContinue() && undocked === panel));
         }
         await Promise.all(refreshes);
         return shouldContinue();
@@ -638,7 +652,12 @@ export async function activateRepositoryMode(
                 executor: undockedExecutor,
                 repositories,
                 selectedRepositoryRoot: initialUndockedRepository.root,
-                loadRepositoryData: loadCurrentUndockedRepositoryData,
+                loadRepositoryData: async () => {
+                    const panel = undocked;
+                    const data = await loadCurrentUndockedRepositoryData();
+                    if (panel) commitUndockedRepositoryData(panel, data);
+                    return data;
+                },
                 commitChecksService,
                 commitChecksProviders,
                 onSelectedRepositoryRootChanged: async (root) => {
@@ -772,13 +791,15 @@ export async function activateRepositoryMode(
      * work is pending, especially while a new-window open is being completed.
      */
     const loadUndockedData = async (): Promise<void> => {
-        if (!undocked) return;
-        // The panel can be disposed while loading; the post-await guard prevents stale updates.
+        const panel = undocked;
+        if (!panel) return;
+        // The panel can be replaced while loading; commit only to the requesting instance.
         // react-doctor-disable-next-line react-doctor/async-defer-await
-        const { branches, worktrees } = await loadCurrentUndockedRepositoryData();
-        if (!undocked) return;
-        undocked.setBranches(branches, worktrees);
-        await undocked.refresh();
+        const data = await loadCurrentUndockedRepositoryData();
+        if (!commitUndockedRepositoryData(panel, data)) return;
+        panel.setBranches(data.branches, data.worktrees);
+        if (undocked !== panel) return;
+        await panel.refresh(() => undocked === panel);
     };
 
     /**
