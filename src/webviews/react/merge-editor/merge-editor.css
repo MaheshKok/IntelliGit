@@ -29,7 +29,7 @@
     --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, #0d1522 76%);
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
-    --merge-line-number-gutter: 37px;
+    --merge-line-number-gutter: 33px;
     --merge-action-gutter: 44px;
 
     display: flex;
@@ -688,16 +688,16 @@
 }
 .hunk-action-glyph {
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 15px;
+    font-size: 22.5px;
     font-weight: 700;
     line-height: 1;
 }
 .accept-btn {
     color: var(--merge-ok);
 }
-/* Gray at rest like PyCharm's ×; the hover rule escalates to red. */
+/* Dark red at rest like PyCharm's ×; the hover rule escalates to bright red. */
 .discard-btn {
-    color: var(--merge-muted);
+    color: #c02b42;
 }
 .conflict-column {
     position: relative;
@@ -783,7 +783,7 @@
     color: var(--merge-ok);
 }
 .action-btn.discard-btn {
-    color: var(--merge-muted);
+    color: #c02b42;
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
