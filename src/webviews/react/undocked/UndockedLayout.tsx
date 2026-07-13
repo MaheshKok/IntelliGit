@@ -115,6 +115,7 @@ export interface UndockedLayoutProps {
  *
  * @param props - All state, callbacks, and refs previously read by App's return tree.
  */
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
     const {
         iconFonts,

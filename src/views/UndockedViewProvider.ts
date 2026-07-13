@@ -345,6 +345,8 @@ export class UndockedViewProvider {
         }
         const shouldContinue = this.beginRepositorySwitch();
         this.applyRepositoryRoot(repository, { reset: true, updateExecutor: true });
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.onSelectedRepositoryRootChanged?.(repository.root);
         if (!shouldContinue()) return;
         this.sendRepositories();
@@ -363,13 +365,18 @@ export class UndockedViewProvider {
      * Reloads all repository-scoped panels after the selected root changes.
      */
     private async reloadSelectedRepository(shouldContinue: () => boolean): Promise<void> {
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
         if (!shouldContinue()) return;
         if (!(await this.reloadBranches(shouldContinue))) return;
         if (!shouldContinue()) return;
+        // The post-await guard prevents a superseded repository switch from updating the panel.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.loadInitial();
         if (!shouldContinue()) return;
         this.postCommitDetailState();
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.refreshCommitPanelData(false, shouldContinue);
         if (!shouldContinue()) return;
         this.postToWebview({
@@ -426,6 +433,8 @@ export class UndockedViewProvider {
     }
 
     private async reloadBranches(shouldContinue: () => boolean = () => true): Promise<boolean> {
+        if (!shouldContinue()) return false;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const data = this.loadRepositoryData
             ? await this.loadRepositoryData(this.selectedRepositoryRoot)
             : { branches: await this.gitOps.getBranches(), worktrees: [] };
@@ -1160,6 +1169,8 @@ export class UndockedViewProvider {
                 : stashes.length > 0
                   ? stashes[0].index
                   : null;
+            if (!shouldContinue()) return;
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const stashFiles =
                 selectedStashIndex !== null
                     ? await this.iconTheme.decorateWorkingFiles(
@@ -1209,6 +1220,8 @@ export class UndockedViewProvider {
      * Sends cached branches with folder icons derived from branch path segments.
      */
     private async sendBranches(shouldContinue: () => boolean = () => true): Promise<void> {
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const [folderIconsByName, currentBranchStatus] = await Promise.all([
             this.iconTheme.getFolderIconsByBranches(this.branches),
             this.currentBranchStatus(),

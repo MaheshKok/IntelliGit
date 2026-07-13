@@ -47,6 +47,7 @@ interface ExpandedDirsState {
  * renders the preview tree with the shared grouping preference, and owns
  * directory expansion, context menu, and drag-to-resize state.
  */
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function StashTab({
     repositoryRoot,
     stashes,

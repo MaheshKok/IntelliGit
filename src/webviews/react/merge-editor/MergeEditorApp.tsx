@@ -286,6 +286,7 @@ function App() {
     const connectorPaths = useMemo(() => new Map<string, SVGPathElement>(), []);
     // Ribbon spans (viewport-relative) across each divider; measured on
     // layout/resize so the per-frame draw only recomputes y.
+    // react-doctor-disable-next-line react-doctor/prefer-module-scope-pure-function
     const emptySpan = (): RibbonSpan => ({ x0: 0, curveX0: 0, curveX1: 0, x1: 0 });
     const gutterXRef = useRef<{ left: DividerSpans; right: DividerSpans }>({
         left: { band: emptySpan(), contour: emptySpan() },

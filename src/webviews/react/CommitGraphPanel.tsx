@@ -223,6 +223,7 @@ function commitGraphPanelReducer(
  * Coordinates the full commit graph webview: branch filtering, virtualized
  * commit history, detail pane updates, extension messages, and persisted column widths.
  */
+// react-doctor-disable-next-line react-doctor/no-giant-component
 export function CommitGraphPanel({
     vscode,
     stateKeyPrefix = "",

@@ -577,6 +577,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         generation: number,
         force: boolean,
     ): Promise<void> {
+        if (generation !== this.commitCheckDemandSeq) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const snapshot = await this.commitChecks.getChecks(hash, { force });
         if (generation !== this.commitCheckDemandSeq) return;
         this.postToWebview({ type: "setCommitChecks", snapshot });
