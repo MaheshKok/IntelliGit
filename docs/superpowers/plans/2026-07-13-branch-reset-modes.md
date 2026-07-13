@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Implement the mode-aware reset command
+## Task 1: Implement the mode-aware reset command
 
 **Files:**
 - Modify: `src/commands/commitBasicActions.ts:135-157`
@@ -66,7 +66,7 @@ git add src/commands/commitBasicActions.ts tests/unit/commands/commitBasicAction
 git commit -m "feat: add branch reset modes"
 ```
 
-### Task 2: Localize the picker and reset feedback
+## Task 2: Localize the picker and reset feedback
 
 **Files:**
 - Modify: `docs/localization/localization_translation_review.csv`
@@ -94,7 +94,7 @@ git add docs/localization/localization_translation_review.csv l10n tests/unit/lo
 git commit -m "feat: localize branch reset modes"
 ```
 
-### Task 3: Verify integration without protocol expansion
+## Task 3: Verify integration without protocol expansion
 
 **Files:**
 - Verify: `src/commands/commitCommands.ts:81-131`

@@ -415,7 +415,7 @@
     "Mixed reset current branch to {short}? This resets the index but preserves working-tree changes.": "Repor o ramo atual em modo misto para {short}? Isto repõe o índice e preserva as alterações da árvore de trabalho.",
     "Hard reset current branch to {short}? This resets the index and working tree and permanently discards uncommitted changes.": "Repor rigidamente o ramo atual para {short}? Isto repõe o índice e a árvore de trabalho e elimina permanentemente alterações não confirmadas.",
     "Merge reset current branch to {short}? This resets the index and updates changed files while preserving non-conflicting local changes.": "Repor o ramo atual por combinação para {short}? Isto repõe o índice e atualiza os ficheiros alterados preservando alterações locais sem conflito.",
-    "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.": "Repor o ramo atual em modo de preservação para {short}? Isto repõe o índice e atualiza os ficheiros alterados mas interrompe se os ficheiros afetados tiverem alterações locais.",
+    "Keep reset current branch to {short}? This resets the index and updates changed files, but aborts if affected files have local changes.": "Repor o ramo atual em modo de preservação para {short}? Isto repõe o índice e atualiza os ficheiros alterados, mas interrompe se os ficheiros afetados tiverem alterações locais.",
     "soft": "suave",
     "mixed": "misto",
     "hard": "rígido",

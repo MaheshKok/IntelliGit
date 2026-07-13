@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added soft, mixed, and hard branch reset actions with localized labels and focused coverage.
+- Added soft, mixed, hard, merge, and keep branch reset actions with localized labels and focused coverage.
 
 ## [0.18.0] - 2026-07-13
 
