@@ -20,6 +20,10 @@ for (const asset of assets) {
     }
 }
 
+// Mirrors the user's real config.ts merge: an unchanged-on-one-side import
+// conflict, a 4-line constant conflict (both stacked reproduces the reported
+// contour issues), a tall one-sided green insertion (right-divider wedge), and
+// a theirs-only insertion (left-divider artifacts).
 const sampleConflictData = {
     filePath: "src/config.ts",
     oursLabel: "main",
@@ -30,36 +34,103 @@ const sampleConflictData = {
         {
             type: "common",
             lines: [
-                'getDatabaseConfig(): Readonly<AppConfig["database"]> {',
-                "  return Object.freeze({ ...this.config.database });",
-                "}",
-                "",
+                "// ============================================",
+                "// SECTION 1: Imports and Constants",
+                "// ============================================",
+                'import * as fs from "fs";',
+                'import * as path from "path";',
             ],
         },
         {
+            // Ours and theirs each added a different import where base had
+            // nothing: zero-height middle, so FIX 2's cross-middle thin line
+            // is exercised here instead of the (no longer representative)
+            // unchanged-on-one-side case.
             type: "conflict",
-            id: 8,
+            id: 1,
             changeKind: "conflict",
-            baseLines: ["exportConfig(): string {"],
+            baseLines: [],
+            oursLines: ['import * as yaml from "yaml";'],
+            theirsLines: ['import * as toml from "toml";'],
+        },
+        {
+            type: "common",
+            lines: [""],
+        },
+        {
+            type: "conflict",
+            id: 2,
+            changeKind: "conflict",
+            baseLines: [
+                'const CONFIG_FILE_NAME = "app.config.json";',
+                'const ENV_PREFIX = "APP_";',
+                "const MAX_CACHE_SIZE = 100;",
+                'const DEFAULT_LOG_LEVEL = "info";',
+            ],
             oursLines: [
-                "exportToYaml(): string { return yaml.stringify(this.config); } // long left line for horizontal scroll",
+                'const CONFIG_FILE_NAME = "app.config.yaml";',
+                'const ENV_PREFIX = "MYAPP_";',
+                "const MAX_CACHE_SIZE = 500;",
+                'const DEFAULT_LOG_LEVEL = "debug";',
             ],
             theirsLines: [
-                "reload(): AppConfig {",
-                "  this.config = this.loadDefaults();",
-                "  return this.loadFromFile();",
-                "}",
-                "",
-                "validate(): string[] {",
-                "  const errors: string[] = [];",
-                '  if (this.config.port < 1) errors.push("Port must be between 1 and 65535");',
-                "  return errors;",
-                "}",
+                'const CONFIG_FILE_NAME = "app.config.toml";',
+                'const ENV_PREFIX = "SVC_";',
+                "const MAX_CACHE_SIZE = 250;",
+                'const DEFAULT_LOG_LEVEL = "warn";',
             ],
         },
         {
             type: "common",
-            lines: ["}", "loadFromEnv(): void {"],
+            lines: ["", "// SECTION 2: Types", "interface AppConfig {", "  port: number;", "}"],
+        },
+        {
+            // Tall one-sided green insertion: only ours added mergeConfig.
+            type: "conflict",
+            id: 3,
+            changeKind: "ours-only",
+            baseLines: [],
+            oursLines: [
+                "private mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {",
+                "  return {",
+                "    ...base,",
+                "    ...override,",
+                "    database: {",
+                "      ...base.database,",
+                "      ...(override.database ?? {}),",
+                "    },",
+                "    features: {",
+                "      ...base.features,",
+                "      ...(override.features ?? {}),",
+                "    },",
+                "  };",
+                "}",
+            ],
+            theirsLines: [],
+        },
+        {
+            type: "common",
+            lines: ["", "loadFromEnv(): void {", '  const envPort = process.env["PORT"];', "}"],
+        },
+        {
+            // Theirs-only insertion: envHost handling added on the right.
+            type: "conflict",
+            id: 4,
+            changeKind: "theirs-only",
+            baseLines: [],
+            oursLines: [],
+            theirsLines: [
+                '  const envHost = process.env["HOST"];',
+                "  if (envHost) {",
+                "    this.config.host = envHost;",
+                "  }",
+            ],
+        },
+        {
+            type: "common",
+            // Filler so the document exceeds the viewport and the preview can
+            // exercise scroll-driven ribbon redraws, not just the first frame.
+            lines: Array.from({ length: 40 }, (unused, i) => `  trace("scroll filler ${i}");`),
         },
     ],
 };
@@ -91,6 +162,11 @@ body {
 }
 </style>
 <script>
+// The merge scroll driver draws in requestAnimationFrame, which Chrome suspends
+// for hidden tabs — headless/screenshot tooling would never get a frame. The
+// preview swaps in a timeout-based shim so frames always run.
+window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 16);
+window.cancelAnimationFrame = (id) => window.clearTimeout(id);
 const sampleConflictData = ${JSON.stringify(sampleConflictData)};
 function postSampleConflictData() {
   window.dispatchEvent(new MessageEvent("message", {

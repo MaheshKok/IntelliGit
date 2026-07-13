@@ -81,6 +81,17 @@ async function flushShikiInit(): Promise<void> {
     });
 }
 
+/**
+ * Waits out jsdom's ~16ms requestAnimationFrame timer so the merge scroll
+ * driver's scheduled frame runs and connector path `d` attributes are set.
+ * The microtask-only `flush()` never reaches macrotask-backed rAF callbacks.
+ */
+async function flushAnimationFrame(): Promise<void> {
+    await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+}
+
 /** Conflict payload with two true conflicts separated by common code. */
 function twoConflictData(): unknown {
     return {
@@ -255,30 +266,29 @@ describe("MergeEditorApp", () => {
         expect(
             document.querySelectorAll('[data-conflict-id="0"] .conflict-actions-right .action-btn'),
         ).toHaveLength(2);
-        expect(document.querySelector('[data-conflict-id="0"] .conflict-ours')?.className).toContain(
-            "accepted-pane",
-        );
-        expect(document.querySelector('[data-conflict-id="0"] .conflict-result')?.className).not.toContain(
-            "accepted-pane",
-        );
-        expect(document.querySelector('[data-conflict-id="0"] .conflict-result')?.className).toContain(
-            "unresolved",
-        );
         expect(
-            document.querySelector('[data-conflict-id="0"] .result-insertion-marker.marker-bottom'),
-        ).not.toBeNull();
+            document.querySelector('[data-conflict-id="0"] .conflict-ours')?.className,
+        ).toContain("accepted-pane");
         expect(
-            document.querySelector(
-                '[data-conflict-id="0"] .source-insertion-marker.marker-left.marker-bottom',
-            ),
-        ).not.toBeNull();
+            document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
+        ).not.toContain("accepted-pane");
         expect(
-            document.querySelector('[data-conflict-id="0"] .source-insertion-marker.marker-right'),
-        ).toBeNull();
+            document.querySelector('[data-conflict-id="0"] .conflict-result')?.className,
+        ).toContain("unresolved");
+        // The old standalone insertion-marker bars are gone: the pending
+        // side's ribbon itself tapers to the append edge instead.
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
+        expect(document.querySelector(".source-insertion-marker")).toBeNull();
+        // The accepted left side keeps its conflict color but flips to the
+        // dotted resolved contour; the right suggestion stays a filled band.
+        // (Path `d` shapes are asserted in the insert-conflict test whose hunk
+        // sits at y=0 — this hunk is culled under jsdom's zero-height viewport.)
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(connectors).toHaveLength(2);
-        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[0].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
         expect(
             document.querySelector('[data-conflict-id="0"] .conflict-theirs')?.className,
         ).not.toContain("accepted-pane");
@@ -292,7 +302,7 @@ describe("MergeEditorApp", () => {
         });
     });
 
-    it("shows a thin result insertion marker for pending insert conflicts", async () => {
+    it("draws pending insert conflicts as thin-line bands and accepted sides as contours", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -323,33 +333,78 @@ describe("MergeEditorApp", () => {
         });
         await flush();
 
-        expect(document.querySelector(".result-insertion-marker.marker-top")).not.toBeNull();
+        // No standalone insertion-marker bars anymore: the empty result target
+        // itself draws as a 3px-line band (this hunk sits at y=0, so the frame
+        // actually draws under jsdom's zero-height viewport).
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
+        await flushAnimationFrame();
         const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(pendingConnectors).toHaveLength(2);
-        expect(
-            Array.from(pendingConnectors).every((connector) =>
-                connector.getAttribute("d")?.trim().endsWith("Z"),
-            ),
-        ).toBe(true);
-        expect(
-            Array.from(pendingConnectors).some((connector) =>
-                connector.classList.contains("merge-connector-line"),
-            ),
-        ).toBe(false);
+        for (const connector of pendingConnectors) {
+            const d = connector.getAttribute("d")?.trim() ?? "";
+            // A pending band is one closed subpath, its empty result side
+            // clamped to the 3px insertion line.
+            expect(d.endsWith("Z")).toBe(true);
+            expect(d.match(/M /g)).toHaveLength(1);
+            expect(d).toContain(",3 ");
+        }
 
         clickButton("Accept left block");
         await flush();
 
-        expect(document.querySelector(".result-insertion-marker.marker-top")).toBeNull();
-        expect(document.querySelector(".result-insertion-marker.marker-bottom")).not.toBeNull();
-        expect(
-            document.querySelector(".source-insertion-marker.marker-left.marker-bottom"),
-        ).not.toBeNull();
-        expect(document.querySelector(".source-insertion-marker.marker-right")).toBeNull();
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
+        expect(document.querySelector(".source-insertion-marker")).toBeNull();
+        // The accepted left side switches to the dotted linked-block contour
+        // (two closed rectangles + two open divider curves = 4 subpaths) while
+        // the pending right side keeps the single closed filled band.
+        await flushAnimationFrame();
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
         expect(connectors).toHaveLength(2);
-        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
+        expect(connectors[0].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(connectors[0].getAttribute("d")?.match(/M /g)).toHaveLength(4);
         expect(connectors[1].getAttribute("class")).toContain("change-conflict");
+        expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
+        expect(connectors[1].getAttribute("d")?.match(/M /g)).toHaveLength(1);
+        expect(connectors[1].getAttribute("d")?.trim().endsWith("Z")).toBe(true);
+    });
+
+    it("attaches the viewport ResizeObserver to the scroller once conflict data mounts it", async () => {
+        // The scroller only exists after data arrives (the loading branch renders
+        // no .merge-content), so viewport tracking must attach at that point —
+        // otherwise panel resizes leave viewport height and gutter x-ranges stale
+        // and ribbons get culled against a dead viewport.
+        const observed: Element[] = [];
+        class RecordingResizeObserver {
+            observe(target: Element): void {
+                observed.push(target);
+            }
+            unobserve(): void {}
+            disconnect(): void {}
+        }
+        Object.defineProperty(globalThis, "ResizeObserver", {
+            configurable: true,
+            value: RecordingResizeObserver,
+        });
+        try {
+            installVsCodeMock();
+            createRootHost();
+
+            await act(async () => {
+                await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+            });
+            await flush();
+            expect(observed).toHaveLength(0);
+
+            dispatchHostMessage({ type: "setConflictData", data: twoConflictData() });
+            await flush();
+
+            const content = document.querySelector(".merge-content");
+            expect(content).not.toBeNull();
+            expect(observed).toContain(content);
+        } finally {
+            delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+        }
     });
 
     it("edits the result pane manually and applies the edited content", async () => {
@@ -650,14 +705,12 @@ describe("MergeEditorApp", () => {
         // Accept right first, then append left below it: theirs comes before ours.
         clickButton("Accept right block");
         await flush();
-        expect(document.querySelector(".result-insertion-marker.variant-insertion")).not.toBeNull();
         clickButton("Append left block below the result");
         await flush();
 
         expect(document.body.textContent).toContain("0 unresolved");
         expect(document.querySelector(".conflict-actions-left")).toBeNull();
         expect(document.querySelector(".conflict-actions-right")).toBeNull();
-        expect(document.querySelector(".result-insertion-marker")).toBeNull();
         expect(document.querySelector(".conflict-ours")?.className).toContain("accepted-pane");
         expect(document.querySelector(".conflict-theirs")?.className).toContain("accepted-pane");
 
@@ -668,7 +721,7 @@ describe("MergeEditorApp", () => {
         });
     });
 
-    it("shows the append marker at the top after accepting an empty side", async () => {
+    it("clamps the ribbons to thin lines after accepting an empty side", async () => {
         installVsCodeMock();
         createRootHost();
 
@@ -701,12 +754,19 @@ describe("MergeEditorApp", () => {
 
         clickButton("Accept left block");
         await flush();
+        await flushAnimationFrame();
 
-        const marker = document.querySelector<HTMLElement>(
-            ".result-insertion-marker.variant-insertion",
-        );
-        expect(marker).not.toBeNull();
-        expect(marker?.className).toContain("marker-top");
+        // Accepting the empty left side empties the result: the settled left
+        // contour and the pending right band both collapse their zero-height
+        // sides to the 3px insertion line instead of vanishing (the hunk sits
+        // at y=0, so jsdom's zero-height viewport still draws it).
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(2);
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(connectors[0].getAttribute("d")).toContain(",3 ");
+        expect(connectors[1].getAttribute("class")).not.toContain("connector-resolved");
+        expect(connectors[1].getAttribute("d")).toContain(",3 ");
+        expect(document.querySelector(".result-insertion-marker")).toBeNull();
     });
 
     it("discards only the left side on left X and leaves the right suggestion offered", async () => {
@@ -754,11 +814,14 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
-        // The dismissed left side loses its ribbon; only the still-offered
-        // right suggestion keeps its pending conflict connector.
+        // The dismissed left side keeps a dotted resolved trace (PyCharm's
+        // ignored style); the still-offered right suggestion stays a pending
+        // filled connector.
         const pendingConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
-        expect(pendingConnectors).toHaveLength(1);
-        expect(pendingConnectors[0].getAttribute("class")).toContain("change-conflict");
+        expect(pendingConnectors).toHaveLength(2);
+        expect(pendingConnectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(pendingConnectors[1].getAttribute("class")).toContain("change-conflict");
+        expect(pendingConnectors[1].getAttribute("class")).not.toContain("connector-resolved");
 
         // The right side only enters the result when the user explicitly accepts it.
         clickButton("Accept right block");
@@ -821,12 +884,14 @@ describe("MergeEditorApp", () => {
         expect(document.querySelector(".conflict-theirs")?.className).not.toContain(
             "accepted-pane",
         );
-        // The dismissed right side loses its ribbon; the accepted left keeps a
-        // dimmed "done" connector instead of a pending suggestion ribbon.
+        // Both sides are settled (left accepted, right dismissed): each keeps a
+        // dotted resolved contour in the conflict color, no pending bands left.
         const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
-        expect(connectors).toHaveLength(1);
-        expect(connectors[0].getAttribute("class")).toContain("variant-insertion");
-        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
+        expect(connectors).toHaveLength(2);
+        for (const connector of Array.from(connectors)) {
+            expect(connector.getAttribute("class")).toContain("change-conflict");
+            expect(connector.getAttribute("class")).toContain("connector-resolved");
+        }
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
@@ -874,14 +939,121 @@ describe("MergeEditorApp", () => {
         clickButton("Ignore right block");
         await flush();
         expect(document.body.textContent).toContain("0 unresolved");
-        // A fully discarded hunk points at nothing: no ribbons remain.
-        expect(document.querySelectorAll(".merge-connector")).toHaveLength(0);
+        // A fully discarded hunk keeps two dotted traces pointing at the thin
+        // insertion line where the block used to be — PyCharm's ignored style —
+        // instead of vanishing entirely.
+        const discardedConnectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(discardedConnectors).toHaveLength(2);
+        for (const connector of Array.from(discardedConnectors)) {
+            expect(connector.getAttribute("class")).toContain("connector-resolved");
+        }
 
         clickButton("Apply (1/1)");
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "applyResolution",
             content: "shared();\n",
         });
+    });
+
+    it("draws exactly one connector per one-sided hunk, on its contributing divider only", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "ours-only",
+                        oursLines: ["added();"],
+                        theirsLines: [],
+                        baseLines: [],
+                    },
+                    {
+                        type: "conflict",
+                        id: 1,
+                        changeKind: "theirs-only",
+                        oursLines: [],
+                        theirsLines: ["incoming();"],
+                        baseLines: [],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // PyCharm links a one-sided hunk only across the divider its change
+        // came from: an ours-only hunk has no suggestion on the right, a
+        // theirs-only hunk none on the left. Drawing both (the old bug) left a
+        // stray wedge/stub converging on the pane with nothing to suggest —
+        // two hunks would render four paths instead of two.
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(2);
+        for (const connector of Array.from(connectors)) {
+            expect(connector.getAttribute("class")).toContain("variant-insertion");
+            expect(connector.getAttribute("class")).not.toContain("connector-resolved");
+        }
+    });
+
+    it("drops the variant fill from a one-sided result once the user explicitly settles it", async () => {
+        installVsCodeMock();
+        createRootHost();
+
+        await act(async () => {
+            await import("../../../src/webviews/react/merge-editor/MergeEditorApp");
+        });
+        await flush();
+
+        dispatchHostMessage({
+            type: "setConflictData",
+            data: {
+                filePath: "src/conflict.ts",
+                oursLabel: "main",
+                theirsLabel: "feature/incoming",
+                eol: "\n",
+                hasTrailingNewline: true,
+                segments: [
+                    {
+                        type: "conflict",
+                        id: 0,
+                        changeKind: "ours-only",
+                        oursLines: ["added();"],
+                        theirsLines: [],
+                        baseLines: [],
+                    },
+                ],
+            },
+        });
+        await flush();
+
+        // Auto-included but not yet explicitly decided: the result still
+        // reads as the pending variant fill, not a settled plain merge.
+        const resultBlockBefore = document.querySelector('[data-conflict-id="0"] .conflict-result');
+        expect(resultBlockBefore?.className).toContain("resolved");
+        expect(resultBlockBefore?.className).not.toContain("settled");
+
+        clickButton("Accept left block");
+        await flush();
+
+        // The user made an explicit decision: the result drops the green wash
+        // and reads as plain merged text under its dotted contour.
+        const resultBlockAfter = document.querySelector('[data-conflict-id="0"] .conflict-result');
+        expect(resultBlockAfter?.className).toContain("settled");
+        const connectors = document.querySelectorAll<SVGPathElement>(".merge-connector");
+        expect(connectors).toHaveLength(1);
+        expect(connectors[0].getAttribute("class")).toContain("connector-resolved");
     });
 
     it("resolves conflicts with Ctrl+Arrow side shortcuts, auto-advances, and applies with Ctrl+Enter", async () => {

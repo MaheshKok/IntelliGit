@@ -156,3 +156,103 @@ export function paneOffsetForCanonical(
     const maxOffset = Math.max(0, paneTotalPx[pane] - viewportH);
     return clamp(raw, 0, maxOffset);
 }
+
+/** Horizontal control-point proximity (fraction of the strip) for ribbon curves. */
+const RIBBON_CTRL_PROXIMITY_X = 0.3;
+
+/**
+ * Horizontal anatomy of one connector ribbon, PyCharm-style: the band stays a
+ * flat rectangle while it runs under the near pane's gutter (`x0..curveX0`)
+ * and the far pane's gutter (`curveX1..x1`); only the divider strip between
+ * the panes (`curveX0..curveX1`) bends. Producers must keep
+ * `x0 <= curveX0 <= curveX1 <= x1` — the merge layout guarantees it because
+ * the zones come from left-to-right column offsets with a fixed-width divider.
+ */
+export interface RibbonSpan {
+    x0: number;
+    curveX0: number;
+    curveX1: number;
+    x1: number;
+}
+
+/**
+ * Builds the SVG path for one connector ribbon, joining the hunk edge
+ * `aTop..aBot` (near pane) to `bTop..bBot` (far pane) across `span`. Gutter
+ * zones are horizontal rectangles at each side's own extent; the divider strip
+ * curves with cubic Béziers whose control points sit at 30% / 70% of the strip
+ * with horizontal end tangents — IntelliJ's curve-trapezium geometry — so the
+ * band reads as a straight highlight under line numbers and buttons and the
+ * whole height change happens in the divider, without a kink at either joint.
+ * Aligned sides degenerate to straight edges; a zero-height side collapses the
+ * divider curve into a wedge.
+ */
+export function ribbonPathD(
+    span: RibbonSpan,
+    aTop: number,
+    aBot: number,
+    bTop: number,
+    bBot: number,
+): string {
+    const { x0, curveX0, curveX1, x1 } = span;
+    const width = curveX1 - curveX0;
+    const cA = curveX0 + width * RIBBON_CTRL_PROXIMITY_X;
+    const cB = curveX0 + width * (1 - RIBBON_CTRL_PROXIMITY_X);
+    return (
+        `M ${x0},${aTop} L ${curveX0},${aTop}` +
+        ` C ${cA},${aTop} ${cB},${bTop} ${curveX1},${bTop} L ${x1},${bTop}` +
+        ` L ${x1},${bBot} L ${curveX1},${bBot}` +
+        ` C ${cB},${bBot} ${cA},${aBot} ${curveX0},${aBot} L ${x0},${aBot} Z`
+    );
+}
+
+/**
+ * Builds the SVG path for a RESOLVED hunk's connector, PyCharm-style: instead
+ * of a filled band, an unfilled contour meant to be stroked dotted. Two closed
+ * rectangles — the a-block over `x0..curveX0` at `aTop..aBot` and the b-block
+ * over `curveX1..x1` at `bTop..bBot` — linked by an open pair of divider
+ * curves with the same 30% / 70% Bézier controls as {@link ribbonPathD}. The
+ * rectangles wrap each block inside its own pane only, so no dotted edge ever
+ * crosses a pane it does not belong to; the outer verticals are inset 0.5px so
+ * a 1px stroke is not clipped at the pane boundaries. A zero-height block
+ * degenerates to a dotted line at the insertion point.
+ */
+export function ribbonOutlineD(
+    span: RibbonSpan,
+    aTop: number,
+    aBot: number,
+    bTop: number,
+    bBot: number,
+): string {
+    const { x0, curveX0, curveX1, x1 } = span;
+    const width = curveX1 - curveX0;
+    const cA = curveX0 + width * RIBBON_CTRL_PROXIMITY_X;
+    const cB = curveX0 + width * (1 - RIBBON_CTRL_PROXIMITY_X);
+    return (
+        `M ${x0 + 0.5},${aTop} L ${curveX0},${aTop} L ${curveX0},${aBot} L ${x0 + 0.5},${aBot} Z` +
+        ` M ${curveX0},${aTop} C ${cA},${aTop} ${cB},${bTop} ${curveX1},${bTop}` +
+        ` M ${curveX0},${aBot} C ${cA},${aBot} ${cB},${bBot} ${curveX1},${bBot}` +
+        ` M ${curveX1},${bTop} L ${x1 - 0.5},${bTop} L ${x1 - 0.5},${bBot} L ${curveX1},${bBot} Z`
+    );
+}
+
+/**
+ * Extends pending band spans across the middle pane when a hunk has no
+ * result rows, so the clamped thin line reads as one continuous PyCharm
+ * line through all three panels instead of stopping at the middle pane's
+ * content edges. Only pending (filled-band) sides extend — a settled
+ * side's dotted contour already spans the middle via its result
+ * rectangle. When both sides are pending only the left band extends, so
+ * translucent fills do not double-paint the shared middle run.
+ */
+export function bandSpansForMiddleGap(
+    leftBand: RibbonSpan,
+    rightBand: RibbonSpan,
+    middleEmpty: boolean,
+    leftPending: boolean,
+    rightPending: boolean,
+): { left: RibbonSpan; right: RibbonSpan } {
+    if (!middleEmpty) return { left: leftBand, right: rightBand };
+    const left = leftPending ? { ...leftBand, x1: rightBand.x0 } : leftBand;
+    const right = rightPending && !leftPending ? { ...rightBand, x0: leftBand.x1 } : rightBand;
+    return { left, right };
+}
