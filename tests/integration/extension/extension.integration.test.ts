@@ -1458,6 +1458,30 @@ describe("extension integration", () => {
         expect(showWarningMessage).toHaveBeenCalledWith(expect.stringContaining("current branch"));
     });
 
+    it("bulk branch delete rejects branches checked out in another worktree before mutating any branch", async () => {
+        await activateExtensionForCommandTests();
+        executorRun.mockClear();
+
+        await requireCommand("intelligit.deleteBranches")({
+            branches: [
+                {
+                    name: "feature-worktree",
+                    isRemote: false,
+                    isCheckedOutInWorktree: true,
+                    isCurrentWorktree: false,
+                },
+                { name: "feature-local", isRemote: false },
+            ],
+        });
+
+        expect(executorRun).not.toHaveBeenCalledWith(
+            expect.arrayContaining(["branch", "-d", "feature-local"]),
+        );
+        expect(showWarningMessage).toHaveBeenCalledWith(
+            expect.stringContaining("feature-worktree"),
+        );
+    });
+
     it("rejects stale branch names from graph bulk delete without deleting a subset", async () => {
         await activateExtensionForCommandTests();
         executorRun.mockClear();

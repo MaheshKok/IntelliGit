@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -e
+
+bun run format:check
+bun run lint:strict
+bun run deps:check:strict
+bun run architecture:check
+bun run l10n:validate
+bun run l10n:audit
+bun run typecheck
+bun run build
+bunx vsce package --no-dependencies

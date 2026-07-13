@@ -754,8 +754,10 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
         {
             id: "intelligit.renameBranch",
             handler: async (item) => {
-                const name = item.branch?.name;
+                const branch = item.branch;
+                const name = branch?.name;
                 if (!name) return;
+                if (branch.isCheckedOutInWorktree && !branch.isCurrentWorktree) return;
                 if (!validateBranchArg(name)) return;
                 const newName = await vscode.window.showInputBox({
                     prompt: vscode.l10n.t("Rename {branch} to", { branch: name }),
@@ -797,11 +799,17 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                 if (!name) return;
                 const isRemote = !!branch.isRemote;
                 if (!isRemote && !validateBranchArg(name)) return;
+                const isCheckedOutInAnotherWorktree =
+                    !isRemote && branch.isCheckedOutInWorktree && !branch.isCurrentWorktree;
                 const checkedOutBranch = isRemote
                     ? null
                     : await getCheckedOutBranchName(executor, getCurrentBranches());
 
-                if (!isRemote && checkedOutBranch && checkedOutBranch === name) {
+                if (
+                    !isRemote &&
+                    (isCheckedOutInAnotherWorktree ||
+                        (checkedOutBranch !== null && checkedOutBranch === name))
+                ) {
                     await vscode.window.showWarningMessage(
                         vscode.l10n.t(
                             "Cannot delete '{branch}' because it is currently checked out. Switch to another branch and try again.",
@@ -939,6 +947,22 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
                             vscode.l10n.t("Cannot delete the current branch: {branch}", {
                                 branch: current.name,
                             }),
+                        );
+                        return;
+                    }
+
+                    const checkedOutElsewhere = branches.find(
+                        (branch) =>
+                            !branch.isRemote &&
+                            branch.isCheckedOutInWorktree &&
+                            !branch.isCurrentWorktree,
+                    );
+                    if (checkedOutElsewhere) {
+                        showTimedWarningMessage(
+                            vscode.l10n.t(
+                                "Cannot delete '{branch}' because it is currently checked out. Switch to another branch and try again.",
+                                { branch: checkedOutElsewhere.name },
+                            ),
                         );
                         return;
                     }

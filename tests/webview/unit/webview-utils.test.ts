@@ -125,6 +125,8 @@ describe("branch menu", () => {
             .map((item) => item.action);
 
         expect(checkedOutElsewhere[0]).toBe("openWorktree");
+        expect(checkedOutElsewhere).not.toContain("renameBranch");
+        expect(checkedOutElsewhere).not.toContain("deleteBranch");
         expect(checkedOutHere).not.toContain("openWorktree");
     });
 
