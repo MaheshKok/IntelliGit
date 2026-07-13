@@ -8,13 +8,6 @@ repos:
             pass_filenames: false
             stages: [pre-commit]
 
-          - id: react-doctor
-            name: react doctor
-            entry: bun run react-doctor
-            language: system
-            pass_filenames: false
-            stages: [pre-push]
-
           - id: lint-strict
             name: strict lint
             entry: bun run lint:strict
@@ -56,13 +49,6 @@ repos:
             language: system
             pass_filenames: false
             stages: [pre-commit]
-
-          - id: test-coverage
-            name: tests with coverage
-            entry: bun run test:coverage
-            language: system
-            pass_filenames: false
-            stages: [pre-push]
 
           - id: build
             name: build

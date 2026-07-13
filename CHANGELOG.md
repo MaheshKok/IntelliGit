@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added soft, mixed, hard, merge, and keep branch reset actions with localized labels and focused coverage.
 
+### Fixed
+
+- Prevented branch rename and deletion actions from targeting branches checked out in another worktree, including bulk deletion preflight.
+- Replaced the untracked Python pre-commit pre-push wrapper with a versioned hook path so linked worktrees do not risk index corruption.
+
 ## [0.18.0] - 2026-07-13
 
 ### Changed
