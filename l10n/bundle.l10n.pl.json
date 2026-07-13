@@ -420,5 +420,10 @@
     "mixed": "mieszany",
     "hard": "twardy",
     "merge": "scalanie",
-    "keep": "zachowanie"
+    "keep": "zachowanie",
+    "Move HEAD only; keep index and working tree.": "Przesuń tylko HEAD; zachowaj indeks i drzewo robocze.",
+    "Reset index; keep working-tree changes.": "Zresetuj indeks; zachowaj zmiany w drzewie roboczym.",
+    "Discard index and working-tree changes.": "Odrzuć zmiany indeksu i drzewa roboczego.",
+    "Keep non-conflicting local changes.": "Zachowaj niekolidujące lokalne zmiany.",
+    "Abort if affected files have local changes.": "Przerwij jeśli objęte pliki zawierają lokalne zmiany."
 }

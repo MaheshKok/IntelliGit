@@ -420,5 +420,10 @@
     "mixed": "смешанный",
     "hard": "жёсткий",
     "merge": "слияние",
-    "keep": "сохранение"
+    "keep": "сохранение",
+    "Move HEAD only; keep index and working tree.": "Переместить только HEAD; сохранить индекс и рабочее дерево.",
+    "Reset index; keep working-tree changes.": "Сбросить индекс; сохранить изменения в рабочем дереве.",
+    "Discard index and working-tree changes.": "Отбросить изменения индекса и рабочего дерева.",
+    "Keep non-conflicting local changes.": "Сохранить неконфликтующие локальные изменения.",
+    "Abort if affected files have local changes.": "Отменить если затронутые файлы содержат локальные изменения."
 }

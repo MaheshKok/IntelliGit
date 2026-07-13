@@ -314,11 +314,31 @@ describe("resetCurrentToHere", () => {
         await resetCurrentToHere(ctx);
         expect(quickPick).toHaveBeenCalledWith(
             [
-                { label: "soft", mode: "soft" },
-                { label: "mixed", mode: "mixed" },
-                { label: "hard", mode: "hard" },
-                { label: "merge", mode: "merge" },
-                { label: "keep", mode: "keep" },
+                {
+                    label: "soft",
+                    description: "Move HEAD only; keep index and working tree.",
+                    mode: "soft",
+                },
+                {
+                    label: "mixed",
+                    description: "Reset index; keep working-tree changes.",
+                    mode: "mixed",
+                },
+                {
+                    label: "hard",
+                    description: "Discard index and working-tree changes.",
+                    mode: "hard",
+                },
+                {
+                    label: "merge",
+                    description: "Keep non-conflicting local changes.",
+                    mode: "merge",
+                },
+                {
+                    label: "keep",
+                    description: "Abort if affected files have local changes.",
+                    mode: "keep",
+                },
             ],
             expect.any(Object),
         );

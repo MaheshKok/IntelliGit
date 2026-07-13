@@ -420,5 +420,10 @@
     "mixed": "혼합",
     "hard": "하드",
     "merge": "병합",
-    "keep": "유지"
+    "keep": "유지",
+    "Move HEAD only; keep index and working tree.": "HEAD만 이동하고 인덱스와 작업 트리를 유지합니다.",
+    "Reset index; keep working-tree changes.": "인덱스를 재설정하고 작업 트리 변경 사항은 유지합니다.",
+    "Discard index and working-tree changes.": "인덱스와 작업 트리 변경 사항을 버립니다.",
+    "Keep non-conflicting local changes.": "충돌하지 않는 로컬 변경 사항을 유지합니다.",
+    "Abort if affected files have local changes.": "영향을 받는 파일에 로컬 변경 사항이 있으면 중단합니다."
 }

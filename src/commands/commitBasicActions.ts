@@ -134,11 +134,31 @@ export async function checkoutRevision(ctx: CommitActionContext): Promise<void> 
 export async function resetCurrentToHere(ctx: CommitActionContext): Promise<void> {
     const resetLabel = vscode.l10n.t("Reset");
     const resetModes = [
-        { label: vscode.l10n.t("soft"), mode: "soft" },
-        { label: vscode.l10n.t("mixed"), mode: "mixed" },
-        { label: vscode.l10n.t("hard"), mode: "hard" },
-        { label: vscode.l10n.t("merge"), mode: "merge" },
-        { label: vscode.l10n.t("keep"), mode: "keep" },
+        {
+            label: vscode.l10n.t("soft"),
+            description: vscode.l10n.t("Move HEAD only; keep index and working tree."),
+            mode: "soft",
+        },
+        {
+            label: vscode.l10n.t("mixed"),
+            description: vscode.l10n.t("Reset index; keep working-tree changes."),
+            mode: "mixed",
+        },
+        {
+            label: vscode.l10n.t("hard"),
+            description: vscode.l10n.t("Discard index and working-tree changes."),
+            mode: "hard",
+        },
+        {
+            label: vscode.l10n.t("merge"),
+            description: vscode.l10n.t("Keep non-conflicting local changes."),
+            mode: "merge",
+        },
+        {
+            label: vscode.l10n.t("keep"),
+            description: vscode.l10n.t("Abort if affected files have local changes."),
+            mode: "keep",
+        },
     ] as const;
     const pickedResetMode = await vscode.window.showQuickPick(resetModes, { title: resetLabel });
     if (!pickedResetMode) return;
