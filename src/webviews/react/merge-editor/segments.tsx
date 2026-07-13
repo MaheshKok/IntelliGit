@@ -561,7 +561,8 @@ interface ConflictView {
     isAutoMerged: boolean;
     isResolved: boolean;
     resultIsUnresolved: boolean;
-    resultInsertionMarker: "top" | "bottom" | undefined;
+    /** One-sided hunk explicitly settled by the user: its result rows drop the variant fill. */
+    resultSettled: boolean;
     showLeftActions: boolean;
     showRightActions: boolean;
     leftAppend: boolean;
@@ -618,10 +619,15 @@ function deriveConflictView(
     const oursInResult = isOurs || isBoth;
     const theirsInResult = isTheirs || isBoth;
     // A side is "dismissed" when the user discarded it (X) without accepting the
-    // opposite side. Acceptance overrides dismissal, so a side in the result is
-    // never treated as dismissed. A manual edit supersedes both.
-    const oursDismissed = !isEdited && !oursInResult && dismissed?.ours === true;
-    const theirsDismissed = !isEdited && !theirsInResult && dismissed?.theirs === true;
+    // opposite side. Resolving to "none" discards BOTH sides (the reducer clears
+    // per-side dismissals then), so it must read as dismissed too — otherwise the
+    // settled blocks would keep their suggestion bands and controls. Acceptance
+    // overrides dismissal, so a side in the result is never treated as
+    // dismissed. A manual edit supersedes both.
+    const bothDiscarded = !isEdited && resolution === "none";
+    const oursDismissed = !isEdited && !oursInResult && (dismissed?.ours === true || bothDiscarded);
+    const theirsDismissed =
+        !isEdited && !theirsInResult && (dismissed?.theirs === true || bothDiscarded);
     const isAutoMerged =
         segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
     const isResolved =
@@ -633,23 +639,14 @@ function deriveConflictView(
         segment.changeKind === "conflict" &&
         !isEdited &&
         ((isOurs && !theirsDismissed) || (isTheirs && !oursDismissed));
-    const hasPendingInsertionTarget =
-        segment.changeKind === "conflict" &&
-        !isEdited &&
-        segment.autoResolvedLines === undefined &&
-        ((!oursInResult && !theirsInResult && segment.baseLines.length === 0) ||
-            (isOurs && !theirsDismissed) ||
-            (isTheirs && !oursDismissed));
-    const acceptedResultLineCount = isOurs
-        ? segment.oursLines.length
-        : isTheirs
-          ? segment.theirsLines.length
-          : 0;
-    const resultInsertionMarker = hasPendingInsertionTarget
-        ? (!oursInResult && !theirsInResult) || acceptedResultLineCount === 0
-            ? "top"
-            : "bottom"
-        : undefined;
+    // A one-sided hunk is auto-included in the result the moment it loads
+    // (isResolved is unconditionally true for changeKind !== "conflict"), but
+    // it only counts as the user's DECISION once a resolution is actually set
+    // — an explicit accept/discard, not the initial auto-include. Only then
+    // does PyCharm drop the variant wash and show the result as plain merged
+    // text under its dotted contour.
+    const resultSettled =
+        segment.changeKind !== "conflict" && resolution !== undefined && !isEdited;
     return {
         isEdited,
         isOurs,
@@ -661,7 +658,7 @@ function deriveConflictView(
         isAutoMerged,
         isResolved,
         resultIsUnresolved,
-        resultInsertionMarker,
+        resultSettled,
         // A side's controls show only while that side is still pending: not yet
         // in the result and not discarded. Accepting one side leaves the other
         // side's accept button available to append (stack) below it; discarding
@@ -901,12 +898,6 @@ export const OursConflictBlock = React.memo(function OursConflictBlock({
                     wordHighlight={highlightWords}
                     compareLines={view.oursInResult ? undefined : segment.baseLines}
                 />
-                {view.oursInResult && view.resultInsertionMarker ? (
-                    <div
-                        className={`source-insertion-marker marker-left marker-${view.resultInsertionMarker} variant-insertion`}
-                        aria-hidden="true"
-                    />
-                ) : null}
                 {view.showLeftActions ? (
                     <LeftHunkActions
                         segmentId={segment.id}
@@ -974,17 +965,11 @@ export const ResultConflictBlock = React.memo(function ResultConflictBlock({
                     lineNumbers={lineNumbers}
                     className={`conflict-result ${
                         view.resultIsUnresolved || !view.isResolved ? "unresolved" : "resolved"
-                    } ${view.isEdited ? "edited" : ""}`}
+                    } ${view.isEdited ? "edited" : ""} ${view.resultSettled ? "settled" : ""}`}
                     wordHighlight={highlightWords}
                     compareLines={view.resultCompareLines}
                     onCommit={(lines) => onEditResult(segment.id, lines)}
                 />
-                {view.resultInsertionMarker ? (
-                    <div
-                        className={`result-insertion-marker marker-${view.resultInsertionMarker} variant-insertion`}
-                        aria-hidden="true"
-                    />
-                ) : null}
             </div>
         </div>
     );
@@ -1051,12 +1036,6 @@ export const TheirsConflictBlock = React.memo(function TheirsConflictBlock({
                     wordHighlight={highlightWords}
                     compareLines={view.theirsInResult ? undefined : segment.baseLines}
                 />
-                {view.theirsInResult && view.resultInsertionMarker ? (
-                    <div
-                        className={`source-insertion-marker marker-right marker-${view.resultInsertionMarker} variant-insertion`}
-                        aria-hidden="true"
-                    />
-                ) : null}
             </div>
         </div>
     );
@@ -1069,7 +1048,6 @@ export interface ConnectorSpec {
     id: number;
     leftColorClass?: string;
     rightColorClass?: string;
-    middleLineTarget: boolean;
 }
 
 /** Color class for a hunk's connector ribbon, matching its block band. */

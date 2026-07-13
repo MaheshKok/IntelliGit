@@ -13,22 +13,23 @@
     --merge-warning: #f2c572;
     --merge-danger: #d86c6c;
     --merge-ok: #79c18d;
-    /* PyCharm Darcula merge palette: strong changed-region bands, with word
-       fragments using the same family at full intensity. */
+    /* PyCharm Darcula merge palette: the block/ribbon wash is a muted maroon
+       so it reads as a background tint, while changed-word fragments (see
+       .word-diff-change below) carry the same family at full intensity on
+       top of it. */
     --pycharm-conflict: #4b1515;
     --pycharm-inserted: #3d6f4e;
     --pycharm-modified: #1c6978;
     --pycharm-deleted: #565b62;
-    --merge-conflict-ribbon-bg: var(--pycharm-conflict);
-    --merge-conflict-block-bg: var(--merge-conflict-ribbon-bg);
+    --merge-conflict-block-bg: #3a2a32;
+    --merge-conflict-ribbon-bg: var(--merge-conflict-block-bg);
     --merge-inserted-block-bg: #264b33;
     --merge-modified-block-bg: #13404b;
     --merge-deleted-block-bg: #3f444b;
     --merge-pane-boundary: color-mix(in srgb, var(--merge-editor-fg) 24%, #0d1522 76%);
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
     --merge-hunk-boundary-width: 1px;
-    --merge-insertion-marker-height: 3px;
-    --merge-line-number-gutter: 37px;
+    --merge-line-number-gutter: 33px;
     --merge-action-gutter: 44px;
 
     display: flex;
@@ -373,9 +374,10 @@
        line numbers and action glyphs (z-index applies to flex items). */
     z-index: 2;
 }
-/* Separator rail; hunk ribbons supply red only where conflict rows exist. */
+/* Divider strip between panes; hunk ribbons curve across exactly this zone
+   (PyCharm's divider width), so it stays wide enough for the S-bend to read. */
 .merge-gutter {
-    flex: 0 0 16px;
+    flex: 0 0 28px;
     align-self: stretch;
     background: transparent;
     z-index: 3;
@@ -398,41 +400,49 @@
     overflow: visible;
     z-index: 1;
 }
-/* Ribbon fills reuse the block-band palette so a hunk's band and its connector
-   read as one continuous region across the gutters. */
+/* Ribbon fills use the block-band color at full strength — no translucency —
+   so a hunk's band, its gutter strips, and its divider curve read as one
+   continuous region across all three panes, PyCharm-style. The muted block
+   palette keeps overlapping ribbons legible at full opacity, and the 1px
+   brightened edge stroke keeps individual ribbons traceable where they
+   cross. */
 .merge-connector {
     fill: var(--merge-conflict-ribbon-bg);
-    stroke: none;
+    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
+    stroke-width: 1;
 }
 .merge-connector.variant-insertion {
     fill: var(--merge-inserted-block-bg);
+    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
 }
 .merge-connector.variant-modification {
     fill: var(--merge-modified-block-bg);
+    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
 }
 .merge-connector.variant-deletion {
     fill: var(--merge-deleted-block-bg);
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
 }
-/* Hairline connectors keep the brighter word palette: band colors are too dim
-   for a 1px stroke. */
-.merge-connector.merge-connector-line {
-    fill: none;
-    stroke: var(--pycharm-conflict);
-    stroke-width: 1px;
-}
-.merge-connector.merge-connector-line.variant-insertion {
-    stroke: var(--pycharm-inserted);
-}
-.merge-connector.merge-connector-line.variant-modification {
-    stroke: var(--pycharm-modified);
-}
-.merge-connector.merge-connector-line.variant-deletion {
-    stroke: var(--pycharm-deleted);
-}
-/* Accepted-side ribbons dim to a quiet "done" marker; opacity (not
-   fill-opacity) so paired hairline strokes dim too. */
+/* Settled sides (accepted / discarded) trade the filled band for PyCharm's
+   dotted contour: an unfilled outline tracing the source block, the divider
+   curve, and the result extent, so a decided hunk stays traceable without
+   competing with pending suggestions. Strokes brighten the band color so 1px
+   dots stay legible on the editor background. Ordered after the variant fill
+   rules so fill:none wins the specificity tie. */
 .merge-connector.connector-resolved {
-    opacity: 0.45;
+    fill: none;
+    stroke: color-mix(in srgb, var(--merge-conflict-ribbon-bg) 45%, #d86c6c 55%);
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+}
+.merge-connector.variant-insertion.connector-resolved {
+    stroke: color-mix(in srgb, var(--merge-inserted-block-bg) 45%, #79c18d 55%);
+}
+.merge-connector.variant-modification.connector-resolved {
+    stroke: color-mix(in srgb, var(--merge-modified-block-bg) 45%, #58b5c9 55%);
+}
+.merge-connector.variant-deletion.connector-resolved {
+    stroke: color-mix(in srgb, var(--merge-deleted-block-bg) 45%, #9aa3ad 55%);
 }
 .merge-content::-webkit-scrollbar {
     width: 9px;
@@ -622,9 +632,6 @@
 .segment-common .code-line {
     color: var(--vscode-editor-foreground);
 }
-.segment-common .code-line-content {
-    opacity: 0.62;
-}
 
 .segment-conflict {
     --merge-hunk-boundary: color-mix(in srgb, var(--merge-border) 72%, transparent);
@@ -681,60 +688,20 @@
 }
 .hunk-action-glyph {
     font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 15px;
+    font-size: 22.5px;
     font-weight: 700;
     line-height: 1;
 }
 .accept-btn {
     color: var(--merge-ok);
 }
-/* Gray at rest like PyCharm's ×; the hover rule escalates to red. */
+/* Dark red at rest like PyCharm's ×; the hover rule escalates to bright red. */
 .discard-btn {
-    color: var(--merge-muted);
+    color: #c02b42;
 }
 .conflict-column {
     position: relative;
     overflow: visible;
-}
-.result-insertion-marker {
-    position: absolute;
-    left: 0;
-    width: var(--merge-line-number-gutter);
-    height: var(--merge-insertion-marker-height);
-    background: var(--pycharm-conflict);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--pycharm-conflict) 40%, transparent);
-    pointer-events: none;
-    z-index: 6;
-}
-.result-insertion-marker.marker-top {
-    top: 0;
-}
-.result-insertion-marker.marker-bottom {
-    bottom: 0;
-}
-.result-insertion-marker.variant-insertion {
-    background: var(--pycharm-conflict);
-}
-.source-insertion-marker {
-    position: absolute;
-    width: calc(var(--merge-line-number-gutter) + var(--merge-action-gutter));
-    height: var(--merge-insertion-marker-height);
-    background: var(--pycharm-conflict);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--pycharm-conflict) 40%, transparent);
-    pointer-events: none;
-    z-index: 6;
-}
-.source-insertion-marker.marker-left {
-    right: 0;
-}
-.source-insertion-marker.marker-right {
-    left: 0;
-}
-.source-insertion-marker.marker-top {
-    top: 0;
-}
-.source-insertion-marker.marker-bottom {
-    bottom: 0;
 }
 .merge-horizontal-scroll {
     position: absolute;
@@ -816,7 +783,7 @@
     color: var(--merge-ok);
 }
 .action-btn.discard-btn {
-    color: var(--merge-muted);
+    color: #c02b42;
 }
 /* Block backgrounds are row-scoped like IntelliJ/PyCharm line fragments:
    filler rows align panes but stay neutral. Code rows use a sticky background
@@ -854,14 +821,22 @@
     background: transparent;
 }
 /* One-sided hunks are auto-resolved, so their result pane can be "resolved"
-   without meaning "green accepted"; keep non-green variant colors where useful.
-   User edits win via the .edited tint below. */
-.variant-modification .conflict-result.resolved:not(.edited) .real-code-line::before,
-.variant-modification .conflict-result.resolved:not(.edited) .real-line-row {
+   without meaning "green accepted"; keep the variant colors so the result band
+   matches its source band and connector ribbon. User edits win via the .edited
+   tint below. Once the user explicitly settles the hunk (.settled, set when a
+   resolution is actually chosen rather than just auto-included) the decision
+   is made: the result drops the variant wash and reads as plain merged text
+   under its dotted contour, PyCharm-style. */
+.variant-insertion .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
+.variant-insertion .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
+    background: var(--merge-inserted-block-bg);
+}
+.variant-modification .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
+.variant-modification .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
     background: var(--merge-modified-block-bg);
 }
-.variant-deletion .conflict-result.resolved:not(.edited) .real-code-line::before,
-.variant-deletion .conflict-result.resolved:not(.edited) .real-line-row {
+.variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-code-line::before,
+.variant-deletion .conflict-result.resolved:not(.edited):not(.settled) .real-line-row {
     background: var(--merge-deleted-block-bg);
 }
 /* An accepted source pane drops its conflict band (the choice now lives in the
@@ -885,6 +860,28 @@
 }
 .conflict-column.dismissed {
     opacity: 0.5;
+}
+/* Settled blocks are framed by the dotted SVG contour instead of the solid
+   hunk boundary: doubled chrome reads as a still-pending suggestion. Applies
+   to accepted/dismissed source panes and to the result once nothing is
+   pending against it; an active hunk keeps only its focus ring. */
+.segment-conflict.change-conflict:has(> .conflict-column.accepted),
+.segment-conflict.change-conflict:has(> .conflict-column.dismissed),
+.segment-conflict.change-conflict.resolved:has(.conflict-result.resolved) {
+    box-shadow: none;
+}
+.segment-conflict.change-conflict.active:has(> .conflict-column.accepted),
+.segment-conflict.change-conflict.active:has(> .conflict-column.dismissed),
+.segment-conflict.change-conflict.resolved.active:has(.conflict-result.resolved) {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #4ea1ff) 16%, transparent);
+}
+/* A dismissed-only side has no resolution yet, so its wrapper is still
+   .unresolved — strip the red number/gutter bands the unresolved rules paint
+   so the discarded block shows only its dotted contour. */
+.segment-conflict.change-conflict.unresolved:has(> .conflict-column.dismissed) .line-numbers,
+.segment-conflict.change-conflict.unresolved:has(> .conflict-column.dismissed) .line-number-row,
+.segment-conflict.change-conflict.unresolved:has(> .conflict-column.dismissed) .code-block::before {
+    background: transparent;
 }
 
 .result-editable {
@@ -1079,7 +1076,8 @@
     background: var(--pycharm-conflict);
 }
 .variant-insertion .conflict-ours .word-diff-change,
-.variant-insertion .conflict-theirs .word-diff-change {
+.variant-insertion .conflict-theirs .word-diff-change,
+.variant-insertion .conflict-result .word-diff-change {
     background: var(--pycharm-inserted);
 }
 .variant-modification .word-diff-change {
