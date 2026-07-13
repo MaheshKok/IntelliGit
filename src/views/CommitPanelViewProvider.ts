@@ -797,9 +797,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     /**
      * Refreshes working-tree/stash data and then reloads embedded graph state.
      */
-    async refresh(): Promise<void> {
+    async refresh(shouldContinue: () => boolean = () => true): Promise<void> {
+        if (!shouldContinue()) return;
         const runtime = this.requireActiveRuntime();
+        // The switch guard after the refresh prevents stale graph publication.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.refreshAllRepositories(false);
+        if (!shouldContinue() || runtime !== this.getActiveRuntime()) return;
         await this.refreshGraphData(runtime);
     }
     /** Refreshes working-tree data without showing webview or context-key spinner state. */

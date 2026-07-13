@@ -345,6 +345,8 @@ export class UndockedViewProvider {
         }
         const shouldContinue = this.beginRepositorySwitch();
         this.applyRepositoryRoot(repository, { reset: true, updateExecutor: true });
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.onSelectedRepositoryRootChanged?.(repository.root);
         if (!shouldContinue()) return;
         this.sendRepositories();
@@ -363,13 +365,18 @@ export class UndockedViewProvider {
      * Reloads all repository-scoped panels after the selected root changes.
      */
     private async reloadSelectedRepository(shouldContinue: () => boolean): Promise<void> {
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
         if (!shouldContinue()) return;
         if (!(await this.reloadBranches(shouldContinue))) return;
         if (!shouldContinue()) return;
+        // The post-await guard prevents a superseded repository switch from updating the panel.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.loadInitial();
         if (!shouldContinue()) return;
         this.postCommitDetailState();
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.refreshCommitPanelData(false, shouldContinue);
         if (!shouldContinue()) return;
         this.postToWebview({
@@ -426,6 +433,8 @@ export class UndockedViewProvider {
     }
 
     private async reloadBranches(shouldContinue: () => boolean = () => true): Promise<boolean> {
+        if (!shouldContinue()) return false;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         const data = this.loadRepositoryData
             ? await this.loadRepositoryData(this.selectedRepositoryRoot)
             : { branches: await this.gitOps.getBranches(), worktrees: [] };
@@ -494,13 +503,19 @@ export class UndockedViewProvider {
     /**
      * Refreshes graph branches/commits and commit-panel data for the current repository.
      */
-    async refresh(): Promise<void> {
+    async refresh(shouldContinue: () => boolean = () => true): Promise<void> {
+        if (!shouldContinue()) return;
         // Theme data must be current before branch and commit payloads are decorated.
-        // react-doctor-disable-next-line react-doctor/async-parallel
+        // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
         await this.iconTheme.initIconThemeData();
-        await this.sendBranches();
-        await this.loadInitial();
-        await this.refreshCommitPanelData(false);
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        await this.sendBranches(shouldContinue);
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        await this.loadInitial(shouldContinue);
+        if (!shouldContinue()) return;
+        await this.refreshCommitPanelData(false, shouldContinue);
     }
 
     /** Refreshes graph and commit-panel data without showing commit-panel refresh feedback. */
@@ -867,7 +882,7 @@ export class UndockedViewProvider {
     /**
      * Loads the first graph page and ignores stale results from superseded requests.
      */
-    private async loadInitial(): Promise<void> {
+    private async loadInitial(shouldContinue: () => boolean = () => true): Promise<void> {
         const requestId = ++this.requestSeq;
         this.offset = 0;
         this.loadingMore = false;
@@ -887,7 +902,7 @@ export class UndockedViewProvider {
                 ),
                 this.gitOps.getUnpushedCommitHashes(),
             ]);
-            if (requestId !== this.requestSeq) return;
+            if (requestId !== this.requestSeq || !shouldContinue()) return;
             this.offset = commits.length;
             this.replaceCommitCheckHashScope(commits, unpushedHashes);
             this.postToWebview({
@@ -898,7 +913,7 @@ export class UndockedViewProvider {
                 unpushedHashes,
             });
         } catch (err) {
-            if (requestId !== this.requestSeq) return;
+            if (requestId !== this.requestSeq || !shouldContinue()) return;
             const message = getErrorMessage(err);
             vscode.window.showErrorMessage(vscode.l10n.t("Git log error: {message}", { message }));
             this.postToWebview({ type: "loadError", message });
@@ -988,6 +1003,8 @@ export class UndockedViewProvider {
         const hashes = this.assertVisibleCommitCheckHashes(msg);
         for (const hash of hashes) {
             if (generation !== this.commitCheckDemandSeq) return;
+            // Sequential work lets a newer viewport cancel hashes that have not started.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await this.sendCommitChecksIfCheckable(hash, generation, msg.force === true);
         }
     }
@@ -1158,6 +1175,8 @@ export class UndockedViewProvider {
                 : stashes.length > 0
                   ? stashes[0].index
                   : null;
+            if (!shouldContinue()) return;
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             const stashFiles =
                 selectedStashIndex !== null
                     ? await this.iconTheme.decorateWorkingFiles(
@@ -1207,8 +1226,12 @@ export class UndockedViewProvider {
      * Sends cached branches with folder icons derived from branch path segments.
      */
     private async sendBranches(shouldContinue: () => boolean = () => true): Promise<void> {
-        const folderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
-        const currentBranchStatus = await this.currentBranchStatus();
+        if (!shouldContinue()) return;
+        // react-doctor-disable-next-line react-doctor/async-defer-await
+        const [folderIconsByName, currentBranchStatus] = await Promise.all([
+            this.iconTheme.getFolderIconsByBranches(this.branches),
+            this.currentBranchStatus(),
+        ]);
         if (!shouldContinue()) return;
         this.branchFolderIconsByName = folderIconsByName;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();

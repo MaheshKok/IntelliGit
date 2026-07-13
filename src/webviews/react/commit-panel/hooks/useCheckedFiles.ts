@@ -81,10 +81,11 @@ export function useCheckedFiles(allFiles: WorkingFile[], repositoryRoot?: string
         setCheckedPaths((prev) => pruneToKnownPaths(prev, validPaths));
     }, [repositoryRoot, validPaths]);
 
-    // Persist to vscode state on every change (merge to preserve other keys)
+    // Persist to vscode state on every change (merge to preserve other keys).
     useEffect(() => {
         const vscode = getVsCodeApi();
         const prev = vscode.getState() ?? {};
+        // react-doctor-disable-next-line react-doctor/no-event-handler
         if (repositoryRoot) {
             if (validPaths.size === 0) return;
             vscode.setState({

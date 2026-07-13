@@ -138,6 +138,15 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
               { label: t("branch.menu.createWorktree"), action: "createWorktreeFromBranch" },
           ]
         : [];
+    const canMutateSelectedBranch =
+        !branch.isCheckedOutInWorktree || branch.isCurrentWorktree === true;
+    const mutationItems: BranchMenuItem[] = canMutateSelectedBranch
+        ? [
+              separator("sep-local-1"),
+              { label: t("branch.menu.rename"), action: "renameBranch" },
+              { label: t("branch.menu.delete"), action: "deleteBranch" },
+          ]
+        : [];
 
     if (branch.isCurrent) {
         return [
@@ -183,9 +192,7 @@ export function getBranchMenuItems(branch: Branch, currentBranchName: string): B
     return [
         ...nonCurrentBase,
         { label: t("branch.menu.push"), action: "pushBranch", icon: pushBranchIcon() },
-        separator("sep-local-1"),
-        { label: t("branch.menu.rename"), action: "renameBranch" },
-        { label: t("branch.menu.delete"), action: "deleteBranch" },
+        ...mutationItems,
         ...createWorktreeItems,
     ];
 }

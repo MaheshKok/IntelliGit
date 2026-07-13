@@ -30,4 +30,5 @@ AGENTS.md
 
 .hermes/
 
+.githooks/
 .ruff_cache/
