@@ -120,6 +120,8 @@ export function CommitList({
     const [viewportHeight, setViewportHeight] = useState(0);
     const isLoadingMoreRef = useRef(false);
     const retryTimerRef = useRef<number | null>(null);
+    // Keep cleanup wired to the latest callback without turning callback replacement into an event.
+    // react-doctor-disable-next-line react-doctor/no-event-handler
     const onRequestCommitChecksRef = useRef(onRequestCommitChecks);
     // react-doctor-disable-next-line react-doctor/rerender-lazy-ref-init
     const checkRetryAttempts = useRef(new Map<string, RetryAttempt>());
@@ -262,10 +264,10 @@ export function CommitList({
     // Replaces this surface's exact-viewport demand whenever the viewport changes
     // or host visibility flips. Withholds demand (posts []) while hidden; the
     // retry effect below clears any armed timer via its cleanup on the same flip.
-    // react-doctor-disable-next-line react-doctor/no-effect-event-handler
+    // react-doctor-disable-next-line react-doctor/no-effect-event-handler, react-doctor/exhaustive-deps
     useEffect(() => {
         if (!onRequestCommitChecks) return;
-        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect
+        // react-doctor-disable-next-line react-doctor/no-prop-callback-in-effect, react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
         onRequestCommitChecks(isViewVisible ? requestedCommitHashes : [], false);
     }, [onRequestCommitChecks, requestedCommitHashes, isViewVisible]);
 
@@ -277,7 +279,7 @@ export function CommitList({
     );
 
     // Retry scheduling is bounded per visible hash and never publishes hidden demand.
-    // react-doctor-disable-next-line react-doctor/no-effect-event-handler
+    // react-doctor-disable-next-line react-doctor/no-effect-event-handler, react-doctor/exhaustive-deps
     useEffect(() => {
         if (!onRequestCommitChecks || !isViewVisible) return;
 
@@ -348,6 +350,8 @@ export function CommitList({
             retryTimerRef.current = timer;
         };
 
+        // Retry timing derives from current snapshots; it is not parent-state synchronization.
+        // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent
         scheduleNextRetry();
         return () => {
             if (retryTimerRef.current !== null) {

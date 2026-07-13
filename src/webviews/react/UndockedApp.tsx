@@ -169,7 +169,7 @@ function readInitialWidths(): SectionWidths {
 }
 
 // Webview entrypoint owns root orchestration and root render side effects; splitting further is not useful here.
-// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component
+// react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer
 function App(): React.ReactElement {
     // --- Graph-side state ---
     const [graphState, graphDispatch] = useReducer(graphReducer, initialGraphState);

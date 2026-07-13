@@ -988,6 +988,8 @@ export class UndockedViewProvider {
         const hashes = this.assertVisibleCommitCheckHashes(msg);
         for (const hash of hashes) {
             if (generation !== this.commitCheckDemandSeq) return;
+            // Sequential work lets a newer viewport cancel hashes that have not started.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await this.sendCommitChecksIfCheckable(hash, generation, msg.force === true);
         }
     }
@@ -1207,8 +1209,10 @@ export class UndockedViewProvider {
      * Sends cached branches with folder icons derived from branch path segments.
      */
     private async sendBranches(shouldContinue: () => boolean = () => true): Promise<void> {
-        const folderIconsByName = await this.iconTheme.getFolderIconsByBranches(this.branches);
-        const currentBranchStatus = await this.currentBranchStatus();
+        const [folderIconsByName, currentBranchStatus] = await Promise.all([
+            this.iconTheme.getFolderIconsByBranches(this.branches),
+            this.currentBranchStatus(),
+        ]);
         if (!shouldContinue()) return;
         this.branchFolderIconsByName = folderIconsByName;
         const { folderIcons, iconFonts } = this.iconTheme.getThemeData();

@@ -595,6 +595,8 @@ export class CommitGraphViewProvider implements vscode.WebviewViewProvider {
         const hashes = this.assertVisibleCommitCheckHashes(msg);
         for (const hash of hashes) {
             if (generation !== this.commitCheckDemandSeq) return;
+            // Sequential work lets a newer viewport cancel hashes that have not started.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await this.sendCommitChecksIfCheckable(hash, generation, msg.force === true);
         }
     }
