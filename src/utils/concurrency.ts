@@ -30,6 +30,8 @@ export async function mapWithConcurrency<T, R>(
         // so each index is claimed by exactly one worker.
         while (nextIndex < items.length) {
             const index = nextIndex++;
+            // Each worker waits for its assigned item before taking the next index.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             results[index] = await mapper(items[index], index);
         }
     };

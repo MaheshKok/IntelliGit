@@ -66,12 +66,16 @@ function repositoryForFileUri(
 ): DiscoveredRepository | undefined {
     if (!uri || uri.scheme !== "file") return undefined;
     const filePath = path.resolve(uri.fsPath);
-    return knownRepositories
-        .filter((repo) => {
-            const root = path.resolve(repo.root);
-            return filePath === root || filePath.startsWith(root + path.sep);
-        })
-        .sort((a, b) => b.root.length - a.root.length)[0];
+    return knownRepositories.reduce<DiscoveredRepository | undefined>((best, repo) => {
+        const root = path.resolve(repo.root);
+        if (
+            (filePath === root || filePath.startsWith(root + path.sep)) &&
+            (!best || root.length > best.root.length)
+        ) {
+            return repo;
+        }
+        return best;
+    }, undefined);
 }
 
 /**
