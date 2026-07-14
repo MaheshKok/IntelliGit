@@ -55,7 +55,11 @@ export function CommitChecksButton({
         const button = buttonRef.current;
         if (!button) return;
         const rect = button.getBoundingClientRect();
-        const placement = rect.left >= PANEL_MAX_WIDTH + 16 ? "left" : "right";
+        const panelWidth = Math.min(PANEL_MAX_WIDTH, window.innerWidth - 16);
+        const placement =
+            rect.left >= PANEL_MAX_WIDTH + 16 || rect.right + 8 + panelWidth > window.innerWidth
+                ? "left"
+                : "right";
         const verticalPlacement =
             rect.top < PANEL_MAX_HEIGHT / 2 + 8
                 ? "below"

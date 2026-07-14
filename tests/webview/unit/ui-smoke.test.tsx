@@ -230,14 +230,16 @@ describe("webview ui smoke", () => {
 
         expect(document.body.textContent).not.toContain("Commit Checks");
         const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
+        const previousInnerWidth = window.innerWidth;
+        Object.defineProperty(window, "innerWidth", { configurable: true, value: 800 });
         const rectSpy = vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
             bottom: 324,
             height: 24,
-            left: 500,
-            right: 524,
+            left: 430,
+            right: 454,
             top: 300,
             width: 24,
-            x: 500,
+            x: 430,
             y: 300,
             toJSON: () => ({}),
         } as DOMRect);
@@ -265,7 +267,7 @@ describe("webview ui smoke", () => {
         ) as HTMLElement;
         expect(popover?.style.transform).toBe("translateX(-100%) translateY(-50%)");
         expect(popover?.style.position).toBe("fixed");
-        expect(popover?.style.left).toBe("492px");
+        expect(popover?.style.left).toBe("422px");
         expect(popover?.style.top).toBe("312px");
         expect(trigger.getAttribute("aria-expanded")).toBe("true");
         expect(panel?.style.width).toBe("max-content");
@@ -319,6 +321,10 @@ describe("webview ui smoke", () => {
         });
         expect(document.body.textContent).not.toContain("Commit Checks");
         rectSpy.mockRestore();
+        Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: previousInnerWidth,
+        });
         unmount(mounted.root, mounted.container);
 
         const firstMounted = mount(
