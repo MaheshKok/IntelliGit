@@ -425,5 +425,8 @@
     "Reset index; keep working-tree changes.": "Index zurücksetzen; Änderungen im Arbeitsbaum beibehalten.",
     "Discard index and working-tree changes.": "Index- und Arbeitsbaumänderungen verwerfen.",
     "Keep non-conflicting local changes.": "Nicht konfliktierende lokale Änderungen beibehalten.",
-    "Abort if affected files have local changes.": "Abbrechen wenn betroffene Dateien lokale Änderungen enthalten."
+    "Abort if affected files have local changes.": "Abbrechen wenn betroffene Dateien lokale Änderungen enthalten.",
+    "Deleting worktree {path}...": "Worktree {path} wird gelöscht...",
+    "Locking worktree {path}...": "Worktree {path} wird gesperrt...",
+    "Moving worktree {path}...": "Worktree {path} wird verschoben..."
 }

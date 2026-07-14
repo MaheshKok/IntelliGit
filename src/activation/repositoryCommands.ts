@@ -201,7 +201,10 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
         vscode.commands.registerCommand("intelligit.worktree.delete", async (ctx: unknown) => {
             if (!isWorktreeContext(ctx)) return;
             try {
-                const removed = await deps.worktreeService.removeWorktree(ctx.path);
+                const removed = await runWithNotificationProgress(
+                    vscode.l10n.t("Deleting worktree {path}...", { path: ctx.path }),
+                    () => deps.worktreeService.removeWorktree(ctx.path),
+                );
                 if (!removed) return;
                 showTimedInformationMessage(
                     vscode.l10n.t("Deleted worktree {path}", { path: ctx.path }),
@@ -222,7 +225,10 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             });
             if (reason === undefined) return;
             try {
-                await deps.worktreeService.lockWorktree(ctx.path, reason.trim() || undefined);
+                await runWithNotificationProgress(
+                    vscode.l10n.t("Locking worktree {path}...", { path: ctx.path }),
+                    () => deps.worktreeService.lockWorktree(ctx.path, reason.trim() || undefined),
+                );
                 showTimedInformationMessage(
                     vscode.l10n.t("Locked worktree {path}", { path: ctx.path }),
                 );
@@ -263,7 +269,10 @@ function registerWindowAndRepositoryCommands(deps: RepositoryCommandsDeps): void
             const newPath = picked?.[0]?.fsPath;
             if (!newPath) return;
             try {
-                await deps.worktreeService.moveWorktree(ctx.path, newPath);
+                await runWithNotificationProgress(
+                    vscode.l10n.t("Moving worktree {path}...", { path: ctx.path }),
+                    () => deps.worktreeService.moveWorktree(ctx.path, newPath),
+                );
                 showTimedInformationMessage(
                     vscode.l10n.t("Moved worktree {path}", { path: newPath }),
                 );

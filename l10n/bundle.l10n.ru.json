@@ -425,5 +425,8 @@
     "Reset index; keep working-tree changes.": "Сбросить индекс; сохранить изменения в рабочем дереве.",
     "Discard index and working-tree changes.": "Отбросить изменения индекса и рабочего дерева.",
     "Keep non-conflicting local changes.": "Сохранить неконфликтующие локальные изменения.",
-    "Abort if affected files have local changes.": "Отменить если затронутые файлы содержат локальные изменения."
+    "Abort if affected files have local changes.": "Отменить если затронутые файлы содержат локальные изменения.",
+    "Deleting worktree {path}...": "Удаление worktree {path}...",
+    "Locking worktree {path}...": "Блокировка worktree {path}...",
+    "Moving worktree {path}...": "Перемещение worktree {path}..."
 }

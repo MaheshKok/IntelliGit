@@ -1345,6 +1345,7 @@ describe("extension integration", () => {
         );
         executorRun.mockClear();
         showInformationMessage.mockClear();
+        withProgress.mockClear();
         await getCommand("intelligit.worktree.delete")({
             path: "/repo-feature",
             branch: "feature-worktree",
@@ -1358,6 +1359,24 @@ describe("extension integration", () => {
         expect(executorRun).toHaveBeenCalledWith(["status", "--porcelain"]);
         expect(executorRun).toHaveBeenCalledWith(["worktree", "remove", "/repo-feature"]);
         expect(showInformationMessage).toHaveBeenCalledWith("Deleted worktree /repo-feature");
+        await getCommand("intelligit.worktree.lock")({
+            path: "/repo-feature",
+            branch: "feature-worktree",
+        });
+        await getCommand("intelligit.worktree.move")({
+            path: "/repo-feature",
+            branch: "feature-worktree",
+        });
+        for (const title of [
+            "Deleting worktree /repo-feature...",
+            "Locking worktree /repo-feature...",
+            "Moving worktree /repo-feature...",
+        ]) {
+            expect(withProgress).toHaveBeenCalledWith(
+                expect.objectContaining({ location: 15, title: expect.stringContaining(title) }),
+                expect.any(Function),
+            );
+        }
         await getCommand("intelligit.newBranchFrom")({
             branch: { name: "feature-local", isRemote: false },
         });
