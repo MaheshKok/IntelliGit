@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+
+# ponytail: keep the hook focused; ESLint is the single complexity source of truth.
+bun run lint:complexity

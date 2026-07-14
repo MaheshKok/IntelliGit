@@ -40,50 +40,38 @@ function computeLineAlignmentActions(
 ): AlignmentTraceAction[] {
     const m = lines.length;
     const n = compareLines.length;
-    const gapPenalty = LINE_ALIGNMENT_GAP_PENALTY;
+    const trace = buildLineAlignmentMatrix(lines, compareLines);
+    return traceLineAlignmentActions(trace, m, n);
+}
+
+/** Builds dynamic-programming score and action matrices using the existing line-pair scoring rules. */
+function buildLineAlignmentMatrix(
+    lines: string[],
+    compareLines: string[],
+): AlignmentTraceAction[][] {
+    const m = lines.length;
+    const n = compareLines.length;
     const pairScoreCache = new Map<string, number>();
-    const scorePair = (i: number, j: number): number => {
-        const key = `${i}:${j}`;
-        const cached = pairScoreCache.get(key);
-        if (cached !== undefined) return cached;
-
-        const a = lines[i];
-        const b = compareLines[j];
-        let score: number;
-        if (a === b) {
-            score = 4;
-        } else {
-            const sim = tokenSimilarityRatio(a, b);
-            if (normalizeLineForWordDiff(a) === normalizeLineForWordDiff(b)) score = 3.5;
-            else if (sim >= 0.78) score = 2.4 + sim;
-            else if (sim >= 0.52) score = 1 + sim;
-            else if (sim >= 0.34) score = 0.2 + sim * 0.4;
-            else score = -1.6;
-        }
-
-        pairScoreCache.set(key, score);
-        return score;
-    };
-
     const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
     const trace: AlignmentTraceAction[][] = Array.from({ length: m + 1 }, () =>
         Array<AlignmentTraceAction>(n + 1).fill("pair"),
     );
 
     for (let i = m - 1; i >= 0; i--) {
-        dp[i][n] = dp[i + 1][n] + gapPenalty;
+        dp[i][n] = dp[i + 1][n] + LINE_ALIGNMENT_GAP_PENALTY;
         trace[i][n] = "skipA";
     }
     for (let j = n - 1; j >= 0; j--) {
-        dp[m][j] = dp[m][j + 1] + gapPenalty;
+        dp[m][j] = dp[m][j + 1] + LINE_ALIGNMENT_GAP_PENALTY;
         trace[m][j] = "skipB";
     }
 
     for (let i = m - 1; i >= 0; i--) {
         for (let j = n - 1; j >= 0; j--) {
-            const pair = dp[i + 1][j + 1] + scorePair(i, j);
-            const skipA = dp[i + 1][j] + gapPenalty;
-            const skipB = dp[i][j + 1] + gapPenalty;
+            const pair =
+                dp[i + 1][j + 1] + scoreLinePair(lines, compareLines, pairScoreCache, i, j);
+            const skipA = dp[i + 1][j] + LINE_ALIGNMENT_GAP_PENALTY;
+            const skipB = dp[i][j + 1] + LINE_ALIGNMENT_GAP_PENALTY;
 
             if (pair >= skipA && pair >= skipB) {
                 dp[i][j] = pair;
@@ -98,6 +86,45 @@ function computeLineAlignmentActions(
         }
     }
 
+    return trace;
+}
+
+/** Scores one candidate line pair and memoizes the result for matrix construction. */
+function scoreLinePair(
+    lines: string[],
+    compareLines: string[],
+    pairScoreCache: Map<string, number>,
+    i: number,
+    j: number,
+): number {
+    const key = `${i}:${j}`;
+    const cached = pairScoreCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const a = lines[i];
+    const b = compareLines[j];
+    let score: number;
+    if (a === b) {
+        score = 4;
+    } else {
+        const sim = tokenSimilarityRatio(a, b);
+        if (normalizeLineForWordDiff(a) === normalizeLineForWordDiff(b)) score = 3.5;
+        else if (sim >= 0.78) score = 2.4 + sim;
+        else if (sim >= 0.52) score = 1 + sim;
+        else if (sim >= 0.34) score = 0.2 + sim * 0.4;
+        else score = -1.6;
+    }
+
+    pairScoreCache.set(key, score);
+    return score;
+}
+
+/** Walks an alignment trace from the top-left corner until both input line arrays are exhausted. */
+function traceLineAlignmentActions(
+    trace: AlignmentTraceAction[][],
+    m: number,
+    n: number,
+): AlignmentTraceAction[] {
     const actions: AlignmentTraceAction[] = [];
     let walkI = 0;
     let walkJ = 0;
@@ -127,19 +154,16 @@ export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, n
     if (m === 0 || n === 0) return [];
 
     if (m * n > 40_000) {
-        // Greedy fallback to avoid expensive matrices on long lines.
-        const pairs: Array<[number, number]> = [];
-        let j = 0;
-        for (let i = 0; i < m && j < n; i++) {
-            while (j < n && b[j] !== a[i]) j++;
-            if (j < n) {
-                pairs.push([i, j]);
-                j++;
-            }
-        }
-        return pairs;
+        return computeGreedyTokenLcsPairs(a, b);
     }
 
+    return traceTokenLcsPairs(a, b, buildTokenLcsMatrix(a, b));
+}
+
+/** Builds the token-LCS length matrix used by the normal-size word-diff path. */
+function buildTokenLcsMatrix(a: string[], b: string[]): number[][] {
+    const m = a.length;
+    const n = b.length;
     const dp: number[][] = Array.from({ length: m + 1 }, () => Array<number>(n + 1).fill(0));
     for (let i = m - 1; i >= 0; i--) {
         for (let j = n - 1; j >= 0; j--) {
@@ -147,6 +171,13 @@ export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, n
         }
     }
 
+    return dp;
+}
+
+/** Reconstructs the ordered token pairs from an LCS length matrix. */
+function traceTokenLcsPairs(a: string[], b: string[], dp: number[][]): Array<[number, number]> {
+    const m = a.length;
+    const n = b.length;
     const pairs: Array<[number, number]> = [];
     let i = 0;
     let j = 0;
@@ -158,6 +189,20 @@ export function computeTokenLcsPairs(a: string[], b: string[]): Array<[number, n
         } else if (dp[i + 1][j] >= dp[i][j + 1]) {
             i++;
         } else {
+            j++;
+        }
+    }
+    return pairs;
+}
+
+/** Uses the existing linear greedy fallback when a full token-LCS matrix would be too large. */
+function computeGreedyTokenLcsPairs(a: string[], b: string[]): Array<[number, number]> {
+    const pairs: Array<[number, number]> = [];
+    let j = 0;
+    for (let i = 0; i < a.length && j < b.length; i++) {
+        while (j < b.length && b[j] !== a[i]) j++;
+        if (j < b.length) {
+            pairs.push([i, j]);
             j++;
         }
     }

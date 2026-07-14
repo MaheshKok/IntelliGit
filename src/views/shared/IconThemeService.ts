@@ -213,21 +213,7 @@ export class IconThemeService implements vscode.Disposable {
         const names: string[] = [];
 
         for (const branch of branches) {
-            const fullName = branch.name;
-            let displayName = fullName;
-            if (branch.isRemote) {
-                const remotePrefix = branch.remote ? `${branch.remote}/` : undefined;
-                if (remotePrefix && fullName.startsWith(remotePrefix)) {
-                    displayName = fullName.slice(remotePrefix.length);
-                } else {
-                    // This is string indexOf, not repeated array lookup.
-                    // react-doctor-disable-next-line react-doctor/js-set-map-lookups
-                    const firstSlash = fullName.indexOf("/");
-                    displayName = firstSlash >= 0 ? fullName.slice(firstSlash + 1) : fullName;
-                }
-            }
-
-            const parts = displayName.split("/");
+            const parts = branchIconDisplayName(branch).split("/");
             if (parts.length <= 1) continue;
             for (const folderName of parts.slice(0, -1)) {
                 const trimmed = folderName.trim();
@@ -302,4 +288,19 @@ export class IconThemeService implements vscode.Disposable {
     private disposeIconThemeDisposables(): void {
         disposeAll(this.iconThemeDisposables);
     }
+}
+
+/** Drops the remote segment from a branch name before its folder-like components are resolved. */
+function branchIconDisplayName(branch: Branch): string {
+    if (!branch.isRemote) return branch.name;
+
+    const remotePrefix = branch.remote ? `${branch.remote}/` : undefined;
+    if (remotePrefix && branch.name.startsWith(remotePrefix)) {
+        return branch.name.slice(remotePrefix.length);
+    }
+
+    // This is string indexOf, not repeated array lookup.
+    // react-doctor-disable-next-line react-doctor/js-set-map-lookups
+    const firstSlash = branch.name.indexOf("/");
+    return firstSlash >= 0 ? branch.name.slice(firstSlash + 1) : branch.name;
 }

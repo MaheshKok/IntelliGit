@@ -12,21 +12,22 @@
 
 The baseline audit covers `src/**/*.{ts,tsx}` and 2,560 function-like scopes. It found 88 classic cyclomatic scores over 10, 33 over 15, and 15 over 20. The existing SonarJS cognitive threshold is 40; 13 functions exceed 20 and none exceed 40. The highest priority functions are:
 
-| Symbol | File | Classic CC | Cognitive |
-| --- | --- | ---: | ---: |
-| `CommitPanelViewProvider.handleMessage` | `src/views/CommitPanelViewProvider.ts` | 57 | 30 |
-| `GitOps.getBranches` | `src/git/operations.ts` | 33 | 40 |
-| `UndockedViewProvider.handleMessage` | `src/views/UndockedViewProvider.ts` | 56 | 17 |
-| branch deletion command handler | `src/commands/branchCommands.ts` | 25 | 34 |
-| `cloneViaGitLab` | `src/services/cloneService.ts` | 19 | 39 |
-| `parseThemeSection` | `src/utils/fileIconTheme.ts` | 19 | 29 |
-| `deriveConflictView` | `src/webviews/react/merge-editor/segments.tsx` | 30 | 12 |
+| Symbol                                  | File                                           | Classic CC | Cognitive |
+| --------------------------------------- | ---------------------------------------------- | ---------: | --------: |
+| `CommitPanelViewProvider.handleMessage` | `src/views/CommitPanelViewProvider.ts`         |         57 |        30 |
+| `GitOps.getBranches`                    | `src/git/operations.ts`                        |         33 |        40 |
+| `UndockedViewProvider.handleMessage`    | `src/views/UndockedViewProvider.ts`            |         56 |        17 |
+| branch deletion command handler         | `src/commands/branchCommands.ts`               |         25 |        34 |
+| `cloneViaGitLab`                        | `src/services/cloneService.ts`                 |         19 |        39 |
+| `parseThemeSection`                     | `src/utils/fileIconTheme.ts`                   |         19 |        29 |
+| `deriveConflictView`                    | `src/webviews/react/merge-editor/segments.tsx` |         30 |        12 |
 
 Final Phase 6 acceptance: `bun run lint` enforces modified cyclomatic complexity and cognitive complexity at 25, all affected tests pass, and no public protocol or Git output interpretation changes.
 
 ## Phase 0 – establish the repeatable audit
 
 **Files:**
+
 - Modify: `eslint.config.mjs`
 - Modify: `package.json`
 - Test: existing lint command and a focused report command
@@ -45,6 +46,7 @@ bun run lint:complexity
 ## Phase 1 – Git branch parsing (start here)
 
 **Files:**
+
 - Modify: `src/git/operations.ts`
 - Modify: `tests/unit/git/gitops/status.test.ts`
 
@@ -77,6 +79,7 @@ bun run lint -- src/git/operations.ts tests/unit/git/gitops/status.test.ts
 ## Phase 2 – core parsing and clone decision functions
 
 **Files:**
+
 - Modify: `src/services/cloneService.ts`
 - Modify: `src/utils/fileIconTheme.ts`
 - Modify/add: focused tests next to the existing Git and file-theme tests
@@ -95,6 +98,7 @@ bun vitest run tests/unit/utils
 ## Phase 3 – branch command workflow
 
 **Files:**
+
 - Modify: `src/commands/branchCommands.ts`
 - Modify/add: `tests/integration/extension/extension.integration.test.ts`
 
@@ -111,6 +115,7 @@ bun vitest run tests/integration/extension/extension.integration.test.ts
 ## Phase 4 – provider message dispatchers
 
 **Files:**
+
 - Modify: `src/views/CommitPanelViewProvider.ts`
 - Modify/add: `tests/integration/extension/view-providers.integration.test.ts`
 
@@ -127,6 +132,7 @@ bun vitest run tests/integration/extension/view-providers.integration.test.ts
 ## Phase 5 – merge editor and webview state derivation
 
 **Files:**
+
 - Modify: `src/webviews/react/merge-editor/segments.tsx`
 - Modify/add: merge-editor integration tests
 
@@ -142,6 +148,7 @@ bun vitest run tests/integration/webviews/merge-webviews.integration.test.tsx
 ## Phase 6 – activate and ratchet quality gates
 
 **Files:**
+
 - Modify: `eslint.config.mjs`
 - Modify: `package.json` only if the Phase 0 reporting script is still needed
 
@@ -170,3 +177,14 @@ bun run test
 - Do not alter public command IDs, webview message names, Branch fields, localization strings, or Git command arguments while reducing complexity.
 - Run GitNexus impact analysis before each symbol edit when available; in its absence, use codebase-memory inbound traces and report a high-risk blast radius before editing.
 - Before any commit, run codebase-memory or GitNexus change detection and inspect the diff to confirm only planned symbols changed.
+
+## Phase 7 – 20-point ratchet
+
+**Baseline:** The prospective 20-point gate reports 11 violations: `GitOps.getStatus` (cognitive 25), `parseWorkingTreeStatus` (24), `planRollbackFiles` (25), two word-diff helpers (22 and 24), `CommitPanelViewProvider.setRepositoriesInternal` (classic 24), an icon-theme helper (22), `buildWebviewShellHtml` (classic 21), and two `MergeEditorApp` callbacks (21–25).
+
+1. Keep the committed 25-point ESLint gate unchanged while removing the measured violations.
+2. Start with pure Git parsing and word-diff helpers, each protected by focused unit tests.
+3. Then split host-side view/service decisions, retaining existing command and webview contracts.
+4. Treat `MergeEditorApp` as a separate UI-risk subphase with integration coverage; do not combine it with parser changes.
+5. Once the prospective 20-point check is clean, lower the configured thresholds from 25 to 20 and repeat the full validation set.
+6. Start the 15-point audit only after the 20-point gate is stable; do not bypass either threshold with suppressions.

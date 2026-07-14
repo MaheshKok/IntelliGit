@@ -108,6 +108,15 @@ describe("alignCompareLinesForWordDiff", () => {
         expect(result[0]).toBe("const x = 1;");
         expect(result[1]).toBe("");
     });
+
+    it("leaves inserted source lines blank while retaining later matches", () => {
+        expect(
+            alignCompareLinesForWordDiff(
+                ["const inserted = true;", "return total;"],
+                ["return total;"],
+            ),
+        ).toEqual(["", "return total;"]);
+    });
 });
 
 describe("buildWordDiffMask", () => {
