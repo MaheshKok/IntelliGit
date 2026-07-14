@@ -600,18 +600,17 @@ function sideVariantClass(segment: ConflictSegment): string {
     return "variant-modification";
 }
 
-/**
- * Computes the render flags for a conflict hunk from its resolution, manual
- * edits, and per-side dismissals. Pure helper so ConflictSection stays a thin
- * view over these derived values.
- */
-function deriveConflictView(
-    segment: ConflictSegment,
+type ConflictResolutionState = Pick<
+    ConflictView,
+    "isOurs" | "isTheirs" | "oursInResult" | "theirsInResult" | "oursDismissed" | "theirsDismissed"
+>;
+
+/** Derives accepted and dismissed side state independently of segment-specific rendering metadata. */
+function deriveResolutionState(
     resolution: HunkResolution | undefined,
-    editedLines: string[] | undefined,
+    isEdited: boolean,
     dismissed: HunkSideDismissal | undefined,
-): ConflictView {
-    const isEdited = editedLines !== undefined;
+): ConflictResolutionState {
     const isOurs = !isEdited && resolution === "ours";
     const isTheirs = !isEdited && resolution === "theirs";
     // Both orders stack the two sides; the order only differs in getResultLines.
@@ -628,6 +627,31 @@ function deriveConflictView(
     const oursDismissed = !isEdited && !oursInResult && (dismissed?.ours === true || bothDiscarded);
     const theirsDismissed =
         !isEdited && !theirsInResult && (dismissed?.theirs === true || bothDiscarded);
+
+    return {
+        isOurs,
+        isTheirs,
+        oursInResult,
+        theirsInResult,
+        oursDismissed,
+        theirsDismissed,
+    };
+}
+
+/**
+ * Computes the render flags for a conflict hunk from its resolution, manual
+ * edits, and per-side dismissals. Pure helper so ConflictSection stays a thin
+ * view over these derived values.
+ */
+function deriveConflictView(
+    segment: ConflictSegment,
+    resolution: HunkResolution | undefined,
+    editedLines: string[] | undefined,
+    dismissed: HunkSideDismissal | undefined,
+): ConflictView {
+    const isEdited = editedLines !== undefined;
+    const { isOurs, isTheirs, oursInResult, theirsInResult, oursDismissed, theirsDismissed } =
+        deriveResolutionState(resolution, isEdited, dismissed);
     const isAutoMerged =
         segment.autoResolvedLines !== undefined && resolution === undefined && !isEdited;
     const isResolved =

@@ -877,6 +877,7 @@
         "l10n:audit": "bun scripts/audit-localization-strings.js",
         "lint": "eslint src scripts",
         "lint:strict": "eslint src scripts --max-warnings=0",
+        "lint:complexity": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
         "react-doctor": "react-doctor -y",
         "hooks:install": "git config core.hooksPath .githooks",
         "deps:check": "knip --no-exit-code",

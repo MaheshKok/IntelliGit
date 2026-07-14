@@ -1115,6 +1115,77 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postToWebview({ type: "setFilterText", text });
         await this.loadInitialGraphCommits(runtime);
     }
+    /** Hydrates the active repository and restores its persisted commit draft after webview readiness. */
+    private async handleReadyMessage(): Promise<void> {
+        const runtime = this.getActiveRuntime();
+        this.postRepositoryListHydration();
+        if (runtime) {
+            this.postWorkingTreeSnapshot(runtime);
+            await this.refreshAllRepositories(true);
+            await this.refreshGraphData(runtime);
+        }
+        this.postToWebview({
+            type: "restoreCommitDraft",
+            ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
+            message: this.getStoredCommitDraft(runtime),
+        });
+    }
+    /** Updates ignored-file visibility for the addressed runtime and refreshes that runtime's data. */
+    private async handleSetShowIgnoredFilesMessage(
+        showIgnoredFiles: unknown,
+        runtime: CommitPanelRepositoryRuntime | undefined,
+    ): Promise<void> {
+        if (!runtime) return;
+        runtime.showIgnoredFiles = showIgnoredFiles === true;
+        await this.refreshData(true, runtime);
+    }
+    /** Validates and forwards a branch context-menu action emitted by the Changes webview. */
+    private handleBranchActionMessage(action: unknown, branchName: unknown): void {
+        const branchAction = assertString(action, "action");
+        if (!isBranchAction(branchAction)) {
+            throw new Error("Invalid branch action received from webview.");
+        }
+        this._onBranchAction.fire({
+            action: branchAction,
+            branchName: assertString(branchName, "branchName"),
+        });
+    }
+    /** Validates and forwards a commit context-menu action emitted by the Changes webview. */
+    private handleCommitActionMessage(action: unknown, hash: unknown): void {
+        const commitAction = assertString(action, "action");
+        if (!isCommitAction(commitAction)) {
+            throw new Error("Invalid commit action received from webview.");
+        }
+        this._onCommitAction.fire({ action: commitAction, hash: assertGitHash(hash, "hash") });
+    }
+    /** Loads a selected stash into the addressed runtime and publishes the resulting file state. */
+    private async handleStashSelectMessage(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        index: unknown,
+    ): Promise<void> {
+        if (!runtime) throw new Error("No active repository selected.");
+        await selectStashFromPanel(
+            {
+                ...this.fileActionDepsForRuntime(runtime),
+                iconTheme: this.iconTheme,
+                getFiles: () => runtime.files,
+                getStashes: () => runtime.stashes,
+                currentBranchHasUpstream: async () =>
+                    (await this.currentBranchStatus(runtime)).hasUpstream,
+                setStashState: (state) => {
+                    runtime.selectedStashIndex = state.selectedStashIndex;
+                    runtime.stashFiles = state.stashFiles;
+                    runtime.folderIconsByName = state.folderIconsByName;
+                },
+                postUpdate: (message) =>
+                    this.postToWebview({
+                        ...message,
+                        repositoryRoot: runtime.repository.root,
+                    }),
+            },
+            index,
+        );
+    }
     /**
      * Validates and dispatches every message accepted by the Changes webview.
      *
@@ -1129,21 +1200,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const activeRuntime = () => this.requireActiveRuntime();
         const scopedRuntime = () => this.runtimeForMessage(msg);
         switch (msg.type) {
-            case "ready": {
-                const runtime = this.getActiveRuntime();
-                this.postRepositoryListHydration();
-                if (runtime) {
-                    this.postWorkingTreeSnapshot(runtime);
-                    await this.refreshAllRepositories(true);
-                    await this.refreshGraphData(runtime);
-                }
-                this.postToWebview({
-                    type: "restoreCommitDraft",
-                    ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
-                    message: this.getStoredCommitDraft(runtime),
-                });
+            case "ready":
+                await this.handleReadyMessage();
                 break;
-            }
             case "refresh":
                 await this.refreshFromUserAction(scopedRuntime());
                 break;
@@ -1153,14 +1212,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "abortMerge":
                 await this.abortMerge(scopedRuntime());
                 break;
-            case "setShowIgnoredFiles": {
-                const runtime = scopedRuntime();
-                if (runtime) {
-                    runtime.showIgnoredFiles = msg.showIgnoredFiles === true;
-                    await this.refreshData(true, runtime);
-                }
+            case "setShowIgnoredFiles":
+                await this.handleSetShowIgnoredFilesMessage(msg.showIgnoredFiles, scopedRuntime());
                 break;
-            }
             case "fetch":
                 await runGitOperationFromPanel(this.actionDepsForRuntime(scopedRuntime()), "fetch");
                 break;
@@ -1195,28 +1249,12 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.loadInitialGraphCommits(runtime);
                 break;
             }
-            case "branchAction": {
-                const branchAction = assertString(msg.action, "action");
-                if (!isBranchAction(branchAction)) {
-                    throw new Error("Invalid branch action received from webview.");
-                }
-                this._onBranchAction.fire({
-                    action: branchAction,
-                    branchName: assertString(msg.branchName, "branchName"),
-                });
+            case "branchAction":
+                this.handleBranchActionMessage(msg.action, msg.branchName);
                 break;
-            }
-            case "commitAction": {
-                const commitAction = assertString(msg.action, "action");
-                if (!isCommitAction(commitAction)) {
-                    throw new Error("Invalid commit action received from webview.");
-                }
-                this._onCommitAction.fire({
-                    action: commitAction,
-                    hash: assertGitHash(msg.hash, "hash"),
-                });
+            case "commitAction":
+                this.handleCommitActionMessage(msg.action, msg.hash);
                 break;
-            }
             case "openCommitFileDiff":
                 this._onOpenCommitFileDiff.fire({
                     commitHash: assertGitHash(msg.commitHash, "commitHash"),
@@ -1340,32 +1378,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     assertNumber(msg.index, "index"),
                 );
                 break;
-            case "stashSelect": {
-                const runtime = scopedRuntime();
-                if (!runtime) throw new Error("No active repository selected.");
-                await selectStashFromPanel(
-                    {
-                        ...this.fileActionDepsForRuntime(runtime),
-                        iconTheme: this.iconTheme,
-                        getFiles: () => runtime.files,
-                        getStashes: () => runtime.stashes,
-                        currentBranchHasUpstream: async () =>
-                            (await this.currentBranchStatus(runtime)).hasUpstream,
-                        setStashState: (state) => {
-                            runtime.selectedStashIndex = state.selectedStashIndex;
-                            runtime.stashFiles = state.stashFiles;
-                            runtime.folderIconsByName = state.folderIconsByName;
-                        },
-                        postUpdate: (message) =>
-                            this.postToWebview({
-                                ...message,
-                                repositoryRoot: runtime.repository.root,
-                            }),
-                    },
-                    msg.index,
-                );
+            case "stashSelect":
+                await this.handleStashSelectMessage(scopedRuntime(), msg.index);
                 break;
-            }
             case "publishBranch":
                 {
                     const runtime = scopedRuntime();

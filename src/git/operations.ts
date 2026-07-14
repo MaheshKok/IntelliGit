@@ -46,6 +46,130 @@ import {
 } from "./workingTree";
 import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
+
+type BranchRow = string[];
+
+type DefaultBranchRefs = {
+    defaultRemoteRefs: Set<string>;
+    remotesWithDefault: Set<string>;
+    defaultLocalNames: Set<string>;
+};
+
+/** Splits Git's tab-delimited branch output into non-empty rows for later validation. */
+function parseBranchRows(result: string): BranchRow[] {
+    return result
+        .trim()
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line) => line.split("\t"));
+}
+
+/** Returns a valid remote/default-branch pair only when a symbolic HEAD targets its own remote. */
+function getSymbolicRemoteDefault(refname: string, symref: string | undefined) {
+    const headMatch = /^refs\/remotes\/([^/]+)\/HEAD$/.exec(refname);
+    const targetMatch = symref && isValidBranchName(symref) ? /^([^/]+)\/(.+)$/.exec(symref) : null;
+    if (!headMatch || !targetMatch) return undefined;
+
+    const [, headRemote] = headMatch;
+    const [, targetRemote, localName] = targetMatch;
+    if (
+        headRemote !== targetRemote ||
+        !isValidRemoteName(headRemote) ||
+        !isValidBranchName(localName)
+    ) {
+        return undefined;
+    }
+
+    return { remote: headRemote, localName, remoteRef: targetMatch[0] };
+}
+
+/** Collects validated remote HEAD targets used to mark local and remote default branches. */
+function collectDefaultBranchRefs(rows: BranchRow[]): DefaultBranchRefs {
+    const defaultRemoteRefs = new Set<string>();
+    const remotesWithDefault = new Set<string>();
+    const defaultLocalNames = new Set<string>();
+
+    for (const [refname, , , , , , symref] of rows) {
+        const target = getSymbolicRemoteDefault(refname, symref);
+        if (!target) continue;
+
+        defaultRemoteRefs.add(target.remoteRef);
+        remotesWithDefault.add(target.remote);
+        defaultLocalNames.add(target.localName);
+    }
+
+    return { defaultRemoteRefs, remotesWithDefault, defaultLocalNames };
+}
+
+/** Extracts a valid remote name from a remote branch name or local branch upstream. */
+function getRemoteName(ref: string | undefined): string | undefined {
+    const remote = ref?.split("/")[0];
+    return remote && isValidRemoteName(remote) ? remote : undefined;
+}
+
+/** Applies Git's conventional main/master fallback only when a remote has no symbolic default. */
+function isRemoteDefaultBranch(
+    name: string,
+    remote: string | undefined,
+    defaults: DefaultBranchRefs,
+): boolean {
+    return (
+        defaults.defaultRemoteRefs.has(name) ||
+        (remote !== undefined &&
+            !defaults.remotesWithDefault.has(remote) &&
+            (name === `${remote}/main` || name === `${remote}/master`))
+    );
+}
+
+/** Applies the local main/master fallback only when no symbolic remote default was reported. */
+function isLocalDefaultBranch(name: string, defaults: DefaultBranchRefs): boolean {
+    return (
+        defaults.defaultLocalNames.has(name) ||
+        (defaults.defaultLocalNames.size === 0 && (name === "main" || name === "master"))
+    );
+}
+
+/** Parses optional Git upstream tracking text into zero-based ahead and behind counts. */
+function parseTrackingCounts(track: string | undefined): { ahead: number; behind: number } {
+    return {
+        ahead: Number(track?.match(/ahead (\d+)/)?.[1] ?? 0),
+        behind: Number(track?.match(/behind (\d+)/)?.[1] ?? 0),
+    };
+}
+
+/** Builds one public branch record or discards symbolic and invalid branch rows. */
+function toBranch(row: BranchRow, defaults: DefaultBranchRefs): Branch | undefined {
+    const [refname, name, hash, upstream, track, head, , committerDateRaw] = row;
+    if (refname.endsWith("/HEAD") || !isValidBranchName(name)) return undefined;
+
+    const isRemote = refname.startsWith("refs/remotes/");
+    const remote = getRemoteName(isRemote ? name : upstream);
+    if (isRemote && !remote) return undefined;
+
+    const trimmedCommitterDate = committerDateRaw?.trim();
+    const committerDate = trimmedCommitterDate ? Number(trimmedCommitterDate) : undefined;
+    const { ahead, behind } = parseTrackingCounts(track);
+    const isDefault = isRemote
+        ? isRemoteDefaultBranch(name, remote, defaults)
+        : isLocalDefaultBranch(name, defaults);
+
+    return {
+        name,
+        hash,
+        isRemote,
+        isCurrent: head === "*",
+        isDefault: isDefault || undefined,
+        committerDate:
+            committerDate !== undefined && Number.isFinite(committerDate)
+                ? committerDate
+                : undefined,
+        upstream: upstream || undefined,
+        remote,
+        ahead,
+        behind,
+    };
+}
+
 type ConfirmSetUpstreamPush = (remote: string, branch: string) => Promise<boolean>;
 /**
  * Signals that the user declined IntelliGit's prompt to create upstream tracking before push.
@@ -169,77 +293,11 @@ export class GitOps {
         const format =
             "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)\t%(symref:short)\t%(committerdate:unix)";
         const result = await this.executor.run(["branch", "-a", `--format=${format}`]);
-        const rows = result
-            .trim()
-            .split("\n")
-            .filter((line) => line.trim())
-            .map((line) => line.split("\t"));
-        const defaultRemoteRefs = new Set<string>();
-        const remotesWithDefault = new Set<string>();
-        const defaultLocalNames = new Set<string>();
-        for (const [refname, , , , , , symref] of rows) {
-            if (!refname?.endsWith("/HEAD") || !symref || !isValidBranchName(symref)) continue;
-            defaultRemoteRefs.add(symref);
-            const remoteRefMatch = /^([^/]+)\/(.+)$/.exec(symref);
-            if (remoteRefMatch) {
-                const [, remoteName, localName] = remoteRefMatch;
-                if (isValidRemoteName(remoteName) && isValidBranchName(localName)) {
-                    remotesWithDefault.add(remoteName);
-                    defaultLocalNames.add(localName);
-                }
-            }
-        }
-        const branches: Branch[] = [];
-        for (const [refname, name, hash, upstream, track, head, , committerDateRaw] of rows) {
-            const isRemote = refname.startsWith("refs/remotes/");
-            // Skip symbolic refs like origin/HEAD (refname:short resolves to just "origin")
-            if (refname.endsWith("/HEAD")) continue;
-            if (!isValidBranchName(name)) continue;
-            const trimmedCommitterDate = committerDateRaw?.trim();
-            const committerDate = trimmedCommitterDate ? Number(trimmedCommitterDate) : undefined;
-            let remote: string | undefined;
-            if (isRemote) {
-                // refname:short for remote is "origin/main", first segment is the remote name
-                remote = name.split("/")[0];
-                if (!isValidRemoteName(remote)) continue;
-            } else if (upstream) {
-                remote = upstream.split("/")[0];
-                if (!isValidRemoteName(remote)) {
-                    remote = undefined;
-                }
-            }
-            const isDefault = isRemote
-                ? defaultRemoteRefs.has(name) ||
-                  (remote !== undefined &&
-                      !remotesWithDefault.has(remote) &&
-                      (name === `${remote}/main` || name === `${remote}/master`))
-                : defaultLocalNames.has(name) ||
-                  (defaultLocalNames.size === 0 && (name === "main" || name === "master"));
-            let ahead = 0,
-                behind = 0;
-            if (track) {
-                const a = track.match(/ahead (\d+)/);
-                const b = track.match(/behind (\d+)/);
-                if (a) ahead = parseInt(a[1]);
-                if (b) behind = parseInt(b[1]);
-            }
-            branches.push({
-                name,
-                hash,
-                isRemote,
-                isCurrent: head === "*",
-                isDefault: isDefault || undefined,
-                committerDate:
-                    committerDate !== undefined && Number.isFinite(committerDate)
-                        ? committerDate
-                        : undefined,
-                upstream: upstream || undefined,
-                remote,
-                ahead,
-                behind,
-            });
-        }
-        return branches;
+        const rows = parseBranchRows(result);
+        const defaults = collectDefaultBranchRefs(rows);
+        return rows
+            .map((row) => toBranch(row, defaults))
+            .filter((branch): branch is Branch => !!branch);
     }
     /**
      * Loads commit summaries from all refs or a validated branch, optionally using a literal grep filter.

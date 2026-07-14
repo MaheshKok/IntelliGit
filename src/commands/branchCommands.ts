@@ -333,6 +333,189 @@ async function deleteBranchRef(executor: GitExecutor, branch: Branch): Promise<v
     await executor.run(["branch", "-d", branch.name]);
 }
 
+type BranchDeleteConfirmation = {
+    isRemote: boolean;
+    forceDelete: boolean;
+    deleteAnywayLabel: string;
+};
+
+/**
+ * Performs single-branch safety checks and requests the exact delete confirmation required by Git state.
+ *
+ * A missing result means a payload, worktree, merge-safety, or user-cancellation guard stopped the command.
+ */
+async function confirmSingleBranchDelete(
+    branch: Branch,
+    executor: GitExecutor,
+    getCurrentBranches: () => Branch[],
+): Promise<BranchDeleteConfirmation | undefined> {
+    const name = branch.name;
+    if (!name) return undefined;
+
+    const isRemote = !!branch.isRemote;
+    if (!isRemote && !validateBranchArg(name)) return undefined;
+
+    const isCheckedOutInAnotherWorktree =
+        !isRemote && branch.isCheckedOutInWorktree && !branch.isCurrentWorktree;
+    const checkedOutBranch = isRemote
+        ? null
+        : await getCheckedOutBranchName(executor, getCurrentBranches());
+    if (
+        !isRemote &&
+        (isCheckedOutInAnotherWorktree || (checkedOutBranch !== null && checkedOutBranch === name))
+    ) {
+        await vscode.window.showWarningMessage(
+            vscode.l10n.t(
+                "Cannot delete '{branch}' because it is currently checked out. Switch to another branch and try again.",
+                { branch: name },
+            ),
+            { modal: true },
+            vscode.l10n.t("OK"),
+        );
+        return undefined;
+    }
+
+    const deleteLabel = vscode.l10n.t("Delete");
+    const deleteAnywayLabel = vscode.l10n.t("Delete Anyway");
+    let confirmLabel = deleteLabel;
+    let confirmMessage = vscode.l10n.t("Delete branch {branch}?", { branch: name });
+    if (!isRemote) {
+        const mergeStatus = await getLocalBranchMergeStatusForDelete(
+            name,
+            checkedOutBranch,
+            executor,
+        );
+        if (!mergeStatus.merged) {
+            confirmLabel = deleteAnywayLabel;
+            confirmMessage =
+                mergeStatus.target === "HEAD"
+                    ? vscode.l10n.t(
+                          "Branch {branch} has unmerged commits relative to the current branch. Delete anyway? This may permanently lose commits not reachable from the current branch.",
+                          { branch: name },
+                      )
+                    : vscode.l10n.t(
+                          "Branch {branch} has unmerged commits relative to '{target}'. Delete anyway? This may permanently lose commits not reachable from '{target}'.",
+                          { branch: name, target: mergeStatus.target },
+                      );
+        }
+    }
+
+    const confirmed = await vscode.window.showWarningMessage(
+        confirmMessage,
+        { modal: true },
+        confirmLabel,
+    );
+    if (confirmed !== confirmLabel) return undefined;
+
+    return {
+        isRemote,
+        forceDelete: confirmLabel === deleteAnywayLabel,
+        deleteAnywayLabel,
+    };
+}
+
+/** Deletes a validated remote branch through Git progress UI and refreshes branch state afterward. */
+async function deleteRemoteBranch(branch: Branch, executor: GitExecutor): Promise<void> {
+    const target = resolveRemoteDeleteTarget(branch);
+    if (!target) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Delete failed: unable to determine remote target for '{branch}'.", {
+                branch: branch.name,
+            }),
+        );
+        return;
+    }
+    if (!validateTrackedRemote(target)) return;
+
+    await runWithNotificationProgress(
+        vscode.l10n.t("Deleting remote branch {remote}/{remoteBranch}...", {
+            remote: target.remote,
+            remoteBranch: target.remoteBranch,
+        }),
+        async () => {
+            await executor.run(["push", target.remote, "--delete", target.remoteBranch]);
+        },
+    );
+    showTimedInformationMessage(
+        vscode.l10n.t("Deleted {remote}/{remoteBranch}", {
+            remote: target.remote,
+            remoteBranch: target.remoteBranch,
+        }),
+    );
+    await vscode.commands.executeCommand("intelligit.refresh");
+}
+
+/** Deletes a local branch, then refreshes before offering post-delete restore or remote actions. */
+async function deleteLocalBranch(
+    branch: Branch,
+    executor: GitExecutor,
+    getCurrentBranches: () => Branch[],
+    forceDelete: boolean,
+): Promise<void> {
+    // Delete must complete before refresh/actions observe the new branch state.
+    // react-doctor-disable-next-line react-doctor/async-parallel
+    await executor.run(["branch", forceDelete ? "-D" : "-d", branch.name]);
+    await vscode.commands.executeCommand("intelligit.refresh");
+    await showDeletedBranchActions(branch, getCurrentBranches(), executor);
+}
+
+/** Offers the force-delete fallback only for Git's unmerged-branch failure and handles its final error. */
+async function handleUnmergedBranchDelete(
+    branch: Branch,
+    executor: GitExecutor,
+    getCurrentBranches: () => Branch[],
+    deleteAnywayLabel: string,
+): Promise<void> {
+    const forceConfirm = await vscode.window.showWarningMessage(
+        vscode.l10n.t(
+            "Branch '{branch}' has unmerged commits. Do you still want to delete it? This may permanently lose commits not reachable from the current branch.",
+            { branch: branch.name },
+        ),
+        { modal: true },
+        deleteAnywayLabel,
+    );
+    if (forceConfirm !== deleteAnywayLabel) return;
+
+    try {
+        await deleteLocalBranch(branch, executor, getCurrentBranches, true);
+    } catch (forceErr) {
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Delete failed: {message}", { message: getErrorMessage(forceErr) }),
+        );
+    }
+}
+
+/** Coordinates one branch deletion while keeping confirmation and execution paths independently testable. */
+async function deleteSingleBranch(
+    branch: Branch,
+    executor: GitExecutor,
+    getCurrentBranches: () => Branch[],
+): Promise<void> {
+    const confirmation = await confirmSingleBranchDelete(branch, executor, getCurrentBranches);
+    if (!confirmation) return;
+
+    try {
+        if (confirmation.isRemote) {
+            await deleteRemoteBranch(branch, executor);
+            return;
+        }
+        await deleteLocalBranch(branch, executor, getCurrentBranches, confirmation.forceDelete);
+    } catch (err) {
+        if (!confirmation.isRemote && isBranchNotFullyMergedError(err)) {
+            await handleUnmergedBranchDelete(
+                branch,
+                executor,
+                getCurrentBranches,
+                confirmation.deleteAnywayLabel,
+            );
+            return;
+        }
+        vscode.window.showErrorMessage(
+            vscode.l10n.t("Delete failed: {message}", { message: getErrorMessage(err) }),
+        );
+    }
+}
+
 /**
  * Creates the branch tree command handlers registered by repository activation.
  *
@@ -805,135 +988,7 @@ export function createBranchCommands(deps: BranchCommandDeps): BranchCommandEntr
             handler: async (item) => {
                 const branch = item.branch;
                 if (!branch) return;
-                const name = branch.name;
-                if (!name) return;
-                const isRemote = !!branch.isRemote;
-                if (!isRemote && !validateBranchArg(name)) return;
-                const isCheckedOutInAnotherWorktree =
-                    !isRemote && branch.isCheckedOutInWorktree && !branch.isCurrentWorktree;
-                const checkedOutBranch = isRemote
-                    ? null
-                    : await getCheckedOutBranchName(executor, getCurrentBranches());
-
-                if (
-                    !isRemote &&
-                    (isCheckedOutInAnotherWorktree ||
-                        (checkedOutBranch !== null && checkedOutBranch === name))
-                ) {
-                    await vscode.window.showWarningMessage(
-                        vscode.l10n.t(
-                            "Cannot delete '{branch}' because it is currently checked out. Switch to another branch and try again.",
-                            { branch: name },
-                        ),
-                        { modal: true },
-                        vscode.l10n.t("OK"),
-                    );
-                    return;
-                }
-
-                const deleteLabel = vscode.l10n.t("Delete");
-                const deleteAnywayLabel = vscode.l10n.t("Delete Anyway");
-                let confirmLabel = deleteLabel;
-                let confirmMessage = vscode.l10n.t("Delete branch {branch}?", { branch: name });
-                if (!isRemote) {
-                    const mergeStatus = await getLocalBranchMergeStatusForDelete(
-                        name,
-                        checkedOutBranch,
-                        executor,
-                    );
-                    if (!mergeStatus.merged) {
-                        confirmLabel = deleteAnywayLabel;
-                        confirmMessage =
-                            mergeStatus.target === "HEAD"
-                                ? vscode.l10n.t(
-                                      "Branch {branch} has unmerged commits relative to the current branch. Delete anyway? This may permanently lose commits not reachable from the current branch.",
-                                      { branch: name },
-                                  )
-                                : vscode.l10n.t(
-                                      "Branch {branch} has unmerged commits relative to '{target}'. Delete anyway? This may permanently lose commits not reachable from '{target}'.",
-                                      { branch: name, target: mergeStatus.target },
-                                  );
-                    }
-                }
-
-                const confirm = await vscode.window.showWarningMessage(
-                    confirmMessage,
-                    { modal: true },
-                    confirmLabel,
-                );
-                if (confirm !== confirmLabel) return;
-                try {
-                    if (isRemote) {
-                        const target = resolveRemoteDeleteTarget(branch);
-                        if (!target) {
-                            vscode.window.showErrorMessage(
-                                vscode.l10n.t(
-                                    "Delete failed: unable to determine remote target for '{branch}'.",
-                                    { branch: name },
-                                ),
-                            );
-                            return;
-                        }
-                        if (!validateTrackedRemote(target)) return;
-                        await runWithNotificationProgress(
-                            vscode.l10n.t("Deleting remote branch {remote}/{remoteBranch}...", {
-                                remote: target.remote,
-                                remoteBranch: target.remoteBranch,
-                            }),
-                            async () => {
-                                await executor.run([
-                                    "push",
-                                    target.remote,
-                                    "--delete",
-                                    target.remoteBranch,
-                                ]);
-                            },
-                        );
-                        showTimedInformationMessage(
-                            vscode.l10n.t("Deleted {remote}/{remoteBranch}", {
-                                remote: target.remote,
-                                remoteBranch: target.remoteBranch,
-                            }),
-                        );
-                        await vscode.commands.executeCommand("intelligit.refresh");
-                    } else {
-                        const forceDelete = confirmLabel === deleteAnywayLabel;
-                        // Delete must complete before refresh/actions observe the new branch state.
-                        // react-doctor-disable-next-line react-doctor/async-parallel
-                        await executor.run(["branch", forceDelete ? "-D" : "-d", name]);
-                        await vscode.commands.executeCommand("intelligit.refresh");
-                        await showDeletedBranchActions(branch, getCurrentBranches(), executor);
-                    }
-                } catch (err) {
-                    if (!isRemote && isBranchNotFullyMergedError(err)) {
-                        const forceConfirm = await vscode.window.showWarningMessage(
-                            vscode.l10n.t(
-                                "Branch '{branch}' has unmerged commits. Do you still want to delete it? This may permanently lose commits not reachable from the current branch.",
-                                { branch: name },
-                            ),
-                            { modal: true },
-                            deleteAnywayLabel,
-                        );
-                        if (forceConfirm !== deleteAnywayLabel) return;
-                        try {
-                            // Force-delete fallback must finish before refresh/actions read branch state.
-                            // react-doctor-disable-next-line react-doctor/async-parallel
-                            await executor.run(["branch", "-D", name]);
-                            await vscode.commands.executeCommand("intelligit.refresh");
-                            await showDeletedBranchActions(branch, getCurrentBranches(), executor);
-                        } catch (forceErr) {
-                            const msg = getErrorMessage(forceErr);
-                            vscode.window.showErrorMessage(
-                                vscode.l10n.t("Delete failed: {message}", { message: msg }),
-                            );
-                        }
-                        return;
-                    }
-                    const msg = getErrorMessage(err);
-                    vscode.window.showErrorMessage(
-                        vscode.l10n.t("Delete failed: {message}", { message: msg }),
-                    );
-                }
+                await deleteSingleBranch(branch, executor, getCurrentBranches);
             },
         },
         {
