@@ -230,17 +230,15 @@ describe("webview ui smoke", () => {
 
         expect(document.body.textContent).not.toContain("Commit Checks");
         const trigger = mounted.container.querySelector("button") as HTMLButtonElement;
-        const previousInnerHeight = window.innerHeight;
-        Object.defineProperty(window, "innerHeight", { configurable: true, value: 320 });
         const rectSpy = vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
-            bottom: 104,
+            bottom: 324,
             height: 24,
-            left: 300,
-            right: 324,
-            top: 80,
+            left: 500,
+            right: 524,
+            top: 300,
             width: 24,
-            x: 300,
-            y: 80,
+            x: 500,
+            y: 300,
             toJSON: () => ({}),
         } as DOMRect);
         act(() => {
@@ -253,19 +251,33 @@ describe("webview ui smoke", () => {
         });
 
         expect(document.body.textContent).toContain("Commit Checks");
+        expect(document.body.textContent).toContain("abc1234");
         expect(document.body.textContent).toContain("GitGuardian Security Checks");
         expect(document.body.textContent).toContain("Code Review Skipped");
         expect(document.body.textContent).not.toContain("All checks passed");
-        const panel = Array.from(document.body.querySelectorAll("div")).find(
-            (node): node is HTMLDivElement =>
-                node.style.position === "fixed" &&
-                (node.textContent?.includes("Commit Checks") ?? false),
-        );
-        expect(panel?.style.transform).toBe("translateY(-100%)");
+        const popover = document.body.querySelector('[data-testid="commit-checks-popover"]');
+        const panel = popover?.querySelector("div");
+        const caretBorder = document.body.querySelector(
+            '[data-testid="commit-checks-popover-caret-border"]',
+        ) as HTMLElement;
+        const caretFill = document.body.querySelector(
+            '[data-testid="commit-checks-popover-caret-fill"]',
+        ) as HTMLElement;
+        expect(popover?.style.transform).toBe("translateX(-100%) translateY(-50%)");
+        expect(popover?.style.position).toBe("fixed");
+        expect(popover?.style.left).toBe("492px");
+        expect(popover?.style.top).toBe("312px");
+        expect(trigger.getAttribute("aria-expanded")).toBe("true");
         expect(panel?.style.width).toBe("max-content");
         expect(panel?.style.minWidth).toBe("310px");
         expect(panel?.style.minHeight).toBe("190px");
-        expect(Number.parseFloat(panel?.style.top ?? "0")).toBeGreaterThanOrEqual(312);
+        expect(caretBorder.getAttribute("aria-hidden")).toBe("true");
+        expect(caretBorder.style.right).toBe("-12px");
+        expect(caretBorder.style.borderLeftWidth).toBe("12px");
+        expect(caretBorder.style.borderLeftColor).toBeTruthy();
+        expect(caretFill.style.right).toBe("-10px");
+        expect(caretFill.style.borderLeftWidth).toBe("10px");
+        expect(caretFill.style.borderLeftColor).toBeTruthy();
         const description = Array.from(document.querySelectorAll("span")).find(
             (node) => node.textContent === "No secrets detected",
         );
@@ -285,6 +297,7 @@ describe("webview ui smoke", () => {
             document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
         });
         expect(document.body.textContent).not.toContain("Commit Checks");
+        expect(trigger.getAttribute("aria-expanded")).toBe("false");
 
         act(() => {
             trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -306,11 +319,40 @@ describe("webview ui smoke", () => {
         });
         expect(document.body.textContent).not.toContain("Commit Checks");
         rectSpy.mockRestore();
-        Object.defineProperty(window, "innerHeight", {
-            configurable: true,
-            value: previousInnerHeight,
-        });
         unmount(mounted.root, mounted.container);
+
+        const firstMounted = mount(
+            <CommitChecksButton
+                hash="first123"
+                checks={snapshot}
+                onRequestChecks={onRequestChecks}
+                onOpenCheckUrl={onOpenCheckUrl}
+            />,
+        );
+        const firstTrigger = firstMounted.container.querySelector("button") as HTMLButtonElement;
+        const firstRectSpy = vi.spyOn(firstTrigger, "getBoundingClientRect").mockReturnValue({
+            bottom: 44,
+            height: 24,
+            left: 500,
+            right: 524,
+            top: 20,
+            width: 24,
+            x: 500,
+            y: 20,
+            toJSON: () => ({}),
+        } as DOMRect);
+        act(() => {
+            firstTrigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        const firstPopover = document.body.querySelector('[data-testid="commit-checks-popover"]');
+        const firstCaret = document.body.querySelector(
+            '[data-testid="commit-checks-popover-caret-border"]',
+        ) as HTMLElement;
+        expect(firstPopover?.style.top).toBe("20px");
+        expect(firstPopover?.style.transform).toBe("translateX(-100%)");
+        expect(firstCaret.style.top).toBe("12px");
+        firstRectSpy.mockRestore();
+        unmount(firstMounted.root, firstMounted.container);
 
         const emptyMounted = mount(
             <CommitChecksButton
@@ -326,6 +368,11 @@ describe("webview ui smoke", () => {
             />,
         );
         expect(emptyMounted.container.querySelector("button")).toBeNull();
+        const emptySlot = emptyMounted.container.querySelector(
+            '[data-testid="commit-checks-slot-empty123"]',
+        ) as HTMLSpanElement;
+        expect(emptySlot.style.width).toBe("24px");
+        expect(emptySlot.style.marginLeft).toBe("4px");
         unmount(emptyMounted.root, emptyMounted.container);
 
         const unavailableMounted = mount(
