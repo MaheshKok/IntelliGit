@@ -481,17 +481,19 @@ async function getLegacyGitLabToken(secrets?: vscode.SecretStorage): Promise<str
 
 /** Prompts for a new GitLab token and offers best-effort secure storage after a successful entry. */
 async function promptForGitLabToken(secrets?: vscode.SecretStorage): Promise<string | undefined> {
-    const token = await vscode.window.showInputBox({
-        prompt: vscode.l10n.t(
-            "Enter your GitLab Personal Access Token (requires read_repository scope)",
-        ),
-        placeHolder: "glpat-...",
-        password: true,
-        validateInput: (value) => {
-            if (!value.trim()) return vscode.l10n.t("Token is required");
-            return undefined;
-        },
-    });
+    const token = (
+        await vscode.window.showInputBox({
+            prompt: vscode.l10n.t(
+                "Enter your GitLab Personal Access Token (requires read_repository scope)",
+            ),
+            placeHolder: "glpat-...",
+            password: true,
+            validateInput: (value) => {
+                if (!value.trim()) return vscode.l10n.t("Token is required");
+                return undefined;
+            },
+        })
+    )?.trim();
     if (!token) return undefined;
     if (!secrets) return token;
 

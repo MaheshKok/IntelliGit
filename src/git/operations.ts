@@ -47,7 +47,38 @@ import {
 import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
 
-type BranchRow = string[];
+type BranchRow = [
+    refname: string,
+    name: string,
+    hash: string,
+    upstream: string,
+    track: string,
+    head: string,
+    symref: string,
+    committerDateRaw: string,
+];
+
+type BranchRowFormat = [
+    refname: "%(refname)",
+    name: "%(refname:short)",
+    hash: "%(objectname:short)",
+    upstream: "%(upstream:short)",
+    track: "%(upstream:track,nobracket)",
+    head: "%(HEAD)",
+    symref: "%(symref:short)",
+    committerDateRaw: "%(committerdate:unix)",
+];
+
+const BRANCH_ROW_FORMAT: BranchRowFormat = [
+    "%(refname)",
+    "%(refname:short)",
+    "%(objectname:short)",
+    "%(upstream:short)",
+    "%(upstream:track,nobracket)",
+    "%(HEAD)",
+    "%(symref:short)",
+    "%(committerdate:unix)",
+];
 
 type DefaultBranchRefs = {
     defaultRemoteRefs: Set<string>;
@@ -61,7 +92,19 @@ function parseBranchRows(result: string): BranchRow[] {
         .trim()
         .split("\n")
         .filter((line) => line.trim())
-        .map((line) => line.split("\t"));
+        .map((line): BranchRow => {
+            const [
+                refname = "",
+                name = "",
+                hash = "",
+                upstream = "",
+                track = "",
+                head = "",
+                symref = "",
+                committerDateRaw = "",
+            ] = line.split("\t");
+            return [refname, name, hash, upstream, track, head, symref, committerDateRaw];
+        });
 }
 
 /** Returns a valid remote/default-branch pair only when a symbolic HEAD targets its own remote. */
@@ -290,9 +333,11 @@ export class GitOps {
      * come from Git's upstream tracking text when available.
      */
     async getBranches(): Promise<Branch[]> {
-        const format =
-            "%(refname)\t%(refname:short)\t%(objectname:short)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(HEAD)\t%(symref:short)\t%(committerdate:unix)";
-        const result = await this.executor.run(["branch", "-a", `--format=${format}`]);
+        const result = await this.executor.run([
+            "branch",
+            "-a",
+            `--format=${BRANCH_ROW_FORMAT.join("\t")}`,
+        ]);
         const rows = parseBranchRows(result);
         const defaults = collectDefaultBranchRefs(rows);
         return rows

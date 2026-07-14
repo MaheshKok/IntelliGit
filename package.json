@@ -880,6 +880,7 @@
         "lint:complexity": "eslint \"src/**/*.{ts,tsx}\" --max-warnings=0",
         "react-doctor": "react-doctor -y",
         "hooks:install": "git config core.hooksPath .githooks",
+        "postinstall": "npm run hooks:install",
         "deps:check": "knip --no-exit-code",
         "deps:check:strict": "knip",
         "architecture:check": "depcruise src --include-only \"^src\" --config .dependency-cruiser.cjs",

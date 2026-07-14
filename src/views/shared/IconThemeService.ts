@@ -291,7 +291,7 @@ export class IconThemeService implements vscode.Disposable {
 }
 
 /** Drops the remote segment from a branch name before its folder-like components are resolved. */
-function branchIconDisplayName(branch: Branch): string {
+export function branchIconDisplayName(branch: Branch): string {
     if (!branch.isRemote) return branch.name;
 
     const remotePrefix = branch.remote ? `${branch.remote}/` : undefined;

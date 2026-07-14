@@ -19,4 +19,20 @@ describe("planRollbackFiles", () => {
             cleanupPaths: ["new.ts"],
         });
     });
+
+    it("cleans up untracked paths without resetting or checking them out", () => {
+        expect(planRollbackFiles(["untracked.ts"], "?? untracked.ts\0")).toEqual({
+            resetPaths: [],
+            checkoutPaths: [],
+            cleanupPaths: ["untracked.ts"],
+        });
+    });
+
+    it("resets and cleans up copied paths without touching their source", () => {
+        expect(planRollbackFiles(["copy.ts"], "C  copy.ts\0source.ts\0")).toEqual({
+            resetPaths: ["copy.ts"],
+            checkoutPaths: [],
+            cleanupPaths: ["copy.ts"],
+        });
+    });
 });
