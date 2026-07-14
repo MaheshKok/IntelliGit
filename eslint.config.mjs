@@ -120,6 +120,11 @@ const sonarRules = {
     "sonarjs/prefer-single-boolean-return": "warn",
 };
 
+const typeScriptComplexityRules = {
+    complexity: ["error", { max: 25, variant: "modified" }],
+    "sonarjs/cognitive-complexity": ["error", 25],
+};
+
 export default defineConfig([
     {
         ignores: ["dist/**", "coverage/**", "node_modules/**", "*.vsix"],
@@ -163,6 +168,7 @@ export default defineConfig([
             ...typeAwareSafetyRules,
             ...tsdocSyntaxRules,
             ...sonarRules,
+            ...typeScriptComplexityRules,
         },
     },
     {
@@ -209,6 +215,7 @@ export default defineConfig([
             ...typeAwareSafetyRules,
             ...tsdocSyntaxRules,
             ...sonarRules,
+            ...typeScriptComplexityRules,
             "@typescript-eslint/no-misused-promises": [
                 "error",
                 {

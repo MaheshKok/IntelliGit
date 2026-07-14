@@ -129,39 +129,57 @@ function parseFonts(
     const defaultFontId = Object.keys(out)[0];
     return { fonts: out, defaultFontId };
 }
+/** Returns a string theme property while rejecting all non-string JSON values. */
+function getThemeString(value: unknown): string | undefined {
+    return typeof value === "string" ? value : undefined;
+}
+
+/** Converts one icon-definition object into a usable icon asset or glyph descriptor. */
+function parseIconDefinition(value: unknown, baseDir: string): IconDefinition | undefined {
+    if (!value || typeof value !== "object") return undefined;
+
+    const raw = value as Record<string, unknown>;
+    const iconPath = getThemeString(raw.iconPath);
+    const fontCharacter = getThemeString(raw.fontCharacter);
+    if (!iconPath && !fontCharacter) return undefined;
+
+    return {
+        iconPath,
+        fontCharacter,
+        fontColor: getThemeString(raw.fontColor),
+        fontId: getThemeString(raw.fontId),
+        baseDir,
+    };
+}
+
+/** Parses the icon-definition map and omits entries that cannot render an icon. */
+function parseIconDefinitions(
+    rawDefinitions: unknown,
+    baseDir: string,
+): Record<string, IconDefinition> {
+    const iconDefinitions: Record<string, IconDefinition> = {};
+    if (!rawDefinitions || typeof rawDefinitions !== "object") return iconDefinitions;
+
+    for (const [iconId, definition] of Object.entries(rawDefinitions as Record<string, unknown>)) {
+        const parsedDefinition = parseIconDefinition(definition, baseDir);
+        if (parsedDefinition) iconDefinitions[iconId] = parsedDefinition;
+    }
+
+    return iconDefinitions;
+}
+
+/** Parses one icon-theme JSON section into normalized icon, font, and filename lookup maps. */
 function parseThemeSection(section: unknown, baseDir: string): ParsedIconTheme {
     if (!section || typeof section !== "object") return { ...EMPTY_THEME };
     const raw = section as Record<string, unknown>;
-    const iconDefinitions: Record<string, IconDefinition> = {};
-    const defs = raw.iconDefinitions;
-    if (defs && typeof defs === "object") {
-        for (const [iconId, def] of Object.entries(defs as Record<string, unknown>)) {
-            if (!def || typeof def !== "object") continue;
-            const typed = def as Record<string, unknown>;
-            const iconPath = typeof typed.iconPath === "string" ? typed.iconPath : undefined;
-            const fontCharacter =
-                typeof typed.fontCharacter === "string" ? typed.fontCharacter : undefined;
-            const fontColor = typeof typed.fontColor === "string" ? typed.fontColor : undefined;
-            const fontId = typeof typed.fontId === "string" ? typed.fontId : undefined;
-            if (!iconPath && !fontCharacter) continue;
-            iconDefinitions[iconId] = {
-                iconPath,
-                fontCharacter,
-                fontColor,
-                fontId,
-                baseDir,
-            };
-        }
-    }
     const parsedFonts = parseFonts(raw, baseDir);
     return {
-        iconDefinitions,
-        file: typeof raw.file === "string" ? raw.file : undefined,
-        folder: typeof raw.folder === "string" ? raw.folder : undefined,
-        folderExpanded: typeof raw.folderExpanded === "string" ? raw.folderExpanded : undefined,
-        rootFolder: typeof raw.rootFolder === "string" ? raw.rootFolder : undefined,
-        rootFolderExpanded:
-            typeof raw.rootFolderExpanded === "string" ? raw.rootFolderExpanded : undefined,
+        iconDefinitions: parseIconDefinitions(raw.iconDefinitions, baseDir),
+        file: getThemeString(raw.file),
+        folder: getThemeString(raw.folder),
+        folderExpanded: getThemeString(raw.folderExpanded),
+        rootFolder: getThemeString(raw.rootFolder),
+        rootFolderExpanded: getThemeString(raw.rootFolderExpanded),
         rootFolderNames: normalizeMap(raw.rootFolderNames),
         rootFolderNamesExpanded: normalizeMap(raw.rootFolderNamesExpanded),
         fileExtensions: normalizeMap(raw.fileExtensions),

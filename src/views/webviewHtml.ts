@@ -17,6 +17,13 @@ interface WebviewShellOptions {
     backgroundVar?: string;
 }
 
+type WebviewSettings = {
+    hoverDelay: number;
+    tooltipsEnabled: boolean;
+    iconStyle: "color" | "standard";
+    commitWindowPosition: "left" | "right";
+};
+
 /**
  * Builds the shared HTML shell for bundled IntelliGit webview applications.
  *
@@ -41,30 +48,7 @@ export function buildWebviewShellHtml({
         .map((styleUri) => `    <link rel="stylesheet" href="${escapeHtmlAttr(String(styleUri))}">`)
         .join("\n");
     const i18nPayload = getWebviewI18nPayload();
-
-    let hoverDelay = 300;
-    let tooltipsEnabled = true;
-    let iconStyle: "color" | "standard" = "standard";
-    let commitWindowPosition: "left" | "right" = "left";
-    try {
-        const config = vscode.workspace?.getConfiguration?.();
-        if (config) {
-            hoverDelay = config.get?.<number>("editor.hover.delay") ?? 300;
-            tooltipsEnabled = config.get?.<boolean>("intelligit.tooltips.enabled") !== false;
-            const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
-            iconStyle = rawIconStyle === "color" ? "color" : "standard";
-            const rawPosition = config.get?.<string>("intelligit.commitWindowPosition") ?? "auto";
-            if (rawPosition === "left" || rawPosition === "right") {
-                commitWindowPosition = rawPosition;
-            } else {
-                const sidebarLocation =
-                    config.get?.<string>("workbench.sideBar.location") ?? "left";
-                commitWindowPosition = sidebarLocation === "right" ? "right" : "left";
-            }
-        }
-    } catch {
-        // Safe fallback when workspace is not mocked or available
-    }
+    const { hoverDelay, tooltipsEnabled, iconStyle, commitWindowPosition } = readWebviewSettings();
 
     const settingsPayload = scriptSafeJson({
         hoverDelay,
@@ -111,6 +95,41 @@ ${styleLinks ? `${styleLinks}\n` : ""}
     <script nonce="${nonce}" src="${escapeHtmlAttr(String(scriptUri))}"></script>
 </body>
 </html>`;
+}
+
+/** Reads the webview bootstrap settings and returns safe defaults when workspace configuration is unavailable. */
+function readWebviewSettings(): WebviewSettings {
+    const defaults: WebviewSettings = {
+        hoverDelay: 300,
+        tooltipsEnabled: true,
+        iconStyle: "standard",
+        commitWindowPosition: "left",
+    };
+
+    try {
+        const config = vscode.workspace?.getConfiguration?.();
+        if (!config) return defaults;
+
+        const rawIconStyle = config.get?.<string>("intelligit.icons") ?? "color";
+        return {
+            hoverDelay: config.get?.<number>("editor.hover.delay") ?? defaults.hoverDelay,
+            tooltipsEnabled: config.get?.<boolean>("intelligit.tooltips.enabled") !== false,
+            iconStyle: rawIconStyle === "color" ? "color" : "standard",
+            commitWindowPosition: resolveCommitWindowPosition(config),
+        };
+    } catch {
+        return defaults;
+    }
+}
+
+/** Honors an explicit commit position or derives the automatic position from the VS Code sidebar. */
+function resolveCommitWindowPosition(
+    config: Pick<vscode.WorkspaceConfiguration, "get">,
+): "left" | "right" {
+    const rawPosition = config.get?.<string>("intelligit.commitWindowPosition") ?? "auto";
+    if (rawPosition === "left" || rawPosition === "right") return rawPosition;
+
+    return config.get?.<string>("workbench.sideBar.location") === "right" ? "right" : "left";
 }
 
 /**

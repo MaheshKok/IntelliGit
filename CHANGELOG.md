@@ -5,6 +5,13 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.2] - 2026-07-14
+
+### Changed
+
+- Added a versioned pre-push complexity gate backed by the shared ESLint configuration.
+- Refactored working-tree parsing, word-diff alignment, webview setup, and icon-theme helpers as the first 20-point complexity-ratchet phase.
+
 ## [0.18.1] - 2026-07-13
 
 ### Added

@@ -14,6 +14,20 @@ export interface RollbackPlan {
     cleanupPaths: string[];
 }
 
+type PorcelainStatusEntry = {
+    index: string;
+    worktree: string;
+    path: string;
+    sourcePath: string | undefined;
+    nextIndex: number;
+};
+
+type MutableRollbackPlan = {
+    resetPaths: Set<string>;
+    checkoutPaths: Set<string>;
+    cleanupPaths: Set<string>;
+};
+
 /**
  * Parses NUL-delimited porcelain status into IntelliGit working-file rows.
  *
@@ -26,40 +40,11 @@ export function parseWorkingTreeStatus(result: string): WorkingFile[] {
     const entries = result.split("\0");
 
     for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (!entry || entry.length < 4) continue;
+        const entry = readPorcelainStatusEntry(entries, i);
+        if (!entry) continue;
 
-        const index = entry.charAt(0);
-        const worktree = entry.charAt(1);
-        const hasStaged = index !== " " && index !== "?" && index !== "!";
-        const hasUnstaged = worktree !== " ";
-
-        const stagedStatus = mapStatusCode(index);
-        const unstagedStatus = mapStatusCode(worktree);
-        const path = entry.slice(3);
-        if (!path) continue;
-
-        if (isRenameOrCopy(index, worktree) && i + 1 < entries.length) {
-            // In porcelain -z output, rename/copy emits an extra NUL-terminated source path.
-            i += 1;
-        }
-
-        if (hasStaged && hasUnstaged) {
-            if (stagedStatus) {
-                files.push(createWorkingFile(path, stagedStatus, true));
-            }
-            // Skip only unstaged "M" for newly added files (index === 'A').
-            // A new file edited after staging is still just a new file —
-            // the duplicate "M" row is misleading. Other unstaged statuses
-            // (e.g. "D" for a staged-add then deleted) must still be shown.
-            if (unstagedStatus && !(index === "A" && unstagedStatus === "M")) {
-                files.push(createWorkingFile(path, unstagedStatus, false));
-            }
-        } else if (hasStaged && stagedStatus) {
-            files.push(createWorkingFile(path, stagedStatus, true));
-        } else if (hasUnstaged && unstagedStatus) {
-            files.push(createWorkingFile(path, unstagedStatus, false));
-        }
+        i = entry.nextIndex;
+        files.push(...toWorkingFiles(entry));
     }
 
     return files;
@@ -146,61 +131,108 @@ export function parseAlreadyStagedDeletedPaths(status: string): Set<string> {
  */
 export function planRollbackFiles(paths: string[], status: string): RollbackPlan {
     const selectedPaths = new Set(paths);
-    const cleanupPaths = new Set<string>();
-    const resetPaths = new Set<string>(paths);
-    const checkoutPaths = new Set<string>(paths);
+    const plan: MutableRollbackPlan = {
+        resetPaths: new Set(paths),
+        checkoutPaths: new Set(paths),
+        cleanupPaths: new Set(),
+    };
     const entries = status.split("\0");
 
     for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (!entry || entry.length < 4) continue;
+        const entry = readPorcelainStatusEntry(entries, i);
+        if (!entry) continue;
 
-        const index = entry.charAt(0);
-        const worktree = entry.charAt(1);
-        const path = entry.slice(3);
-        if (!path) continue;
+        i = entry.nextIndex;
+        if (!isRollbackPathSelected(entry, selectedPaths)) continue;
 
-        const sourcePath =
-            isRenameOrCopy(index, worktree) && i + 1 < entries.length ? entries[i + 1] : "";
-        if (isRenameOrCopy(index, worktree) && i + 1 < entries.length) {
-            i += 1;
-        }
-        if (!selectedPaths.has(path) && (!sourcePath || !selectedPaths.has(sourcePath))) {
-            continue;
-        }
-
-        if (index === "R" && sourcePath) {
-            resetPaths.add(path);
-            resetPaths.add(sourcePath);
-            cleanupPaths.add(path);
-            checkoutPaths.delete(path);
-            checkoutPaths.add(sourcePath);
-            continue;
-        }
-
-        if (index === "C" && sourcePath) {
-            resetPaths.add(path);
-            cleanupPaths.add(path);
-            checkoutPaths.delete(path);
-            continue;
-        }
-
-        if (index === "?" && worktree === "?") {
-            resetPaths.delete(path);
-            cleanupPaths.add(path);
-            checkoutPaths.delete(path);
-        }
-        if (index === "A") {
-            cleanupPaths.add(path);
-            checkoutPaths.delete(path);
-        }
+        applyRollbackEntry(plan, entry);
     }
 
     return {
-        resetPaths: Array.from(resetPaths),
-        checkoutPaths: Array.from(checkoutPaths),
-        cleanupPaths: Array.from(cleanupPaths),
+        resetPaths: Array.from(plan.resetPaths),
+        checkoutPaths: Array.from(plan.checkoutPaths),
+        cleanupPaths: Array.from(plan.cleanupPaths),
     };
+}
+
+/** Decodes one porcelain entry and consumes its following rename/copy source-path field when present. */
+function readPorcelainStatusEntry(
+    entries: string[],
+    entryIndex: number,
+): PorcelainStatusEntry | undefined {
+    const rawEntry = entries[entryIndex];
+    if (!rawEntry || rawEntry.length < 4) return undefined;
+
+    const index = rawEntry.charAt(0);
+    const worktree = rawEntry.charAt(1);
+    const path = rawEntry.slice(3);
+    if (!path) return undefined;
+
+    const hasSourcePath = isRenameOrCopy(index, worktree) && entryIndex + 1 < entries.length;
+    return {
+        index,
+        worktree,
+        path,
+        sourcePath: hasSourcePath ? entries[entryIndex + 1] : undefined,
+        nextIndex: hasSourcePath ? entryIndex + 1 : entryIndex,
+    };
+}
+
+/** Creates the staged and unstaged view rows implied by one parsed porcelain status entry. */
+function toWorkingFiles(entry: PorcelainStatusEntry): WorkingFile[] {
+    const files: WorkingFile[] = [];
+    const hasStaged = entry.index !== " " && entry.index !== "?" && entry.index !== "!";
+    const hasUnstaged = entry.worktree !== " ";
+    const stagedStatus = mapStatusCode(entry.index);
+    const unstagedStatus = mapStatusCode(entry.worktree);
+
+    if (hasStaged && stagedStatus) {
+        files.push(createWorkingFile(entry.path, stagedStatus, true));
+    }
+    if (hasUnstaged && unstagedStatus && !(entry.index === "A" && unstagedStatus === "M")) {
+        files.push(createWorkingFile(entry.path, unstagedStatus, false));
+    }
+
+    return files;
+}
+
+/** Returns whether either path represented by a porcelain status entry belongs to the rollback request. */
+function isRollbackPathSelected(entry: PorcelainStatusEntry, selectedPaths: Set<string>): boolean {
+    return (
+        selectedPaths.has(entry.path) ||
+        (entry.sourcePath !== undefined &&
+            entry.sourcePath.length > 0 &&
+            selectedPaths.has(entry.sourcePath))
+    );
+}
+
+/** Adds the reset, checkout, and cleanup work required by a selected porcelain status entry. */
+function applyRollbackEntry(plan: MutableRollbackPlan, entry: PorcelainStatusEntry): void {
+    if (entry.index === "R" && entry.sourcePath) {
+        plan.resetPaths.add(entry.path);
+        plan.resetPaths.add(entry.sourcePath);
+        plan.cleanupPaths.add(entry.path);
+        plan.checkoutPaths.delete(entry.path);
+        plan.checkoutPaths.add(entry.sourcePath);
+        return;
+    }
+
+    if (entry.index === "C" && entry.sourcePath) {
+        plan.resetPaths.add(entry.path);
+        plan.cleanupPaths.add(entry.path);
+        plan.checkoutPaths.delete(entry.path);
+        return;
+    }
+
+    if (entry.index === "?" && entry.worktree === "?") {
+        plan.resetPaths.delete(entry.path);
+        plan.cleanupPaths.add(entry.path);
+        plan.checkoutPaths.delete(entry.path);
+    }
+    if (entry.index === "A") {
+        plan.cleanupPaths.add(entry.path);
+        plan.checkoutPaths.delete(entry.path);
+    }
 }
 
 function createWorkingFile(

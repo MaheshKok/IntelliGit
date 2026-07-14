@@ -30,5 +30,6 @@ AGENTS.md
 
 .hermes/
 
-.githooks/
+.githooks/*
+!.githooks/pre-push
 .ruff_cache/

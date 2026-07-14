@@ -234,6 +234,19 @@ describe("GitOps", () => {
 
             expect(branches.find((branch) => branch.name === "trunk")?.isDefault).toBeUndefined();
         });
+
+        it("ignores symbolic HEAD mappings that point at another remote", async () => {
+            const output = [
+                "refs/remotes/origin/HEAD\torigin\tabc1234\t\t\t \tupstream/trunk\t1700000000",
+                "refs/remotes/upstream/trunk\tupstream/trunk\tdef5678\t\t\t \t\t1700000100",
+            ].join("\n");
+
+            const executor = createMockExecutor({ branch: output });
+            const ops = new GitOps(executor);
+            const branches = await ops.getBranches();
+
+            expect(branches.find((branch) => branch.name === "upstream/trunk")?.isDefault).toBeUndefined();
+        });
     });
 
     describe("hasUncommittedChanges", () => {

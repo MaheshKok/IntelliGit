@@ -24,6 +24,16 @@ const PANEL_MIN_HEIGHT = 190;
 const PANEL_TEXT_MAX_WIDTH = 340;
 const PANEL_MAX_HEIGHT = 360;
 
+type PanelPlacement = "left" | "right";
+type VerticalPlacement = "above" | "below" | "center";
+
+type PanelPosition = {
+    left: number;
+    top: number;
+    placement: PanelPlacement;
+    verticalPlacement: VerticalPlacement;
+};
+
 /** Renders the commit-row GitHub checks icon and its floating result popover. */
 export function CommitChecksButton({
     hash,
@@ -34,11 +44,7 @@ export function CommitChecksButton({
 }: Props): React.ReactElement | null {
     const buttonRef = React.useRef<HTMLButtonElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
-    const [position, setPosition] = React.useState<{
-        left: number;
-        top: number;
-        placement: "above" | "below";
-    } | null>(null);
+    const [position, setPosition] = React.useState<PanelPosition | null>(null);
     const closePanel = React.useCallback(() => setPosition(null), []);
 
     const state = checks && checks !== "loading" ? checks.state : "pending";
@@ -49,17 +55,27 @@ export function CommitChecksButton({
         const button = buttonRef.current;
         if (!button) return;
         const rect = button.getBoundingClientRect();
-        const placement =
-            rect.bottom + PANEL_MAX_HEIGHT + 10 < window.innerHeight ? "below" : "above";
         const panelWidth = Math.min(PANEL_MAX_WIDTH, window.innerWidth - 16);
-        const panelHeight = Math.min(PANEL_MAX_HEIGHT, Math.max(0, window.innerHeight - 16));
+        const placement =
+            rect.left >= PANEL_MAX_WIDTH + 16 || rect.right + 8 + panelWidth > window.innerWidth
+                ? "left"
+                : "right";
+        const verticalPlacement =
+            rect.top < PANEL_MAX_HEIGHT / 2 + 8
+                ? "below"
+                : rect.bottom > window.innerHeight - PANEL_MAX_HEIGHT / 2 - 8
+                  ? "above"
+                  : "center";
         setPosition({
-            left: Math.min(
-                Math.max(8, rect.right - panelWidth),
-                window.innerWidth - panelWidth - 8,
-            ),
-            top: placement === "below" ? rect.bottom + 6 : Math.max(panelHeight + 8, rect.top - 6),
+            left: placement === "left" ? rect.left - 8 : rect.right + 8,
+            top:
+                verticalPlacement === "below"
+                    ? rect.top
+                    : verticalPlacement === "above"
+                      ? rect.bottom
+                      : rect.top + rect.height / 2,
             placement,
+            verticalPlacement,
         });
         if (!checks) onRequestChecks(hash);
     };
@@ -96,18 +112,25 @@ export function CommitChecksButton({
     }, [closePanel, position]);
 
     if (checks && checks !== "loading" && checks.state === "none" && checks.items.length === 0) {
-        return null;
+        return (
+            <span
+                aria-hidden="true"
+                style={checkSlotStyle}
+                data-testid={`commit-checks-slot-${hash}`}
+            />
+        );
     }
 
     return (
-        <>
+        <span style={checkSlotStyle}>
             <button
                 ref={buttonRef}
                 type="button"
                 title={buttonTitle}
                 aria-label={buttonLabel}
+                aria-expanded={position !== null}
                 onClick={toggleChecksPanel}
-                style={buttonStyle}
+                style={position ? activeButtonStyle : buttonStyle}
                 data-testid={`commit-checks-button-${hash}`}
             >
                 <StateIcon state={state} />
@@ -116,6 +139,7 @@ export function CommitChecksButton({
                 createPortal(
                     <CommitChecksPanel
                         panelRef={panelRef}
+                        hash={hash}
                         checks={checks}
                         position={position}
                         onOpenCheckUrl={onOpenCheckUrl}
@@ -123,80 +147,124 @@ export function CommitChecksButton({
                     />,
                     document.body,
                 )}
-        </>
+        </span>
     );
 }
 
+/** Renders the checks callout beside its trigger with a border-integrated notch. */
 function CommitChecksPanel({
     panelRef,
+    hash,
     checks,
     position,
     onOpenCheckUrl,
     onSignIn,
 }: {
     panelRef: React.RefObject<HTMLDivElement>;
+    hash: string;
     checks?: CommitChecksValue;
-    position: { left: number; top: number; placement: "above" | "below" };
+    position: PanelPosition;
     onOpenCheckUrl: (url: string) => void;
     onSignIn?: (host: string) => void;
 }): React.ReactElement {
     const snapshot = checks && checks !== "loading" ? checks : undefined;
     const signInHost =
         snapshot && snapshot.state === "unavailable" ? snapshot.signInHost : undefined;
+    const transform = `${position.placement === "left" ? "translateX(-100%) " : ""}${
+        position.verticalPlacement === "center"
+            ? "translateY(-50%)"
+            : position.verticalPlacement === "above"
+              ? "translateY(-100%)"
+              : ""
+    }`.trim();
+    const caretTop =
+        position.verticalPlacement === "below"
+            ? 12
+            : position.verticalPlacement === "above"
+              ? "calc(100% - 12px)"
+              : "50%";
     return (
         <div
             ref={panelRef}
             style={{
-                ...panelStyle,
+                ...panelContainerStyle,
                 left: position.left,
                 top: position.top,
-                transform: position.placement === "above" ? "translateY(-100%)" : undefined,
+                transform,
             }}
             onClick={(event) => event.stopPropagation()}
+            data-testid="commit-checks-popover"
         >
-            <div style={titleStyle}>{t("commit.checks.title")}</div>
-            <div style={bodyStyle}>
-                {checks === "loading" || !checks ? (
-                    <div style={emptyStyle}>{t("commit.checks.loading")}</div>
-                ) : snapshot && snapshot.items.length > 0 ? (
-                    snapshot.items.map((item, index) => {
-                        const itemUrl = item.url;
-                        return (
-                            <div key={`${item.source}:${item.name}:${index}`} style={rowStyle}>
-                                <StateIcon state={item.state} />
-                                <div style={rowTextStyle}>
-                                    {itemUrl ? (
-                                        <button
-                                            type="button"
-                                            style={linkButtonStyle}
-                                            onClick={() => onOpenCheckUrl(itemUrl)}
-                                        >
-                                            {item.name}
-                                        </button>
-                                    ) : (
-                                        <span style={nameStyle}>{item.name}</span>
-                                    )}
-                                    {item.description ? (
-                                        <span style={descriptionStyle}>{item.description}</span>
-                                    ) : null}
+            <span
+                aria-hidden="true"
+                data-testid="commit-checks-popover-caret-border"
+                style={{
+                    ...caretBorderStyle,
+                    top: caretTop,
+                    ...(position.placement === "left"
+                        ? { right: -12, borderLeftColor: JETBRAINS_UI.color.tooltipBorder }
+                        : { left: -12, borderRightColor: JETBRAINS_UI.color.tooltipBorder }),
+                }}
+            />
+            <span
+                aria-hidden="true"
+                data-testid="commit-checks-popover-caret-fill"
+                style={{
+                    ...caretFillStyle,
+                    top: caretTop,
+                    ...(position.placement === "left"
+                        ? { right: -10, borderLeftColor: JETBRAINS_UI.color.panel }
+                        : { left: -10, borderRightColor: JETBRAINS_UI.color.panel }),
+                }}
+            />
+            <div style={panelStyle}>
+                <div style={titleStyle}>
+                    {t("commit.checks.title")}
+                    <span style={panelHashStyle}>{hash.slice(0, 7)}</span>
+                </div>
+                <div style={bodyStyle}>
+                    {checks === "loading" || !checks ? (
+                        <div style={emptyStyle}>{t("commit.checks.loading")}</div>
+                    ) : snapshot && snapshot.items.length > 0 ? (
+                        snapshot.items.map((item, index) => {
+                            const itemUrl = item.url;
+                            return (
+                                <div key={`${item.source}:${item.name}:${index}`} style={rowStyle}>
+                                    <StateIcon state={item.state} />
+                                    <div style={rowTextStyle}>
+                                        {itemUrl ? (
+                                            <button
+                                                type="button"
+                                                style={linkButtonStyle}
+                                                onClick={() => onOpenCheckUrl(itemUrl)}
+                                            >
+                                                {item.name}
+                                            </button>
+                                        ) : (
+                                            <span style={nameStyle}>{item.name}</span>
+                                        )}
+                                        {item.description ? (
+                                            <span style={descriptionStyle}>{item.description}</span>
+                                        ) : null}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })
-                ) : (
-                    <div style={emptyStyle}>
-                        {snapshot?.error ?? snapshot?.summary ?? t("commit.checks.none")}
-                        {signInHost && onSignIn ? (
-                            <button
-                                type="button"
-                                style={signInButtonStyle}
-                                onClick={() => onSignIn(signInHost)}
-                            >
-                                {t("commit.checks.signIn")}
-                            </button>
-                        ) : null}
-                    </div>
-                )}
+                            );
+                        })
+                    ) : (
+                        <div style={emptyStyle}>
+                            {snapshot?.error ?? snapshot?.summary ?? t("commit.checks.none")}
+                            {signInHost && onSignIn ? (
+                                <button
+                                    type="button"
+                                    style={signInButtonStyle}
+                                    onClick={() => onSignIn(signInHost)}
+                                >
+                                    {t("commit.checks.signIn")}
+                                </button>
+                            ) : null}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -254,23 +322,41 @@ function colorForState(state?: CommitCheckState): string {
     }
 }
 
-const buttonStyle: React.CSSProperties = {
+const checkSlotStyle: React.CSSProperties = {
     width: 24,
     height: 24,
-    border: "none",
-    background: "transparent",
-    color: JETBRAINS_UI.color.muted,
-    padding: 0,
     marginLeft: 4,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer",
     flexShrink: 0,
 };
 
-const panelStyle: React.CSSProperties = {
+const buttonStyle: React.CSSProperties = {
+    width: 24,
+    height: 24,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "none",
+    background: "transparent",
+    color: JETBRAINS_UI.color.muted,
+    padding: 0,
+    cursor: "pointer",
+};
+
+const activeButtonStyle: React.CSSProperties = {
+    ...buttonStyle,
+    background: "color-mix(in srgb, var(--vscode-textLink-foreground) 20%, transparent)",
+    borderRadius: 4,
+};
+
+const panelContainerStyle: React.CSSProperties = {
     position: "fixed",
+    zIndex: 10000,
+};
+
+const panelStyle: React.CSSProperties = {
     width: "max-content",
     minWidth: PANEL_MIN_WIDTH,
     minHeight: PANEL_MIN_HEIGHT,
@@ -282,7 +368,34 @@ const panelStyle: React.CSSProperties = {
     border: `1px solid ${JETBRAINS_UI.color.tooltipBorder}`,
     borderRadius: 8,
     boxShadow: "0 18px 46px rgba(0,0,0,0.5)",
-    zIndex: 10000,
+    position: "relative",
+    zIndex: 2,
+};
+
+const caretBorderStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 0,
+    height: 0,
+    borderTop: "12px solid transparent",
+    borderBottom: "12px solid transparent",
+    borderLeft: "12px solid transparent",
+    borderRight: "12px solid transparent",
+    zIndex: 0,
+};
+
+const caretFillStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 0,
+    height: 0,
+    borderTop: "10px solid transparent",
+    borderBottom: "10px solid transparent",
+    borderLeft: "10px solid transparent",
+    borderRight: "10px solid transparent",
+    zIndex: 1,
 };
 
 const titleStyle: React.CSSProperties = {
@@ -292,6 +405,14 @@ const titleStyle: React.CSSProperties = {
     fontWeight: 700,
     background: "var(--vscode-textLink-foreground)",
     color: "var(--vscode-button-foreground)",
+};
+
+const panelHashStyle: React.CSSProperties = {
+    marginLeft: 8,
+    fontFamily: "var(--vscode-editor-font-family, monospace)",
+    fontSize: 12,
+    fontWeight: 500,
+    opacity: 0.9,
 };
 
 const bodyStyle: React.CSSProperties = {

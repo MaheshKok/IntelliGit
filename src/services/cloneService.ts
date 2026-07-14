@@ -391,6 +391,11 @@ function fetchGitHubRepos(token: string): Promise<GitHubRepo[]> {
 const GITLAB_TOKEN_SECRET_KEY = "intelligit.gitlab.personalAccessToken";
 const GITLAB_CLONE_HOST = "gitlab.com";
 
+type GitLabTokenSelection = {
+    token: string;
+    useLegacyFallback: boolean;
+};
+
 /**
  * Validates the GitLab HTTPS clone URL accepted by the GitLab clone prompt.
  *
@@ -416,71 +421,68 @@ function validateGitLabHttpsCloneUrl(value: string): string | undefined {
 }
 
 /**
- * Handles the GitLab clone path with token lookup, optional secure storage, and HTTPS cloning.
+ * Resolves a saved-token choice without treating an explicit replacement request as a legacy fallback.
  *
- * The flow first tries `SecretStorage`, then migrates the legacy setting when
- * present, and finally prompts for a personal access token. Any prompt
- * cancellation stops the workflow without mutating the filesystem.
+ * Returning `undefined` means the user cancelled or cleared their saved token and the clone flow must stop.
  */
-async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
-    let token = "";
+async function selectSavedGitLabToken(
+    secrets?: vscode.SecretStorage,
+): Promise<GitLabTokenSelection | undefined> {
+    const emptySelection = { token: "", useLegacyFallback: true };
+    if (!secrets) return emptySelection;
 
-    // Try SecretStorage first
-    if (secrets) {
-        try {
-            const stored = await secrets.get(GITLAB_TOKEN_SECRET_KEY);
-            if (stored) {
-                const use = await vscode.window.showQuickPick(
-                    [
-                        {
-                            label: vscode.l10n.t("Use Saved Token"),
-                            description: "********",
-                            value: "saved" as const,
-                        },
-                        { label: vscode.l10n.t("Enter a Different Token"), value: "new" as const },
-                        { label: vscode.l10n.t("Clear Saved Token"), value: "clear" as const },
-                    ],
-                    { placeHolder: vscode.l10n.t("GitLab authentication") },
-                );
-                if (!use) return;
-                if (use.value === "clear") {
-                    await secrets.delete(GITLAB_TOKEN_SECRET_KEY);
-                    showTimedInformationMessage(vscode.l10n.t("Saved GitLab token cleared."));
-                    return;
-                }
-                if (use.value === "saved") {
-                    token = stored;
-                }
-            }
-        } catch {
-            // SecretStorage unavailable — proceed to manual entry
+    try {
+        const stored = await secrets.get(GITLAB_TOKEN_SECRET_KEY);
+        if (!stored) return emptySelection;
+
+        const selection = await vscode.window.showQuickPick(
+            [
+                {
+                    label: vscode.l10n.t("Use Saved Token"),
+                    description: "********",
+                    value: "saved" as const,
+                },
+                { label: vscode.l10n.t("Enter a Different Token"), value: "new" as const },
+                { label: vscode.l10n.t("Clear Saved Token"), value: "clear" as const },
+            ],
+            { placeHolder: vscode.l10n.t("GitLab authentication") },
+        );
+        if (!selection) return undefined;
+        if (selection.value === "clear") {
+            await secrets.delete(GITLAB_TOKEN_SECRET_KEY);
+            showTimedInformationMessage(vscode.l10n.t("Saved GitLab token cleared."));
+            return undefined;
         }
+
+        return {
+            token: selection.value === "saved" ? stored : "",
+            useLegacyFallback: selection.value !== "new",
+        };
+    } catch {
+        return emptySelection;
+    }
+}
+
+/** Migrates the legacy GitLab token into SecretStorage when available and still returns it on failure. */
+async function getLegacyGitLabToken(secrets?: vscode.SecretStorage): Promise<string> {
+    const config = vscode.workspace.getConfiguration("intelligit");
+    const legacyToken = config.get<string>("gitlab.personalAccessToken") || "";
+    if (!legacyToken || !secrets) return legacyToken;
+
+    try {
+        await secrets.store(GITLAB_TOKEN_SECRET_KEY, legacyToken);
+        await config.update("gitlab.personalAccessToken", undefined, true);
+    } catch {
+        // The legacy token remains usable for this clone when secure migration is unavailable.
     }
 
-    // Fallback: check legacy settings location
-    if (!token) {
-        const config = vscode.workspace.getConfiguration("intelligit");
-        const legacyToken = config.get<string>("gitlab.personalAccessToken") || "";
-        if (legacyToken) {
-            // Migrate to SecretStorage
-            if (secrets) {
-                try {
-                    await secrets.store(GITLAB_TOKEN_SECRET_KEY, legacyToken);
-                    await config.update("gitlab.personalAccessToken", undefined, true);
-                    token = legacyToken;
-                } catch {
-                    // Migration failed — still use the legacy token this time
-                    token = legacyToken;
-                }
-            } else {
-                token = legacyToken;
-            }
-        }
-    }
+    return legacyToken;
+}
 
-    // Prompt for token if still not set
-    if (!token) {
-        const input = await vscode.window.showInputBox({
+/** Prompts for a new GitLab token and offers best-effort secure storage after a successful entry. */
+async function promptForGitLabToken(secrets?: vscode.SecretStorage): Promise<string | undefined> {
+    const token = (
+        await vscode.window.showInputBox({
             prompt: vscode.l10n.t(
                 "Enter your GitLab Personal Access Token (requires read_repository scope)",
             ),
@@ -490,27 +492,48 @@ async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
                 if (!value.trim()) return vscode.l10n.t("Token is required");
                 return undefined;
             },
-        });
-        if (!input) return;
-        token = input;
+        })
+    )?.trim();
+    if (!token) return undefined;
+    if (!secrets) return token;
 
-        // Save to SecretStorage
-        if (secrets) {
-            const saveAction = vscode.l10n.t("Save");
-            const dontSaveAction = vscode.l10n.t("Don't Save");
-            const save = await vscode.window.showInformationMessage(
-                vscode.l10n.t("Save this token for future use?"),
-                saveAction,
-                dontSaveAction,
-            );
-            if (save === saveAction) {
-                try {
-                    await secrets.store(GITLAB_TOKEN_SECRET_KEY, token);
-                } catch {
-                    showTimedWarningMessage(vscode.l10n.t("Could not save token securely."));
-                }
-            }
-        }
+    const saveAction = vscode.l10n.t("Save");
+    const dontSaveAction = vscode.l10n.t("Don't Save");
+    const save = await vscode.window.showInformationMessage(
+        vscode.l10n.t("Save this token for future use?"),
+        saveAction,
+        dontSaveAction,
+    );
+    if (save !== saveAction) return token;
+
+    try {
+        await secrets.store(GITLAB_TOKEN_SECRET_KEY, token);
+    } catch {
+        showTimedWarningMessage(vscode.l10n.t("Could not save token securely."));
+    }
+
+    return token;
+}
+
+/**
+ * Handles the GitLab clone path with token lookup, optional secure storage, and HTTPS cloning.
+ *
+ * The flow first tries `SecretStorage`, then migrates the legacy setting when
+ * present, and finally prompts for a personal access token. Any prompt
+ * cancellation stops the workflow without mutating the filesystem.
+ */
+async function cloneViaGitLab(secrets?: vscode.SecretStorage): Promise<void> {
+    const savedToken = await selectSavedGitLabToken(secrets);
+    if (!savedToken) return;
+
+    let token = savedToken.token;
+    if (!token && savedToken.useLegacyFallback) {
+        token = await getLegacyGitLabToken(secrets);
+    }
+    if (!token) {
+        const promptedToken = await promptForGitLabToken(secrets);
+        if (!promptedToken) return;
+        token = promptedToken;
     }
 
     const cloneUrl = await vscode.window.showInputBox({

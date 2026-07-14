@@ -428,6 +428,41 @@ describe("cloneService phase 3", () => {
         );
     });
 
+    it("prompts for a replacement GitLab token instead of reusing a legacy token", async () => {
+        const secrets = secretStorage("saved-token");
+        mocks.configValues.set("gitlab.personalAccessToken", "legacy-token");
+        mocks.showQuickPick
+            .mockResolvedValueOnce({ provider: "gitlab" })
+            .mockResolvedValueOnce({ value: "new" });
+        mocks.showInputBox
+            .mockResolvedValueOnce("replacement-token")
+            .mockResolvedValueOnce("https://gitlab.com/group/repo.git");
+
+        await runCloneFlow(secrets as never);
+
+        const execOptions = mocks.execFile.mock.calls[0][2] as { env: Record<string, string> };
+        expect(execOptions.env.INTELLIGIT_GIT_TOKEN).toBe("replacement-token");
+        expect(mocks.configUpdate).not.toHaveBeenCalled();
+    });
+
+    it("trims prompted GitLab tokens before saving and cloning", async () => {
+        const secrets = secretStorage();
+        mocks.showQuickPick.mockResolvedValueOnce({ provider: "gitlab" });
+        mocks.showInputBox
+            .mockResolvedValueOnce("  replacement-token  ")
+            .mockResolvedValueOnce("https://gitlab.com/group/repo.git");
+        mocks.showInformationMessage.mockResolvedValueOnce("Save");
+
+        await runCloneFlow(secrets as never);
+
+        expect(secrets.store).toHaveBeenCalledWith(
+            "intelligit.gitlab.personalAccessToken",
+            "replacement-token",
+        );
+        const execOptions = mocks.execFile.mock.calls[0][2] as { env: Record<string, string> };
+        expect(execOptions.env.INTELLIGIT_GIT_TOKEN).toBe("replacement-token");
+    });
+
     it("aborts when destination access fails for a reason other than missing directory", async () => {
         mocks.showQuickPick.mockResolvedValueOnce({ provider: "ssh" });
         mocks.showInputBox.mockResolvedValueOnce("git@github.com:user/repo.git");
