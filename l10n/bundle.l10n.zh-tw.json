@@ -425,5 +425,8 @@
     "Reset index; keep working-tree changes.": "重設索引；保留工作樹變更。",
     "Discard index and working-tree changes.": "丟棄索引和工作樹變更。",
     "Keep non-conflicting local changes.": "保留無衝突的本機變更。",
-    "Abort if affected files have local changes.": "如果受影響的檔案有本機變更則中止。"
+    "Abort if affected files have local changes.": "如果受影響的檔案有本機變更則中止。",
+    "Deleting worktree {path}...": "正在刪除 Worktree {path}...",
+    "Locking worktree {path}...": "正在鎖定 Worktree {path}...",
+    "Moving worktree {path}...": "正在移動 Worktree {path}..."
 }

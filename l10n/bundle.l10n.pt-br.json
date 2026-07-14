@@ -425,5 +425,8 @@
     "Reset index; keep working-tree changes.": "Redefinir o índice; manter as alterações da árvore de trabalho.",
     "Discard index and working-tree changes.": "Descartar alterações do índice e da árvore de trabalho.",
     "Keep non-conflicting local changes.": "Manter alterações locais sem conflito.",
-    "Abort if affected files have local changes.": "Interromper se os arquivos afetados tiverem alterações locais."
+    "Abort if affected files have local changes.": "Interromper se os arquivos afetados tiverem alterações locais.",
+    "Deleting worktree {path}...": "Excluindo worktree {path}...",
+    "Locking worktree {path}...": "Bloqueando worktree {path}...",
+    "Moving worktree {path}...": "Movendo worktree {path}..."
 }

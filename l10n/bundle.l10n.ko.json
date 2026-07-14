@@ -425,5 +425,8 @@
     "Reset index; keep working-tree changes.": "인덱스를 재설정하고 작업 트리 변경 사항은 유지합니다.",
     "Discard index and working-tree changes.": "인덱스와 작업 트리 변경 사항을 버립니다.",
     "Keep non-conflicting local changes.": "충돌하지 않는 로컬 변경 사항을 유지합니다.",
-    "Abort if affected files have local changes.": "영향을 받는 파일에 로컬 변경 사항이 있으면 중단합니다."
+    "Abort if affected files have local changes.": "영향을 받는 파일에 로컬 변경 사항이 있으면 중단합니다.",
+    "Deleting worktree {path}...": "워크트리 {path} 삭제 중...",
+    "Locking worktree {path}...": "워크트리 {path} 잠금 중...",
+    "Moving worktree {path}...": "워크트리 {path} 이동 중..."
 }
