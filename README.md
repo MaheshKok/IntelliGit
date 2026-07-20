@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <strong>The best Git features from PyCharm, VS Code, and Visual Studio IDE.</strong><br />
-  A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who want powerful IDE Git inside VS Code.
+  <strong>JetBrains-style three-pane merge resolution and a complete Git workbench for VS Code.</strong><br />
+  Compare Yours and Theirs side by side, edit the Result in the center, then continue through commits, branches, worktrees, shelves, history, and CI checks in one focused workspace.
 </p>
 
 <p align="center">
@@ -31,10 +31,12 @@
 </p>
 
 <p align="center">
-  <img src="media/screenshots/commit-actions.png" alt="IntelliGit commit action menu" />
+  <img src="media/screenshots/three-pane-merge-editor.png" alt="IntelliGit three-pane merge editor showing Yours, editable Result, and Theirs side by side" />
 </p>
 
-IntelliGit brings the best Git workflow ideas from PyCharm, VS Code, and Visual Studio IDE into one VS Code extension: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
+IntelliGit keeps complex conflict resolution in one horizontal view. Yours, the editable Result, and Theirs stay visible side by side, with aligned conflict bands, visual connectors, conflict navigation, and explicit apply or abort controls.
+
+After the merge, the same extension provides the rest of the daily Git workflow: a focused commit panel, readable branch graph, branch and commit actions, shelf-style parking, worktree management, changed files, commit details, and CI checks.
 
 It does not try to replace Git. It gives the daily Git work a better cockpit.
 
@@ -49,7 +51,7 @@ IntelliGit pulls those workflows into one JetBrains-inspired surface:
 - Act on branches and commits from the graph instead of jumping back to the command line.
 - Park unfinished work with a shelf-style stash workflow.
 - Handle risky history operations with availability rules and confirmations.
-- Open conflicts in the built-in merge editor or VS Code's native merge editor.
+- Resolve conflicts in a horizontal three-pane editor with Yours, an editable Result, and Theirs visible together, or open VS Code's native merge editor.
 
 ## Feature Gallery
 
@@ -129,7 +131,7 @@ add the remote, and push the selected branch through one guided flow.
 | Branches          | Checkout, new branch, checkout-and-rebase, rebase, merge, update, push, rename, delete                                                                             |
 | Commits           | Copy hash, create patch, cherry-pick, checkout revision, reset, revert, push up to here, undo, edit message, squash, drop, interactive rebase, new branch, new tag |
 | Worktrees         | Create, create from branch, delete, lock, unlock, move, prune, repair                                                                                              |
-| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, built-in merge editor, VS Code native merge editor                                                           |
+| Merge conflicts   | Conflict tree, conflict sessions, horizontal Yours/Result/Theirs editor, editable result, accept yours/theirs, VS Code native merge editor                         |
 | Hosting           | Clone repository, initialize repository, publish branch, create remote repositories/projects                                                                       |
 | Commit checks     | GitHub, GitLab, Bitbucket Cloud, Bitbucket Server, self-hosted host mapping, CI/CD status popovers                                                                 |
 | Layout            | Activity bar view, bottom graph panel, unified undocked workbench tab                                                                                              |
