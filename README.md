@@ -31,12 +31,10 @@
 </p>
 
 <p align="center">
-  <img src="media/screenshots/three-pane-merge-editor.png" alt="IntelliGit three-pane merge editor showing Yours, editable Result, and Theirs side by side" />
+  <img src="media/screenshots/commit-actions.png" alt="IntelliGit commit action menu" />
 </p>
 
-IntelliGit keeps complex conflict resolution in one horizontal view. Yours, the editable Result, and Theirs stay visible side by side, with aligned conflict bands, visual connectors, conflict navigation, and explicit apply or abort controls.
-
-After the merge, the same extension provides the rest of the daily Git workflow: a focused commit panel, readable branch graph, branch and commit actions, shelf-style parking, worktree management, changed files, commit details, and CI checks.
+IntelliGit combines a JetBrains-style three-pane merge editor with a complete Git workbench. Resolve conflicts in a horizontal Yours/Result/Theirs view, then continue through commits, branches, worktrees, shelves, history, and CI checks without switching tools.
 
 It does not try to replace Git. It gives the daily Git work a better cockpit.
 
@@ -46,14 +44,23 @@ VS Code is fast and flexible, but Git work often ends up split across the Source
 
 IntelliGit pulls those workflows into one JetBrains-inspired surface:
 
-- Build clean commits from a focused file tree with staging, rollback, amend, commit, and commit-and-push.
-- Browse history in a visual commit graph with branch lanes, search, filters, metadata, and changed files.
-- Act on branches and commits from the graph instead of jumping back to the command line.
-- Park unfinished work with a shelf-style stash workflow.
-- Handle risky history operations with availability rules and confirmations.
-- Resolve conflicts in a horizontal three-pane editor with Yours, an editable Result, and Theirs visible together, or open VS Code's native merge editor.
+- A focused commit panel for staging, rollback, amend, commit, and push.
+- An actionable commit graph with branch and history operations.
+- Shelf/stash and worktree workflows.
+- A three-pane merge-conflict editor — **Yours, editable Result, and Theirs side by side**.
+- **CI check status for GitHub, GitLab, and Bitbucket.**
+- A unified workbench that can be moved to another monitor.
 
 ## Feature Gallery
+
+### Three-Pane Merge Editor
+
+![IntelliGit three-pane merge editor showing Yours, editable Result, and Theirs side by side](media/screenshots/three-pane-merge-editor.png)
+
+Resolve complex conflicts without stacking or switching editors. Yours, the
+editable Result, and Theirs stay visible side by side, with aligned conflict
+bands, visual connectors, conflict navigation, and explicit apply or abort
+controls.
 
 ### Commit Panel
 
