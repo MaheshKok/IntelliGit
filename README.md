@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <strong>JetBrains-style three-pane merge resolution and a complete Git workbench for VS Code.</strong><br />
-  Compare Yours and Theirs side by side, edit the Result in the center, then continue through commits, branches, worktrees, shelves, history, and CI checks in one focused workspace.
+  <strong>The best Git features from Jetbrains, VS Code, and Visual Studio IDE.</strong><br />
+  A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who want powerful IDE Git inside VS Code.
 </p>
 
 <p align="center">
