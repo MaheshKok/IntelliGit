@@ -227,6 +227,7 @@ export function RepositoryAccordion({
     const stashContent = (
         <StashTab
             repositoryRoot={repository.root || undefined}
+            currentBranchName={repository.currentBranchName}
             stashes={repository.stashes}
             stashFiles={repository.stashFiles}
             selectedIndex={repository.selectedStashIndex}

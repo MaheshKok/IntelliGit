@@ -62,10 +62,13 @@ import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
+    executeStashMutationRequest,
     rollbackFromPanel,
     runGitOperationFromPanel,
     stashMutationFromPanel,
+    stashMutationFromUnstashMessage,
     stashSaveFromPanel,
+    type StashMutation,
 } from "./commitPanelActions";
 import {
     deleteFileFromPanel,
@@ -618,6 +621,23 @@ export class UndockedViewProvider {
      * overwritten by default webview measurements. Path arrays, stash indexes, commit hashes, and
      * branch action names are validated before any Git or VS Code command boundary is crossed.
      */
+    /** Runs a correlated stash mutation and posts a rootless completion for the active pane. */
+    private runStashMutationRequest(
+        mutation: StashMutation,
+        requestIdValue: unknown,
+    ): Promise<void> {
+        return executeStashMutationRequest(
+            {
+                gitOps: this.gitOps,
+                refreshData: () => this.refreshCommitPanelData(),
+                fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+            },
+            mutation,
+            requestIdValue,
+            (requestId) => this.postToWebview({ type: "stashMutationCompleted", requestId }),
+        );
+    }
+
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
         const actionDeps = {
             gitOps: this.gitOps,
@@ -837,17 +857,34 @@ export class UndockedViewProvider {
                 break;
             }
             case "stashPop":
-                await stashMutationFromPanel(actionDeps, "pop", assertNumber(msg.index, "index"));
+                await stashMutationFromPanel(actionDeps, {
+                    action: "pop",
+                    index: assertNumber(msg.index, "index"),
+                    reinstateIndex: false,
+                });
                 break;
             case "stashApply":
-                await stashMutationFromPanel(actionDeps, "apply", assertNumber(msg.index, "index"));
+                await stashMutationFromPanel(actionDeps, {
+                    action: "apply",
+                    index: assertNumber(msg.index, "index"),
+                    reinstateIndex: false,
+                });
                 break;
             case "stashDelete":
-                await stashMutationFromPanel(
-                    actionDeps,
-                    "delete",
-                    assertNumber(msg.index, "index"),
+                await this.runStashMutationRequest(
+                    { action: "delete", index: assertNumber(msg.index, "index") },
+                    msg.requestId,
                 );
+                break;
+            case "stashUnstash": {
+                await this.runStashMutationRequest(
+                    stashMutationFromUnstashMessage(msg),
+                    msg.requestId,
+                );
+                break;
+            }
+            case "stashClear":
+                await this.runStashMutationRequest({ action: "clear" }, msg.requestId);
                 break;
             case "stashSelect": {
                 await selectStashFromPanel(
@@ -868,7 +905,12 @@ export class UndockedViewProvider {
                 break;
             }
             case "showStashDiff":
-                await showStashDiffFromPanel(fileActionDeps, msg.index, msg.path);
+                await showStashDiffFromPanel(
+                    fileActionDeps,
+                    msg.index,
+                    msg.path,
+                    msg.preview !== false,
+                );
                 break;
             case "openFile":
                 await openFileFromPanel(fileActionDeps, msg.path);

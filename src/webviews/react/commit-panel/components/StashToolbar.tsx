@@ -1,34 +1,31 @@
-// Renders the stash tab toolbar controls for diff, grouping, and tree expansion.
-// The parent owns all state changes and passes stable command callbacks.
-// Keeping the toolbar presentational avoids changing stash action behavior.
+// Neutral file-pane toolbar between the stash list and selected-file pane.
 
 import React from "react";
 import { Box, Flex, IconButton, Tooltip } from "@chakra-ui/react";
 import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
-import { getSettings } from "../../shared/settings";
 import { t } from "../../shared/i18n";
 
-/** Props for stash toolbar command buttons and tooltip timing. */
+/** Props for selected-stash file-pane toolbar controls. */
 export interface StashToolbarProps {
     selectedIndex: number | null;
-    stashFilesLength: number;
     groupByDir: boolean;
+    hasGroupedDirectories: boolean;
     hoverDelay: number;
     tooltipsEnabled: boolean;
-    onShowSelectedDiff: () => void;
+    onShowStashDiff: () => void;
     onToggleGroupBy: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
 }
 
-/** Renders the stash tab's compact toolbar buttons. */
+/** Renders neutral selected-stash file toolbar controls. */
 export function StashToolbar({
     selectedIndex,
-    stashFilesLength,
     groupByDir,
+    hasGroupedDirectories,
     hoverDelay,
     tooltipsEnabled,
-    onShowSelectedDiff,
+    onShowStashDiff,
     onToggleGroupBy,
     onExpandAll,
     onCollapseAll,
@@ -44,9 +41,8 @@ export function StashToolbar({
         >
             <StashToolbarButton
                 label={t("common.showDiff")}
-                color="#ff736d"
-                onClick={onShowSelectedDiff}
-                isDisabled={selectedIndex === null || stashFilesLength === 0}
+                onClick={onShowStashDiff}
+                isDisabled={selectedIndex === null}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
@@ -57,7 +53,6 @@ export function StashToolbar({
             </StashToolbarButton>
             <StashToolbarButton
                 label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
-                color="#b77dff"
                 onClick={onToggleGroupBy}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
@@ -70,8 +65,8 @@ export function StashToolbar({
             <Box flex={1} />
             <StashToolbarButton
                 label={t("common.expandAll")}
-                color="#f3b1cf"
                 onClick={onExpandAll}
+                isDisabled={selectedIndex === null || !hasGroupedDirectories}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
@@ -79,8 +74,8 @@ export function StashToolbar({
             </StashToolbarButton>
             <StashToolbarButton
                 label={t("common.collapseAll")}
-                color="#f3b1cf"
                 onClick={onCollapseAll}
+                isDisabled={selectedIndex === null || !hasGroupedDirectories}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
@@ -90,9 +85,9 @@ export function StashToolbar({
     );
 }
 
+/** Renders one theme-neutral stash toolbar icon button. */
 function StashToolbarButton({
     label,
-    color,
     onClick,
     isDisabled,
     hoverDelay,
@@ -100,15 +95,12 @@ function StashToolbarButton({
     children,
 }: {
     label: string;
-    color: string;
     onClick: () => void;
     isDisabled?: boolean;
     hoverDelay: number;
     tooltipsEnabled: boolean;
     children: React.ReactNode;
 }): React.ReactElement {
-    const { iconStyle } = getSettings();
-    const resolvedColor = iconStyle === "standard" ? "var(--vscode-icon-foreground)" : color;
     return (
         <Tooltip label={label} fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
             <IconButton
@@ -118,7 +110,8 @@ function StashToolbarButton({
                         width="16"
                         height="16"
                         viewBox="0 0 16 16"
-                        style={{ color: resolvedColor }}
+                        aria-hidden
+                        style={{ color: "var(--vscode-icon-foreground)" }}
                     >
                         {children}
                     </svg>

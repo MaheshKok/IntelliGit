@@ -247,5 +247,16 @@
     "common.show": "Show",
     "status.ignored": "Ignored",
     "commitPanel.ignoredFiles": "Ignored Files",
-    "merge.action.abortMerge": "Przerwij scalanie"
+    "merge.action.abortMerge": "Przerwij scalanie",
+    "stash.files": "Pliki w wybranym schowku",
+    "stash.action.applyStash": "Zastosuj schowek",
+    "stash.action.popStash": "Zastosuj i usuń schowek",
+    "stash.action.branch": "Gałąź",
+    "stash.dialog.currentBranch": "Bieżąca gałąź",
+    "stash.dialog.asNewBranch": "Jako nową gałąź",
+    "stash.dialog.popStash": "Zastosuj i usuń schowek",
+    "stash.dialog.reinstateIndex": "Przywróć indeks",
+    "stash.dialog.noBranch": "Brak gałęzi",
+    "stash.dialog.invalidBranch": "Wprowadź prawidłową nazwę gałęzi.",
+    "a11y.resizeStashList": "Resize stash list"
 }

@@ -5,6 +5,18 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-07-21
+
+### Added
+
+- Added a PyCharm-style stash body with flat stash selection, a lower changed-file pane, keyboard navigation, and accessible resize and focus behavior.
+- Added complete stash actions for apply, pop, advanced unstash options, branch restore, drop, clear, and whole-stash diff sessions.
+
+### Fixed
+
+- Included untracked files in stash listings and diffs while preserving absent before and after sides.
+- Prevented duplicate stash mutations until the matching repository-scoped operation completes.
+
 ## [0.18.4] - 2026-07-20
 
 ### Added

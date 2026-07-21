@@ -716,10 +716,13 @@ function makeGitOpsMock() {
         stashSave: vi.fn(async () => "saved"),
         stashPop: vi.fn(async () => "popped"),
         stashApply: vi.fn(async () => "applied"),
+        stashBranch: vi.fn(async () => "branched"),
         stashDelete: vi.fn(async () => "deleted"),
+        stashClear: vi.fn(async () => "cleared"),
         getConflictFilesDetailed: vi.fn(async () => []),
         abortMerge: vi.fn(async () => undefined),
         getStashFilePatch: vi.fn(async () => "diff --git a b"),
+        getStashFileContents: vi.fn(async () => ({ before: "base", after: "stash" })),
         getFileHistory: vi.fn(async () => "history line"),
     };
 }
@@ -1745,8 +1748,25 @@ describe("view providers integration", () => {
         await send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
         await send({ type: "stashPop", index: 0 });
         await send({ type: "stashApply", index: 0 });
+        await send({
+            type: "stashUnstash",
+            mode: "currentBranch",
+            index: 0,
+            action: "apply",
+            reinstateIndex: true,
+            requestId: "undocked-apply",
+        });
+        await send({
+            type: "stashUnstash",
+            mode: "branch",
+            index: 0,
+            branchName: "feature/unstash",
+            requestId: "undocked-branch",
+        });
         showWarningMessage.mockResolvedValueOnce("Delete");
-        await send({ type: "stashDelete", index: 0 });
+        await send({ type: "stashDelete", index: 0, requestId: "undocked-delete" });
+        showWarningMessage.mockResolvedValueOnce("Clear All Stashes");
+        await send({ type: "stashClear", requestId: "undocked-clear" });
         await send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
         await send({ type: "openFile", path: "src/a.ts" });
         showWarningMessage.mockResolvedValueOnce("Delete");
@@ -1775,8 +1795,28 @@ describe("view providers integration", () => {
         expect(gitOps.stashSave).toHaveBeenCalledWith(["src/a.ts"], "work");
         expect(gitOps.stashPop).toHaveBeenCalledWith(0);
         expect(gitOps.stashApply).toHaveBeenCalledWith(0);
+        expect(gitOps.stashApply).toHaveBeenCalledWith(0, true);
+        expect(gitOps.stashBranch).toHaveBeenCalledWith("feature/unstash", 0);
         expect(gitOps.stashDelete).toHaveBeenCalledWith(0);
-        expect(gitOps.getStashFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(gitOps.stashClear).toHaveBeenCalledTimes(1);
+        expect(
+            postMessageSpy.mock.calls
+                .map(([message]) => message)
+                .filter((message) => message.type === "stashMutationCompleted"),
+        ).toEqual([
+            { type: "stashMutationCompleted", requestId: "undocked-apply" },
+            { type: "stashMutationCompleted", requestId: "undocked-branch" },
+            { type: "stashMutationCompleted", requestId: "undocked-delete" },
+            { type: "stashMutationCompleted", requestId: "undocked-clear" },
+        ]);
+        expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.objectContaining({ scheme: "intelligit-diff" }),
+            expect.objectContaining({ scheme: "intelligit-diff" }),
+            "src/a.ts (stash@{0})",
+            { preview: true },
+        );
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
         expect(workingTreeEvents.length).toBeGreaterThanOrEqual(9);
         expect(fileCounts.length).toBeGreaterThan(0);
@@ -5450,12 +5490,58 @@ describe("view providers integration", () => {
         await webview.send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
         await webview.send({ type: "stashPop", index: 0 });
         await webview.send({ type: "stashApply", index: 0 });
+        await webview.send({
+            type: "stashUnstash",
+            mode: "currentBranch",
+            index: 0,
+            action: "apply",
+            reinstateIndex: true,
+            requestId: "docked-apply",
+        });
+        await webview.send({
+            type: "stashUnstash",
+            mode: "branch",
+            index: 0,
+            branchName: "feature/unstash",
+            requestId: "docked-branch",
+        });
         showWarningMessage.mockResolvedValueOnce("Delete");
-        await webview.send({ type: "stashDelete", index: 0 });
+        await webview.send({ type: "stashDelete", index: 0, requestId: "docked-delete" });
+        showWarningMessage.mockResolvedValueOnce("Clear All Stashes");
+        await webview.send({ type: "stashClear", requestId: "docked-clear" });
         expect(gitOps.stashSave).toHaveBeenCalled();
         expect(gitOps.stashPop).toHaveBeenCalledWith(0);
         expect(gitOps.stashApply).toHaveBeenCalledWith(0);
+        expect(gitOps.stashApply).toHaveBeenCalledWith(0, true);
+        expect(gitOps.stashBranch).toHaveBeenCalledWith("feature/unstash", 0);
         expect(gitOps.stashDelete).toHaveBeenCalledWith(0);
+        expect(gitOps.stashClear).toHaveBeenCalledTimes(1);
+        expect(
+            postMessageSpy.mock.calls
+                .map(([message]) => message)
+                .filter((message) => message.type === "stashMutationCompleted"),
+        ).toEqual([
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-apply",
+                repositoryRoot: "/repo",
+            },
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-branch",
+                repositoryRoot: "/repo",
+            },
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-delete",
+                repositoryRoot: "/repo",
+            },
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-clear",
+                repositoryRoot: "/repo",
+            },
+        ]);
 
         await webview.send({ type: "stashSelect", index: Number.NaN });
         expect(postMessageSpy).toHaveBeenCalledWith(
@@ -5466,14 +5552,13 @@ describe("view providers integration", () => {
         );
 
         await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
-        expect(gitOps.getStashFilePatch).toHaveBeenCalledWith(0, "src/a.ts");
-        expect(openTextDocument).toHaveBeenCalledWith(
-            expect.objectContaining({
-                scheme: "intelligit-diff",
-            }),
-        );
-        expect(openTextDocument).not.toHaveBeenCalledWith(
-            expect.objectContaining({ content: expect.any(String) }),
+        expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            expect.objectContaining({ scheme: "intelligit-diff" }),
+            expect.objectContaining({ scheme: "intelligit-diff" }),
+            "src/a.ts (stash@{0})",
+            { preview: true },
         );
         provider.dispose();
     });

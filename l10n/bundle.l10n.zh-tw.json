@@ -428,5 +428,9 @@
     "Abort if affected files have local changes.": "如果受影響的檔案有本機變更則中止。",
     "Deleting worktree {path}...": "正在刪除 Worktree {path}...",
     "Locking worktree {path}...": "正在鎖定 Worktree {path}...",
-    "Moving worktree {path}...": "正在移動 Worktree {path}..."
+    "Moving worktree {path}...": "正在移動 Worktree {path}...",
+    "All stashed changes cleared.": "所有儲藏的變更已清除。",
+    "Clear All Stashes": "清除所有儲藏",
+    "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "清除所有儲藏嗎？此操作無法復原並且可能無法復原已儲存的工作。",
+    "Stashed changes restored on new branch.": "已在新分支上還原儲藏的變更。"
 }

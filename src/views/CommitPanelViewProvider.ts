@@ -39,10 +39,13 @@ import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
+    executeStashMutationRequest,
     rollbackFromPanel,
     runGitOperationFromPanel,
     stashMutationFromPanel,
+    stashMutationFromUnstashMessage,
     stashSaveFromPanel,
+    type StashMutation,
 } from "./commitPanelActions";
 import {
     deleteFileFromPanel,
@@ -676,6 +679,27 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
             publishBranch: runtime ? () => this.publishBranch(runtime) : undefined,
         };
+    }
+
+    /** Runs a correlated stash mutation and posts completion for the repository captured at dispatch. */
+    private runStashMutationRequest(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        mutation: StashMutation,
+        requestIdValue: unknown,
+    ): Promise<void> {
+        return executeStashMutationRequest(
+            this.actionDepsForRuntime(runtime),
+            mutation,
+            requestIdValue,
+            (requestId) => {
+                const repositoryRoot = (runtime ?? this.requireActiveRuntime()).repository.root;
+                this.postToWebview({
+                    type: "stashMutationCompleted",
+                    repositoryRoot,
+                    requestId,
+                });
+            },
+        );
     }
 
     private fileActionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
@@ -1358,24 +1382,39 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             }
             case "stashPop":
-                await stashMutationFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    "pop",
-                    assertNumber(msg.index, "index"),
-                );
+                await stashMutationFromPanel(this.actionDepsForRuntime(scopedRuntime()), {
+                    action: "pop",
+                    index: assertNumber(msg.index, "index"),
+                    reinstateIndex: false,
+                });
                 break;
             case "stashApply":
-                await stashMutationFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    "apply",
-                    assertNumber(msg.index, "index"),
-                );
+                await stashMutationFromPanel(this.actionDepsForRuntime(scopedRuntime()), {
+                    action: "apply",
+                    index: assertNumber(msg.index, "index"),
+                    reinstateIndex: false,
+                });
                 break;
             case "stashDelete":
-                await stashMutationFromPanel(
-                    this.actionDepsForRuntime(scopedRuntime()),
-                    "delete",
-                    assertNumber(msg.index, "index"),
+                await this.runStashMutationRequest(
+                    scopedRuntime(),
+                    { action: "delete", index: assertNumber(msg.index, "index") },
+                    msg.requestId,
+                );
+                break;
+            case "stashUnstash": {
+                await this.runStashMutationRequest(
+                    scopedRuntime(),
+                    stashMutationFromUnstashMessage(msg),
+                    msg.requestId,
+                );
+                break;
+            }
+            case "stashClear":
+                await this.runStashMutationRequest(
+                    scopedRuntime(),
+                    { action: "clear" },
+                    msg.requestId,
                 );
                 break;
             case "stashSelect":
@@ -1396,6 +1435,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     this.fileActionDepsForRuntime(scopedRuntime()),
                     msg.index,
                     msg.path,
+                    msg.preview !== false,
                 );
                 break;
             case "openFile":

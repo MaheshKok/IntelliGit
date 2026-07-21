@@ -362,11 +362,34 @@ describe("CommitPanelApp integration", () => {
                 (b) => b.textContent?.trim() === "Apply",
             ),
         );
+        const applyRequestId = (
+            vscode.postMessage.mock.calls.at(-1)?.[0] as { requestId?: unknown }
+        )?.requestId;
+        expect(applyRequestId).toEqual(expect.any(String));
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "stashMutationCompleted", requestId: applyRequestId },
+                }),
+            );
+        });
+        await flush();
         fireClick(
             Array.from(document.querySelectorAll("button")).find(
                 (b) => b.textContent?.trim() === "Pop",
             ),
         );
+        const popRequestId = (vscode.postMessage.mock.calls.at(-1)?.[0] as { requestId?: unknown })
+            ?.requestId;
+        expect(popRequestId).toEqual(expect.any(String));
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "stashMutationCompleted", requestId: popRequestId },
+                }),
+            );
+        });
+        await flush();
         const stashRow = document.querySelector('[title="On main: stash-work"]');
         act(() => {
             stashRow?.dispatchEvent(
@@ -397,10 +420,22 @@ describe("CommitPanelApp integration", () => {
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "getAmendBranchCommits" });
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "abortMerge" });
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "stashApply", index: 0 }),
+            expect.objectContaining({
+                type: "stashUnstash",
+                index: 0,
+                mode: "currentBranch",
+                action: "apply",
+                reinstateIndex: false,
+            }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith(
-            expect.objectContaining({ type: "stashPop", index: 0 }),
+            expect.objectContaining({
+                type: "stashUnstash",
+                index: 0,
+                mode: "currentBranch",
+                action: "pop",
+                reinstateIndex: false,
+            }),
         );
         expect(vscode.postMessage).toHaveBeenCalledWith(
             expect.objectContaining({ type: "stashDelete", index: 0 }),

@@ -111,6 +111,7 @@ export function CommitPanelPane({
                     }
                     stashContent={
                         <StashTab
+                            currentBranchName={cpState.currentBranchName}
                             stashes={cpState.stashes}
                             stashFiles={cpState.stashFiles}
                             selectedIndex={cpState.selectedStashIndex}

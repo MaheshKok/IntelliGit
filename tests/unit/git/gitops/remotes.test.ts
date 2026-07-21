@@ -247,6 +247,20 @@ describe("GitOps", () => {
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "apply", "stash@{1}"]);
         });
+
+        it("adds --index only when requested", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.stashApply(1, true);
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
+                "stash",
+                "apply",
+                "--index",
+                "stash@{1}",
+            ]);
+        });
     });
     describe("stashPop", () => {
         it("calls git stash pop with index", async () => {
@@ -256,6 +270,20 @@ describe("GitOps", () => {
 
             const call = (executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0];
             expect(call).toEqual(["stash", "pop", "stash@{2}"]);
+        });
+
+        it("adds --index only when requested", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.stashPop(2, true);
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual([
+                "stash",
+                "pop",
+                "--index",
+                "stash@{2}",
+            ]);
         });
     });
     describe("listStashes", () => {
@@ -292,10 +320,15 @@ describe("GitOps", () => {
         it("parses stashed file status and numstat", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
-                    if (args.join(" ") === "stash show --name-status stash@{1}") {
+                    if (
+                        args.join(" ") ===
+                        "stash show --include-untracked --name-status stash@{1}"
+                    ) {
                         return "M\tsrc/a.ts\nR100\tsrc/old.ts\tsrc/new.ts\n";
                     }
-                    if (args.join(" ") === "stash show --numstat stash@{1}") {
+                    if (
+                        args.join(" ") === "stash show --include-untracked --numstat stash@{1}"
+                    ) {
                         return "3\t1\tsrc/a.ts\n2\t0\tsrc/{old.ts => new.ts}\n";
                     }
                     return "";
@@ -321,10 +354,10 @@ describe("GitOps", () => {
                 },
             ]);
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["stash", "show", "--name-status", "stash@{1}"],
+                ["stash", "show", "--include-untracked", "--name-status", "stash@{1}"],
             ]);
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["stash", "show", "--numstat", "stash@{1}"],
+                ["stash", "show", "--include-untracked", "--numstat", "stash@{1}"],
             ]);
         });
 
@@ -348,6 +381,92 @@ describe("GitOps", () => {
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
                 ["--literal-pathspecs", "diff", "stash@{0}^", "stash@{0}", "--", "src/a.ts"],
             ]);
+        });
+
+        it("reads before/after content with added, deleted, and untracked fallbacks", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key === "show stash@{0}^1:modified.txt") return "base";
+                    if (key === "show stash@{0}:modified.txt") return "stash";
+                    if (key === "show stash@{0}^1:added.txt") {
+                        throw new Error("fatal: path 'added.txt' does not exist in 'stash@{0}^1'");
+                    }
+                    if (key === "show stash@{0}:added.txt") return "added";
+                    if (key === "show stash@{0}^1:deleted.txt") return "deleted";
+                    if (key === "show stash@{0}:deleted.txt") {
+                        throw new Error("fatal: path 'deleted.txt' does not exist in 'stash@{0}'");
+                    }
+                    if (key === "show stash@{0}^3:deleted.txt") {
+                        throw new Error("fatal: path 'deleted.txt' does not exist in 'stash@{0}^3'");
+                    }
+                    if (key === "show stash@{0}^1:untracked.txt") {
+                        throw new Error("fatal: path 'untracked.txt' does not exist in 'stash@{0}^1'");
+                    }
+                    if (key === "show stash@{0}:untracked.txt") {
+                        throw new Error("fatal: path 'untracked.txt' does not exist in 'stash@{0}'");
+                    }
+                    if (key === "show stash@{0}^3:untracked.txt") return "untracked";
+                    throw new Error(`Unexpected Git command: ${key}`);
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.getStashFileContents(0, "modified.txt")).resolves.toEqual({
+                before: "base",
+                after: "stash",
+            });
+            await expect(ops.getStashFileContents(0, "added.txt")).resolves.toEqual({
+                before: undefined,
+                after: "added",
+            });
+            await expect(ops.getStashFileContents(0, "deleted.txt")).resolves.toEqual({
+                before: "deleted",
+                after: undefined,
+            });
+            await expect(ops.getStashFileContents(0, "untracked.txt")).resolves.toEqual({
+                before: undefined,
+                after: "untracked",
+            });
+        });
+
+        it("does not hide non-missing errors while reading stash file contents", async () => {
+            const executor = {
+                run: vi.fn(async () => {
+                    throw new Error("permission denied");
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.getStashFileContents(0, "src/a.ts")).rejects.toThrow(
+                "permission denied",
+            );
+        });
+
+        it("starts independent base and stash-tree content reads together", async () => {
+            const started: string[] = [];
+            const resolvers = new Map<string, (value: string) => void>();
+            const executor = {
+                run: vi.fn(
+                    (args: string[]) =>
+                        new Promise<string>((resolve) => {
+                            const key = args.join(" ");
+                            started.push(key);
+                            resolvers.set(key, resolve);
+                        }),
+                ),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            const contents = ops.getStashFileContents(0, "src/a.ts");
+
+            expect(started).toEqual([
+                "show stash@{0}^1:src/a.ts",
+                "show stash@{0}:src/a.ts",
+            ]);
+            resolvers.get("show stash@{0}^1:src/a.ts")?.("base");
+            resolvers.get("show stash@{0}:src/a.ts")?.("stash");
+            await expect(contents).resolves.toEqual({ before: "base", after: "stash" });
         });
 
         it("reads file content at a ref for option-like repo-relative paths", async () => {
@@ -384,6 +503,20 @@ describe("GitOps", () => {
             expect(calls).toContainEqual(["stash", "pop", "stash@{0}"]);
             expect(calls).toContainEqual(["stash", "apply", "stash@{0}"]);
             expect(calls).toContainEqual(["stash", "drop", "stash@{0}"]);
+        });
+
+        it("runs stash branch and clear, rejecting invalid branch names before Git runs", async () => {
+            const executor = createMockExecutor({});
+            const ops = new GitOps(executor);
+
+            await ops.stashBranch("feature/unstash", 0);
+            await ops.stashClear();
+            await expect(ops.stashBranch("--bad", 0)).rejects.toThrow("Invalid branch name");
+
+            const calls = (executor.run as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+            expect(calls).toContainEqual(["stash", "branch", "feature/unstash", "stash@{0}"]);
+            expect(calls).toContainEqual(["stash", "clear"]);
+            expect(calls).toHaveLength(2);
         });
 
         it("honors force flag when deleting files", async () => {

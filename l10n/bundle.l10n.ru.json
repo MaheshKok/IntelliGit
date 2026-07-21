@@ -428,5 +428,9 @@
     "Abort if affected files have local changes.": "Отменить если затронутые файлы содержат локальные изменения.",
     "Deleting worktree {path}...": "Удаление worktree {path}...",
     "Locking worktree {path}...": "Блокировка worktree {path}...",
-    "Moving worktree {path}...": "Перемещение worktree {path}..."
+    "Moving worktree {path}...": "Перемещение worktree {path}...",
+    "All stashed changes cleared.": "Все спрятанные изменения удалены.",
+    "Clear All Stashes": "Очистить все спрятанные изменения",
+    "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "Очистить все спрятанные изменения? Это необратимо и может помешать восстановлению сохранённой работы.",
+    "Stashed changes restored on new branch.": "Спрятанные изменения восстановлены в новой ветке."
 }

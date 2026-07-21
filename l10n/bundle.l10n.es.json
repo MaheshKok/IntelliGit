@@ -428,5 +428,9 @@
     "Abort if affected files have local changes.": "Cancelar si los archivos afectados tienen cambios locales.",
     "Deleting worktree {path}...": "El worktree {path} se está eliminando...",
     "Locking worktree {path}...": "Se está bloqueando el worktree {path}...",
-    "Moving worktree {path}...": "Se está moviendo el worktree {path}..."
+    "Moving worktree {path}...": "Se está moviendo el worktree {path}...",
+    "All stashed changes cleared.": "Se borraron todos los cambios del stash.",
+    "Clear All Stashes": "Borrar todos los stashes",
+    "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "¿Borrar todos los stashes? Esta acción es irreversible y puede impedir recuperar el trabajo guardado.",
+    "Stashed changes restored on new branch.": "Los cambios del stash se restauraron en una rama nueva."
 }

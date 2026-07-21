@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
+import { assertValidBranchName } from "../utils/gitRefs";
+import { assertNumber, assertString } from "./messageValidation";
 import {
     runWithNotificationProgress,
     showTimedWarningMessage,
@@ -15,6 +17,71 @@ interface CommitPanelActionDeps {
     postCommitted: () => void;
     maybeOfferPublishBranch: () => Promise<void>;
     publishBranch?: () => Promise<void>;
+}
+
+/** Describes one validated stash mutation initiated by either commit-panel provider. */
+export type StashMutation =
+    | { action: "apply" | "pop"; index: number; reinstateIndex: boolean }
+    | { action: "branch"; index: number; branchName: string }
+    | { action: "delete"; index: number }
+    | { action: "clear" };
+
+/**
+ * Validates an untrusted typed unstash payload and translates it into a host mutation.
+ *
+ * Current-branch mode accepts only apply/pop plus an explicit index-restoration flag. Branch mode
+ * validates the new branch name and rejects an independent index-restoration option because
+ * `git stash branch` restores the index by definition.
+ */
+export function stashMutationFromUnstashMessage(message: Record<string, unknown>): StashMutation {
+    const index = assertNumber(message.index, "index");
+    if (message.mode === "currentBranch") {
+        if (message.action !== "apply" && message.action !== "pop") {
+            throw new Error("Invalid stash unstash action received from webview.");
+        }
+        if (typeof message.reinstateIndex !== "boolean") {
+            throw new Error("Expected boolean for 'reinstateIndex'.");
+        }
+        return {
+            action: message.action,
+            index,
+            reinstateIndex: message.reinstateIndex,
+        };
+    }
+    if (message.mode !== "branch") {
+        throw new Error("Invalid stash unstash mode received from webview.");
+    }
+    if ("reinstateIndex" in message) {
+        throw new Error("Branch stash unstash cannot set 'reinstateIndex'.");
+    }
+    const branchName = assertString(message.branchName, "branchName");
+    assertValidBranchName(branchName);
+    return { action: "branch", index, branchName };
+}
+
+/**
+ * Executes one optionally correlated stash mutation and always posts its completion acknowledgement.
+ *
+ * Request IDs cross the untrusted webview boundary here. Missing IDs preserve legacy behavior;
+ * present IDs must be non-empty strings and are echoed exactly once from an outer `finally`, after
+ * mutation confirmation, conflict handling, and refresh have either completed or thrown.
+ */
+export async function executeStashMutationRequest(
+    deps: Pick<CommitPanelActionDeps, "gitOps" | "refreshData" | "fireWorkingTreeChanged">,
+    mutation: StashMutation,
+    requestIdValue: unknown,
+    postCompleted: (requestId: string) => void,
+): Promise<void> {
+    const requestId =
+        requestIdValue === undefined ? undefined : assertString(requestIdValue, "requestId");
+    if (requestId !== undefined && requestId.trim().length === 0) {
+        throw new Error("Expected non-empty string for 'requestId'.");
+    }
+    try {
+        await stashMutationFromPanel(deps, mutation);
+    } finally {
+        if (requestId !== undefined) postCompleted(requestId);
+    }
 }
 
 /**
@@ -296,41 +363,76 @@ async function runStashMutationWithConflicts(
     } catch (err) {
         const conflicts = await deps.gitOps.getConflictFilesDetailed();
         if (conflicts.length === 0) throw err;
-        await deps.refreshData();
-        deps.fireWorkingTreeChanged();
         await vscode.commands.executeCommand("intelligit.openConflictSession");
         return true;
     }
 }
 
 /**
- * Applies, pops, or deletes a stash entry selected in the panel.
+ * Applies, pops, branches, deletes, or clears stashes selected in the panel.
  *
- * Delete requests require a modal confirmation because they discard the saved stash entry, while
- * apply/pop immediately mutate the working tree and then refresh both panel and host state.
+ * Destructive requests require a modal confirmation. Every attempt refreshes stash data in `finally`
+ * so both providers clear their busy state even after cancellation, conflict, or failure; only actions
+ * that changed the working tree notify working-tree listeners.
  */
 export async function stashMutationFromPanel(
     deps: Pick<CommitPanelActionDeps, "gitOps" | "refreshData" | "fireWorkingTreeChanged">,
-    action: "pop" | "apply" | "delete",
-    index: number,
+    mutation: StashMutation,
 ): Promise<void> {
-    if (action === "delete") {
-        const deleteAction = vscode.l10n.t("Delete");
-        const confirm = await vscode.window.showWarningMessage(
-            vscode.l10n.t("Delete this stashed change?"),
-            { modal: true },
-            deleteAction,
-        );
-        if (confirm !== deleteAction) return;
-        await deps.gitOps.stashDelete(index);
-        showTimedInformationMessage(vscode.l10n.t("Stashed change deleted."));
-    } else if (action === "pop") {
-        if (await runStashMutationWithConflicts(deps, () => deps.gitOps.stashPop(index))) return;
-        showTimedInformationMessage(vscode.l10n.t("Unstashed changes."));
-    } else {
-        if (await runStashMutationWithConflicts(deps, () => deps.gitOps.stashApply(index))) return;
-        showTimedInformationMessage(vscode.l10n.t("Applied stashed changes."));
+    let workingTreeChanged = false;
+    try {
+        if (mutation.action === "delete") {
+            const deleteAction = vscode.l10n.t("Delete");
+            const confirm = await vscode.window.showWarningMessage(
+                vscode.l10n.t("Delete this stashed change?"),
+                { modal: true },
+                deleteAction,
+            );
+            if (confirm !== deleteAction) return;
+            await deps.gitOps.stashDelete(mutation.index);
+            showTimedInformationMessage(vscode.l10n.t("Stashed change deleted."));
+            return;
+        }
+        if (mutation.action === "clear") {
+            const clearAction = vscode.l10n.t("Clear All Stashes");
+            const confirm = await vscode.window.showWarningMessage(
+                vscode.l10n.t(
+                    "Clear all stashes? This is irreversible and may prevent recovery of saved work.",
+                ),
+                { modal: true },
+                clearAction,
+            );
+            if (confirm !== clearAction) return;
+            await deps.gitOps.stashClear();
+            showTimedInformationMessage(vscode.l10n.t("All stashed changes cleared."));
+            return;
+        }
+
+        const conflicted =
+            mutation.action === "branch"
+                ? await runStashMutationWithConflicts(deps, () =>
+                      deps.gitOps.stashBranch(mutation.branchName, mutation.index),
+                  )
+                : await runStashMutationWithConflicts(deps, () =>
+                      mutation.action === "pop"
+                          ? mutation.reinstateIndex
+                              ? deps.gitOps.stashPop(mutation.index, true)
+                              : deps.gitOps.stashPop(mutation.index)
+                          : mutation.reinstateIndex
+                            ? deps.gitOps.stashApply(mutation.index, true)
+                            : deps.gitOps.stashApply(mutation.index),
+                  );
+        workingTreeChanged = true;
+        if (conflicted) return;
+        if (mutation.action === "branch") {
+            showTimedInformationMessage(vscode.l10n.t("Stashed changes restored on new branch."));
+        } else if (mutation.action === "pop") {
+            showTimedInformationMessage(vscode.l10n.t("Unstashed changes."));
+        } else {
+            showTimedInformationMessage(vscode.l10n.t("Applied stashed changes."));
+        }
+    } finally {
+        await deps.refreshData();
+        if (workingTreeChanged) deps.fireWorkingTreeChanged();
     }
-    await deps.refreshData();
-    deps.fireWorkingTreeChanged();
 }

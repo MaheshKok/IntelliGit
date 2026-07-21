@@ -12,6 +12,9 @@ import { assertNumber, assertRepoPathArray, assertString } from "./messageValida
 import type { IconThemeService } from "./shared/IconThemeService";
 import { showTimedInformationMessage } from "../utils/notifications";
 import { createReadonlyDiffUri } from "../services/diffService";
+import { mapWithConcurrency } from "../utils/concurrency";
+
+type StashChange = [vscode.Uri, vscode.Uri | undefined, vscode.Uri | undefined];
 
 interface PanelFileActionDeps {
     gitOps: GitOps;
@@ -141,26 +144,49 @@ export async function showDiffFromPanel(
 }
 
 /**
- * Opens a read-only diff document for one file inside a stashed change.
+ * Opens a VS Code diff for one stash file, or VS Code's multi-file changes editor for the whole stash.
  *
- * The stash index must be finite and the path repository-relative. Empty patch content is converted
- * into a visible fallback message so the panel action always produces understandable editor output.
+ * File-specific requests use virtual before/after documents. Stash-level requests retain every valid
+ * stash file in the changes editor, preserving absent sides for added or deleted files. Preview mode
+ * defaults to true for legacy callers; false keeps the resulting changes editor pinned in a new tab.
  */
 export async function showStashDiffFromPanel(
     deps: Pick<PanelFileActionDeps, "gitOps">,
     indexValue: unknown,
     pathValue: unknown,
+    preview = true,
 ): Promise<void> {
     const index = assertNumber(indexValue, "index");
-    const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
-    const patch = await deps.gitOps.getStashFilePatch(index, filePath);
-    const uri = createReadonlyDiffUri(
-        `${filePath}.diff`,
-        patch || `No stashed diff found for ${filePath}.`,
-        `stash@{${index}}`,
-    );
-    const doc = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(doc, { preview: true });
+    const ref = `stash@{${index}}`;
+    if (pathValue !== undefined) {
+        const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
+        const contents = await deps.gitOps.getStashFileContents(index, filePath);
+        const before = createReadonlyDiffUri(filePath, contents.before ?? "", `${ref}^1`);
+        const after = createReadonlyDiffUri(filePath, contents.after ?? "", ref);
+        await vscode.commands.executeCommand("vscode.diff", before, after, `${filePath} (${ref})`, {
+            preview,
+        });
+        return;
+    }
+
+    const files = await deps.gitOps.getStashFiles(index);
+    const changes = (
+        await mapWithConcurrency<WorkingFile, StashChange | undefined>(files, 4, async (file) => {
+            const contents = await deps.gitOps.getStashFileContents(index, file.path);
+            const before =
+                contents.before === undefined
+                    ? undefined
+                    : createReadonlyDiffUri(file.path, contents.before, `${ref}^1`);
+            const after =
+                contents.after === undefined
+                    ? undefined
+                    : createReadonlyDiffUri(file.path, contents.after, ref);
+            const label = after ?? before;
+            return label ? [label, before, after] : undefined;
+        })
+    ).filter((change): change is StashChange => change !== undefined);
+    await vscode.commands.executeCommand("vscode.changes", `Stash ${ref}`, changes);
+    if (!preview) await vscode.commands.executeCommand("workbench.action.keepEditor");
 }
 
 /**

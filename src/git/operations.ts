@@ -813,15 +813,21 @@ export class GitOps {
         }
         return this.executor.run(paths && paths.length > 0 ? withLiteralPathspecs(args) : args);
     }
-    /** Pops a validated stash index back into the working tree. */
-    async stashPop(index: number = 0): Promise<string> {
+    /** Pops a validated stash index back into the working tree, optionally restoring its staged state. */
+    async stashPop(index: number = 0, reinstateIndex = false): Promise<string> {
         assertStashIndex(index);
-        return this.executor.run(["stash", "pop", `stash@{${index}}`]);
+        const args = ["stash", "pop"];
+        if (reinstateIndex) args.push("--index");
+        args.push(`stash@{${index}}`);
+        return this.executor.run(args);
     }
-    /** Applies a validated stash index without dropping it. */
-    async stashApply(index: number = 0): Promise<string> {
+    /** Applies a validated stash index without dropping it, optionally restoring its staged state. */
+    async stashApply(index: number = 0, reinstateIndex = false): Promise<string> {
         assertStashIndex(index);
-        return this.executor.run(["stash", "apply", `stash@{${index}}`]);
+        const args = ["stash", "apply"];
+        if (reinstateIndex) args.push("--index");
+        args.push(`stash@{${index}}`);
+        return this.executor.run(args);
     }
     /** Lists stash entries from formatted Git output, returning an empty list when stash inspection fails. */
     async listStashes(): Promise<StashEntry[]> {
@@ -837,6 +843,16 @@ export class GitOps {
         assertStashIndex(index);
         return this.executor.run(["stash", "drop", `stash@{${index}}`]);
     }
+    /** Restores a validated stash onto a validated new branch, letting Git restore the index and drop it on success. */
+    async stashBranch(branchName: string, index: number = 0): Promise<string> {
+        assertValidBranchName(branchName);
+        assertStashIndex(index);
+        return this.executor.run(["stash", "branch", branchName, `stash@{${index}}`]);
+    }
+    /** Permanently drops every stash entry in the current repository. */
+    async stashClear(): Promise<string> {
+        return this.executor.run(["stash", "clear"]);
+    }
     /**
      * Loads changed files for a stash using best-effort name/status and numstat output.
      *
@@ -848,12 +864,24 @@ export class GitOps {
         let nameStatus = "";
         let numstat = "";
         try {
-            nameStatus = await this.executor.run(["stash", "show", "--name-status", ref]);
+            nameStatus = await this.executor.run([
+                "stash",
+                "show",
+                "--include-untracked",
+                "--name-status",
+                ref,
+            ]);
         } catch (err) {
             logGitOpsWarning(`Failed stash show --name-status for ${ref}`, err);
         }
         try {
-            numstat = await this.executor.run(["stash", "show", "--numstat", ref]);
+            numstat = await this.executor.run([
+                "stash",
+                "show",
+                "--include-untracked",
+                "--numstat",
+                ref,
+            ]);
         } catch (err) {
             logGitOpsWarning(`Failed stash show --numstat for ${ref}`, err);
         }
@@ -864,6 +892,52 @@ export class GitOps {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
         return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));
+    }
+    /**
+     * Reads the before and after versions of one stash path for VS Code diff resources.
+     *
+     * The first parent supplies the pre-stash version, the stash tree supplies the normal after
+     * version, and the third parent is consulted only when the stash tree lacks an untracked file.
+     * Missing sides stay undefined; executor failures unrelated to absent Git paths still reject.
+     */
+    async getStashFileContents(
+        index: number,
+        filePath: string,
+    ): Promise<{ before: string | undefined; after: string | undefined }> {
+        assertStashIndex(index);
+        const ref = `stash@{${index}}`;
+        const [before, stashAfter] = await Promise.all([
+            this.getOptionalStashFileContent(filePath, `${ref}^1`),
+            this.getOptionalStashFileContent(filePath, ref),
+        ]);
+        let after = stashAfter;
+        if (after === undefined) {
+            after = await this.getOptionalStashFileContent(filePath, `${ref}^3`, true);
+        }
+        return { before, after };
+    }
+
+    /**
+     * Reads one stash-side file while converting only Git's explicit missing-path diagnostics to an absent side.
+     *
+     * A missing third parent is expected for stashes without untracked files, but is accepted only after the
+     * main stash tree was read successfully and lacked the requested path.
+     */
+    private async getOptionalStashFileContent(
+        filePath: string,
+        ref: string,
+        allowMissingUntrackedParent = false,
+    ): Promise<string | undefined> {
+        try {
+            return await this.getFileContentAtRef(filePath, ref);
+        } catch (err) {
+            const message = getErrorMessage(err).toLowerCase();
+            if (isMissingGitPathError(message)) return undefined;
+            if (allowMissingUntrackedParent && isMissingStashUntrackedParentError(message)) {
+                return undefined;
+            }
+            throw err;
+        }
     }
     /** Returns parsed file-history entries for a literal repository path, following renames. */
     async getFileHistoryEntries(
@@ -1063,4 +1137,18 @@ function isNoUpstreamPushError(err: unknown): boolean {
 }
 function withLiteralPathspecs(args: string[]): string[] {
     return ["--literal-pathspecs", ...args];
+}
+
+/** Returns whether Git reported a path absent from an otherwise valid treeish. */
+function isMissingGitPathError(message: string): boolean {
+    return (
+        message.includes("does not exist in") ||
+        message.includes("exists on disk, but not in") ||
+        (message.includes("pathspec") && message.includes("did not match"))
+    );
+}
+
+/** Returns whether an untracked-file fallback found no third parent on an otherwise valid stash. */
+function isMissingStashUntrackedParentError(message: string): boolean {
+    return message.includes("invalid object name") || message.includes("bad revision");
 }

@@ -37,7 +37,9 @@ import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
+    executeStashMutationRequest,
     runGitOperationFromPanel,
+    stashMutationFromPanel,
 } from "../../../src/views/commitPanelActions";
 import type { CommitPanelGitOperation } from "../../../src/views/commitPanelActions";
 import type { GitOps } from "../../../src/git/operations";
@@ -63,6 +65,12 @@ function makeGitOps(upstream?: string): GitOps {
         stageFiles: vi.fn(async () => ""),
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => []),
+        stashApply: vi.fn(async () => ""),
+        stashPop: vi.fn(async () => ""),
+        stashBranch: vi.fn(async () => ""),
+        stashDelete: vi.fn(async () => ""),
+        stashClear: vi.fn(async () => ""),
+        getConflictFilesDetailed: vi.fn(async () => []),
     } as unknown as GitOps;
 }
 
@@ -283,5 +291,138 @@ describe("runGitOperationFromPanel", () => {
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
             "There are uncommitted changes, please commit or stash them first.",
         );
+    });
+});
+
+describe("stashMutationFromPanel", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("applies with index reinstatement and refreshes working-tree state once", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+
+        await stashMutationFromPanel(deps, {
+            action: "apply",
+            index: 2,
+            reinstateIndex: true,
+        });
+
+        expect(gitOps.stashApply).toHaveBeenCalledWith(2, true);
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
+    });
+
+    it("refreshes after a cancelled clear without reporting a working-tree change", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        vi.mocked(vscodeMock.window.showWarningMessage).mockResolvedValueOnce(undefined);
+
+        await stashMutationFromPanel(deps, { action: "clear" });
+
+        expect(gitOps.stashClear).not.toHaveBeenCalled();
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
+    });
+
+    it("refreshes after a non-conflict failure without duplicate side effects", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.stashApply).mockRejectedValueOnce(new Error("apply failed"));
+
+        await expect(
+            stashMutationFromPanel(deps, {
+                action: "apply",
+                index: 0,
+                reinstateIndex: false,
+            }),
+        ).rejects.toThrow("apply failed");
+
+        expect(deps.refreshData).toHaveBeenCalledTimes(1);
+        expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
+    });
+});
+
+describe("executeStashMutationRequest", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it("posts correlated completion after success", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const postCompleted = vi.fn();
+
+        await executeStashMutationRequest(
+            deps,
+            { action: "apply", index: 0, reinstateIndex: false },
+            "request-success",
+            postCompleted,
+        );
+
+        expect(postCompleted).toHaveBeenCalledOnce();
+        expect(postCompleted).toHaveBeenCalledWith("request-success");
+    });
+
+    it("posts correlated completion after cancellation", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const postCompleted = vi.fn();
+        vi.mocked(vscodeMock.window.showWarningMessage).mockResolvedValueOnce(undefined);
+
+        await executeStashMutationRequest(
+            deps,
+            { action: "delete", index: 0 },
+            "request-cancelled",
+            postCompleted,
+        );
+
+        expect(gitOps.stashDelete).not.toHaveBeenCalled();
+        expect(postCompleted).toHaveBeenCalledWith("request-cancelled");
+    });
+
+    it("posts correlated completion when mutation or refresh throws", async () => {
+        const gitOps = makeGitOps();
+        const mutationDeps = makeDeps(gitOps);
+        const mutationCompleted = vi.fn();
+        vi.mocked(gitOps.stashApply).mockRejectedValueOnce(new Error("mutation failed"));
+
+        await expect(
+            executeStashMutationRequest(
+                mutationDeps,
+                { action: "apply", index: 0, reinstateIndex: false },
+                "request-mutation-failed",
+                mutationCompleted,
+            ),
+        ).rejects.toThrow("mutation failed");
+        expect(mutationCompleted).toHaveBeenCalledWith("request-mutation-failed");
+
+        const refreshDeps = makeDeps(makeGitOps());
+        const refreshCompleted = vi.fn();
+        refreshDeps.refreshData.mockRejectedValueOnce(new Error("refresh failed"));
+
+        await expect(
+            executeStashMutationRequest(
+                refreshDeps,
+                { action: "apply", index: 0, reinstateIndex: false },
+                "request-refresh-failed",
+                refreshCompleted,
+            ),
+        ).rejects.toThrow("refresh failed");
+        expect(refreshCompleted).toHaveBeenCalledWith("request-refresh-failed");
+    });
+
+    it("does not post completion when requestId is absent", async () => {
+        const postCompleted = vi.fn();
+
+        await executeStashMutationRequest(
+            makeDeps(makeGitOps()),
+            { action: "apply", index: 0, reinstateIndex: false },
+            undefined,
+            postCompleted,
+        );
+
+        expect(postCompleted).not.toHaveBeenCalled();
     });
 });

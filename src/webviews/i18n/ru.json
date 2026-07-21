@@ -247,5 +247,16 @@
     "common.show": "Show",
     "status.ignored": "Ignored",
     "commitPanel.ignoredFiles": "Ignored Files",
-    "merge.action.abortMerge": "Прервать слияние"
+    "merge.action.abortMerge": "Прервать слияние",
+    "stash.files": "Файлы в выбранном спрятанном изменении",
+    "stash.action.applyStash": "Применить спрятанное изменение",
+    "stash.action.popStash": "Применить и удалить спрятанное изменение",
+    "stash.action.branch": "Ветка",
+    "stash.dialog.currentBranch": "Текущая ветка",
+    "stash.dialog.asNewBranch": "Как новую ветку",
+    "stash.dialog.popStash": "Применить и удалить спрятанное изменение",
+    "stash.dialog.reinstateIndex": "Восстановить индекс",
+    "stash.dialog.noBranch": "Нет ветки",
+    "stash.dialog.invalidBranch": "Введите допустимое имя ветки.",
+    "a11y.resizeStashList": "Resize stash list"
 }

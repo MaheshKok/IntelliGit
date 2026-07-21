@@ -232,6 +232,40 @@ export type OutboundMessage =
           type: "stashDelete";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
           index: number;
+          /** Optional correlation token echoed when host-side mutation handling finishes. */
+          requestId?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Typed unstash command targeting the current branch. */
+          type: "stashUnstash";
+          /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
+          index: number;
+          /** Current-branch mode permits apply or pop behavior. */
+          mode: "currentBranch";
+          /** Whether to keep the stash entry after restoring it. */
+          action: "apply" | "pop";
+          /** Whether Git must restore the stash's index state with `--index`. */
+          reinstateIndex: boolean;
+          /** Optional correlation token echoed when host-side mutation handling finishes. */
+          requestId?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Typed unstash command restoring the stash on a new branch. */
+          type: "stashUnstash";
+          /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
+          index: number;
+          /** Branch mode always lets `git stash branch` restore the index and drop on success. */
+          mode: "branch";
+          /** New local branch name, revalidated by the host and Git boundary. */
+          branchName: string;
+          /** Optional correlation token echoed when host-side mutation handling finishes. */
+          requestId?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Command permanently clearing every stash after host confirmation. */
+          type: "stashClear";
+          /** Optional correlation token echoed when host-side mutation handling finishes. */
+          requestId?: string;
       }>
     | RepositoryScopedMessage<{
           /** Request loading the file list for one stashed change. */
@@ -240,12 +274,14 @@ export type OutboundMessage =
           index: number;
       }>
     | RepositoryScopedMessage<{
-          /** Command opening a preview diff for one file inside a stashed change. */
+          /** Command opening a diff for one stash file, or every file when `path` is absent. */
           type: "showStashDiff";
           /** Current `stash@{n}` index containing the file. */
           index: number;
-          /** Repository-relative path from the selected stash file list. */
-          path: string;
+          /** Optional repository-relative path from the selected stash file list. */
+          path?: string;
+          /** Preview defaults to true; false requests a persistent editor tab. */
+          preview?: boolean;
       }>
     | RepositoryScopedMessage<{
           /** Command opening a working-tree file in the editor. */
@@ -302,6 +338,12 @@ export type InboundMessage =
     | RepositoryIdentifiedMessage<{
           /** Event indicating a commit completed and the webview should clear committed state. */
           type: "committed";
+      }>
+    | RepositoryIdentifiedMessage<{
+          /** Event acknowledging that a correlated stash mutation attempt has fully finished. */
+          type: "stashMutationCompleted";
+          /** Correlation token supplied by the initiating webview request. */
+          requestId: string;
       }>
     | RepositoryIdentifiedMessage<{
           /** Status event toggling refresh affordances while host refresh work is active. */
