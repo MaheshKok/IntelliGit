@@ -20,8 +20,8 @@
 </p>
 
 <p align="center">
-  <strong>The best Git features from PyCharm, VS Code, and Visual Studio IDE.</strong><br />
-  A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who want powerful IDE Git inside VS Code.
+  <strong>JetBrains-style three-pane merge resolution and a complete Git workbench for VS Code.</strong><br />
+  Compare Yours and Theirs side by side, edit the Result in the center, then continue through commits, branches, worktrees, shelves, history, and CI checks in one focused workspace.
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
   <img src="media/screenshots/commit-actions.png" alt="IntelliGit commit action menu" />
 </p>
 
-IntelliGit brings the best Git workflow ideas from PyCharm, VS Code, and Visual Studio IDE into one VS Code extension: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
+IntelliGit combines a JetBrains-style three-pane merge editor with a complete Git workbench. Resolve conflicts in a horizontal Yours/Result/Theirs view, then continue through commits, branches, worktrees, shelves, history, and CI checks without switching tools.
 
 It does not try to replace Git. It gives the daily Git work a better cockpit.
 
@@ -44,18 +44,29 @@ VS Code is fast and flexible, but Git work often ends up split across the Source
 
 IntelliGit pulls those workflows into one JetBrains-inspired surface:
 
-- Build clean commits from a focused file tree with staging, rollback, amend, commit, and commit-and-push.
-- Browse history in a visual commit graph with branch lanes, search, filters, metadata, and changed files.
-- Act on branches and commits from the graph instead of jumping back to the command line.
-- Park unfinished work with a shelf-style stash workflow.
-- Handle risky history operations with availability rules and confirmations.
-- Open conflicts in the built-in merge editor or VS Code's native merge editor.
+- A focused commit panel for staging, rollback, amend, commit, and push.
+- An actionable commit graph with branch and history operations.
+- Shelf/stash and worktree workflows.
+- A three-pane merge-conflict editor — **Yours, editable Result, and Theirs side by side**.
+- **CI check status for GitHub, GitLab, and Bitbucket.**
+- A unified workbench that can be moved to another monitor.
 
 ## Feature Gallery
 
+### Three-Pane Merge Editor
+
+![IntelliGit three-pane merge editor showing Yours, editable Result, and Theirs side by side](media/screenshots/three-pane-merge-editor.png)
+
+Resolve complex conflicts without stacking or switching editors. Yours, the
+editable Result, and Theirs stay visible side by side, with aligned conflict
+bands, visual connectors, conflict navigation, and explicit apply or abort
+controls.
+
 ### Commit Panel
 
-![IntelliGit commit panel with staged, changed, and unversioned files](media/screenshots/commit-panel.png)
+<p align="center">
+  <img src="media/screenshots/commit-panel.png" alt="IntelliGit commit panel with staged, changed, and unversioned files" width="70%" />
+</p>
 
 The commit panel keeps the daily commit loop in one focused view. Stage by file,
 folder, or whole section; keep tracked changes and unversioned files separated;
@@ -65,7 +76,9 @@ delete, shelve changes, show history, and refresh.
 
 ### Shelf Workflow
 
-![IntelliGit shelf workflow with apply, pop, drop, and show diff actions](media/screenshots/shelf-workflow.png)
+<p align="center">
+  <img src="media/screenshots/shelf-workflow.png" alt="IntelliGit shelf workflow with apply, pop, drop, and show diff actions" width="70%" />
+</p>
 
 The Shelf/Stash tab is built for interrupted work. Park partial or full changes,
 preview the files inside a shelved entry, show a diff before restoring it, then
@@ -83,7 +96,9 @@ Bitbucket Cloud, or Bitbucket Server checks with links back to the provider.
 
 ### Branch Actions
 
-![IntelliGit branch action menu in the commit graph](media/screenshots/branch-actions.png)
+<p align="center">
+  <img src="media/screenshots/branch-actions.png" alt="IntelliGit branch action menu in the commit graph" width="70%" />
+</p>
 
 Branch actions live where branch decisions happen. The branch tree groups
 current, local, remote, and worktree branches, then exposes context-aware actions
@@ -129,7 +144,7 @@ add the remote, and push the selected branch through one guided flow.
 | Branches          | Checkout, new branch, checkout-and-rebase, rebase, merge, update, push, rename, delete                                                                             |
 | Commits           | Copy hash, create patch, cherry-pick, checkout revision, reset, revert, push up to here, undo, edit message, squash, drop, interactive rebase, new branch, new tag |
 | Worktrees         | Create, create from branch, delete, lock, unlock, move, prune, repair                                                                                              |
-| Merge conflicts   | Conflict tree, conflict session, accept yours/theirs, built-in merge editor, VS Code native merge editor                                                           |
+| Merge conflicts   | Conflict tree, conflict sessions, horizontal Yours/Result/Theirs editor, editable result, accept yours/theirs, VS Code native merge editor                         |
 | Hosting           | Clone repository, initialize repository, publish branch, create remote repositories/projects                                                                       |
 | Commit checks     | GitHub, GitLab, Bitbucket Cloud, Bitbucket Server, self-hosted host mapping, CI/CD status popovers                                                                 |
 | Layout            | Activity bar view, bottom graph panel, unified undocked workbench tab                                                                                              |
