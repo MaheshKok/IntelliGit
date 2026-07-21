@@ -85,6 +85,7 @@ function rejectUnhandledStashAction(_action: never): never {
  * The host remains authoritative for stash snapshots and mutation outcomes. A local mutation guard
  * clears only when the host acknowledges the matching request for this repository.
  */
+// Selection, dialog, splitter, and mutation state have independent transitions; one reducer would couple them.
 // react-doctor-disable-next-line react-doctor/no-giant-component
 export function StashTab({
     repositoryRoot,
@@ -97,6 +98,7 @@ export function StashTab({
     folderIconsByName,
     groupByDir,
     onToggleGroupBy,
+    // react-doctor-disable-next-line react-doctor/prefer-useReducer
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
     const { hoverDelay, tooltipsEnabled } = getSettings();
