@@ -854,21 +854,25 @@ export class GitOps {
         return this.executor.run(["stash", "clear"]);
     }
     /**
-     * Loads changed files for a stash using best-effort name/status and numstat output.
+     * Loads changed files for a stash with best-effort metadata and untracked-path classification.
      *
-     * Individual stash inspection failures are logged and converted to partial file metadata.
+     * Name-status and numstat supply partial details, while `--only-untracked --name-only -z`
+     * authoritatively distinguishes unversioned stash entries. Individual probe failures are
+     * logged without discarding successful metadata from the other probes.
      */
     async getStashFiles(index: number): Promise<WorkingFile[]> {
         assertStashIndex(index);
         const ref = `stash@{${index}}`;
         let nameStatus = "";
         let numstat = "";
+        let untrackedPaths = "";
         try {
             nameStatus = await this.executor.run([
                 "stash",
                 "show",
                 "--include-untracked",
                 "--name-status",
+                "-z",
                 ref,
             ]);
         } catch (err) {
@@ -880,12 +884,25 @@ export class GitOps {
                 "show",
                 "--include-untracked",
                 "--numstat",
+                "-z",
                 ref,
             ]);
         } catch (err) {
             logGitOpsWarning(`Failed stash show --numstat for ${ref}`, err);
         }
-        return parseStashFiles(nameStatus, numstat);
+        try {
+            untrackedPaths = await this.executor.run([
+                "stash",
+                "show",
+                "--only-untracked",
+                "--name-only",
+                "-z",
+                ref,
+            ]);
+        } catch (err) {
+            logGitOpsWarning(`Failed stash show --only-untracked for ${ref}`, err);
+        }
+        return parseStashFiles(nameStatus, numstat, untrackedPaths);
     }
     /** Returns the patch for a literal repository path inside a validated stash entry. */
     async getStashFilePatch(index: number, filePath: string): Promise<string> {

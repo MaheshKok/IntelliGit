@@ -4,14 +4,13 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Box, Button, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
-import { StashFilePane, StashList } from "./StashList";
+import { StashFilePane, StashList, type StashFileSection } from "./StashList";
 import { StashToolbar } from "./StashToolbar";
 import { StashUnstashDialog } from "./StashUnstashDialog";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { getSettings } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
-import type { TreeEntry } from "../types";
 import { t } from "../../shared/i18n";
 
 interface Props {
@@ -37,7 +36,7 @@ type StashContextAction =
     | "showDiffNewTab";
 
 interface ExpandedDirsState {
-    tree: TreeEntry[];
+    directoryPaths: string[];
     dirs: Set<string>;
 }
 
@@ -63,6 +62,11 @@ interface UnstashDialogState {
     returnFocusTarget: HTMLElement | null;
 }
 
+interface StashFileBuckets {
+    changes: WorkingFile[];
+    unversioned: WorkingFile[];
+}
+
 const MIN_STASH_LIST_HEIGHT = 100;
 const STASH_LOWER_PANE_RESERVED_HEIGHT = 166;
 const STASH_SPLITTER_KEYBOARD_STEP = 10;
@@ -77,6 +81,36 @@ function createStashMutationRequestId(): string {
 /** Throws for an action omitted from the exhaustive stash context switch. */
 function rejectUnhandledStashAction(_action: never): never {
     throw new Error("Unhandled stash context action.");
+}
+
+/** Splits selected stash files using the same status boundary as the commit file tree. */
+function splitStashFiles(files: WorkingFile[]): StashFileBuckets {
+    const changes: WorkingFile[] = [];
+    const unversioned: WorkingFile[] = [];
+    for (const file of files) {
+        if (file.status === "?") unversioned.push(file);
+        else changes.push(file);
+    }
+    return { changes, unversioned };
+}
+
+/** Counts distinct repository-relative paths for a stash section's file badge. */
+function countUniquePaths(files: WorkingFile[]): number {
+    return new Set(files.map((file) => file.path)).size;
+}
+
+/** Aggregates diff statistics for a stash section while preserving commit-tree semantics. */
+function sumStats(
+    files: WorkingFile[],
+    includeDeletions: boolean,
+): { additions: number; deletions: number } {
+    return files.reduce(
+        (stats, file) => ({
+            additions: stats.additions + file.additions,
+            deletions: stats.deletions + (includeDeletions ? file.deletions : 0),
+        }),
+        { additions: 0, deletions: 0 },
+    );
 }
 
 /**
@@ -105,19 +139,45 @@ export function StashTab({
     const [selectionOverride, setSelectionOverride] = useState<SelectionOverride | null>(null);
     const displayedSelectedIndex =
         selectionOverride?.snapshot === stashes ? selectionOverride.index : selectedIndex;
-    const displayedStashFiles = displayedSelectedIndex === selectedIndex ? stashFiles : [];
+    const displayedStashFiles = useMemo(
+        () => (displayedSelectedIndex === selectedIndex ? stashFiles : []),
+        [displayedSelectedIndex, selectedIndex, stashFiles],
+    );
     const isStashFilesLoading =
         selectionOverride?.snapshot === stashes && selectionOverride.index !== selectedIndex;
-    const tree = useFileTree(displayedStashFiles, groupByDir);
-    const allDirPaths = useMemo(() => collectAllDirPaths(tree), [tree]);
+    const { changes: changesFiles, unversioned: unversionedFiles } = useMemo(
+        () => splitStashFiles(displayedStashFiles),
+        [displayedStashFiles],
+    );
+    const changesTree = useFileTree(changesFiles, groupByDir);
+    const unversionedTree = useFileTree(unversionedFiles, groupByDir);
+    const allDirPaths = useMemo(
+        () =>
+            Array.from(
+                new Set([
+                    ...collectAllDirPaths(changesTree),
+                    ...collectAllDirPaths(unversionedTree),
+                ]),
+            ),
+        [changesTree, unversionedTree],
+    );
+    const changesCount = useMemo(() => countUniquePaths(changesFiles), [changesFiles]);
+    const unversionedCount = useMemo(() => countUniquePaths(unversionedFiles), [unversionedFiles]);
+    const changesStats = useMemo(() => sumStats(changesFiles, true), [changesFiles]);
+    const unversionedStats = useMemo(() => sumStats(unversionedFiles, false), [unversionedFiles]);
     const [expandedDirsState, setExpandedDirsState] = useState<ExpandedDirsState>(() => ({
-        tree,
+        directoryPaths: allDirPaths,
         dirs: new Set(allDirPaths),
     }));
     const expandedDirs = useMemo(
-        () => (expandedDirsState.tree === tree ? expandedDirsState.dirs : new Set(allDirPaths)),
-        [allDirPaths, expandedDirsState, tree],
+        () =>
+            expandedDirsState.directoryPaths === allDirPaths
+                ? expandedDirsState.dirs
+                : new Set(allDirPaths),
+        [allDirPaths, expandedDirsState],
     );
+    const [changesOpen, setChangesOpen] = useState(true);
+    const [unversionedOpen, setUnversionedOpen] = useState(true);
     const [fileSelection, setFileSelection] = useState<FileSelection>({
         stashIndex: null,
         path: null,
@@ -290,22 +350,28 @@ export function StashTab({
     const toggleDir = useCallback(
         (path: string) => {
             setExpandedDirsState((previous) => {
-                const next = new Set(previous.tree === tree ? previous.dirs : allDirPaths);
+                const next = new Set(
+                    previous.directoryPaths === allDirPaths ? previous.dirs : allDirPaths,
+                );
                 if (next.has(path)) next.delete(path);
                 else next.add(path);
-                return { tree, dirs: next };
+                return { directoryPaths: allDirPaths, dirs: next };
             });
         },
-        [allDirPaths, tree],
+        [allDirPaths],
     );
 
     const expandAll = useCallback(() => {
-        setExpandedDirsState({ tree, dirs: new Set(allDirPaths) });
-    }, [allDirPaths, tree]);
+        setChangesOpen(true);
+        setUnversionedOpen(true);
+        setExpandedDirsState({ directoryPaths: allDirPaths, dirs: new Set(allDirPaths) });
+    }, [allDirPaths]);
 
     const collapseAll = useCallback(() => {
-        setExpandedDirsState({ tree, dirs: new Set() });
-    }, [tree]);
+        setChangesOpen(false);
+        setUnversionedOpen(false);
+        setExpandedDirsState({ directoryPaths: allDirPaths, dirs: new Set() });
+    }, [allDirPaths]);
 
     const constrainStashListHeight = useCallback((requestedHeight: number) => {
         const containerHeight = stashTabRef.current?.clientHeight ?? 0;
@@ -430,7 +496,7 @@ export function StashTab({
             <StashToolbar
                 selectedIndex={displayedSelectedIndex}
                 groupByDir={groupByDir}
-                hasGroupedDirectories={allDirPaths.length > 0}
+                hasGroupedDirectories={displayedStashFiles.length > 0}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
                 onShowStashDiff={() => {
@@ -447,7 +513,26 @@ export function StashTab({
                 isLoading={isStashFilesLoading}
                 groupByDir={groupByDir}
                 selectedFilePath={selectedFilePath}
-                tree={tree}
+                changesSection={
+                    {
+                        files: changesFiles,
+                        tree: changesTree,
+                        count: changesCount,
+                        stats: changesStats,
+                        isOpen: changesOpen,
+                        onToggleOpen: () => setChangesOpen((isOpen) => !isOpen),
+                    } satisfies StashFileSection
+                }
+                unversionedSection={
+                    {
+                        files: unversionedFiles,
+                        tree: unversionedTree,
+                        count: unversionedCount,
+                        stats: unversionedStats,
+                        isOpen: unversionedOpen,
+                        onToggleOpen: () => setUnversionedOpen((isOpen) => !isOpen),
+                    } satisfies StashFileSection
+                }
                 expandedDirs={expandedDirs}
                 folderIcon={folderIcon}
                 folderExpandedIcon={folderExpandedIcon}

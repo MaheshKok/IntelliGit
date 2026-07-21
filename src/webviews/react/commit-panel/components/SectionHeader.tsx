@@ -1,5 +1,5 @@
 // Collapsible section header (Changes / Unversioned Files) with a
-// chevron toggle, section-level checkbox, label, and file count badge.
+// chevron toggle, optional selection control, label, and file count badge.
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
@@ -32,7 +32,8 @@ interface Props {
  *
  * The header separates open/closed state from tri-state selection so clicking the
  * checkbox toggles every file in the section while clicking the row only expands
- * or collapses that section.
+ * or collapses that section. Hidden selection controls retain the checkbox's exact
+ * geometry without adding an interactive input.
  */
 // Independent visual and selection flags; no single variant object would model this state.
 // react-doctor-disable-next-line react-doctor/no-many-boolean-props
@@ -84,7 +85,9 @@ export function SectionHeader({
             onDrop={onDrop}
         >
             <ChevronIcon expanded={isOpen} />
-            {checkboxVisibility !== "hidden" && (
+            {checkboxVisibility === "hidden" ? (
+                <Box as="span" aria-hidden="true" w="14px" h="14px" flexShrink={0} />
+            ) : (
                 <VscCheckbox
                     isChecked={isAllChecked}
                     isIndeterminate={isSomeChecked}

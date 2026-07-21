@@ -601,6 +601,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Changes");
         expect(html).toContain("+5");
         expect(html).toContain("-1");
+        expect(html).toContain('type="checkbox"');
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
@@ -614,6 +615,23 @@ describe("webview ui smoke", () => {
         expect(commitActionIndex).toBeLessThan(pushActionIndex);
         expect(html).toContain("Stash (2)");
         expect(html).not.toContain('aria-disabled="true"');
+
+        const hiddenSectionHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <SectionHeader
+                    label="Ignored Files"
+                    count={1}
+                    isOpen={true}
+                    isAllChecked={false}
+                    isSomeChecked={false}
+                    onToggleOpen={noop}
+                    onToggleCheck={noop}
+                    checkboxVisibility="hidden"
+                />
+            </ChakraProvider>,
+        );
+        expect(hiddenSectionHtml).not.toContain('type="checkbox"');
+        expect(hiddenSectionHtml).toContain('aria-hidden="true"');
 
         const disabledCommitHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>

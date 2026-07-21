@@ -70,6 +70,15 @@ function button(container: ParentNode, label: string): HTMLButtonElement {
     return found;
 }
 
+/** Finds one visible selected-stash section header by its localized label. */
+function stashSectionHeader(filePane: HTMLElement, label: string): HTMLElement {
+    const header = Array.from(filePane.children).find((child) =>
+        child.textContent?.includes(label),
+    ) as HTMLElement | undefined;
+    if (!header) throw new Error(`Missing stash section header: ${label}`);
+    return header;
+}
+
 /** Dispatches a bubbling click for user-action contract assertions. */
 function click(element: Element): void {
     act(() => {
@@ -194,6 +203,138 @@ describe("StashTab", () => {
         expect(file.getAttribute("aria-selected")).toBe("false");
         expect(otherFile.getAttribute("aria-selected")).toBe("true");
         expect(otherFile.getAttribute("aria-current")).toBe("true");
+
+        unmount(root, container);
+    });
+
+    it("separates stash changes from unversioned files with counts, stats, chevrons, and hidden checkbox spacers", () => {
+        const unversionedFile: WorkingFile = {
+            path: "new-file.ts",
+            status: "?",
+            staged: false,
+            additions: 4,
+            deletions: 2,
+        };
+        const { root, container } = renderStashTab({ stashFiles: [...files, unversionedFile] });
+        const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
+        const changes = stashSectionHeader(filePane, "Changes");
+        const unversioned = stashSectionHeader(filePane, "Unversioned Files");
+        const spacer = changes.querySelector("svg")?.nextElementSibling as HTMLElement;
+
+        expect(changes.textContent).toContain("2 files");
+        expect(changes.textContent).toContain("+3");
+        expect(unversioned.textContent).toContain("1 file");
+        expect(unversioned.textContent).toContain("+4");
+        expect(changes.querySelector("svg")).toBeTruthy();
+        expect(unversioned.querySelector("svg")).toBeTruthy();
+        expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+        expect(spacer.getAttribute("aria-hidden")).toBe("true");
+        expect(getComputedStyle(spacer).width).toBe("14px");
+        expect(getComputedStyle(spacer).height).toBe("14px");
+
+        unmount(root, container);
+    });
+
+    it("keeps a zero-count Changes section for an unversioned-only stash", () => {
+        const unversionedFile: WorkingFile = {
+            path: "only-new.ts",
+            status: "?",
+            staged: false,
+            additions: 1,
+            deletions: 0,
+        };
+        const { root, container } = renderStashTab({ stashFiles: [unversionedFile] });
+        const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
+
+        expect(stashSectionHeader(filePane, "Changes").textContent).toContain("0 files");
+        expect(stashSectionHeader(filePane, "Unversioned Files").textContent).toContain("1 file");
+        expect(container.querySelector('[data-stash-file="only-new.ts"]')).toBeTruthy();
+
+        unmount(root, container);
+    });
+
+    it("preserves stash-file selection across section collapse and reopen", () => {
+        const unversionedFile: WorkingFile = {
+            path: "new-file.ts",
+            status: "?",
+            staged: false,
+            additions: 1,
+            deletions: 0,
+        };
+        const { root, container } = renderStashTab({ stashFiles: [...files, unversionedFile] });
+        const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
+        const file = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+        const changes = stashSectionHeader(filePane, "Changes");
+
+        click(file);
+        expect(file.getAttribute("aria-current")).toBe("true");
+        click(changes);
+        expect(container.querySelector('[data-stash-file="src/second.ts"]')).toBeNull();
+        click(changes);
+        expect(container.querySelector('[data-stash-file="src/second.ts"]')?.getAttribute("aria-current")).toBe(
+            "true",
+        );
+
+        unmount(root, container);
+    });
+
+    it("preserves collapsed stash sections while the selected stash changes", () => {
+        const { root, container } = renderStashTab();
+        const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
+
+        click(stashSectionHeader(filePane, "Changes"));
+        act(() => {
+            root.render(
+                <ChakraProvider theme={theme}>
+                    <StashTab
+                        repositoryRoot="/repo"
+                        currentBranchName="main"
+                        stashes={stashes}
+                        stashFiles={files}
+                        selectedIndex={1}
+                        groupByDir={false}
+                        onToggleGroupBy={vi.fn()}
+                    />
+                </ChakraProvider>,
+            );
+        });
+
+        expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeNull();
+        expect(
+            stashSectionHeader(
+                container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement,
+                "Changes",
+            ),
+        ).toBeTruthy();
+
+        unmount(root, container);
+    });
+
+    it("uses stash files, not directories, to enable section expand and collapse controls", () => {
+        const { root, container } = renderStashTab();
+        const collapse = container.querySelector('button[aria-label="Collapse All"]') as HTMLButtonElement;
+        const expand = container.querySelector('button[aria-label="Expand All"]') as HTMLButtonElement;
+
+        expect(collapse.disabled).toBe(false);
+        expect(expand.disabled).toBe(false);
+        click(collapse);
+        expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeNull();
+        click(expand);
+        expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeTruthy();
+
+        unmount(root, container);
+    });
+
+    it("expands collapsed stash sections and grouped directories together", () => {
+        const { root, container } = renderStashTab({ groupByDir: true });
+        const collapse = container.querySelector('button[aria-label="Collapse All"]') as HTMLButtonElement;
+        const expand = container.querySelector('button[aria-label="Expand All"]') as HTMLButtonElement;
+
+        click(collapse);
+        expect(container.querySelector('button[title="src"]')).toBeNull();
+        click(expand);
+        expect(container.querySelector('button[title="src"]')).toBeTruthy();
+        expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeTruthy();
 
         unmount(root, container);
     });

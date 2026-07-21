@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { GitOps, UpstreamPushDeclinedError } from "../../../../src/git/operations";
 import type { GitExecutor } from "../../../../src/git/executor";
+import { parseStashFiles } from "../../../../src/git/stashFiles";
 
 const execFileAsync = promisify(execFile);
 
@@ -317,19 +318,27 @@ describe("GitOps", () => {
         });
     });
     describe("stashed files helpers", () => {
-        it("parses stashed file status and numstat", async () => {
+        it("classifies authoritative untracked stash paths without relabeling tracked additions", async () => {
             const executor = {
                 run: vi.fn(async (args: string[]) => {
                     if (
                         args.join(" ") ===
-                        "stash show --include-untracked --name-status stash@{1}"
+                        "stash show --include-untracked --name-status -z stash@{1}"
                     ) {
-                        return "M\tsrc/a.ts\nR100\tsrc/old.ts\tsrc/new.ts\n";
+                        return "M\0src/a.ts\0A\0src/tracked-added.ts\0A\0src/untracked-added.ts\0";
                     }
                     if (
-                        args.join(" ") === "stash show --include-untracked --numstat stash@{1}"
+                        args.join(" ") === "stash show --include-untracked --numstat -z stash@{1}"
                     ) {
-                        return "3\t1\tsrc/a.ts\n2\t0\tsrc/{old.ts => new.ts}\n";
+                        return [
+                            "3\t1\tsrc/a.ts",
+                            "2\t0\tsrc/tracked-added.ts",
+                            "4\t0\tsrc/untracked-added.ts",
+                            "",
+                        ].join("\0");
+                    }
+                    if (args.join(" ") === "stash show --only-untracked --name-only -z stash@{1}") {
+                        return "src/untracked-added.ts\0";
                     }
                     return "";
                 }),
@@ -346,18 +355,159 @@ describe("GitOps", () => {
                     deletions: 1,
                 },
                 {
-                    path: "src/new.ts",
-                    status: "R",
+                    path: "src/tracked-added.ts",
+                    status: "A",
                     staged: false,
                     additions: 2,
                     deletions: 0,
                 },
+                {
+                    path: "src/untracked-added.ts",
+                    status: "?",
+                    staged: false,
+                    additions: 4,
+                    deletions: 0,
+                },
             ]);
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["stash", "show", "--include-untracked", "--name-status", "stash@{1}"],
+                ["stash", "show", "--include-untracked", "--name-status", "-z", "stash@{1}"],
             ]);
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["stash", "show", "--include-untracked", "--numstat", "stash@{1}"],
+                ["stash", "show", "--include-untracked", "--numstat", "-z", "stash@{1}"],
+            ]);
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
+                ["stash", "show", "--only-untracked", "--name-only", "-z", "stash@{1}"],
+            ]);
+        });
+
+        it("upserts authoritative untracked paths when primary stash metadata fails", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.includes("--only-untracked")) return "only-untracked.txt\0";
+                    throw new Error("stash show failed");
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.getStashFiles(0)).resolves.toEqual([
+                {
+                    path: "only-untracked.txt",
+                    status: "?",
+                    staged: false,
+                    additions: 0,
+                    deletions: 0,
+                },
+            ]);
+        });
+
+        it("parses realistic NUL outputs without duplicating or corrupting special paths", () => {
+            const leadingPath = " leading.txt";
+            const trailingPath = "trailing.txt ";
+            const newlinePath = "line\nbreak.txt";
+            const nameStatus = [
+                "M",
+                "tracked.ts",
+                "A",
+                leadingPath,
+                "A",
+                trailingPath,
+                "A",
+                newlinePath,
+                "R100",
+                "old name.ts",
+                "renamed name.ts",
+                "C100",
+                "source.ts",
+                "copied name.ts",
+                "",
+            ].join("\0");
+            const numstat = [
+                "3\t1\ttracked.ts",
+                `1\t0\t${leadingPath}`,
+                `2\t0\t${trailingPath}`,
+                `4\t0\t${newlinePath}`,
+                "0\t0\t",
+                "old name.ts",
+                "renamed name.ts",
+                "0\t0\t",
+                "source.ts",
+                "copied name.ts",
+                "",
+            ].join("\0");
+            const untrackedPaths = [leadingPath, trailingPath, newlinePath, ""].join("\0");
+
+            const files = parseStashFiles(nameStatus, numstat, untrackedPaths);
+
+            expect(files).toHaveLength(6);
+            expect(files).toEqual(
+                expect.arrayContaining([
+                    {
+                        path: leadingPath,
+                        status: "?",
+                        staged: false,
+                        additions: 1,
+                        deletions: 0,
+                    },
+                    {
+                        path: trailingPath,
+                        status: "?",
+                        staged: false,
+                        additions: 2,
+                        deletions: 0,
+                    },
+                    {
+                        path: newlinePath,
+                        status: "?",
+                        staged: false,
+                        additions: 4,
+                        deletions: 0,
+                    },
+                    {
+                        path: "tracked.ts",
+                        status: "M",
+                        staged: false,
+                        additions: 3,
+                        deletions: 1,
+                    },
+                    {
+                        path: "renamed name.ts",
+                        status: "R",
+                        staged: false,
+                        additions: 0,
+                        deletions: 0,
+                    },
+                    {
+                        path: "copied name.ts",
+                        status: "C",
+                        staged: false,
+                        additions: 0,
+                        deletions: 0,
+                    },
+                ]),
+            );
+        });
+
+        it("preserves existing metadata when untracked classification fails", async () => {
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    if (args.includes("--name-status")) return "A\0tracked-added.ts\0";
+                    if (args.includes("--numstat")) return "2\t0\ttracked-added.ts\0";
+                    if (args.includes("--only-untracked")) {
+                        throw new Error("only-untracked unavailable");
+                    }
+                    return "";
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.getStashFiles(0)).resolves.toEqual([
+                {
+                    path: "tracked-added.ts",
+                    status: "A",
+                    staged: false,
+                    additions: 2,
+                    deletions: 0,
+                },
             ]);
         });
 

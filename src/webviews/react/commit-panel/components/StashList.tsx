@@ -7,6 +7,7 @@ import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from 
 import type { TreeEntry } from "../types";
 import { FileRow } from "./FileRow";
 import { FolderRow } from "./FolderRow";
+import { SectionHeader } from "./SectionHeader";
 import { t } from "../../shared/i18n";
 
 /** Props for the flat stash row list. */
@@ -26,7 +27,8 @@ export interface StashFilePaneProps {
     isLoading: boolean;
     groupByDir: boolean;
     selectedFilePath: string | null;
-    tree: TreeEntry[];
+    changesSection: StashFileSection;
+    unversionedSection: StashFileSection;
     expandedDirs: Set<string>;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
@@ -34,6 +36,16 @@ export interface StashFilePaneProps {
     onToggleDir: (path: string) => void;
     onFileSelect: (path: string) => void;
     onFileActivate: (path: string) => void;
+}
+
+/** Derived state for one non-selectable stash file section. */
+export interface StashFileSection {
+    files: WorkingFile[];
+    tree: TreeEntry[];
+    count: number;
+    stats: { additions: number; deletions: number };
+    isOpen: boolean;
+    onToggleOpen: () => void;
 }
 
 /** Renders one flat, selectable stash row list without nested file previews. */
@@ -198,7 +210,8 @@ export function StashFilePane({
     isLoading,
     groupByDir,
     selectedFilePath,
-    tree,
+    changesSection,
+    unversionedSection,
     expandedDirs,
     folderIcon,
     folderExpandedIcon,
@@ -224,8 +237,87 @@ export function StashFilePane({
                     {t("common.loading")}
                 </Box>
             ) : stashFiles.length > 0 ? (
+                <>
+                    <StashFilePaneSection
+                        label={t("commitPanel.changes")}
+                        section={changesSection}
+                        groupByDir={groupByDir}
+                        selectedFilePath={selectedFilePath}
+                        expandedDirs={expandedDirs}
+                        folderIcon={folderIcon}
+                        folderExpandedIcon={folderExpandedIcon}
+                        folderIconsByName={folderIconsByName}
+                        onToggleDir={onToggleDir}
+                        onFileSelect={onFileSelect}
+                        onFileActivate={onFileActivate}
+                    />
+                    {unversionedSection.files.length > 0 ? (
+                        <StashFilePaneSection
+                            label={t("commitPanel.unversionedFiles")}
+                            section={unversionedSection}
+                            groupByDir={groupByDir}
+                            selectedFilePath={selectedFilePath}
+                            expandedDirs={expandedDirs}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
+                            onToggleDir={onToggleDir}
+                            onFileSelect={onFileSelect}
+                            onFileActivate={onFileActivate}
+                        />
+                    ) : null}
+                </>
+            ) : (
+                <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
+                    {t("stash.noFiles")}
+                </Box>
+            )}
+        </Box>
+    );
+}
+
+/** Renders one stash-file section without exposing any file-selection controls. */
+function StashFilePaneSection({
+    label,
+    section,
+    groupByDir,
+    selectedFilePath,
+    expandedDirs,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
+    onToggleDir,
+    onFileSelect,
+    onFileActivate,
+}: {
+    label: string;
+    section: StashFileSection;
+    groupByDir: boolean;
+    selectedFilePath: string | null;
+    expandedDirs: Set<string>;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+    onToggleDir: (path: string) => void;
+    onFileSelect: (path: string) => void;
+    onFileActivate: (path: string) => void;
+}): React.ReactElement {
+    return (
+        <>
+            <SectionHeader
+                label={label}
+                count={section.count}
+                stats={section.stats}
+                isOpen={section.isOpen}
+                isAllChecked={false}
+                isSomeChecked={false}
+                onToggleOpen={section.onToggleOpen}
+                onToggleCheck={() => undefined}
+                checkboxVisibility="hidden"
+            />
+            {section.isOpen ? (
                 <StashFileTree
-                    entries={tree}
+                    entries={section.tree}
                     groupByDir={groupByDir}
                     selectedFilePath={selectedFilePath}
                     expandedDirs={expandedDirs}
@@ -236,12 +328,8 @@ export function StashFilePane({
                     onFileSelect={onFileSelect}
                     onFileActivate={onFileActivate}
                 />
-            ) : (
-                <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    {t("stash.noFiles")}
-                </Box>
-            )}
-        </Box>
+            ) : null}
+        </>
     );
 }
 

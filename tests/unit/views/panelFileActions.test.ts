@@ -131,16 +131,19 @@ describe("showStashDiffFromPanel", () => {
 
     it("propagates unrelated local-file errors", async () => {
         const gitOps = makeGitOps();
-        const permissionError = new vscodeMock.FileSystemError("Permission denied", "NoPermissions");
+        const permissionError = new vscodeMock.FileSystemError(
+            "Permission denied",
+            "NoPermissions",
+        );
         vi.mocked(vscodeMock.workspace.openTextDocument).mockRejectedValueOnce(permissionError);
 
-        await expect(
-            showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts"),
-        ).rejects.toBe(permissionError);
+        await expect(showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts")).rejects.toBe(
+            permissionError,
+        );
         expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
     });
 
-    it("opens every stash file in VS Code changes and keeps only a new tab", async () => {
+    it("opens every stash file from its snapshot to the current local document and keeps only a new tab", async () => {
         const gitOps = makeGitOps();
         const started: string[] = [];
         const resolvers = new Map<
@@ -168,19 +171,135 @@ describe("showStashDiffFromPanel", () => {
             "Stash stash@{2}",
             [
                 [
-                    { filePath: "src/a.ts", content: "stash", ref: "stash@{2}" },
-                    { filePath: "src/a.ts", content: "base", ref: "stash@{2}^1" },
-                    { filePath: "src/a.ts", content: "stash", ref: "stash@{2}" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+                    { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
                 ],
                 [
-                    { filePath: "new.txt", content: "new", ref: "stash@{2}" },
-                    undefined,
-                    { filePath: "new.txt", content: "new", ref: "stash@{2}" },
+                    { filePath: "new.txt", content: "new", ref: "Stashed: stash@{2}" },
+                    { filePath: "new.txt", content: "new", ref: "Stashed: stash@{2}" },
+                    { filePath: "new.txt", content: "local file contents", ref: "Local File" },
                 ],
             ],
         );
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "workbench.action.keepEditor",
         );
+    });
+
+    it("uses labeled empty documents for missing stash and local sides in stash-wide diffs", async () => {
+        const gitOps = makeGitOps();
+        vi.mocked(gitOps.getStashFiles).mockResolvedValueOnce([
+            { path: "gone.txt", status: "D", staged: false, additions: 0, deletions: 1 },
+        ]);
+        vi.mocked(gitOps.getStashFileContents).mockResolvedValueOnce({
+            before: "must not be used",
+            after: undefined,
+        });
+        vi.mocked(vscodeMock.workspace.openTextDocument).mockRejectedValueOnce({
+            code: "FileNotFound",
+        });
+
+        await showStashDiffFromPanel(fileActionDeps(gitOps), 2, undefined);
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "vscode.changes",
+            "Stash stash@{2}",
+            [
+                [
+                    {
+                        filePath: "gone.txt",
+                        content: "",
+                        ref: "Empty stashed file (missing: stash@{2})",
+                    },
+                    {
+                        filePath: "gone.txt",
+                        content: "",
+                        ref: "Empty stashed file (missing: stash@{2})",
+                    },
+                    { filePath: "gone.txt", content: "", ref: "Empty local file (missing)" },
+                ],
+            ],
+        );
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalledWith(
+            "workbench.action.keepEditor",
+        );
+    });
+
+    it("uses dirty local document text for stash-wide diffs", async () => {
+        const gitOps = makeGitOps();
+        vi.mocked(gitOps.getStashFiles).mockResolvedValueOnce([
+            { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 1 },
+        ]);
+        vi.mocked(vscodeMock.workspace.openTextDocument).mockResolvedValueOnce({
+            getText: () => "unsaved local content",
+        });
+
+        await showStashDiffFromPanel(fileActionDeps(gitOps), 2, undefined);
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "vscode.changes",
+            "Stash stash@{2}",
+            [
+                [
+                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+                    { filePath: "src/a.ts", content: "unsaved local content", ref: "Local File" },
+                ],
+            ],
+        );
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalledWith(
+            "workbench.action.keepEditor",
+        );
+    });
+
+    it("propagates unrelated local-file errors without opening stash-wide changes", async () => {
+        const gitOps = makeGitOps();
+        vi.mocked(gitOps.getStashFiles).mockResolvedValueOnce([
+            { path: "src/a.ts", status: "M", staged: false, additions: 1, deletions: 1 },
+        ]);
+        const permissionError = new vscodeMock.FileSystemError(
+            "Permission denied",
+            "NoPermissions",
+        );
+        vi.mocked(vscodeMock.workspace.openTextDocument).mockRejectedValueOnce(permissionError);
+
+        await expect(showStashDiffFromPanel(fileActionDeps(gitOps), 2, undefined)).rejects.toBe(
+            permissionError,
+        );
+        expect(createReadonlyDiffUri).not.toHaveBeenCalled();
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
+    });
+
+    it("does not register wide diff URIs when a later local read fails", async () => {
+        const gitOps = makeGitOps();
+        let finishFirstRead!: () => void;
+        const firstRead = new Promise<void>((resolve) => {
+            finishFirstRead = resolve;
+        });
+        let rejectSecondRead!: (error: unknown) => void;
+        const secondRead = new Promise<never>((_resolve, reject) => {
+            rejectSecondRead = reject;
+        });
+        vi.mocked(vscodeMock.workspace.openTextDocument)
+            .mockResolvedValueOnce({
+                getText: () => {
+                    finishFirstRead();
+                    return "first local content";
+                },
+            })
+            .mockReturnValueOnce(secondRead);
+        const permissionError = new vscodeMock.FileSystemError(
+            "Permission denied",
+            "NoPermissions",
+        );
+
+        const showDiff = showStashDiffFromPanel(fileActionDeps(gitOps), 2, undefined);
+        await firstRead;
+        rejectSecondRead(permissionError);
+
+        await expect(showDiff).rejects.toBe(permissionError);
+        expect(createReadonlyDiffUri).not.toHaveBeenCalled();
+        expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
     });
 });
