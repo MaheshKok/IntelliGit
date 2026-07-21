@@ -244,5 +244,5 @@
     "stash.dialog.reinstateIndex": "Index wiederherstellen",
     "stash.dialog.noBranch": "Kein Branch",
     "stash.dialog.invalidBranch": "Geben Sie einen gültigen Branchnamen ein.",
-    "a11y.resizeStashList": "Resize stash list"
+    "a11y.resizeStashList": "Größe der Stash-Liste ändern"
 }

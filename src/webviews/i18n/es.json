@@ -251,5 +251,5 @@
     "stash.dialog.reinstateIndex": "Restablecer índice",
     "stash.dialog.noBranch": "Sin rama",
     "stash.dialog.invalidBranch": "Introduzca un nombre de rama válido.",
-    "a11y.resizeStashList": "Resize stash list"
+    "a11y.resizeStashList": "Cambiar el tamaño de la lista de stashes"
 }

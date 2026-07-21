@@ -237,5 +237,5 @@
     "stash.dialog.reinstateIndex": "インデックスを復元",
     "stash.dialog.noBranch": "ブランチなし",
     "stash.dialog.invalidBranch": "有効なブランチ名を入力してください。",
-    "a11y.resizeStashList": "Resize stash list"
+    "a11y.resizeStashList": "スタッシュリストのサイズを変更"
 }

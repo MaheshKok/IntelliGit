@@ -258,5 +258,5 @@
     "stash.dialog.reinstateIndex": "Восстановить индекс",
     "stash.dialog.noBranch": "Нет ветки",
     "stash.dialog.invalidBranch": "Введите допустимое имя ветки.",
-    "a11y.resizeStashList": "Resize stash list"
+    "a11y.resizeStashList": "Изменить размер списка спрятанных изменений"
 }

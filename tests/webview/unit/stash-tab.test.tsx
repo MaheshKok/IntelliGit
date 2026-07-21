@@ -5,6 +5,7 @@ import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StashEntry, WorkingFile } from "../../../src/types";
 import { StashTab } from "../../../src/webviews/react/commit-panel/components/StashTab";
+import { StashUnstashDialog } from "../../../src/webviews/react/commit-panel/components/StashUnstashDialog";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -278,6 +279,66 @@ describe("StashTab", () => {
         }
 
         unmount(root, container);
+    });
+
+    it("keeps dialog focus and latest Escape handler when onClose changes", () => {
+        const firstOnClose = vi.fn();
+        const secondOnClose = vi.fn();
+        const returnFocusTarget = document.createElement("button");
+        document.body.append(returnFocusTarget);
+        const returnFocusSpy = vi.spyOn(returnFocusTarget, "focus");
+        const onCurrentBranchSubmit = vi.fn();
+        const onBranchSubmit = vi.fn();
+        const { root, container } = mount(
+            <ChakraProvider theme={theme}>
+                <StashUnstashDialog
+                    currentBranchName="main"
+                    returnFocusTarget={returnFocusTarget}
+                    onClose={firstOnClose}
+                    onCurrentBranchSubmit={onCurrentBranchSubmit}
+                    onBranchSubmit={onBranchSubmit}
+                />
+            </ChakraProvider>,
+        );
+        const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+        const input = dialog.querySelector('[aria-label="As new branch"]') as HTMLInputElement;
+        const inputFocusSpy = vi.spyOn(input, "focus");
+
+        expect(document.activeElement).toBe(input);
+        const cancel = button(dialog, "Cancel");
+        cancel.focus();
+        expect(document.activeElement).toBe(cancel);
+        returnFocusSpy.mockClear();
+        inputFocusSpy.mockClear();
+
+        act(() => {
+            root.render(
+                <ChakraProvider theme={theme}>
+                    <StashUnstashDialog
+                        currentBranchName="main"
+                        returnFocusTarget={returnFocusTarget}
+                        onClose={secondOnClose}
+                        onCurrentBranchSubmit={onCurrentBranchSubmit}
+                        onBranchSubmit={onBranchSubmit}
+                    />
+                </ChakraProvider>,
+            );
+        });
+
+        expect(returnFocusSpy).not.toHaveBeenCalled();
+        expect(inputFocusSpy).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(cancel);
+
+        act(() => {
+            document.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }));
+        });
+        expect(firstOnClose).not.toHaveBeenCalled();
+        expect(secondOnClose).toHaveBeenCalledTimes(1);
+
+        unmount(root, container);
+        expect(returnFocusSpy).toHaveBeenCalledTimes(1);
+        expect(document.activeElement).toBe(returnFocusTarget);
+        returnFocusTarget.remove();
     });
 
     it("selects a stash file before opening its diff by double-click or Enter", () => {

@@ -237,5 +237,5 @@
     "stash.dialog.reinstateIndex": "還原索引",
     "stash.dialog.noBranch": "沒有分支",
     "stash.dialog.invalidBranch": "請輸入有效的分支名稱。",
-    "a11y.resizeStashList": "Resize stash list"
+    "a11y.resizeStashList": "調整儲藏清單大小"
 }

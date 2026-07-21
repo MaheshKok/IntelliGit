@@ -29,6 +29,7 @@ export function StashUnstashDialog({
 }: StashUnstashDialogProps): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const onCloseRef = useRef(onClose);
     const [branchName, setBranchName] = useState("");
     const [popStash, setPopStash] = useState(false);
     const [reinstateIndex, setReinstateIndex] = useState(false);
@@ -36,12 +37,17 @@ export function StashUnstashDialog({
     const trimmedBranchName = branchName.trim();
     const usesNewBranch = trimmedBranchName.length > 0;
 
+    onCloseRef.current = onClose;
+
     useEffect(() => {
         inputRef.current?.focus();
+    }, []);
+
+    useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 event.preventDefault();
-                onClose();
+                onCloseRef.current();
                 return;
             }
             if (event.key === "Tab" && dialogRef.current) {
@@ -67,7 +73,7 @@ export function StashUnstashDialog({
             document.removeEventListener("keydown", handleKeyDown);
             if (returnFocusTarget?.isConnected) returnFocusTarget.focus();
         };
-    }, [onClose, returnFocusTarget]);
+    }, [returnFocusTarget]);
 
     const submit = (): void => {
         if (usesNewBranch) {

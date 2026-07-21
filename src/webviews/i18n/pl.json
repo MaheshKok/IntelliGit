@@ -258,5 +258,5 @@
     "stash.dialog.reinstateIndex": "Przywróć indeks",
     "stash.dialog.noBranch": "Brak gałęzi",
     "stash.dialog.invalidBranch": "Wprowadź prawidłową nazwę gałęzi.",
-    "a11y.resizeStashList": "Resize stash list"
+    "a11y.resizeStashList": "Zmień rozmiar listy schowków"
 }

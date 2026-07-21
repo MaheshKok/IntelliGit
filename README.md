@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <strong>The best Git features from Jetbrains, VS Code, and Visual Studio IDE.</strong><br />
+  <strong>The best Git features from JetBrains, VS Code, and Visual Studio IDE.</strong><br />
   A focused commit panel, readable branch graph, shelf workflow, and merge tooling for developers who want powerful IDE Git inside VS Code.
 </p>
 
