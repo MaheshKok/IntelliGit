@@ -434,6 +434,8 @@
     "Select a provider to sign out of": "Select a provider to sign out of",
     "Signed in to {host}.": "Signed in to {host}.",
     "{action}: select mainline parent": "{action}: select mainline parent",
+    "Local File": "Local File",
+    "Stashed: {ref}": "Stashed: {ref}",
     "{path} (Stashed: {ref}) <-> Local File": "{path} (Stashed: {ref}) <-> Local File",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
 }

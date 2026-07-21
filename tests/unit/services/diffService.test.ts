@@ -5,14 +5,22 @@ const mocks = vi.hoisted(() => {
     class HoistedFakeUri {
         readonly path: string;
         readonly scheme: string;
+        readonly query: string;
 
-        constructor(public readonly fsPath: string, scheme = "file") {
+        constructor(
+            public readonly fsPath: string,
+            scheme = "file",
+            path = fsPath,
+            query = "",
+        ) {
             this.scheme = scheme;
-            this.path = fsPath;
+            this.path = path;
+            this.query = query;
         }
 
         toString(): string {
-            return `${this.scheme}:${this.path}`;
+            const encodedPath = this.path.split("/").map(encodeURIComponent).join("/");
+            return `${this.scheme}:${encodedPath}${this.query ? `?${this.query}` : ""}`;
         }
 
         static file(fsPath: string): HoistedFakeUri {
@@ -24,7 +32,19 @@ const mocks = vi.hoisted(() => {
             if (separator === -1) return new HoistedFakeUri(value, "file");
             const scheme = value.slice(0, separator);
             const rest = value.slice(separator + 1);
-            return new HoistedFakeUri(rest, scheme);
+            const queryStart = rest.indexOf("?");
+            const path = queryStart === -1 ? rest : rest.slice(0, queryStart);
+            const query = queryStart === -1 ? "" : rest.slice(queryStart + 1);
+            return new HoistedFakeUri(path, scheme, path, query);
+        }
+
+        static from(components: { scheme: string; path: string; query?: string }): HoistedFakeUri {
+            return new HoistedFakeUri(
+                components.path,
+                components.scheme,
+                components.path,
+                components.query ?? "",
+            );
         }
     }
 
@@ -90,6 +110,7 @@ import {
     compareCommitInfoFileWithLocal,
     compareEditorFileWithBranch,
     compareEditorFileWithRevision,
+    createReadonlyDiffUri,
     openCommitFileDiff,
     registerReadonlyDiffContentProvider,
 } from "../../../src/services/diffService";
@@ -152,6 +173,38 @@ describe("diffService", () => {
         expect(context.subscriptions).toContain(disposable);
     });
 
+    it("creates unique encoded virtual documents with JSON label queries and retained content", () => {
+        const context = { subscriptions: [] as Array<{ dispose(): void }> };
+        registerReadonlyDiffContentProvider(context as never);
+        const provider = mocks.registerTextDocumentContentProvider.mock.calls[0][1] as {
+            provideTextDocumentContent: (uri: { toString(): string }) => string;
+        };
+
+        const stashed = createReadonlyDiffUri(
+            "src/nested dir/a#b?.ts",
+            "stashed contents",
+            "Stashed: stash@{2}",
+        );
+        const local = createReadonlyDiffUri(
+            "src/nested dir/a#b?.ts",
+            "local contents",
+            "Local File",
+        );
+
+        expect(stashed.scheme).toBe("intelligit-diff");
+        expect(stashed.path).toBe("/src/nested dir/a#b?.ts");
+        expect(stashed.toString()).toContain("/src/nested%20dir/a%23b%3F.ts");
+        expect(stashed.toString()).not.toContain("%2520");
+        expect(JSON.parse(stashed.query)).toEqual({
+            id: expect.any(String),
+            ref: "Stashed: stash@{2}",
+        });
+        expect(JSON.parse(local.query)).toEqual({ id: expect.any(String), ref: "Local File" });
+        expect(stashed.toString()).not.toBe(local.toString());
+        expect(provider.provideTextDocumentContent(stashed)).toBe("stashed contents");
+        expect(provider.provideTextDocumentContent(local)).toBe("local contents");
+    });
+
     it("opens a root-commit file diff against the empty tree", async () => {
         const gitOps = makeGitOps();
         const executor = makeExecutor();
@@ -168,6 +221,12 @@ describe("diffService", () => {
             expect.any(mocks.FakeUri),
             expect.stringContaining("src/a.ts"),
         );
+        const [leftUri, rightUri] = mocks.executeCommand.mock.calls[0].slice(1, 3) as [
+            { query: string },
+            { query: string },
+        ];
+        expect(JSON.parse(leftUri.query).ref).toBe(EMPTY_TREE_HASH.slice(0, 8));
+        expect(JSON.parse(rightUri.query).ref).toBe(commitHash.slice(0, 8));
     });
 
     it("uses the selected mainline parent for merge commit file diffs", async () => {
@@ -205,6 +264,8 @@ describe("diffService", () => {
             expect.any(mocks.FakeUri),
             "src/a.ts (branch: feature) <-> Working Tree",
         );
+        const [leftUri] = mocks.executeCommand.mock.calls[0].slice(1, 2) as [{ query: string }];
+        expect(JSON.parse(leftUri.query).ref).toBe("feature");
     });
 
     it("compares an editor file with a manually entered revision", async () => {

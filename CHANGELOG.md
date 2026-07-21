@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Included untracked files in stash listings and diffs while preserving absent before and after sides.
 - Prevented duplicate stash mutations until the matching repository-scoped operation completes.
+- Aligned stash file rows with Commit pane geometry, labeled stashed and local diff sides explicitly, and corrected branch and changed-file tree guides.
 
 ## [0.18.4] - 2026-07-20
 

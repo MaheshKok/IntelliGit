@@ -435,5 +435,7 @@
     "Stashed changes restored on new branch.": "スタッシュされた変更を新しいブランチに復元しました。",
     "Empty local file (missing)": "空のローカル ファイル（見つかりません）",
     "Empty stashed file (missing: {ref})": "空のスタッシュ ファイル（見つかりません: {ref}）",
-    "{path} (Stashed: {ref}) <-> Local File": "{path}（スタッシュ: {ref}）<-> ローカル ファイル"
+    "{path} (Stashed: {ref}) <-> Local File": "{path}（スタッシュ: {ref}）<-> ローカル ファイル",
+    "Local File": "ローカル ファイル",
+    "Stashed: {ref}": "スタッシュ: {ref}"
 }

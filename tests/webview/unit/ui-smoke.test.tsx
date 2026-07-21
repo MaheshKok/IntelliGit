@@ -177,6 +177,35 @@ describe("webview ui smoke", () => {
         expect(leafHtml).not.toContain("Checked out in another worktree");
     });
 
+    it("aligns nested branch tree guides to the chevron center", () => {
+        const html = renderUi(
+            <BranchTreeNodeRow
+                node={{
+                    label: "nested",
+                    fullName: "nested",
+                    branch: branch({ name: "nested" }),
+                    children: [],
+                }}
+                depth={2}
+                selectedBranch={null}
+                expandedFolders={new Set()}
+                onSelectBranch={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onContextMenu={vi.fn()}
+                filterNeedle=""
+                prefix="root"
+            />,
+        );
+        const container = document.createElement("div");
+        container.innerHTML = html;
+
+        expect(
+            Array.from(container.querySelectorAll<HTMLElement>('[aria-hidden="true"]'))
+                .map((guide) => guide.style.left)
+                .filter(Boolean),
+        ).toEqual(["26px", "40px"]);
+    });
+
     it("renders commit panel primitives", () => {
         const html = renderUi(
             <>

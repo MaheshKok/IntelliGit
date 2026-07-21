@@ -435,5 +435,7 @@
     "Stashed changes restored on new branch.": "Les modifications remisées ont été restaurées sur une nouvelle branche.",
     "Empty local file (missing)": "Fichier local vide (manquant)",
     "Empty stashed file (missing: {ref})": "Fichier remisé vide (manquant : {ref})",
-    "{path} (Stashed: {ref}) <-> Local File": "{path} (Remisé : {ref}) <-> Fichier local"
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (Remisé : {ref}) <-> Fichier local",
+    "Local File": "Fichier local",
+    "Stashed: {ref}": "Remisé : {ref}"
 }

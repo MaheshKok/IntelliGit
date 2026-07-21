@@ -19,7 +19,9 @@ const vscodeMock = vi.hoisted(() => {
                 message.replace(/\{(\w+)\}/g, (match, key: string) => values?.[key] ?? match),
             ),
         },
-        workspace: { fs: { stat: vi.fn(async () => ({})) } },
+        workspace: {
+            openTextDocument: vi.fn(async () => ({ getText: () => "local file contents" })),
+        },
     };
 });
 const createReadonlyDiffUri = vi.hoisted(() =>
@@ -49,7 +51,9 @@ function fileActionDeps(gitOps: GitOps) {
 describe("showStashDiffFromPanel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.mocked(vscodeMock.workspace.fs.stat).mockResolvedValue({});
+        vi.mocked(vscodeMock.workspace.openTextDocument).mockResolvedValue({
+            getText: () => "local file contents",
+        });
     });
 
     it("opens one stash file from the stashed revision to the current local file", async () => {
@@ -58,16 +62,29 @@ describe("showStashDiffFromPanel", () => {
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
 
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(2, "src/a.ts");
-        expect(createReadonlyDiffUri).toHaveBeenCalledWith("src/a.ts", "stash", "stash@{2}");
+        expect(createReadonlyDiffUri).toHaveBeenCalledWith(
+            "src/a.ts",
+            "stash",
+            "Stashed: stash@{2}",
+        );
+        expect(createReadonlyDiffUri).toHaveBeenCalledWith(
+            "src/a.ts",
+            "local file contents",
+            "Local File",
+        );
         expect(createReadonlyDiffUri).not.toHaveBeenCalledWith(
             "src/a.ts",
             "base",
             expect.any(String),
         );
+        expect(vscodeMock.workspace.openTextDocument).toHaveBeenCalledWith({
+            root: { scheme: "file", path: "/repo" },
+            path: "src/a.ts",
+        });
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
-            { filePath: "src/a.ts", content: "stash", ref: "stash@{2}" },
-            { root: { scheme: "file", path: "/repo" }, path: "src/a.ts" },
+            { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+            { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
             "src/a.ts (Stashed: stash@{2}) <-> Local File",
             { preview: false },
         );
@@ -89,7 +106,7 @@ describe("showStashDiffFromPanel", () => {
                 content: "",
                 ref: "Empty stashed file (missing: stash@{2})",
             },
-            { root: { scheme: "file", path: "/repo" }, path: "src/a.ts" },
+            { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
             "src/a.ts (Stashed: stash@{2}) <-> Local File",
             { preview: true },
         );
@@ -97,13 +114,15 @@ describe("showStashDiffFromPanel", () => {
 
     it("uses an explicitly labeled empty virtual document only when the local file is missing", async () => {
         const gitOps = makeGitOps();
-        vi.mocked(vscodeMock.workspace.fs.stat).mockRejectedValueOnce({ code: "FileNotFound" });
+        vi.mocked(vscodeMock.workspace.openTextDocument).mockRejectedValueOnce({
+            code: "FileNotFound",
+        });
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts");
 
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
-            { filePath: "src/a.ts", content: "stash", ref: "stash@{2}" },
+            { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
             { filePath: "src/a.ts", content: "", ref: "Empty local file (missing)" },
             "src/a.ts (Stashed: stash@{2}) <-> Local File",
             { preview: true },
@@ -113,7 +132,7 @@ describe("showStashDiffFromPanel", () => {
     it("propagates unrelated local-file errors", async () => {
         const gitOps = makeGitOps();
         const permissionError = new vscodeMock.FileSystemError("Permission denied", "NoPermissions");
-        vi.mocked(vscodeMock.workspace.fs.stat).mockRejectedValueOnce(permissionError);
+        vi.mocked(vscodeMock.workspace.openTextDocument).mockRejectedValueOnce(permissionError);
 
         await expect(
             showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts"),

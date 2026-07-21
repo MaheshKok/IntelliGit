@@ -334,7 +334,7 @@ function StashFileTree({
                             dataStashFile={entry.file.path}
                             isCurrent={isSelected}
                             contextMenuEnabled={false}
-                            checkboxVisibility="none"
+                            checkboxVisibility="hidden"
                         />
                     );
                 }

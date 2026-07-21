@@ -435,5 +435,7 @@
     "Stashed changes restored on new branch.": "已在新分支上恢复储藏的更改。",
     "Empty local file (missing)": "空的本地文件（缺失）",
     "Empty stashed file (missing: {ref})": "空的储藏文件（缺失：{ref}）",
-    "{path} (Stashed: {ref}) <-> Local File": "{path}（储藏：{ref}）<-> 本地文件"
+    "{path} (Stashed: {ref}) <-> Local File": "{path}（储藏：{ref}）<-> 本地文件",
+    "Local File": "本地文件",
+    "Stashed: {ref}": "储藏：{ref}"
 }

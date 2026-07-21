@@ -12,6 +12,8 @@ import { ChevronIcon } from "../../shared/components/Icons";
 import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { t } from "../../shared/i18n";
 
+const CHECKBOX_SLOT_SIZE = 14;
+
 interface Props {
     name: string;
     dirPath: string;
@@ -84,7 +86,14 @@ function FolderRowInner({
         >
             <IndentGuides treeDepth={depth} />
             <ChevronIcon expanded={isExpanded} />
-            {checkboxVisibility !== "hidden" && (
+            {checkboxVisibility === "hidden" ? (
+                <Box
+                    as="span"
+                    w={`${CHECKBOX_SLOT_SIZE}px`}
+                    h={`${CHECKBOX_SLOT_SIZE}px`}
+                    flexShrink={0}
+                />
+            ) : (
                 <VscCheckbox
                     isChecked={isAllChecked}
                     isIndeterminate={isSomeChecked}

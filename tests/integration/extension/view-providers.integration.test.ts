@@ -92,7 +92,7 @@ const showWarningMessage = vi.fn(async () => undefined);
 const showInformationMessage = vi.fn(async () => undefined);
 const showTextDocument = vi.fn(async () => undefined);
 const executeCommand = vi.fn(async () => undefined);
-const openTextDocument = vi.fn(async (arg) => arg);
+const openTextDocument = vi.fn(async () => ({ getText: () => "local file contents" }));
 const postMessageSpy = vi.fn();
 const fileSystemWatchers: FakeFileSystemWatcher[] = [];
 const createdWebviewPanels: Array<{
@@ -205,6 +205,14 @@ const vscodeMock = {
             path: value,
             scheme: value.split(":", 1)[0],
             toString: () => value,
+        }),
+        from: (components: { scheme: string; path: string; query?: string }) => ({
+            fsPath: components.path,
+            path: components.path,
+            query: components.query ?? "",
+            scheme: components.scheme,
+            toString: () =>
+                `${components.scheme}:${components.path}${components.query ? `?${components.query}` : ""}`,
         }),
         joinPath: (
             base: { fsPath?: string; path?: string },
@@ -1813,14 +1821,22 @@ describe("view providers integration", () => {
             { type: "stashMutationCompleted", requestId: "undocked-clear" },
         ]);
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
-        expect(vscodeMock.workspace.fs.stat).toHaveBeenCalledWith({
+        expect(openTextDocument).toHaveBeenCalledWith({
             fsPath: "/repo/src/a.ts",
             path: "/repo/src/a.ts",
         });
         expect(executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
-            expect.objectContaining({ scheme: "intelligit-diff" }),
-            { fsPath: "/repo/src/a.ts", path: "/repo/src/a.ts" },
+            expect.objectContaining({
+                scheme: "intelligit-diff",
+                path: "/src/a.ts",
+                query: expect.stringContaining('"ref":"Stashed: {ref}"'),
+            }),
+            expect.objectContaining({
+                scheme: "intelligit-diff",
+                path: "/src/a.ts",
+                query: expect.stringContaining('"ref":"Local File"'),
+            }),
             "{path} (Stashed: {ref}) <-> Local File",
             { preview: true },
         );
@@ -5560,14 +5576,22 @@ describe("view providers integration", () => {
 
         await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
-        expect(vscodeMock.workspace.fs.stat).toHaveBeenCalledWith({
+        expect(openTextDocument).toHaveBeenCalledWith({
             fsPath: "/repo/src/a.ts",
             path: "/repo/src/a.ts",
         });
         expect(executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
-            expect.objectContaining({ scheme: "intelligit-diff" }),
-            { fsPath: "/repo/src/a.ts", path: "/repo/src/a.ts" },
+            expect.objectContaining({
+                scheme: "intelligit-diff",
+                path: "/src/a.ts",
+                query: expect.stringContaining('"ref":"Stashed: {ref}"'),
+            }),
+            expect.objectContaining({
+                scheme: "intelligit-diff",
+                path: "/src/a.ts",
+                query: expect.stringContaining('"ref":"Local File"'),
+            }),
             "{path} (Stashed: {ref}) <-> Local File",
             { preview: true },
         );

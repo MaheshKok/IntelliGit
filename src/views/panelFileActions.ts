@@ -159,11 +159,12 @@ function isFileNotFoundError(error: unknown): error is { code: "FileNotFound" } 
 /**
  * Opens a VS Code diff for one stash file, or VS Code's multi-file changes editor for the whole stash.
  *
- * File-specific requests compare the stashed file content to the current workspace file. Missing
- * stash or workspace sides use explicitly labeled empty virtual documents, while filesystem errors
- * other than `FileNotFound` reject. Stash-level requests retain every valid stash file in the changes
- * editor, preserving absent sides for added or deleted files. Preview mode defaults to true for
- * legacy callers; false keeps the resulting changes editor pinned in a new tab.
+ * File-specific requests compare readonly snapshots of stashed and local content so each side has
+ * an explicit resource label. Missing stash or workspace sides use explicitly labeled empty virtual
+ * documents, while filesystem errors other than `FileNotFound` reject. Stash-level requests retain
+ * every valid stash file in the changes editor, preserving absent sides for added or deleted files.
+ * Preview mode defaults to true for legacy callers; false keeps the resulting changes editor pinned
+ * in a new tab.
  */
 export async function showStashDiffFromPanel(
     deps: Pick<PanelFileActionDeps, "gitOps" | "getWorkspaceRoot">,
@@ -181,12 +182,16 @@ export async function showStashDiffFromPanel(
             contents.after ?? "",
             contents.after === undefined
                 ? vscode.l10n.t("Empty stashed file (missing: {ref})", { ref })
-                : ref,
+                : vscode.l10n.t("Stashed: {ref}", { ref }),
         );
         const localFile = vscode.Uri.joinPath(deps.getWorkspaceRoot(), filePath);
-        let local = localFile;
+        let local: vscode.Uri;
         try {
-            await vscode.workspace.fs.stat(localFile);
+            local = createReadonlyDiffUri(
+                filePath,
+                (await vscode.workspace.openTextDocument(localFile)).getText(),
+                vscode.l10n.t("Local File"),
+            );
         } catch (error) {
             if (!isFileNotFoundError(error)) throw error;
             local = createReadonlyDiffUri(

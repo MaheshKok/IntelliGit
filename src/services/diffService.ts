@@ -73,15 +73,14 @@ export function registerReadonlyDiffContentProvider(
     return cleanup;
 }
 
-function encodePathForVirtualUri(filePath: string): string {
-    return filePath.split("/").map(encodeURIComponent).join("/");
-}
-
 /**
  * Creates a unique virtual URI for immutable diff content from a Git ref or commit side.
  *
- * `filePath` must already be a repository-relative Git path. The path is encoded
- * as URI data only; it is not resolved against the workspace filesystem.
+ * `filePath` must already be a repository-relative Git path. It is stored as a decoded
+ * URI path so VS Code serializes special characters exactly once; it is never resolved
+ * against the workspace filesystem. `refLabel` is stored as JSON `query.ref` so the
+ * contributed resource formatter identifies each readonly diff side without changing
+ * provider storage semantics.
  */
 export function createReadonlyDiffUri(
     filePath: string,
@@ -89,13 +88,15 @@ export function createReadonlyDiffUri(
     refLabel: string,
 ): vscode.Uri {
     readonlyDiffDocumentSeq += 1;
-    const query = new URLSearchParams({
+    const query = JSON.stringify({
         id: String(readonlyDiffDocumentSeq),
         ref: refLabel,
     });
-    const uri = vscode.Uri.parse(
-        `${READONLY_DIFF_SCHEME}:/${encodePathForVirtualUri(filePath)}?${query.toString()}`,
-    );
+    const uri = vscode.Uri.from({
+        scheme: READONLY_DIFF_SCHEME,
+        path: `/${filePath}`,
+        query,
+    });
     readonlyDiffDocuments.set(uri.toString(), content);
     return uri;
 }

@@ -6,7 +6,7 @@ import { JETBRAINS_UI } from "../shared/tokens";
 export const TREE_INDENT_STEP = JETBRAINS_UI.size.treeIndent;
 export const BRANCH_TREE_INDENT_BASE = 18;
 export const BRANCH_TREE_INDENT_STEP = 14;
-export const BRANCH_TREE_GUIDE_BASE = 23;
+export const BRANCH_TREE_GUIDE_BASE = BRANCH_TREE_INDENT_BASE + 16 / 2;
 export const DEFAULT_BRANCH_ICON_YELLOW = "var(--vscode-charts-yellow, #f2c94c)";
 
 export const BRANCH_ROW_CLASS_CSS = `

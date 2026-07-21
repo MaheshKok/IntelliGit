@@ -160,11 +160,19 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
-    it("renders flat stash files as checkbox-free commit rows with path, stats, and status", () => {
-        const { root, container } = renderStashTab();
+    it("renders flat stash files as checkbox-free commit rows with path, stats, status, and slots", () => {
+        const ignoredFile: WorkingFile = {
+            path: "ignored.log",
+            status: "!",
+            staged: false,
+            additions: 0,
+            deletions: 0,
+        };
+        const { root, container } = renderStashTab({ stashFiles: [...files, ignoredFile] });
         const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
         const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
         const otherFile = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+        const ignored = container.querySelector('[data-stash-file="ignored.log"]') as HTMLElement;
 
         expect(file.tagName).toBe("BUTTON");
         expect(file.textContent).toContain("first.ts");
@@ -172,6 +180,12 @@ describe("StashTab", () => {
         expect(file.textContent).toContain("+1");
         expect(file.textContent).toContain("M");
         expect(filePane.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+        for (const stashFile of [file, otherFile, ignored]) {
+            const slot = stashFile.querySelector('[data-tree-icon="file"]')
+                ?.previousElementSibling as HTMLElement;
+            expect(getComputedStyle(slot).width).toBe("14px");
+            expect(getComputedStyle(slot).height).toBe("14px");
+        }
         expect(file.getAttribute("data-vscode-context")).toBeNull();
         expect(file.getAttribute("aria-selected")).toBe("true");
         expect(otherFile.getAttribute("aria-selected")).toBe("false");
@@ -184,7 +198,7 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
-    it("renders grouped stash folders without checkbox gaps or redundant parent paths", () => {
+    it("renders grouped stash folders with checkbox slots and no inputs or redundant parent paths", () => {
         const { root, container } = renderStashTab({ groupByDir: true });
         const folder = container.querySelector('button[title="src"]') as HTMLElement;
         const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
@@ -192,10 +206,18 @@ describe("StashTab", () => {
         expect(folder.textContent).toContain("src");
         expect(folder.textContent).toContain("2 files");
         expect(folder.querySelector('input[type="checkbox"]')).toBeNull();
+        const folderSlot = folder.querySelector('[data-tree-icon="folder"]')
+            ?.previousElementSibling as HTMLElement;
+        expect(getComputedStyle(folderSlot).width).toBe("14px");
+        expect(getComputedStyle(folderSlot).height).toBe("14px");
         expect(folder.getAttribute("aria-expanded")).toBe("true");
         expect(file.textContent).toContain("first.ts");
         expect(file.textContent).not.toContain("src");
         expect(file.querySelector('input[type="checkbox"]')).toBeNull();
+        const fileSlot = file.querySelector('[data-tree-icon="file"]')
+            ?.previousElementSibling as HTMLElement;
+        expect(getComputedStyle(fileSlot).width).toBe("14px");
+        expect(getComputedStyle(fileSlot).height).toBe("14px");
 
         click(folder);
         expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeNull();

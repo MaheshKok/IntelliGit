@@ -69,6 +69,16 @@
     "main": "./dist/extension.js",
     "l10n": "./l10n",
     "contributes": {
+        "resourceLabelFormatters": [
+            {
+                "scheme": "intelligit-diff",
+                "formatting": {
+                    "label": "${path} (${query.ref})",
+                    "separator": "/",
+                    "stripPathStartingSeparator": true
+                }
+            }
+        ],
         "viewsContainers": {
             "activitybar": [
                 {

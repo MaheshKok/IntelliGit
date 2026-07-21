@@ -435,5 +435,7 @@
     "Stashed changes restored on new branch.": "Stash-Änderungen wurden auf neuem Branch wiederhergestellt.",
     "Empty local file (missing)": "Leere lokale Datei (fehlt)",
     "Empty stashed file (missing: {ref})": "Leere Stash-Datei (fehlt: {ref})",
-    "{path} (Stashed: {ref}) <-> Local File": "{path} (Gestasht: {ref}) <-> Lokale Datei"
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (Gestasht: {ref}) <-> Lokale Datei",
+    "Local File": "Lokale Datei",
+    "Stashed: {ref}": "Gestasht: {ref}"
 }

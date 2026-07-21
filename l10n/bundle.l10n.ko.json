@@ -435,5 +435,7 @@
     "Stashed changes restored on new branch.": "스태시된 변경 사항을 새 브랜치에 복원했습니다.",
     "Empty local file (missing)": "빈 로컬 파일(없음)",
     "Empty stashed file (missing: {ref})": "빈 스태시 파일(없음: {ref})",
-    "{path} (Stashed: {ref}) <-> Local File": "{path} (스태시: {ref}) <-> 로컬 파일"
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (스태시: {ref}) <-> 로컬 파일",
+    "Local File": "로컬 파일",
+    "Stashed: {ref}": "스태시: {ref}"
 }
