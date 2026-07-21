@@ -58,8 +58,11 @@ Thumbs.db
 .claude/**
 .claude-flow/**
 .agents/**
+.codex/**
 .hermes/**
 .gitnexus/**
+.impeccable/**
+.ruff_cache/**
 .serena/**
 .mcp.json
 CLAUDE.md
