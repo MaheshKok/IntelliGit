@@ -64,7 +64,9 @@ controls.
 
 ### Commit Panel
 
-![IntelliGit commit panel with staged, changed, and unversioned files](media/screenshots/commit-panel.png)
+<p align="center">
+  <img src="media/screenshots/commit-panel.png" alt="IntelliGit commit panel with staged, changed, and unversioned files" width="70%" />
+</p>
 
 The commit panel keeps the daily commit loop in one focused view. Stage by file,
 folder, or whole section; keep tracked changes and unversioned files separated;
@@ -74,7 +76,9 @@ delete, shelve changes, show history, and refresh.
 
 ### Shelf Workflow
 
-![IntelliGit shelf workflow with apply, pop, drop, and show diff actions](media/screenshots/shelf-workflow.png)
+<p align="center">
+  <img src="media/screenshots/shelf-workflow.png" alt="IntelliGit shelf workflow with apply, pop, drop, and show diff actions" width="70%" />
+</p>
 
 The Shelf/Stash tab is built for interrupted work. Park partial or full changes,
 preview the files inside a shelved entry, show a diff before restoring it, then
@@ -92,7 +96,9 @@ Bitbucket Cloud, or Bitbucket Server checks with links back to the provider.
 
 ### Branch Actions
 
-![IntelliGit branch action menu in the commit graph](media/screenshots/branch-actions.png)
+<p align="center">
+  <img src="media/screenshots/branch-actions.png" alt="IntelliGit branch action menu in the commit graph" width="70%" />
+</p>
 
 Branch actions live where branch decisions happen. The branch tree groups
 current, local, remote, and worktree branches, then exposes context-aware actions
