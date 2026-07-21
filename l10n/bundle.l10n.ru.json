@@ -432,5 +432,8 @@
     "All stashed changes cleared.": "Все спрятанные изменения удалены.",
     "Clear All Stashes": "Очистить все спрятанные изменения",
     "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "Очистить все спрятанные изменения? Это необратимо и может помешать восстановлению сохранённой работы.",
-    "Stashed changes restored on new branch.": "Спрятанные изменения восстановлены в новой ветке."
+    "Stashed changes restored on new branch.": "Спрятанные изменения восстановлены в новой ветке.",
+    "Empty local file (missing)": "Пустой локальный файл (отсутствует)",
+    "Empty stashed file (missing: {ref})": "Пустой файл из стэша (отсутствует: {ref})",
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (В стэше: {ref}) <-> Локальный файл"
 }

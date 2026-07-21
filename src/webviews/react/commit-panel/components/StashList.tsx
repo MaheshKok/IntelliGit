@@ -5,11 +5,8 @@ import { Box, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import type { TreeEntry } from "../types";
-import { FileTypeIcon } from "./FileTypeIcon";
-import { TreeFolderIcon } from "./TreeIcons";
-import { ChevronIcon } from "../../shared/components/Icons";
-import { resolveFolderIcon } from "../../shared/utils/folderIcons";
-import { getLeafName } from "../../shared/utils/path";
+import { FileRow } from "./FileRow";
+import { FolderRow } from "./FolderRow";
 import { t } from "../../shared/i18n";
 
 /** Props for the flat stash row list. */
@@ -27,6 +24,7 @@ export interface StashFilePaneProps {
     stashFiles: WorkingFile[];
     selectedIndex: number | null;
     isLoading: boolean;
+    groupByDir: boolean;
     selectedFilePath: string | null;
     tree: TreeEntry[];
     expandedDirs: Set<string>;
@@ -198,6 +196,7 @@ export function StashFilePane({
     stashFiles,
     selectedIndex,
     isLoading,
+    groupByDir,
     selectedFilePath,
     tree,
     expandedDirs,
@@ -227,6 +226,7 @@ export function StashFilePane({
             ) : stashFiles.length > 0 ? (
                 <StashFileTree
                     entries={tree}
+                    groupByDir={groupByDir}
                     selectedFilePath={selectedFilePath}
                     expandedDirs={expandedDirs}
                     folderIcon={folderIcon}
@@ -292,6 +292,7 @@ function parseStashMessage(message: string): { title: string; branch: string | n
 /** Renders nested folders only within the selected stash's single lower file pane. */
 function StashFileTree({
     entries,
+    groupByDir,
     selectedFilePath,
     expandedDirs,
     folderIcon,
@@ -303,6 +304,7 @@ function StashFileTree({
     depth = 0,
 }: {
     entries: TreeEntry[];
+    groupByDir: boolean;
     selectedFilePath: string | null;
     expandedDirs: Set<string>;
     folderIcon?: ThemeTreeIcon;
@@ -317,112 +319,49 @@ function StashFileTree({
         <>
             {entries.map((entry) => {
                 if (entry.type === "file") {
-                    const fileName = getLeafName(entry.file.path);
                     const isSelected = selectedFilePath === entry.file.path;
                     return (
-                        <Flex
-                            as="button"
-                            type="button"
+                        <FileRow
                             key={entry.file.path}
-                            data-stash-file={entry.file.path}
-                            aria-current={isSelected ? "true" : undefined}
-                            align="center"
-                            pl={`${16 + depth * 16}px`}
-                            pr="8px"
-                            minH="22px"
-                            w="100%"
-                            gap="4px"
-                            fontSize="12px"
-                            fontFamily={SYSTEM_FONT_STACK}
-                            cursor="pointer"
-                            border="0"
-                            textAlign="left"
-                            color="var(--intelligit-pycharm-foreground)"
-                            bg={isSelected ? "var(--intelligit-pycharm-selected)" : "transparent"}
-                            _hover={{
-                                bg: isSelected
-                                    ? "var(--intelligit-pycharm-selected)"
-                                    : "var(--intelligit-pycharm-selected-hover)",
-                            }}
+                            file={entry.file}
+                            depth={depth}
+                            isChecked={false}
+                            isDragSelected={isSelected}
+                            groupByDir={groupByDir}
+                            onToggle={() => undefined}
                             onClick={() => onFileSelect(entry.file.path)}
-                            onDoubleClick={() => onFileActivate(entry.file.path)}
-                            onKeyDown={(event) => {
-                                if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    onFileActivate(entry.file.path);
-                                }
-                            }}
-                            title={entry.file.path}
-                        >
-                            <FileTypeIcon status={entry.file.status} icon={entry.file.icon} />
-                            <Box
-                                as="span"
-                                flex={1}
-                                minW={0}
-                                whiteSpace="nowrap"
-                                overflow="hidden"
-                                textOverflow="ellipsis"
-                            >
-                                {fileName}
-                            </Box>
-                        </Flex>
+                            onActivate={onFileActivate}
+                            dataStashFile={entry.file.path}
+                            isCurrent={isSelected}
+                            contextMenuEnabled={false}
+                            checkboxVisibility="none"
+                        />
                     );
                 }
 
                 const isExpanded = expandedDirs.has(entry.path);
-                const resolvedIcon = resolveFolderIcon(
-                    entry.path || entry.name,
-                    isExpanded,
-                    folderIconsByName,
-                    folderIcon,
-                    folderExpandedIcon,
-                );
                 return (
                     <React.Fragment key={entry.path}>
-                        <Flex
-                            as="button"
-                            type="button"
-                            align="center"
-                            pl={`${10 + depth * 16}px`}
-                            pr="8px"
-                            minH="22px"
-                            w="100%"
-                            gap="4px"
-                            fontSize="12px"
-                            fontFamily={SYSTEM_FONT_STACK}
-                            cursor="pointer"
-                            border="0"
-                            textAlign="left"
-                            bg="transparent"
-                            color="var(--intelligit-pycharm-foreground)"
-                            _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
-                            onClick={() => onToggleDir(entry.path)}
-                            aria-expanded={isExpanded}
-                        >
-                            <ChevronIcon expanded={isExpanded} />
-                            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
-                            <Box
-                                as="span"
-                                flex={1}
-                                minW={0}
-                                whiteSpace="nowrap"
-                                overflow="hidden"
-                                textOverflow="ellipsis"
-                            >
-                                {entry.name}
-                            </Box>
-                            <Box
-                                as="span"
-                                fontSize="11px"
-                                color="var(--vscode-descriptionForeground)"
-                                flexShrink={0}
-                            >
-                                {t("common.fileCount", { count: entry.descendantFiles.length })}
-                            </Box>
-                        </Flex>
+                        <FolderRow
+                            name={entry.name}
+                            dirPath={entry.path}
+                            depth={depth}
+                            isExpanded={isExpanded}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
+                            fileCount={entry.descendantFiles.length}
+                            isAllChecked={false}
+                            isSomeChecked={false}
+                            onToggleExpand={onToggleDir}
+                            onToggleCheck={() => undefined}
+                            checkboxVisibility="hidden"
+                            interactive
+                        />
                         {isExpanded ? (
                             <StashFileTree
                                 entries={entry.children}
+                                groupByDir={groupByDir}
                                 selectedFilePath={selectedFilePath}
                                 expandedDirs={expandedDirs}
                                 folderIcon={folderIcon}

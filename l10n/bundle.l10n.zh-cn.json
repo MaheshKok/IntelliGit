@@ -432,5 +432,8 @@
     "All stashed changes cleared.": "所有储藏的更改已清除。",
     "Clear All Stashes": "清除所有储藏",
     "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "清除所有储藏吗？此操作不可撤销并且可能无法恢复已保存的工作。",
-    "Stashed changes restored on new branch.": "已在新分支上恢复储藏的更改。"
+    "Stashed changes restored on new branch.": "已在新分支上恢复储藏的更改。",
+    "Empty local file (missing)": "空的本地文件（缺失）",
+    "Empty stashed file (missing: {ref})": "空的储藏文件（缺失：{ref}）",
+    "{path} (Stashed: {ref}) <-> Local File": "{path}（储藏：{ref}）<-> 本地文件"
 }

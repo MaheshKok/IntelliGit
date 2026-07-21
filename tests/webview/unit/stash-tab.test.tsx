@@ -159,6 +159,50 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
+    it("renders flat stash files as checkbox-free commit rows with path, stats, and status", () => {
+        const { root, container } = renderStashTab();
+        const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
+        const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
+        const otherFile = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+
+        expect(file.tagName).toBe("BUTTON");
+        expect(file.textContent).toContain("first.ts");
+        expect(file.textContent).toContain("src");
+        expect(file.textContent).toContain("+1");
+        expect(file.textContent).toContain("M");
+        expect(filePane.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+        expect(file.getAttribute("data-vscode-context")).toBeNull();
+        expect(file.getAttribute("aria-selected")).toBe("true");
+        expect(otherFile.getAttribute("aria-selected")).toBe("false");
+
+        click(otherFile);
+        expect(file.getAttribute("aria-selected")).toBe("false");
+        expect(otherFile.getAttribute("aria-selected")).toBe("true");
+        expect(otherFile.getAttribute("aria-current")).toBe("true");
+
+        unmount(root, container);
+    });
+
+    it("renders grouped stash folders without checkbox gaps or redundant parent paths", () => {
+        const { root, container } = renderStashTab({ groupByDir: true });
+        const folder = container.querySelector('button[title="src"]') as HTMLElement;
+        const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
+
+        expect(folder.textContent).toContain("src");
+        expect(folder.textContent).toContain("2 files");
+        expect(folder.querySelector('input[type="checkbox"]')).toBeNull();
+        expect(folder.getAttribute("aria-expanded")).toBe("true");
+        expect(file.textContent).toContain("first.ts");
+        expect(file.textContent).not.toContain("src");
+        expect(file.querySelector('input[type="checkbox"]')).toBeNull();
+
+        click(folder);
+        expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeNull();
+        expect(folder.getAttribute("aria-expanded")).toBe("false");
+
+        unmount(root, container);
+    });
+
     it("supports listbox navigation and keyboard context-menu activation", () => {
         const { root, container } = renderStashTab();
         const first = container.querySelector('[data-stash-index="0"]') as HTMLElement;
@@ -238,7 +282,7 @@ describe("StashTab", () => {
 
     it("selects a stash file before opening its diff by double-click or Enter", () => {
         const { root, container } = renderStashTab();
-        const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
+        const file = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
 
         click(file);
         expect(file.getAttribute("aria-current")).toBe("true");
@@ -253,17 +297,19 @@ describe("StashTab", () => {
             type: "showStashDiff",
             repositoryRoot: "/repo",
             index: 0,
-            path: "src/first.ts",
+            path: "src/second.ts",
         });
 
         act(() => {
+            file.focus();
             file.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
         });
+        expect(document.activeElement).toBe(file);
         expect(lastMessage()).toEqual({
             type: "showStashDiff",
             repositoryRoot: "/repo",
             index: 0,
-            path: "src/first.ts",
+            path: "src/second.ts",
         });
 
         unmount(root, container);

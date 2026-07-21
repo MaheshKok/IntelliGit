@@ -432,5 +432,8 @@
     "All stashed changes cleared.": "Todas as alterações no Stash foram removidas.",
     "Clear All Stashes": "Limpar todos os Stashes",
     "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "Limpar todos os Stashes? Isso é irreversível e pode impedir a recuperação do trabalho salvo.",
-    "Stashed changes restored on new branch.": "As alterações do Stash foram restauradas em um novo ramo."
+    "Stashed changes restored on new branch.": "As alterações do Stash foram restauradas em um novo ramo.",
+    "Empty local file (missing)": "Arquivo local vazio (ausente)",
+    "Empty stashed file (missing: {ref})": "Arquivo do stash vazio (ausente: {ref})",
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (No stash: {ref}) <-> Arquivo local"
 }

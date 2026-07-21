@@ -432,5 +432,8 @@
     "All stashed changes cleared.": "すべてのスタッシュされた変更が削除されました。",
     "Clear All Stashes": "すべてのスタッシュを消去",
     "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "すべてのスタッシュを消去しますか？この操作は元に戻せず保存した作業を復元できなくなる可能性があります。",
-    "Stashed changes restored on new branch.": "スタッシュされた変更を新しいブランチに復元しました。"
+    "Stashed changes restored on new branch.": "スタッシュされた変更を新しいブランチに復元しました。",
+    "Empty local file (missing)": "空のローカル ファイル（見つかりません）",
+    "Empty stashed file (missing: {ref})": "空のスタッシュ ファイル（見つかりません: {ref}）",
+    "{path} (Stashed: {ref}) <-> Local File": "{path}（スタッシュ: {ref}）<-> ローカル ファイル"
 }

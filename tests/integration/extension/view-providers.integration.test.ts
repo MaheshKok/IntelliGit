@@ -289,6 +289,9 @@ const vscodeMock = {
         set workspaceFolders(value: Array<{ uri: { fsPath: string; path: string } }> | undefined) {
             workspaceState.workspaceFolders = value;
         },
+        fs: {
+            stat: vi.fn(async () => undefined),
+        },
         openTextDocument,
         onDidChangeWorkspaceFolders: vi.fn((listener: () => Promise<void> | void) => {
             workspaceFolderListeners.push(listener);
@@ -1810,11 +1813,15 @@ describe("view providers integration", () => {
             { type: "stashMutationCompleted", requestId: "undocked-clear" },
         ]);
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(vscodeMock.workspace.fs.stat).toHaveBeenCalledWith({
+            fsPath: "/repo/src/a.ts",
+            path: "/repo/src/a.ts",
+        });
         expect(executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             expect.objectContaining({ scheme: "intelligit-diff" }),
-            expect.objectContaining({ scheme: "intelligit-diff" }),
-            "src/a.ts (stash@{0})",
+            { fsPath: "/repo/src/a.ts", path: "/repo/src/a.ts" },
+            "{path} (Stashed: {ref}) <-> Local File",
             { preview: true },
         );
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
@@ -5553,11 +5560,15 @@ describe("view providers integration", () => {
 
         await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
+        expect(vscodeMock.workspace.fs.stat).toHaveBeenCalledWith({
+            fsPath: "/repo/src/a.ts",
+            path: "/repo/src/a.ts",
+        });
         expect(executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             expect.objectContaining({ scheme: "intelligit-diff" }),
-            expect.objectContaining({ scheme: "intelligit-diff" }),
-            "src/a.ts (stash@{0})",
+            { fsPath: "/repo/src/a.ts", path: "/repo/src/a.ts" },
+            "{path} (Stashed: {ref}) <-> Local File",
             { preview: true },
         );
         provider.dispose();

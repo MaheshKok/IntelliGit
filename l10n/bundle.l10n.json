@@ -77,6 +77,8 @@
     "Deleting worktree {path}...": "Deleting worktree {path}...",
     "Directory \"{name}\" already exists. Overwrite?": "Directory \"{name}\" already exists. Overwrite?",
     "Don't Save": "Don't Save",
+    "Empty local file (missing)": "Empty local file (missing)",
+    "Empty stashed file (missing: {ref})": "Empty stashed file (missing: {ref})",
     "Drop Commit is available only for unpushed commits.": "Drop Commit is available only for unpushed commits.",
     "Drop Commit is not available for merge commits.": "Drop Commit is not available for merge commits.",
     "Edit commit message": "Edit commit message",
@@ -432,5 +434,6 @@
     "Select a provider to sign out of": "Select a provider to sign out of",
     "Signed in to {host}.": "Signed in to {host}.",
     "{action}: select mainline parent": "{action}: select mainline parent",
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (Stashed: {ref}) <-> Local File",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
 }

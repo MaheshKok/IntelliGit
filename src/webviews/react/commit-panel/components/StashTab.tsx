@@ -445,6 +445,7 @@ export function StashTab({
                 stashFiles={displayedStashFiles}
                 selectedIndex={displayedSelectedIndex}
                 isLoading={isStashFilesLoading}
+                groupByDir={groupByDir}
                 selectedFilePath={selectedFilePath}
                 tree={tree}
                 expandedDirs={expandedDirs}

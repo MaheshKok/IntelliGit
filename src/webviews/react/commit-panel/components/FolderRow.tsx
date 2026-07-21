@@ -26,6 +26,7 @@ interface Props {
     onToggleExpand: (dirPath: string) => void;
     onToggleCheck: (dirPath: string) => void;
     checkboxVisibility?: "visible" | "hidden";
+    interactive?: boolean;
 }
 
 function FolderRowInner({
@@ -42,6 +43,7 @@ function FolderRowInner({
     onToggleExpand,
     onToggleCheck,
     checkboxVisibility = "visible",
+    interactive = false,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const resolvedIcon = resolveFolderIcon(
@@ -54,10 +56,13 @@ function FolderRowInner({
 
     return (
         <Flex
+            as={interactive ? "button" : undefined}
+            type={interactive ? "button" : undefined}
             align="center"
             gap="4px"
             pl={`${padLeft}px`}
             pr="6px"
+            w={interactive ? "100%" : undefined}
             minH="22px"
             lineHeight="22px"
             fontSize="13px"
@@ -65,12 +70,16 @@ function FolderRowInner({
             cursor="pointer"
             position="relative"
             whiteSpace="nowrap"
+            border={interactive ? "0" : undefined}
+            textAlign={interactive ? "left" : undefined}
+            bg={interactive ? "transparent" : undefined}
             color="var(--intelligit-pycharm-foreground)"
             _hover={{ bg: "rgba(255,255,255,0.05)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleExpand(dirPath);
             }}
+            aria-expanded={interactive ? isExpanded : undefined}
             title={dirPath}
         >
             <IndentGuides treeDepth={depth} />

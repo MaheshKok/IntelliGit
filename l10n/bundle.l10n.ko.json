@@ -432,5 +432,8 @@
     "All stashed changes cleared.": "모든 스태시된 변경 사항이 지워졌습니다.",
     "Clear All Stashes": "모든 스태시 지우기",
     "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "모든 스태시를 지우시겠습니까? 이 작업은 되돌릴 수 없으며 저장된 작업을 복구하지 못할 수 있습니다.",
-    "Stashed changes restored on new branch.": "스태시된 변경 사항을 새 브랜치에 복원했습니다."
+    "Stashed changes restored on new branch.": "스태시된 변경 사항을 새 브랜치에 복원했습니다.",
+    "Empty local file (missing)": "빈 로컬 파일(없음)",
+    "Empty stashed file (missing: {ref})": "빈 스태시 파일(없음: {ref})",
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (스태시: {ref}) <-> 로컬 파일"
 }

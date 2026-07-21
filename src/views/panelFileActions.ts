@@ -144,14 +144,29 @@ export async function showDiffFromPanel(
 }
 
 /**
+ * Identifies VS Code's missing-file condition without depending on a particular extension-host
+ * error class instance, which may differ across test and runtime boundaries.
+ */
+function isFileNotFoundError(error: unknown): error is { code: "FileNotFound" } {
+    return (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "FileNotFound"
+    );
+}
+
+/**
  * Opens a VS Code diff for one stash file, or VS Code's multi-file changes editor for the whole stash.
  *
- * File-specific requests use virtual before/after documents. Stash-level requests retain every valid
- * stash file in the changes editor, preserving absent sides for added or deleted files. Preview mode
- * defaults to true for legacy callers; false keeps the resulting changes editor pinned in a new tab.
+ * File-specific requests compare the stashed file content to the current workspace file. Missing
+ * stash or workspace sides use explicitly labeled empty virtual documents, while filesystem errors
+ * other than `FileNotFound` reject. Stash-level requests retain every valid stash file in the changes
+ * editor, preserving absent sides for added or deleted files. Preview mode defaults to true for
+ * legacy callers; false keeps the resulting changes editor pinned in a new tab.
  */
 export async function showStashDiffFromPanel(
-    deps: Pick<PanelFileActionDeps, "gitOps">,
+    deps: Pick<PanelFileActionDeps, "gitOps" | "getWorkspaceRoot">,
     indexValue: unknown,
     pathValue: unknown,
     preview = true,
@@ -161,11 +176,32 @@ export async function showStashDiffFromPanel(
     if (pathValue !== undefined) {
         const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
         const contents = await deps.gitOps.getStashFileContents(index, filePath);
-        const before = createReadonlyDiffUri(filePath, contents.before ?? "", `${ref}^1`);
-        const after = createReadonlyDiffUri(filePath, contents.after ?? "", ref);
-        await vscode.commands.executeCommand("vscode.diff", before, after, `${filePath} (${ref})`, {
-            preview,
-        });
+        const stashed = createReadonlyDiffUri(
+            filePath,
+            contents.after ?? "",
+            contents.after === undefined
+                ? vscode.l10n.t("Empty stashed file (missing: {ref})", { ref })
+                : ref,
+        );
+        const localFile = vscode.Uri.joinPath(deps.getWorkspaceRoot(), filePath);
+        let local = localFile;
+        try {
+            await vscode.workspace.fs.stat(localFile);
+        } catch (error) {
+            if (!isFileNotFoundError(error)) throw error;
+            local = createReadonlyDiffUri(
+                filePath,
+                "",
+                vscode.l10n.t("Empty local file (missing)"),
+            );
+        }
+        await vscode.commands.executeCommand(
+            "vscode.diff",
+            stashed,
+            local,
+            vscode.l10n.t("{path} (Stashed: {ref}) <-> Local File", { path: filePath, ref }),
+            { preview },
+        );
         return;
     }
 

@@ -432,5 +432,8 @@
     "All stashed changes cleared.": "Wszystkie schowane zmiany zostały usunięte.",
     "Clear All Stashes": "Wyczyść wszystkie schowki",
     "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "Wyczyścić wszystkie schowki? Tej operacji nie można cofnąć i może uniemożliwić odzyskanie zapisanej pracy.",
-    "Stashed changes restored on new branch.": "Schowane zmiany przywrócono na nowej gałęzi."
+    "Stashed changes restored on new branch.": "Schowane zmiany przywrócono na nowej gałęzi.",
+    "Empty local file (missing)": "Pusty plik lokalny (brak)",
+    "Empty stashed file (missing: {ref})": "Pusty plik schowka (brak: {ref})",
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (Schowek: {ref}) <-> Plik lokalny"
 }

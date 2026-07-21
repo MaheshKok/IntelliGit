@@ -13,6 +13,14 @@ import { getLeafName, getParentPath } from "../../shared/utils/path";
 
 const CHECKBOX_SLOT_SIZE = 14;
 
+/** Returns working-tree context metadata unless a row explicitly opts out of VS Code actions. */
+function optionalContextMenuMetadata(
+    enabled: boolean | undefined,
+    metadata: string,
+): string | undefined {
+    return enabled === false ? undefined : metadata;
+}
+
 interface Props {
     file: WorkingFile;
     depth: number;
@@ -24,7 +32,11 @@ interface Props {
     draggable?: boolean;
     onDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onDragEnd?: () => void;
-    checkboxVisibility?: "visible" | "hidden";
+    checkboxVisibility?: "visible" | "hidden" | "none";
+    onActivate?: (path: string) => void;
+    dataStashFile?: string;
+    isCurrent?: boolean;
+    contextMenuEnabled?: boolean;
 }
 
 function FileRowInner({
@@ -39,6 +51,10 @@ function FileRowInner({
     onDragStart,
     onDragEnd,
     checkboxVisibility = "visible",
+    onActivate,
+    dataStashFile,
+    isCurrent = false,
+    contextMenuEnabled,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const fileName = getLeafName(file.path);
@@ -47,34 +63,50 @@ function FileRowInner({
 
     return (
         <Flex
+            as={onActivate ? "button" : undefined}
+            type={onActivate ? "button" : undefined}
             align="center"
             gap="4px"
             pl={`${padLeft}px`}
             pr="6px"
+            w={onActivate ? "100%" : undefined}
             minH="22px"
             lineHeight="22px"
             fontSize="13px"
             fontFamily={SYSTEM_FONT_STACK}
             cursor="pointer"
             position="relative"
+            border={onActivate ? "0" : undefined}
+            textAlign={onActivate ? "left" : undefined}
             color={
                 isDragSelected
                     ? "var(--intelligit-pycharm-selected-foreground)"
                     : "var(--intelligit-pycharm-foreground)"
             }
-            bg={isDragSelected ? "var(--intelligit-pycharm-selected)" : undefined}
+            bg={
+                isDragSelected
+                    ? "var(--intelligit-pycharm-selected)"
+                    : onActivate
+                      ? "transparent"
+                      : undefined
+            }
             _hover={{
                 bg: isDragSelected
                     ? "var(--intelligit-pycharm-selected)"
                     : "rgba(255,255,255,0.05)",
             }}
             aria-selected={isDragSelected}
-            data-vscode-context={JSON.stringify({
-                webviewSection: "file",
-                filePath: file.path,
-                webviewIgnoredFile: isIgnoredFile,
-                preventDefaultContextMenuItems: true,
-            })}
+            aria-current={isCurrent ? "true" : undefined}
+            data-stash-file={dataStashFile}
+            data-vscode-context={optionalContextMenuMetadata(
+                contextMenuEnabled,
+                JSON.stringify({
+                    webviewSection: "file",
+                    filePath: file.path,
+                    webviewIgnoredFile: isIgnoredFile,
+                    preventDefaultContextMenuItems: true,
+                }),
+            )}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onClick(e, file);
@@ -82,6 +114,16 @@ function FileRowInner({
             draggable={draggable}
             onDragStart={(event) => onDragStart?.(event, file)}
             onDragEnd={onDragEnd}
+            onDoubleClick={onActivate ? () => onActivate(file.path) : undefined}
+            onKeyDown={
+                onActivate
+                    ? (event) => {
+                          if (event.key !== "Enter") return;
+                          event.preventDefault();
+                          onActivate(file.path);
+                      }
+                    : undefined
+            }
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
@@ -93,13 +135,13 @@ function FileRowInner({
                     h={`${CHECKBOX_SLOT_SIZE}px`}
                     flexShrink={0}
                 />
-            ) : (
+            ) : checkboxVisibility === "visible" ? (
                 <VscCheckbox
                     isChecked={isChecked}
                     onChange={() => onToggle(file.path)}
                     ariaLabel={file.path}
                 />
-            )}
+            ) : null}
             <FileTypeIcon status={file.status} icon={file.icon} />
             <Flex as="span" align="baseline" gap="4px" flex={1} minW={0} overflow="hidden">
                 <Box
@@ -151,6 +193,8 @@ function FileRowInner({
  * Memoized file row for working-tree entries.
  *
  * The row opens diffs when clicked, leaves checkbox changes to the selection
- * hook, and gives the leaf filename priority over its parent path.
+ * hook, and gives the leaf filename priority over its parent path. Optional
+ * activation turns the row into a keyboard-focusable stash-file control without
+ * changing commit-tree drag or checkbox behavior.
  */
 export const FileRow = React.memo(FileRowInner);
