@@ -34,7 +34,7 @@
   <img src="media/screenshots/commit-actions.png" alt="IntelliGit commit action menu" />
 </p>
 
-IntelliGit combines a JetBrains-style three-pane merge editor with a complete Git workbench. Resolve conflicts in a horizontal Yours/Result/Theirs view, then continue through commits, branches, worktrees, shelves, history, and CI checks without switching tools.
+IntelliGit brings the best Git workflow ideas from PyCharm, VS Code, and Visual Studio IDE into one VS Code extension: a real commit panel, a readable branch graph, branch actions where the history is, shelf-style parking for unfinished work, and merge-conflict tools that do not make you rebuild context from terminal output.
 
 It does not try to replace Git. It gives the daily Git work a better cockpit.
 
