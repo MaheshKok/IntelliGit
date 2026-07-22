@@ -4,6 +4,9 @@
 import * as vscode from "vscode";
 import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import type { ShelfService } from "../services/shelfService";
+import type { ShelfFileEntry } from "../shelf/model";
+import type { ShelfEntry } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
@@ -56,6 +59,7 @@ import {
     assertNullableString,
     assertNumber,
     assertRepoPathArray,
+    assertShelfId,
     assertString,
 } from "./messageValidation";
 import {
@@ -63,11 +67,13 @@ import {
     commitOnlyFromPanel,
     commitSelectedFromPanel,
     executeStashMutationRequest,
+    executeShelfMutationRequest,
     rollbackFromPanel,
     runGitOperationFromPanel,
     stashMutationFromPanel,
     stashMutationFromUnstashMessage,
     stashSaveFromPanel,
+    shelfReadFromMessage,
     type StashMutation,
 } from "./commitPanelActions";
 import {
@@ -99,6 +105,7 @@ interface UndockedViewProviderOptions {
     selectedRepositoryRoot?: string;
     loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+    shelfServiceForRepository?: (root: string) => ShelfService | undefined;
     commitChecksService?: CommitChecksService;
     commitChecksProviders?: readonly CommitChecksProvider[];
 }
@@ -152,6 +159,8 @@ export class UndockedViewProvider {
     private readonly executor?: Pick<GitExecutor, "setRoot">;
     private readonly loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     private readonly onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+    private readonly shelfServiceForRepository?: (root: string) => ShelfService | undefined;
+    private shelfService?: ShelfService;
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
     private repositoryLabel = "";
@@ -184,6 +193,10 @@ export class UndockedViewProvider {
     private stashes: StashEntry[] = [];
     private selectedStashIndex: number | null = null;
     private stashFiles: WorkingFile[] = [];
+    private shelves: ShelfEntry[] = [];
+    private catalogGeneration = 0;
+    private shelfFiles: ShelfFileEntry[] = [];
+    private selectedShelfId: string | null = null;
     private lastFileCount = 0;
     private showIgnoredFiles = false;
     // Event emitters
@@ -242,6 +255,7 @@ export class UndockedViewProvider {
         this.executor = options.executor;
         this.loadRepositoryData = options.loadRepositoryData;
         this.onSelectedRepositoryRootChanged = options.onSelectedRepositoryRootChanged;
+        this.shelfServiceForRepository = options.shelfServiceForRepository;
         this.repositories =
             options.repositories && options.repositories.length > 0
                 ? options.repositories
@@ -252,6 +266,7 @@ export class UndockedViewProvider {
             this.repositories[0]?.root ??
             repoRootUri.fsPath;
         this.repoRootUri = vscode.Uri.file(this.selectedRepositoryRoot);
+        this.shelfService = this.shelfServiceForRepository?.(this.selectedRepositoryRoot);
         this.executor?.setRoot(this.selectedRepositoryRoot);
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.commitChecks = new CommitChecksCoordinator(
@@ -395,6 +410,7 @@ export class UndockedViewProvider {
         this.selectedRepositoryRoot = repository.root;
         this.repoRootUri = vscode.Uri.file(repository.root);
         this.repositoryLabel = repository.label;
+        this.shelfService = this.shelfServiceForRepository?.(repository.root);
         if (this.panel) this.panel.title = `IntelliGit — ${repository.label}`;
         if (options.updateExecutor) this.executor?.setRoot(repository.root);
         if (options.reset) this.resetRepositoryScopedState();
@@ -407,6 +423,10 @@ export class UndockedViewProvider {
         this.stashes = [];
         this.selectedStashIndex = null;
         this.stashFiles = [];
+        this.shelves = [];
+        this.catalogGeneration = 0;
+        this.shelfFiles = [];
+        this.selectedShelfId = null;
         this.branches = [];
         this.worktrees = [];
         this.currentBranch = null;
@@ -638,6 +658,64 @@ export class UndockedViewProvider {
         );
     }
 
+    /** Selects a shelf from the service bound to the current undocked repository root. */
+    private async selectShelf(shelfIdValue: unknown): Promise<void> {
+        const shelfId = assertShelfId(shelfIdValue, "shelfId");
+        const service = this.requireShelfService();
+        const listed = await service.listShelves();
+        if (!listed.shelves.some((shelf) => shelf.id === shelfId)) {
+            throw new Error("Shelf does not exist.");
+        }
+        this.shelves = [...listed.shelves];
+        this.catalogGeneration = listed.catalogGeneration;
+        this.selectedShelfId = shelfId;
+        this.shelfFiles = [...(await service.getShelfFiles(shelfId))];
+        await this.refreshCommitPanelData(true);
+    }
+
+    /** Runs a correlated shelf mutation against this panel's selected repository only. */
+    private runShelfMutationRequest(message: Record<string, unknown>): Promise<void> {
+        return executeShelfMutationRequest(
+            {
+                shelfService: this.requireShelfService(),
+                refreshData: () => this.refreshCommitPanelData(true),
+                fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+                selectExportDestination: async () =>
+                    (await vscode.window.showSaveDialog())?.fsPath,
+            },
+            message,
+            (completion) => this.postToWebview(completion),
+        );
+    }
+
+    private requireShelfService(): ShelfService {
+        if (!this.shelfService) throw new Error("Shelf service is unavailable for this repository.");
+        return this.shelfService;
+    }
+
+    private async shelfSnapshot(): Promise<{
+        shelves: ShelfEntry[];
+        catalogGeneration: number;
+        shelfFiles: ShelfFileEntry[];
+        selectedShelfId: string | null;
+    }> {
+        if (!this.shelfService) {
+            return { shelves: [], catalogGeneration: 0, shelfFiles: [], selectedShelfId: null };
+        }
+        const listed = await this.shelfService.listShelves();
+        const selectedShelfId = listed.shelves.some((shelf) => shelf.id === this.selectedShelfId)
+            ? this.selectedShelfId
+            : (listed.shelves[0]?.id ?? null);
+        return {
+            shelves: [...listed.shelves],
+            catalogGeneration: listed.catalogGeneration,
+            shelfFiles: selectedShelfId
+                ? [...(await this.shelfService.getShelfFiles(selectedShelfId))]
+                : [],
+            selectedShelfId,
+        };
+    }
+
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
         const actionDeps = {
             gitOps: this.gitOps,
@@ -766,6 +844,25 @@ export class UndockedViewProvider {
             // Commit-panel-side
             case "refresh":
                 await this.refreshCommitPanelData(false);
+                break;
+            case "shelfSelect":
+                await this.selectShelf(msg.shelfId);
+                break;
+            case "shelfDiff":
+            case "shelfCompareWithLocal":
+                await shelfReadFromMessage(this.requireShelfService(), msg);
+                break;
+            case "shelveSave":
+            case "unshelve":
+            case "shelfDelete":
+            case "shelfRename":
+            case "shelfExportPatch":
+            case "shelfImportPatch":
+            case "shelfRestoreGhost":
+            case "shelfCleanUp":
+            case "shelfResolveStructural":
+            case "shelfPurgeRecovery":
+                await this.runShelfMutationRequest(msg);
                 break;
             case "abortMerge":
                 await abortMergeWithConfirmation({
@@ -898,7 +995,14 @@ export class UndockedViewProvider {
                             this.selectedStashIndex = state.selectedStashIndex;
                             this.stashFiles = state.stashFiles;
                         },
-                        postUpdate: (message) => this.postToWebview(message),
+                        postUpdate: (message) =>
+                            this.postToWebview({
+                                ...message,
+                                shelves: this.shelves,
+                                catalogGeneration: this.catalogGeneration,
+                                shelfFiles: this.shelfFiles,
+                                selectedShelfId: this.selectedShelfId,
+                            }),
                     },
                     msg.index,
                 );
@@ -1206,8 +1310,16 @@ export class UndockedViewProvider {
             const files = await this.iconTheme.decorateWorkingFiles(
                 await this.gitOps.getStatus({ includeIgnored: this.showIgnoredFiles }),
             );
-            const stashes = await this.gitOps.listStashes();
-            const currentBranchStatus = await this.currentBranchStatus();
+            const [stashes, currentBranchStatus, shelfState] = await Promise.all([
+                this.gitOps.listStashes(),
+                this.currentBranchStatus(),
+                this.shelfSnapshot().catch(() => ({
+                    shelves: this.shelves,
+                    catalogGeneration: this.catalogGeneration,
+                    shelfFiles: this.shelfFiles,
+                    selectedShelfId: this.selectedShelfId,
+                })),
+            ]);
             const { folderIcons, iconFonts } = this.iconTheme.getThemeData();
             const hasSelected =
                 this.selectedStashIndex !== null &&
@@ -1234,6 +1346,10 @@ export class UndockedViewProvider {
             this.stashes = stashes;
             this.selectedStashIndex = selectedStashIndex;
             this.stashFiles = stashFiles;
+            this.shelves = shelfState.shelves;
+            this.catalogGeneration = shelfState.catalogGeneration;
+            this.shelfFiles = shelfState.shelfFiles;
+            this.selectedShelfId = shelfState.selectedShelfId;
             const uniquePaths = new Set<string>();
             for (const file of files) {
                 if (file.status !== "!") uniquePaths.add(file.path);
@@ -1247,6 +1363,10 @@ export class UndockedViewProvider {
                 stashes,
                 stashFiles,
                 selectedStashIndex,
+                shelves: this.shelves,
+                catalogGeneration: this.catalogGeneration,
+                shelfFiles: this.shelfFiles,
+                selectedShelfId: this.selectedShelfId,
                 folderIcon: folderIcons.folderIcon,
                 folderExpandedIcon: folderIcons.folderExpandedIcon,
                 folderIconsByName: cpFolderIconsByName,

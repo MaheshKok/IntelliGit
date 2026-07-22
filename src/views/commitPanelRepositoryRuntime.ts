@@ -2,6 +2,9 @@ import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
+import type { ShelfService } from "../services/shelfService";
+import type { ShelfFileEntry } from "../shelf/model";
+import type { ShelfEntry } from "../webviews/protocol/commitPanelMessages";
 import type { StashEntry, ThemeFolderIconMap, WorkingFile } from "../types";
 
 /**
@@ -18,6 +21,12 @@ export class CommitPanelRepositoryRuntime {
     stashes: StashEntry[] = [];
     selectedStashIndex: number | null = null;
     stashFiles: WorkingFile[] = [];
+    /** Per-repository host service; it never shares a shelf store with another Git root. */
+    readonly shelfService?: ShelfService;
+    shelves: ShelfEntry[] = [];
+    catalogGeneration = 0;
+    shelfFiles: ShelfFileEntry[] = [];
+    selectedShelfId: string | null = null;
     folderIconsByName: ThemeFolderIconMap = {};
     showIgnoredFiles = false;
     currentBranch: string | null = null;
@@ -48,9 +57,10 @@ export class CommitPanelRepositoryRuntime {
      * `gitOps` is injectable only so the existing single-repository activation path can keep using
      * its already-constructed facade; newly discovered roots get an executor bound to their root.
      */
-    constructor(repository: DiscoveredRepository, gitOps?: GitOps) {
+    constructor(repository: DiscoveredRepository, gitOps?: GitOps, shelfService?: ShelfService) {
         this.repository = repository;
         this.repoRootUri = vscode.Uri.file(repository.root);
         this.gitOps = gitOps ?? new GitOps(new GitExecutor(repository.root));
+        this.shelfService = shelfService;
     }
 }

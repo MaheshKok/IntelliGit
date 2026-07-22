@@ -2,11 +2,17 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { handleCommitContextAction } from "../commands/commitCommands";
 import { GitExecutor } from "../git/executor";
+import { RepositoryMutationCoordinator } from "../git/mutationCoordinator";
 import { GitOps } from "../git/operations";
+import { RepositoryLock } from "../git/repositoryLock";
+import { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import type { Branch, GitWorktree } from "../types";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { WorktreeService } from "../services/worktreeService";
+import { ShelfService } from "../services/shelfService";
+import { ShelfStore } from "../shelf/store";
+import { resolveShelfPaths } from "../shelf/paths";
 import {
     discoverGitRepositories,
     type DiscoveredRepository,
@@ -104,7 +110,45 @@ export async function activateRepositoryMode(
         context.workspaceState?.get<string>(SELECTED_REPOSITORY_KEY),
     );
     let repoRoot = activeRepository.root;
-    const executor = new GitExecutor(repoRoot);
+    const mutationGate = new RepositoryMutationGate(
+        new RepositoryMutationCoordinator(),
+        new RepositoryLock(),
+    );
+    const shelfPathOverride = vscode.workspace
+        .getConfiguration("intelligit")
+        .get<string>("shelf.path");
+    const shelfServices = new Map<string, ShelfService>();
+    const globalStoragePath = context.globalStorageUri?.fsPath;
+    if (globalStoragePath) {
+        await Promise.all(
+            repositories.map(async (repository) => {
+                const shelfPaths = await resolveShelfPaths({
+                    repositoryRoot: repository.root,
+                    globalStoragePath,
+                    overridePath: shelfPathOverride || undefined,
+                });
+                shelfServices.set(
+                    repository.root,
+                    new ShelfService({
+                        repositoryRoot: repository.root,
+                        executor: new GitExecutor(repository.root, mutationGate),
+                        store: new ShelfStore(shelfPaths),
+                        gate: mutationGate,
+                    }),
+                );
+            }),
+        );
+    }
+    const shelfServiceForRepository = (repositoryRoot: string): ShelfService | undefined =>
+        shelfServices.get(repositoryRoot);
+    for (const [repositoryRoot, shelfService] of shelfServices) {
+        void shelfService.resumePendingRecovery().catch((error: unknown) => {
+            const message = getErrorMessage(error);
+            console.error(`[IntelliGit] Shelf recovery failed for ${repositoryRoot}:`, error);
+            void vscode.window.showErrorMessage(message);
+        });
+    }
+    const executor = new GitExecutor(repoRoot, mutationGate);
     const gitOps = new GitOps(executor);
     // Shared per-host token store for non-GitHub commit-check providers (e.g. GitLab).
     const credentialStore = new CredentialStore(context.secrets);
@@ -203,6 +247,7 @@ export async function activateRepositoryMode(
         repoRootUri,
         context.workspaceState,
         context.secrets,
+        shelfServiceForRepository,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
@@ -623,7 +668,7 @@ export async function activateRepositoryMode(
 
         const initialUndockedRepository = resolveUndockedRepository(undockedSelectedRepositoryRoot);
         undockedSelectedRepositoryRoot = initialUndockedRepository.root;
-        const undockedExecutor = new GitExecutor(initialUndockedRepository.root);
+        const undockedExecutor = new GitExecutor(initialUndockedRepository.root, mutationGate);
         const undockedGitOps = new GitOps(undockedExecutor);
         const undockedWorktreeService = new WorktreeService(
             undockedExecutor,
@@ -673,6 +718,7 @@ export async function activateRepositoryMode(
                         });
                     await undockedSelectionWrite;
                 },
+                shelfServiceForRepository,
             },
         );
         undocked.setRepositoryLabel(initialUndockedRepository.label);

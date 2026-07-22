@@ -9,6 +9,37 @@ import type {
     ThemeTreeIcon,
     WorkingFile,
 } from "../../types";
+import type { ShelfFileEntry, ShelfMetadata } from "../../shelf/model";
+
+/** One persisted shelf exposed to host snapshots without leaking storage internals. */
+export interface ShelfEntry {
+    /** Host-generated immutable shelf identifier. */
+    id: string;
+    /** Current immutable manifest generation used for compare-and-swap mutations. */
+    generation: number;
+    /** Read-only shelf metadata from the current manifest. */
+    metadata: ShelfMetadata;
+}
+
+/** Per-entry unshelve outcome; each discriminant keeps UI handling exhaustive. */
+export type PerEntryResult =
+    | { kind: "applied"; changeId: string }
+    | { kind: "conflicted"; changeId: string }
+    | { kind: "retained"; changeId: string; reason: string }
+    | { kind: "flattenedResidue"; changeId: string }
+    | { kind: "refused"; changeId: string; reason: string }
+    | { kind: "structuralPending"; changeId: string; reason: string };
+
+/** Completion states reported for every correlated shelf mutation. */
+export type ShelfMutationStatus =
+    | "ok"
+    | "partial"
+    | "conflicts"
+    | "staleShelf"
+    | "staleCatalog"
+    | "busy"
+    | "recoveryFull"
+    | "error";
 
 /**
  * Optional repository selector for webview commands that operate on Git or repository files.
@@ -53,6 +84,14 @@ export interface CommitPanelRepositorySnapshot {
     stashFiles: WorkingFile[];
     /** Selected `stash@{n}` index, or `null` when no stash entry is available. */
     selectedStashIndex: number | null;
+    /** Current shelves for this repository, each pinned to its manifest generation. */
+    shelves: ShelfEntry[];
+    /** Catalog generation used by create/import/clean-up compare-and-swap operations. */
+    catalogGeneration: number;
+    /** Files belonging to `selectedShelfId`; empty when no shelf is selected. */
+    shelfFiles: ShelfFileEntry[];
+    /** Host-selected shelf ID, or `null` when this repository has no selected shelf. */
+    selectedShelfId: string | null;
     /** Default collapsed folder icon for file trees when the theme resolves one. */
     folderIcon?: ThemeTreeIcon;
     /** Default expanded folder icon for file trees when the theme resolves one. */
@@ -290,6 +329,107 @@ export type OutboundMessage =
           path: string;
       }>
     | RepositoryScopedMessage<{
+          /** Captures a new shelf; the host generates its shelf ID. */
+          type: "shelveSave";
+          requestId: string;
+          name: string;
+          paths: string[];
+          silent: boolean;
+          keepLocal: boolean;
+          idempotencyToken: string;
+          expectedCatalogGeneration: number;
+      }>
+    | RepositoryScopedMessage<{
+          /** Selects one existing shelf and refreshes its file list in the repository snapshot. */
+          type: "shelfSelect";
+          shelfId: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Applies whole selected shelf entries without bypassing the shelf generation CAS. */
+          type: "unshelve";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+          changeIds?: string[];
+          removeFromShelf: boolean;
+          mode: "flattened" | "exactState";
+      }>
+    | RepositoryScopedMessage<{
+          /** Permanently deletes shelf artifacts while preserving independent recovery snapshots. */
+          type: "shelfDelete";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+      }>
+    | RepositoryScopedMessage<{
+          /** Renames one shelf by creating a new immutable manifest generation. */
+          type: "shelfRename";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+          name: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Loads immutable shelf artifacts for a base-to-shelved diff. */
+          type: "shelfDiff";
+          shelfId: string;
+          expectedGeneration: number;
+          changeId?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Loads immutable shelf artifacts for a shelved-to-local comparison. */
+          type: "shelfCompareWithLocal";
+          shelfId: string;
+          expectedGeneration: number;
+          changeId?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Exports a flattened shelf patch to a destination chosen by the extension host. */
+          type: "shelfExportPatch";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+          changeIds?: string[];
+      }>
+    | RepositoryScopedMessage<{
+          /** Imports bounded absolute patch files as a newly host-generated shelf. */
+          type: "shelfImportPatch";
+          requestId: string;
+          fileUris: string[];
+          idempotencyToken: string;
+          expectedCatalogGeneration: number;
+      }>
+    | RepositoryScopedMessage<{
+          /** Restores an already-unshelved ghost shelf into the active shelf list. */
+          type: "shelfRestoreGhost";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+      }>
+    | RepositoryScopedMessage<{
+          /** Deletes selected already-unshelved ghosts under catalog compare-and-swap. */
+          type: "shelfCleanUp";
+          requestId: string;
+          shelfIds: string[];
+          expectedCatalogGeneration: number;
+      }>
+    | RepositoryScopedMessage<{
+          /** Resolves one structural conflict with both shelf and path fingerprint guards. */
+          type: "shelfResolveStructural";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+          changeId: string;
+          expectedPathFingerprint: string;
+          action: "keepLocal" | "useShelved" | "deleteLocal" | "renameLocal";
+          targetPath?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Explicitly purges recovery snapshots whose independent retention permits removal. */
+          type: "shelfPurgeRecovery";
+          requestId: string;
+      }>
+    | RepositoryScopedMessage<{
           /** Command deleting a working-tree file after host confirmation. */
           type: "deleteFile";
           /** Repository-relative path from the working-tree snapshot. */
@@ -344,6 +484,16 @@ export type InboundMessage =
           type: "stashMutationCompleted";
           /** Correlation token supplied by the initiating webview request. */
           requestId: string;
+      }>
+    | RepositoryIdentifiedMessage<{
+          /** Final outcome for one correlated shelf mutation attempt. */
+          type: "shelfMutationCompleted";
+          requestId: string;
+          status: ShelfMutationStatus;
+          entries: PerEntryResult[];
+          shelfId?: string;
+          newGeneration?: number;
+          newCatalogGeneration?: number;
       }>
     | RepositoryIdentifiedMessage<{
           /** Status event toggling refresh affordances while host refresh work is active. */
