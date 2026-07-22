@@ -289,6 +289,7 @@ const vscodeMock = {
         }),
     },
     workspace: {
+        textDocuments: [],
         get workspaceFolders() {
             return workspaceState.workspaceFolders as
                 | Array<{ uri: { fsPath: string; path: string } }>

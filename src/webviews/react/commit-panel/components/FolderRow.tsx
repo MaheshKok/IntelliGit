@@ -1,5 +1,5 @@
 // Directory row in the commit panel file tree. Shows a chevron toggle,
-// checkbox (checked/indeterminate), folder icon, name, and file count.
+// optional selection control, folder icon, name, and file count.
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
@@ -27,7 +27,7 @@ interface Props {
     isSomeChecked: boolean;
     onToggleExpand: (dirPath: string) => void;
     onToggleCheck: (dirPath: string) => void;
-    checkboxVisibility?: "visible" | "hidden";
+    checkboxVisibility?: "visible" | "hidden" | "none";
     interactive?: boolean;
 }
 
@@ -93,14 +93,14 @@ function FolderRowInner({
                     h={`${CHECKBOX_SLOT_SIZE}px`}
                     flexShrink={0}
                 />
-            ) : (
+            ) : checkboxVisibility === "visible" ? (
                 <VscCheckbox
                     isChecked={isAllChecked}
                     isIndeterminate={isSomeChecked}
                     onChange={() => onToggleCheck(dirPath)}
                     ariaLabel={dirPath}
                 />
-            )}
+            ) : null}
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.82}>
                 {name}
@@ -122,7 +122,7 @@ function FolderRowInner({
 /**
  * Memoized folder row for grouped working-tree entries.
  *
- * Expansion and checkbox callbacks stay separate so opening a directory does not
- * change selection, while the checkbox can toggle all descendant file paths.
+ * Expansion and selection callbacks stay separate so opening a directory does not
+ * change selection, while a visible checkbox can toggle all descendant file paths.
  */
 export const FolderRow = React.memo(FolderRowInner);

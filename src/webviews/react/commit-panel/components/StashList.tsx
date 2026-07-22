@@ -313,7 +313,7 @@ function StashFilePaneSection({
                 isSomeChecked={false}
                 onToggleOpen={section.onToggleOpen}
                 onToggleCheck={() => undefined}
-                checkboxVisibility="hidden"
+                checkboxVisibility="none"
             />
             {section.isOpen ? (
                 <StashFileTree
@@ -422,7 +422,7 @@ function StashFileTree({
                             dataStashFile={entry.file.path}
                             isCurrent={isSelected}
                             contextMenuEnabled={false}
-                            checkboxVisibility="hidden"
+                            checkboxVisibility="none"
                         />
                     );
                 }
@@ -443,7 +443,7 @@ function StashFileTree({
                             isSomeChecked={false}
                             onToggleExpand={onToggleDir}
                             onToggleCheck={() => undefined}
-                            checkboxVisibility="hidden"
+                            checkboxVisibility="none"
                             interactive
                         />
                         {isExpanded ? (

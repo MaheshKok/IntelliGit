@@ -169,7 +169,7 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
-    it("renders flat stash files as checkbox-free commit rows with path, stats, status, and slots", () => {
+    it("renders flat stash files with only the 18px chevron-equivalent spacer before each icon", () => {
         const ignoredFile: WorkingFile = {
             path: "ignored.log",
             status: "!",
@@ -190,10 +190,9 @@ describe("StashTab", () => {
         expect(file.textContent).toContain("M");
         expect(filePane.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
         for (const stashFile of [file, otherFile, ignored]) {
-            const slot = stashFile.querySelector('[data-tree-icon="file"]')
+            const chevronSpacer = stashFile.querySelector('[data-tree-icon="file"]')
                 ?.previousElementSibling as HTMLElement;
-            expect(getComputedStyle(slot).width).toBe("14px");
-            expect(getComputedStyle(slot).height).toBe("14px");
+            expect(getComputedStyle(chevronSpacer).width).toBe("18px");
         }
         expect(file.getAttribute("data-vscode-context")).toBeNull();
         expect(file.getAttribute("aria-selected")).toBe("true");
@@ -207,7 +206,7 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
-    it("separates stash changes from unversioned files with counts, stats, chevrons, and hidden checkbox spacers", () => {
+    it("separates stash changes from unversioned files with counts, stats, and labels directly after chevrons", () => {
         const unversionedFile: WorkingFile = {
             path: "new-file.ts",
             status: "?",
@@ -219,7 +218,7 @@ describe("StashTab", () => {
         const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
         const changes = stashSectionHeader(filePane, "Changes");
         const unversioned = stashSectionHeader(filePane, "Unversioned Files");
-        const spacer = changes.querySelector("svg")?.nextElementSibling as HTMLElement;
+        const labelAfterChevron = changes.querySelector("svg")?.nextElementSibling as HTMLElement;
 
         expect(changes.textContent).toContain("2 files");
         expect(changes.textContent).toContain("+3");
@@ -228,9 +227,8 @@ describe("StashTab", () => {
         expect(changes.querySelector("svg")).toBeTruthy();
         expect(unversioned.querySelector("svg")).toBeTruthy();
         expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
-        expect(spacer.getAttribute("aria-hidden")).toBe("true");
-        expect(getComputedStyle(spacer).width).toBe("14px");
-        expect(getComputedStyle(spacer).height).toBe("14px");
+        expect(labelAfterChevron.textContent).toBe("Changes");
+        expect(labelAfterChevron.getAttribute("aria-hidden")).toBeNull();
 
         unmount(root, container);
     });
@@ -339,7 +337,7 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
-    it("renders grouped stash folders with checkbox slots and no inputs or redundant parent paths", () => {
+    it("renders grouped stash folders with icons directly after chevrons and no inputs or redundant parent paths", () => {
         const { root, container } = renderStashTab({ groupByDir: true });
         const folder = container.querySelector('button[title="src"]') as HTMLElement;
         const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
@@ -347,18 +345,16 @@ describe("StashTab", () => {
         expect(folder.textContent).toContain("src");
         expect(folder.textContent).toContain("2 files");
         expect(folder.querySelector('input[type="checkbox"]')).toBeNull();
-        const folderSlot = folder.querySelector('[data-tree-icon="folder"]')
+        const chevronBeforeFolderIcon = folder.querySelector('[data-tree-icon="folder"]')
             ?.previousElementSibling as HTMLElement;
-        expect(getComputedStyle(folderSlot).width).toBe("14px");
-        expect(getComputedStyle(folderSlot).height).toBe("14px");
+        expect(chevronBeforeFolderIcon.tagName).toBe("svg");
         expect(folder.getAttribute("aria-expanded")).toBe("true");
         expect(file.textContent).toContain("first.ts");
         expect(file.textContent).not.toContain("src");
         expect(file.querySelector('input[type="checkbox"]')).toBeNull();
-        const fileSlot = file.querySelector('[data-tree-icon="file"]')
+        const fileChevronSpacer = file.querySelector('[data-tree-icon="file"]')
             ?.previousElementSibling as HTMLElement;
-        expect(getComputedStyle(fileSlot).width).toBe("14px");
-        expect(getComputedStyle(fileSlot).height).toBe("14px");
+        expect(getComputedStyle(fileChevronSpacer).width).toBe("18px");
 
         click(folder);
         expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeNull();

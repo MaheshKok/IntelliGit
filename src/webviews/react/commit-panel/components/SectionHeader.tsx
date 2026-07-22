@@ -24,7 +24,7 @@ interface Props {
     onDragLeave?: React.DragEventHandler<HTMLDivElement>;
     onDrop?: React.DragEventHandler<HTMLDivElement>;
     isDragOver?: boolean;
-    checkboxVisibility?: "visible" | "hidden";
+    checkboxVisibility?: "visible" | "hidden" | "none";
 }
 
 /**
@@ -32,8 +32,8 @@ interface Props {
  *
  * The header separates open/closed state from tri-state selection so clicking the
  * checkbox toggles every file in the section while clicking the row only expands
- * or collapses that section. Hidden selection controls retain the checkbox's exact
- * geometry without adding an interactive input.
+ * or collapses that section. Hidden selection controls retain checkbox geometry
+ * without an interactive input; omitted controls render neither input nor geometry.
  */
 // Independent visual and selection flags; no single variant object would model this state.
 // react-doctor-disable-next-line react-doctor/no-many-boolean-props
@@ -87,14 +87,14 @@ export function SectionHeader({
             <ChevronIcon expanded={isOpen} />
             {checkboxVisibility === "hidden" ? (
                 <Box as="span" aria-hidden="true" w="14px" h="14px" flexShrink={0} />
-            ) : (
+            ) : checkboxVisibility === "visible" ? (
                 <VscCheckbox
                     isChecked={isAllChecked}
                     isIndeterminate={isSomeChecked}
                     onChange={onToggleCheck}
                     ariaLabel={label}
                 />
-            )}
+            ) : null}
             <Box as="span">{label}</Box>
             <Box
                 as="span"
