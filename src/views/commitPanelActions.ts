@@ -33,6 +33,7 @@ import {
     showTimedWarningMessage,
     showTimedInformationMessage,
 } from "../utils/notifications";
+import { showShelfDiffFromPanel } from "./shelfDiffActions";
 
 interface CommitPanelActionDeps {
     gitOps: GitOps;
@@ -278,20 +279,27 @@ export async function shelfMutationFromMessage(
     }
 }
 
-/** Loads only immutable shelf artifacts needed by the Phase-2 host protocol. */
+/** Validates and opens immutable shelf artifacts as read-only diff documents. */
 export async function shelfReadFromMessage(
     shelfService: ShelfService,
     message: Record<string, unknown>,
+    getWorkspaceRoot: () => vscode.Uri,
 ): Promise<void> {
     const shelfId = await assertExistingShelf(shelfService, message.shelfId);
     assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
-    if (message.changeId === undefined) {
-        await shelfService.getShelfFiles(shelfId);
-        return;
-    }
-    const changeId = assertShelfChangeId(message.changeId, "changeId");
-    await assertExistingChangeIds(shelfService, shelfId, [changeId]);
-    await shelfService.getShelfFileContents(shelfId, changeId);
+    const changeId =
+        message.changeId === undefined
+            ? undefined
+            : assertShelfChangeId(message.changeId, "changeId");
+    if (changeId !== undefined) await assertExistingChangeIds(shelfService, shelfId, [changeId]);
+    const mode =
+        message.type === "shelfDiff"
+            ? "baseToShelved"
+            : message.type === "shelfCompareWithLocal"
+              ? "shelvedToLocal"
+              : undefined;
+    if (!mode) throw new Error("Invalid shelf diff request received from webview.");
+    await showShelfDiffFromPanel({ shelfReader: shelfService, getWorkspaceRoot }, shelfId, changeId, mode);
 }
 
 /** Converts service outcomes into the protocol's explicit per-entry contract. */
@@ -322,6 +330,7 @@ function completionForShelfError(requestId: string, error: unknown): ShelfMutati
         requestId,
         status: shelfStatusForError(error),
         entries: [],
+        message: error instanceof Error ? error.message : String(error),
     };
 }
 

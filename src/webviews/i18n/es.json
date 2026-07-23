@@ -68,6 +68,7 @@
     "commit.tab.commit": "Commit",
     "commit.tab.stash": "Stash",
     "commit.tab.stashWithCount": "Alijo ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Commits en esta rama",
     "commit.amendContext.description": "A continuación se enumeran los cambios en el árbol de trabajo y los archivos sin control de versiones.",
     "commit.amendContext.loading": "Cargando historial de la rama...",

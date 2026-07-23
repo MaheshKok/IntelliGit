@@ -68,6 +68,7 @@
     "commit.tab.commit": "Commit",
     "commit.tab.stash": "Stash",
     "commit.tab.stashWithCount": "Réserve ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Commits sur cette branche",
     "commit.amendContext.description": "Les modifications apportées à l'arborescence de travail et les fichiers non versionnés sont listés ci-dessous.",
     "commit.amendContext.loading": "Chargement de l'historique des branches...",

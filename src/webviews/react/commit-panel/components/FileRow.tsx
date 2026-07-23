@@ -35,6 +35,7 @@ interface Props {
     checkboxVisibility?: "visible" | "hidden" | "none";
     onActivate?: (path: string) => void;
     dataStashFile?: string;
+    dataShelfFile?: string;
     isCurrent?: boolean;
     contextMenuEnabled?: boolean;
 }
@@ -53,6 +54,7 @@ function FileRowInner({
     checkboxVisibility = "visible",
     onActivate,
     dataStashFile,
+    dataShelfFile,
     isCurrent = false,
     contextMenuEnabled,
 }: Props): React.ReactElement {
@@ -98,6 +100,7 @@ function FileRowInner({
             aria-selected={isDragSelected}
             aria-current={isCurrent ? "true" : undefined}
             data-stash-file={dataStashFile}
+            data-shelf-file={dataShelfFile}
             data-vscode-context={optionalContextMenuMetadata(
                 contextMenuEnabled,
                 JSON.stringify({

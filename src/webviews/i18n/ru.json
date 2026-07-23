@@ -71,6 +71,7 @@
     "commit.tab.commit": "Коммит",
     "commit.tab.stash": "Stash",
     "commit.tab.stashWithCount": "Stash ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Коммиты в этой ветке",
     "commit.amendContext.description": "Ниже перечислены изменения в рабочем дереве и неверсионированные файлы.",
     "commit.amendContext.loading": "Загрузка истории веток...",

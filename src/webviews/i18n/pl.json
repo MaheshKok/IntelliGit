@@ -71,6 +71,7 @@
     "commit.tab.commit": "Commit",
     "commit.tab.stash": "Chować na potem",
     "commit.tab.stashWithCount": "Zapas ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Zatwierdzenia na tej gałęzi",
     "commit.amendContext.description": "Poniżej wymieniono zmiany w drzewie roboczym i pliki bez kontroli wersji.",
     "commit.amendContext.loading": "Ładowanie historii gałęzi...",

@@ -189,7 +189,7 @@ describe("CommitPanelApp integration", () => {
         const tabListLabels = Array.from(tabRow?.querySelectorAll('[role="tab"]') ?? []).map(
             (tab) => tab.textContent?.trim() ?? "",
         );
-        expect(tabListLabels).toEqual(["Commit", "Stash (1)"]);
+        expect(tabListLabels).toEqual(["Commit", "Stash (1)", "Shelf"]);
         expect(findButtonByName("Abort Merge")).toBeNull();
 
         fireClick(document.querySelector('button[aria-label="Refresh"]'));

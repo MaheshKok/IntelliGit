@@ -8,6 +8,12 @@ import type {
     ThemeTreeIcon,
     WorkingFile,
 } from "../../../types";
+import type { ShelfFileEntry } from "../../../shelf/model";
+import type {
+    PerEntryResult,
+    ShelfEntry,
+    ShelfMutationStatus,
+} from "../../protocol/commitPanelMessages";
 import type {
     TreeFolder as GenericTreeFolder,
     TreeLeaf as GenericTreeLeaf,
@@ -28,6 +34,11 @@ interface CommitPanelState {
     stashes: StashEntry[];
     stashFiles: WorkingFile[];
     selectedStashIndex: number | null;
+    shelves: ShelfEntry[];
+    catalogGeneration: number;
+    shelfFiles: ShelfFileEntry[];
+    selectedShelfId: string | null;
+    shelfMutationOutcome: { requestId: string; status: ShelfMutationStatus; entries: PerEntryResult[]; message?: string; shelfId?: string; newGeneration?: number } | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -91,6 +102,10 @@ export type CommitPanelAction =
           stashes: StashEntry[];
           stashFiles: WorkingFile[];
           selectedStashIndex: number | null;
+          shelves: ShelfEntry[];
+          catalogGeneration: number;
+          shelfFiles: ShelfFileEntry[];
+          selectedShelfId: string | null;
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;
@@ -109,6 +124,16 @@ export type CommitPanelAction =
     | { type: "COMMITTED"; repositoryRoot?: string }
     | { type: "SET_REFRESHING"; repositoryRoot?: string; active: boolean }
     | { type: "SET_ERROR"; repositoryRoot?: string; message: string }
+    | {
+          type: "SET_SHELF_MUTATION_OUTCOME";
+          repositoryRoot?: string;
+          status: ShelfMutationStatus;
+          entries: PerEntryResult[];
+          requestId: string;
+          message?: string;
+          shelfId?: string;
+          newGeneration?: number;
+      }
     | { type: "SET_COMMIT_MESSAGE"; repositoryRoot?: string; message: string }
     | { type: "SET_AMEND"; repositoryRoot?: string; isAmend: boolean }
     | {

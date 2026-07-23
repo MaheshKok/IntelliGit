@@ -491,6 +491,8 @@ export type InboundMessage =
           requestId: string;
           status: ShelfMutationStatus;
           entries: PerEntryResult[];
+          /** Exact host rejection text when the mutation failed. */
+          message?: string;
           shelfId?: string;
           newGeneration?: number;
           newCatalogGeneration?: number;

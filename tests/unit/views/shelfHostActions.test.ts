@@ -93,6 +93,25 @@ describe("shelf webview validation", () => {
 });
 
 describe("executeShelfMutationRequest", () => {
+    it("includes the verbatim mutation failure text in its completion", async () => {
+        const postCompleted = vi.fn();
+        const error = new Error("Name conflicts with a locked shelf.");
+        await expect(
+            executeShelfMutationRequest(
+                {
+                    shelfService: { shelve: vi.fn(async () => Promise.reject(error)) },
+                    refreshData: vi.fn(async () => undefined),
+                    fireWorkingTreeChanged: vi.fn(),
+                } as never,
+                shelfSaveMessage,
+                postCompleted,
+            ),
+        ).rejects.toBe(error);
+        expect(postCompleted).toHaveBeenCalledWith(
+            expect.objectContaining({ message: "Name conflicts with a locked shelf." }),
+        );
+    });
+
     it("rejects a webview export path until the host supplies a picker destination", async () => {
         const postCompleted = vi.fn();
         const exportPatch = vi.fn();

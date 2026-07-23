@@ -390,6 +390,51 @@ export class ShelfService {
                 : undefined,
         };
     }
+    /** Materializes immutable base and shelved bytes for read-only shelf diff documents. */
+    async getShelfDiffContents(
+        id: string,
+        changeId: string,
+    ): Promise<{ readonly path: string; readonly binary: boolean; readonly base?: Buffer; readonly shelved: Buffer }> {
+        const manifest = await this.options.store.readCurrentShelfManifest(id);
+        const entry = manifest.files.find((file) => file.changeId === changeId);
+        if (!entry) throw new Error("Shelf entry does not exist.");
+        const block = entry.worktreeBlock ?? entry.indexBlock;
+        if (!block) throw new Error("Shelf entry has no diffable file block.");
+        const contents = await this.getShelfFileContents(id, changeId);
+        if (!entry.exactReconstruction) {
+            if (!contents.rawBefore || !contents.rawAfter) {
+                throw new Error("Shelf entry is missing required raw diff bytes.");
+            }
+            return {
+                path: block.path,
+                binary: entry.binary,
+                base: contents.rawBefore,
+                shelved: contents.rawAfter,
+            };
+        }
+        const base = await this.baseForEntry(id, entry);
+        if (!base) {
+            return {
+                path: block.path,
+                binary: entry.binary,
+                base: undefined,
+                shelved: Buffer.from("Shelved content is unavailable because its base is unavailable."),
+            };
+        }
+        const shelved = await this.materializeEntry(
+            block.path,
+            base,
+            contents.indexPatch,
+            contents.worktreePatch,
+        );
+        return {
+            path: block.path,
+            binary: entry.binary,
+            base,
+            shelved:
+                shelved ?? Buffer.from("Shelved content could not be materialized from this shelf."),
+        };
+    }
     /** Rolls back incomplete destructive captures and removes their now-cancelled durable shelves. */
     async resumePendingRecovery(): Promise<PendingShelfRecoveryResult> {
         const links = new Map(

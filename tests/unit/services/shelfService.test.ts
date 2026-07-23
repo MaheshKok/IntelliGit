@@ -113,6 +113,25 @@ async function writeStructuralShelf(
 }
 
 describe("ShelfService", () => {
+    it("returns immutable base and shelved bytes for a shelf diff", async () => {
+        const { root, service } = await makeService();
+        await writeFile(path.join(root, "tracked.txt"), "shelved\n");
+        const created = await service.shelve({
+            name: "diff",
+            paths: ["tracked.txt"],
+            silent: true,
+            keepLocal: true,
+        });
+        const [entry] = await service.getShelfFiles(created.shelfId!);
+
+        await expect(service.getShelfDiffContents(created.shelfId!, entry!.changeId)).resolves.toEqual({
+            path: "tracked.txt",
+            binary: false,
+            base: Buffer.from("base\n"),
+            shelved: Buffer.from("shelved\n"),
+        });
+    });
+
     it("keeps tree and index byte-identical for Save to Shelf", async () => {
         const { root, service } = await makeService();
         await writeFile(path.join(root, "tracked.txt"), "edited\n");

@@ -62,6 +62,7 @@
     "commit.tab.commit": "提交",
     "commit.tab.stash": "儲藏",
     "commit.tab.stashWithCount": "儲藏（{count}）",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "此分支上的提交",
     "commit.amendContext.description": "下面列出了工作樹變更和未版本化的檔案。",
     "commit.amendContext.loading": "正在載入分支歷史記錄...",

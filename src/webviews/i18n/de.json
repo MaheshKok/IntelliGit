@@ -65,6 +65,7 @@
     "commit.tab.commit": "Commit",
     "commit.tab.stash": "Stash",
     "commit.tab.stashWithCount": "Stash ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Commits in diesem Branch",
     "commit.amendContext.description": "Die Änderungen im Arbeitsverzeichnis und die nicht versionierten Dateien sind unten aufgeführt.",
     "commit.amendContext.loading": "Lade Branch-Historie...",

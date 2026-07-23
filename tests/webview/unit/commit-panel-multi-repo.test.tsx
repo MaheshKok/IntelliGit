@@ -14,9 +14,16 @@ type StashTabMockProps = {
     repositoryRoot: string;
 };
 
+type ShelfTabMockProps = {
+    shelves: Array<{ id: string }>;
+    selectedShelfId: string | null;
+    outcome?: { status: string; entries: Array<{ kind: string }> };
+};
+
 type TabBarMockProps = {
     commitContent: React.ReactNode;
     stashContent: React.ReactNode;
+    shelfContent?: React.ReactNode;
     onSync?: () => void;
     onFetch?: () => void;
     onPull?: () => void;
@@ -60,6 +67,16 @@ function snapshot(root: string, label: string, path: string): object {
         stashes: [],
         stashFiles: [],
         selectedStashIndex: null,
+        shelves: [
+            {
+                id: `shelf-${root.endsWith("a") ? "a" : "b"}`,
+                generation: 1,
+                metadata: { name: `Shelf ${label}`, lifecycle: "shelved" },
+            },
+        ],
+        catalogGeneration: root.endsWith("a") ? 3 : 4,
+        shelfFiles: [],
+        selectedShelfId: `shelf-${root.endsWith("a") ? "a" : "b"}`,
         currentBranchHasUpstream: true,
         hasRemotes: true,
         currentBranchAhead: 0,
@@ -140,6 +157,14 @@ async function renderApp(): Promise<void> {
             </div>
         ),
     }));
+    vi.doMock("../../../src/webviews/react/commit-panel/components/ShelfTab", () => ({
+        ShelfTab: (props: ShelfTabMockProps) => (
+            <div data-testid="shelf-tab" data-shelf-id={props.selectedShelfId}>
+                {props.shelves.map((shelf) => shelf.id).join(",")}
+                {props.outcome ? ` ${props.outcome.status}:${props.outcome.entries.map((entry) => entry.kind).join(",")}` : ""}
+            </div>
+        ),
+    }));
     vi.doMock("../../../src/webviews/react/commit-panel/components/TabBar", () => ({
         TabBar: (props: TabBarMockProps) => (
             <div data-testid="tabbar">
@@ -151,6 +176,7 @@ async function renderApp(): Promise<void> {
                 </div>
                 <div>{props.commitContent}</div>
                 <div>{props.stashContent}</div>
+                <div>{props.shelfContent}</div>
             </div>
         ),
     }));
@@ -276,6 +302,23 @@ describe("commit panel multi-repository view", () => {
         ).toBe("src/a.ts");
     });
 
+    it("tolerates a legacy snapshot without the additive shelf fields", async () => {
+        await renderApp();
+        await sendHostMessage({
+            type: "setRepositories",
+            repositories: [{ root: "/repo-a", label: "Repo A", changedFileCount: 1 }],
+            activeRepositoryRoot: "/repo-a",
+        });
+        const legacySnapshot = snapshot("/repo-a", "Repo A", "src/a.ts") as Record<string, unknown>;
+        delete legacySnapshot.shelves;
+        delete legacySnapshot.catalogGeneration;
+        delete legacySnapshot.shelfFiles;
+        delete legacySnapshot.selectedShelfId;
+        await sendHostMessage(legacySnapshot);
+
+        expect(document.querySelector('[data-testid="shelf-tab"]')?.textContent).toBe("");
+    });
+
     it("renders two repository snapshots as two rows", async () => {
         await renderApp();
         await hydrateTwoRepositories();
@@ -332,6 +375,25 @@ describe("commit panel multi-repository view", () => {
 
         expect(messageText("/repo-a")).toBe("");
         expect(messageText("/repo-b")).toBe("draft B");
+    });
+
+    it("keeps shelf snapshots and mutation outcomes scoped to their repository reducer state", async () => {
+        await renderApp();
+        await hydrateTwoRepositories();
+        click(header("/repo-b"));
+        await sendHostMessage({
+            type: "shelfMutationCompleted",
+            repositoryRoot: "/repo-b",
+            requestId: "shelf-result-b",
+            status: "conflicts",
+            entries: [{ kind: "conflicted", changeId: "change-b" }],
+        });
+
+        const shelfA = document.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
+        const shelfB = document.querySelector('[data-shelf-id="shelf-b"]') as HTMLElement;
+        expect(shelfA.textContent).toContain("shelf-a");
+        expect(shelfA.textContent).not.toContain("conflicts");
+        expect(shelfB.textContent).toContain("conflicts:conflicted");
     });
 
     it("expanding and collapsing posts setExpandedRepositories", async () => {

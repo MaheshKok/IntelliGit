@@ -23,6 +23,7 @@ interface Props {
     onPush?: () => void;
     commitContent: React.ReactNode;
     stashContent: React.ReactNode;
+    shelfContent?: React.ReactNode;
 }
 
 const sharedTabStyles = {
@@ -56,6 +57,7 @@ export function TabBar({
     onPush,
     commitContent,
     stashContent,
+    shelfContent,
 }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: t("commit.tab.commit"), content: commitContent },
@@ -67,6 +69,7 @@ export function TabBar({
                     : t("commit.tab.stash"),
             content: stashContent,
         },
+        { key: "shelf", label: t("commit.tab.shelf"), content: shelfContent },
     ];
     const gitActions =
         onSync && onFetch && onPull && onPush ? { onSync, onFetch, onPull, onPush } : null;

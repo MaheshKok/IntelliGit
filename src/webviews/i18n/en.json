@@ -87,6 +87,7 @@
     "commit.tab.commit": "Commit",
     "commit.tab.stash": "Stash",
     "commit.tab.stashWithCount": "Stash ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Commits on this branch",
     "commit.amendContext.description": "Working tree Changes and Unversioned Files are listed below.",
     "commit.amendContext.loading": "Loading branch history...",

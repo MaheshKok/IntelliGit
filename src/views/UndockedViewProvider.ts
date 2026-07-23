@@ -674,18 +674,24 @@ export class UndockedViewProvider {
     }
 
     /** Runs a correlated shelf mutation against this panel's selected repository only. */
-    private runShelfMutationRequest(message: Record<string, unknown>): Promise<void> {
-        return executeShelfMutationRequest(
-            {
-                shelfService: this.requireShelfService(),
-                refreshData: () => this.refreshCommitPanelData(true),
-                fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-                selectExportDestination: async () =>
-                    (await vscode.window.showSaveDialog())?.fsPath,
-            },
-            message,
-            (completion) => this.postToWebview(completion),
-        );
+    private async runShelfMutationRequest(message: Record<string, unknown>): Promise<void> {
+        assertString(message.requestId, "requestId");
+        const shelfService = this.requireShelfService();
+        try {
+            await executeShelfMutationRequest(
+                {
+                    shelfService,
+                    refreshData: () => this.refreshCommitPanelData(true),
+                    fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+                    selectExportDestination: async () =>
+                        (await vscode.window.showSaveDialog())?.fsPath,
+                },
+                message,
+                (completion) => this.postToWebview(completion),
+            );
+        } catch {
+            // A valid correlated request already posted shelfMutationCompleted.
+        }
     }
 
     private requireShelfService(): ShelfService {
@@ -850,7 +856,7 @@ export class UndockedViewProvider {
                 break;
             case "shelfDiff":
             case "shelfCompareWithLocal":
-                await shelfReadFromMessage(this.requireShelfService(), msg);
+                await shelfReadFromMessage(this.requireShelfService(), msg, () => this.repoRootUri);
                 break;
             case "shelveSave":
             case "unshelve":

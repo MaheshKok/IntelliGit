@@ -68,6 +68,7 @@
     "commit.tab.commit": "Commit",
     "commit.tab.stash": "Stash",
     "commit.tab.stashWithCount": "Armazém ({count})",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "Commits nesta ramificação",
     "commit.amendContext.description": "As alterações na árvore de trabalho e os arquivos não versionados estão listados abaixo.",
     "commit.amendContext.loading": "Carregando histórico de ramificações...",

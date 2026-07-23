@@ -779,28 +779,33 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     }
 
     /** Runs one correlated shelf mutation and scopes its completion to the addressed runtime. */
-    private runShelfMutationRequest(
+    private async runShelfMutationRequest(
         runtime: CommitPanelRepositoryRuntime | undefined,
         message: Record<string, unknown>,
     ): Promise<void> {
         const service = this.requireShelfService(runtime);
         if (!runtime) throw new Error("No active repository selected.");
-        return executeShelfMutationRequest(
-            {
-                shelfService: service,
-                refreshData: () => this.refreshData(true, runtime),
-                fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-                selectExportDestination: async () =>
-                    (await vscode.window.showSaveDialog())?.fsPath,
-            },
-            message,
-            (completion) => {
-                this.postToWebview({
-                    ...completion,
-                    repositoryRoot: runtime.repository.root,
-                });
-            },
-        );
+        assertString(message.requestId, "requestId");
+        try {
+            await executeShelfMutationRequest(
+                {
+                    shelfService: service,
+                    refreshData: () => this.refreshData(true, runtime),
+                    fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+                    selectExportDestination: async () =>
+                        (await vscode.window.showSaveDialog())?.fsPath,
+                },
+                message,
+                (completion) => {
+                    this.postToWebview({
+                        ...completion,
+                        repositoryRoot: runtime.repository.root,
+                    });
+                },
+            );
+        } catch {
+            // A valid correlated request already posted shelfMutationCompleted.
+        }
     }
 
     private fileActionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
@@ -1349,9 +1354,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 await this.selectShelf(scopedRuntime(), msg.shelfId);
                 break;
             case "shelfDiff":
-            case "shelfCompareWithLocal":
-                await shelfReadFromMessage(this.requireShelfService(scopedRuntime()), msg);
+            case "shelfCompareWithLocal": {
+                const runtime = scopedRuntime();
+                if (!runtime) throw new Error("No active repository selected.");
+                await shelfReadFromMessage(
+                    this.requireShelfService(runtime),
+                    msg,
+                    () => runtime.repoRootUri,
+                );
                 break;
+            }
             case "shelveSave":
             case "unshelve":
             case "shelfDelete":

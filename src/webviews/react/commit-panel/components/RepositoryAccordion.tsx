@@ -5,6 +5,7 @@ import { Box, Flex } from "@chakra-ui/react";
 import { TabBar } from "./TabBar";
 import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
+import { ShelfTab } from "./ShelfTab";
 import { useCheckedFiles } from "../hooks/useCheckedFiles";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { canRunCommitAction } from "../commitEligibility";
@@ -222,6 +223,7 @@ export function RepositoryAccordion({
             showIgnoredFiles={showIgnoredFiles}
             onToggleGroupBy={onToggleGroupBy}
             onToggleShowIgnoredFiles={handleToggleShowIgnoredFiles}
+            catalogGeneration={repository.catalogGeneration}
         />
     );
     const stashContent = (
@@ -238,6 +240,33 @@ export function RepositoryAccordion({
             onToggleGroupBy={onToggleGroupBy}
         />
     );
+    const shelfContent = (
+        <ShelfTab
+            shelves={repository.shelves}
+            shelfFiles={repository.shelfFiles}
+            selectedShelfId={repository.selectedShelfId}
+            groupByDir={groupByDir}
+            outcome={repository.shelfMutationOutcome ?? undefined}
+            onSelect={(message) => vscode.postMessage({ ...message, ...repositoryScope(repository.root) })}
+            onUnshelve={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onUnshelveSilently={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onRename={(message) => vscode.postMessage({ ...message, ...repositoryScope(repository.root) })}
+            onDelete={(message) => vscode.postMessage({ ...message, ...repositoryScope(repository.root) })}
+            onShowDiff={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onCompareWithLocal={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onRestoreGhost={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+        />
+    );
 
     if (isOnlyRepository) {
         return (
@@ -250,6 +279,7 @@ export function RepositoryAccordion({
                     onPush={handlePush}
                     commitContent={commitContent}
                     stashContent={stashContent}
+                    shelfContent={shelfContent}
                 />
             </Flex>
         );
@@ -351,6 +381,7 @@ export function RepositoryAccordion({
                             onPush={handlePush}
                             commitContent={commitContent}
                             stashContent={stashContent}
+                            shelfContent={shelfContent}
                         />
                     </Box>
                 </Flex>

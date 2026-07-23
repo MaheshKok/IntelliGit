@@ -3,6 +3,8 @@ import { Box } from "@chakra-ui/react";
 import { TabBar } from "../commit-panel/components/TabBar";
 import { CommitTab } from "../commit-panel/components/CommitTab";
 import { StashTab } from "../commit-panel/components/StashTab";
+import { ShelfTab } from "../commit-panel/components/ShelfTab";
+import { getVsCodeApi } from "../commit-panel/hooks/useVsCodeApi";
 import type { WorkingFile } from "../../../types";
 import type { CommitPanelState } from "./commitPanelState";
 
@@ -61,6 +63,7 @@ export function CommitPanelPane({
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
 }: CommitPanelPaneProps): React.ReactElement {
+    const vscode = getVsCodeApi();
     return (
         <Box
             data-testid="undocked-commit-panel-section"
@@ -107,6 +110,7 @@ export function CommitPanelPane({
                             showIgnoredFiles={showIgnoredFiles}
                             onToggleGroupBy={onToggleGroupBy}
                             onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
+                            catalogGeneration={cpState.catalogGeneration}
                         />
                     }
                     stashContent={
@@ -120,6 +124,23 @@ export function CommitPanelPane({
                             folderIconsByName={cpState.folderIconsByName}
                             groupByDir={groupByDir}
                             onToggleGroupBy={onToggleGroupBy}
+                        />
+                    }
+                    shelfContent={
+                        <ShelfTab
+                            shelves={cpState.shelves}
+                            shelfFiles={cpState.shelfFiles}
+                            selectedShelfId={cpState.selectedShelfId}
+                            groupByDir={groupByDir}
+                            outcome={cpState.shelfMutationOutcome ?? undefined}
+                            onSelect={(message) => vscode.postMessage(message)}
+                            onUnshelve={(message) => vscode.postMessage(message)}
+                            onUnshelveSilently={(message) => vscode.postMessage(message)}
+                            onRename={(message) => vscode.postMessage(message)}
+                            onDelete={(message) => vscode.postMessage(message)}
+                            onShowDiff={(message) => vscode.postMessage(message)}
+                            onCompareWithLocal={(message) => vscode.postMessage(message)}
+                            onRestoreGhost={(message) => vscode.postMessage(message)}
                         />
                     }
                 />

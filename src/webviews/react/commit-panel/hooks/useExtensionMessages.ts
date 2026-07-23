@@ -26,6 +26,11 @@ function createRepositoryState(
         stashes: [],
         stashFiles: [],
         selectedStashIndex: null,
+        shelves: [],
+        catalogGeneration: 0,
+        shelfFiles: [],
+        selectedShelfId: null,
+        shelfMutationOutcome: null,
         folderIcon: undefined,
         folderExpandedIcon: undefined,
         folderIconsByName: {},
@@ -168,6 +173,10 @@ function reducer(
                 stashes: action.stashes,
                 stashFiles: action.stashFiles,
                 selectedStashIndex: action.selectedStashIndex,
+                shelves: action.shelves,
+                catalogGeneration: action.catalogGeneration,
+                shelfFiles: action.shelfFiles,
+                selectedShelfId: action.selectedShelfId,
                 folderIcon: action.folderIcon ?? repository.folderIcon,
                 folderExpandedIcon: action.folderExpandedIcon ?? repository.folderExpandedIcon,
                 folderIconsByName: action.folderIconsByName ?? repository.folderIconsByName,
@@ -218,6 +227,11 @@ function reducer(
             return updateRepository(state, action.repositoryRoot, (repository) => ({
                 ...repository,
                 error: action.message,
+            }));
+        case "SET_SHELF_MUTATION_OUTCOME":
+            return updateRepository(state, action.repositoryRoot, (repository) => ({
+                ...repository,
+                shelfMutationOutcome: { requestId: action.requestId, status: action.status, entries: action.entries, message: action.message, shelfId: action.shelfId, newGeneration: action.newGeneration },
             }));
         case "SET_AMEND":
             return updateRepository(state, action.repositoryRoot, (repository) => ({
@@ -273,6 +287,10 @@ export function useExtensionMessages(): [
                         stashes: msg.stashes,
                         stashFiles: msg.stashFiles,
                         selectedStashIndex: msg.selectedStashIndex,
+                        shelves: msg.shelves ?? [],
+                        catalogGeneration: msg.catalogGeneration ?? 0,
+                        shelfFiles: msg.shelfFiles ?? [],
+                        selectedShelfId: msg.selectedShelfId ?? null,
                         folderIcon: msg.folderIcon,
                         folderExpandedIcon: msg.folderExpandedIcon,
                         folderIconsByName: msg.folderIconsByName,
@@ -323,6 +341,18 @@ export function useExtensionMessages(): [
                         type: "SET_ERROR",
                         repositoryRoot: msg.repositoryRoot,
                         message: msg.message,
+                    });
+                    break;
+                case "shelfMutationCompleted":
+                    dispatch({
+                        type: "SET_SHELF_MUTATION_OUTCOME",
+                        repositoryRoot: msg.repositoryRoot,
+                        status: msg.status,
+                        entries: msg.entries,
+                        requestId: msg.requestId,
+                        message: msg.message,
+                        shelfId: msg.shelfId,
+                        newGeneration: msg.newGeneration,
                     });
                     break;
             }

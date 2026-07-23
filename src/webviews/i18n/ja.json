@@ -62,6 +62,7 @@
     "commit.tab.commit": "コミット",
     "commit.tab.stash": "スタッシュ",
     "commit.tab.stashWithCount": "保管庫（{count}）",
+    "commit.tab.shelf": "Shelf",
     "commit.amendContext.title": "このブランチでのコミット",
     "commit.amendContext.description": "作業ツリーの変更点とバージョン管理されていないファイルの一覧は以下のとおりです。",
     "commit.amendContext.loading": "ブランチ履歴を読み込んでいます...",
