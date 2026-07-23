@@ -186,7 +186,6 @@ export function commitPanelReducer(
         case "COMMITTED":
             return {
                 ...state,
-                commitMessage: "",
                 isAmend: false,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,

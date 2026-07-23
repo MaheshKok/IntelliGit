@@ -293,6 +293,24 @@ describe("runGitOperationFromPanel", () => {
             "There are uncommitted changes, please commit or stash them first.",
         );
     });
+
+    it("signals commit completion once when push rejects after a selected-file commit", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.push).mockRejectedValueOnce(new Error("push failed"));
+
+        await expect(
+            commitSelectedFromPanel(deps, {
+                message: "feat: push rejection",
+                amend: false,
+                push: true,
+                paths: ["src/a.ts"],
+            }),
+        ).rejects.toThrow("push failed");
+
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false);
+        expect(deps.postCommitted).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe("stashMutationFromPanel", () => {

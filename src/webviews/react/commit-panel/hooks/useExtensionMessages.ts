@@ -209,7 +209,6 @@ function reducer(
         case "COMMITTED":
             return updateRepository(state, action.repositoryRoot, (repository) => ({
                 ...repository,
-                commitMessage: "",
                 isAmend: false,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,
