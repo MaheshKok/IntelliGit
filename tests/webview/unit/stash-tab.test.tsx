@@ -213,12 +213,14 @@ describe("StashTab", () => {
             expect(getComputedStyle(chevronSpacer).width).toBe("18px");
         }
         expect(file.getAttribute("data-vscode-context")).toBeNull();
-        expect(file.getAttribute("aria-selected")).toBe("true");
-        expect(otherFile.getAttribute("aria-selected")).toBe("false");
+        expect(file.hasAttribute("aria-selected")).toBe(false);
+        expect(otherFile.hasAttribute("aria-selected")).toBe(false);
+        expect(file.getAttribute("aria-current")).toBe("true");
 
         click(otherFile);
-        expect(file.getAttribute("aria-selected")).toBe("false");
-        expect(otherFile.getAttribute("aria-selected")).toBe("true");
+        expect(file.hasAttribute("aria-selected")).toBe(false);
+        expect(otherFile.hasAttribute("aria-selected")).toBe(false);
+        expect(file.hasAttribute("aria-current")).toBe(false);
         expect(otherFile.getAttribute("aria-current")).toBe("true");
 
         unmount(root, container);

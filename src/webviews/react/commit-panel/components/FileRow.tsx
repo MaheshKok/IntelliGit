@@ -136,7 +136,6 @@ function FileRowInner({
                     ? "var(--intelligit-pycharm-selected)"
                     : "rgba(255,255,255,0.05)",
             }}
-            aria-selected={isDragSelected}
             aria-current={isCurrent ? "true" : undefined}
             data-stash-file={dataStashFile}
             data-vscode-context={optionalContextMenuMetadata(
