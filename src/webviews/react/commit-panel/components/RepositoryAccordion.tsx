@@ -242,6 +242,7 @@ export function RepositoryAccordion({
     );
     const shelfContent = (
         <ShelfTab
+            repositoryRoot={repository.root || undefined}
             shelves={repository.shelves}
             shelfFiles={repository.shelfFiles}
             selectedShelfId={repository.selectedShelfId}
@@ -279,6 +280,12 @@ export function RepositoryAccordion({
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
             onCleanUp={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onOpenConflictEditor={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onResolveStructural={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
         />

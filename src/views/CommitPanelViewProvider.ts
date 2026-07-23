@@ -18,6 +18,7 @@ import type {
 import type { ShelfService } from "../services/shelfService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
+import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
 import { runPublishBranchFlow } from "../services/publishService";
 import { showTimedWarningMessage } from "../utils/notifications";
 import type {
@@ -43,6 +44,7 @@ import {
     commitSelectedFromPanel,
     executeStashMutationRequest,
     executeShelfMutationRequest,
+    openShelfConflictEditorFromMessage,
     rollbackFromPanel,
     runGitOperationFromPanel,
     stashMutationFromPanel,
@@ -151,7 +153,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private repoRootUri?: vscode.Uri,
         private readonly workspaceState?: vscode.Memento,
         private readonly secrets?: vscode.SecretStorage,
-        private readonly shelfServiceForRepository?: (repositoryRoot: string) => ShelfService | undefined,
+        private readonly shelfServiceForRepository?: (
+            repositoryRoot: string,
+        ) => ShelfService | undefined,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -755,7 +759,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
     /** Returns the shelf service bound to exactly one repository runtime. */
     private requireShelfService(runtime: CommitPanelRepositoryRuntime | undefined): ShelfService {
-        if (!runtime?.shelfService) throw new Error("Shelf service is unavailable for this repository.");
+        if (!runtime?.shelfService)
+            throw new Error("Shelf service is unavailable for this repository.");
         return runtime.shelfService;
     }
 
@@ -815,6 +820,33 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         } catch {
             // A valid correlated request already posted shelfMutationCompleted.
         }
+    }
+
+    /** Validates and opens a non-mutating shelf conflict editor for one repository runtime. */
+    private async openShelfConflictEditor(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: Record<string, unknown>,
+    ): Promise<void> {
+        if (!runtime) throw new Error("No active repository selected.");
+        const shelfService = this.requireShelfService(runtime);
+        await openShelfConflictEditorFromMessage(
+            {
+                shelfService,
+                openShelfConflictEditor: (shelfId, changeId) =>
+                    ShelfConflictEditorPanel.open({
+                        extensionUri: this.extensionUri,
+                        repositoryRoot: runtime.repository.root,
+                        shelfService,
+                        shelfId,
+                        changeId,
+                        onApplied: async () => {
+                            await this.refreshData(true, runtime);
+                            this._onDidChangeWorkingTree.fire();
+                        },
+                    }),
+            },
+            message,
+        );
     }
 
     private fileActionDepsForRuntime(runtime?: CommitPanelRepositoryRuntime) {
@@ -1361,6 +1393,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "shelfSelect":
                 await this.selectShelf(scopedRuntime(), msg.shelfId);
+                break;
+            case "shelfOpenConflictEditor":
+                await this.openShelfConflictEditor(scopedRuntime(), msg);
                 break;
             case "shelfDiff":
             case "shelfCompareWithLocal": {

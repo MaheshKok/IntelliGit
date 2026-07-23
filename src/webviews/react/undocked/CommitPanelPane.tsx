@@ -10,6 +10,7 @@ import type { CommitPanelState } from "./commitPanelState";
 
 interface CommitPanelPaneProps {
     width: number;
+    repositoryRoot?: string;
     cpState: CommitPanelState;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
@@ -41,6 +42,7 @@ interface CommitPanelPaneProps {
 // react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitPanelPane({
     width,
+    repositoryRoot,
     cpState,
     checkedPaths,
     onToggleFile,
@@ -128,6 +130,7 @@ export function CommitPanelPane({
                     }
                     shelfContent={
                         <ShelfTab
+                            repositoryRoot={repositoryRoot}
                             shelves={cpState.shelves}
                             shelfFiles={cpState.shelfFiles}
                             selectedShelfId={cpState.selectedShelfId}
@@ -145,6 +148,8 @@ export function CommitPanelPane({
                             onImportPatch={(message) => vscode.postMessage(message)}
                             onExportPatch={(message) => vscode.postMessage(message)}
                             onCleanUp={(message) => vscode.postMessage(message)}
+                            onOpenConflictEditor={(message) => vscode.postMessage(message)}
+                            onResolveStructural={(message) => vscode.postMessage(message)}
                         />
                     }
                 />

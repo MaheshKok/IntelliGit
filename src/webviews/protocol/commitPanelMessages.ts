@@ -28,7 +28,15 @@ export type PerEntryResult =
     | { kind: "retained"; changeId: string; reason: string }
     | { kind: "flattenedResidue"; changeId: string }
     | { kind: "refused"; changeId: string; reason: string }
-    | { kind: "structuralPending"; changeId: string; reason: string };
+    | {
+          kind: "structuralPending";
+          changeId: string;
+          reason: string;
+          /** Repository-relative path whose local state needs a structural choice. */
+          readonly path: string;
+          /** Fingerprint captured when the structural choice was first emitted. */
+          readonly pathFingerprint: string;
+      };
 
 /** Completion states reported for every correlated shelf mutation. */
 export type ShelfMutationStatus =
@@ -422,6 +430,12 @@ export type OutboundMessage =
           expectedPathFingerprint: string;
           action: "keepLocal" | "useShelved" | "deleteLocal" | "renameLocal";
           targetPath?: string;
+      }>
+    | RepositoryScopedMessage<{
+          /** Opens a working-tree-only merge editor for one regular-text shelf conflict. */
+          type: "shelfOpenConflictEditor";
+          shelfId: string;
+          changeId: string;
       }>
     | RepositoryScopedMessage<{
           /** Explicitly purges recovery snapshots whose independent retention permits removal. */

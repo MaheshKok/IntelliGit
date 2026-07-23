@@ -17,16 +17,22 @@ import type { ShelfStore } from "../shelf/store";
 import {
     exportFlattenedPatch,
     importPatchFiles,
+    pathFingerprint,
     resolveStructuralAction,
     type ShelfListResult,
     type StructuralResolutionInput,
 } from "./shelfServiceOperations";
 import { captureShelfArtifacts } from "./shelfServiceCapture";
 import {
+    ShelfConflictSessionService,
+    type ApplyShelfConflictResolutionInput,
+    type ApplyShelfConflictResolutionResult,
+    type ShelfConflictSessionPayload,
+} from "./shelfConflictSession";
+import {
     assertShelfName,
     isNotFound,
     isStructural,
-    isUtf8,
     repositoryPath,
     selectEntries,
     statusFor,
@@ -41,7 +47,13 @@ export type PerEntryResult =
     | { readonly kind: "retained"; readonly changeId: string; readonly reason: string }
     | { readonly kind: "flattenedResidue"; readonly changeId: string }
     | { readonly kind: "refused"; readonly changeId: string; readonly reason: string }
-    | { readonly kind: "structuralPending"; readonly changeId: string; readonly reason: string };
+    | {
+          readonly kind: "structuralPending";
+          readonly changeId: string;
+          readonly reason: string;
+          readonly path: string;
+          readonly pathFingerprint: string;
+      };
 /** Aggregate state returned by a shelf mutation. */
 export type ShelfMutationStatus =
     | "ok"
@@ -106,6 +118,7 @@ export class ShelfService {
     private readonly reverter: ShelfReverter;
     private readonly recoveryMinimumRetentionMs: number;
     private readonly recordBaseRevisions: boolean;
+    private readonly conflictSessions: ShelfConflictSessionService;
     /** Initializes host-owned Git and recovery collaborators. */
     constructor(private readonly options: ShelfServiceOptions) {
         this.gitOps = options.gitOps ?? new GitOps(options.executor);
@@ -119,6 +132,14 @@ export class ShelfService {
             });
         this.recoveryMinimumRetentionMs = options.recoveryMinimumRetentionMs ?? 24 * 60 * 60 * 1000;
         this.recordBaseRevisions = options.recordBaseRevisions ?? true;
+        this.conflictSessions = new ShelfConflictSessionService({
+            repositoryRoot: options.repositoryRoot,
+            store: options.store,
+            executor: options.executor,
+            withMutation: (operation) => this.withMutation(operation),
+            readBase: (id, entry) => this.baseForEntry(id, entry),
+            getGitDirectories: () => this.gitOps.getGitDirectories(),
+        });
     }
     /** Captures selected layers durably; Save to Shelf deliberately skips the destructive reverter. */
     async shelve(input: ShelveInput): Promise<ShelfMutationResult> {
@@ -367,6 +388,19 @@ export class ShelfService {
             ),
         );
     }
+    /** Opens a read-only shelf text-conflict session without holding mutation serialization. */
+    async openShelfConflictSession(
+        id: string,
+        changeId: string,
+    ): Promise<ShelfConflictSessionPayload> {
+        return this.conflictSessions.open({ id, changeId });
+    }
+    /** Applies a shelf merge result through the session's queue, CAS, and fingerprint guards. */
+    async applyShelfConflictResolution(
+        input: ApplyShelfConflictResolutionInput,
+    ): Promise<ApplyShelfConflictResolutionResult> {
+        return this.conflictSessions.apply(input);
+    }
     /** Explicit recovery purge; deleting a shelf never reaches this path. */
     async purgeRecovery(): Promise<readonly string[]> {
         return this.withMutation(async () => {
@@ -429,7 +463,12 @@ export class ShelfService {
     async getShelfDiffContents(
         id: string,
         changeId: string,
-    ): Promise<{ readonly path: string; readonly binary: boolean; readonly base?: Buffer; readonly shelved: Buffer }> {
+    ): Promise<{
+        readonly path: string;
+        readonly binary: boolean;
+        readonly base?: Buffer;
+        readonly shelved: Buffer;
+    }> {
         const manifest = await this.refreshHistoryBaseAvailability(id);
         const entry = manifest.files.find((file) => file.changeId === changeId);
         if (!entry) throw new Error("Shelf entry does not exist.");
@@ -453,7 +492,9 @@ export class ShelfService {
                 path: block.path,
                 binary: entry.binary,
                 base: undefined,
-                shelved: Buffer.from("Shelved content is unavailable because its base is unavailable."),
+                shelved: Buffer.from(
+                    "Shelved content is unavailable because its base is unavailable.",
+                ),
             };
         }
         const shelved = await this.materializeEntry(
@@ -467,7 +508,8 @@ export class ShelfService {
             binary: entry.binary,
             base,
             shelved:
-                shelved ?? Buffer.from("Shelved content could not be materialized from this shelf."),
+                shelved ??
+                Buffer.from("Shelved content could not be materialized from this shelf."),
         };
     }
     /** Rolls back incomplete destructive captures and removes their now-cancelled durable shelves. */
@@ -537,10 +579,16 @@ export class ShelfService {
         mode: UnshelveInput["mode"],
     ): Promise<PerEntryResult> {
         if (isStructural(entry)) {
+            const block = entry.worktreeBlock ?? entry.indexBlock;
+            if (!block) throw new Error("Structural shelf entry has no file path.");
             return {
                 kind: "structuralPending",
                 changeId: entry.changeId,
                 reason: "Structural shelf change needs a choice.",
+                path: block.path,
+                pathFingerprint: await pathFingerprint(
+                    repositoryPath(this.options.repositoryRoot, block.path),
+                ),
             };
         }
         if (!entry.exactReconstruction) return this.applyRawEntry(shelfId, entry);
@@ -570,6 +618,8 @@ export class ShelfService {
                 kind: "structuralPending",
                 changeId: entry.changeId,
                 reason: "Local bytes differ from raw shelf preimage.",
+                path: block.path,
+                pathFingerprint: await pathFingerprint(target),
             };
         }
         await replaceRegularWorktreeFile(this.options.repositoryRoot, block.path, after);
@@ -655,53 +705,11 @@ export class ShelfService {
     private async mergeTextEntry(
         shelfId: string,
         entry: ShelfFileEntry,
-        indexPatch: Buffer | undefined,
-        worktreePatch: Buffer | undefined,
+        _indexPatch: Buffer | undefined,
+        _worktreePatch: Buffer | undefined,
     ): Promise<PerEntryResult | undefined> {
-        if (!entry.worktreeBlock || entry.baseAvailability === "none") return undefined;
-        const base = await this.baseForEntry(shelfId, entry);
-        if (!base || !isUtf8(base)) return undefined;
-        const safeRelativePath = validateShelfManifestPath(entry.worktreeBlock.path);
-        const target = repositoryPath(this.options.repositoryRoot, safeRelativePath);
-        const current = await readFile(target).catch(() => undefined);
-        if (!current || !isUtf8(current)) return undefined;
-        const temp = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-merge-"));
-        try {
-            const basePath = path.join(temp, "base");
-            const shelvedPath = path.join(temp, "shelved");
-            const currentPath = path.join(temp, "current");
-            await Promise.all([
-                writeFile(basePath, base),
-                writeFile(shelvedPath, base),
-                writeFile(currentPath, current),
-            ]);
-            const combined = Buffer.concat([
-                indexPatch ?? Buffer.alloc(0),
-                worktreePatch ?? Buffer.alloc(0),
-            ]);
-            const materializedPath = path.join(temp, safeRelativePath);
-            await mkdir(path.dirname(materializedPath), { recursive: true, mode: 0o700 });
-            await writeFile(materializedPath, base);
-            if (!(await this.applyPatchUnder(temp, safeRelativePath, combined))) return undefined;
-            const materialized = await readFile(materializedPath);
-            await writeFile(shelvedPath, materialized);
-            const result = await this.options.executor.runBinary(
-                ["merge-file", "-p", currentPath, basePath, shelvedPath],
-                {
-                    expectedExitCodes: [0, 1],
-                },
-            );
-            await replaceRegularWorktreeFile(
-                this.options.repositoryRoot,
-                safeRelativePath,
-                result.stdout,
-            );
-            return result.exitCode === 0
-                ? { kind: "applied", changeId: entry.changeId }
-                : { kind: "conflicted", changeId: entry.changeId };
-        } finally {
-            await rm(temp, { recursive: true, force: true });
-        }
+        const kind = await this.conflictSessions.mergeTextEntry(shelfId, entry);
+        return kind ? { kind, changeId: entry.changeId } : undefined;
     }
     private async isCancellationResidue(
         shelfId: string,

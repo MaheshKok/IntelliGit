@@ -83,6 +83,8 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
         onImportPatch: vi.fn(),
         onExportPatch: vi.fn(),
         onCleanUp: vi.fn(),
+        onOpenConflictEditor: vi.fn(),
+        onResolveStructural: vi.fn(),
     };
     const mounted = mount(
         <ChakraProvider theme={theme}>
@@ -533,7 +535,13 @@ describe("ShelfTab", () => {
             { kind: "retained", changeId: "c", reason: "keep" },
             { kind: "flattenedResidue", changeId: "d" },
             { kind: "refused", changeId: "e", reason: "no" },
-            { kind: "structuralPending", changeId: "f", reason: "choose" },
+            {
+                kind: "structuralPending",
+                changeId: "f",
+                reason: "choose",
+                path: "src/f.ts",
+                pathFingerprint: "100644:fixture",
+            },
         ];
         const statuses: ShelfMutationStatus[] = [
             "ok",
@@ -568,6 +576,8 @@ describe("ShelfTab", () => {
                             onImportPatch={vi.fn()}
                             onExportPatch={vi.fn()}
                             onCleanUp={vi.fn()}
+                            onOpenConflictEditor={vi.fn()}
+                            onResolveStructural={vi.fn()}
                             outcome={{ status, entries: results }}
                         />
                     </ChakraProvider>,
@@ -576,6 +586,90 @@ describe("ShelfTab", () => {
             expect(container.textContent).toContain(status);
         }
         for (const result of results) expect(container.textContent).toContain(result.kind);
+
+        unmount(root, container);
+    });
+
+    it("posts merge launch and guarded structural choices from conflict outcomes", () => {
+        const outcome: ShelfMutationOutcome = {
+            requestId: "unshelve-result",
+            shelfId: "shelf-a",
+            status: "conflicts",
+            entries: [
+                { kind: "conflicted", changeId: "change-a" },
+                {
+                    kind: "structuralPending",
+                    changeId: "change-b",
+                    reason: "choose",
+                    path: "src/lexer.ts",
+                    pathFingerprint: "644:local",
+                },
+            ],
+        };
+        const { root, container, callbacks } = renderShelfTab({
+            repositoryRoot: "/repo",
+            outcome,
+        });
+
+        click(button(container, "Merge…"));
+        expect(callbacks.onOpenConflictEditor).toHaveBeenCalledWith({
+            type: "shelfOpenConflictEditor",
+            repositoryRoot: "/repo",
+            shelfId: "shelf-a",
+            changeId: "change-a",
+        });
+
+        click(button(container, "Keep Local"));
+        expect(callbacks.onResolveStructural).toHaveBeenCalledWith({
+            type: "shelfResolveStructural",
+            repositoryRoot: "/repo",
+            requestId: expect.any(String),
+            shelfId: "shelf-a",
+            expectedGeneration: 7,
+            changeId: "change-b",
+            expectedPathFingerprint: "644:local",
+            action: "keepLocal",
+        });
+        expect(button(container, "Use Shelved").disabled).toBe(true);
+
+        unmount(root, container);
+    });
+
+    it("opens a small rename dialog and posts the guarded target path", () => {
+        const outcome: ShelfMutationOutcome = {
+            requestId: "unshelve-result",
+            shelfId: "shelf-a",
+            status: "conflicts",
+            entries: [
+                {
+                    kind: "structuralPending",
+                    changeId: "change-b",
+                    reason: "choose",
+                    path: "src/lexer.ts",
+                    pathFingerprint: "644:local",
+                },
+            ],
+        };
+        const { root, container, callbacks } = renderShelfTab({
+            repositoryRoot: "/repo",
+            outcome,
+        });
+
+        click(button(container, "Rename Local…"));
+        const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+        inputValue(
+            dialog.querySelector('input[aria-label="Rename local path"]') as HTMLInputElement,
+            "src/local-lexer.ts",
+        );
+        click(button(dialog, "Rename Local"));
+        expect(callbacks.onResolveStructural).toHaveBeenCalledWith(
+            expect.objectContaining({
+                action: "renameLocal",
+                targetPath: "src/local-lexer.ts",
+                expectedGeneration: 7,
+                expectedPathFingerprint: "644:local",
+            }),
+        );
 
         unmount(root, container);
     });

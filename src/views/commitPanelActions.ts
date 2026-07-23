@@ -121,6 +121,26 @@ export interface ShelfActionDeps {
     selectImportSources?: () => Promise<readonly string[] | undefined>;
 }
 
+/** Narrow host dependency surface for the non-mutating shelf merge-editor launch. */
+export interface ShelfConflictEditorActionDeps {
+    shelfService: ShelfService;
+    openShelfConflictEditor: (shelfId: string, changeId: string) => Promise<void>;
+}
+
+/** Revalidates an untrusted shelf conflict launch before opening the host-owned panel. */
+export async function openShelfConflictEditorFromMessage(
+    deps: ShelfConflictEditorActionDeps,
+    message: Record<string, unknown>,
+): Promise<void> {
+    if (message.type !== "shelfOpenConflictEditor") {
+        throw new Error("Invalid shelf conflict editor request received from webview.");
+    }
+    const shelfId = await assertExistingShelf(deps.shelfService, message.shelfId);
+    const changeId = assertShelfChangeId(message.changeId, "changeId");
+    await assertExistingChangeIds(deps.shelfService, shelfId, [changeId]);
+    await deps.openShelfConflictEditor(shelfId, changeId);
+}
+
 type ShelfMutationCompleted = Extract<InboundMessage, { type: "shelfMutationCompleted" }>;
 
 /** Executes all correlated shelf mutations and posts a typed completion even after failures. */
@@ -209,7 +229,11 @@ export async function shelfMutationFromMessage(
         }
         case "unshelve": {
             const shelfId = await assertExistingShelf(shelfService, message.shelfId);
-            const changeIds = await assertExistingChangeIds(shelfService, shelfId, message.changeIds);
+            const changeIds = await assertExistingChangeIds(
+                shelfService,
+                shelfId,
+                message.changeIds,
+            );
             return shelfService.unshelve({
                 id: shelfId,
                 expectedShelfGeneration: assertShelfGeneration(
@@ -240,7 +264,11 @@ export async function shelfMutationFromMessage(
             });
         case "shelfExportPatch": {
             const shelfId = await assertExistingShelf(shelfService, message.shelfId);
-            const changeIds = await assertExistingChangeIds(shelfService, shelfId, message.changeIds);
+            const changeIds = await assertExistingChangeIds(
+                shelfService,
+                shelfId,
+                message.changeIds,
+            );
             assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
             const fileUri = assertAbsolutePath(hostExportFileUri, "host export destination");
             await writeFile(fileUri, await shelfService.exportPatch({ id: shelfId, changeIds }));
@@ -267,7 +295,9 @@ export async function shelfMutationFromMessage(
             const shelfIds = assertStringArray(message.shelfIds, "shelfIds").map((value) =>
                 assertShelfId(value, "shelfIds"),
             );
-            await Promise.all(shelfIds.map((shelfId) => assertExistingShelf(shelfService, shelfId)));
+            await Promise.all(
+                shelfIds.map((shelfId) => assertExistingShelf(shelfService, shelfId)),
+            );
             return shelfService.cleanUp({
                 shelfIds,
                 expectedCatalogGeneration: assertShelfGeneration(
@@ -326,7 +356,12 @@ export async function shelfReadFromMessage(
               ? "shelvedToLocal"
               : undefined;
     if (!mode) throw new Error("Invalid shelf diff request received from webview.");
-    await showShelfDiffFromPanel({ shelfReader: shelfService, getWorkspaceRoot }, shelfId, changeId, mode);
+    await showShelfDiffFromPanel(
+        { shelfReader: shelfService, getWorkspaceRoot },
+        shelfId,
+        changeId,
+        mode,
+    );
 }
 
 /** Converts service outcomes into the protocol's explicit per-entry contract. */
@@ -391,7 +426,9 @@ async function assertExistingChangeIds(
     const changeIds = assertStringArray(value, "changeIds").map((changeId) =>
         assertShelfChangeId(changeId, "changeIds"),
     );
-    const known = new Set((await shelfService.getShelfFiles(shelfId)).map((entry) => entry.changeId));
+    const known = new Set(
+        (await shelfService.getShelfFiles(shelfId)).map((entry) => entry.changeId),
+    );
     if (changeIds.some((changeId) => !known.has(changeId))) {
         throw new Error("Shelf change ID does not exist.");
     }

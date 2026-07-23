@@ -131,7 +131,9 @@ describe("ShelfService", () => {
         });
         const [entry] = await service.getShelfFiles(created.shelfId!);
 
-        await expect(service.getShelfDiffContents(created.shelfId!, entry!.changeId)).resolves.toEqual({
+        await expect(
+            service.getShelfDiffContents(created.shelfId!, entry!.changeId),
+        ).resolves.toEqual({
             path: "tracked.txt",
             binary: false,
             base: Buffer.from("base\n"),
@@ -339,6 +341,62 @@ describe("ShelfService", () => {
         );
     });
 
+    it("opens and applies a shelf conflict session without staging the resolved file", async () => {
+        const { root, service } = await makeService();
+        const shelfId = await createMergeConflictShelf(root, service, "tracked.txt");
+        await service.unshelve({ id: shelfId, removeFromShelf: false, mode: "flattened" });
+        const generation = (await service.listShelves()).shelves[0]!.generation;
+        const [entry] = await service.getShelfFiles(shelfId);
+
+        const session = await service.openShelfConflictSession(shelfId, entry!.changeId);
+        expect(session).toMatchObject({
+            path: "tracked.txt",
+            base: "one\nbase\nthree\n",
+            current: "one\nlocal\nthree\n",
+            patchedBase: "one\nshelved\nthree\n",
+            shelfGeneration: generation,
+        });
+        await expect(
+            service.applyShelfConflictResolution({
+                id: shelfId,
+                changeId: entry!.changeId,
+                content: "one\nresolved\nthree\n",
+                expectedShelfGeneration: generation,
+                expectedPathFingerprint: session.worktreeFingerprint,
+            }),
+        ).resolves.toMatchObject({ status: "applied" });
+
+        await expect(readFile(path.join(root, "tracked.txt"), "utf8")).resolves.toBe(
+            "one\nresolved\nthree\n",
+        );
+        await expect(
+            execFileAsync("git", ["diff", "--cached", "--quiet"], { cwd: root }),
+        ).resolves.toBeDefined();
+    });
+
+    it("emits the local structural path fingerprint with a pending outcome", async () => {
+        const { root, service, store } = await makeService();
+        await writeStructuralShelf(store, "structural-outcome", "tracked.txt", "D");
+
+        await expect(
+            service.unshelve({
+                id: "structural-outcome",
+                removeFromShelf: false,
+                mode: "flattened",
+            }),
+        ).resolves.toMatchObject({
+            status: "conflicts",
+            entries: [
+                {
+                    kind: "structuralPending",
+                    changeId: "structural",
+                    path: "tracked.txt",
+                    pathFingerprint: await pathFingerprint(path.join(root, "tracked.txt")),
+                },
+            ],
+        });
+    });
+
     it("refuses a merge conflict write through a symlinked parent without writing through", async () => {
         const { root, service, executor } = await makeService();
         const shelfId = await createMergeConflictShelf(root, service, "nested/tracked.txt");
@@ -458,24 +516,34 @@ describe("ShelfService", () => {
         const { service, store } = await makeService();
         const patch = await store.putObject(
             "missing-history",
-            Buffer.from("diff --git a/tracked.txt b/tracked.txt\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1 +1 @@\n-base\n+shelved\n"),
+            Buffer.from(
+                "diff --git a/tracked.txt b/tracked.txt\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1 +1 @@\n-base\n+shelved\n",
+            ),
         );
         await store.writeShelfGeneration("missing-history", {
             schemaVersion: 1,
             objectHashes: [patch.hash],
             metadata: { name: "missing", baseCommit: "0".repeat(40), lifecycle: "shelved" },
-            files: [{
-                changeId: "missing-history",
-                worktreeBlock: { path: "tracked.txt", status: "M", patchObjectHash: patch.hash },
-                binary: false,
-                untracked: false,
-                baseAvailability: "history",
-                exactReconstruction: true,
-                lifecycle: "shelved",
-            }],
+            files: [
+                {
+                    changeId: "missing-history",
+                    worktreeBlock: {
+                        path: "tracked.txt",
+                        status: "M",
+                        patchObjectHash: patch.hash,
+                    },
+                    binary: false,
+                    untracked: false,
+                    baseAvailability: "history",
+                    exactReconstruction: true,
+                    lifecycle: "shelved",
+                },
+            ],
         });
 
-        await expect(service.listShelves()).resolves.toMatchObject({ shelves: [{ id: "missing-history" }] });
+        await expect(service.listShelves()).resolves.toMatchObject({
+            shelves: [{ id: "missing-history" }],
+        });
         await expect(service.getShelfFiles("missing-history")).resolves.toMatchObject([
             { baseAvailability: "none" },
         ]);
@@ -495,29 +563,52 @@ describe("ShelfService", () => {
             keepLocal: false,
         });
         const [partialEntry] = await partial.service.getShelfFiles(partialShelf.shelfId!);
-        await partial.service.unshelve({ id: partialShelf.shelfId!, changeIds: [partialEntry.changeId], removeFromShelf: true, mode: "flattened" });
-        await expect(partial.store.readJournals()).resolves.toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                state: "applied",
-                shelf: expect.objectContaining({ id: partialShelf.shelfId! }),
-            }),
-        ]));
+        await partial.service.unshelve({
+            id: partialShelf.shelfId!,
+            changeIds: [partialEntry.changeId],
+            removeFromShelf: true,
+            mode: "flattened",
+        });
+        await expect(partial.store.readJournals()).resolves.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    state: "applied",
+                    shelf: expect.objectContaining({ id: partialShelf.shelfId! }),
+                }),
+            ]),
+        );
         await expect(partial.service.listShelves()).resolves.toMatchObject({
             shelves: [{ id: partialShelf.shelfId!, metadata: { lifecycle: "shelved" } }],
         });
 
         const complete = await makeService();
         await writeFile(path.join(complete.root, "tracked.txt"), "shelved\n");
-        const completeShelf = await complete.service.shelve({ name: "complete", paths: ["tracked.txt"], silent: true, keepLocal: false });
-        await complete.service.unshelve({ id: completeShelf.shelfId!, removeFromShelf: true, mode: "flattened" });
-        await expect(complete.store.readJournals()).resolves.toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                state: "ghost",
-                shelf: expect.objectContaining({ id: completeShelf.shelfId! }),
-            }),
-        ]));
+        const completeShelf = await complete.service.shelve({
+            name: "complete",
+            paths: ["tracked.txt"],
+            silent: true,
+            keepLocal: false,
+        });
+        await complete.service.unshelve({
+            id: completeShelf.shelfId!,
+            removeFromShelf: true,
+            mode: "flattened",
+        });
+        await expect(complete.store.readJournals()).resolves.toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    state: "ghost",
+                    shelf: expect.objectContaining({ id: completeShelf.shelfId! }),
+                }),
+            ]),
+        );
         await expect(complete.service.listShelves()).resolves.toMatchObject({
-            shelves: [{ id: completeShelf.shelfId!, metadata: { lifecycle: "applied", appliedAt: expect.any(Number) } }],
+            shelves: [
+                {
+                    id: completeShelf.shelfId!,
+                    metadata: { lifecycle: "applied", appliedAt: expect.any(Number) },
+                },
+            ],
         });
     });
 
@@ -526,8 +617,17 @@ describe("ShelfService", () => {
         const now = 2_000_000_000_000;
         const createGhost = async (name: string): Promise<string> => {
             await writeFile(path.join(root, "tracked.txt"), `${name}\n`);
-            const shelf = await service.shelve({ name, paths: ["tracked.txt"], silent: true, keepLocal: false });
-            await service.unshelve({ id: shelf.shelfId!, removeFromShelf: true, mode: "flattened" });
+            const shelf = await service.shelve({
+                name,
+                paths: ["tracked.txt"],
+                silent: true,
+                keepLocal: false,
+            });
+            await service.unshelve({
+                id: shelf.shelfId!,
+                removeFromShelf: true,
+                mode: "flattened",
+            });
             return shelf.shelfId!;
         };
         const oldId = await createGhost("old");
@@ -553,7 +653,9 @@ describe("ShelfService", () => {
             ]),
         });
         await service.cleanUpExpiredGhosts(2, now);
-        await expect(service.listShelves()).resolves.toMatchObject({ shelves: [{ id: boundaryId }] });
+        await expect(service.listShelves()).resolves.toMatchObject({
+            shelves: [{ id: boundaryId }],
+        });
     });
 
     it("uses raw before/after artifacts without git apply and replays durable idempotency safely", async () => {

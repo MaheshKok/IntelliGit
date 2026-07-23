@@ -68,6 +68,7 @@ import {
     commitSelectedFromPanel,
     executeStashMutationRequest,
     executeShelfMutationRequest,
+    openShelfConflictEditorFromMessage,
     rollbackFromPanel,
     runGitOperationFromPanel,
     stashMutationFromPanel,
@@ -87,6 +88,7 @@ import {
     unstageFilesFromPanel,
 } from "./panelFileActions";
 import { abortMergeWithConfirmation } from "./mergeAbort";
+import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
 interface PersistedColumnWidths {
     branchWidth: number;
     graphWidth: number;
@@ -704,8 +706,32 @@ export class UndockedViewProvider {
     }
 
     private requireShelfService(): ShelfService {
-        if (!this.shelfService) throw new Error("Shelf service is unavailable for this repository.");
+        if (!this.shelfService)
+            throw new Error("Shelf service is unavailable for this repository.");
         return this.shelfService;
+    }
+
+    /** Validates and opens a non-mutating shelf conflict editor for the selected repository. */
+    private async openShelfConflictEditor(message: Record<string, unknown>): Promise<void> {
+        const shelfService = this.requireShelfService();
+        await openShelfConflictEditorFromMessage(
+            {
+                shelfService,
+                openShelfConflictEditor: (shelfId, changeId) =>
+                    ShelfConflictEditorPanel.open({
+                        extensionUri: this.extensionUri,
+                        repositoryRoot: this.selectedRepositoryRoot,
+                        shelfService,
+                        shelfId,
+                        changeId,
+                        onApplied: async () => {
+                            await this.refreshCommitPanelData(true);
+                            this._onDidChangeWorkingTree.fire();
+                        },
+                    }),
+            },
+            message,
+        );
     }
 
     private async shelfSnapshot(): Promise<{
@@ -862,6 +888,9 @@ export class UndockedViewProvider {
                 break;
             case "shelfSelect":
                 await this.selectShelf(msg.shelfId);
+                break;
+            case "shelfOpenConflictEditor":
+                await this.openShelfConflictEditor(msg);
                 break;
             case "shelfDiff":
             case "shelfCompareWithLocal":

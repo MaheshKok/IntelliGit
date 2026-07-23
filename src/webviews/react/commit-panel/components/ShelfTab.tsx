@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Flex } from "@chakra-ui/react";
+import { Box, Button, Flex, Input } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
 import type {
     OutboundMessage,
@@ -45,6 +45,16 @@ export type ShelfExportPatchMessage = Extract<OutboundMessage, { type: "shelfExp
 };
 /** Catalog-CAS deletion request for selected already-unshelved ghosts. */
 export type ShelfCleanUpMessage = Extract<OutboundMessage, { type: "shelfCleanUp" }>;
+/** Non-mutating request opening the host-owned shelf merge editor. */
+export type ShelfOpenConflictEditorMessage = Extract<
+    OutboundMessage,
+    { type: "shelfOpenConflictEditor" }
+>;
+/** CAS-protected structural shelf-conflict resolution. */
+export type ShelfResolveStructuralMessage = Extract<
+    OutboundMessage,
+    { type: "shelfResolveStructural" }
+>;
 
 /** Typed result rendered after one shelf mutation completes. */
 export interface ShelfMutationOutcome {
@@ -58,6 +68,7 @@ export interface ShelfMutationOutcome {
 
 /** Authoritative shelf snapshot plus host-routed UI callbacks. */
 export interface ShelfTabProps {
+    repositoryRoot?: string;
     shelves: ShelfEntry[];
     shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
@@ -76,6 +87,8 @@ export interface ShelfTabProps {
     onImportPatch: (message: ShelfImportPatchMessage) => void;
     onExportPatch: (message: ShelfExportPatchMessage) => void;
     onCleanUp: (message: ShelfCleanUpMessage) => void;
+    onOpenConflictEditor: (message: ShelfOpenConflictEditorMessage) => void;
+    onResolveStructural: (message: ShelfResolveStructuralMessage) => void;
 }
 
 interface ShelfContextMenuState {
@@ -143,6 +156,9 @@ export function ShelfTab({
     onImportPatch,
     onExportPatch,
     onCleanUp,
+    repositoryRoot,
+    onOpenConflictEditor,
+    onResolveStructural,
 }: ShelfTabProps): React.ReactElement {
     const tabRef = useRef<HTMLDivElement>(null);
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
@@ -159,6 +175,13 @@ export function ShelfTab({
     const [deleteShelf, setDeleteShelf] = useState<ShelfEntry | null>(null);
     const [isCleanUpOpen, setIsCleanUpOpen] = useState(false);
     const [lastExportRequestId, setLastExportRequestId] = useState<string | null>(null);
+    const [structuralPendingRequestId, setStructuralPendingRequestId] = useState<string | null>(
+        null,
+    );
+    const [renameStructuralResult, setRenameStructuralResult] = useState<Extract<
+        PerEntryResult,
+        { kind: "structuralPending" }
+    > | null>(null);
     const [listHeight, setListHeight] = useState(220);
     const [listMaxHeight, setListMaxHeight] = useState(220);
     const listHeightRef = useRef(listHeight);
@@ -175,6 +198,13 @@ export function ShelfTab({
         selectedShelf !== null &&
         selectedShelf.metadata.lifecycle !== "applied" &&
         shelfFiles.length > 0;
+    const outcomeShelf = useMemo(
+        () =>
+            outcome?.shelfId
+                ? (shelves.find((shelf) => shelf.id === outcome.shelfId) ?? null)
+                : null,
+        [outcome?.shelfId, shelves],
+    );
 
     useEffect(() => {
         if (!pendingRename) return;
@@ -188,6 +218,12 @@ export function ShelfTab({
             setPendingRename(null);
         }
     }, [pendingRename, shelves]);
+
+    useEffect(() => {
+        if (structuralPendingRequestId && outcome?.requestId === structuralPendingRequestId) {
+            setStructuralPendingRequestId(null);
+        }
+    }, [outcome?.requestId, structuralPendingRequestId]);
 
     const renameError =
         pendingRename && outcome?.requestId === pendingRename.requestId
@@ -271,6 +307,30 @@ export function ShelfTab({
             changeIds: shelfFiles.map((entry) => entry.changeId),
         });
     }, [onExportPatch, selectedShelf, shelfFiles]);
+
+    const resolveStructural = useCallback(
+        (
+            result: Extract<PerEntryResult, { kind: "structuralPending" }>,
+            action: ShelfResolveStructuralMessage["action"],
+            targetPath?: string,
+        ): void => {
+            if (!outcomeShelf || structuralPendingRequestId) return;
+            const requestId = nextRequestId();
+            setStructuralPendingRequestId(requestId);
+            onResolveStructural({
+                type: "shelfResolveStructural",
+                repositoryRoot,
+                requestId,
+                shelfId: outcomeShelf.id,
+                expectedGeneration: outcomeShelf.generation,
+                changeId: result.changeId,
+                expectedPathFingerprint: result.pathFingerprint,
+                action,
+                ...(targetPath ? { targetPath } : {}),
+            });
+        },
+        [onResolveStructural, outcomeShelf, repositoryRoot, structuralPendingRequestId],
+    );
 
     const openContextMenu = useCallback(
         (shelf: ShelfEntry, x: number, y: number): void => {
@@ -464,6 +524,59 @@ export function ShelfTab({
                         {outcome.entries.map((result) => (
                             <Box key={`${result.changeId}-${result.kind}`} mt="3px">
                                 {result.changeId}: {resultMessage(result)}
+                                {result.kind === "conflicted" && outcomeShelf ? (
+                                    <Button
+                                        ml="6px"
+                                        size="xs"
+                                        variant="secondary"
+                                        onClick={() =>
+                                            onOpenConflictEditor({
+                                                type: "shelfOpenConflictEditor",
+                                                repositoryRoot,
+                                                shelfId: outcomeShelf.id,
+                                                changeId: result.changeId,
+                                            })
+                                        }
+                                    >
+                                        Merge…
+                                    </Button>
+                                ) : null}
+                                {result.kind === "structuralPending" && outcomeShelf ? (
+                                    <Flex as="span" display="inline-flex" gap="4px" ml="6px">
+                                        <Button
+                                            size="xs"
+                                            variant="secondary"
+                                            isDisabled={structuralPendingRequestId !== null}
+                                            onClick={() => resolveStructural(result, "keepLocal")}
+                                        >
+                                            Keep Local
+                                        </Button>
+                                        <Button
+                                            size="xs"
+                                            variant="secondary"
+                                            isDisabled={structuralPendingRequestId !== null}
+                                            onClick={() => resolveStructural(result, "useShelved")}
+                                        >
+                                            Use Shelved
+                                        </Button>
+                                        <Button
+                                            size="xs"
+                                            variant="secondary"
+                                            isDisabled={structuralPendingRequestId !== null}
+                                            onClick={() => resolveStructural(result, "deleteLocal")}
+                                        >
+                                            Delete Local
+                                        </Button>
+                                        <Button
+                                            size="xs"
+                                            variant="secondary"
+                                            isDisabled={structuralPendingRequestId !== null}
+                                            onClick={() => setRenameStructuralResult(result)}
+                                        >
+                                            Rename Local…
+                                        </Button>
+                                    </Flex>
+                                ) : null}
                             </Box>
                         ))}
                         {outcome.requestId === lastExportRequestId &&
@@ -566,6 +679,75 @@ export function ShelfTab({
                     }}
                 />
             ) : null}
+            {renameStructuralResult ? (
+                <RenameStructuralDialog
+                    path={renameStructuralResult.path}
+                    onClose={() => setRenameStructuralResult(null)}
+                    onConfirm={(targetPath) => {
+                        resolveStructural(renameStructuralResult, "renameLocal", targetPath);
+                        setRenameStructuralResult(null);
+                    }}
+                />
+            ) : null}
+        </Flex>
+    );
+}
+
+function RenameStructuralDialog({
+    path,
+    onClose,
+    onConfirm,
+}: {
+    path: string;
+    onClose: () => void;
+    onConfirm: (targetPath: string) => void;
+}): React.ReactElement {
+    const [targetPath, setTargetPath] = useState(path);
+    return (
+        <Flex
+            role="presentation"
+            position="fixed"
+            inset={0}
+            zIndex="var(--intelligit-z-modal, 50)"
+            align="center"
+            justify="center"
+            bg="rgba(0, 0, 0, 0.45)"
+        >
+            <Flex
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="rename-local-title"
+                direction="column"
+                gap="12px"
+                w="min(390px, calc(100vw - 32px))"
+                p="16px"
+                border="1px solid var(--intelligit-pycharm-border)"
+                borderRadius="4px"
+                bg="var(--intelligit-pycharm-panel)"
+            >
+                <Box as="h2" id="rename-local-title" fontSize="14px" fontWeight={600}>
+                    Rename local file
+                </Box>
+                <Input
+                    aria-label="Rename local path"
+                    size="sm"
+                    value={targetPath}
+                    onChange={(event) => setTargetPath(event.target.value)}
+                />
+                <Flex justify="flex-end" gap="8px">
+                    <Button variant="secondary" size="sm" onClick={onClose}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        isDisabled={!targetPath.trim()}
+                        onClick={() => onConfirm(targetPath.trim())}
+                    >
+                        Rename Local
+                    </Button>
+                </Flex>
+            </Flex>
         </Flex>
     );
 }

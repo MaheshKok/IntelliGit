@@ -14,7 +14,10 @@ import {
     assertShelfName,
     assertShelfToken,
 } from "../../../src/views/messageValidation";
-import { executeShelfMutationRequest } from "../../../src/views/commitPanelActions";
+import {
+    executeShelfMutationRequest,
+    openShelfConflictEditorFromMessage,
+} from "../../../src/views/commitPanelActions";
 import { RepositoryLockBusyError } from "../../../src/git/repositoryLock";
 import {
     ShelfRecoveryFullError,
@@ -92,6 +95,50 @@ describe("shelf webview validation", () => {
     });
 });
 
+describe("openShelfConflictEditorFromMessage", () => {
+    it("validates the shelf and change before opening the host-owned panel", async () => {
+        const openShelfConflictEditor = vi.fn(async () => undefined);
+        await openShelfConflictEditorFromMessage(
+            {
+                shelfService: {
+                    listShelves: vi.fn(async () => ({
+                        shelfIds: ["shelf-1"],
+                        corruptShelfIds: [],
+                        shelves: [{ id: "shelf-1" }],
+                        catalogGeneration: 1,
+                    })),
+                    getShelfFiles: vi.fn(async () => [{ changeId: "change-1" }]),
+                } as never,
+                openShelfConflictEditor,
+            },
+            { type: "shelfOpenConflictEditor", shelfId: "shelf-1", changeId: "change-1" },
+        );
+        expect(openShelfConflictEditor).toHaveBeenCalledWith("shelf-1", "change-1");
+    });
+
+    it("rejects an unknown change without opening a panel", async () => {
+        const openShelfConflictEditor = vi.fn(async () => undefined);
+        await expect(
+            openShelfConflictEditorFromMessage(
+                {
+                    shelfService: {
+                        listShelves: vi.fn(async () => ({
+                            shelfIds: ["shelf-1"],
+                            corruptShelfIds: [],
+                            shelves: [{ id: "shelf-1" }],
+                            catalogGeneration: 1,
+                        })),
+                        getShelfFiles: vi.fn(async () => []),
+                    } as never,
+                    openShelfConflictEditor,
+                },
+                { type: "shelfOpenConflictEditor", shelfId: "shelf-1", changeId: "change-1" },
+            ),
+        ).rejects.toThrow("Shelf change ID does not exist.");
+        expect(openShelfConflictEditor).not.toHaveBeenCalled();
+    });
+});
+
 describe("executeShelfMutationRequest", () => {
     it("includes the verbatim mutation failure text in its completion", async () => {
         const postCompleted = vi.fn();
@@ -137,7 +184,11 @@ describe("executeShelfMutationRequest", () => {
     });
 
     it("imports only host-picked patch paths and treats picker cancellation as a successful no-op", async () => {
-        const importPatch = vi.fn(async () => ({ status: "ok" as const, entries: [], shelfId: "imported" }));
+        const importPatch = vi.fn(async () => ({
+            status: "ok" as const,
+            entries: [],
+            shelfId: "imported",
+        }));
         const postCompleted = vi.fn();
         const message = {
             type: "shelfImportPatch",
@@ -147,7 +198,15 @@ describe("executeShelfMutationRequest", () => {
         };
         await executeShelfMutationRequest(
             {
-                shelfService: { importPatch, listShelves: vi.fn(async () => ({ shelfIds: [], corruptShelfIds: [], shelves: [], catalogGeneration: 5 })) },
+                shelfService: {
+                    importPatch,
+                    listShelves: vi.fn(async () => ({
+                        shelfIds: [],
+                        corruptShelfIds: [],
+                        shelves: [],
+                        catalogGeneration: 5,
+                    })),
+                },
                 refreshData: vi.fn(async () => undefined),
                 fireWorkingTreeChanged: vi.fn(),
                 selectImportSources: vi.fn(async () => ["/host/first.patch", "/host/second.diff"]),
@@ -193,10 +252,17 @@ describe("executeShelfMutationRequest", () => {
                         kind: "structuralPending" as const,
                         changeId: "change-6",
                         reason: "structural",
+                        path: "src/structural.ts",
+                        pathFingerprint: "100644:fixture",
                     },
                 ],
             })),
-            listShelves: vi.fn(async () => ({ shelfIds: [], corruptShelfIds: [], shelves: [], catalogGeneration: 5 })),
+            listShelves: vi.fn(async () => ({
+                shelfIds: [],
+                corruptShelfIds: [],
+                shelves: [],
+                catalogGeneration: 5,
+            })),
         };
         const refreshData = vi.fn(async () => undefined);
         const fireWorkingTreeChanged = vi.fn();
