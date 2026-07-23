@@ -25,6 +25,7 @@ export interface ShelfRowProps {
     onRenameSubmit: (shelf: ShelfEntry, name: string) => void;
     onRenameCancel: () => void;
     onRestore: (shelf: ShelfEntry) => void;
+    onDragStart?: (event: React.DragEvent<HTMLElement>, shelf: ShelfEntry) => void;
 }
 
 /** One selectable shelf row. Ghosts stay visually present but intentionally muted. */
@@ -40,6 +41,7 @@ export function ShelfRow({
     onRenameSubmit,
     onRenameCancel,
     onRestore,
+    onDragStart,
 }: ShelfRowProps): React.ReactElement {
     return (
         <Flex
@@ -85,6 +87,8 @@ export function ShelfRow({
                 onNavigate(shelf.id, event.key, event.currentTarget);
             }}
             title={shelf.metadata.name}
+            draggable={!isGhost && Boolean(onDragStart)}
+            onDragStart={(event) => onDragStart?.(event, shelf)}
         >
             {isRenaming ? (
                 <Box flex={1} minW={0}>

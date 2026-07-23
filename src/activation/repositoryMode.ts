@@ -46,6 +46,7 @@ import {
     workspaceRoots,
 } from "./common";
 import { registerRepositoryCommands } from "./repositoryCommands";
+import { registerShelfCommands } from "./shelfCommands";
 import {
     createOpenCommitFileDiffHandler,
     registerRepositoryViewEvents,
@@ -1063,6 +1064,12 @@ export async function activateRepositoryMode(
         openMergeConflictForFile,
         openConflictSession,
         openVsCodeMergeEditorForFile,
+    });
+    registerShelfCommands({
+        context,
+        getRepositories: () => repositories,
+        shelfServiceForRepository,
+        refreshAfterMutation: () => getRefreshService().refreshCommitPanels(),
     });
 
     try {

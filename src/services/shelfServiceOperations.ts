@@ -89,7 +89,7 @@ export async function importPatchFiles(
     const manifest = await store.writeShelfGeneration(shelfId, {
         schemaVersion: 1,
         objectHashes: [...hashes],
-        metadata: { name: name ?? "Imported patches", lifecycle: "shelved" },
+        metadata: { name: name ?? "Imported patches", lifecycle: "shelved", createdAt: Date.now() },
         files,
     });
     return { shelfId, generation: manifest.generation };

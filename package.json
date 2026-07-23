@@ -513,6 +513,41 @@
                 "title": "%command.commitChecksSignOut%",
                 "category": "%intelligit%",
                 "icon": "$(sign-out)"
+            },
+            {
+                "command": "intelligit.shelveChanges",
+                "title": "Shelve Changes…",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.shelveSilently",
+                "title": "Shelve Silently",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.saveToShelf",
+                "title": "Save to Shelf…",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.unshelve",
+                "title": "Unshelve…",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.importPatch",
+                "title": "Import Patches…",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.cleanUpShelf",
+                "title": "Clean Up Shelf…",
+                "category": "IntelliGit"
+            },
+            {
+                "command": "intelligit.purgeShelfRecovery",
+                "title": "Purge Shelf Recovery…",
+                "category": "IntelliGit"
             }
         ],
         "submenus": [

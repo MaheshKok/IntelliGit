@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Flex, Input } from "@chakra-ui/react";
+import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
 import type {
     OutboundMessage,
@@ -14,6 +14,7 @@ import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
 import { ShelfFilePane } from "./ShelfFilePane";
 import { CleanUpDialog } from "./CleanUpDialog";
+import { RenameStructuralDialog, ShelfDeleteConfirmation } from "./ShelfTabDialogs";
 
 /** Host message selecting one shelf and fetching its files. */
 export type ShelfSelectMessage = Extract<OutboundMessage, { type: "shelfSelect" }>;
@@ -89,6 +90,12 @@ export interface ShelfTabProps {
     onCleanUp: (message: ShelfCleanUpMessage) => void;
     onOpenConflictEditor: (message: ShelfOpenConflictEditorMessage) => void;
     onResolveStructural: (message: ShelfResolveStructuralMessage) => void;
+    onDragOver?: (event: React.DragEvent<HTMLElement>) => void;
+    onDrop?: (event: React.DragEvent<HTMLElement>) => void;
+    onShelfEntryDragStart?: (
+        event: React.DragEvent<HTMLElement>,
+        input: { shelfId: string; generation: number; changeIds: string[] },
+    ) => void;
 }
 
 interface ShelfContextMenuState {
@@ -137,6 +144,67 @@ function resultMessage(result: PerEntryResult): string {
     }
 }
 
+function shelfRowDragStart(
+    onShelfEntryDragStart: ShelfTabProps["onShelfEntryDragStart"],
+    selectedShelf: ShelfEntry | null,
+    shelfFiles: ShelfFileEntry[],
+) {
+    if (
+        !onShelfEntryDragStart ||
+        !selectedShelf ||
+        selectedShelf.metadata.lifecycle === "applied"
+    ) {
+        return undefined;
+    }
+    return (event: React.DragEvent<HTMLElement>, shelf: ShelfEntry): void => {
+        onShelfEntryDragStart(event, {
+            shelfId: shelf.id,
+            generation: shelf.generation,
+            changeIds: shelfFiles.map((entry) => entry.changeId),
+        });
+    };
+}
+
+function shelfFileDragStart(
+    onShelfEntryDragStart: ShelfTabProps["onShelfEntryDragStart"],
+    selectedShelf: ShelfEntry | null,
+) {
+    if (
+        !onShelfEntryDragStart ||
+        !selectedShelf ||
+        selectedShelf.metadata.lifecycle === "applied"
+    ) {
+        return undefined;
+    }
+    return (event: React.DragEvent<HTMLElement>, entry: ShelfFileEntry): void => {
+        onShelfEntryDragStart(event, {
+            shelfId: selectedShelf.id,
+            generation: selectedShelf.generation,
+            changeIds: [entry.changeId],
+        });
+    };
+}
+
+function areShelfFilesCurrent(
+    selectionOverride: string | null,
+    selectedShelfId: string | null,
+): boolean {
+    return selectionOverride === null || selectionOverride === selectedShelfId;
+}
+
+function canUnshelveShelf(
+    shelfFilesAreCurrent: boolean,
+    selectedShelf: ShelfEntry | null,
+    shelfFiles: ShelfFileEntry[],
+): boolean {
+    return (
+        shelfFilesAreCurrent &&
+        selectedShelf !== null &&
+        selectedShelf.metadata.lifecycle !== "applied" &&
+        shelfFiles.length > 0
+    );
+}
+
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
 export function ShelfTab({
     shelves,
@@ -159,6 +227,9 @@ export function ShelfTab({
     repositoryRoot,
     onOpenConflictEditor,
     onResolveStructural,
+    onDragOver,
+    onDrop,
+    onShelfEntryDragStart,
 }: ShelfTabProps): React.ReactElement {
     const tabRef = useRef<HTMLDivElement>(null);
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
@@ -191,13 +262,8 @@ export function ShelfTab({
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, shelves],
     );
-    const shelfFilesAreCurrent =
-        selectionOverride === null || selectionOverride === selectedShelfId;
-    const canUnshelve =
-        shelfFilesAreCurrent &&
-        selectedShelf !== null &&
-        selectedShelf.metadata.lifecycle !== "applied" &&
-        shelfFiles.length > 0;
+    const shelfFilesAreCurrent = areShelfFilesCurrent(selectionOverride, selectedShelfId);
+    const canUnshelve = canUnshelveShelf(shelfFilesAreCurrent, selectedShelf, shelfFiles);
     const outcomeShelf = useMemo(
         () =>
             outcome?.shelfId
@@ -398,6 +464,13 @@ export function ShelfTab({
         ],
     );
 
+    const handleShelfRowDragStart = shelfRowDragStart(
+        onShelfEntryDragStart,
+        selectedShelf,
+        shelfFiles,
+    );
+    const handleShelfFileDragStart = shelfFileDragStart(onShelfEntryDragStart, selectedShelf);
+
     const activeContextItems = [
         { label: "Unshelve…", action: "unshelve", disabled: !shelfFilesAreCurrent },
         {
@@ -422,6 +495,8 @@ export function ShelfTab({
             overflow="hidden"
             bg="var(--intelligit-pycharm-panel)"
             color="var(--intelligit-pycharm-foreground)"
+            onDragOver={onDragOver}
+            onDrop={onDrop}
         >
             <ShelfList
                 shelves={shelves}
@@ -454,6 +529,12 @@ export function ShelfTab({
                     setPendingRename(null);
                 }}
                 onRestore={(shelf) => handleContextAction(shelf, "restore")}
+                dragEnabledShelfId={
+                    shelfFilesAreCurrent && selectedShelf?.metadata.lifecycle !== "applied"
+                        ? selectedShelf?.id
+                        : null
+                }
+                onDragStart={handleShelfRowDragStart}
             />
             <Box
                 data-testid="shelf-splitter"
@@ -604,6 +685,7 @@ export function ShelfTab({
                             changeId: entry.changeId,
                         });
                     }}
+                    onDragStart={handleShelfFileDragStart}
                 />
             ) : (
                 <Box
@@ -689,113 +771,6 @@ export function ShelfTab({
                     }}
                 />
             ) : null}
-        </Flex>
-    );
-}
-
-function RenameStructuralDialog({
-    path,
-    onClose,
-    onConfirm,
-}: {
-    path: string;
-    onClose: () => void;
-    onConfirm: (targetPath: string) => void;
-}): React.ReactElement {
-    const [targetPath, setTargetPath] = useState(path);
-    return (
-        <Flex
-            role="presentation"
-            position="fixed"
-            inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
-            align="center"
-            justify="center"
-            bg="rgba(0, 0, 0, 0.45)"
-        >
-            <Flex
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="rename-local-title"
-                direction="column"
-                gap="12px"
-                w="min(390px, calc(100vw - 32px))"
-                p="16px"
-                border="1px solid var(--intelligit-pycharm-border)"
-                borderRadius="4px"
-                bg="var(--intelligit-pycharm-panel)"
-            >
-                <Box as="h2" id="rename-local-title" fontSize="14px" fontWeight={600}>
-                    Rename local file
-                </Box>
-                <Input
-                    aria-label="Rename local path"
-                    size="sm"
-                    value={targetPath}
-                    onChange={(event) => setTargetPath(event.target.value)}
-                />
-                <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
-                    </Button>
-                    <Button
-                        variant="primary"
-                        size="sm"
-                        isDisabled={!targetPath.trim()}
-                        onClick={() => onConfirm(targetPath.trim())}
-                    >
-                        Rename Local
-                    </Button>
-                </Flex>
-            </Flex>
-        </Flex>
-    );
-}
-
-function ShelfDeleteConfirmation({
-    shelf,
-    onClose,
-    onConfirm,
-}: {
-    shelf: ShelfEntry;
-    onClose: () => void;
-    onConfirm: () => void;
-}): React.ReactElement {
-    return (
-        <Flex
-            role="presentation"
-            position="fixed"
-            inset={0}
-            zIndex="var(--intelligit-z-modal, 50)"
-            align="center"
-            justify="center"
-            bg="rgba(0, 0, 0, 0.45)"
-        >
-            <Flex
-                role="alertdialog"
-                aria-modal="true"
-                aria-labelledby="delete-shelf-title"
-                direction="column"
-                gap="12px"
-                w="min(390px, calc(100vw - 32px))"
-                p="16px"
-                border="1px solid var(--intelligit-pycharm-border)"
-                borderRadius="4px"
-                bg="var(--intelligit-pycharm-panel)"
-            >
-                <Box as="h2" id="delete-shelf-title" fontSize="14px" fontWeight={600}>
-                    Delete shelf?
-                </Box>
-                <Box fontSize="12px">{shelf.metadata.name}</Box>
-                <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
-                    </Button>
-                    <Button variant="danger" size="sm" onClick={onConfirm}>
-                        Delete Shelf
-                    </Button>
-                </Flex>
-            </Flex>
         </Flex>
     );
 }

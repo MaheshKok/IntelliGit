@@ -57,6 +57,7 @@ interface Props {
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
     catalogGeneration: number;
+    onShelfFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile, checkedPaths: ReadonlySet<string>) => void;
 }
 
 /**
@@ -99,6 +100,7 @@ export function CommitTab({
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
     catalogGeneration,
+    onShelfFileDragStart,
 }: Props): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
@@ -314,6 +316,7 @@ export function CommitTab({
                     isSomeChecked={isSomeChecked}
                     onFileClick={handleFileClick}
                     onTrackUnversionedFiles={handleTrackUnversionedFiles}
+                    onShelfFileDragStart={onShelfFileDragStart}
                     expandAllSignal={expandAllSignal}
                     collapseAllSignal={collapseAllSignal}
                 />

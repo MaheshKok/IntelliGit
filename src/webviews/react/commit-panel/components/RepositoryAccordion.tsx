@@ -7,6 +7,7 @@ import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
 import { ShelfTab } from "./ShelfTab";
 import { useCheckedFiles } from "../hooks/useCheckedFiles";
+import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { canRunCommitAction } from "../commitEligibility";
 import { ChevronIcon } from "../../shared/components/Icons";
@@ -97,6 +98,11 @@ export function RepositoryAccordion({
     const showIgnoredFilesPostedRef = useRef(false);
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
         useCheckedFiles(repository.files, repository.root || undefined);
+    const shelfDrag = useShelfDrag({
+        repositoryRoot: repository.root || undefined,
+        catalogGeneration: repository.catalogGeneration,
+        onMessage: (message) => vscode.postMessage(message),
+    });
     const summary = branchSummary(repository);
     const canCommit = canRunCommitAction(
         repository.isAmend,
@@ -224,6 +230,7 @@ export function RepositoryAccordion({
             onToggleGroupBy={onToggleGroupBy}
             onToggleShowIgnoredFiles={handleToggleShowIgnoredFiles}
             catalogGeneration={repository.catalogGeneration}
+            onShelfFileDragStart={shelfDrag.onCommitFileDragStart}
         />
     );
     const stashContent = (
@@ -288,6 +295,9 @@ export function RepositoryAccordion({
             onResolveStructural={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
+            onDragOver={shelfDrag.onShelfDragOver}
+            onDrop={shelfDrag.onShelfDrop}
+            onShelfEntryDragStart={shelfDrag.onShelfEntryDragStart}
         />
     );
 
@@ -303,6 +313,10 @@ export function RepositoryAccordion({
                     commitContent={commitContent}
                     stashContent={stashContent}
                     shelfContent={shelfContent}
+                    onCommitDragOver={shelfDrag.onCommitDragOver}
+                    onCommitDrop={shelfDrag.onCommitDrop}
+                    onShelfDragOver={shelfDrag.onShelfDragOver}
+                    onShelfDrop={shelfDrag.onShelfDrop}
                 />
             </Flex>
         );
@@ -405,6 +419,10 @@ export function RepositoryAccordion({
                             commitContent={commitContent}
                             stashContent={stashContent}
                             shelfContent={shelfContent}
+                            onCommitDragOver={shelfDrag.onCommitDragOver}
+                            onCommitDrop={shelfDrag.onCommitDrop}
+                            onShelfDragOver={shelfDrag.onShelfDragOver}
+                            onShelfDrop={shelfDrag.onShelfDrop}
                         />
                     </Box>
                 </Flex>

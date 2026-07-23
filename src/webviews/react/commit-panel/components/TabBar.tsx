@@ -24,6 +24,10 @@ interface Props {
     commitContent: React.ReactNode;
     stashContent: React.ReactNode;
     shelfContent?: React.ReactNode;
+    onCommitDragOver?: (event: React.DragEvent<HTMLElement>) => void;
+    onCommitDrop?: (event: React.DragEvent<HTMLElement>) => void;
+    onShelfDragOver?: (event: React.DragEvent<HTMLElement>) => void;
+    onShelfDrop?: (event: React.DragEvent<HTMLElement>) => void;
 }
 
 const sharedTabStyles = {
@@ -58,6 +62,10 @@ export function TabBar({
     commitContent,
     stashContent,
     shelfContent,
+    onCommitDragOver,
+    onCommitDrop,
+    onShelfDragOver,
+    onShelfDrop,
 }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: t("commit.tab.commit"), content: commitContent },
@@ -91,7 +99,24 @@ export function TabBar({
             >
                 <TabList>
                     {tabs.map((tab) => (
-                        <Tab key={tab.key} {...sharedTabStyles}>
+                        <Tab
+                            key={tab.key}
+                            {...sharedTabStyles}
+                            onDragOver={
+                                tab.key === "commit"
+                                    ? onCommitDragOver
+                                    : tab.key === "shelf"
+                                      ? onShelfDragOver
+                                      : undefined
+                            }
+                            onDrop={
+                                tab.key === "commit"
+                                    ? onCommitDrop
+                                    : tab.key === "shelf"
+                                      ? onShelfDrop
+                                      : undefined
+                            }
+                        >
                             {tab.label}
                         </Tab>
                     ))}

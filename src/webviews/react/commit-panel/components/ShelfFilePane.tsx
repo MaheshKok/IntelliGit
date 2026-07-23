@@ -11,6 +11,7 @@ interface ShelfFilePaneProps {
     entries: ShelfFileEntry[];
     groupByDir: boolean;
     onFileActivate: (entry: ShelfFileEntry) => void;
+    onDragStart?: (event: React.DragEvent<HTMLElement>, entry: ShelfFileEntry) => void;
 }
 
 type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileEntry };
@@ -29,7 +30,7 @@ function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
 }
 
 /** Read-only file rows for the selected shelf; activation always opens its base-to-shelved diff. */
-export function ShelfFilePane({ entries, groupByDir, onFileActivate }: ShelfFilePaneProps): React.ReactElement {
+export function ShelfFilePane({ entries, groupByDir, onFileActivate, onDragStart }: ShelfFilePaneProps): React.ReactElement {
     const [isOpen, setIsOpen] = useState(true);
     const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
     const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
@@ -56,6 +57,8 @@ export function ShelfFilePane({ entries, groupByDir, onFileActivate }: ShelfFile
                 isCurrent={selectedChangeId === entry.changeId}
                 contextMenuEnabled={false}
                 checkboxVisibility="none"
+                draggable={Boolean(onDragStart)}
+                onDragStart={(event) => onDragStart?.(event, entry)}
             />
         );
     };

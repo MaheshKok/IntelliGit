@@ -26,6 +26,7 @@ export interface TreeEntriesProps {
     onToggleDir: (dirPath: string) => void;
     onFileClick: (event: React.MouseEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
+    onShelfFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragEnd?: () => void;
     checkboxVisibility?: "visible" | "hidden";
 }
@@ -48,6 +49,7 @@ export function TreeEntries({
     onToggleDir,
     onFileClick,
     onFileDragStart,
+    onShelfFileDragStart,
     onFileDragEnd,
     checkboxVisibility = "visible",
 }: TreeEntriesProps): React.ReactElement {
@@ -67,8 +69,11 @@ export function TreeEntries({
                             groupByDir={groupByDir}
                             onToggle={onToggleFile}
                             onClick={onFileClick}
-                            draggable={entry.file.status === "?"}
-                            onDragStart={onFileDragStart}
+                            draggable={entry.file.status === "?" || (entry.file.status !== "!" && Boolean(onShelfFileDragStart))}
+                            onDragStart={(event, file) => {
+                                onFileDragStart?.(event, file);
+                                onShelfFileDragStart?.(event, file);
+                            }}
                             onDragEnd={onFileDragEnd}
                             checkboxVisibility={checkboxVisibility}
                         />

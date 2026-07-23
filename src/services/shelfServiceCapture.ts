@@ -128,7 +128,12 @@ async function persistCaptureSource(
         revertFiles.push(captured.revertFiles);
     }
     if (entries.length === 0) throw new Error("No selected changes to shelve.");
-    const metadata: ShelfMetadata = { name, baseCommit: source.baseCommit, lifecycle: "shelved" };
+    const metadata: ShelfMetadata = {
+        name,
+        baseCommit: source.baseCommit,
+        lifecycle: "shelved",
+        createdAt: Date.now(),
+    };
     const manifest = await dependencies.store.writeShelfGeneration(shelfId, {
         schemaVersion: 1,
         objectHashes: [...objectHashes],

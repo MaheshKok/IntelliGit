@@ -32,6 +32,8 @@ export interface ShelfMetadata {
     readonly name: string;
     readonly baseCommit?: string;
     readonly lifecycle: ShelfFileLifecycle;
+    /** Epoch milliseconds when this shelf was first created. */
+    readonly createdAt?: number;
     /** Epoch milliseconds when a fully removed shelf became an already-unshelved ghost. */
     readonly appliedAt?: number;
 }
@@ -127,7 +129,9 @@ function parseMetadata(value: unknown): ShelfMetadata {
         !isLifecycle(metadata.lifecycle) ||
         (metadata.baseCommit !== undefined && !isGitObjectId(metadata.baseCommit)) ||
         (metadata.appliedAt !== undefined &&
-            (!Number.isSafeInteger(metadata.appliedAt) || metadata.appliedAt < 0))
+            (!Number.isSafeInteger(metadata.appliedAt) || metadata.appliedAt < 0)) ||
+        (metadata.createdAt !== undefined &&
+            (!Number.isSafeInteger(metadata.createdAt) || metadata.createdAt < 0))
     ) {
         throw contractError();
     }
@@ -135,6 +139,7 @@ function parseMetadata(value: unknown): ShelfMetadata {
         name: metadata.name,
         baseCommit: metadata.baseCommit,
         lifecycle: metadata.lifecycle,
+        createdAt: metadata.createdAt,
         appliedAt: metadata.appliedAt,
     };
 }

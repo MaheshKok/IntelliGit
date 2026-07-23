@@ -17,6 +17,8 @@ export interface ShelfListProps {
     onRenameSubmit: (shelf: ShelfEntry, name: string) => void;
     onRenameCancel: () => void;
     onRestore: (shelf: ShelfEntry) => void;
+    onDragStart?: (event: React.DragEvent<HTMLElement>, shelf: ShelfEntry) => void;
+    dragEnabledShelfId?: string | null;
 }
 
 /** Flat shelf list with roving tabindex and an optional muted ghost group. */
@@ -33,6 +35,8 @@ export function ShelfList({
     onRenameSubmit,
     onRenameCancel,
     onRestore,
+    onDragStart,
+    dragEnabledShelfId,
 }: ShelfListProps): React.ReactElement {
     const activeShelves = shelves.filter((shelf) => shelf.metadata.lifecycle !== "applied");
     const ghosts = showAlreadyUnshelved
@@ -78,6 +82,7 @@ export function ShelfList({
                 onRenameSubmit={onRenameSubmit}
                 onRenameCancel={onRenameCancel}
                 onRestore={onRestore}
+                onDragStart={shelf.id === dragEnabledShelfId ? onDragStart : undefined}
             />
         ));
 
