@@ -148,6 +148,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private repoRootUri?: vscode.Uri,
         private readonly workspaceState?: vscode.Memento,
         private readonly secrets?: vscode.SecretStorage,
+        private readonly onCommitted?: () => void,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -671,11 +672,13 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ? this.refreshGraphData(runtime)
                     : Promise.resolve(),
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () =>
+            postCommitted: () => {
                 this.postToWebview({
                     type: "committed",
                     ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
-                }),
+                });
+                this.onCommitted?.();
+            },
             maybeOfferPublishBranch: () =>
                 runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
             publishBranch: runtime ? () => this.publishBranch(runtime) : undefined,

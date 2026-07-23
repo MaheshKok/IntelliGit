@@ -868,6 +868,12 @@
                     "default": "",
                     "scope": "window",
                     "markdownDescription": "%configuration.commitChecks.ciCdFilter.markdownDescription%"
+                },
+                "intelligit.keepLastCommitNotification": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "markdownDescription": "%configuration.keepLastCommitNotification.markdownDescription%"
                 }
             }
         }

@@ -64,5 +64,6 @@
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
     "configuration.commitChecks.ciCdFilter.markdownDescription": "覆寫哪些檢查名稱會被視為徽章的 CI/CD（僅限 GitHub 和 GitLab）。提供正規表示式（與每個檢查的名稱和描述進行不區分大小寫的比對）；留空則使用內建模式。無論此值為何，程式碼審查機器人一律會被排除。變更會在重新載入視窗後生效。",
-    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
+    "configuration.keepLastCommitNotification.markdownDescription": "五秒後自動從狀態列隱藏成功提交確認。停用此設定可將其保留到下一次成功提交。"
 }

@@ -22,6 +22,7 @@ import { createHttpGetJson, type FetchJson } from "../services/commitChecks/http
 import { CommitChecksRequestGateRegistry } from "../services/commitChecks/requestGate";
 import { CommitChecksService } from "../services/commitChecks/service";
 import { CommitChecksPersistentCache } from "../services/commitChecks/persistentCache";
+import { CommitSuccessStatus } from "../services/commitSuccessStatus";
 import type { CommitChecksProvider, ProviderId } from "../services/commitChecks/types";
 import { CommitGraphViewProvider } from "../views/CommitGraphViewProvider";
 import { CommitInfoViewProvider } from "../views/CommitInfoViewProvider";
@@ -108,6 +109,7 @@ export async function activateRepositoryMode(
     const gitOps = new GitOps(executor);
     // Shared per-host token store for non-GitHub commit-check providers (e.g. GitLab).
     const credentialStore = new CredentialStore(context.secrets);
+    const commitSuccessStatus = new CommitSuccessStatus();
     // Self-hosted commit-check host → provider mappings from user config. Read once at
     // activation; changing the setting requires a window reload to take effect.
     const commitCheckHostMap = normalizeHostMap(
@@ -203,6 +205,7 @@ export async function activateRepositoryMode(
         repoRootUri,
         context.workspaceState,
         context.secrets,
+        () => commitSuccessStatus.showCommitted(),
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
@@ -673,6 +676,7 @@ export async function activateRepositoryMode(
                         });
                     await undockedSelectionWrite;
                 },
+                onCommitted: () => commitSuccessStatus.showCommitted(),
             },
         );
         undocked.setRepositoryLabel(initialUndockedRepository.label);
@@ -1029,6 +1033,7 @@ export async function activateRepositoryMode(
 
     context.subscriptions.push(
         fileCountBadgeSubscription,
+        commitSuccessStatus,
         { dispose: () => refreshService.dispose() },
         commitGraph,
         commitInfo,

@@ -187,6 +187,10 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
 
     // Commit panel position inside the undocked/tabbed IntelliGit window: "auto", "left", or "right".
     "intelligit.commitWindowPosition": "auto",
+
+    // Automatically hide the successful-commit status bar confirmation after five seconds.
+    // Set to false to retain it until the next successful commit.
+    "intelligit.keepLastCommitNotification": true,
 }
 ```
 

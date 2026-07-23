@@ -177,19 +177,17 @@ export async function commitSelectedFromPanel(
     await runWithNotificationProgress(progressTitle, async () => {
         await gitOps.commit(message, amend);
     });
+    postCommitted();
     if (push) {
         try {
             await runGitOperationFromPanel(deps, "push");
         } catch (err) {
-            postCommitted();
             await refreshData();
             fireWorkingTreeChanged();
             throw err;
         }
-        postCommitted();
     } else {
         showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
-        postCommitted();
         await refreshData();
         fireWorkingTreeChanged();
     }
@@ -213,8 +211,8 @@ export async function commitOnlyFromPanel(
     await runWithNotificationProgress(vscode.l10n.t("Committing..."), async () => {
         await deps.gitOps.commit(message, amend);
     });
-    showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
     deps.postCommitted();
+    showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
@@ -237,8 +235,8 @@ export async function commitAndPushFromPanel(
     await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
         await deps.gitOps.commit(message, amend);
     });
-    await runGitOperationFromPanel(deps, "push");
     deps.postCommitted();
+    await runGitOperationFromPanel(deps, "push");
 }
 
 /**

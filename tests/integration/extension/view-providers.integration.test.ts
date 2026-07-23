@@ -181,6 +181,7 @@ const vscodeMock = {
         t: (message: string, _placeholders?: unknown) => message,
     },
     ProgressLocation: { Notification: 15 },
+    StatusBarAlignment: { Left: 1 },
     ViewColumn: { One: 1 },
     Disposable: class {
         constructor(private readonly disposeCallback: () => void) {}
@@ -268,6 +269,12 @@ const vscodeMock = {
             dispose: vi.fn(),
             badge: undefined,
             description: undefined,
+        })),
+        createStatusBarItem: vi.fn(() => ({
+            text: "",
+            show: vi.fn(),
+            hide: vi.fn(),
+            dispose: vi.fn(),
         })),
         onDidChangeActiveTextEditor: vi.fn(
             (listener: (editor?: { document: { uri: unknown } }) => void) => {

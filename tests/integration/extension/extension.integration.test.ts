@@ -505,6 +505,7 @@ vi.mock("vscode", () => ({
         constructor(_label: string, _state?: unknown) {}
     },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+    StatusBarAlignment: { Left: 1 },
     ViewColumn: { Active: -1, One: 1, Two: 2, Three: 3 },
     ProgressLocation: { Notification: 15 },
     Uri: {
@@ -564,6 +565,12 @@ vi.mock("vscode", () => ({
             createdTreeViews.set(id, view);
             return view;
         }),
+        createStatusBarItem: vi.fn(() => ({
+            text: "",
+            show: vi.fn(),
+            hide: vi.fn(),
+            dispose: vi.fn(),
+        })),
         createWebviewPanel: vi.fn(() => {
             const msgListeners: Array<(msg: unknown) => void> = [];
             const disposeListeners: Array<() => void> = [];

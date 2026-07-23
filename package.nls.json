@@ -63,6 +63,7 @@
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
     "configuration.commitChecks.ciCdFilter.markdownDescription": "Override which check names count as CI/CD for the badge (GitHub and GitLab only). Provide a regular expression (matched case-insensitively against each check's name and description); leave empty to use the built-in pattern. Code-review bots are always excluded regardless of this value. Changes take effect after a window reload.",
+    "configuration.keepLastCommitNotification.markdownDescription": "Automatically hide the successful commit confirmation from the status bar after five seconds. Disable to retain it until the next successful commit.",
     "command.commitChecksSignIn": "Sign In to Commit Checks Provider",
     "command.commitChecksSignOut": "Sign Out of Commit Checks Provider"
 }

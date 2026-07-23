@@ -100,6 +100,7 @@ interface UndockedViewProviderOptions {
     selectedRepositoryRoot?: string;
     loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+    onCommitted?: () => void;
     commitChecksService?: CommitChecksService;
     commitChecksProviders?: readonly CommitChecksProvider[];
 }
@@ -153,6 +154,7 @@ export class UndockedViewProvider {
     private readonly executor?: Pick<GitExecutor, "setRoot">;
     private readonly loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     private readonly onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
+    private readonly onCommitted?: () => void;
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
     private repositoryLabel = "";
@@ -243,6 +245,7 @@ export class UndockedViewProvider {
         this.executor = options.executor;
         this.loadRepositoryData = options.loadRepositoryData;
         this.onSelectedRepositoryRootChanged = options.onSelectedRepositoryRootChanged;
+        this.onCommitted = options.onCommitted;
         this.repositories =
             options.repositories && options.repositories.length > 0
                 ? options.repositories
@@ -662,7 +665,10 @@ export class UndockedViewProvider {
                 this.postCommitDetailState();
             },
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () => this.postToWebview({ type: "committed" }),
+            postCommitted: () => {
+                this.postToWebview({ type: "committed" });
+                this.onCommitted?.();
+            },
             maybeOfferPublishBranch: () => Promise.resolve(),
         };
         const fileActionDeps = {

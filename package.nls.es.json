@@ -64,5 +64,6 @@
     "configuration.commitChecks.enabled.markdownDescription": "Show CI/CD commit-check badges in the commit graph. When disabled, no badges are fetched or rendered for any provider. Changes take effect after a window reload.",
     "configuration.commitChecks.providers.markdownDescription": "Enable or disable commit-check badges per provider. Keys are `github`, `gitlab`, `bitbucket-cloud`, and `bitbucket-server`; set one to `false` to suppress its badges. A disabled provider that matches your origin remote yields no badge (IntelliGit does not fall through to another remote). All default to `true`. Changes take effect after a window reload.",
     "configuration.commitChecks.ciCdFilter.markdownDescription": "Sobrescribe qué nombres de comprobación cuentan como CI/CD para la insignia (solo GitHub y GitLab). Proporciona una expresión regular (se compara sin distinguir mayúsculas y minúsculas con el nombre y la descripción de cada comprobación); déjalo vacío para usar el patrón integrado. Los bots de revisión de código siempre se excluyen independientemente de este valor. Los cambios surten efecto después de recargar la ventana.",
-    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor"
+    "command.openInVsCodeMergeEditor": "Open in VS Code Merge Editor",
+    "configuration.keepLastCommitNotification.markdownDescription": "Oculte automáticamente la confirmación de commit correcto de la barra de estado después de cinco segundos. Desactívelo para conservarla hasta el siguiente commit correcto."
 }

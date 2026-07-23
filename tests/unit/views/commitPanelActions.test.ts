@@ -252,6 +252,28 @@ describe("runGitOperationFromPanel", () => {
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
     });
 
+    it("signals a successful local commit before a later push failure", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        const events: string[] = [];
+        vi.mocked(gitOps.commit).mockImplementationOnce(async () => {
+            events.push("commit");
+            return "";
+        });
+        vi.mocked(gitOps.push).mockImplementationOnce(async () => {
+            events.push("push");
+            throw new Error("push failed");
+        });
+        deps.postCommitted.mockImplementationOnce(() => events.push("postCommitted"));
+
+        await expect(commitAndPushFromPanel(deps, "feat: push failure", false)).rejects.toThrow(
+            "push failed",
+        );
+
+        expect(events).toEqual(["commit", "postCommitted", "push"]);
+        expect(deps.postCommitted).toHaveBeenCalledOnce();
+    });
+
     it("commits selected files and routes requested push through publish branch", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
