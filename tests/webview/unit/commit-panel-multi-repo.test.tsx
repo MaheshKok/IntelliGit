@@ -310,7 +310,7 @@ describe("commit panel multi-repository view", () => {
         expect(row("/repo-b").textContent).not.toContain("src/a.ts");
     });
 
-    it("committed preserves the matching repository draft and resets its amend state", async () => {
+    it("committed clears the matching repository draft by default and retains it when disabled", async () => {
         await renderApp();
         await hydrateTwoRepositories();
         click(header("/repo-b"));
@@ -344,10 +344,24 @@ describe("commit panel multi-repository view", () => {
         await sendHostMessage({ type: "committed", repositoryRoot: "/repo-b" });
 
         expect(messageText("/repo-a")).toBe("draft A");
-        expect(messageText("/repo-b")).toBe("draft B");
+        expect(messageText("/repo-b")).toBe("");
         expect(
             document.querySelector('[data-testid="amend-state"][data-root="/repo-b"]')?.textContent,
         ).toBe("false:0:false");
+
+        await sendHostMessage({
+            type: "restoreCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "draft B",
+        });
+        await sendHostMessage({
+            type: "committed",
+            repositoryRoot: "/repo-b",
+            clearCommitMessage: false,
+        });
+
+        expect(messageText("/repo-a")).toBe("draft A");
+        expect(messageText("/repo-b")).toBe("draft B");
     });
 
     it("draft restore updates only the matching repository", async () => {

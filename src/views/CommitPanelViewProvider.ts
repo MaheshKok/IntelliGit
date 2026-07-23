@@ -671,11 +671,23 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ? this.refreshGraphData(runtime)
                     : Promise.resolve(),
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () =>
+            postCommitted: async () => {
+                const clearCommitMessage =
+                    vscode.workspace
+                        .getConfiguration("intelligit")
+                        .get<boolean>("clearLastCommit", true) !== false;
+                if (clearCommitMessage) {
+                    await this.workspaceState?.update(
+                        this.getCommitDraftStorageKey(runtime),
+                        undefined,
+                    );
+                }
                 this.postToWebview({
                     type: "committed",
+                    clearCommitMessage,
                     ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
-                }),
+                });
+            },
             maybeOfferPublishBranch: () =>
                 runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
             publishBranch: runtime ? () => this.publishBranch(runtime) : undefined,

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Preserved commit-message drafts after successful local commits, including when a following push fails.
+- Added optional `intelligit.clearLastCommit` setting (default `true`) to clear commit-message drafts after successful local commits; set it to `false` to retain drafts, including when a following push fails.
 
 ## [0.19.0] - 2026-07-21
 

@@ -662,7 +662,16 @@ export class UndockedViewProvider {
                 this.postCommitDetailState();
             },
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () => this.postToWebview({ type: "committed" }),
+            postCommitted: async () => {
+                const clearCommitMessage =
+                    vscode.workspace
+                        .getConfiguration("intelligit")
+                        .get<boolean>("clearLastCommit", true) !== false;
+                if (clearCommitMessage) {
+                    await this.workspaceState?.update(this.getCommitDraftStorageKey(), undefined);
+                }
+                this.postToWebview({ type: "committed", clearCommitMessage });
+            },
             maybeOfferPublishBranch: () => Promise.resolve(),
         };
         const fileActionDeps = {

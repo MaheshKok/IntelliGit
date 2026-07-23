@@ -182,6 +182,9 @@ Configure IntelliGit from VS Code Settings or `settings.json`.
     // Open IntelliGit as a unified editor tab when Show Git Log is invoked.
     "intelligit.undockableWindow": false,
 
+    // Clear commit drafts after local commits; false retains the draft.
+    "intelligit.clearLastCommit": true,
+
     // Icon style used in IntelliGit panels: "standard" or "color".
     "intelligit.icons": "standard",
 

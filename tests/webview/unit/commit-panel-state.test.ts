@@ -5,7 +5,11 @@ import {
 } from "../../../src/webviews/react/undocked/commitPanelState";
 
 describe("commitPanelReducer", () => {
-    it("preserves the commit draft while clearing amend state after commit completion", () => {
+    it.each([
+        [true, ""],
+        [undefined, ""],
+        [false, "fix: retain draft"],
+    ])("clears only when clearCommitMessage is not false (%s)", (clearCommitMessage, commitMessage) => {
         const state = {
             ...initialCommitPanelState,
             commitMessage: "fix: retain draft",
@@ -16,8 +20,8 @@ describe("commitPanelReducer", () => {
             amendBranchHistoryLoaded: true,
         };
 
-        expect(commitPanelReducer(state, { type: "COMMITTED" })).toMatchObject({
-            commitMessage: "fix: retain draft",
+        expect(commitPanelReducer(state, { type: "COMMITTED", clearCommitMessage })).toMatchObject({
+            commitMessage,
             isAmend: false,
             amendBranchCommits: [],
             amendBranchHistoryLoaded: false,

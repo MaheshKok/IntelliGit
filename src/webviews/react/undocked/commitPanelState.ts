@@ -102,7 +102,7 @@ export type CommitPanelAction =
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
-    | { type: "COMMITTED" }
+    | { type: "COMMITTED"; clearCommitMessage?: boolean }
     | { type: "SET_REFRESHING"; active: boolean }
     | { type: "SET_ERROR"; message: string }
     | { type: "SET_COMMIT_MESSAGE"; message: string }
@@ -186,6 +186,7 @@ export function commitPanelReducer(
         case "COMMITTED":
             return {
                 ...state,
+                commitMessage: action.clearCommitMessage === false ? state.commitMessage : "",
                 isAmend: false,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,

@@ -768,6 +768,12 @@
                     "default": true,
                     "markdownDescription": "%configuration.tooltips.enabled.markdownDescription%"
                 },
+                "intelligit.clearLastCommit": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "markdownDescription": "%configuration.clearLastCommit.markdownDescription%"
+                },
                 "intelligit.undockableWindow": {
                     "type": "boolean",
                     "default": false,
