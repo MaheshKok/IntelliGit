@@ -85,6 +85,42 @@ preview the files inside a shelved entry, show a diff before restoring it, then
 apply, pop, or drop the entry from the same panel. This gives VS Code a workflow
 closer to JetBrains shelf handling than raw terminal stash juggling.
 
+### Shelve (Patch-Based)
+
+**Shelve is separate from Git stash.** Stash remains Git-native; IntelliGit
+Shelve captures selected working-tree changes as named patches, stores them
+outside the repository, and can later restore them without changing stash
+entries. Start from a changed-file context menu in the `Commit` panel, or use
+the Command Palette commands `IntelliGit: Shelve Changes`, `IntelliGit: Shelve
+Silently`, `IntelliGit: Save to Shelf`, `IntelliGit: Unshelve`, `IntelliGit:
+Import Patch`, `IntelliGit: Clean Up Shelf`, and `IntelliGit: Purge Shelf
+Recovery` (frees retained recovery snapshots ahead of their retention window).
+
+The default **flattened** unshelve applies content to the working tree and
+leaves the current index untouched. **Exact state** is an IntelliGit extension
+that restores both staged and unstaged layers when their preconditions hold.
+Untracked files are another visibly labeled IntelliGit extension; PyCharm's
+unversioned-file behavior is not implied. A `.patch` export is flattened and
+therefore lossy for staging metadata; full-fidelity data remains in IntelliGit's
+internal shelf storage.
+
+Shelf settings use these defaults:
+
+- `intelligit.shelf.recordBaseRevisions`: `true`.
+- `intelligit.shelf.path`: empty (use the default location); this override is
+  machine-scoped.
+- `intelligit.shelf.removeOnUnshelve`: `true`.
+- `intelligit.shelf.recoveryRetentionHours`: `24` (minimum `1`).
+- `intelligit.shelf.cleanupAfterDays`: `0` (never clean up automatically).
+
+By default, storage is under VS Code `globalStorage`, in `shelves/<repoId>/`,
+where `<repoId>` is derived from the normalized repository-root path hash. The
+machine-scoped path override still appends that repository identifier. Shelf
+patches are plaintext and can contain source or secrets: IntelliGit creates
+shelf directories with `0700` permissions and files with `0600`, but this is
+not encryption. See the [Shelf security notes](docs/shelve/security-notes.md)
+before placing shelves on shared or synced storage.
+
 ### Commit Graph, Changed Files, And CI Checks
 
 ![IntelliGit commit graph with branch lanes, changed files, and commit check popover](media/screenshots/commit-checks.png)
@@ -139,7 +175,7 @@ add the remote, and push the selected branch through one guided flow.
 | Area              | Supported                                                                                                                                                          |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Commit workflow   | Staging by section, folder, or file; rollback; delete; jump to source; amend; commit; push                                                                         |
-| Shelf/Stash       | Shelve changes, preview files, show diff, apply, pop, drop                                                                                                         |
+| Shelf/Stash       | Git-native stash plus separate patch-based Shelve; preview files, show diff, apply, pop, drop, import/export                                                       |
 | Graph and history | Branch lanes, branch search, commit search, branch filter, pagination, changed files, commit metadata                                                              |
 | Branches          | Checkout, new branch, checkout-and-rebase, rebase, merge, update, push, rename, delete                                                                             |
 | Commits           | Copy hash, create patch, cherry-pick, checkout revision, reset, revert, push up to here, undo, edit message, squash, drop, interactive rebase, new branch, new tag |

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added a PyCharm-style stash body with flat stash selection, a lower changed-file pane, keyboard navigation, and accessible resize and focus behavior.
 - Added complete stash actions for apply, pop, advanced unstash options, branch restore, drop, clear, and whole-stash diff sessions.
+- Added separate patch-based Shelve workflows in the Commit panel and Command Palette, including flattened and exact-state restore modes, patch import/export, and recovery-aware shelf storage.
+- Documented Shelve parity QA and security boundaries, including plaintext local storage, labeled IntelliGit extensions, and lossy flattened `.patch` exports.
 
 ### Fixed
 
