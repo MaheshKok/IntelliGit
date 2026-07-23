@@ -437,5 +437,7 @@
     "Empty stashed file (missing: {ref})": "空的储藏文件（缺失：{ref}）",
     "{path} (Stashed: {ref}) <-> Local File": "{path}（储藏：{ref}）<-> 本地文件",
     "Local File": "本地文件",
-    "Stashed: {ref}": "储藏：{ref}"
+    "Stashed: {ref}": "储藏：{ref}",
+    "Stash {reference}": "储藏 {reference}",
+    "{path} (Local File <-> Stash {reference})": "{path}（本地文件 <-> 储藏 {reference}）"
 }

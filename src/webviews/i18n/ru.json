@@ -258,5 +258,8 @@
     "stash.dialog.reinstateIndex": "Восстановить индекс",
     "stash.dialog.noBranch": "Нет ветки",
     "stash.dialog.invalidBranch": "Введите допустимое имя ветки.",
-    "a11y.resizeStashList": "Изменить размер списка спрятанных изменений"
+    "a11y.resizeStashList": "Изменить размер списка спрятанных изменений",
+    "stash.fileAction.openDiff": "Открыть различия",
+    "stash.fileAction.editSource": "Редактировать исходный файл",
+    "stash.fileAction.cherryPickSelectedChanges": "Выполнить cherry-pick выбранных изменений"
 }

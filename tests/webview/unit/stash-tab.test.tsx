@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StashEntry, WorkingFile } from "../../../src/types";
 import { StashTab } from "../../../src/webviews/react/commit-panel/components/StashTab";
 import { StashUnstashDialog } from "../../../src/webviews/react/commit-panel/components/StashUnstashDialog";
+import { formatDateTime } from "../../../src/webviews/react/shared/date";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -169,6 +170,21 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
+    it("formats active stash timestamps with the shared commit-graph formatter", () => {
+        const rawDate = "2026-07-21T10:00:00.000Z";
+        const { root, container } = renderStashTab({
+            stashes: [{ ...stashes[0]!, date: rawDate }],
+        });
+        const row = container.querySelector('[data-stash-index="0"]') as HTMLElement;
+        const timestamp = row.querySelector("[data-stash-date]") as HTMLElement;
+
+        expect(timestamp.textContent).toBe(formatDateTime(rawDate));
+        expect(timestamp.textContent).not.toBe(rawDate);
+        expect(getComputedStyle(timestamp).fontSize).toBe("12px");
+
+        unmount(root, container);
+    });
+
     it("renders flat stash files with only the 18px chevron-equivalent spacer before each icon", () => {
         const ignoredFile: WorkingFile = {
             path: "ignored.log",
@@ -180,7 +196,9 @@ describe("StashTab", () => {
         const { root, container } = renderStashTab({ stashFiles: [...files, ignoredFile] });
         const filePane = container.querySelector('[data-testid="stash-file-pane"]') as HTMLElement;
         const file = container.querySelector('[data-stash-file="src/first.ts"]') as HTMLElement;
-        const otherFile = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+        const otherFile = container.querySelector(
+            '[data-stash-file="src/second.ts"]',
+        ) as HTMLElement;
         const ignored = container.querySelector('[data-stash-file="ignored.log"]') as HTMLElement;
 
         expect(file.tagName).toBe("BUTTON");
@@ -204,6 +222,31 @@ describe("StashTab", () => {
         expect(otherFile.getAttribute("aria-current")).toBe("true");
 
         unmount(root, container);
+    });
+
+    it("selects flat and grouped stash files before showing the exact file-only menu", () => {
+        for (const groupByDir of [false, true]) {
+            const { root, container } = renderStashTab({ groupByDir });
+            const stashRow = container.querySelector('[data-stash-index="0"]') as HTMLElement;
+            const file = container.querySelector(
+                '[data-stash-file="src/second.ts"]',
+            ) as HTMLElement;
+
+            openRowMenu(stashRow);
+            expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+            openRowMenu(file);
+
+            expect(file.getAttribute("aria-current")).toBe("true");
+            expect(file.getAttribute("data-vscode-context")).toBeNull();
+            expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
+            expect(
+                Array.from(document.querySelectorAll(".intelligit-context-item")).map((item) =>
+                    item.textContent?.trim(),
+                ),
+            ).toEqual(["Open Diff", "Edit Source", "Cherry-Pick Selected Changes"]);
+
+            unmount(root, container);
+        }
     });
 
     it("separates stash changes from unversioned files with counts, stats, and labels directly after chevrons", () => {
@@ -269,9 +312,11 @@ describe("StashTab", () => {
         click(changes);
         expect(container.querySelector('[data-stash-file="src/second.ts"]')).toBeNull();
         click(changes);
-        expect(container.querySelector('[data-stash-file="src/second.ts"]')?.getAttribute("aria-current")).toBe(
-            "true",
-        );
+        expect(
+            container
+                .querySelector('[data-stash-file="src/second.ts"]')
+                ?.getAttribute("aria-current"),
+        ).toBe("true");
 
         unmount(root, container);
     });
@@ -310,8 +355,12 @@ describe("StashTab", () => {
 
     it("uses stash files, not directories, to enable section expand and collapse controls", () => {
         const { root, container } = renderStashTab();
-        const collapse = container.querySelector('button[aria-label="Collapse All"]') as HTMLButtonElement;
-        const expand = container.querySelector('button[aria-label="Expand All"]') as HTMLButtonElement;
+        const collapse = container.querySelector(
+            'button[aria-label="Collapse All"]',
+        ) as HTMLButtonElement;
+        const expand = container.querySelector(
+            'button[aria-label="Expand All"]',
+        ) as HTMLButtonElement;
 
         expect(collapse.disabled).toBe(false);
         expect(expand.disabled).toBe(false);
@@ -325,8 +374,12 @@ describe("StashTab", () => {
 
     it("expands collapsed stash sections and grouped directories together", () => {
         const { root, container } = renderStashTab({ groupByDir: true });
-        const collapse = container.querySelector('button[aria-label="Collapse All"]') as HTMLButtonElement;
-        const expand = container.querySelector('button[aria-label="Expand All"]') as HTMLButtonElement;
+        const collapse = container.querySelector(
+            'button[aria-label="Collapse All"]',
+        ) as HTMLButtonElement;
+        const expand = container.querySelector(
+            'button[aria-label="Expand All"]',
+        ) as HTMLButtonElement;
 
         click(collapse);
         expect(container.querySelector('button[title="src"]')).toBeNull();
@@ -440,6 +493,43 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
+    it("opens the stash-file menu from both keyboard gestures and restores focus on Escape", () => {
+        const { root, container } = renderStashTab();
+        const file = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+        vi.spyOn(file, "getBoundingClientRect").mockReturnValue({
+            left: 31,
+            bottom: 47,
+            top: 25,
+            right: 131,
+            width: 100,
+            height: 22,
+            x: 31,
+            y: 25,
+            toJSON: () => undefined,
+        });
+
+        for (const event of [
+            new KeyboardEvent("keydown", { bubbles: true, key: "ContextMenu" }),
+            new KeyboardEvent("keydown", { bubbles: true, key: "F10", shiftKey: true }),
+        ]) {
+            file.focus();
+            act(() => file.dispatchEvent(event));
+            const menu = document.querySelector('[role="menu"]') as HTMLElement;
+            expect(menu.style.left).toBe("31px");
+            expect(menu.style.top).toBe("47px");
+            menuItem("Open Diff").focus();
+            act(() => {
+                document.dispatchEvent(
+                    new KeyboardEvent("keydown", { bubbles: true, key: "Escape" }),
+                );
+            });
+            expect(document.querySelector('[role="menu"]')).toBeNull();
+            expect(document.activeElement).toBe(file);
+        }
+
+        unmount(root, container);
+    });
+
     it("keeps dialog focus and latest Escape handler when onClose changes", () => {
         const firstOnClose = vi.fn();
         const secondOnClose = vi.fn();
@@ -530,6 +620,69 @@ describe("StashTab", () => {
             repositoryRoot: "/repo",
             index: 0,
             path: "src/second.ts",
+        });
+
+        unmount(root, container);
+    });
+
+    it("posts exact stash-file actions and blocks duplicate cherry-pick mutations", () => {
+        const { root, container } = renderStashTab();
+        const file = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+
+        openRowMenu(file);
+        click(menuItem("Open Diff"));
+        expect(lastMessage()).toEqual({
+            type: "showStashDiff",
+            repositoryRoot: "/repo",
+            index: 0,
+            path: "src/second.ts",
+        });
+
+        openRowMenu(file);
+        click(menuItem("Edit Source"));
+        expect(lastMessage()).toEqual({
+            type: "openFile",
+            repositoryRoot: "/repo",
+            path: "src/second.ts",
+        });
+
+        vscode.postMessage.mockClear();
+        openRowMenu(file);
+        click(menuItem("Cherry-Pick Selected Changes"));
+        const requestId = lastRequestId();
+        expect(lastMessage()).toEqual({
+            type: "cherryPickStashFile",
+            repositoryRoot: "/repo",
+            index: 0,
+            stashHash: "abc",
+            path: "src/second.ts",
+            requestId,
+        });
+
+        openRowMenu(file);
+        const pendingAction = menuItem("Cherry-Pick Selected Changes");
+        expect(pendingAction.getAttribute("data-disabled")).toBe("true");
+        click(pendingAction);
+        expect(vscode.postMessage).toHaveBeenCalledTimes(1);
+
+        unmount(root, container);
+    });
+
+    it("posts a rootless stash-file cherry-pick from the undocked tab", () => {
+        const { root, container } = renderStashTab({ repositoryRoot: undefined });
+        const file = container.querySelector('[data-stash-file="src/second.ts"]') as HTMLElement;
+
+        openRowMenu(file);
+        const cherryPick = menuItem("Cherry-Pick Selected Changes");
+        expect(cherryPick.getAttribute("data-disabled")).toBe("false");
+        click(cherryPick);
+        const requestId = lastRequestId();
+        expect(lastMessage()).toEqual({
+            type: "cherryPickStashFile",
+            index: 0,
+            stashHash: "abc",
+            path: "src/second.ts",
+            requestId,
         });
 
         unmount(root, container);

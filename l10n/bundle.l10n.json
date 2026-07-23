@@ -181,6 +181,7 @@
     "Selected file is outside the current IntelliGit repository workspace.": "Selected file is outside the current IntelliGit repository workspace.",
     "Stashed change deleted.": "Stashed change deleted.",
     "Stashed changes restored on new branch.": "Stashed changes restored on new branch.",
+    "Stash {reference}": "Stash {reference}",
     "Sign in to {host} to view commit checks.": "Sign in to {host} to view commit checks.",
     "Sign in with your GitHub account": "Sign in with your GitHub account",
     "Squash Commits is available only for unpushed commits.": "Squash Commits is available only for unpushed commits.",
@@ -437,5 +438,6 @@
     "Local File": "Local File",
     "Stashed: {ref}": "Stashed: {ref}",
     "{path} (Stashed: {ref}) <-> Local File": "{path} (Stashed: {ref}) <-> Local File",
+    "{path} (Local File <-> Stash {reference})": "{path} (Local File <-> Stash {reference})",
     "{title}: {detail}{hintText}": "{title}: {detail}{hintText}"
 }

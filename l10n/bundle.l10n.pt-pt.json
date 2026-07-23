@@ -437,5 +437,7 @@
     "Empty stashed file (missing: {ref})": "Ficheiro de stash vazio (em falta: {ref})",
     "{path} (Stashed: {ref}) <-> Local File": "{path} (No stash: {ref}) <-> Ficheiro local",
     "Local File": "Ficheiro local",
-    "Stashed: {ref}": "No stash: {ref}"
+    "Stashed: {ref}": "No stash: {ref}",
+    "Stash {reference}": "Stash {reference}",
+    "{path} (Local File <-> Stash {reference})": "{path} (Ficheiro local <-> Stash {reference})"
 }

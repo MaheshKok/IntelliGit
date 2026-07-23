@@ -101,6 +101,10 @@ export const TREE_SECTION_STYLE: CSSProperties = {
     paddingLeft: 4,
 };
 
+export const BRANCH_SECTION_GUIDE_WRAPPER_STYLE: CSSProperties = {
+    position: "relative",
+};
+
 export const NO_MATCH_STYLE: CSSProperties = {
     padding: "6px 12px",
     fontSize: 11,
@@ -131,6 +135,11 @@ export const INDENT_GUIDE_STYLE: CSSProperties = {
     width: 1,
     background: "var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))",
     pointerEvents: "none",
+};
+
+export const BRANCH_SECTION_GUIDE_STYLE: CSSProperties = {
+    ...INDENT_GUIDE_STYLE,
+    left: 16,
 };
 
 export const HEAD_ROW_STYLE: CSSProperties = {

@@ -244,5 +244,8 @@
     "stash.dialog.reinstateIndex": "Index wiederherstellen",
     "stash.dialog.noBranch": "Kein Branch",
     "stash.dialog.invalidBranch": "Geben Sie einen gültigen Branchnamen ein.",
-    "a11y.resizeStashList": "Größe der Stash-Liste ändern"
+    "a11y.resizeStashList": "Größe der Stash-Liste ändern",
+    "stash.fileAction.openDiff": "Diff öffnen",
+    "stash.fileAction.editSource": "Quelldatei bearbeiten",
+    "stash.fileAction.cherryPickSelectedChanges": "Ausgewählte Änderungen cherry-picken"
 }

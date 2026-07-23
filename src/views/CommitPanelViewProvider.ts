@@ -39,6 +39,7 @@ import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
+    executeStashFileMutationRequest,
     executeStashMutationRequest,
     rollbackFromPanel,
     runGitOperationFromPanel,
@@ -691,6 +692,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             this.actionDepsForRuntime(runtime),
             mutation,
             requestIdValue,
+            (requestId) => {
+                const repositoryRoot = (runtime ?? this.requireActiveRuntime()).repository.root;
+                this.postToWebview({
+                    type: "stashMutationCompleted",
+                    repositoryRoot,
+                    requestId,
+                });
+            },
+        );
+    }
+
+    /** Runs a correlated single-file stash request against the repository captured at dispatch. */
+    private runStashFileMutationRequest(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: Record<string, unknown>,
+    ): Promise<void> {
+        return executeStashFileMutationRequest(
+            this.actionDepsForRuntime(runtime),
+            message,
             (requestId) => {
                 const repositoryRoot = (runtime ?? this.requireActiveRuntime()).repository.root;
                 this.postToWebview({
@@ -1394,6 +1414,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     index: assertNumber(msg.index, "index"),
                     reinstateIndex: false,
                 });
+                break;
+            case "cherryPickStashFile":
+                await this.runStashFileMutationRequest(scopedRuntime(), msg);
                 break;
             case "stashDelete":
                 await this.runStashMutationRequest(

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -521,16 +521,210 @@ describe("GitOps", () => {
             await expect(ops.getStashFiles(0)).resolves.toEqual([]);
         });
 
-        it("returns stashed patch with expected git args", async () => {
+        it("builds a binary-safe tracked patch from the verified stable stash hash", async () => {
+            const stashHash = "a".repeat(40);
             const executor = createMockExecutor({
-                "diff stash@{0}^ stash@{0} -- src/a.ts": "diff --git a/src/a.ts b/src/a.ts",
+                [`diff --binary --full-index --no-color ${stashHash}^1 ${stashHash} -- src/a.ts`]:
+                    "diff --git a/src/a.ts b/src/a.ts",
             });
             const ops = new GitOps(executor);
 
-            await expect(ops.getStashFilePatch(0, "src/a.ts")).resolves.toContain("diff --git");
+            await expect(ops.getStashFilePatch(0, stashHash, "src/a.ts")).resolves.toContain(
+                "diff --git",
+            );
             expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toContainEqual([
-                ["--literal-pathspecs", "diff", "stash@{0}^", "stash@{0}", "--", "src/a.ts"],
+                [
+                    "--literal-pathspecs",
+                    "diff",
+                    "--binary",
+                    "--full-index",
+                    "--no-color",
+                    `${stashHash}^1`,
+                    stashHash,
+                    "--",
+                    "src/a.ts",
+                ],
             ]);
+        });
+
+        it("falls back to the untracked parent only for an empty tracked patch", async () => {
+            const stashHash = "b".repeat(40);
+            const executor = {
+                run: vi
+                    .fn<(args: string[]) => Promise<string>>()
+                    .mockResolvedValueOnce("")
+                    .mockResolvedValueOnce("diff --git a/space name.txt b/space name.txt"),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await expect(ops.getStashFilePatch(1, stashHash, "space name.txt")).resolves.toContain(
+                "diff --git",
+            );
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+                [
+                    [
+                        "--literal-pathspecs",
+                        "diff",
+                        "--binary",
+                        "--full-index",
+                        "--no-color",
+                        `${stashHash}^1`,
+                        stashHash,
+                        "--",
+                        "space name.txt",
+                    ],
+                ],
+                [
+                    [
+                        "--literal-pathspecs",
+                        "diff",
+                        "--binary",
+                        "--full-index",
+                        "--no-color",
+                        "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+                        `${stashHash}^3`,
+                        "--",
+                        "space name.txt",
+                    ],
+                ],
+            ]);
+        });
+
+        it("treats an absent untracked parent as no patch but propagates unrelated Git errors", async () => {
+            const stashHash = "c".repeat(40);
+            const missingParentExecutor = {
+                run: vi
+                    .fn<(args: string[]) => Promise<string>>()
+                    .mockResolvedValueOnce("")
+                    .mockRejectedValueOnce(new Error(`fatal: bad revision '${stashHash}^3'`)),
+            } as unknown as GitExecutor;
+            await expect(
+                new GitOps(missingParentExecutor).getStashFilePatch(0, stashHash, "absent.txt"),
+            ).resolves.toBe("");
+
+            const unrelatedExecutor = {
+                run: vi
+                    .fn<(args: string[]) => Promise<string>>()
+                    .mockResolvedValueOnce("")
+                    .mockRejectedValueOnce(new Error("fatal: permission denied")),
+            } as unknown as GitExecutor;
+            await expect(
+                new GitOps(unrelatedExecutor).getStashFilePatch(0, stashHash, "absent.txt"),
+            ).rejects.toThrow("permission denied");
+        });
+
+        it("verifies the movable stash index before applying a stable-hash patch", async () => {
+            const stashHash = "d".repeat(40);
+            let patchFilePath = "";
+            const executor = {
+                run: vi.fn(async (args: string[]) => {
+                    const key = args.join(" ");
+                    if (key === "rev-parse --verify stash@{2}^{commit}") return `${stashHash}\n`;
+                    if (key.includes("diff --binary --full-index --no-color")) {
+                        return "diff --git a/--odd name.bin b/--odd name.bin\n";
+                    }
+                    if (args[0] === "apply") {
+                        patchFilePath = args.at(-1) ?? "";
+                        await expect(access(patchFilePath)).resolves.toBeUndefined();
+                        expect(await readFile(patchFilePath, "utf8")).toContain("diff --git");
+                        return "";
+                    }
+                    throw new Error(`Unexpected Git command: ${key}`);
+                }),
+            } as unknown as GitExecutor;
+            const ops = new GitOps(executor);
+
+            await ops.applyStashFile(2, stashHash, "--odd name.bin");
+
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+                [["rev-parse", "--verify", "stash@{2}^{commit}"]],
+                [
+                    [
+                        "--literal-pathspecs",
+                        "diff",
+                        "--binary",
+                        "--full-index",
+                        "--no-color",
+                        `${stashHash}^1`,
+                        stashHash,
+                        "--",
+                        "--odd name.bin",
+                    ],
+                ],
+                [
+                    [
+                        "apply",
+                        "--index",
+                        "--3way",
+                        "--whitespace=nowarn",
+                        expect.stringContaining("selected-change.patch"),
+                    ],
+                ],
+            ]);
+            await expect(access(path.dirname(patchFilePath))).rejects.toThrow();
+        });
+
+        it("rejects invalid input and a stale stash index before patch generation", async () => {
+            const stashHash = "e".repeat(40);
+            const executor = createMockExecutor({ "rev-parse --verify": `${"f".repeat(40)}\n` });
+            const ops = new GitOps(executor);
+
+            await expect(ops.applyStashFile(-1, stashHash, "src/a.ts")).rejects.toThrow(
+                "Invalid stash index",
+            );
+            await expect(ops.applyStashFile(0, "not-a-hash", "src/a.ts")).rejects.toThrow(
+                "Invalid stash hash",
+            );
+            await expect(ops.applyStashFile(0, stashHash, "../secret.txt")).rejects.toThrow(
+                "escaping repo root",
+            );
+            await expect(ops.applyStashFile(0, stashHash, "src/a.ts")).rejects.toThrow(
+                "Stash entry changed",
+            );
+            expect((executor.run as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+                [["rev-parse", "--verify", "stash@{0}^{commit}"]],
+            ]);
+        });
+
+        it("applies and stages tracked, added, deleted, binary, and untracked stash files", async () => {
+            const repo = await createTempGitRepo();
+            try {
+                await writeFile(path.join(repo, "delete.txt"), "delete me\n", "utf8");
+                await writeFile(path.join(repo, "binary.bin"), Buffer.from([0, 1, 2, 3]));
+                await git(repo, ["add", "."]);
+                await git(repo, ["commit", "-m", "stash fixture"]);
+
+                await writeFile(path.join(repo, "tracked.txt"), "changed\n", "utf8");
+                await rm(path.join(repo, "delete.txt"));
+                await writeFile(path.join(repo, "added.txt"), "added\n", "utf8");
+                await git(repo, ["add", "added.txt"]);
+                await writeFile(path.join(repo, "binary.bin"), Buffer.from([0, 255, 4, 5]));
+                await writeFile(path.join(repo, "--odd name.txt"), "untracked\n", "utf8");
+                await git(repo, ["stash", "push", "--include-untracked", "-m", "file fixture"]);
+                const stashHash = (await git(repo, ["rev-parse", "stash@{0}"])).trim();
+                const ops = new GitOps(new RealGitExecutor(repo) as unknown as GitExecutor);
+
+                const cases = [
+                    ["tracked.txt", "M  tracked.txt"],
+                    ["added.txt", "A  added.txt"],
+                    ["delete.txt", "D  delete.txt"],
+                    ["binary.bin", "M  binary.bin"],
+                    ["--odd name.txt", 'A  "--odd name.txt"'],
+                ] as const;
+                for (const [filePath, expectedStatus] of cases) {
+                    await git(repo, ["reset", "--hard", "HEAD"]);
+                    await git(repo, ["clean", "-fd"]);
+                    await ops.applyStashFile(0, stashHash, filePath);
+                    expect((await status(repo)).trim()).toBe(expectedStatus);
+                    if (filePath === "binary.bin") {
+                        expect(Array.from(await readFile(path.join(repo, "binary.bin")))).toEqual([
+                            0, 255, 4, 5,
+                        ]);
+                    }
+                }
+            } finally {
+                await rm(repo, { recursive: true, force: true });
+            }
         });
 
         it("reads before/after content with added, deleted, and untracked fallbacks", async () => {
@@ -689,7 +883,9 @@ describe("GitOps", () => {
             await expect(ops.stashApply(-1)).rejects.toThrow("Invalid stash index");
             await expect(ops.stashDelete(-1)).rejects.toThrow("Invalid stash index");
             await expect(ops.getStashFiles(-1)).rejects.toThrow("Invalid stash index");
-            await expect(ops.getStashFilePatch(-1, "x")).rejects.toThrow("Invalid stash index");
+            await expect(ops.getStashFilePatch(-1, "a".repeat(40), "x")).rejects.toThrow(
+                "Invalid stash index",
+            );
         });
     });
 });

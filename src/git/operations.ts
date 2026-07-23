@@ -46,6 +46,8 @@ import {
 } from "./workingTree";
 import { parseStashFiles } from "./stashFiles";
 import { normalizeGitNumstatPath } from "./numstat";
+import { applyPatchTextToRepo } from "./patchApplication";
+import { EMPTY_TREE_HASH } from "../utils/constants";
 
 type BranchRow = [
     refname: string,
@@ -904,11 +906,59 @@ export class GitOps {
         }
         return parseStashFiles(nameStatus, numstat, untrackedPaths);
     }
-    /** Returns the patch for a literal repository path inside a validated stash entry. */
-    async getStashFilePatch(index: number, filePath: string): Promise<string> {
+    /**
+     * Builds one binary-safe file patch from a stable stash object ID.
+     *
+     * The normal stash tree is compared to its first parent for tracked additions, modifications,
+     * and deletions. Only an empty tracked patch probes the optional third parent, where Git stores
+     * untracked files; a genuinely absent third parent means no patch, while unrelated errors reject.
+     */
+    async getStashFilePatch(index: number, stashHash: string, filePath: string): Promise<string> {
         assertStashIndex(index);
-        const ref = `stash@{${index}}`;
-        return this.executor.run(withLiteralPathspecs(["diff", `${ref}^`, ref, "--", filePath]));
+        const stableHash = assertStableStashHash(stashHash);
+        const safePath = assertRepoRelativeGitPath(filePath);
+        const diffArgs = (base: string, target: string) =>
+            withLiteralPathspecs([
+                "diff",
+                "--binary",
+                "--full-index",
+                "--no-color",
+                base,
+                target,
+                "--",
+                safePath,
+            ]);
+        const trackedPatch = await this.executor.run(diffArgs(`${stableHash}^1`, stableHash));
+        if (trackedPatch.trim().length > 0) return trackedPatch;
+        try {
+            return await this.executor.run(diffArgs(EMPTY_TREE_HASH, `${stableHash}^3`));
+        } catch (err) {
+            if (isMissingStashUntrackedParentError(getErrorMessage(err).toLowerCase())) return "";
+            throw err;
+        }
+    }
+
+    /**
+     * Applies and stages exactly one file from the stash entry still occupying a validated index.
+     *
+     * The movable `stash@{n}` ref is checked against the webview's full object ID before mutation;
+     * patch generation then uses only that stable ID so later stash renumbering cannot retarget it.
+     */
+    async applyStashFile(index: number, stashHash: string, filePath: string): Promise<void> {
+        assertStashIndex(index);
+        const stableHash = assertStableStashHash(stashHash);
+        const safePath = assertRepoRelativeGitPath(filePath);
+        const currentHash = (
+            await this.executor.run(["rev-parse", "--verify", `stash@{${index}}^{commit}`])
+        ).trim();
+        if (currentHash.toLowerCase() !== stableHash.toLowerCase()) {
+            throw new Error(`Stash entry changed at index ${index}; refresh and try again.`);
+        }
+        const patch = await this.getStashFilePatch(index, stableHash, safePath);
+        if (patch.trim().length === 0) {
+            throw new Error(`No stashed changes found for path: ${safePath}`);
+        }
+        await applyPatchTextToRepo(patch, false, this.executor);
     }
     /**
      * Reads the before and after versions of one stash path for VS Code diff resources.
@@ -1168,4 +1218,13 @@ function isMissingGitPathError(message: string): boolean {
 /** Returns whether an untracked-file fallback found no third parent on an otherwise valid stash. */
 function isMissingStashUntrackedParentError(message: string): boolean {
     return message.includes("invalid object name") || message.includes("bad revision");
+}
+
+/** Validates the full SHA-1 object ID emitted by the stash list before it reaches Git argv. */
+function assertStableStashHash(value: string): string {
+    const hash = value.trim();
+    if (!/^[0-9a-fA-F]{40}$/.test(hash)) {
+        throw new Error("Invalid stash hash received from webview.");
+    }
+    return hash;
 }

@@ -237,5 +237,8 @@
     "stash.dialog.reinstateIndex": "인덱스 복원",
     "stash.dialog.noBranch": "브랜치 없음",
     "stash.dialog.invalidBranch": "유효한 브랜치 이름을 입력하세요.",
-    "a11y.resizeStashList": "스태시 목록 크기 조정"
+    "a11y.resizeStashList": "스태시 목록 크기 조정",
+    "stash.fileAction.openDiff": "차이점 열기",
+    "stash.fileAction.editSource": "소스 편집",
+    "stash.fileAction.cherryPickSelectedChanges": "선택한 변경 사항 체리픽"
 }

@@ -258,5 +258,8 @@
     "stash.dialog.reinstateIndex": "Przywróć indeks",
     "stash.dialog.noBranch": "Brak gałęzi",
     "stash.dialog.invalidBranch": "Wprowadź prawidłową nazwę gałęzi.",
-    "a11y.resizeStashList": "Zmień rozmiar listy schowków"
+    "a11y.resizeStashList": "Zmień rozmiar listy schowków",
+    "stash.fileAction.openDiff": "Otwórz różnice",
+    "stash.fileAction.editSource": "Edytuj źródło",
+    "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick wybranych zmian"
 }

@@ -437,5 +437,7 @@
     "Empty stashed file (missing: {ref})": "빈 스태시 파일(없음: {ref})",
     "{path} (Stashed: {ref}) <-> Local File": "{path} (스태시: {ref}) <-> 로컬 파일",
     "Local File": "로컬 파일",
-    "Stashed: {ref}": "스태시: {ref}"
+    "Stashed: {ref}": "스태시: {ref}",
+    "Stash {reference}": "스태시 {reference}",
+    "{path} (Local File <-> Stash {reference})": "{path} (로컬 파일 <-> 스태시 {reference})"
 }

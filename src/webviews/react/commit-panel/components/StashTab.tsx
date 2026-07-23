@@ -35,6 +35,8 @@ type StashContextAction =
     | "showDiff"
     | "showDiffNewTab";
 
+type StashFileContextAction = "openDiff" | "editSource" | "cherryPickSelectedChanges";
+
 interface ExpandedDirsState {
     directoryPaths: string[];
     dirs: Set<string>;
@@ -50,12 +52,25 @@ interface FileSelection {
     path: string | null;
 }
 
-interface StashContextMenuState {
+interface StashRowContextMenuState {
+    kind: "stash-row";
     x: number;
     y: number;
     index: number;
     returnFocusTarget: HTMLElement | null;
 }
+
+interface StashFileContextMenuState {
+    kind: "stash-file";
+    x: number;
+    y: number;
+    index: number;
+    stashHash: string;
+    path: string;
+    returnFocusTarget: HTMLElement;
+}
+
+type StashContextMenuState = StashRowContextMenuState | StashFileContextMenuState;
 
 interface UnstashDialogState {
     index: number;
@@ -347,6 +362,41 @@ export function StashTab({
         ],
     );
 
+    const handleFileContextAction = useCallback(
+        (menu: StashFileContextMenuState, action: StashFileContextAction) => {
+            switch (action) {
+                case "openDiff":
+                    showStashDiff(menu.index, true, menu.path);
+                    return;
+                case "editSource":
+                    vscode.postMessage(
+                        postRepositoryMessage({ type: "openFile", path: menu.path }),
+                    );
+                    return;
+                case "cherryPickSelectedChanges":
+                    beginMutation((requestId) =>
+                        postRepositoryMessage({
+                            type: "cherryPickStashFile",
+                            index: menu.index,
+                            stashHash: menu.stashHash,
+                            path: menu.path,
+                            requestId,
+                        }),
+                    );
+                    return;
+                default:
+                    return rejectUnhandledStashAction(action);
+            }
+        },
+        [beginMutation, postRepositoryMessage, showStashDiff, vscode],
+    );
+
+    const closeContextMenu = useCallback(() => {
+        const returnFocusTarget = contextMenu?.returnFocusTarget ?? null;
+        setContextMenu(null);
+        returnFocusTarget?.focus();
+    }, [contextMenu]);
+
     const toggleDir = useCallback(
         (path: string) => {
             setExpandedDirsState((previous) => {
@@ -473,7 +523,13 @@ export function StashTab({
                     const returnFocusTarget = stashTabRef.current?.querySelector<HTMLElement>(
                         `[data-stash-index="${index}"]`,
                     );
-                    setContextMenu({ index, x, y, returnFocusTarget: returnFocusTarget ?? null });
+                    setContextMenu({
+                        kind: "stash-row",
+                        index,
+                        x,
+                        y,
+                        returnFocusTarget: returnFocusTarget ?? null,
+                    });
                 }}
             />
             <Box
@@ -545,6 +601,20 @@ export function StashTab({
                     if (displayedSelectedIndex !== null)
                         showStashDiff(displayedSelectedIndex, true, path);
                 }}
+                onFileContextMenu={(path, x, y, returnFocusTarget) => {
+                    setFileSelection({ stashIndex: displayedSelectedIndex, path });
+                    const stash = stashes.find((entry) => entry.index === displayedSelectedIndex);
+                    if (!stash || displayedSelectedIndex === null) return;
+                    setContextMenu({
+                        kind: "stash-file",
+                        index: displayedSelectedIndex,
+                        stashHash: stash.hash,
+                        path,
+                        x,
+                        y,
+                        returnFocusTarget,
+                    });
+                }}
             />
             <Flex
                 align="center"
@@ -588,28 +658,69 @@ export function StashTab({
                     x={contextMenu.x}
                     y={contextMenu.y}
                     minWidth={300}
-                    onClose={() => setContextMenu(null)}
-                    onSelect={(action) =>
-                        handleContextAction(
-                            contextMenu.index,
-                            action as StashContextAction,
-                            contextMenu.returnFocusTarget,
-                        )
+                    onClose={closeContextMenu}
+                    onSelect={(action) => {
+                        if (contextMenu.kind === "stash-row") {
+                            handleContextAction(
+                                contextMenu.index,
+                                action as StashContextAction,
+                                contextMenu.returnFocusTarget,
+                            );
+                            return;
+                        }
+                        handleFileContextAction(contextMenu, action as StashFileContextAction);
+                    }}
+                    items={
+                        contextMenu.kind === "stash-row"
+                            ? [
+                                  {
+                                      label: t("common.pop"),
+                                      action: "pop",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("common.apply"),
+                                      action: "apply",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("stash.action.unstash"),
+                                      action: "unstash",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("common.drop"),
+                                      action: "drop",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("common.clear"),
+                                      action: "clear",
+                                      disabled: isMutationPending,
+                                  },
+                                  { label: "", action: "stash-divider", separator: true },
+                                  { label: t("common.showDiff"), action: "showDiff" },
+                                  {
+                                      label: t("stash.action.showDiffNewTab"),
+                                      action: "showDiffNewTab",
+                                  },
+                              ]
+                            : [
+                                  {
+                                      label: t("stash.fileAction.openDiff"),
+                                      action: "openDiff",
+                                  },
+                                  {
+                                      label: t("stash.fileAction.editSource"),
+                                      action: "editSource",
+                                  },
+                                  {
+                                      label: t("stash.fileAction.cherryPickSelectedChanges"),
+                                      action: "cherryPickSelectedChanges",
+                                      disabled: isMutationPending,
+                                  },
+                              ]
                     }
-                    items={[
-                        { label: t("common.pop"), action: "pop", disabled: isMutationPending },
-                        { label: t("common.apply"), action: "apply", disabled: isMutationPending },
-                        {
-                            label: t("stash.action.unstash"),
-                            action: "unstash",
-                            disabled: isMutationPending,
-                        },
-                        { label: t("common.drop"), action: "drop", disabled: isMutationPending },
-                        { label: t("common.clear"), action: "clear", disabled: isMutationPending },
-                        { label: "", action: "stash-divider", separator: true },
-                        { label: t("common.showDiff"), action: "showDiff" },
-                        { label: t("stash.action.showDiffNewTab"), action: "showDiffNewTab" },
-                    ]}
                 />
             ) : null}
             {unstashDialog ? (

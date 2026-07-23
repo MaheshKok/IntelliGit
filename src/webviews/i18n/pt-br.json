@@ -251,5 +251,8 @@
     "stash.dialog.reinstateIndex": "Restaurar índice",
     "stash.dialog.noBranch": "Sem ramo",
     "stash.dialog.invalidBranch": "Insira um nome de ramo válido.",
-    "a11y.resizeStashList": "Redimensionar a lista de Stashes"
+    "a11y.resizeStashList": "Redimensionar a lista de Stashes",
+    "stash.fileAction.openDiff": "Abrir diferenças",
+    "stash.fileAction.editSource": "Editar fonte",
+    "stash.fileAction.cherryPickSelectedChanges": "Fazer cherry-pick das alterações selecionadas"
 }

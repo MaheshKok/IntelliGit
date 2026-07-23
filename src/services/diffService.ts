@@ -2,12 +2,11 @@
 // Handles opening diffs against git refs, commit file diffs,
 // and applying/reverting single-file patches.
 
-import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { applyPatchTextToRepo } from "../git/patchApplication";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import {
@@ -245,38 +244,6 @@ export async function openCommitFileDiff(
     const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
     const title = `${safePath} (${shortParent} ↔ ${shortCommit})`;
     await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
-}
-
-/**
- * Applies a generated single-file patch to the repository index and working tree.
- *
- * The patch is written to a temporary file because `git apply --3way --index`
- * expects a file path here. The temp directory is removed best-effort in
- * `finally`; Git apply failures propagate to the caller for user notification.
- */
-async function applyPatchTextToRepo(
-    patchText: string,
-    reverse: boolean,
-    executor: GitExecutor,
-): Promise<void> {
-    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "intelligit-filepatch-"));
-    const patchFilePath = path.join(tempDir, "selected-change.patch");
-    try {
-        await fs.promises.writeFile(patchFilePath, patchText, "utf8");
-        const args = [
-            "apply",
-            "--index",
-            "--3way",
-            "--whitespace=nowarn",
-            ...(reverse ? ["-R"] : []),
-            patchFilePath,
-        ];
-        await executor.run(args);
-    } finally {
-        await fs.promises.rm(tempDir, { recursive: true, force: true }).catch((err) => {
-            console.warn(`[intelligit] Failed to clean up temp patch dir ${tempDir}:`, err);
-        });
-    }
 }
 
 /**

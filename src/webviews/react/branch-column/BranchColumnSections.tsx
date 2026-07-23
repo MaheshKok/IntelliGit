@@ -12,6 +12,8 @@ import { BranchSectionHeader } from "./components/BranchSectionHeader";
 import { RepoIcon, TagRightIcon, WorktreeSmallIcon } from "../shared/components/Icons";
 import { t } from "../shared/i18n";
 import {
+    BRANCH_SECTION_GUIDE_STYLE,
+    BRANCH_SECTION_GUIDE_WRAPPER_STYLE,
     BRANCH_TREE_INDENT_STEP,
     DEFAULT_BRANCH_ICON_YELLOW,
     HEAD_LABEL_STYLE,
@@ -118,26 +120,35 @@ export function BranchColumnSections({
                 onToggle={() => onToggleSection("local")}
             />
             {expandedSections.has("local") && (
-                <div style={TREE_SECTION_STYLE}>
-                    {localTree.map((node) => (
-                        <BranchTreeNodeRow
-                            key={`local-${node.fullName ?? node.label}`}
-                            node={node}
-                            depth={0}
-                            selectedBranch={selectedBranch}
-                            selectedBranchNames={selectedBranchNames}
-                            expandedFolders={expandedFolders}
-                            onSelectBranch={onSelectBranch}
-                            onBranchClick={onBranchClick}
-                            onToggleFolder={onToggleFolder}
-                            onContextMenu={onBranchContextMenu}
-                            filterNeedle={filterNeedle}
-                            prefix="local"
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
+                <div style={BRANCH_SECTION_GUIDE_WRAPPER_STYLE}>
+                    {localTree.length > 0 ? (
+                        <span
+                            aria-hidden="true"
+                            data-branch-section-guide="local"
+                            style={BRANCH_SECTION_GUIDE_STYLE}
                         />
-                    ))}
+                    ) : null}
+                    <div style={TREE_SECTION_STYLE}>
+                        {localTree.map((node) => (
+                            <BranchTreeNodeRow
+                                key={`local-${node.fullName ?? node.label}`}
+                                node={node}
+                                depth={0}
+                                selectedBranch={selectedBranch}
+                                selectedBranchNames={selectedBranchNames}
+                                expandedFolders={expandedFolders}
+                                onSelectBranch={onSelectBranch}
+                                onBranchClick={onBranchClick}
+                                onToggleFolder={onToggleFolder}
+                                onContextMenu={onBranchContextMenu}
+                                filterNeedle={filterNeedle}
+                                prefix="local"
+                                folderIcon={folderIcon}
+                                folderExpandedIcon={folderExpandedIcon}
+                                folderIconsByName={folderIconsByName}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -152,7 +163,14 @@ export function BranchColumnSections({
                         const remoteKey = `remote-${remote}`;
                         const isExpanded = expandedFolders.has(remoteKey);
                         return (
-                            <div key={remote}>
+                            <div key={remote} style={BRANCH_SECTION_GUIDE_WRAPPER_STYLE}>
+                                {isExpanded && group.tree.length > 0 ? (
+                                    <span
+                                        aria-hidden="true"
+                                        data-branch-section-guide={`remote-${remote}`}
+                                        style={BRANCH_SECTION_GUIDE_STYLE}
+                                    />
+                                ) : null}
                                 <div style={{ paddingLeft: BRANCH_TREE_INDENT_STEP }}>
                                     <BranchSectionHeader
                                         label={remote}

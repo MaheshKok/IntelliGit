@@ -24,7 +24,6 @@ type StashDiffSnapshot = {
     stashedRef: string;
     localContent: string;
     localRef: string;
-    isLocalMissing: boolean;
 };
 
 interface PanelFileActionDeps {
@@ -178,12 +177,13 @@ function isFileNotFoundError(error: unknown): boolean {
  * The stash side always uses `after`; the base revision is never exposed. A matching open document
  * takes precedence to preserve dirty-buffer text. Otherwise the filesystem is checked before the
  * document opens. Only known missing-file errors become an empty snapshot so other workspace
- * failures can abort the whole batch cleanly.
+ * failures can abort the whole batch cleanly. Present documents use `Local File` and `Stash {n}`;
+ * absent sides retain explicit empty-document labels without reversing the comparison.
  */
 async function prepareStashLocalDiffSnapshot(
     workspaceRoot: vscode.Uri,
     filePath: string,
-    ref: string,
+    stashRef: string,
     contents: StashFileContents,
 ): Promise<StashDiffSnapshot> {
     const localFile = vscode.Uri.joinPath(workspaceRoot, filePath);
@@ -191,21 +191,17 @@ async function prepareStashLocalDiffSnapshot(
         (document) => document.uri.toString() === localFile.toString(),
     );
     let localContent: string;
-    let localRef: string;
-    let isLocalMissing = false;
+    let localRef = vscode.l10n.t("Local File");
     if (openDocument !== undefined) {
         localContent = openDocument.getText();
-        localRef = vscode.l10n.t("Local File");
     } else {
         try {
             await vscode.workspace.fs.stat(localFile);
             localContent = (await vscode.workspace.openTextDocument(localFile)).getText();
-            localRef = vscode.l10n.t("Local File");
         } catch (error) {
             if (!isFileNotFoundError(error)) throw error;
             localContent = "";
             localRef = vscode.l10n.t("Empty local file (missing)");
-            isLocalMissing = true;
         }
     }
     return {
@@ -213,11 +209,10 @@ async function prepareStashLocalDiffSnapshot(
         stashedContent: contents.after ?? "",
         stashedRef:
             contents.after === undefined
-                ? vscode.l10n.t("Empty stashed file (missing: {ref})", { ref })
-                : vscode.l10n.t("Stashed: {ref}", { ref }),
+                ? vscode.l10n.t("Empty stashed file (missing: {ref})", { ref: stashRef })
+                : stashRef,
         localContent,
         localRef,
-        isLocalMissing,
     };
 }
 
@@ -241,9 +236,9 @@ function createStashLocalDiffUris(snapshot: StashDiffSnapshot): StashDiffUris {
  *
  * File-specific requests compare readonly snapshots of stashed and local content so each side has
  * an explicit resource label. Missing stash or workspace sides use explicitly labeled empty virtual
- * documents. A missing local file is the original (left) side, so its stashed snapshot renders as a
- * new-file addition; other filesystem errors reject. Stash-level requests retain every valid stash
- * file in the changes editor, preserving absent sides for added or deleted files.
+ * documents. Local content is always the original (left) side and stash content is always the
+ * modified (right) side, including added, deleted, untracked, and missing-side cases. Other
+ * filesystem errors reject. Stash-level requests retain every valid stash file in the changes editor.
  * Preview mode defaults to true for legacy callers; false keeps the resulting changes editor pinned
  * in a new tab.
  */
@@ -254,22 +249,22 @@ export async function showStashDiffFromPanel(
     preview = true,
 ): Promise<void> {
     const index = assertNumber(indexValue, "index");
-    const ref = `stash@{${index}}`;
+    const stashLabel = vscode.l10n.t("Stash {reference}", { reference: `{${index}}` });
     if (pathValue !== undefined) {
         const filePath = assertRepoRelativePath(assertString(pathValue, "path"));
         const contents = await deps.gitOps.getStashFileContents(index, filePath);
         const snapshot = await prepareStashLocalDiffSnapshot(
             deps.getWorkspaceRoot(),
             filePath,
-            ref,
+            stashLabel,
             contents,
         );
         const { stashed, local } = createStashLocalDiffUris(snapshot);
-        const [original, modified] = snapshot.isLocalMissing ? [local, stashed] : [stashed, local];
-        const title = snapshot.isLocalMissing
-            ? `${filePath} (${snapshot.localRef} <-> ${snapshot.stashedRef})`
-            : vscode.l10n.t("{path} (Stashed: {ref}) <-> Local File", { path: filePath, ref });
-        await vscode.commands.executeCommand("vscode.diff", original, modified, title, { preview });
+        const title = vscode.l10n.t("{path} (Local File <-> Stash {reference})", {
+            path: filePath,
+            reference: `{${index}}`,
+        });
+        await vscode.commands.executeCommand("vscode.diff", local, stashed, title, { preview });
         return;
     }
 
@@ -280,14 +275,14 @@ export async function showStashDiffFromPanel(
         4,
         async (file) => {
             const contents = await deps.gitOps.getStashFileContents(index, file.path);
-            return prepareStashLocalDiffSnapshot(workspaceRoot, file.path, ref, contents);
+            return prepareStashLocalDiffSnapshot(workspaceRoot, file.path, stashLabel, contents);
         },
     );
     const changes = snapshots.map((snapshot): StashChange => {
         const { stashed, local } = createStashLocalDiffUris(snapshot);
-        return snapshot.isLocalMissing ? [stashed, local, stashed] : [stashed, stashed, local];
+        return [stashed, local, stashed];
     });
-    await vscode.commands.executeCommand("vscode.changes", `Stash ${ref}`, changes);
+    await vscode.commands.executeCommand("vscode.changes", stashLabel, changes);
     if (!preview) await vscode.commands.executeCommand("workbench.action.keepEditor");
 }
 
