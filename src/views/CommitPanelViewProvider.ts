@@ -794,6 +794,15 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
                     selectExportDestination: async () =>
                         (await vscode.window.showSaveDialog())?.fsPath,
+                    selectImportSources: async () =>
+                        (
+                            await vscode.window.showOpenDialog({
+                                canSelectFiles: true,
+                                canSelectFolders: false,
+                                canSelectMany: true,
+                                filters: { "Patch files": ["patch", "diff"] },
+                            })
+                        )?.map((uri) => uri.fsPath),
                 },
                 message,
                 (completion) => {

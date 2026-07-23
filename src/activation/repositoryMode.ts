@@ -117,6 +117,12 @@ export async function activateRepositoryMode(
     const shelfPathOverride = vscode.workspace
         .getConfiguration("intelligit")
         .get<string>("shelf.path");
+    const shelfConfiguration = vscode.workspace.getConfiguration("intelligit");
+    const recordBaseRevisions = shelfConfiguration.get<boolean>("shelf.recordBaseRevisions", true) !== false;
+    const configuredCleanupAfterDays = shelfConfiguration.get<number>("shelf.cleanupAfterDays", 0) ?? 0;
+    const cleanupAfterDays = Number.isFinite(configuredCleanupAfterDays)
+        ? Math.max(0, configuredCleanupAfterDays)
+        : 0;
     const shelfServices = new Map<string, ShelfService>();
     const globalStoragePath = context.globalStorageUri?.fsPath;
     if (globalStoragePath) {
@@ -134,6 +140,7 @@ export async function activateRepositoryMode(
                         executor: new GitExecutor(repository.root, mutationGate),
                         store: new ShelfStore(shelfPaths),
                         gate: mutationGate,
+                        recordBaseRevisions,
                     }),
                 );
             }),
@@ -142,7 +149,10 @@ export async function activateRepositoryMode(
     const shelfServiceForRepository = (repositoryRoot: string): ShelfService | undefined =>
         shelfServices.get(repositoryRoot);
     for (const [repositoryRoot, shelfService] of shelfServices) {
-        void shelfService.resumePendingRecovery().catch((error: unknown) => {
+        void (async () => {
+            await shelfService.resumePendingRecovery();
+            await shelfService.cleanUpExpiredGhosts(cleanupAfterDays);
+        })().catch((error: unknown) => {
             const message = getErrorMessage(error);
             console.error(`[IntelliGit] Shelf recovery failed for ${repositoryRoot}:`, error);
             void vscode.window.showErrorMessage(message);

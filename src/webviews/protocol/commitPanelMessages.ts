@@ -392,10 +392,9 @@ export type OutboundMessage =
           changeIds?: string[];
       }>
     | RepositoryScopedMessage<{
-          /** Imports bounded absolute patch files as a newly host-generated shelf. */
+          /** Opens host-owned patch selection and imports chosen files as a new shelf. */
           type: "shelfImportPatch";
           requestId: string;
-          fileUris: string[];
           idempotencyToken: string;
           expectedCatalogGeneration: number;
       }>

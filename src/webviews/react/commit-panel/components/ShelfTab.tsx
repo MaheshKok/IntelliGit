@@ -13,6 +13,7 @@ import { type ShelfContextAction } from "./ShelfRow";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
 import { ShelfFilePane } from "./ShelfFilePane";
+import { CleanUpDialog } from "./CleanUpDialog";
 
 /** Host message selecting one shelf and fetching its files. */
 export type ShelfSelectMessage = Extract<OutboundMessage, { type: "shelfSelect" }>;
@@ -36,6 +37,14 @@ export type ShelfCompareWithLocalMessage = Extract<
 >;
 /** CAS-protected request restoring a completed ghost shelf. */
 export type ShelfRestoreGhostMessage = Extract<OutboundMessage, { type: "shelfRestoreGhost" }>;
+/** Idempotent request importing host-picked patch files as a new shelf. */
+export type ShelfImportPatchMessage = Extract<OutboundMessage, { type: "shelfImportPatch" }>;
+/** CAS-protected whole-shelf flattened patch export request. */
+export type ShelfExportPatchMessage = Extract<OutboundMessage, { type: "shelfExportPatch" }> & {
+    changeIds: string[];
+};
+/** Catalog-CAS deletion request for selected already-unshelved ghosts. */
+export type ShelfCleanUpMessage = Extract<OutboundMessage, { type: "shelfCleanUp" }>;
 
 /** Typed result rendered after one shelf mutation completes. */
 export interface ShelfMutationOutcome {
@@ -52,6 +61,7 @@ export interface ShelfTabProps {
     shelves: ShelfEntry[];
     shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
+    catalogGeneration: number;
     outcome?: ShelfMutationOutcome;
     /** Error text returned by the host for the current rename; rendered unchanged. */
     groupByDir?: boolean;
@@ -63,6 +73,9 @@ export interface ShelfTabProps {
     onShowDiff: (message: ShelfDiffMessage) => void;
     onCompareWithLocal: (message: ShelfCompareWithLocalMessage) => void;
     onRestoreGhost: (message: ShelfRestoreGhostMessage) => void;
+    onImportPatch: (message: ShelfImportPatchMessage) => void;
+    onExportPatch: (message: ShelfExportPatchMessage) => void;
+    onCleanUp: (message: ShelfCleanUpMessage) => void;
 }
 
 interface ShelfContextMenuState {
@@ -116,6 +129,7 @@ export function ShelfTab({
     shelves,
     shelfFiles,
     selectedShelfId,
+    catalogGeneration,
     outcome,
     groupByDir = false,
     onSelect,
@@ -126,6 +140,9 @@ export function ShelfTab({
     onShowDiff,
     onCompareWithLocal,
     onRestoreGhost,
+    onImportPatch,
+    onExportPatch,
+    onCleanUp,
 }: ShelfTabProps): React.ReactElement {
     const tabRef = useRef<HTMLDivElement>(null);
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
@@ -140,6 +157,8 @@ export function ShelfTab({
         expectedGeneration: number;
     } | null>(null);
     const [deleteShelf, setDeleteShelf] = useState<ShelfEntry | null>(null);
+    const [isCleanUpOpen, setIsCleanUpOpen] = useState(false);
+    const [lastExportRequestId, setLastExportRequestId] = useState<string | null>(null);
     const [listHeight, setListHeight] = useState(220);
     const [listMaxHeight, setListMaxHeight] = useState(220);
     const listHeightRef = useRef(listHeight);
@@ -149,7 +168,8 @@ export function ShelfTab({
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, shelves],
     );
-    const shelfFilesAreCurrent = selectionOverride === null || selectionOverride === selectedShelfId;
+    const shelfFilesAreCurrent =
+        selectionOverride === null || selectionOverride === selectedShelfId;
     const canUnshelve =
         shelfFilesAreCurrent &&
         selectedShelf !== null &&
@@ -170,13 +190,18 @@ export function ShelfTab({
     }, [pendingRename, shelves]);
 
     const renameError =
-        pendingRename && outcome?.requestId === pendingRename.requestId ? outcome.message : undefined;
+        pendingRename && outcome?.requestId === pendingRename.requestId
+            ? outcome.message
+            : undefined;
 
     const constrainListHeight = useCallback((requestedHeight: number): void => {
         const containerHeight = tabRef.current?.clientHeight ?? 0;
         const maximum =
             containerHeight > 0
-                ? Math.max(MIN_SHELF_LIST_HEIGHT, containerHeight - SHELF_LOWER_PANE_RESERVED_HEIGHT)
+                ? Math.max(
+                      MIN_SHELF_LIST_HEIGHT,
+                      containerHeight - SHELF_LOWER_PANE_RESERVED_HEIGHT,
+                  )
                 : 220;
         const next = Math.max(MIN_SHELF_LIST_HEIGHT, Math.min(requestedHeight, maximum));
         listHeightRef.current = next;
@@ -225,6 +250,28 @@ export function ShelfTab({
         [onUnshelve, onUnshelveSilently],
     );
 
+    const importPatch = useCallback((): void => {
+        onImportPatch({
+            type: "shelfImportPatch",
+            requestId: nextRequestId(),
+            idempotencyToken: nextRequestId(),
+            expectedCatalogGeneration: catalogGeneration,
+        });
+    }, [catalogGeneration, onImportPatch]);
+
+    const exportPatch = useCallback((): void => {
+        if (!selectedShelf) return;
+        const requestId = nextRequestId();
+        setLastExportRequestId(requestId);
+        onExportPatch({
+            type: "shelfExportPatch",
+            requestId,
+            shelfId: selectedShelf.id,
+            expectedGeneration: selectedShelf.generation,
+            changeIds: shelfFiles.map((entry) => entry.changeId),
+        });
+    }, [onExportPatch, selectedShelf, shelfFiles]);
+
     const openContextMenu = useCallback(
         (shelf: ShelfEntry, x: number, y: number): void => {
             selectShelf(shelf.id);
@@ -235,10 +282,7 @@ export function ShelfTab({
 
     const handleContextAction = useCallback(
         (shelf: ShelfEntry, action: ShelfContextAction): void => {
-            if (
-                !shelfFilesAreCurrent &&
-                (action === "unshelve" || action === "unshelveSilently")
-            ) {
+            if (!shelfFilesAreCurrent && (action === "unshelve" || action === "unshelveSilently")) {
                 return;
             }
             if (action === "unshelve") {
@@ -262,7 +306,11 @@ export function ShelfTab({
                 return;
             }
             if (action === "showDiff") {
-                onShowDiff({ type: "shelfDiff", shelfId: shelf.id, expectedGeneration: shelf.generation });
+                onShowDiff({
+                    type: "shelfDiff",
+                    shelfId: shelf.id,
+                    expectedGeneration: shelf.generation,
+                });
                 return;
             }
             if (action === "compareWithLocal") {
@@ -301,7 +349,7 @@ export function ShelfTab({
         { label: "Delete", action: "delete" },
         { label: "", action: "shelf-divider", separator: true },
         { label: "Show Diff", action: "showDiff" },
-            { label: "Compare with Local", action: "compareWithLocal" },
+        { label: "Compare with Local", action: "compareWithLocal" },
     ];
 
     return (
@@ -327,7 +375,12 @@ export function ShelfTab({
                 onContextMenu={(shelf, x, y) => openContextMenu(shelf, x, y)}
                 onRenameSubmit={(shelf, name) => {
                     const requestId = nextRequestId();
-                    setPendingRename({ requestId, shelfId: shelf.id, name, expectedGeneration: shelf.generation });
+                    setPendingRename({
+                        requestId,
+                        shelfId: shelf.id,
+                        name,
+                        expectedGeneration: shelf.generation,
+                    });
                     onRename({
                         type: "shelfRename",
                         requestId,
@@ -360,20 +413,26 @@ export function ShelfTab({
                     event.preventDefault();
                     constrainListHeight(
                         listHeightRef.current +
-                            (event.key === "ArrowDown" ? SHELF_SPLITTER_STEP : -SHELF_SPLITTER_STEP),
+                            (event.key === "ArrowDown"
+                                ? SHELF_SPLITTER_STEP
+                                : -SHELF_SPLITTER_STEP),
                     );
                 }}
             />
             <ShelfToolbar
                 canUnshelve={canUnshelve}
                 hasSelectedShelf={selectedShelf !== null}
+                canExportPatch={selectedShelf !== null && shelfFilesAreCurrent}
                 showAlreadyUnshelved={showAlreadyUnshelved}
                 onUnshelve={() => selectedShelf && setUnshelveShelf(selectedShelf)}
                 onUnshelveSilently={() => {
                     if (!selectedShelf) return;
                     requestUnshelve(
                         selectedShelf,
-                        { changeIds: shelfFiles.map((entry) => entry.changeId), removeFromShelf: true },
+                        {
+                            changeIds: shelfFiles.map((entry) => entry.changeId),
+                            removeFromShelf: true,
+                        },
                         true,
                     );
                 }}
@@ -384,6 +443,9 @@ export function ShelfTab({
                 onRename={() => selectedShelf && setRenamingShelfId(selectedShelf.id)}
                 onDelete={() => selectedShelf && setDeleteShelf(selectedShelf)}
                 onToggleAlreadyUnshelved={() => setShowAlreadyUnshelved((value) => !value)}
+                onImportPatch={importPatch}
+                onExportPatch={exportPatch}
+                onCleanUp={() => setIsCleanUpOpen(true)}
             />
             <Box
                 role="region"
@@ -404,6 +466,13 @@ export function ShelfTab({
                                 {result.changeId}: {resultMessage(result)}
                             </Box>
                         ))}
+                        {outcome.requestId === lastExportRequestId &&
+                        outcome.status === "ok" &&
+                        !outcome.message ? (
+                            <Box mt="3px">
+                                Exported patch is flattened; staging metadata is not preserved.
+                            </Box>
+                        ) : null}
                     </>
                 ) : (
                     <Box color="var(--intelligit-pycharm-muted)">Select a shelf action.</Box>
@@ -479,6 +548,21 @@ export function ShelfTab({
                             expectedGeneration: deleteShelf.generation,
                         });
                         setDeleteShelf(null);
+                    }}
+                />
+            ) : null}
+            {isCleanUpOpen ? (
+                <CleanUpDialog
+                    shelves={shelves}
+                    onClose={() => setIsCleanUpOpen(false)}
+                    onSubmit={(shelfIds) => {
+                        onCleanUp({
+                            type: "shelfCleanUp",
+                            requestId: nextRequestId(),
+                            shelfIds,
+                            expectedCatalogGeneration: catalogGeneration,
+                        });
+                        setIsCleanUpOpen(false);
                     }}
                 />
             ) : null}

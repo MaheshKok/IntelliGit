@@ -131,6 +131,7 @@ export function CommitPanelPane({
                             shelves={cpState.shelves}
                             shelfFiles={cpState.shelfFiles}
                             selectedShelfId={cpState.selectedShelfId}
+                            catalogGeneration={cpState.catalogGeneration}
                             groupByDir={groupByDir}
                             outcome={cpState.shelfMutationOutcome ?? undefined}
                             onSelect={(message) => vscode.postMessage(message)}
@@ -141,6 +142,9 @@ export function CommitPanelPane({
                             onShowDiff={(message) => vscode.postMessage(message)}
                             onCompareWithLocal={(message) => vscode.postMessage(message)}
                             onRestoreGhost={(message) => vscode.postMessage(message)}
+                            onImportPatch={(message) => vscode.postMessage(message)}
+                            onExportPatch={(message) => vscode.postMessage(message)}
+                            onCleanUp={(message) => vscode.postMessage(message)}
                         />
                     }
                 />

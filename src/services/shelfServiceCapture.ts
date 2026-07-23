@@ -32,6 +32,7 @@ export interface ShelfCaptureDependencies {
     readonly repositoryRoot: string;
     readonly executor: GitExecutor;
     readonly store: ShelfStore;
+    readonly recordBaseRevisions: boolean;
     readonly materializeEntry: (
         relativePath: string,
         base: Buffer,
@@ -171,8 +172,9 @@ async function persistCaptureEntry(
         [capturedIndexBlock, capturedWorktreeBlock],
         dependencies.store,
         objectHashes,
+        dependencies.recordBaseRevisions,
     );
-    let entry = createEntry(relativePath, patches, indexBlock, worktreeBlock, base);
+    let entry = createEntry(relativePath, patches, indexBlock, worktreeBlock, base, baseCommit);
     entry = await captureRawFidelity(
         shelfId,
         entry,
@@ -197,8 +199,9 @@ async function persistBaseObjects(
     blocks: readonly [ShelfLayerBlock | undefined, ShelfLayerBlock | undefined],
     store: ShelfStore,
     objectHashes: Set<string>,
+    recordBaseRevisions: boolean,
 ): Promise<readonly [ShelfLayerBlock | undefined, ShelfLayerBlock | undefined]> {
-    if (!base || (!blocks[0] && !blocks[1])) return blocks;
+    if (!recordBaseRevisions || !base || (!blocks[0] && !blocks[1])) return blocks;
     const hash = (await store.putObject(shelfId, base.bytes)).hash;
     objectHashes.add(hash);
     return [
@@ -213,6 +216,7 @@ function createEntry(
     indexBlock: ShelfLayerBlock | undefined,
     worktreeBlock: ShelfLayerBlock | undefined,
     base: { readonly bytes: Buffer } | undefined,
+    baseCommit: string | undefined,
 ): ShelfFileEntry {
     return {
         changeId: `change-${createHash("sha256").update(relativePath).digest("hex").slice(0, 20)}`,
@@ -222,7 +226,12 @@ function createEntry(
             (patches.index !== undefined && classifyPatchHeader(patches.index).binary) ||
             (patches.worktree !== undefined && classifyPatchHeader(patches.worktree).binary),
         untracked: patches.untracked === true,
-        baseAvailability: base ? "full" : "none",
+        baseAvailability:
+            base && (indexBlock?.baseObjectHash || worktreeBlock?.baseObjectHash)
+                ? "full"
+                : baseCommit
+                  ? "history"
+                  : "none",
         exactReconstruction: true,
         lifecycle: "shelved",
     };

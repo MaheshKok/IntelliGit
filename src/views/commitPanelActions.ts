@@ -117,6 +117,8 @@ export interface ShelfActionDeps {
     fireWorkingTreeChanged: () => void;
     /** Resolves an export destination from a host-owned picker, never from webview input. */
     selectExportDestination?: () => Promise<string | undefined>;
+    /** Resolves import sources from a host-owned picker, never from webview input. */
+    selectImportSources?: () => Promise<readonly string[] | undefined>;
 }
 
 type ShelfMutationCompleted = Extract<InboundMessage, { type: "shelfMutationCompleted" }>;
@@ -140,10 +142,34 @@ export async function executeShelfMutationRequest(
             message.type === "shelfExportPatch"
                 ? await deps.selectExportDestination?.()
                 : undefined;
+        const importFileUris =
+            message.type === "shelfImportPatch" ? await deps.selectImportSources?.() : undefined;
         if (message.type === "shelfExportPatch" && exportFileUri === undefined) {
-            throw new Error("Shelf patch export requires a host-selected destination.");
+            completion = {
+                type: "shelfMutationCompleted",
+                requestId,
+                status: "ok",
+                entries: [],
+                message: "Patch export cancelled.",
+            };
+            return;
         }
-        const result = await shelfMutationFromMessage(deps.shelfService, message, exportFileUri);
+        if (message.type === "shelfImportPatch" && importFileUris === undefined) {
+            completion = {
+                type: "shelfMutationCompleted",
+                requestId,
+                status: "ok",
+                entries: [],
+                message: "Patch import cancelled.",
+            };
+            return;
+        }
+        const result = await shelfMutationFromMessage(
+            deps.shelfService,
+            message,
+            exportFileUri,
+            importFileUris,
+        );
         workingTreeChanged = changesWorkingTree(message.type) && result.status !== "error";
         completion = await shelfCompletion(requestId, result, deps.shelfService);
     } catch (error) {
@@ -164,6 +190,7 @@ export async function shelfMutationFromMessage(
     shelfService: ShelfService,
     message: Record<string, unknown>,
     hostExportFileUri?: string,
+    hostImportFileUris?: readonly string[],
 ): Promise<ShelfMutationResult> {
     switch (message.type) {
         case "shelveSave": {
@@ -221,7 +248,7 @@ export async function shelfMutationFromMessage(
         }
         case "shelfImportPatch":
             return shelfService.importPatch({
-                fileUris: assertAbsolutePaths(message.fileUris, "fileUris"),
+                fileUris: assertAbsolutePaths(hostImportFileUris, "host import sources"),
                 idempotencyToken: assertShelfToken(message.idempotencyToken, "idempotencyToken"),
                 expectedCatalogGeneration: assertShelfGeneration(
                     message.expectedCatalogGeneration,

@@ -245,17 +245,24 @@ export function RepositoryAccordion({
             shelves={repository.shelves}
             shelfFiles={repository.shelfFiles}
             selectedShelfId={repository.selectedShelfId}
+            catalogGeneration={repository.catalogGeneration}
             groupByDir={groupByDir}
             outcome={repository.shelfMutationOutcome ?? undefined}
-            onSelect={(message) => vscode.postMessage({ ...message, ...repositoryScope(repository.root) })}
+            onSelect={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
             onUnshelve={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
             onUnshelveSilently={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
-            onRename={(message) => vscode.postMessage({ ...message, ...repositoryScope(repository.root) })}
-            onDelete={(message) => vscode.postMessage({ ...message, ...repositoryScope(repository.root) })}
+            onRename={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onDelete={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
             onShowDiff={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
@@ -263,6 +270,15 @@ export function RepositoryAccordion({
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
             onRestoreGhost={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onImportPatch={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onExportPatch={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onCleanUp={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
         />

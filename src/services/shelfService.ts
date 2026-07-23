@@ -68,6 +68,8 @@ export interface ShelfServiceOptions {
     readonly gitOps?: GitOps;
     readonly reverter?: ShelfReverter;
     readonly recoveryMinimumRetentionMs?: number;
+    /** Retain immutable captured base blobs; disabled shelves resolve bases through pinned history. */
+    readonly recordBaseRevisions?: boolean;
 }
 /** Request for capturing selected repository changes. */
 export interface ShelveInput {
@@ -103,6 +105,7 @@ export class ShelfService {
     private readonly gitOps: GitOps;
     private readonly reverter: ShelfReverter;
     private readonly recoveryMinimumRetentionMs: number;
+    private readonly recordBaseRevisions: boolean;
     /** Initializes host-owned Git and recovery collaborators. */
     constructor(private readonly options: ShelfServiceOptions) {
         this.gitOps = options.gitOps ?? new GitOps(options.executor);
@@ -115,6 +118,7 @@ export class ShelfService {
                 store: options.store,
             });
         this.recoveryMinimumRetentionMs = options.recoveryMinimumRetentionMs ?? 24 * 60 * 60 * 1000;
+        this.recordBaseRevisions = options.recordBaseRevisions ?? true;
     }
     /** Captures selected layers durably; Save to Shelf deliberately skips the destructive reverter. */
     async shelve(input: ShelveInput): Promise<ShelfMutationResult> {
@@ -168,15 +172,29 @@ export class ShelfService {
                                 : entry,
                         );
                         const allApplied = files.every((entry) => entry.lifecycle === "applied");
+                        const journalId = `unshelve-${randomUUID().replaceAll("-", "")}`;
+                        await this.options.store.writeJournal({
+                            id: journalId,
+                            state: "unshelvePending",
+                            pathProgress: Object.fromEntries(
+                                [...successful].map((changeId) => [changeId, "applied"]),
+                            ),
+                            shelf: { id: input.id, generation: manifest.generation },
+                        });
                         const next = await this.options.store.writeShelfGeneration(input.id, {
                             schemaVersion: manifest.schemaVersion,
                             objectHashes: manifest.objectHashes,
                             metadata: {
                                 ...manifest.metadata,
                                 lifecycle: allApplied ? "applied" : "shelved",
+                                appliedAt: allApplied ? Date.now() : undefined,
                             },
                             files,
                         });
+                        await this.options.store.transitionJournal(
+                            journalId,
+                            allApplied ? "ghost" : "applied",
+                        );
                         nextGeneration = next.generation;
                     }
                     return {
@@ -298,20 +316,35 @@ export class ShelfService {
         readonly shelfIds: readonly string[];
         readonly expectedCatalogGeneration?: number;
     }): Promise<ShelfMutationResult> {
-        return this.withMutation(async () =>
-            this.options.store.withGenerationCas(
-                { expectedCatalogGeneration: selection.expectedCatalogGeneration },
-                async () => {
-                    for (const id of selection.shelfIds) {
-                        const manifest = await this.options.store.readCurrentShelfManifest(id);
-                        if (manifest.metadata.lifecycle !== "applied")
-                            throw new Error("Clean up only accepts already-unshelved ghosts.");
-                        await this.options.store.deleteShelf(id);
-                    }
-                    return { status: "ok", entries: [] };
-                },
-            ),
-        );
+        return this.withMutation(async () => this.cleanUpSelection(selection));
+    }
+    /** Deletes fully applied ghosts older than the configured age; zero preserves PyCharm's default. */
+    async cleanUpExpiredGhosts(days: number, now = Date.now()): Promise<ShelfMutationResult> {
+        if (!Number.isFinite(days) || days <= 0) return { status: "ok", entries: [] };
+        const cutoff = now - days * 24 * 60 * 60 * 1000;
+        return this.withMutation(async () => {
+            const listed = await this.options.store.listShelves();
+            const shelfIds = (
+                await Promise.all(
+                    listed.shelfIds.map(async (id) => ({
+                        id,
+                        manifest: await this.options.store.readCurrentShelfManifest(id),
+                    })),
+                )
+            )
+                .filter(
+                    ({ manifest }) =>
+                        manifest.metadata.lifecycle === "applied" &&
+                        manifest.metadata.appliedAt !== undefined &&
+                        manifest.metadata.appliedAt < cutoff,
+                )
+                .map(({ id }) => id);
+            if (shelfIds.length === 0) return { status: "ok", entries: [] };
+            return this.cleanUpSelection({
+                shelfIds,
+                expectedCatalogGeneration: listed.catalogGeneration,
+            });
+        });
     }
     /** Applies one explicitly chosen structural resolution after fingerprint validation. */
     async resolveStructural(input: StructuralResolutionInput): Promise<ShelfMutationResult> {
@@ -346,6 +379,8 @@ export class ShelfService {
     }
     /** Lists usable shelves with the lock-authoritative catalog generation. */
     async listShelves(): Promise<ShelfListResult> {
+        const initial = await this.options.store.listShelves();
+        await Promise.all(initial.shelfIds.map((id) => this.refreshHistoryBaseAvailability(id)));
         const listed = await this.options.store.listShelves();
         return {
             ...listed,
@@ -359,7 +394,7 @@ export class ShelfService {
     }
     /** Returns the immutable current entries for one shelf. */
     async getShelfFiles(id: string): Promise<readonly ShelfFileEntry[]> {
-        return (await this.options.store.readCurrentShelfManifest(id)).files;
+        return (await this.refreshHistoryBaseAvailability(id)).files;
     }
     /** Returns only immutable stored artifacts, never a fake current-file base. */
     async getShelfFileContents(
@@ -395,7 +430,7 @@ export class ShelfService {
         id: string,
         changeId: string,
     ): Promise<{ readonly path: string; readonly binary: boolean; readonly base?: Buffer; readonly shelved: Buffer }> {
-        const manifest = await this.options.store.readCurrentShelfManifest(id);
+        const manifest = await this.refreshHistoryBaseAvailability(id);
         const entry = manifest.files.find((file) => file.changeId === changeId);
         if (!entry) throw new Error("Shelf entry does not exist.");
         const block = entry.worktreeBlock ?? entry.indexBlock;
@@ -459,6 +494,7 @@ export class ShelfService {
             repositoryRoot: this.options.repositoryRoot,
             executor: this.options.executor,
             store: this.options.store,
+            recordBaseRevisions: this.recordBaseRevisions,
             materializeEntry: (relativePath, base, indexPatch, worktreePatch) =>
                 this.materializeEntry(relativePath, base, indexPatch, worktreePatch),
         });
@@ -476,6 +512,24 @@ export class ShelfService {
             shelfId: captured.shelfId,
             newGeneration: captured.generation,
         };
+    }
+    /** Shared catalog-CAS deletion path for explicit and activation-time ghost cleanup. */
+    private async cleanUpSelection(selection: {
+        readonly shelfIds: readonly string[];
+        readonly expectedCatalogGeneration?: number;
+    }): Promise<ShelfMutationResult> {
+        return this.options.store.withGenerationCas(
+            { expectedCatalogGeneration: selection.expectedCatalogGeneration },
+            async () => {
+                for (const id of selection.shelfIds) {
+                    const manifest = await this.options.store.readCurrentShelfManifest(id);
+                    if (manifest.metadata.lifecycle !== "applied")
+                        throw new Error("Clean up only accepts already-unshelved ghosts.");
+                    await this.options.store.deleteShelf(id);
+                }
+                return { status: "ok", entries: [] };
+            },
+        );
     }
     private async applyEntry(
         shelfId: string,
@@ -697,6 +751,41 @@ export class ShelfService {
             { expectedExitCodes: [0, 128] },
         );
         return result.exitCode === 0 ? result.stdout : undefined;
+    }
+    /** Persists unavailable history bases as `none` so snapshots never promise a missing base. */
+    private async refreshHistoryBaseAvailability(id: string) {
+        return this.withMutation(async () =>
+            this.options.store.withLock(async () => {
+                const manifest = await this.options.store.readCurrentShelfManifest(id);
+                if (!manifest.metadata.baseCommit) return manifest;
+                const unavailable = new Set<string>();
+                for (const entry of manifest.files) {
+                    if (entry.baseAvailability !== "history") continue;
+                    const block = entry.worktreeBlock ?? entry.indexBlock;
+                    if (!block) {
+                        unavailable.add(entry.changeId);
+                        continue;
+                    }
+                    const relativePath = validateShelfManifestPath(block.renamedFrom ?? block.path);
+                    const result = await this.options.executor.runBinary(
+                        ["show", `${manifest.metadata.baseCommit}:${relativePath}`],
+                        { expectedExitCodes: [0, 128] },
+                    );
+                    if (result.exitCode !== 0) unavailable.add(entry.changeId);
+                }
+                if (unavailable.size === 0) return manifest;
+                return this.options.store.writeShelfGeneration(id, {
+                    schemaVersion: manifest.schemaVersion,
+                    objectHashes: manifest.objectHashes,
+                    metadata: manifest.metadata,
+                    files: manifest.files.map((entry) =>
+                        unavailable.has(entry.changeId)
+                            ? { ...entry, baseAvailability: "none" as const }
+                            : entry,
+                    ),
+                });
+            }),
+        );
     }
     private async applyPatchUnder(
         directory: string,

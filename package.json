@@ -768,6 +768,19 @@
                     "default": true,
                     "markdownDescription": "%configuration.tooltips.enabled.markdownDescription%"
                 },
+                "intelligit.shelf.recordBaseRevisions": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "description": "Store base revisions in shelves for conflict resolution."
+                },
+                "intelligit.shelf.cleanupAfterDays": {
+                    "type": "number",
+                    "default": 0,
+                    "minimum": 0,
+                    "scope": "window",
+                    "description": "Automatically remove already-unshelved shelves older than this many days. Zero never removes them automatically."
+                },
                 "intelligit.undockableWindow": {
                     "type": "boolean",
                     "default": false,

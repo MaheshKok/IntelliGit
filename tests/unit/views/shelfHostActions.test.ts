@@ -112,29 +112,68 @@ describe("executeShelfMutationRequest", () => {
         );
     });
 
-    it("rejects a webview export path until the host supplies a picker destination", async () => {
+    it("completes a cancelled host export picker without calling the service", async () => {
         const postCompleted = vi.fn();
         const exportPatch = vi.fn();
-        await expect(
-            executeShelfMutationRequest(
-                {
-                    shelfService: { exportPatch },
-                    refreshData: vi.fn(async () => undefined),
-                    fireWorkingTreeChanged: vi.fn(),
-                } as never,
-                {
-                    type: "shelfExportPatch",
-                    requestId: "request-export",
-                    shelfId: "shelf-1",
-                    expectedGeneration: 1,
-                    fileUri: "/untrusted/webview-target.patch",
-                },
-                postCompleted,
-            ),
-        ).rejects.toThrow("host-selected destination");
+        await executeShelfMutationRequest(
+            {
+                shelfService: { exportPatch },
+                refreshData: vi.fn(async () => undefined),
+                fireWorkingTreeChanged: vi.fn(),
+                selectExportDestination: vi.fn(async () => undefined),
+            } as never,
+            {
+                type: "shelfExportPatch",
+                requestId: "request-export",
+                shelfId: "shelf-1",
+                expectedGeneration: 1,
+            },
+            postCompleted,
+        );
         expect(exportPatch).not.toHaveBeenCalled();
         expect(postCompleted).toHaveBeenCalledWith(
-            expect.objectContaining({ requestId: "request-export", status: "error" }),
+            expect.objectContaining({ requestId: "request-export", status: "ok", entries: [] }),
+        );
+    });
+
+    it("imports only host-picked patch paths and treats picker cancellation as a successful no-op", async () => {
+        const importPatch = vi.fn(async () => ({ status: "ok" as const, entries: [], shelfId: "imported" }));
+        const postCompleted = vi.fn();
+        const message = {
+            type: "shelfImportPatch",
+            requestId: "request-import",
+            idempotencyToken: "import-token",
+            expectedCatalogGeneration: 4,
+        };
+        await executeShelfMutationRequest(
+            {
+                shelfService: { importPatch, listShelves: vi.fn(async () => ({ shelfIds: [], corruptShelfIds: [], shelves: [], catalogGeneration: 5 })) },
+                refreshData: vi.fn(async () => undefined),
+                fireWorkingTreeChanged: vi.fn(),
+                selectImportSources: vi.fn(async () => ["/host/first.patch", "/host/second.diff"]),
+            } as never,
+            message,
+            postCompleted,
+        );
+        expect(importPatch).toHaveBeenCalledWith({
+            fileUris: ["/host/first.patch", "/host/second.diff"],
+            idempotencyToken: "import-token",
+            expectedCatalogGeneration: 4,
+        });
+
+        await executeShelfMutationRequest(
+            {
+                shelfService: { importPatch },
+                refreshData: vi.fn(async () => undefined),
+                fireWorkingTreeChanged: vi.fn(),
+                selectImportSources: vi.fn(async () => undefined),
+            } as never,
+            message,
+            postCompleted,
+        );
+        expect(importPatch).toHaveBeenCalledOnce();
+        expect(postCompleted).toHaveBeenLastCalledWith(
+            expect.objectContaining({ requestId: "request-import", status: "ok", entries: [] }),
         );
     });
 

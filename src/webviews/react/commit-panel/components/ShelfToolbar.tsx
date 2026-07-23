@@ -6,6 +6,7 @@ import { getSettings } from "../../shared/settings";
 export interface ShelfToolbarProps {
     canUnshelve: boolean;
     hasSelectedShelf: boolean;
+    canExportPatch: boolean;
     showAlreadyUnshelved: boolean;
     onUnshelve: () => void;
     onUnshelveSilently: () => void;
@@ -13,6 +14,9 @@ export interface ShelfToolbarProps {
     onCompareWithLocal: () => void;
     onRename: () => void;
     onDelete: () => void;
+    onImportPatch: () => void;
+    onExportPatch: () => void;
+    onCleanUp: () => void;
     onToggleAlreadyUnshelved: () => void;
 }
 
@@ -20,6 +24,7 @@ export interface ShelfToolbarProps {
 export function ShelfToolbar({
     canUnshelve,
     hasSelectedShelf,
+    canExportPatch,
     showAlreadyUnshelved,
     onUnshelve,
     onUnshelveSilently,
@@ -27,6 +32,9 @@ export function ShelfToolbar({
     onCompareWithLocal,
     onRename,
     onDelete,
+    onImportPatch,
+    onExportPatch,
+    onCleanUp,
     onToggleAlreadyUnshelved,
 }: ShelfToolbarProps): React.ReactElement {
     const { hoverDelay, tooltipsEnabled } = getSettings();
@@ -40,15 +48,68 @@ export function ShelfToolbar({
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >
-            <ShelfToolbarButton label="Unshelve" onClick={onUnshelve} disabled={!canUnshelve} hoverDelay={hoverDelay} tooltipsEnabled={tooltipsEnabled} />
-            <ShelfToolbarButton label="Unshelve Silently" onClick={onUnshelveSilently} disabled={!canUnshelve} hoverDelay={hoverDelay} tooltipsEnabled={tooltipsEnabled} />
-            <ShelfToolbarButton label="Show Diff" onClick={onShowDiff} disabled={!hasSelectedShelf} hoverDelay={hoverDelay} tooltipsEnabled={tooltipsEnabled} />
-            <ShelfToolbarButton label="Compare with Local" onClick={onCompareWithLocal} disabled={!hasSelectedShelf} hoverDelay={hoverDelay} tooltipsEnabled={tooltipsEnabled} />
-            <ShelfToolbarButton label="Rename" onClick={onRename} disabled={!hasSelectedShelf} hoverDelay={hoverDelay} tooltipsEnabled={tooltipsEnabled} />
-            <ShelfToolbarButton label="Delete" onClick={onDelete} disabled={!hasSelectedShelf} hoverDelay={hoverDelay} tooltipsEnabled={tooltipsEnabled} />
+            <ShelfToolbarButton
+                label="Import Patches…"
+                onClick={onImportPatch}
+                disabled={false}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Create Patch…"
+                onClick={onExportPatch}
+                disabled={!canExportPatch}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Unshelve"
+                onClick={onUnshelve}
+                disabled={!canUnshelve}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Unshelve Silently"
+                onClick={onUnshelveSilently}
+                disabled={!canUnshelve}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Show Diff"
+                onClick={onShowDiff}
+                disabled={!hasSelectedShelf}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Compare with Local"
+                onClick={onCompareWithLocal}
+                disabled={!hasSelectedShelf}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Rename"
+                onClick={onRename}
+                disabled={!hasSelectedShelf}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
+            <ShelfToolbarButton
+                label="Delete"
+                onClick={onDelete}
+                disabled={!hasSelectedShelf}
+                hoverDelay={hoverDelay}
+                tooltipsEnabled={tooltipsEnabled}
+            />
             <Box flex={1} />
             <Button variant="toolbarGhost" size="xs" onClick={onToggleAlreadyUnshelved}>
                 {showAlreadyUnshelved ? "Hide Already Unshelved" : "Show Already Unshelved"}
+            </Button>
+            <Button variant="toolbarGhost" size="xs" onClick={onCleanUp}>
+                Clean Up Shelf…
             </Button>
         </Flex>
     );

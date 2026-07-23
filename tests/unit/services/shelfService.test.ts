@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -35,7 +36,7 @@ async function git(repositoryRoot: string, args: string[]): Promise<void> {
     });
 }
 
-async function makeService(): Promise<{
+async function makeService(options: { readonly recordBaseRevisions?: boolean } = {}): Promise<{
     readonly root: string;
     readonly service: ShelfService;
     readonly store: ShelfStore;
@@ -62,7 +63,13 @@ async function makeService(): Promise<{
         root,
         store,
         executor,
-        service: new ShelfService({ repositoryRoot: root, executor, store, gate }),
+        service: new ShelfService({
+            repositoryRoot: root,
+            executor,
+            store,
+            gate,
+            recordBaseRevisions: options.recordBaseRevisions,
+        }),
     };
 }
 
@@ -423,6 +430,130 @@ describe("ShelfService", () => {
         await expect(readFile(path.join(root, "tracked.txt"), "utf8")).resolves.toContain(
             "shelved",
         );
+    });
+
+    it("stores no base object when base revision recording is disabled and resolves conflicts from history", async () => {
+        const { root, service, store } = await makeService({ recordBaseRevisions: false });
+        await writeFile(path.join(root, "tracked.txt"), "shelved\n");
+        const shelf = await service.shelve({
+            name: "history only",
+            paths: ["tracked.txt"],
+            silent: true,
+            keepLocal: false,
+        });
+        const [entry] = await service.getShelfFiles(shelf.shelfId!);
+        const baseHash = createHash("sha256").update("base\n").digest("hex");
+
+        expect(entry?.baseAvailability).toBe("history");
+        expect(entry?.worktreeBlock?.baseObjectHash).toBeUndefined();
+        await expect(store.readObject(shelf.shelfId!, baseHash)).rejects.toThrow();
+
+        await writeFile(path.join(root, "tracked.txt"), "local\n");
+        await expect(
+            service.unshelve({ id: shelf.shelfId!, removeFromShelf: false, mode: "flattened" }),
+        ).resolves.toMatchObject({ status: "conflicts", entries: [{ kind: "conflicted" }] });
+    });
+
+    it("downgrades a missing history base in the persisted shelf listing instead of throwing", async () => {
+        const { service, store } = await makeService();
+        const patch = await store.putObject(
+            "missing-history",
+            Buffer.from("diff --git a/tracked.txt b/tracked.txt\n--- a/tracked.txt\n+++ b/tracked.txt\n@@ -1 +1 @@\n-base\n+shelved\n"),
+        );
+        await store.writeShelfGeneration("missing-history", {
+            schemaVersion: 1,
+            objectHashes: [patch.hash],
+            metadata: { name: "missing", baseCommit: "0".repeat(40), lifecycle: "shelved" },
+            files: [{
+                changeId: "missing-history",
+                worktreeBlock: { path: "tracked.txt", status: "M", patchObjectHash: patch.hash },
+                binary: false,
+                untracked: false,
+                baseAvailability: "history",
+                exactReconstruction: true,
+                lifecycle: "shelved",
+            }],
+        });
+
+        await expect(service.listShelves()).resolves.toMatchObject({ shelves: [{ id: "missing-history" }] });
+        await expect(service.getShelfFiles("missing-history")).resolves.toMatchObject([
+            { baseAvailability: "none" },
+        ]);
+    });
+
+    it("journals partial and completed remove-from-shelf lifecycle transitions", async () => {
+        const partial = await makeService();
+        await writeFile(path.join(partial.root, "tracked.txt"), "shelved\n");
+        await writeFile(path.join(partial.root, "second.txt"), "base\n");
+        await git(partial.root, ["add", "second.txt"]);
+        await git(partial.root, ["commit", "-m", "second base"]);
+        await writeFile(path.join(partial.root, "second.txt"), "shelved\n");
+        const partialShelf = await partial.service.shelve({
+            name: "partial",
+            paths: ["tracked.txt", "second.txt"],
+            silent: true,
+            keepLocal: false,
+        });
+        const [partialEntry] = await partial.service.getShelfFiles(partialShelf.shelfId!);
+        await partial.service.unshelve({ id: partialShelf.shelfId!, changeIds: [partialEntry.changeId], removeFromShelf: true, mode: "flattened" });
+        await expect(partial.store.readJournals()).resolves.toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                state: "applied",
+                shelf: expect.objectContaining({ id: partialShelf.shelfId! }),
+            }),
+        ]));
+        await expect(partial.service.listShelves()).resolves.toMatchObject({
+            shelves: [{ id: partialShelf.shelfId!, metadata: { lifecycle: "shelved" } }],
+        });
+
+        const complete = await makeService();
+        await writeFile(path.join(complete.root, "tracked.txt"), "shelved\n");
+        const completeShelf = await complete.service.shelve({ name: "complete", paths: ["tracked.txt"], silent: true, keepLocal: false });
+        await complete.service.unshelve({ id: completeShelf.shelfId!, removeFromShelf: true, mode: "flattened" });
+        await expect(complete.store.readJournals()).resolves.toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                state: "ghost",
+                shelf: expect.objectContaining({ id: completeShelf.shelfId! }),
+            }),
+        ]));
+        await expect(complete.service.listShelves()).resolves.toMatchObject({
+            shelves: [{ id: completeShelf.shelfId!, metadata: { lifecycle: "applied", appliedAt: expect.any(Number) } }],
+        });
+    });
+
+    it("keeps ghosts when automatic cleanup is zero and deletes only ghosts older than its strict day boundary", async () => {
+        const { root, service, store } = await makeService();
+        const now = 2_000_000_000_000;
+        const createGhost = async (name: string): Promise<string> => {
+            await writeFile(path.join(root, "tracked.txt"), `${name}\n`);
+            const shelf = await service.shelve({ name, paths: ["tracked.txt"], silent: true, keepLocal: false });
+            await service.unshelve({ id: shelf.shelfId!, removeFromShelf: true, mode: "flattened" });
+            return shelf.shelfId!;
+        };
+        const oldId = await createGhost("old");
+        await git(root, ["checkout", "--", "tracked.txt"]);
+        const boundaryId = await createGhost("boundary");
+        const setAppliedAt = async (id: string, appliedAt: number): Promise<void> => {
+            const manifest = await store.readCurrentShelfManifest(id);
+            await store.writeShelfGeneration(id, {
+                schemaVersion: manifest.schemaVersion,
+                objectHashes: manifest.objectHashes,
+                metadata: { ...manifest.metadata, appliedAt },
+                files: manifest.files,
+            });
+        };
+        await setAppliedAt(oldId, now - 3 * 24 * 60 * 60 * 1000);
+        await setAppliedAt(boundaryId, now - 2 * 24 * 60 * 60 * 1000);
+
+        await service.cleanUpExpiredGhosts(0, now);
+        await expect(service.listShelves()).resolves.toMatchObject({
+            shelves: expect.arrayContaining([
+                expect.objectContaining({ id: oldId }),
+                expect.objectContaining({ id: boundaryId }),
+            ]),
+        });
+        await service.cleanUpExpiredGhosts(2, now);
+        await expect(service.listShelves()).resolves.toMatchObject({ shelves: [{ id: boundaryId }] });
     });
 
     it("uses raw before/after artifacts without git apply and replays durable idempotency safely", async () => {
