@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
+import { t } from "../../shared/i18n";
 
 /** Context-menu actions supported by an individual shelf row. */
 export type ShelfContextAction =
@@ -93,14 +94,15 @@ export function ShelfRow({
             {isRenaming ? (
                 <Box flex={1} minW={0}>
                     <input
-                        aria-label="Rename shelf"
+                        aria-label={t("shelf.rename.label")}
                         autoFocus
                         defaultValue={shelf.metadata.name}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => {
                             event.stopPropagation();
                             if (event.key === "Escape") onRenameCancel();
-                            if (event.key === "Enter") onRenameSubmit(shelf, event.currentTarget.value);
+                            if (event.key === "Enter")
+                                onRenameSubmit(shelf, event.currentTarget.value);
                         }}
                         style={{
                             width: "100%",
@@ -113,13 +115,24 @@ export function ShelfRow({
                         }}
                     />
                     {renameError ? (
-                        <Box role="alert" mt="2px" fontSize="12px" color="var(--vscode-errorForeground)">
+                        <Box
+                            role="alert"
+                            mt="2px"
+                            fontSize="12px"
+                            color="var(--vscode-errorForeground)"
+                        >
                             {renameError}
                         </Box>
                     ) : null}
                 </Box>
             ) : (
-                <Box flex={1} minW={0} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
+                <Box
+                    flex={1}
+                    minW={0}
+                    overflow="hidden"
+                    textOverflow="ellipsis"
+                    whiteSpace="nowrap"
+                >
                     {shelf.metadata.name}
                 </Box>
             )}
@@ -128,7 +141,7 @@ export function ShelfRow({
             </Box>
             {isGhost ? (
                 <Button
-                    aria-label="Restore"
+                    aria-label={t("shelf.action.restore")}
                     variant="toolbarGhost"
                     size="xs"
                     onClick={(event) => {
@@ -136,7 +149,7 @@ export function ShelfRow({
                         onRestore(shelf);
                     }}
                 >
-                    Restore
+                    {t("shelf.action.restore")}
                 </Button>
             ) : null}
         </Flex>

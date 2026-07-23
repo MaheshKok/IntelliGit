@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Box, Button, Checkbox, Flex, Input } from "@chakra-ui/react";
 import type { WorkingFile } from "../../../../types";
+import { t } from "../../shared/i18n";
+import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
 
 /** User-supplied shelf metadata and selected working-tree paths. */
 export interface ShelveDialogSubmit {
@@ -13,6 +15,7 @@ export interface ShelveDialogProps {
     files: WorkingFile[];
     defaultName: string;
     selectedPaths: readonly string[];
+    returnFocusTarget?: HTMLElement | null;
     onClose: () => void;
     onSubmit: (input: ShelveDialogSubmit) => void;
 }
@@ -22,12 +25,18 @@ export function ShelveDialog({
     files,
     defaultName,
     selectedPaths,
+    returnFocusTarget,
     onClose,
     onSubmit,
 }: ShelveDialogProps): React.ReactElement {
+    const nameRef = useRef<HTMLInputElement>(null);
+    useShelfDialogFocus(returnFocusTarget, nameRef);
     const [name, setName] = useState(defaultName);
     const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedPaths));
-    const paths = useMemo(() => files.filter((file) => selected.has(file.path)).map((file) => file.path), [files, selected]);
+    const paths = useMemo(
+        () => files.filter((file) => selected.has(file.path)).map((file) => file.path),
+        [files, selected],
+    );
 
     const toggle = (path: string): void => {
         setSelected((current) => {
@@ -36,6 +45,10 @@ export function ShelveDialog({
             else next.add(path);
             return next;
         });
+    };
+    const close = (): void => {
+        onClose();
+        restoreShelfDialogFocus(returnFocusTarget);
     };
 
     return (
@@ -48,7 +61,10 @@ export function ShelveDialog({
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"
             onMouseDown={(event) => {
-                if (event.currentTarget === event.target) onClose();
+                if (event.currentTarget === event.target) close();
+            }}
+            onKeyDown={(event) => {
+                if (event.key === "Escape") close();
             }}
         >
             <Flex
@@ -65,10 +81,12 @@ export function ShelveDialog({
                 color="var(--intelligit-pycharm-foreground)"
             >
                 <Box as="h2" id="shelve-title" fontSize="14px" fontWeight={600}>
-                    Shelve Changes
+                    {t("shelf.dialog.shelve.title")}
                 </Box>
                 <Input
-                    aria-label="Shelf name"
+                    aria-label={t("shelf.dialog.shelve.name")}
+                    autoFocus
+                    ref={nameRef}
                     size="sm"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
@@ -86,8 +104,8 @@ export function ShelveDialog({
                     ))}
                 </Flex>
                 <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
+                    <Button variant="secondary" size="sm" onClick={close}>
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant="primary"
@@ -95,7 +113,7 @@ export function ShelveDialog({
                         isDisabled={paths.length === 0}
                         onClick={() => onSubmit({ name, paths })}
                     >
-                        Shelve Changes
+                        {t("shelf.action.shelveChanges")}
                     </Button>
                 </Flex>
             </Flex>

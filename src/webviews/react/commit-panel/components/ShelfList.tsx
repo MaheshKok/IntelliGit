@@ -2,6 +2,7 @@ import React from "react";
 import { Box } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { ShelfRow } from "./ShelfRow";
+import { t } from "../../shared/i18n";
 
 /** State and callbacks for the keyboard-navigable shelf row list. */
 export interface ShelfListProps {
@@ -61,9 +62,7 @@ export function ShelfList({
                       ? visibleShelves[Math.min(visibleShelves.length - 1, index + 1)]
                       : undefined;
         if (!next) return;
-        target.ownerDocument
-            .querySelector<HTMLElement>(`[data-shelf-id="${next.id}"]`)
-            ?.focus();
+        target.ownerDocument.querySelector<HTMLElement>(`[data-shelf-id="${next.id}"]`)?.focus();
         onSelect(next.id);
     };
 
@@ -90,7 +89,7 @@ export function ShelfList({
         <Box
             data-testid="shelf-list"
             role="listbox"
-            aria-label="Shelves"
+            aria-label={t("shelf.list.label")}
             style={{ height: `${height}px`, maxHeight }}
             minH="100px"
             flexShrink={0}
@@ -99,16 +98,27 @@ export function ShelfList({
             bg="var(--intelligit-pycharm-panel)"
         >
             {visibleShelves.length === 0 ? (
-                <Box p="12px" textAlign="center" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    No shelves.
+                <Box
+                    p="12px"
+                    textAlign="center"
+                    fontSize="12px"
+                    color="var(--intelligit-pycharm-muted)"
+                >
+                    {t("shelf.list.empty")}
                 </Box>
             ) : (
                 <>
                     {activeShelves.length > 0 ? rows(activeShelves, false) : null}
                     {ghosts.length > 0 ? (
                         <>
-                            <Box px="12px" pt="8px" pb="3px" fontSize="11px" color="var(--intelligit-pycharm-muted)">
-                                Already Unshelved
+                            <Box
+                                px="12px"
+                                pt="8px"
+                                pb="3px"
+                                fontSize="11px"
+                                color="var(--intelligit-pycharm-muted)"
+                            >
+                                {t("shelf.list.alreadyUnshelved")}
                             </Box>
                             {rows(ghosts, true)}
                         </>

@@ -516,38 +516,38 @@
             },
             {
                 "command": "intelligit.shelveChanges",
-                "title": "Shelve Changes…",
-                "category": "IntelliGit"
+                "title": "%command.shelf.shelveChanges%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.shelveSilently",
-                "title": "Shelve Silently",
-                "category": "IntelliGit"
+                "title": "%command.shelf.shelveSilently%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.saveToShelf",
-                "title": "Save to Shelf…",
-                "category": "IntelliGit"
+                "title": "%command.shelf.saveToShelf%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.unshelve",
-                "title": "Unshelve…",
-                "category": "IntelliGit"
+                "title": "%command.shelf.unshelve%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.importPatch",
-                "title": "Import Patches…",
-                "category": "IntelliGit"
+                "title": "%command.shelf.importPatch%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.cleanUpShelf",
-                "title": "Clean Up Shelf…",
-                "category": "IntelliGit"
+                "title": "%command.shelf.cleanUp%",
+                "category": "%intelligit%"
             },
             {
                 "command": "intelligit.purgeShelfRecovery",
-                "title": "Purge Shelf Recovery…",
-                "category": "IntelliGit"
+                "title": "%command.shelf.purgeRecovery%",
+                "category": "%intelligit%"
             }
         ],
         "submenus": [
@@ -807,33 +807,33 @@
                     "type": "boolean",
                     "default": true,
                     "scope": "window",
-                    "description": "Store base revisions in shelves for conflict resolution."
+                    "description": "%configuration.shelf.recordBaseRevisions.description%"
                 },
                 "intelligit.shelf.path": {
                     "type": "string",
                     "default": "",
                     "scope": "machine",
-                    "description": "Custom shelf storage directory. The repository-specific subdirectory is always appended."
+                    "description": "%configuration.shelf.path.description%"
                 },
                 "intelligit.shelf.removeOnUnshelve": {
                     "type": "boolean",
                     "default": true,
                     "scope": "window",
-                    "description": "Remove successfully applied files from the shelf when unshelving."
+                    "description": "%configuration.shelf.removeOnUnshelve.description%"
                 },
                 "intelligit.shelf.recoveryRetentionHours": {
                     "type": "number",
                     "default": 24,
                     "minimum": 1,
                     "scope": "window",
-                    "description": "Retain recovery snapshots for at least this many hours. Destructive operations are refused when recovery capacity is exhausted within this window."
+                    "description": "%configuration.shelf.recoveryRetentionHours.description%"
                 },
                 "intelligit.shelf.cleanupAfterDays": {
                     "type": "number",
                     "default": 0,
                     "minimum": 0,
                     "scope": "window",
-                    "description": "Automatically remove already-unshelved shelves older than this many days. Zero never removes them automatically."
+                    "description": "%configuration.shelf.cleanupAfterDays.description%"
                 },
                 "intelligit.undockableWindow": {
                     "type": "boolean",

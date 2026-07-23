@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Box, Button, Flex, Input } from "@chakra-ui/react";
 import type { ShelfEntry, ShelfHealthWarning } from "../../../protocol/commitPanelMessages";
+import { t } from "../../shared/i18n";
+import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
 
 /** Compact warning banner plus a details dialog for observable shelf health. */
 export function ShelfHealthWarningBanner({
@@ -9,9 +11,14 @@ export function ShelfHealthWarningBanner({
     warnings: ShelfHealthWarning[];
 }): React.ReactElement | null {
     const [open, setOpen] = useState(false);
+    const detailsRef = useRef<HTMLButtonElement>(null);
+    const closeRef = useRef<HTMLButtonElement>(null);
+    useShelfDialogFocus(open ? detailsRef.current : null, closeRef);
     if (!warnings.length) return null;
     const summary =
-        warnings.length === 1 ? "Shelf has 1 warning." : `Shelf has ${warnings.length} warnings.`;
+        warnings.length === 1
+            ? t("shelf.health.oneWarning")
+            : t("shelf.health.manyWarnings", { count: warnings.length });
     return (
         <>
             <Flex
@@ -25,8 +32,14 @@ export function ShelfHealthWarningBanner({
                 color="var(--vscode-inputValidation-warningForeground)"
             >
                 {summary}
-                <Button ml="auto" size="xs" variant="secondary" onClick={() => setOpen(true)}>
-                    Details
+                <Button
+                    ref={detailsRef}
+                    ml="auto"
+                    size="xs"
+                    variant="secondary"
+                    onClick={() => setOpen(true)}
+                >
+                    {t("shelf.health.details")}
                 </Button>
             </Flex>
             {open ? (
@@ -38,6 +51,12 @@ export function ShelfHealthWarningBanner({
                     align="center"
                     justify="center"
                     bg="rgba(0, 0, 0, 0.45)"
+                    onMouseDown={(event) => {
+                        if (event.currentTarget === event.target) setOpen(false);
+                    }}
+                    onKeyDown={(event) => {
+                        if (event.key === "Escape") setOpen(false);
+                    }}
                 >
                     <Flex
                         role="dialog"
@@ -52,7 +71,7 @@ export function ShelfHealthWarningBanner({
                         bg="var(--intelligit-pycharm-panel)"
                     >
                         <Box as="h2" id="shelf-health-title" fontSize="14px" fontWeight={600}>
-                            Shelf warnings
+                            {t("shelf.health.title")}
                         </Box>
                         {warnings.map((warning) => (
                             <Box key={`${warning.kind}-${warning.detail}`} fontSize="12px">
@@ -60,8 +79,13 @@ export function ShelfHealthWarningBanner({
                             </Box>
                         ))}
                         <Flex justify="flex-end">
-                            <Button variant="secondary" size="sm" onClick={() => setOpen(false)}>
-                                Close
+                            <Button
+                                ref={closeRef}
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => setOpen(false)}
+                            >
+                                {t("shelf.health.close")}
                             </Button>
                         </Flex>
                     </Flex>
@@ -76,12 +100,20 @@ export function RenameStructuralDialog({
     path,
     onClose,
     onConfirm,
+    returnFocusTarget,
 }: {
     path: string;
     onClose: () => void;
     onConfirm: (targetPath: string) => void;
+    returnFocusTarget?: HTMLElement | null;
 }): React.ReactElement {
     const [targetPath, setTargetPath] = useState(path);
+    const inputRef = useRef<HTMLInputElement>(null);
+    useShelfDialogFocus(returnFocusTarget, inputRef);
+    const close = (): void => {
+        onClose();
+        restoreShelfDialogFocus(returnFocusTarget);
+    };
     return (
         <Flex
             role="presentation"
@@ -91,6 +123,12 @@ export function RenameStructuralDialog({
             align="center"
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"
+            onMouseDown={(event) => {
+                if (event.currentTarget === event.target) close();
+            }}
+            onKeyDown={(event) => {
+                if (event.key === "Escape") close();
+            }}
         >
             <Flex
                 role="dialog"
@@ -105,17 +143,19 @@ export function RenameStructuralDialog({
                 bg="var(--intelligit-pycharm-panel)"
             >
                 <Box as="h2" id="rename-local-title" fontSize="14px" fontWeight={600}>
-                    Rename local file
+                    {t("shelf.dialog.renameLocal.title")}
                 </Box>
                 <Input
-                    aria-label="Rename local path"
+                    aria-label={t("shelf.dialog.renameLocal.input")}
+                    autoFocus
+                    ref={inputRef}
                     size="sm"
                     value={targetPath}
                     onChange={(event) => setTargetPath(event.target.value)}
                 />
                 <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
+                    <Button variant="secondary" size="sm" onClick={close}>
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant="primary"
@@ -123,7 +163,7 @@ export function RenameStructuralDialog({
                         isDisabled={!targetPath.trim()}
                         onClick={() => onConfirm(targetPath.trim())}
                     >
-                        Rename Local
+                        {t("shelf.action.renameLocal")}
                     </Button>
                 </Flex>
             </Flex>
@@ -136,11 +176,19 @@ export function ShelfDeleteConfirmation({
     shelf,
     onClose,
     onConfirm,
+    returnFocusTarget,
 }: {
     shelf: ShelfEntry;
     onClose: () => void;
     onConfirm: () => void;
+    returnFocusTarget?: HTMLElement | null;
 }): React.ReactElement {
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    useShelfDialogFocus(returnFocusTarget, cancelRef);
+    const close = (): void => {
+        onClose();
+        restoreShelfDialogFocus(returnFocusTarget);
+    };
     return (
         <Flex
             role="presentation"
@@ -150,6 +198,12 @@ export function ShelfDeleteConfirmation({
             align="center"
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"
+            onMouseDown={(event) => {
+                if (event.currentTarget === event.target) close();
+            }}
+            onKeyDown={(event) => {
+                if (event.key === "Escape") close();
+            }}
         >
             <Flex
                 role="alertdialog"
@@ -164,15 +218,15 @@ export function ShelfDeleteConfirmation({
                 bg="var(--intelligit-pycharm-panel)"
             >
                 <Box as="h2" id="delete-shelf-title" fontSize="14px" fontWeight={600}>
-                    Delete shelf?
+                    {t("shelf.dialog.delete.title")}
                 </Box>
                 <Box fontSize="12px">{shelf.metadata.name}</Box>
                 <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
+                    <Button ref={cancelRef} variant="secondary" size="sm" onClick={close}>
+                        {t("common.cancel")}
                     </Button>
                     <Button variant="danger" size="sm" onClick={onConfirm}>
-                        Delete Shelf
+                        {t("shelf.action.deleteShelf")}
                     </Button>
                 </Flex>
             </Flex>

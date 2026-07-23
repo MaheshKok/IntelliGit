@@ -157,7 +157,14 @@ export async function activateRepositoryMode(
             const message = getErrorMessage(error);
             logShelfWarning(`startup recovery for ${repositoryRoot}`, error);
             console.error(`[IntelliGit] Shelf recovery failed for ${repositoryRoot}:`, error);
-            void vscode.window.showErrorMessage(message);
+            const localizedMessage = vscode.l10n.t("Shelf recovery failed: {message}", {
+                message,
+            });
+            void vscode.window.showErrorMessage(
+                localizedMessage === "Shelf recovery failed: {message}"
+                    ? message
+                    : localizedMessage,
+            );
         });
     }
     const executor = new GitExecutor(repoRoot, mutationGate);

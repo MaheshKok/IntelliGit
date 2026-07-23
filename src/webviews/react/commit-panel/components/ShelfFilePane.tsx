@@ -6,6 +6,7 @@ import { buildFileTree, countFiles, type TreeEntry } from "../../shared/fileTree
 import { FileRow } from "./FileRow";
 import { FolderRow } from "./FolderRow";
 import { SectionHeader } from "./SectionHeader";
+import { t } from "../../shared/i18n";
 
 interface ShelfFilePaneProps {
     entries: ShelfFileEntry[];
@@ -30,7 +31,12 @@ function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
 }
 
 /** Read-only file rows for the selected shelf; activation always opens its base-to-shelved diff. */
-export function ShelfFilePane({ entries, groupByDir, onFileActivate, onDragStart }: ShelfFilePaneProps): React.ReactElement {
+export function ShelfFilePane({
+    entries,
+    groupByDir,
+    onFileActivate,
+    onDragStart,
+}: ShelfFilePaneProps): React.ReactElement {
     const [isOpen, setIsOpen] = useState(true);
     const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
     const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
@@ -97,7 +103,7 @@ export function ShelfFilePane({ entries, groupByDir, onFileActivate, onDragStart
         <Box
             data-testid="shelf-file-pane"
             role="region"
-            aria-label="Shelf files"
+            aria-label={t("shelf.filePane.label")}
             flex={1}
             minH="80px"
             overflowY="auto"
@@ -105,7 +111,7 @@ export function ShelfFilePane({ entries, groupByDir, onFileActivate, onDragStart
             bg="var(--intelligit-pycharm-panel)"
         >
             <SectionHeader
-                label="Shelf files"
+                label={t("shelf.filePane.label")}
                 count={files.length}
                 stats={{ additions: 0, deletions: 0 }}
                 isOpen={isOpen}
@@ -115,10 +121,14 @@ export function ShelfFilePane({ entries, groupByDir, onFileActivate, onDragStart
                 onToggleCheck={() => undefined}
                 checkboxVisibility="none"
             />
-            {isOpen ? (groupByDir ? renderTree(tree) : files.map((file) => renderFile(file, 0))) : null}
+            {isOpen
+                ? groupByDir
+                    ? renderTree(tree)
+                    : files.map((file) => renderFile(file, 0))
+                : null}
             {entries.length === 0 ? (
                 <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    No shelf files.
+                    {t("shelf.filePane.empty")}
                 </Box>
             ) : null}
         </Box>

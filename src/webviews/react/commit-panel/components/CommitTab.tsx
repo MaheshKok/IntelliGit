@@ -16,6 +16,7 @@ import type {
 } from "../../../../types";
 import { AmendContextSection } from "./AmendContextSection";
 import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
+import { t } from "../../shared/i18n";
 import { ShelveDialog, type ShelveDialogSubmit } from "./ShelveDialog";
 
 const MIN_REFRESH_FEEDBACK_MS = 700;
@@ -57,7 +58,11 @@ interface Props {
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
     catalogGeneration: number;
-    onShelfFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile, checkedPaths: ReadonlySet<string>) => void;
+    onShelfFileDragStart?: (
+        event: React.DragEvent<HTMLElement>,
+        file: WorkingFile,
+        checkedPaths: ReadonlySet<string>,
+    ) => void;
 }
 
 /**
@@ -112,19 +117,27 @@ export function CommitTab({
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
     const [isRefreshFeedbackActive, setIsRefreshFeedbackActive] = useState(false);
-    const [shelfMenuPosition, setShelfMenuPosition] = useState<{ x: number; y: number } | null>(null);
+    const [shelfMenuPosition, setShelfMenuPosition] = useState<{ x: number; y: number } | null>(
+        null,
+    );
     const [isShelveDialogOpen, setIsShelveDialogOpen] = useState(false);
     const [defaultShelfName, setDefaultShelfName] = useState("");
+    const shelfDialogFocusRef = useRef<HTMLElement | null>(null);
     const refreshFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const hasMergeConflicts = files.some((file) => file.status === "U");
     const shelvePaths = useMemo(() => {
         const selected = Array.from(checkedPaths);
         return selected.length > 0 ? selected : files.map((file) => file.path);
     }, [checkedPaths, files]);
-    const openShelfMenuAt = useCallback((x: number, y: number) => {
-        setDefaultShelfName(commitMessage || `Uncommitted changes [${new Date().toLocaleString()}]`);
-        setShelfMenuPosition({ x, y });
-    }, [commitMessage]);
+    const openShelfMenuAt = useCallback(
+        (x: number, y: number) => {
+            setDefaultShelfName(
+                commitMessage || t("shelf.defaultName", { date: new Date().toLocaleString() }),
+            );
+            setShelfMenuPosition({ x, y });
+        },
+        [commitMessage],
+    );
 
     const clearRefreshFeedbackTimer = useCallback(() => {
         if (refreshFeedbackTimerRef.current) {
@@ -194,15 +207,31 @@ export function CommitTab({
         [catalogGeneration, repositoryRoot, vscode],
     );
 
-    const handleOpenShelfMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        openShelfMenuAt(rect.left, rect.bottom + 4);
-    }, [openShelfMenuAt]);
+    const handleOpenShelfMenu = useCallback(
+        (event: React.MouseEvent<HTMLElement>) => {
+            shelfDialogFocusRef.current = event.currentTarget;
+            const rect = event.currentTarget.getBoundingClientRect();
+            openShelfMenuAt(rect.left, rect.bottom + 4);
+        },
+        [openShelfMenuAt],
+    );
     const shelfMenuItems = useMemo<MenuItem[]>(
         () => [
-            { label: "Shelve Changes…", action: "openDialog", disabled: shelvePaths.length === 0 },
-            { label: "Shelve Silently", action: "silent", disabled: shelvePaths.length === 0 },
-            { label: "Save to Shelf", action: "keepLocal", disabled: shelvePaths.length === 0 },
+            {
+                label: t("shelf.action.shelveChangesMenu"),
+                action: "openDialog",
+                disabled: shelvePaths.length === 0,
+            },
+            {
+                label: t("shelf.action.shelveSilently"),
+                action: "silent",
+                disabled: shelvePaths.length === 0,
+            },
+            {
+                label: t("shelf.action.save"),
+                action: "keepLocal",
+                disabled: shelvePaths.length === 0,
+            },
         ],
         [shelvePaths.length],
     );
@@ -210,8 +239,10 @@ export function CommitTab({
         (action: string) => {
             setShelfMenuPosition(null);
             if (action === "openDialog") setIsShelveDialogOpen(true);
-            if (action === "silent") handleShelve({ name: defaultShelfName, paths: shelvePaths }, true, false);
-            if (action === "keepLocal") handleShelve({ name: defaultShelfName, paths: shelvePaths }, false, true);
+            if (action === "silent")
+                handleShelve({ name: defaultShelfName, paths: shelvePaths }, true, false);
+            if (action === "keepLocal")
+                handleShelve({ name: defaultShelfName, paths: shelvePaths }, false, true);
         },
         [defaultShelfName, handleShelve, shelvePaths],
     );
@@ -261,7 +292,11 @@ export function CommitTab({
             flex={1}
             overflow="hidden"
             onContextMenu={(event) => {
-                if (event.target instanceof Element && event.target.closest("[data-vscode-context]")) return;
+                if (
+                    event.target instanceof Element &&
+                    event.target.closest("[data-vscode-context]")
+                )
+                    return;
                 event.preventDefault();
                 openShelfMenuAt(event.clientX, event.clientY);
             }}
@@ -371,6 +406,7 @@ export function CommitTab({
                     files={files}
                     defaultName={defaultShelfName}
                     selectedPaths={shelvePaths}
+                    returnFocusTarget={shelfDialogFocusRef.current}
                     onClose={() => setIsShelveDialogOpen(false)}
                     onSubmit={(input) => {
                         handleShelve(input, false, false);

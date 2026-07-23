@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Box, Button, Checkbox, Flex } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
+import { t } from "../../shared/i18n";
+import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
 
 /** Whole-entry selection and remove-on-success choice for flattened unshelve. */
 export interface UnshelveDialogSubmit {
@@ -13,6 +15,7 @@ export interface UnshelveDialogProps {
     entries: ShelfFileEntry[];
     /** Activation-time default for removal after a successful apply. */
     defaultRemoveFromShelf?: boolean;
+    returnFocusTarget?: HTMLElement | null;
     onClose: () => void;
     onSubmit: (input: UnshelveDialogSubmit) => void;
 }
@@ -25,9 +28,12 @@ function entryLabel(entry: ShelfFileEntry): string {
 export function UnshelveDialog({
     entries,
     defaultRemoveFromShelf = true,
+    returnFocusTarget,
     onClose,
     onSubmit,
 }: UnshelveDialogProps): React.ReactElement {
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    useShelfDialogFocus(returnFocusTarget, cancelRef);
     const [selected, setSelected] = useState<Set<string>>(
         () => new Set(entries.map((entry) => entry.changeId)),
     );
@@ -45,6 +51,10 @@ export function UnshelveDialog({
             return next;
         });
     };
+    const close = (): void => {
+        onClose();
+        restoreShelfDialogFocus(returnFocusTarget);
+    };
 
     return (
         <Flex
@@ -56,7 +66,10 @@ export function UnshelveDialog({
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"
             onMouseDown={(event) => {
-                if (event.currentTarget === event.target) onClose();
+                if (event.currentTarget === event.target) close();
+            }}
+            onKeyDown={(event) => {
+                if (event.key === "Escape") close();
             }}
         >
             <Flex
@@ -73,10 +86,10 @@ export function UnshelveDialog({
                 color="var(--intelligit-pycharm-foreground)"
             >
                 <Box as="h2" id="unshelve-title" fontSize="14px" fontWeight={600}>
-                    Unshelve
+                    {t("shelf.dialog.unshelve.title")}
                 </Box>
                 <Box fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    Flattened mode
+                    {t("shelf.dialog.unshelve.flattenedMode")}
                 </Box>
                 <Flex direction="column" gap="4px">
                     {entries.map((entry) => (
@@ -91,15 +104,15 @@ export function UnshelveDialog({
                     ))}
                 </Flex>
                 <Checkbox
-                    aria-label="Remove successfully applied"
+                    aria-label={t("shelf.dialog.unshelve.removeApplied")}
                     isChecked={removeFromShelf}
                     onChange={(event) => setRemoveFromShelf(event.target.checked)}
                 >
-                    Remove successfully applied
+                    {t("shelf.dialog.unshelve.removeApplied")}
                 </Checkbox>
                 <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
+                    <Button ref={cancelRef} variant="secondary" size="sm" onClick={close}>
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant="primary"
@@ -107,7 +120,7 @@ export function UnshelveDialog({
                         isDisabled={selectedIds.length === 0}
                         onClick={() => onSubmit({ changeIds: selectedIds, removeFromShelf })}
                     >
-                        Unshelve
+                        {t("shelf.action.unshelve")}
                     </Button>
                 </Flex>
             </Flex>

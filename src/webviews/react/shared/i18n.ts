@@ -1,5 +1,8 @@
+import enCatalog from "../../i18n/en.json";
+
 type CatalogValue = string | Record<string, string>;
 type Catalog = Record<string, CatalogValue>;
+const defaultCatalog: Catalog = enCatalog;
 
 interface IntelligitI18nPayload {
     locale: string;
@@ -21,7 +24,7 @@ const pluralRulesByLocale = new Map<string, Intl.PluralRules>();
  */
 export function t(key: string, args: InterpolationArgs = {}): string {
     const payload = getPayload();
-    const value = payload?.catalog[key] ?? payload?.fallbackCatalog[key];
+    const value = payload?.catalog[key] ?? payload?.fallbackCatalog[key] ?? defaultCatalog[key];
     if (typeof value === "string") return interpolate(value, args);
     if (value && typeof value === "object") {
         const count = typeof args.count === "number" ? args.count : undefined;

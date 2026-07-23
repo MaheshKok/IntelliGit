@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Box, Button, Checkbox, Flex, Input } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
+import { t } from "../../shared/i18n";
+import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
 
 interface CleanUpDialogProps {
     shelves: ShelfEntry[];
     now?: number;
     onClose: () => void;
     onSubmit: (shelfIds: string[]) => void;
+    returnFocusTarget?: HTMLElement | null;
 }
 
 type AppliedShelf = ShelfEntry & { appliedAt: number };
@@ -26,7 +29,10 @@ export function CleanUpDialog({
     now = Date.now(),
     onClose,
     onSubmit,
+    returnFocusTarget,
 }: CleanUpDialogProps): React.ReactElement {
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    useShelfDialogFocus(returnFocusTarget, cancelRef);
     const candidates = useMemo(() => appliedShelves(shelves), [shelves]);
     const [selected, setSelected] = useState<Set<string>>(
         () => new Set(candidates.map((shelf) => shelf.id)),
@@ -45,6 +51,10 @@ export function CleanUpDialog({
             ),
         );
     };
+    const close = (): void => {
+        onClose();
+        restoreShelfDialogFocus(returnFocusTarget);
+    };
 
     return (
         <Flex
@@ -56,7 +66,10 @@ export function CleanUpDialog({
             justify="center"
             bg="rgba(0, 0, 0, 0.45)"
             onMouseDown={(event) => {
-                if (event.currentTarget === event.target) onClose();
+                if (event.currentTarget === event.target) close();
+            }}
+            onKeyDown={(event) => {
+                if (event.key === "Escape") close();
             }}
         >
             <Flex
@@ -73,14 +86,14 @@ export function CleanUpDialog({
                 color="var(--intelligit-pycharm-foreground)"
             >
                 <Box as="h2" id="cleanup-shelf-title" fontSize="14px" fontWeight={600}>
-                    Clean Up Shelf
+                    {t("shelf.dialog.cleanup.title")}
                 </Box>
                 <Box fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    This permanently deletes selected shelves. Recovery snapshots are kept separately.
+                    {t("shelf.dialog.cleanup.description")}
                 </Box>
                 {candidates.length === 0 ? (
                     <Box color="var(--intelligit-pycharm-muted)" fontSize="12px">
-                        No already unshelved shelves to clean up.
+                        {t("shelf.dialog.cleanup.empty")}
                     </Box>
                 ) : (
                     <>
@@ -92,17 +105,17 @@ export function CleanUpDialog({
                                     setSelected(new Set(candidates.map((shelf) => shelf.id)))
                                 }
                             >
-                                All ghosts
+                                {t("shelf.dialog.cleanup.allGhosts")}
                             </Button>
                             <Input
-                                aria-label="Older than days"
+                                aria-label={t("shelf.dialog.cleanup.olderThanDays")}
                                 type="number"
                                 min={0}
                                 value={days}
                                 onChange={(event) => setDays(event.target.value)}
                             />
                             <Button variant="secondary" size="sm" onClick={selectOlderThan}>
-                                Select older than
+                                {t("shelf.dialog.cleanup.selectOlderThan")}
                             </Button>
                         </Flex>
                         <Flex direction="column" gap="4px">
@@ -127,8 +140,8 @@ export function CleanUpDialog({
                     </>
                 )}
                 <Flex justify="flex-end" gap="8px">
-                    <Button variant="secondary" size="sm" onClick={onClose}>
-                        Cancel
+                    <Button ref={cancelRef} variant="secondary" size="sm" onClick={close}>
+                        {t("common.cancel")}
                     </Button>
                     <Button
                         variant="primary"
@@ -136,7 +149,7 @@ export function CleanUpDialog({
                         isDisabled={selectedIds.length === 0}
                         onClick={() => onSubmit(selectedIds)}
                     >
-                        Clean Up Shelf
+                        {t("shelf.dialog.cleanup.title")}
                     </Button>
                 </Flex>
             </Flex>

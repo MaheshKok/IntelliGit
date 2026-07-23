@@ -8,7 +8,9 @@ import type {
     ShelfMutationStatus,
 } from "../../../protocol/commitPanelMessages";
 import { ContextMenu } from "../../shared/components/ContextMenu";
+import { t } from "../../shared/i18n";
 import { ShelfList } from "./ShelfList";
+import { resultMessage, statusMessage } from "./ShelfMessages";
 import { type ShelfContextAction } from "./ShelfRow";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
@@ -108,48 +110,16 @@ interface ShelfContextMenuState {
     shelf: ShelfEntry;
     x: number;
     y: number;
+    returnFocusTarget: HTMLElement;
 }
-
 const MIN_SHELF_LIST_HEIGHT = 100;
 const SHELF_LOWER_PANE_RESERVED_HEIGHT = 166;
 const SHELF_SPLITTER_STEP = 10;
 let shelfRequestSequence = 0;
-
 function nextRequestId(): string {
     shelfRequestSequence += 1;
     return `shelf-mutation-${shelfRequestSequence}`;
 }
-
-function statusMessage(status: ShelfMutationStatus): string {
-    return {
-        ok: "Shelf mutation completed.",
-        partial: "Shelf mutation partially completed.",
-        conflicts: "Shelf mutation completed with conflicts.",
-        staleShelf: "Shelf changed before this mutation.",
-        staleCatalog: "Shelf catalog changed before this mutation.",
-        busy: "Shelf mutation is busy.",
-        recoveryFull: "Shelf recovery storage is full.",
-        error: "Shelf mutation failed.",
-    }[status];
-}
-
-function resultMessage(result: PerEntryResult): string {
-    switch (result.kind) {
-        case "applied":
-            return "applied";
-        case "conflicted":
-            return "conflicted";
-        case "retained":
-            return `retained: ${result.reason}`;
-        case "flattenedResidue":
-            return "flattenedResidue";
-        case "refused":
-            return `refused: ${result.reason}`;
-        case "structuralPending":
-            return `structuralPending: ${result.reason}`;
-    }
-}
-
 function shelfRowDragStart(
     onShelfEntryDragStart: ShelfTabProps["onShelfEntryDragStart"],
     selectedShelf: ShelfEntry | null,
@@ -170,7 +140,6 @@ function shelfRowDragStart(
         });
     };
 }
-
 function shelfFileDragStart(
     onShelfEntryDragStart: ShelfTabProps["onShelfEntryDragStart"],
     selectedShelf: ShelfEntry | null,
@@ -190,14 +159,12 @@ function shelfFileDragStart(
         });
     };
 }
-
 function areShelfFilesCurrent(
     selectionOverride: string | null,
     selectedShelfId: string | null,
 ): boolean {
     return selectionOverride === null || selectionOverride === selectedShelfId;
 }
-
 function canUnshelveShelf(
     shelfFilesAreCurrent: boolean,
     selectedShelf: ShelfEntry | null,
@@ -210,7 +177,6 @@ function canUnshelveShelf(
         shelfFiles.length > 0
     );
 }
-
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
 // eslint-disable-next-line complexity -- existing shelf action surface is intentionally kept in one host-routed component.
 export function ShelfTab({
@@ -241,6 +207,7 @@ export function ShelfTab({
     onShelfEntryDragStart,
 }: ShelfTabProps): React.ReactElement {
     const tabRef = useRef<HTMLDivElement>(null);
+    const dialogFocusTargetRef = useRef<HTMLElement | null>(null);
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
     const [showAlreadyUnshelved, setShowAlreadyUnshelved] = useState(false);
     const [contextMenu, setContextMenu] = useState<ShelfContextMenuState | null>(null);
@@ -265,7 +232,6 @@ export function ShelfTab({
     const [listHeight, setListHeight] = useState(220);
     const [listMaxHeight, setListMaxHeight] = useState(220);
     const listHeightRef = useRef(listHeight);
-
     const displayedSelectedShelfId = selectionOverride ?? selectedShelfId;
     const selectedShelf = useMemo(
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
@@ -280,7 +246,6 @@ export function ShelfTab({
                 : null,
         [outcome?.shelfId, shelves],
     );
-
     useEffect(() => {
         if (!pendingRename) return;
         const shelf = shelves.find((item) => item.id === pendingRename.shelfId);
@@ -293,7 +258,6 @@ export function ShelfTab({
             setPendingRename(null);
         }
     }, [pendingRename, shelves]);
-
     useEffect(() => {
         if (structuralPendingRequestId && outcome?.requestId === structuralPendingRequestId) {
             setStructuralPendingRequestId(null);
@@ -408,9 +372,10 @@ export function ShelfTab({
     );
 
     const openContextMenu = useCallback(
-        (shelf: ShelfEntry, x: number, y: number): void => {
+        (shelf: ShelfEntry, x: number, y: number, returnFocusTarget: HTMLElement): void => {
             selectShelf(shelf.id);
-            setContextMenu({ shelf, x, y });
+            dialogFocusTargetRef.current = returnFocusTarget;
+            setContextMenu({ shelf, x, y, returnFocusTarget });
         },
         [selectShelf],
     );
@@ -485,17 +450,21 @@ export function ShelfTab({
     const handleShelfFileDragStart = shelfFileDragStart(onShelfEntryDragStart, selectedShelf);
 
     const activeContextItems = [
-        { label: "Unshelve…", action: "unshelve", disabled: !shelfFilesAreCurrent },
         {
-            label: "Unshelve Silently",
+            label: t("shelf.action.unshelveMenu"),
+            action: "unshelve",
+            disabled: !shelfFilesAreCurrent,
+        },
+        {
+            label: t("shelf.action.unshelveSilently"),
             action: "unshelveSilently",
             disabled: !shelfFilesAreCurrent,
         },
-        { label: "Rename", action: "rename" },
-        { label: "Delete", action: "delete" },
+        { label: t("shelf.action.rename"), action: "rename" },
+        { label: t("shelf.action.delete"), action: "delete" },
         { label: "", action: "shelf-divider", separator: true },
-        { label: "Show Diff", action: "showDiff" },
-        { label: "Compare with Local", action: "compareWithLocal" },
+        { label: t("common.showDiff"), action: "showDiff" },
+        { label: t("shelf.action.compareWithLocal"), action: "compareWithLocal" },
     ];
 
     return (
@@ -521,7 +490,7 @@ export function ShelfTab({
                 renamingShelfId={renamingShelfId}
                 renameError={renameError}
                 onSelect={selectShelf}
-                onContextMenu={(shelf, x, y) => openContextMenu(shelf, x, y)}
+                onContextMenu={(shelf, x, y, target) => openContextMenu(shelf, x, y, target)}
                 onRenameSubmit={(shelf, name) => {
                     const requestId = nextRequestId();
                     setPendingRename({
@@ -553,7 +522,7 @@ export function ShelfTab({
             <Box
                 data-testid="shelf-splitter"
                 role="separator"
-                aria-label="Resize shelf list"
+                aria-label={t("a11y.resizeShelfList")}
                 aria-orientation="horizontal"
                 aria-valuemin={MIN_SHELF_LIST_HEIGHT}
                 aria-valuemax={listMaxHeight}
@@ -579,7 +548,10 @@ export function ShelfTab({
                 hasSelectedShelf={selectedShelf !== null}
                 canExportPatch={selectedShelf !== null && shelfFilesAreCurrent}
                 showAlreadyUnshelved={showAlreadyUnshelved}
-                onUnshelve={() => selectedShelf && setUnshelveShelf(selectedShelf)}
+                onUnshelve={() => {
+                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
+                    if (selectedShelf) setUnshelveShelf(selectedShelf);
+                }}
                 onUnshelveSilently={() => {
                     if (!selectedShelf) return;
                     requestUnshelve(
@@ -596,15 +568,22 @@ export function ShelfTab({
                     selectedShelf && handleContextAction(selectedShelf, "compareWithLocal")
                 }
                 onRename={() => selectedShelf && setRenamingShelfId(selectedShelf.id)}
-                onDelete={() => selectedShelf && setDeleteShelf(selectedShelf)}
+                onDelete={() => {
+                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
+                    if (selectedShelf) setDeleteShelf(selectedShelf);
+                }}
                 onToggleAlreadyUnshelved={() => setShowAlreadyUnshelved((value) => !value)}
                 onImportPatch={importPatch}
                 onExportPatch={exportPatch}
-                onCleanUp={() => setIsCleanUpOpen(true)}
+                onCleanUp={() => {
+                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
+                    setIsCleanUpOpen(true);
+                }}
             />
             <Box
                 role="region"
-                aria-label="Shelf mutation outcome"
+                aria-label={t("a11y.shelfMutationOutcome")}
+                aria-live="polite"
                 flex={1}
                 minH="80px"
                 overflowY="auto"
@@ -633,7 +612,7 @@ export function ShelfTab({
                                             })
                                         }
                                     >
-                                        Merge…
+                                        {t("shelf.action.merge")}
                                     </Button>
                                 ) : null}
                                 {result.kind === "structuralPending" && outcomeShelf ? (
@@ -644,7 +623,7 @@ export function ShelfTab({
                                             isDisabled={structuralPendingRequestId !== null}
                                             onClick={() => resolveStructural(result, "keepLocal")}
                                         >
-                                            Keep Local
+                                            {t("shelf.action.keepLocal")}
                                         </Button>
                                         <Button
                                             size="xs"
@@ -652,7 +631,7 @@ export function ShelfTab({
                                             isDisabled={structuralPendingRequestId !== null}
                                             onClick={() => resolveStructural(result, "useShelved")}
                                         >
-                                            Use Shelved
+                                            {t("shelf.action.useShelved")}
                                         </Button>
                                         <Button
                                             size="xs"
@@ -660,15 +639,19 @@ export function ShelfTab({
                                             isDisabled={structuralPendingRequestId !== null}
                                             onClick={() => resolveStructural(result, "deleteLocal")}
                                         >
-                                            Delete Local
+                                            {t("shelf.action.deleteLocal")}
                                         </Button>
                                         <Button
                                             size="xs"
                                             variant="secondary"
                                             isDisabled={structuralPendingRequestId !== null}
-                                            onClick={() => setRenameStructuralResult(result)}
+                                            onClick={() => {
+                                                dialogFocusTargetRef.current =
+                                                    document.activeElement as HTMLElement;
+                                                setRenameStructuralResult(result);
+                                            }}
                                         >
-                                            Rename Local…
+                                            {t("shelf.action.renameLocalMenu")}
                                         </Button>
                                     </Flex>
                                 ) : null}
@@ -677,13 +660,13 @@ export function ShelfTab({
                         {outcome.requestId === lastExportRequestId &&
                         outcome.status === "ok" &&
                         !outcome.message ? (
-                            <Box mt="3px">
-                                Exported patch is flattened; staging metadata is not preserved.
-                            </Box>
+                            <Box mt="3px">{t("shelf.status.exportFlattened")}</Box>
                         ) : null}
                     </>
                 ) : (
-                    <Box color="var(--intelligit-pycharm-muted)">Select a shelf action.</Box>
+                    <Box color="var(--intelligit-pycharm-muted)">
+                        {t("shelf.status.selectAction")}
+                    </Box>
                 )}
             </Box>
             {shelfFilesAreCurrent ? (
@@ -711,7 +694,7 @@ export function ShelfTab({
                     fontSize="12px"
                     color="var(--intelligit-pycharm-muted)"
                 >
-                    Loading shelf files…
+                    {t("shelf.filePane.loading")}
                 </Box>
             )}
             {contextMenu ? (
@@ -726,10 +709,13 @@ export function ShelfTab({
                     items={
                         contextMenu.shelf.metadata.lifecycle === "applied"
                             ? [
-                                  { label: "Restore", action: "restore" },
-                                  { label: "Show Diff", action: "showDiff" },
-                                  { label: "Compare with Local", action: "compareWithLocal" },
-                                  { label: "Delete", action: "delete" },
+                                  { label: t("shelf.action.restore"), action: "restore" },
+                                  { label: t("common.showDiff"), action: "showDiff" },
+                                  {
+                                      label: t("shelf.action.compareWithLocal"),
+                                      action: "compareWithLocal",
+                                  },
+                                  { label: t("shelf.action.delete"), action: "delete" },
                               ]
                             : activeContextItems
                     }
@@ -739,6 +725,7 @@ export function ShelfTab({
                 <UnshelveDialog
                     entries={shelfFiles}
                     defaultRemoveFromShelf={shelfRemoveOnUnshelve}
+                    returnFocusTarget={dialogFocusTargetRef.current}
                     onClose={() => setUnshelveShelf(null)}
                     onSubmit={(input) => {
                         requestUnshelve(unshelveShelf, input);
@@ -749,6 +736,7 @@ export function ShelfTab({
             {deleteShelf ? (
                 <ShelfDeleteConfirmation
                     shelf={deleteShelf}
+                    returnFocusTarget={dialogFocusTargetRef.current}
                     onClose={() => setDeleteShelf(null)}
                     onConfirm={() => {
                         onDelete({
@@ -764,6 +752,7 @@ export function ShelfTab({
             {isCleanUpOpen ? (
                 <CleanUpDialog
                     shelves={shelves}
+                    returnFocusTarget={dialogFocusTargetRef.current}
                     onClose={() => setIsCleanUpOpen(false)}
                     onSubmit={(shelfIds) => {
                         onCleanUp({
@@ -779,6 +768,7 @@ export function ShelfTab({
             {renameStructuralResult ? (
                 <RenameStructuralDialog
                     path={renameStructuralResult.path}
+                    returnFocusTarget={dialogFocusTargetRef.current}
                     onClose={() => setRenameStructuralResult(null)}
                     onConfirm={(targetPath) => {
                         resolveStructural(renameStructuralResult, "renameLocal", targetPath);

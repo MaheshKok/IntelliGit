@@ -132,7 +132,11 @@ export function Toolbar({
                 />
             </ToolbarButton>
             {onOpenShelfMenu ? (
-                <ToolbarButton label="Shelf actions" onClick={onOpenShelfMenu} color="#ea8fb3">
+                <ToolbarButton
+                    label={t("shelf.action.toolbar")}
+                    onClick={onOpenShelfMenu}
+                    color="#ea8fb3"
+                >
                     <path
                         fill="currentColor"
                         d="M1.5 3.5h13v9h-13zM3 1.5h10v2H3zm1.5 5h7v1h-7zm-2 4h11v1h-11z"

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Button, Flex, Tooltip } from "@chakra-ui/react";
 import { getSettings } from "../../shared/settings";
+import { t } from "../../shared/i18n";
 
 /** Actions enabled for the currently selected shelf. */
 export interface ShelfToolbarProps {
@@ -49,56 +50,56 @@ export function ShelfToolbar({
             flexShrink={0}
         >
             <ShelfToolbarButton
-                label="Import Patches…"
+                label={t("shelf.action.importPatches")}
                 onClick={onImportPatch}
                 disabled={false}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Create Patch…"
+                label={t("shelf.action.createPatch")}
                 onClick={onExportPatch}
                 disabled={!canExportPatch}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Unshelve"
+                label={t("shelf.action.unshelve")}
                 onClick={onUnshelve}
                 disabled={!canUnshelve}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Unshelve Silently"
+                label={t("shelf.action.unshelveSilently")}
                 onClick={onUnshelveSilently}
                 disabled={!canUnshelve}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Show Diff"
+                label={t("common.showDiff")}
                 onClick={onShowDiff}
                 disabled={!hasSelectedShelf}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Compare with Local"
+                label={t("shelf.action.compareWithLocal")}
                 onClick={onCompareWithLocal}
                 disabled={!hasSelectedShelf}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Rename"
+                label={t("shelf.action.rename")}
                 onClick={onRename}
                 disabled={!hasSelectedShelf}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             />
             <ShelfToolbarButton
-                label="Delete"
+                label={t("shelf.action.delete")}
                 onClick={onDelete}
                 disabled={!hasSelectedShelf}
                 hoverDelay={hoverDelay}
@@ -106,10 +107,12 @@ export function ShelfToolbar({
             />
             <Box flex={1} />
             <Button variant="toolbarGhost" size="xs" onClick={onToggleAlreadyUnshelved}>
-                {showAlreadyUnshelved ? "Hide Already Unshelved" : "Show Already Unshelved"}
+                {showAlreadyUnshelved
+                    ? t("shelf.action.hideAlreadyUnshelved")
+                    : t("shelf.action.showAlreadyUnshelved")}
             </Button>
             <Button variant="toolbarGhost" size="xs" onClick={onCleanUp}>
-                Clean Up Shelf…
+                {t("shelf.action.cleanUp")}
             </Button>
         </Flex>
     );

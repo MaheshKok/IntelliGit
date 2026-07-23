@@ -27,12 +27,21 @@ export interface ShelfCommandsDeps {
 type RepositoryPick = vscode.QuickPickItem & { readonly repository: DiscoveredRepository };
 type ShelfPick = vscode.QuickPickItem & { readonly shelf: ShelfSummary };
 
+function localize(message: string, values?: Record<string, string | number | boolean>): string {
+    if ("l10n" in vscode) return values ? vscode.l10n.t(message, values) : vscode.l10n.t(message);
+    return message.replace(/\{(\w+)\}/g, (_placeholder, name: string) =>
+        String(values?.[name] ?? `{${name}}`),
+    );
+}
+
 /** Registers host-owned command-palette shelf actions for the active repository set. */
 export function registerShelfCommands(deps: ShelfCommandsDeps): void {
     const selectService = async (): Promise<ShelfService | undefined> => {
         const repositories = deps.getRepositories();
         if (repositories.length === 0) {
-            vscode.window.showInformationMessage("No Git repositories found in this workspace.");
+            vscode.window.showInformationMessage(
+                localize("No Git repositories found in this workspace."),
+            );
             return undefined;
         }
         let repository = repositories[0];
@@ -43,14 +52,16 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                     description: candidate.root,
                     repository: candidate,
                 })),
-                { placeHolder: "Select a repository for shelf changes" },
+                { placeHolder: localize("Select a repository for shelf changes") },
             );
             if (!picked) return undefined;
             repository = picked.repository;
         }
         const service = deps.shelfServiceForRepository(repository.root);
         if (!service)
-            vscode.window.showErrorMessage("Shelf service is unavailable for this repository.");
+            vscode.window.showErrorMessage(
+                localize("Shelf service is unavailable for this repository."),
+            );
         return service;
     };
 
@@ -75,14 +86,15 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
         }
     };
 
-    const defaultName = (): string => `Uncommitted changes [${new Date().toLocaleString()}]`;
+    const defaultName = (): string =>
+        localize("Uncommitted changes [{date}]", { date: new Date().toLocaleString() });
     const shelve = async (silent: boolean, keepLocal: boolean, prompt: boolean): Promise<void> => {
         const service = await selectService();
         if (!service) return;
         const suggestedName = defaultName();
         const name = prompt
             ? await vscode.window.showInputBox({
-                  prompt: "Shelf name",
+                  prompt: localize("Shelf name"),
                   value: suggestedName,
               })
             : suggestedName;
@@ -91,8 +103,8 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             service,
             "shelveSave",
             () => service.shelve({ name, paths: [], silent, keepLocal }),
-            keepLocal ? "Changes saved to shelf." : "Changes shelved.",
-            keepLocal ? "Save to shelf failed" : "Shelve changes failed",
+            keepLocal ? localize("Changes saved to shelf.") : localize("Changes shelved."),
+            keepLocal ? localize("Save to shelf failed") : localize("Shelve changes failed"),
         );
     };
 
@@ -117,7 +129,9 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                     );
                 });
             if (shelves.length === 0) {
-                vscode.window.showInformationMessage("No shelves are available to unshelve.");
+                vscode.window.showInformationMessage(
+                    localize("No shelves are available to unshelve."),
+                );
                 return;
             }
             const picked = await vscode.window.showQuickPick<ShelfPick>(
@@ -126,7 +140,7 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                     description: shelf.id,
                     shelf,
                 })),
-                { placeHolder: "Select a shelf to unshelve" },
+                { placeHolder: localize("Select a shelf to unshelve") },
             );
             if (!picked) return;
             await runMutation(
@@ -142,11 +156,13 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                                 .get<boolean>("shelf.removeOnUnshelve", true) !== false,
                         mode: "flattened",
                     }),
-                "Shelf unshelved.",
-                "Unshelve failed",
+                localize("Shelf unshelved."),
+                localize("Unshelve failed"),
             );
         } catch (error) {
-            vscode.window.showErrorMessage(`Unshelve failed: ${getErrorMessage(error)}`);
+            vscode.window.showErrorMessage(
+                `${localize("Unshelve failed")}: ${getErrorMessage(error)}`,
+            );
         }
     };
 
@@ -157,15 +173,15 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             canSelectFiles: true,
             canSelectFolders: false,
             canSelectMany: true,
-            filters: { "Patch files": ["patch", "diff"] },
+            filters: { [localize("Patch files")]: ["patch", "diff"] },
         });
         if (!sources) return;
         await runMutation(
             service,
             "shelfImportPatch",
             () => service.importPatch({ fileUris: sources.map((uri) => uri.fsPath) }),
-            "Patch imported to shelf.",
-            "Import patch failed",
+            localize("Patch imported to shelf."),
+            localize("Import patch failed"),
         );
     };
 
@@ -176,12 +192,14 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             const listed = await service.listShelves();
             const ghosts = listed.shelves.filter((shelf) => shelf.metadata.lifecycle === "applied");
             if (ghosts.length === 0) {
-                vscode.window.showInformationMessage("No already unshelved shelves to clean up.");
+                vscode.window.showInformationMessage(
+                    localize("No already unshelved shelves to clean up."),
+                );
                 return;
             }
-            const action = "Clean Up Shelf";
+            const action = localize("Clean Up Shelf");
             const confirmed = await vscode.window.showWarningMessage(
-                "Permanently delete all already unshelved shelves?",
+                localize("Permanently delete all already unshelved shelves?"),
                 { modal: true },
                 action,
             );
@@ -194,20 +212,22 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
                         shelfIds: ghosts.map((shelf) => shelf.id),
                         expectedCatalogGeneration: listed.catalogGeneration,
                     }),
-                "Already unshelved shelves cleaned up.",
-                "Clean up shelf failed",
+                localize("Already unshelved shelves cleaned up."),
+                localize("Clean up shelf failed"),
             );
         } catch (error) {
-            vscode.window.showErrorMessage(`Clean up shelf failed: ${getErrorMessage(error)}`);
+            vscode.window.showErrorMessage(
+                `${localize("Clean up shelf failed")}: ${getErrorMessage(error)}`,
+            );
         }
     };
 
     const purgeRecovery = async (): Promise<void> => {
         const service = await selectService();
         if (!service) return;
-        const action = "Purge Shelf Recovery";
+        const action = localize("Purge Shelf Recovery");
         const confirmed = await vscode.window.showWarningMessage(
-            "Permanently delete shelf recovery snapshots?",
+            localize("Permanently delete shelf recovery snapshots?"),
             { modal: true },
             action,
         );
@@ -218,8 +238,8 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             async () => {
                 await service.purgeRecovery();
             },
-            "Shelf recovery snapshots purged.",
-            "Purge shelf recovery failed",
+            localize("Shelf recovery snapshots purged."),
+            localize("Purge shelf recovery failed"),
         );
     };
 

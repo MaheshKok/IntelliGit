@@ -122,7 +122,9 @@ export function TabBar({
                             {tab.label}
                             {tab.key === "shelf" && shelfWarningCount > 0 ? (
                                 <span
-                                    aria-label={`${shelfWarningCount} shelf warnings`}
+                                    aria-label={t("a11y.shelfWarning", {
+                                        count: shelfWarningCount,
+                                    })}
                                     style={{
                                         marginLeft: 4,
                                         borderRadius: 999,
