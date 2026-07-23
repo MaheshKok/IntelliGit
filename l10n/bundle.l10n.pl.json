@@ -428,5 +428,16 @@
     "Abort if affected files have local changes.": "Przerwij jeśli objęte pliki zawierają lokalne zmiany.",
     "Deleting worktree {path}...": "Usuwanie worktree {path}...",
     "Locking worktree {path}...": "Blokowanie worktree {path}...",
-    "Moving worktree {path}...": "Przenoszenie worktree {path}..."
+    "Moving worktree {path}...": "Przenoszenie worktree {path}...",
+    "All stashed changes cleared.": "Wszystkie schowane zmiany zostały usunięte.",
+    "Clear All Stashes": "Wyczyść wszystkie schowki",
+    "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "Wyczyścić wszystkie schowki? Tej operacji nie można cofnąć i może uniemożliwić odzyskanie zapisanej pracy.",
+    "Stashed changes restored on new branch.": "Schowane zmiany przywrócono na nowej gałęzi.",
+    "Empty local file (missing)": "Pusty plik lokalny (brak)",
+    "Empty stashed file (missing: {ref})": "Pusty plik schowka (brak: {ref})",
+    "{path} (Stashed: {ref}) <-> Local File": "{path} (Schowek: {ref}) <-> Plik lokalny",
+    "Local File": "Plik lokalny",
+    "Stashed: {ref}": "Schowek: {ref}",
+    "Stash {reference}": "Schowek {reference}",
+    "{path} (Local File <-> Stash {reference})": "{path} (Plik lokalny <-> Schowek {reference})"
 }

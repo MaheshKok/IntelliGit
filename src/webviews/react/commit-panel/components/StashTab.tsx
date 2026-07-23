@@ -1,21 +1,21 @@
-// Stash tab with selectable stashed entries, changed-file preview, and
-// bottom Apply/Pop/Delete actions.
+// Stash tab with flat stash selection, one lower selected-file pane, and typed actions.
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Flex, Button } from "@chakra-ui/react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Box, Button, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
-import { StashList } from "./StashList";
-import { StashToolbar } from "./StashToolbar";
-import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import { getSettings, resolveIconColor } from "../../shared/settings";
-import { ContextMenu } from "../../shared/components/ContextMenu";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
+import { StashFilePane, StashList, type StashFileSection } from "./StashList";
+import { StashToolbar } from "./StashToolbar";
+import { StashUnstashDialog } from "./StashUnstashDialog";
+import { getVsCodeApi } from "../hooks/useVsCodeApi";
+import { getSettings } from "../../shared/settings";
+import { ContextMenu } from "../../shared/components/ContextMenu";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
-import type { TreeEntry } from "../types";
 import { t } from "../../shared/i18n";
 
 interface Props {
     repositoryRoot?: string;
+    currentBranchName: string | null;
     stashes: StashEntry[];
     stashFiles: WorkingFile[];
     selectedIndex: number | null;
@@ -26,30 +26,119 @@ interface Props {
     onToggleGroupBy: () => void;
 }
 
-type StashActionKind = "apply" | "pop" | "delete" | "showDiff";
+type StashContextAction =
+    | "apply"
+    | "pop"
+    | "unstash"
+    | "drop"
+    | "clear"
+    | "showDiff"
+    | "showDiffNewTab";
 
-interface ExpansionOverride {
-    selectedIndex: number | null;
-    expandedIndex: number | null;
-    isLoading: boolean;
-}
+type StashFileContextAction = "openDiff" | "editSource" | "cherryPickSelectedChanges";
 
 interface ExpandedDirsState {
-    tree: TreeEntry[];
+    directoryPaths: string[];
     dirs: Set<string>;
 }
 
+interface SelectionOverride {
+    snapshot: StashEntry[];
+    index: number;
+}
+
+interface FileSelection {
+    stashIndex: number | null;
+    path: string | null;
+}
+
+interface StashRowContextMenuState {
+    kind: "stash-row";
+    x: number;
+    y: number;
+    index: number;
+    returnFocusTarget: HTMLElement | null;
+}
+
+interface StashFileContextMenuState {
+    kind: "stash-file";
+    x: number;
+    y: number;
+    index: number;
+    stashHash: string;
+    path: string;
+    returnFocusTarget: HTMLElement;
+}
+
+type StashContextMenuState = StashRowContextMenuState | StashFileContextMenuState;
+
+interface UnstashDialogState {
+    index: number;
+    returnFocusTarget: HTMLElement | null;
+}
+
+interface StashFileBuckets {
+    changes: WorkingFile[];
+    unversioned: WorkingFile[];
+}
+
+const MIN_STASH_LIST_HEIGHT = 100;
+const STASH_LOWER_PANE_RESERVED_HEIGHT = 166;
+const STASH_SPLITTER_KEYBOARD_STEP = 10;
+let stashMutationRequestSequence = 0;
+
+/** Returns a webview-local correlation ID for one stash mutation. */
+function createStashMutationRequestId(): string {
+    stashMutationRequestSequence += 1;
+    return `stash-mutation-${stashMutationRequestSequence}`;
+}
+
+/** Throws for an action omitted from the exhaustive stash context switch. */
+function rejectUnhandledStashAction(_action: never): never {
+    throw new Error("Unhandled stash context action.");
+}
+
+/** Splits selected stash files using the same status boundary as the commit file tree. */
+function splitStashFiles(files: WorkingFile[]): StashFileBuckets {
+    const changes: WorkingFile[] = [];
+    const unversioned: WorkingFile[] = [];
+    for (const file of files) {
+        if (file.status === "?") unversioned.push(file);
+        else changes.push(file);
+    }
+    return { changes, unversioned };
+}
+
+/** Counts distinct repository-relative paths for a stash section's file badge. */
+function countUniquePaths(files: WorkingFile[]): number {
+    return new Set(files.map((file) => file.path)).size;
+}
+
+/** Aggregates diff statistics for a stash section while preserving commit-tree semantics. */
+function sumStats(
+    files: WorkingFile[],
+    includeDeletions: boolean,
+): { additions: number; deletions: number } {
+    return files.reduce(
+        (stats, file) => ({
+            additions: stats.additions + file.additions,
+            deletions: stats.deletions + (includeDeletions ? file.deletions : 0),
+        }),
+        { additions: 0, deletions: 0 },
+    );
+}
+
 /**
- * Renders stash entries and the selected stash file preview.
+ * Renders flat stash rows and one selected-stash file pane.
  *
- * The tab sends stash select/apply/pop/delete/diff messages to the extension,
- * keeps optimistic local expansion/loading state for clicked stash rows, and
- * renders the preview tree with the shared grouping preference, and owns
- * directory expansion, context menu, and drag-to-resize state.
+ * The host remains authoritative for stash snapshots and mutation outcomes. A local mutation guard
+ * clears only when the host acknowledges the matching request for this repository.
  */
+// Selection, dialog, splitter, and mutation state have independent transitions; one reducer would couple them.
 // react-doctor-disable-next-line react-doctor/no-giant-component
 export function StashTab({
     repositoryRoot,
+    currentBranchName,
     stashes,
     stashFiles,
     selectedIndex,
@@ -58,243 +147,475 @@ export function StashTab({
     folderIconsByName,
     groupByDir,
     onToggleGroupBy,
+    // react-doctor-disable-next-line react-doctor/prefer-useReducer
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
-    const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const tree = useFileTree(stashFiles, groupByDir);
-    const allDirPaths = useMemo(() => collectAllDirPaths(tree), [tree]);
+    const { hoverDelay, tooltipsEnabled } = getSettings();
+    const [selectionOverride, setSelectionOverride] = useState<SelectionOverride | null>(null);
+    const displayedSelectedIndex =
+        selectionOverride?.snapshot === stashes ? selectionOverride.index : selectedIndex;
+    const displayedStashFiles = useMemo(
+        () => (displayedSelectedIndex === selectedIndex ? stashFiles : []),
+        [displayedSelectedIndex, selectedIndex, stashFiles],
+    );
+    const isStashFilesLoading =
+        selectionOverride?.snapshot === stashes && selectionOverride.index !== selectedIndex;
+    const { changes: changesFiles, unversioned: unversionedFiles } = useMemo(
+        () => splitStashFiles(displayedStashFiles),
+        [displayedStashFiles],
+    );
+    const changesTree = useFileTree(changesFiles, groupByDir);
+    const unversionedTree = useFileTree(unversionedFiles, groupByDir);
+    const allDirPaths = useMemo(
+        () =>
+            Array.from(
+                new Set([
+                    ...collectAllDirPaths(changesTree),
+                    ...collectAllDirPaths(unversionedTree),
+                ]),
+            ),
+        [changesTree, unversionedTree],
+    );
+    const changesCount = useMemo(() => countUniquePaths(changesFiles), [changesFiles]);
+    const unversionedCount = useMemo(() => countUniquePaths(unversionedFiles), [unversionedFiles]);
+    const changesStats = useMemo(() => sumStats(changesFiles, true), [changesFiles]);
+    const unversionedStats = useMemo(() => sumStats(unversionedFiles, false), [unversionedFiles]);
     const [expandedDirsState, setExpandedDirsState] = useState<ExpandedDirsState>(() => ({
-        tree,
+        directoryPaths: allDirPaths,
         dirs: new Set(allDirPaths),
     }));
     const expandedDirs = useMemo(
-        () => (expandedDirsState.tree === tree ? expandedDirsState.dirs : new Set(allDirPaths)),
-        [allDirPaths, expandedDirsState, tree],
+        () =>
+            expandedDirsState.directoryPaths === allDirPaths
+                ? expandedDirsState.dirs
+                : new Set(allDirPaths),
+        [allDirPaths, expandedDirsState],
     );
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; index: number } | null>(
-        null,
-    );
-    // expandedIndex tracks which stash entry the user has toggled open locally.
-    // It is set optimistically on click (before files arrive from the extension host).
-    // selectedIndex (prop) updates once the host responds with loaded files.
-    // Collapsing only clears local state — no host message needed since no files to load.
-    // Store the selectedIndex that produced the local override so parent-driven
-    // changes (e.g. after apply/pop/delete removes the selected stash) evict stale
-    // local expansion/loading state during render without a prop-sync effect.
-    const [expansionOverride, setExpansionOverride] = useState<ExpansionOverride | null>(null);
-    const hasCurrentExpansionOverride = expansionOverride?.selectedIndex === selectedIndex;
-    const expandedIndex = hasCurrentExpansionOverride
-        ? expansionOverride.expandedIndex
-        : selectedIndex;
-    const isLoading = hasCurrentExpansionOverride ? expansionOverride.isLoading : false;
+    const [changesOpen, setChangesOpen] = useState(true);
+    const [unversionedOpen, setUnversionedOpen] = useState(true);
+    const [fileSelection, setFileSelection] = useState<FileSelection>({
+        stashIndex: null,
+        path: null,
+    });
+    const selectedFilePath =
+        fileSelection.stashIndex === displayedSelectedIndex &&
+        displayedStashFiles.some((file) => file.path === fileSelection.path)
+            ? fileSelection.path
+            : (displayedStashFiles[0]?.path ?? null);
+    const [contextMenu, setContextMenu] = useState<StashContextMenuState | null>(null);
+    const [unstashDialog, setUnstashDialog] = useState<UnstashDialogState | null>(null);
+    const [stashListHeight, setStashListHeight] = useState(220);
+    const [stashListMaxHeight, setStashListMaxHeight] = useState(220);
+    const stashTabRef = useRef<HTMLDivElement>(null);
+    const stashListHeightRef = useRef(stashListHeight);
+    const stashListMaxHeightRef = useRef(stashListMaxHeight);
+    const dragCleanupRef = useRef<(() => void) | null>(null);
+    const pendingRequestIdRef = useRef<string | null>(null);
+    const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+    const isMutationPending = pendingRequestId !== null;
 
-    const setLocalExpansion = useCallback(
-        (nextExpandedIndex: number | null, nextIsLoading: boolean) => {
-            setExpansionOverride({
-                selectedIndex,
-                expandedIndex: nextExpandedIndex,
-                isLoading: nextIsLoading,
-            });
+    useEffect(() => {
+        stashListHeightRef.current = stashListHeight;
+    }, [stashListHeight]);
+
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent<unknown>): void => {
+            if (!event.data || typeof event.data !== "object") return;
+            const message = event.data as {
+                type?: unknown;
+                requestId?: unknown;
+                repositoryRoot?: unknown;
+            };
+            if (
+                message.type !== "stashMutationCompleted" ||
+                message.requestId !== pendingRequestIdRef.current ||
+                message.repositoryRoot !== repositoryRoot
+            ) {
+                return;
+            }
+            pendingRequestIdRef.current = null;
+            setPendingRequestId(null);
+        };
+        window.addEventListener("message", handleMessage);
+        return () => window.removeEventListener("message", handleMessage);
+    }, [repositoryRoot]);
+
+    useEffect(
+        () => () => {
+            dragCleanupRef.current?.();
         },
-        [selectedIndex],
+        [],
     );
 
-    const handleStashClick = useCallback(
+    const postRepositoryMessage = useCallback(
+        <T extends object>(message: T): T & { repositoryRoot?: string } => ({
+            ...message,
+            ...(repositoryRoot ? { repositoryRoot } : {}),
+        }),
+        [repositoryRoot],
+    );
+
+    const selectStash = useCallback(
         (index: number) => {
-            if (expandedIndex === index) {
-                setLocalExpansion(null, false);
-            } else {
-                setLocalExpansion(index, true);
-                vscode.postMessage({
-                    type: "stashSelect",
-                    ...(repositoryRoot ? { repositoryRoot } : {}),
-                    index,
-                });
-            }
+            if (displayedSelectedIndex === index) return;
+            setSelectionOverride({ snapshot: stashes, index });
+            setFileSelection({ stashIndex: index, path: null });
+            vscode.postMessage(postRepositoryMessage({ type: "stashSelect", index }));
         },
-        [expandedIndex, repositoryRoot, setLocalExpansion, vscode],
+        [displayedSelectedIndex, postRepositoryMessage, stashes, vscode],
     );
 
-    const handleStashAction = useCallback(
-        (index: number | null, kind: StashActionKind) => {
-            if (index === null) return;
-            switch (kind) {
-                case "apply":
-                    vscode.postMessage({
-                        type: "stashApply",
-                        ...(repositoryRoot ? { repositoryRoot } : {}),
-                        index,
-                    });
-                    return;
+    const beginMutation = useCallback(
+        (createMessage: (requestId: string) => Parameters<typeof vscode.postMessage>[0]) => {
+            if (pendingRequestIdRef.current !== null) return;
+            const requestId = createStashMutationRequestId();
+            pendingRequestIdRef.current = requestId;
+            setPendingRequestId(requestId);
+            vscode.postMessage(createMessage(requestId));
+        },
+        [vscode],
+    );
+
+    const restoreOnCurrentBranch = useCallback(
+        (index: number, action: "apply" | "pop", reinstateIndex = false) => {
+            beginMutation((requestId) =>
+                postRepositoryMessage({
+                    type: "stashUnstash",
+                    index,
+                    mode: "currentBranch",
+                    action,
+                    reinstateIndex,
+                    requestId,
+                }),
+            );
+        },
+        [beginMutation, postRepositoryMessage],
+    );
+
+    const restoreOnNewBranch = useCallback(
+        (index: number, branchName: string) => {
+            beginMutation((requestId) =>
+                postRepositoryMessage({
+                    type: "stashUnstash",
+                    index,
+                    mode: "branch",
+                    branchName,
+                    requestId,
+                }),
+            );
+        },
+        [beginMutation, postRepositoryMessage],
+    );
+
+    const showStashDiff = useCallback(
+        (index: number, preview: boolean, path?: string) => {
+            vscode.postMessage(
+                postRepositoryMessage({
+                    type: "showStashDiff",
+                    index,
+                    ...(path ? { path } : {}),
+                    ...(preview ? {} : { preview: false }),
+                }),
+            );
+        },
+        [postRepositoryMessage, vscode],
+    );
+
+    const handleContextAction = useCallback(
+        (index: number, action: StashContextAction, returnFocusTarget: HTMLElement | null) => {
+            switch (action) {
                 case "pop":
-                    vscode.postMessage({
-                        type: "stashPop",
-                        ...(repositoryRoot ? { repositoryRoot } : {}),
-                        index,
-                    });
+                    restoreOnCurrentBranch(index, "pop");
                     return;
-                case "delete":
-                    vscode.postMessage({
-                        type: "stashDelete",
-                        ...(repositoryRoot ? { repositoryRoot } : {}),
-                        index,
-                    });
+                case "apply":
+                    restoreOnCurrentBranch(index, "apply");
                     return;
-                case "showDiff": {
-                    const firstFile = selectedIndex === index ? stashFiles[0]?.path : undefined;
-                    if (firstFile) {
-                        vscode.postMessage({
-                            type: "showStashDiff",
-                            ...(repositoryRoot ? { repositoryRoot } : {}),
-                            index,
-                            path: firstFile,
-                        });
-                    }
+                case "unstash":
+                    if (!isMutationPending) setUnstashDialog({ index, returnFocusTarget });
                     return;
-                }
-                default: {
-                    const exhaustive: never = kind;
-                    throw new Error(`Unhandled stash action: ${String(exhaustive)}`);
-                }
+                case "drop":
+                    beginMutation((requestId) =>
+                        postRepositoryMessage({ type: "stashDelete", index, requestId }),
+                    );
+                    return;
+                case "clear":
+                    beginMutation((requestId) =>
+                        postRepositoryMessage({ type: "stashClear", requestId }),
+                    );
+                    return;
+                case "showDiff":
+                    showStashDiff(index, true);
+                    return;
+                case "showDiffNewTab":
+                    showStashDiff(index, false);
+                    return;
+                default:
+                    return rejectUnhandledStashAction(action);
             }
         },
-        [repositoryRoot, selectedIndex, stashFiles, vscode],
+        [
+            beginMutation,
+            isMutationPending,
+            postRepositoryMessage,
+            restoreOnCurrentBranch,
+            showStashDiff,
+        ],
     );
+
+    const handleFileContextAction = useCallback(
+        (menu: StashFileContextMenuState, action: StashFileContextAction) => {
+            switch (action) {
+                case "openDiff":
+                    showStashDiff(menu.index, true, menu.path);
+                    return;
+                case "editSource":
+                    vscode.postMessage(
+                        postRepositoryMessage({ type: "openFile", path: menu.path }),
+                    );
+                    return;
+                case "cherryPickSelectedChanges":
+                    beginMutation((requestId) =>
+                        postRepositoryMessage({
+                            type: "cherryPickStashFile",
+                            index: menu.index,
+                            stashHash: menu.stashHash,
+                            path: menu.path,
+                            requestId,
+                        }),
+                    );
+                    return;
+                default:
+                    return rejectUnhandledStashAction(action);
+            }
+        },
+        [beginMutation, postRepositoryMessage, showStashDiff, vscode],
+    );
+
+    const closeContextMenu = useCallback(() => {
+        const returnFocusTarget = contextMenu?.returnFocusTarget ?? null;
+        setContextMenu(null);
+        returnFocusTarget?.focus();
+    }, [contextMenu]);
 
     const toggleDir = useCallback(
         (path: string) => {
-            setExpandedDirsState((prev) => {
-                const next = new Set(prev.tree === tree ? prev.dirs : allDirPaths);
+            setExpandedDirsState((previous) => {
+                const next = new Set(
+                    previous.directoryPaths === allDirPaths ? previous.dirs : allDirPaths,
+                );
                 if (next.has(path)) next.delete(path);
                 else next.add(path);
-                return { tree, dirs: next };
+                return { directoryPaths: allDirPaths, dirs: next };
             });
         },
-        [allDirPaths, tree],
+        [allDirPaths],
     );
 
     const expandAll = useCallback(() => {
-        setExpandedDirsState({ tree, dirs: new Set(allDirPaths) });
-    }, [allDirPaths, tree]);
+        setChangesOpen(true);
+        setUnversionedOpen(true);
+        setExpandedDirsState({ directoryPaths: allDirPaths, dirs: new Set(allDirPaths) });
+    }, [allDirPaths]);
 
     const collapseAll = useCallback(() => {
-        setExpandedDirsState({ tree, dirs: new Set() });
-    }, [tree]);
+        setChangesOpen(false);
+        setUnversionedOpen(false);
+        setExpandedDirsState({ directoryPaths: allDirPaths, dirs: new Set() });
+    }, [allDirPaths]);
 
-    const handleShowSelectedDiff = useCallback(() => {
-        handleStashAction(selectedIndex, "showDiff");
-    }, [handleStashAction, selectedIndex]);
+    const constrainStashListHeight = useCallback((requestedHeight: number) => {
+        const containerHeight = stashTabRef.current?.clientHeight ?? 0;
+        const maximumHeight =
+            containerHeight > 0
+                ? Math.max(
+                      MIN_STASH_LIST_HEIGHT,
+                      containerHeight - STASH_LOWER_PANE_RESERVED_HEIGHT,
+                  )
+                : stashListMaxHeightRef.current;
+        const nextHeight = Math.max(
+            MIN_STASH_LIST_HEIGHT,
+            Math.min(requestedHeight, maximumHeight),
+        );
+        stashListHeightRef.current = nextHeight;
+        stashListMaxHeightRef.current = maximumHeight;
+        setStashListHeight(nextHeight);
+        setStashListMaxHeight(maximumHeight);
+    }, []);
 
-    const handleShowStashDiff = useCallback(
-        (index: number, path: string) => {
-            vscode.postMessage({
-                type: "showStashDiff",
-                ...(repositoryRoot ? { repositoryRoot } : {}),
-                index,
-                path,
-            });
-        },
-        [repositoryRoot, vscode],
-    );
+    useLayoutEffect(() => {
+        const stashTab = stashTabRef.current;
+        if (!stashTab) return;
+        const synchronizeBounds = (): void => {
+            constrainStashListHeight(stashListHeightRef.current);
+        };
 
-    const handleStashContextMenu = useCallback(
-        (event: React.MouseEvent, index: number) => {
+        synchronizeBounds();
+        window.addEventListener("resize", synchronizeBounds);
+        let resizeObserver: ResizeObserver | undefined;
+        if (typeof ResizeObserver !== "undefined") {
+            resizeObserver = new ResizeObserver(synchronizeBounds);
+            resizeObserver.observe(stashTab);
+        }
+
+        return () => {
+            window.removeEventListener("resize", synchronizeBounds);
+            resizeObserver?.disconnect();
+        };
+    }, [constrainStashListHeight]);
+
+    const startSplitterDrag = useCallback(
+        (event: React.MouseEvent) => {
             event.preventDefault();
-            event.stopPropagation();
-            if (expandedIndex !== index) {
-                setLocalExpansion(index, true);
-                vscode.postMessage({
-                    type: "stashSelect",
-                    ...(repositoryRoot ? { repositoryRoot } : {}),
-                    index,
-                });
-            }
-            setContextMenu({ x: event.clientX, y: event.clientY, index });
+            const startY = event.clientY;
+            const startHeight = stashListHeightRef.current;
+            const onMouseMove = (moveEvent: MouseEvent) => {
+                constrainStashListHeight(startHeight + moveEvent.clientY - startY);
+            };
+            const cleanup = () => {
+                document.removeEventListener("mousemove", onMouseMove);
+                document.removeEventListener("mouseup", cleanup);
+                document.body.style.cursor = "";
+                document.body.style.userSelect = "";
+                dragCleanupRef.current = null;
+            };
+            document.addEventListener("mousemove", onMouseMove);
+            document.addEventListener("mouseup", cleanup);
+            document.body.style.cursor = "row-resize";
+            document.body.style.userSelect = "none";
+            dragCleanupRef.current = cleanup;
         },
-        [expandedIndex, repositoryRoot, setLocalExpansion, vscode],
+        [constrainStashListHeight],
     );
 
-    const [fileTreeHeight, setFileTreeHeight] = useState(150);
-    const fileTreeHeightRef = useRef(fileTreeHeight);
-    useEffect(() => {
-        fileTreeHeightRef.current = fileTreeHeight;
-    }, [fileTreeHeight]);
-
-    const dragCleanupRef = useRef<(() => void) | null>(null);
-
-    const cleanupFileTreeDrag = useCallback(() => {
-        dragCleanupRef.current?.();
-    }, []);
-
-    useEffect(() => cleanupFileTreeDrag, [cleanupFileTreeDrag]);
-
-    const handleFileTreeDragStart = useCallback((e: React.MouseEvent) => {
-        e.preventDefault();
-        const startY = e.clientY;
-        const startH = fileTreeHeightRef.current;
-
-        const onMouseMove = (ev: MouseEvent) => {
-            const delta = ev.clientY - startY;
-            setFileTreeHeight(Math.max(60, startH + delta));
-        };
-        const cleanup = () => {
-            document.removeEventListener("mousemove", onMouseMove);
-            document.removeEventListener("mouseup", onMouseUp);
-            document.body.style.cursor = "";
-            document.body.style.userSelect = "";
-            dragCleanupRef.current = null;
-        };
-        const onMouseUp = () => {
-            cleanup();
-        };
-
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-        document.body.style.cursor = "row-resize";
-        document.body.style.userSelect = "none";
-        dragCleanupRef.current = cleanup;
-    }, []);
+    const handleSplitterKeyDown = useCallback(
+        (event: React.KeyboardEvent) => {
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+            event.preventDefault();
+            constrainStashListHeight(
+                stashListHeightRef.current +
+                    (event.key === "ArrowDown"
+                        ? STASH_SPLITTER_KEYBOARD_STEP
+                        : -STASH_SPLITTER_KEYBOARD_STEP),
+            );
+        },
+        [constrainStashListHeight],
+    );
 
     return (
         <Flex
+            ref={stashTabRef}
+            data-testid="stash-tab"
             direction="column"
             flex={1}
+            minH={0}
             overflow="hidden"
             bg="var(--intelligit-pycharm-panel)"
             color="var(--intelligit-pycharm-foreground)"
         >
+            <StashList
+                stashes={stashes}
+                selectedIndex={displayedSelectedIndex}
+                height={stashListHeight}
+                maxHeight={`calc(100% - ${STASH_LOWER_PANE_RESERVED_HEIGHT}px)`}
+                onStashClick={selectStash}
+                onStashContextMenu={(index, x, y) => {
+                    selectStash(index);
+                    const returnFocusTarget = stashTabRef.current?.querySelector<HTMLElement>(
+                        `[data-stash-index="${index}"]`,
+                    );
+                    setContextMenu({
+                        kind: "stash-row",
+                        index,
+                        x,
+                        y,
+                        returnFocusTarget: returnFocusTarget ?? null,
+                    });
+                }}
+            />
+            <Box
+                data-testid="stash-splitter"
+                role="separator"
+                aria-label={t("a11y.resizeStashList")}
+                aria-orientation="horizontal"
+                aria-valuemin={MIN_STASH_LIST_HEIGHT}
+                aria-valuemax={stashListMaxHeight}
+                aria-valuenow={stashListHeight}
+                tabIndex={0}
+                h="4px"
+                flexShrink={0}
+                cursor="row-resize"
+                bg="var(--intelligit-pycharm-border)"
+                _hover={{ bg: "var(--intelligit-pycharm-blue)" }}
+                onMouseDown={startSplitterDrag}
+                onKeyDown={handleSplitterKeyDown}
+            />
             <StashToolbar
-                selectedIndex={selectedIndex}
-                stashFilesLength={stashFiles.length}
+                selectedIndex={displayedSelectedIndex}
                 groupByDir={groupByDir}
+                hasGroupedDirectories={displayedStashFiles.length > 0}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
-                onShowSelectedDiff={handleShowSelectedDiff}
+                onShowStashDiff={() => {
+                    if (displayedSelectedIndex !== null)
+                        showStashDiff(displayedSelectedIndex, true);
+                }}
                 onToggleGroupBy={onToggleGroupBy}
                 onExpandAll={expandAll}
                 onCollapseAll={collapseAll}
             />
-
-            <StashList
-                stashes={stashes}
-                stashFiles={stashFiles}
-                selectedIndex={selectedIndex}
-                expandedIndex={expandedIndex}
-                isLoading={isLoading}
-                tree={tree}
+            <StashFilePane
+                stashFiles={displayedStashFiles}
+                selectedIndex={displayedSelectedIndex}
+                isLoading={isStashFilesLoading}
+                groupByDir={groupByDir}
+                selectedFilePath={selectedFilePath}
+                changesSection={
+                    {
+                        files: changesFiles,
+                        tree: changesTree,
+                        count: changesCount,
+                        stats: changesStats,
+                        isOpen: changesOpen,
+                        onToggleOpen: () => setChangesOpen((isOpen) => !isOpen),
+                    } satisfies StashFileSection
+                }
+                unversionedSection={
+                    {
+                        files: unversionedFiles,
+                        tree: unversionedTree,
+                        count: unversionedCount,
+                        stats: unversionedStats,
+                        isOpen: unversionedOpen,
+                        onToggleOpen: () => setUnversionedOpen((isOpen) => !isOpen),
+                    } satisfies StashFileSection
+                }
                 expandedDirs={expandedDirs}
                 folderIcon={folderIcon}
                 folderExpandedIcon={folderExpandedIcon}
                 folderIconsByName={folderIconsByName}
-                fileTreeHeight={fileTreeHeight}
-                iconStyle={iconStyle}
-                onStashClick={handleStashClick}
-                onStashContextMenu={handleStashContextMenu}
                 onToggleDir={toggleDir}
-                onShowStashDiff={handleShowStashDiff}
-                onFileTreeDragStart={handleFileTreeDragStart}
+                onFileSelect={(path) =>
+                    setFileSelection({ stashIndex: displayedSelectedIndex, path })
+                }
+                onFileActivate={(path) => {
+                    if (displayedSelectedIndex !== null)
+                        showStashDiff(displayedSelectedIndex, true, path);
+                }}
+                onFileContextMenu={(path, x, y, returnFocusTarget) => {
+                    setFileSelection({ stashIndex: displayedSelectedIndex, path });
+                    const stash = stashes.find((entry) => entry.index === displayedSelectedIndex);
+                    if (!stash || displayedSelectedIndex === null) return;
+                    setContextMenu({
+                        kind: "stash-file",
+                        index: displayedSelectedIndex,
+                        stashHash: stash.hash,
+                        path,
+                        x,
+                        y,
+                        returnFocusTarget,
+                    });
+                }}
             />
-
             <Flex
                 align="center"
                 gap="10px"
@@ -306,8 +627,12 @@ export function StashTab({
                 <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => handleStashAction(selectedIndex, "apply")}
-                    isDisabled={selectedIndex === null}
+                    onClick={() => {
+                        if (displayedSelectedIndex !== null) {
+                            restoreOnCurrentBranch(displayedSelectedIndex, "apply");
+                        }
+                    }}
+                    isDisabled={displayedSelectedIndex === null || isMutationPending}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
@@ -316,66 +641,103 @@ export function StashTab({
                 <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => handleStashAction(selectedIndex, "pop")}
-                    isDisabled={selectedIndex === null}
+                    onClick={() => {
+                        if (displayedSelectedIndex !== null) {
+                            restoreOnCurrentBranch(displayedSelectedIndex, "pop");
+                        }
+                    }}
+                    isDisabled={displayedSelectedIndex === null || isMutationPending}
                     fontSize="12px"
                     fontFamily={SYSTEM_FONT_STACK}
                 >
                     {t("common.pop")}
                 </Button>
             </Flex>
-            {contextMenu && (
+            {contextMenu ? (
                 <ContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
                     minWidth={300}
-                    onClose={() => setContextMenu(null)}
+                    onClose={closeContextMenu}
                     onSelect={(action) => {
-                        if (action === "apply") handleStashAction(contextMenu.index, "apply");
-                        if (action === "pop") handleStashAction(contextMenu.index, "pop");
-                        if (action === "drop") handleStashAction(contextMenu.index, "delete");
-                        if (action === "showDiff") handleStashAction(contextMenu.index, "showDiff");
+                        if (contextMenu.kind === "stash-row") {
+                            handleContextAction(
+                                contextMenu.index,
+                                action as StashContextAction,
+                                contextMenu.returnFocusTarget,
+                            );
+                            return;
+                        }
+                        handleFileContextAction(contextMenu, action as StashFileContextAction);
                     }}
-                    items={[
-                        { label: t("common.pop"), action: "pop" },
-                        { label: t("common.apply"), action: "apply" },
-                        { label: t("stash.action.unstash"), action: "unstash", disabled: true },
-                        { label: t("common.drop"), action: "drop" },
-                        { label: t("common.clear"), action: "clear", disabled: true },
-                        { label: "", action: "sep-1", separator: true },
-                        {
-                            label: t("common.showDiff"),
-                            action: "showDiff",
-                            disabled:
-                                selectedIndex !== contextMenu.index || stashFiles.length === 0,
-                            hint: "⌘D",
-                            icon: <DiffIcon />,
-                        },
-                        {
-                            label: t("stash.action.showDiffNewTab"),
-                            action: "showDiffNewTab",
-                            disabled: true,
-                            icon: <DiffIcon />,
-                        },
-                    ]}
+                    items={
+                        contextMenu.kind === "stash-row"
+                            ? [
+                                  {
+                                      label: t("common.pop"),
+                                      action: "pop",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("common.apply"),
+                                      action: "apply",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("stash.action.unstash"),
+                                      action: "unstash",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("common.drop"),
+                                      action: "drop",
+                                      disabled: isMutationPending,
+                                  },
+                                  {
+                                      label: t("common.clear"),
+                                      action: "clear",
+                                      disabled: isMutationPending,
+                                  },
+                                  { label: "", action: "stash-divider", separator: true },
+                                  { label: t("common.showDiff"), action: "showDiff" },
+                                  {
+                                      label: t("stash.action.showDiffNewTab"),
+                                      action: "showDiffNewTab",
+                                  },
+                              ]
+                            : [
+                                  {
+                                      label: t("stash.fileAction.openDiff"),
+                                      action: "openDiff",
+                                  },
+                                  {
+                                      label: t("stash.fileAction.editSource"),
+                                      action: "editSource",
+                                  },
+                                  {
+                                      label: t("stash.fileAction.cherryPickSelectedChanges"),
+                                      action: "cherryPickSelectedChanges",
+                                      disabled: isMutationPending,
+                                  },
+                              ]
+                    }
                 />
-            )}
+            ) : null}
+            {unstashDialog ? (
+                <StashUnstashDialog
+                    currentBranchName={currentBranchName}
+                    returnFocusTarget={unstashDialog.returnFocusTarget}
+                    onClose={() => setUnstashDialog(null)}
+                    onCurrentBranchSubmit={(action, reinstateIndex) => {
+                        restoreOnCurrentBranch(unstashDialog.index, action, reinstateIndex);
+                        setUnstashDialog(null);
+                    }}
+                    onBranchSubmit={(branchName) => {
+                        restoreOnNewBranch(unstashDialog.index, branchName);
+                        setUnstashDialog(null);
+                    }}
+                />
+            ) : null}
         </Flex>
-    );
-}
-
-function DiffIcon(): React.ReactElement {
-    const color = resolveIconColor(
-        "#8fd5ff",
-        "var(--vscode-menu-foreground, var(--vscode-icon-foreground))",
-    );
-
-    return (
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden style={{ color }}>
-            <path
-                fill="currentColor"
-                d="M2.5 1.5h4v13h-4v-13zm7 0h4v13h-4v-13zM5.25 4.75 7.5 7 5.25 9.25l-.7-.7L5.6 7 4.55 5.45l.7-.7zm5.5 0 .7.7L10.4 7l1.05 1.55-.7.7L8.5 7l2.25-2.25z"
-            />
-        </svg>
     );
 }

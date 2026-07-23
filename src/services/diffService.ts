@@ -2,12 +2,11 @@
 // Handles opening diffs against git refs, commit file diffs,
 // and applying/reverting single-file patches.
 
-import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { applyPatchTextToRepo } from "../git/patchApplication";
 import { getErrorMessage } from "../utils/errors";
 import { runWithNotificationProgress, showTimedInformationMessage } from "../utils/notifications";
 import {
@@ -73,15 +72,14 @@ export function registerReadonlyDiffContentProvider(
     return cleanup;
 }
 
-function encodePathForVirtualUri(filePath: string): string {
-    return filePath.split("/").map(encodeURIComponent).join("/");
-}
-
 /**
  * Creates a unique virtual URI for immutable diff content from a Git ref or commit side.
  *
- * `filePath` must already be a repository-relative Git path. The path is encoded
- * as URI data only; it is not resolved against the workspace filesystem.
+ * `filePath` must already be a repository-relative Git path. It is stored as a decoded
+ * URI path so VS Code serializes special characters exactly once; it is never resolved
+ * against the workspace filesystem. `refLabel` is stored as JSON `query.ref` so the
+ * contributed resource formatter identifies each readonly diff side without changing
+ * provider storage semantics.
  */
 export function createReadonlyDiffUri(
     filePath: string,
@@ -89,13 +87,15 @@ export function createReadonlyDiffUri(
     refLabel: string,
 ): vscode.Uri {
     readonlyDiffDocumentSeq += 1;
-    const query = new URLSearchParams({
+    const query = JSON.stringify({
         id: String(readonlyDiffDocumentSeq),
         ref: refLabel,
     });
-    const uri = vscode.Uri.parse(
-        `${READONLY_DIFF_SCHEME}:/${encodePathForVirtualUri(filePath)}?${query.toString()}`,
-    );
+    const uri = vscode.Uri.from({
+        scheme: READONLY_DIFF_SCHEME,
+        path: `/${filePath}`,
+        query,
+    });
     readonlyDiffDocuments.set(uri.toString(), content);
     return uri;
 }
@@ -244,38 +244,6 @@ export async function openCommitFileDiff(
     const rightUri = createReadonlyDiffUri(safePath, rightContent, shortCommit);
     const title = `${safePath} (${shortParent} ↔ ${shortCommit})`;
     await vscode.commands.executeCommand("vscode.diff", leftUri, rightUri, title);
-}
-
-/**
- * Applies a generated single-file patch to the repository index and working tree.
- *
- * The patch is written to a temporary file because `git apply --3way --index`
- * expects a file path here. The temp directory is removed best-effort in
- * `finally`; Git apply failures propagate to the caller for user notification.
- */
-async function applyPatchTextToRepo(
-    patchText: string,
-    reverse: boolean,
-    executor: GitExecutor,
-): Promise<void> {
-    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "intelligit-filepatch-"));
-    const patchFilePath = path.join(tempDir, "selected-change.patch");
-    try {
-        await fs.promises.writeFile(patchFilePath, patchText, "utf8");
-        const args = [
-            "apply",
-            "--index",
-            "--3way",
-            "--whitespace=nowarn",
-            ...(reverse ? ["-R"] : []),
-            patchFilePath,
-        ];
-        await executor.run(args);
-    } finally {
-        await fs.promises.rm(tempDir, { recursive: true, force: true }).catch((err) => {
-            console.warn(`[intelligit] Failed to clean up temp patch dir ${tempDir}:`, err);
-        });
-    }
 }
 
 /**

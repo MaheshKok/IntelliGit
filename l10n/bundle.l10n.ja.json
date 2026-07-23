@@ -428,5 +428,16 @@
     "Abort if affected files have local changes.": "対象ファイルにローカル変更があれば中止します。",
     "Deleting worktree {path}...": "{path} のワークツリーを削除しています...",
     "Locking worktree {path}...": "{path} のワークツリーをロックしています...",
-    "Moving worktree {path}...": "{path} のワークツリーを移動しています..."
+    "Moving worktree {path}...": "{path} のワークツリーを移動しています...",
+    "All stashed changes cleared.": "すべてのスタッシュされた変更が削除されました。",
+    "Clear All Stashes": "すべてのスタッシュを消去",
+    "Clear all stashes? This is irreversible and may prevent recovery of saved work.": "すべてのスタッシュを消去しますか？この操作は元に戻せず保存した作業を復元できなくなる可能性があります。",
+    "Stashed changes restored on new branch.": "スタッシュされた変更を新しいブランチに復元しました。",
+    "Empty local file (missing)": "空のローカル ファイル（見つかりません）",
+    "Empty stashed file (missing: {ref})": "空のスタッシュ ファイル（見つかりません: {ref}）",
+    "{path} (Stashed: {ref}) <-> Local File": "{path}（スタッシュ: {ref}）<-> ローカル ファイル",
+    "Local File": "ローカル ファイル",
+    "Stashed: {ref}": "スタッシュ: {ref}",
+    "Stash {reference}": "スタッシュ {reference}",
+    "{path} (Local File <-> Stash {reference})": "{path}（ローカル ファイル <-> スタッシュ {reference}）"
 }

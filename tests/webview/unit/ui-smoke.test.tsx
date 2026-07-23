@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Branch, CommitChecksSnapshot, WorkingFile } from "../../../src/types";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { renderHighlightedLabel } from "../../../src/webviews/react/branch-column/highlight";
+import { BranchColumnSections } from "../../../src/webviews/react/branch-column/BranchColumnSections";
 import { BranchSearchBar } from "../../../src/webviews/react/branch-column/components/BranchSearchBar";
 import { BranchSectionHeader } from "../../../src/webviews/react/branch-column/components/BranchSectionHeader";
 import { BranchTreeNodeRow } from "../../../src/webviews/react/branch-column/components/BranchTreeNodeRow";
@@ -175,6 +176,223 @@ describe("webview ui smoke", () => {
         );
         expect(leafHtml).toContain("feature");
         expect(leafHtml).not.toContain("Checked out in another worktree");
+    });
+
+    it("aligns nested branch tree guides to the chevron center", () => {
+        const html = renderUi(
+            <BranchTreeNodeRow
+                node={{
+                    label: "nested",
+                    fullName: "nested",
+                    branch: branch({ name: "nested" }),
+                    children: [],
+                }}
+                depth={2}
+                selectedBranch={null}
+                expandedFolders={new Set()}
+                onSelectBranch={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onContextMenu={vi.fn()}
+                filterNeedle=""
+                prefix="root"
+            />,
+        );
+        const container = document.createElement("div");
+        container.innerHTML = html;
+
+        expect(
+            Array.from(container.querySelectorAll<HTMLElement>('[aria-hidden="true"]'))
+                .map((guide) => guide.style.left)
+                .filter(Boolean),
+        ).toEqual(["26px", "40px"]);
+    });
+
+    it("aligns local and remote branch tree guides with their ancestor chevrons", () => {
+        const localRoot = {
+            label: "local-root",
+            children: [
+                {
+                    label: "local-child",
+                    fullName: "local-root/local-child",
+                    branch: branch({ name: "local-root/local-child" }),
+                    children: [],
+                },
+            ],
+        };
+        const remoteRoot = {
+            label: "remote-root",
+            children: [
+                {
+                    label: "remote-folder",
+                    children: [
+                        {
+                            label: "remote-child",
+                            fullName: "origin/remote-root/remote-folder/remote-child",
+                            branch: branch({
+                                name: "origin/remote-root/remote-folder/remote-child",
+                            }),
+                            children: [],
+                        },
+                    ],
+                },
+            ],
+        };
+        const html = renderUi(
+            <BranchColumnSections
+                selectedBranch={null}
+                expandedSections={new Set(["local", "remote"])}
+                expandedFolders={
+                    new Set([
+                        "local/local-root",
+                        "remote-origin",
+                        "remote/origin/remote-root",
+                        "remote/origin/remote-root/remote-folder",
+                    ])
+                }
+                localTree={[localRoot]}
+                remoteGroups={new Map([["origin", { branches: [], tree: [remoteRoot] }]])}
+                worktrees={[]}
+                filteredWorktrees={[]}
+                filterNeedle=""
+                locals={[]}
+                remotes={[]}
+                selectedBranchNames={new Set()}
+                onSelectBranch={vi.fn()}
+                onClearSelectedBranches={vi.fn()}
+                onToggleSection={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onBranchClick={vi.fn()}
+                onBranchContextMenu={vi.fn()}
+                onOpenBranchContextMenuFromRow={vi.fn()}
+                onWorktreeContextMenu={vi.fn()}
+                onOpenWorktreeContextMenuFromRow={vi.fn()}
+            />,
+        );
+        const container = document.createElement("div");
+        container.innerHTML = html;
+        const buttonByText = (text: string): HTMLButtonElement => {
+            const button = Array.from(container.querySelectorAll("button")).find(
+                (candidate) => candidate.textContent === text,
+            );
+            expect(button).toBeDefined();
+            return button as HTMLButtonElement;
+        };
+        const guideOffsets = (button: HTMLButtonElement): string[] =>
+            Array.from(button.children)
+                .filter(
+                    (child): child is HTMLSpanElement =>
+                        child instanceof HTMLSpanElement &&
+                        child.getAttribute("aria-hidden") === "true",
+                )
+                .map((guide) => guide.style.left);
+        const pixelStyle = (element: HTMLElement, property: string): number => {
+            const match = new RegExp(`${property}:([0-9]+)px`).exec(
+                element.getAttribute("style") ?? "",
+            );
+            if (!match) throw new Error(`Missing ${property} pixel style`);
+            return Number(match[1]);
+        };
+
+        const localRootButton = buttonByText("local-root");
+        const localChildButton = buttonByText("local-child");
+        const localTreeWrapper = localRootButton.parentElement as HTMLDivElement;
+        const localSectionGuide = container.querySelector(
+            '[data-branch-section-guide="local"]',
+        ) as HTMLSpanElement;
+        expect(localSectionGuide.style.left).toBe("16px");
+        expect(localSectionGuide.style.pointerEvents).toBe("none");
+        expect(localSectionGuide.getAttribute("aria-hidden")).toBe("true");
+        expect(pixelStyle(localRootButton, "padding-left")).toBe(18);
+        expect(guideOffsets(localRootButton)).toEqual([]);
+        expect(guideOffsets(localChildButton)).toEqual(["26px"]);
+        expect(
+            pixelStyle(localTreeWrapper, "padding-left") +
+                pixelStyle(localRootButton, "padding-left") +
+                8,
+        ).toBe(
+            pixelStyle(localTreeWrapper, "padding-left") +
+                Number.parseInt(guideOffsets(localChildButton)[0]!, 10),
+        );
+
+        const remoteProviderButton = buttonByText("origin");
+        const remoteRootButton = buttonByText("remote-root");
+        const remoteFolderButton = buttonByText("remote-folder");
+        const remoteProviderIndent = remoteProviderButton.parentElement as HTMLDivElement;
+        const remoteTreeWrapper = remoteRootButton.parentElement as HTMLDivElement;
+        const remoteSectionGuide = container.querySelector(
+            '[data-branch-section-guide="remote-origin"]',
+        ) as HTMLSpanElement;
+        expect(remoteSectionGuide.style.left).toBe("16px");
+        expect(remoteSectionGuide.style.pointerEvents).toBe("none");
+        expect(remoteSectionGuide.getAttribute("aria-hidden")).toBe("true");
+        expect(pixelStyle(remoteProviderIndent, "padding-left")).toBe(14);
+        expect(remoteProviderIndent.parentElement?.getAttribute("style") ?? "").not.toContain(
+            "padding-left:4px",
+        );
+        expect(pixelStyle(remoteTreeWrapper, "padding-left")).toBe(4);
+        expect(pixelStyle(remoteRootButton, "padding-left")).toBe(32);
+        expect(guideOffsets(remoteRootButton)).toEqual(["26px"]);
+        expect(guideOffsets(remoteFolderButton)).toEqual(["26px", "40px"]);
+        expect(
+            pixelStyle(remoteProviderIndent, "padding-left") +
+                pixelStyle(remoteProviderButton, "padding-left") +
+                8,
+        ).toBe(
+            pixelStyle(remoteTreeWrapper, "padding-left") +
+                Number.parseInt(guideOffsets(remoteRootButton)[0]!, 10),
+        );
+    });
+
+    it("hides outer branch rails for collapsed or empty sections", () => {
+        const renderSections = (
+            expandedSections: Set<string>,
+            localTree: React.ComponentProps<typeof BranchColumnSections>["localTree"],
+            remoteTree: React.ComponentProps<typeof BranchColumnSections>["localTree"],
+        ): HTMLElement => {
+            const container = document.createElement("div");
+            container.innerHTML = renderUi(
+                <BranchColumnSections
+                    selectedBranch={null}
+                    expandedSections={expandedSections}
+                    expandedFolders={new Set(["remote-origin"])}
+                    localTree={localTree}
+                    remoteGroups={new Map([["origin", { branches: [], tree: remoteTree }]])}
+                    worktrees={[]}
+                    filteredWorktrees={[]}
+                    filterNeedle=""
+                    locals={[]}
+                    remotes={[]}
+                    selectedBranchNames={new Set()}
+                    onSelectBranch={vi.fn()}
+                    onClearSelectedBranches={vi.fn()}
+                    onToggleSection={vi.fn()}
+                    onToggleFolder={vi.fn()}
+                    onBranchClick={vi.fn()}
+                    onBranchContextMenu={vi.fn()}
+                    onOpenBranchContextMenuFromRow={vi.fn()}
+                    onWorktreeContextMenu={vi.fn()}
+                    onOpenWorktreeContextMenuFromRow={vi.fn()}
+                />,
+            );
+            return container;
+        };
+        const leaf = {
+            label: "leaf",
+            fullName: "leaf",
+            branch: branch({ name: "leaf" }),
+            children: [],
+        };
+
+        expect(
+            renderSections(new Set(), [leaf], [leaf]).querySelectorAll(
+                "[data-branch-section-guide]",
+            ),
+        ).toHaveLength(0);
+        expect(
+            renderSections(new Set(["local", "remote"]), [], []).querySelectorAll(
+                "[data-branch-section-guide]",
+            ),
+        ).toHaveLength(0);
     });
 
     it("renders commit panel primitives", () => {
@@ -572,6 +790,7 @@ describe("webview ui smoke", () => {
         expect(html).toContain("Changes");
         expect(html).toContain("+5");
         expect(html).toContain("-1");
+        expect(html).toContain('type="checkbox"');
         expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
@@ -585,6 +804,23 @@ describe("webview ui smoke", () => {
         expect(commitActionIndex).toBeLessThan(pushActionIndex);
         expect(html).toContain("Stash (2)");
         expect(html).not.toContain('aria-disabled="true"');
+
+        const hiddenSectionHtml = renderToStaticMarkup(
+            <ChakraProvider theme={theme}>
+                <SectionHeader
+                    label="Ignored Files"
+                    count={1}
+                    isOpen={true}
+                    isAllChecked={false}
+                    isSomeChecked={false}
+                    onToggleOpen={noop}
+                    onToggleCheck={noop}
+                    checkboxVisibility="hidden"
+                />
+            </ChakraProvider>,
+        );
+        expect(hiddenSectionHtml).not.toContain('type="checkbox"');
+        expect(hiddenSectionHtml).toContain('aria-hidden="true"');
 
         const disabledCommitHtml = renderToStaticMarkup(
             <ChakraProvider theme={theme}>

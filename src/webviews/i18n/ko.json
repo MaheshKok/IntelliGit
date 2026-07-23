@@ -226,5 +226,19 @@
     "common.directory": "Directory",
     "common.show": "Show",
     "status.ignored": "Ignored",
-    "commitPanel.ignoredFiles": "Ignored Files"
+    "commitPanel.ignoredFiles": "Ignored Files",
+    "stash.files": "선택한 스태시의 파일",
+    "stash.action.applyStash": "스태시 적용",
+    "stash.action.popStash": "스태시 적용 및 제거",
+    "stash.action.branch": "브랜치",
+    "stash.dialog.currentBranch": "현재 브랜치",
+    "stash.dialog.asNewBranch": "새 브랜치로",
+    "stash.dialog.popStash": "스태시 적용 및 제거",
+    "stash.dialog.reinstateIndex": "인덱스 복원",
+    "stash.dialog.noBranch": "브랜치 없음",
+    "stash.dialog.invalidBranch": "유효한 브랜치 이름을 입력하세요.",
+    "a11y.resizeStashList": "스태시 목록 크기 조정",
+    "stash.fileAction.openDiff": "차이점 열기",
+    "stash.fileAction.editSource": "소스 편집",
+    "stash.fileAction.cherryPickSelectedChanges": "선택한 변경 사항 체리픽"
 }

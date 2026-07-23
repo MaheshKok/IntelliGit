@@ -12,6 +12,9 @@ import { BranchSectionHeader } from "./components/BranchSectionHeader";
 import { RepoIcon, TagRightIcon, WorktreeSmallIcon } from "../shared/components/Icons";
 import { t } from "../shared/i18n";
 import {
+    BRANCH_SECTION_GUIDE_STYLE,
+    BRANCH_SECTION_GUIDE_WRAPPER_STYLE,
+    BRANCH_TREE_INDENT_STEP,
     DEFAULT_BRANCH_ICON_YELLOW,
     HEAD_LABEL_STYLE,
     HEAD_ROW_STYLE,
@@ -117,26 +120,35 @@ export function BranchColumnSections({
                 onToggle={() => onToggleSection("local")}
             />
             {expandedSections.has("local") && (
-                <div style={TREE_SECTION_STYLE}>
-                    {localTree.map((node) => (
-                        <BranchTreeNodeRow
-                            key={`local-${node.fullName ?? node.label}`}
-                            node={node}
-                            depth={1}
-                            selectedBranch={selectedBranch}
-                            selectedBranchNames={selectedBranchNames}
-                            expandedFolders={expandedFolders}
-                            onSelectBranch={onSelectBranch}
-                            onBranchClick={onBranchClick}
-                            onToggleFolder={onToggleFolder}
-                            onContextMenu={onBranchContextMenu}
-                            filterNeedle={filterNeedle}
-                            prefix="local"
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
+                <div style={BRANCH_SECTION_GUIDE_WRAPPER_STYLE}>
+                    {localTree.length > 0 ? (
+                        <span
+                            aria-hidden="true"
+                            data-branch-section-guide="local"
+                            style={BRANCH_SECTION_GUIDE_STYLE}
                         />
-                    ))}
+                    ) : null}
+                    <div style={TREE_SECTION_STYLE}>
+                        {localTree.map((node) => (
+                            <BranchTreeNodeRow
+                                key={`local-${node.fullName ?? node.label}`}
+                                node={node}
+                                depth={0}
+                                selectedBranch={selectedBranch}
+                                selectedBranchNames={selectedBranchNames}
+                                expandedFolders={expandedFolders}
+                                onSelectBranch={onSelectBranch}
+                                onBranchClick={onBranchClick}
+                                onToggleFolder={onToggleFolder}
+                                onContextMenu={onBranchContextMenu}
+                                filterNeedle={filterNeedle}
+                                prefix="local"
+                                folderIcon={folderIcon}
+                                folderExpandedIcon={folderExpandedIcon}
+                                folderIconsByName={folderIconsByName}
+                            />
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -146,13 +158,20 @@ export function BranchColumnSections({
                 onToggle={() => onToggleSection("remote")}
             />
             {expandedSections.has("remote") && (
-                <div style={TREE_SECTION_STYLE}>
+                <>
                     {Array.from(remoteGroups.entries()).map(([remote, group]) => {
                         const remoteKey = `remote-${remote}`;
                         const isExpanded = expandedFolders.has(remoteKey);
                         return (
-                            <div key={remote}>
-                                <div style={{ paddingLeft: TREE_INDENT_STEP }}>
+                            <div key={remote} style={BRANCH_SECTION_GUIDE_WRAPPER_STYLE}>
+                                {isExpanded && group.tree.length > 0 ? (
+                                    <span
+                                        aria-hidden="true"
+                                        data-branch-section-guide={`remote-${remote}`}
+                                        style={BRANCH_SECTION_GUIDE_STYLE}
+                                    />
+                                ) : null}
+                                <div style={{ paddingLeft: BRANCH_TREE_INDENT_STEP }}>
                                     <BranchSectionHeader
                                         label={remote}
                                         expanded={isExpanded}
@@ -160,30 +179,33 @@ export function BranchColumnSections({
                                         leadingIcon={<RepoIcon />}
                                     />
                                 </div>
-                                {isExpanded &&
-                                    group.tree.map((node) => (
-                                        <BranchTreeNodeRow
-                                            key={`remote-${remote}-${node.fullName ?? node.label}`}
-                                            node={node}
-                                            depth={2}
-                                            selectedBranch={selectedBranch}
-                                            selectedBranchNames={selectedBranchNames}
-                                            expandedFolders={expandedFolders}
-                                            onSelectBranch={onSelectBranch}
-                                            onBranchClick={onBranchClick}
-                                            onToggleFolder={onToggleFolder}
-                                            onContextMenu={onBranchContextMenu}
-                                            filterNeedle={filterNeedle}
-                                            prefix={`remote/${remote}`}
-                                            folderIcon={folderIcon}
-                                            folderExpandedIcon={folderExpandedIcon}
-                                            folderIconsByName={folderIconsByName}
-                                        />
-                                    ))}
+                                {isExpanded && (
+                                    <div style={TREE_SECTION_STYLE}>
+                                        {group.tree.map((node) => (
+                                            <BranchTreeNodeRow
+                                                key={`remote-${remote}-${node.fullName ?? node.label}`}
+                                                node={node}
+                                                depth={1}
+                                                selectedBranch={selectedBranch}
+                                                selectedBranchNames={selectedBranchNames}
+                                                expandedFolders={expandedFolders}
+                                                onSelectBranch={onSelectBranch}
+                                                onBranchClick={onBranchClick}
+                                                onToggleFolder={onToggleFolder}
+                                                onContextMenu={onBranchContextMenu}
+                                                filterNeedle={filterNeedle}
+                                                prefix={`remote/${remote}`}
+                                                folderIcon={folderIcon}
+                                                folderExpandedIcon={folderExpandedIcon}
+                                                folderIconsByName={folderIconsByName}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
-                </div>
+                </>
             )}
 
             {worktrees.length > 0 && (

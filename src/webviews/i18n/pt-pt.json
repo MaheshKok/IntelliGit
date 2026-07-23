@@ -240,5 +240,19 @@
     "common.show": "Show",
     "status.ignored": "Ignored",
     "commitPanel.ignoredFiles": "Ignored Files",
-    "merge.action.abortMerge": "Anular mesclagem"
+    "merge.action.abortMerge": "Anular mesclagem",
+    "stash.files": "Ficheiros no Stash selecionado",
+    "stash.action.applyStash": "Aplicar Stash",
+    "stash.action.popStash": "Aplicar e remover o Stash",
+    "stash.action.branch": "Ramo",
+    "stash.dialog.currentBranch": "Ramo atual",
+    "stash.dialog.asNewBranch": "Como novo ramo",
+    "stash.dialog.popStash": "Aplicar e remover o Stash",
+    "stash.dialog.reinstateIndex": "Restaurar índice",
+    "stash.dialog.noBranch": "Sem ramo",
+    "stash.dialog.invalidBranch": "Introduza um nome de ramo válido.",
+    "a11y.resizeStashList": "Redimensionar a lista de Stashes",
+    "stash.fileAction.openDiff": "Abrir diferenças",
+    "stash.fileAction.editSource": "Editar código-fonte",
+    "stash.fileAction.cherryPickSelectedChanges": "Fazer cherry-pick das alterações selecionadas"
 }

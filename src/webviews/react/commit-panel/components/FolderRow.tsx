@@ -1,5 +1,5 @@
 // Directory row in the commit panel file tree. Shows a chevron toggle,
-// checkbox (checked/indeterminate), folder icon, name, and file count.
+// optional selection control, folder icon, name, and file count.
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
@@ -11,6 +11,8 @@ import { TreeFolderIcon } from "./TreeIcons";
 import { ChevronIcon } from "../../shared/components/Icons";
 import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { t } from "../../shared/i18n";
+
+const CHECKBOX_SLOT_SIZE = 14;
 
 interface Props {
     name: string;
@@ -25,7 +27,8 @@ interface Props {
     isSomeChecked: boolean;
     onToggleExpand: (dirPath: string) => void;
     onToggleCheck: (dirPath: string) => void;
-    checkboxVisibility?: "visible" | "hidden";
+    checkboxVisibility?: "visible" | "hidden" | "none";
+    interactive?: boolean;
 }
 
 function FolderRowInner({
@@ -42,6 +45,7 @@ function FolderRowInner({
     onToggleExpand,
     onToggleCheck,
     checkboxVisibility = "visible",
+    interactive = false,
 }: Props): React.ReactElement {
     const padLeft = INDENT_BASE + depth * INDENT_STEP;
     const resolvedIcon = resolveFolderIcon(
@@ -54,10 +58,13 @@ function FolderRowInner({
 
     return (
         <Flex
+            as={interactive ? "button" : undefined}
+            type={interactive ? "button" : undefined}
             align="center"
             gap="4px"
             pl={`${padLeft}px`}
             pr="6px"
+            w={interactive ? "100%" : undefined}
             minH="22px"
             lineHeight="22px"
             fontSize="13px"
@@ -65,24 +72,35 @@ function FolderRowInner({
             cursor="pointer"
             position="relative"
             whiteSpace="nowrap"
+            border={interactive ? "0" : undefined}
+            textAlign={interactive ? "left" : undefined}
+            bg={interactive ? "transparent" : undefined}
             color="var(--intelligit-pycharm-foreground)"
             _hover={{ bg: "rgba(255,255,255,0.05)" }}
             onClick={(e) => {
                 if ((e.target as HTMLElement).tagName === "INPUT") return;
                 onToggleExpand(dirPath);
             }}
+            aria-expanded={interactive ? isExpanded : undefined}
             title={dirPath}
         >
             <IndentGuides treeDepth={depth} />
             <ChevronIcon expanded={isExpanded} />
-            {checkboxVisibility !== "hidden" && (
+            {checkboxVisibility === "hidden" ? (
+                <Box
+                    as="span"
+                    w={`${CHECKBOX_SLOT_SIZE}px`}
+                    h={`${CHECKBOX_SLOT_SIZE}px`}
+                    flexShrink={0}
+                />
+            ) : checkboxVisibility === "visible" ? (
                 <VscCheckbox
                     isChecked={isAllChecked}
                     isIndeterminate={isSomeChecked}
                     onChange={() => onToggleCheck(dirPath)}
                     ariaLabel={dirPath}
                 />
-            )}
+            ) : null}
             <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
             <Box as="span" flex={1} minW={0} whiteSpace="nowrap" opacity={0.82}>
                 {name}
@@ -104,7 +122,7 @@ function FolderRowInner({
 /**
  * Memoized folder row for grouped working-tree entries.
  *
- * Expansion and checkbox callbacks stay separate so opening a directory does not
- * change selection, while the checkbox can toggle all descendant file paths.
+ * Expansion and selection callbacks stay separate so opening a directory does not
+ * change selection, while a visible checkbox can toggle all descendant file paths.
  */
 export const FolderRow = React.memo(FolderRowInner);

@@ -69,6 +69,38 @@ describe("low coverage components", () => {
         unmount(root, container);
     });
 
+    it("aligns Changed Files guides to the section and chevron centers", () => {
+        const detail: CommitDetail = {
+            hash: "guides123",
+            shortHash: "guides1",
+            message: "Guide alignment",
+            body: "",
+            author: "Mahesh Kokare",
+            email: "mahesh@example.com",
+            date: "2026-07-08T12:00:00.000Z",
+            parentHashes: [],
+            refs: [],
+            files: [
+                {
+                    path: "src/nested/leaf.ts",
+                    status: "M",
+                    additions: 0,
+                    deletions: 0,
+                },
+            ],
+        };
+
+        const { root, container } = mount(<CommitInfoPane detail={detail} />);
+        const leaf = container.querySelector('[title="src/nested/leaf.ts"]') as HTMLElement;
+        const guideOffsets = Array.from(leaf.querySelectorAll<HTMLElement>("span"))
+            .filter((element) => getComputedStyle(element).position === "absolute")
+            .map((element) => getComputedStyle(element).left);
+
+        expect(guideOffsets).toEqual(["16px", "26px", "40px"]);
+
+        unmount(root, container);
+    });
+
     it("useDragResize clamps initial height to container bounds", () => {
         function Harness(): React.ReactElement {
             const ref = useRef<HTMLDivElement | null>(null);
