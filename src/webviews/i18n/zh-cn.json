@@ -226,5 +226,19 @@
     "common.show": "显示",
     "status.ignored": "已忽略",
     "commitPanel.ignoredFiles": "已忽略文件",
-    "merge.action.abortMerge": "中止合并"
+    "merge.action.abortMerge": "中止合并",
+    "stash.files": "所选储藏中的文件",
+    "stash.action.applyStash": "应用储藏",
+    "stash.action.popStash": "应用并删除储藏",
+    "stash.action.branch": "分支",
+    "stash.dialog.currentBranch": "当前分支",
+    "stash.dialog.asNewBranch": "作为新分支",
+    "stash.dialog.popStash": "应用并删除储藏",
+    "stash.dialog.reinstateIndex": "恢复索引",
+    "stash.dialog.noBranch": "没有分支",
+    "stash.dialog.invalidBranch": "请输入有效的分支名称。",
+    "a11y.resizeStashList": "调整储藏列表大小",
+    "stash.fileAction.openDiff": "打开差异",
+    "stash.fileAction.editSource": "编辑源文件",
+    "stash.fileAction.cherryPickSelectedChanges": "挑选选定的更改"
 }

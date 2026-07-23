@@ -233,5 +233,19 @@
     "common.directory": "Directory",
     "common.show": "Show",
     "status.ignored": "Ignored",
-    "commitPanel.ignoredFiles": "Ignored Files"
+    "commitPanel.ignoredFiles": "Ignored Files",
+    "stash.files": "Dateien im ausgewählten Stash",
+    "stash.action.applyStash": "Stash anwenden",
+    "stash.action.popStash": "Stash anwenden und löschen",
+    "stash.action.branch": "Branch",
+    "stash.dialog.currentBranch": "Aktueller Branch",
+    "stash.dialog.asNewBranch": "Als neuen Branch",
+    "stash.dialog.popStash": "Stash anwenden und löschen",
+    "stash.dialog.reinstateIndex": "Index wiederherstellen",
+    "stash.dialog.noBranch": "Kein Branch",
+    "stash.dialog.invalidBranch": "Geben Sie einen gültigen Branchnamen ein.",
+    "a11y.resizeStashList": "Größe der Stash-Liste ändern",
+    "stash.fileAction.openDiff": "Diff öffnen",
+    "stash.fileAction.editSource": "Quelldatei bearbeiten",
+    "stash.fileAction.cherryPickSelectedChanges": "Ausgewählte Änderungen cherry-picken"
 }

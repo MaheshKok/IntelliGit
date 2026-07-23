@@ -51,8 +51,8 @@ interface CommitInfoPaneProps {
 
 const INFO_INDENT_BASE = 18;
 const INFO_INDENT_STEP = 14;
-const INFO_GUIDE_BASE = 23;
-const INFO_SECTION_GUIDE = 7;
+const INFO_GUIDE_BASE = INFO_INDENT_BASE + 16 / 2;
+const INFO_SECTION_GUIDE = 8 + 16 / 2;
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
 const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
     position: "absolute",

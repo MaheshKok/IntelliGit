@@ -20,6 +20,11 @@ CLAUDE.md
 AGENTS.md
 
 .agents/
+.codex/
+.impeccable/
+
+.github/hooks/
+.github/skills/
 
 .serena/
 .env*

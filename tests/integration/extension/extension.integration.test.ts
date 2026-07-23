@@ -515,6 +515,17 @@ vi.mock("vscode", () => ({
             scheme: value.split(":", 1)[0],
             toString: () => value,
         }),
+        from: (components: { scheme: string; path: string; query?: string }) => {
+            const query = components.query ?? "";
+            const serializedPath = components.path.split("/").map(encodeURIComponent).join("/");
+            return {
+                fsPath: components.path,
+                path: components.path,
+                query,
+                scheme: components.scheme,
+                toString: () => `${components.scheme}:${serializedPath}${query ? `?${query}` : ""}`,
+            };
+        },
         joinPath: (base: { fsPath?: string; path?: string }, ...parts: string[]) => {
             const prefix = base.fsPath ?? base.path ?? "";
             const joined = [prefix, ...parts].join("/").replace(/\/+/g, "/");
