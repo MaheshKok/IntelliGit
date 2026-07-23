@@ -544,7 +544,7 @@ export class ShelfService {
             await this.reverter.revertWithHeldLocks({
                 transactionId: randomUUID().replaceAll("-", ""),
                 baseOid: captured.baseCommit,
-                files: captured.revertFiles,
+                files: captured.revertFiles.flat(),
                 shelf: { id: captured.shelfId, generation: captured.generation },
             });
         }
@@ -581,13 +581,14 @@ export class ShelfService {
         if (isStructural(entry)) {
             const block = entry.worktreeBlock ?? entry.indexBlock;
             if (!block) throw new Error("Structural shelf entry has no file path.");
+            const localPath = block.status === "R" ? (block.renamedFrom ?? block.path) : block.path;
             return {
                 kind: "structuralPending",
                 changeId: entry.changeId,
                 reason: "Structural shelf change needs a choice.",
-                path: block.path,
+                path: localPath,
                 pathFingerprint: await pathFingerprint(
-                    repositoryPath(this.options.repositoryRoot, block.path),
+                    repositoryPath(this.options.repositoryRoot, localPath),
                 ),
             };
         }

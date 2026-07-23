@@ -21,10 +21,10 @@ export interface ShelfCaptureArtifacts {
     readonly shelfId: string;
     readonly generation: number;
     readonly baseCommit?: string;
-    readonly revertFiles: readonly {
+    readonly revertFiles: readonly (readonly {
         readonly relativePath: string;
         readonly baseBytes?: Uint8Array;
-    }[];
+    }[])[];
 }
 
 /** Dependencies owned by the host service while capture persists one shelf generation. */
@@ -109,8 +109,9 @@ async function persistCaptureSource(
     dependencies: ShelfCaptureDependencies,
 ): Promise<ShelfCaptureArtifacts> {
     const entries: ShelfFileEntry[] = [];
-    const revertFiles: Array<{ readonly relativePath: string; readonly baseBytes?: Uint8Array }> =
-        [];
+    const revertFiles: Array<
+        readonly { readonly relativePath: string; readonly baseBytes?: Uint8Array }[]
+    > = [];
     const objectHashes = new Set<string>();
     for (const [relativePath, patches] of [...source.patchByPath.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
@@ -124,7 +125,7 @@ async function persistCaptureSource(
             objectHashes,
         );
         entries.push(captured.entry);
-        if (captured.revertFile) revertFiles.push(captured.revertFile);
+        revertFiles.push(captured.revertFiles);
     }
     if (entries.length === 0) throw new Error("No selected changes to shelve.");
     const metadata: ShelfMetadata = { name, baseCommit: source.baseCommit, lifecycle: "shelved" };
@@ -146,7 +147,10 @@ async function persistCaptureEntry(
     objectHashes: Set<string>,
 ): Promise<{
     readonly entry: ShelfFileEntry;
-    readonly revertFile?: { readonly relativePath: string; readonly baseBytes?: Uint8Array };
+    readonly revertFiles: readonly {
+        readonly relativePath: string;
+        readonly baseBytes?: Uint8Array;
+    }[];
 }> {
     const capturedIndexBlock = patches.index
         ? await persistBlock(shelfId, relativePath, patches.index, dependencies.store, objectHashes)
@@ -184,12 +188,18 @@ async function persistCaptureEntry(
         dependencies,
         objectHashes,
     );
-    const pathForRevert = worktreeBlock?.path ?? indexBlock?.path;
+    const blockForRevert = worktreeBlock ?? indexBlock;
     return {
         entry,
-        revertFile: pathForRevert
-            ? { relativePath: pathForRevert, baseBytes: base?.bytes }
-            : undefined,
+        revertFiles:
+            blockForRevert?.status === "R" && blockForRevert.renamedFrom
+                ? [
+                      { relativePath: blockForRevert.renamedFrom, baseBytes: base?.bytes },
+                      { relativePath: blockForRevert.path },
+                  ]
+                : blockForRevert
+                  ? [{ relativePath: blockForRevert.path, baseBytes: base?.bytes }]
+                  : [],
     };
 }
 
@@ -256,6 +266,7 @@ async function captureRawFidelity(
     if (!materialized) return entry;
     const fidelity = await captureWorktreeRawFidelity({
         materializedBytes: materialized,
+        preimageBytes: base.bytes,
         repositoryRoot: dependencies.repositoryRoot,
         relativePath,
         shelfId,

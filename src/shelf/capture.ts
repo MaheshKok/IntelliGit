@@ -19,6 +19,8 @@ export interface ShelfCaptureGit {
 export interface CaptureWorktreeRawFidelityInput {
     /** Bytes produced by materializing the captured index-to-worktree layer. */
     readonly materializedBytes: Uint8Array;
+    /** Bytes the destructive reverter restores before a raw-fidelity unshelve. */
+    readonly preimageBytes: Uint8Array;
     readonly repositoryRoot: string;
     readonly relativePath: string;
     readonly shelfId: string;
@@ -53,7 +55,7 @@ export async function captureWorktreeRawFidelity(
     if (!worktreeBlock) {
         throw new Error("Raw worktree fidelity requires a worktree layer block.");
     }
-    const before = await input.store.putObject(input.shelfId, materialized);
+    const before = await input.store.putObject(input.shelfId, input.preimageBytes);
     const after = await input.store.putObject(input.shelfId, worktree);
     return {
         entry: {

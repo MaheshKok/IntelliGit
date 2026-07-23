@@ -74,6 +74,7 @@ describe("Phase-1 shelf capture primitives", () => {
 
         const result = await captureWorktreeRawFidelity({
             materializedBytes: Buffer.from("base\n"),
+            preimageBytes: Buffer.from("base\n"),
             repositoryRoot,
             relativePath: "tracked.txt",
             shelfId: "shelf-one",

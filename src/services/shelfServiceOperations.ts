@@ -107,9 +107,10 @@ export async function resolveStructuralAction(
 ): Promise<void> {
     const block = entry.worktreeBlock ?? entry.indexBlock;
     if (!block) throw new Error("Structural shelf entry has no file path.");
+    const sourcePath = block.status === "R" ? (block.renamedFrom ?? block.path) : block.path;
     const source = resolveRepositoryPath(
         dependencies.repositoryRoot,
-        validateShelfManifestPath(block.path),
+        validateShelfManifestPath(sourcePath),
     );
     if ((await pathFingerprint(source)) !== input.expectedPathFingerprint) {
         throw new Error("Structural resolution path is stale.");
