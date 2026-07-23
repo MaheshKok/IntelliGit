@@ -14,7 +14,11 @@ import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
 import { ShelfFilePane } from "./ShelfFilePane";
 import { CleanUpDialog } from "./CleanUpDialog";
-import { RenameStructuralDialog, ShelfDeleteConfirmation } from "./ShelfTabDialogs";
+import {
+    RenameStructuralDialog,
+    ShelfDeleteConfirmation,
+    ShelfHealthWarningBanner,
+} from "./ShelfTabDialogs";
 
 /** Host message selecting one shelf and fetching its files. */
 export type ShelfSelectMessage = Extract<OutboundMessage, { type: "shelfSelect" }>;
@@ -74,6 +78,8 @@ export interface ShelfTabProps {
     shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
     catalogGeneration: number;
+    shelfRemoveOnUnshelve?: boolean;
+    shelfHealth?: import("../../../protocol/commitPanelMessages").ShelfHealthWarning[];
     outcome?: ShelfMutationOutcome;
     /** Error text returned by the host for the current rename; rendered unchanged. */
     groupByDir?: boolean;
@@ -206,11 +212,14 @@ function canUnshelveShelf(
 }
 
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
+// eslint-disable-next-line complexity -- existing shelf action surface is intentionally kept in one host-routed component.
 export function ShelfTab({
     shelves,
     shelfFiles,
     selectedShelfId,
     catalogGeneration,
+    shelfRemoveOnUnshelve = true,
+    shelfHealth = [],
     outcome,
     groupByDir = false,
     onSelect,
@@ -418,7 +427,10 @@ export function ShelfTab({
             if (action === "unshelveSilently") {
                 requestUnshelve(
                     shelf,
-                    { changeIds: shelfFiles.map((entry) => entry.changeId), removeFromShelf: true },
+                    {
+                        changeIds: shelfFiles.map((entry) => entry.changeId),
+                        removeFromShelf: shelfRemoveOnUnshelve,
+                    },
                     true,
                 );
                 return;
@@ -461,6 +473,7 @@ export function ShelfTab({
             requestUnshelve,
             shelfFiles,
             shelfFilesAreCurrent,
+            shelfRemoveOnUnshelve,
         ],
     );
 
@@ -498,6 +511,7 @@ export function ShelfTab({
             onDragOver={onDragOver}
             onDrop={onDrop}
         >
+            <ShelfHealthWarningBanner warnings={shelfHealth} />
             <ShelfList
                 shelves={shelves}
                 selectedShelfId={displayedSelectedShelfId}
@@ -572,7 +586,7 @@ export function ShelfTab({
                         selectedShelf,
                         {
                             changeIds: shelfFiles.map((entry) => entry.changeId),
-                            removeFromShelf: true,
+                            removeFromShelf: shelfRemoveOnUnshelve,
                         },
                         true,
                     );
@@ -724,6 +738,7 @@ export function ShelfTab({
             {unshelveShelf ? (
                 <UnshelveDialog
                     entries={shelfFiles}
+                    defaultRemoveFromShelf={shelfRemoveOnUnshelve}
                     onClose={() => setUnshelveShelf(null)}
                     onSubmit={(input) => {
                         requestUnshelve(unshelveShelf, input);

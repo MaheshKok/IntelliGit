@@ -30,6 +30,7 @@ interface UseShelfDragOptions {
     repositoryRoot?: string;
     catalogGeneration: number;
     onMessage: (message: OutboundMessage) => void;
+    removeOnUnshelve?: boolean;
 }
 
 let requestSequence = 0;
@@ -85,6 +86,7 @@ export function useShelfDrag({
     repositoryRoot,
     catalogGeneration,
     onMessage,
+    removeOnUnshelve = true,
 }: UseShelfDragOptions) {
     const onCommitFileDragStart = useCallback(
         (
@@ -160,11 +162,11 @@ export function useShelfDrag({
                 shelfId: payload.shelfId,
                 expectedGeneration: payload.generation,
                 changeIds: payload.changeIds,
-                removeFromShelf: !event.ctrlKey,
+                removeFromShelf: event.ctrlKey ? false : removeOnUnshelve,
                 mode: "flattened",
             });
         },
-        [onMessage, repositoryRoot],
+        [onMessage, removeOnUnshelve, repositoryRoot],
     );
 
     return {

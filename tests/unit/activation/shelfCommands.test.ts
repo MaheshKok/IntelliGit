@@ -28,6 +28,11 @@ vi.mock("vscode", () => ({
         showQuickPick: mocks.showQuickPick,
         showWarningMessage: mocks.showWarningMessage,
     },
+    workspace: {
+        getConfiguration: () => ({
+            get: (_section: string, defaultValue?: unknown) => defaultValue,
+        }),
+    },
 }));
 
 import { registerShelfCommands, SHELF_COMMAND_IDS } from "../../../src/activation/shelfCommands";

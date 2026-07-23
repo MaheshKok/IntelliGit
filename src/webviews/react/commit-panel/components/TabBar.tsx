@@ -17,6 +17,7 @@ import { t } from "../../shared/i18n";
 
 interface Props {
     stashCount: number;
+    shelfWarningCount?: number;
     onSync?: () => void;
     onFetch?: () => void;
     onPull?: () => void;
@@ -55,6 +56,7 @@ const sharedTabStyles = {
  */
 export function TabBar({
     stashCount,
+    shelfWarningCount = 0,
     onSync,
     onFetch,
     onPull,
@@ -118,6 +120,21 @@ export function TabBar({
                             }
                         >
                             {tab.label}
+                            {tab.key === "shelf" && shelfWarningCount > 0 ? (
+                                <span
+                                    aria-label={`${shelfWarningCount} shelf warnings`}
+                                    style={{
+                                        marginLeft: 4,
+                                        borderRadius: 999,
+                                        padding: "0 5px",
+                                        background:
+                                            "var(--vscode-inputValidation-warningBackground)",
+                                        color: "var(--vscode-inputValidation-warningForeground)",
+                                    }}
+                                >
+                                    {shelfWarningCount}
+                                </span>
+                            ) : null}
                         </Tab>
                     ))}
                 </TabList>

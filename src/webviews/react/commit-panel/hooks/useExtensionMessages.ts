@@ -30,6 +30,8 @@ function createRepositoryState(
         catalogGeneration: 0,
         shelfFiles: [],
         selectedShelfId: null,
+        shelfRemoveOnUnshelve: true,
+        shelfHealth: [],
         shelfMutationOutcome: null,
         folderIcon: undefined,
         folderExpandedIcon: undefined,
@@ -177,6 +179,8 @@ function reducer(
                 catalogGeneration: action.catalogGeneration,
                 shelfFiles: action.shelfFiles,
                 selectedShelfId: action.selectedShelfId,
+                shelfRemoveOnUnshelve: action.shelfRemoveOnUnshelve,
+                shelfHealth: action.shelfHealth,
                 folderIcon: action.folderIcon ?? repository.folderIcon,
                 folderExpandedIcon: action.folderExpandedIcon ?? repository.folderExpandedIcon,
                 folderIconsByName: action.folderIconsByName ?? repository.folderIconsByName,
@@ -231,7 +235,14 @@ function reducer(
         case "SET_SHELF_MUTATION_OUTCOME":
             return updateRepository(state, action.repositoryRoot, (repository) => ({
                 ...repository,
-                shelfMutationOutcome: { requestId: action.requestId, status: action.status, entries: action.entries, message: action.message, shelfId: action.shelfId, newGeneration: action.newGeneration },
+                shelfMutationOutcome: {
+                    requestId: action.requestId,
+                    status: action.status,
+                    entries: action.entries,
+                    message: action.message,
+                    shelfId: action.shelfId,
+                    newGeneration: action.newGeneration,
+                },
             }));
         case "SET_AMEND":
             return updateRepository(state, action.repositoryRoot, (repository) => ({
@@ -291,6 +302,8 @@ export function useExtensionMessages(): [
                         catalogGeneration: msg.catalogGeneration ?? 0,
                         shelfFiles: msg.shelfFiles ?? [],
                         selectedShelfId: msg.selectedShelfId ?? null,
+                        shelfRemoveOnUnshelve: msg.shelfRemoveOnUnshelve ?? true,
+                        shelfHealth: msg.shelfHealth ?? [],
                         folderIcon: msg.folderIcon,
                         folderExpandedIcon: msg.folderExpandedIcon,
                         folderIconsByName: msg.folderIconsByName,

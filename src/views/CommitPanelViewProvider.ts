@@ -156,6 +156,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private readonly shelfServiceForRepository?: (
             repositoryRoot: string,
         ) => ShelfService | undefined,
+        private readonly shelfRemoveOnUnshelve: boolean = true,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -248,6 +249,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 repository,
                 gitOps,
                 this.shelfServiceForRepository?.(repository.root),
+                this.shelfRemoveOnUnshelve,
             );
             runtime.lastKnownChangedFileCount = this.getStoredChangedFileCount(runtime);
             this.runtimes.set(repository.root, runtime);
@@ -537,6 +539,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         catalogGeneration: number;
         shelfFiles: CommitPanelRepositorySnapshot["shelfFiles"];
         selectedShelfId: string | null;
+        shelfRemoveOnUnshelve: boolean;
+        shelfHealth: CommitPanelRepositorySnapshot["shelfHealth"];
     }> {
         if (!runtime.shelfService) {
             return {
@@ -544,6 +548,8 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 catalogGeneration: 0,
                 shelfFiles: [],
                 selectedShelfId: null,
+                shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
+                shelfHealth: [],
             };
         }
         const listed = await runtime.shelfService.listShelves();
@@ -557,6 +563,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 ? [...(await runtime.shelfService.getShelfFiles(selectedShelfId))]
                 : [],
             selectedShelfId,
+            shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
+            shelfHealth: runtime.shelfService
+                .getHealthWarnings()
+                .map((warning) => ({ ...warning })),
         };
     }
 

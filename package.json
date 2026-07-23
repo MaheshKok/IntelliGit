@@ -809,6 +809,25 @@
                     "scope": "window",
                     "description": "Store base revisions in shelves for conflict resolution."
                 },
+                "intelligit.shelf.path": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "machine",
+                    "description": "Custom shelf storage directory. The repository-specific subdirectory is always appended."
+                },
+                "intelligit.shelf.removeOnUnshelve": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "description": "Remove successfully applied files from the shelf when unshelving."
+                },
+                "intelligit.shelf.recoveryRetentionHours": {
+                    "type": "number",
+                    "default": 24,
+                    "minimum": 1,
+                    "scope": "window",
+                    "description": "Retain recovery snapshots for at least this many hours. Destructive operations are refused when recovery capacity is exhausted within this window."
+                },
                 "intelligit.shelf.cleanupAfterDays": {
                     "type": "number",
                     "default": 0,

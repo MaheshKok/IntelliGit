@@ -1911,6 +1911,7 @@ describe("view providers integration", () => {
                 ],
             })),
             getShelfFiles: vi.fn(async () => []),
+            getHealthWarnings: vi.fn(() => []),
         };
         const provider = new UndockedViewProvider(
             { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
@@ -5674,6 +5675,7 @@ describe("view providers integration", () => {
                     lifecycle: "shelved",
                 },
             ]),
+            getHealthWarnings: vi.fn(() => []),
         };
         const { provider, webview } = await setupCommitPanelProvider(undefined, {
             shelfService: shelf,

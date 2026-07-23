@@ -10,6 +10,7 @@ import {
     type ShelfMutationResult,
     type ShelfService,
 } from "../services/shelfService";
+import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
 import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
 import { assertValidBranchName } from "../utils/gitRefs";
 import type {
@@ -194,8 +195,13 @@ export async function executeShelfMutationRequest(
         completion = await shelfCompletion(requestId, result, deps.shelfService);
     } catch (error) {
         completion = completionForShelfError(requestId, error);
+        logShelfWarning(`${String(message.type)} failed`, error);
         throw error;
     } finally {
+        logShelfOperation(
+            { operation: String(message.type), repositoryRoot: deps.shelfService.repositoryRoot },
+            completion,
+        );
         try {
             await deps.refreshData();
             if (workingTreeChanged) deps.fireWorkingTreeChanged();

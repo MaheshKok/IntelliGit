@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import type { ShelfService, ShelfSummary } from "../services/shelfService";
+import type { ShelfMutationResult, ShelfService, ShelfSummary } from "../services/shelfService";
+import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { getErrorMessage } from "../utils/errors";
 
@@ -54,15 +55,22 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
     };
 
     const runMutation = async (
-        action: () => Promise<void>,
+        service: ShelfService,
+        operation: string,
+        action: () => Promise<ShelfMutationResult | void>,
         success: string,
         failure: string,
     ): Promise<void> => {
         try {
-            await action();
+            const result = await action();
+            logShelfOperation(
+                { operation, repositoryRoot: service.repositoryRoot },
+                result ?? { status: "ok" },
+            );
             vscode.window.showInformationMessage(success);
             await deps.refreshAfterMutation();
         } catch (error) {
+            logShelfWarning(`${operation} failed`, error);
             vscode.window.showErrorMessage(`${failure}: ${getErrorMessage(error)}`);
         }
     };
@@ -80,9 +88,9 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             : suggestedName;
         if (!name) return;
         await runMutation(
-            async () => {
-                await service.shelve({ name, paths: [], silent, keepLocal });
-            },
+            service,
+            "shelveSave",
+            () => service.shelve({ name, paths: [], silent, keepLocal }),
             keepLocal ? "Changes saved to shelf." : "Changes shelved.",
             keepLocal ? "Save to shelf failed" : "Shelve changes failed",
         );
@@ -122,14 +130,18 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             );
             if (!picked) return;
             await runMutation(
-                async () => {
-                    await service.unshelve({
+                service,
+                "unshelve",
+                () =>
+                    service.unshelve({
                         id: picked.shelf.id,
                         expectedShelfGeneration: picked.shelf.generation,
-                        removeFromShelf: true,
+                        removeFromShelf:
+                            vscode.workspace
+                                .getConfiguration("intelligit")
+                                .get<boolean>("shelf.removeOnUnshelve", true) !== false,
                         mode: "flattened",
-                    });
-                },
+                    }),
                 "Shelf unshelved.",
                 "Unshelve failed",
             );
@@ -149,9 +161,9 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
         });
         if (!sources) return;
         await runMutation(
-            async () => {
-                await service.importPatch({ fileUris: sources.map((uri) => uri.fsPath) });
-            },
+            service,
+            "shelfImportPatch",
+            () => service.importPatch({ fileUris: sources.map((uri) => uri.fsPath) }),
             "Patch imported to shelf.",
             "Import patch failed",
         );
@@ -175,12 +187,13 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
             );
             if (confirmed !== action) return;
             await runMutation(
-                async () => {
-                    await service.cleanUp({
+                service,
+                "shelfCleanUp",
+                () =>
+                    service.cleanUp({
                         shelfIds: ghosts.map((shelf) => shelf.id),
                         expectedCatalogGeneration: listed.catalogGeneration,
-                    });
-                },
+                    }),
                 "Already unshelved shelves cleaned up.",
                 "Clean up shelf failed",
             );
@@ -200,6 +213,8 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
         );
         if (confirmed !== action) return;
         await runMutation(
+            service,
+            "shelfPurgeRecovery",
             async () => {
                 await service.purgeRecovery();
             },

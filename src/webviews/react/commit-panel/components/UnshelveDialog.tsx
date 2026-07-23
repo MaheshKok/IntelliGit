@@ -11,6 +11,8 @@ export interface UnshelveDialogSubmit {
 /** Inputs and callbacks for the flattened unshelve dialog. */
 export interface UnshelveDialogProps {
     entries: ShelfFileEntry[];
+    /** Activation-time default for removal after a successful apply. */
+    defaultRemoveFromShelf?: boolean;
     onClose: () => void;
     onSubmit: (input: UnshelveDialogSubmit) => void;
 }
@@ -20,11 +22,19 @@ function entryLabel(entry: ShelfFileEntry): string {
 }
 
 /** Flattened-mode shelf apply dialog. Host owns validation and exact-state policy. */
-export function UnshelveDialog({ entries, onClose, onSubmit }: UnshelveDialogProps): React.ReactElement {
-    const [selected, setSelected] = useState<Set<string>>(() => new Set(entries.map((entry) => entry.changeId)));
-    const [removeFromShelf, setRemoveFromShelf] = useState(true);
+export function UnshelveDialog({
+    entries,
+    defaultRemoveFromShelf = true,
+    onClose,
+    onSubmit,
+}: UnshelveDialogProps): React.ReactElement {
+    const [selected, setSelected] = useState<Set<string>>(
+        () => new Set(entries.map((entry) => entry.changeId)),
+    );
+    const [removeFromShelf, setRemoveFromShelf] = useState(defaultRemoveFromShelf);
     const selectedIds = useMemo(
-        () => entries.filter((entry) => selected.has(entry.changeId)).map((entry) => entry.changeId),
+        () =>
+            entries.filter((entry) => selected.has(entry.changeId)).map((entry) => entry.changeId),
         [entries, selected],
     );
     const toggle = (changeId: string): void => {

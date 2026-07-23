@@ -6,7 +6,7 @@ import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import type { ShelfService } from "../services/shelfService";
 import type { ShelfFileEntry } from "../shelf/model";
-import type { ShelfEntry } from "../webviews/protocol/commitPanelMessages";
+import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
@@ -108,6 +108,8 @@ interface UndockedViewProviderOptions {
     loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
     shelfServiceForRepository?: (root: string) => ShelfService | undefined;
+    /** Activation-time default for removing successfully applied entries after unshelve. */
+    shelfRemoveOnUnshelve?: boolean;
     commitChecksService?: CommitChecksService;
     commitChecksProviders?: readonly CommitChecksProvider[];
 }
@@ -162,6 +164,7 @@ export class UndockedViewProvider {
     private readonly loadRepositoryData?: (root: string) => Promise<UndockedRepositoryData>;
     private readonly onSelectedRepositoryRootChanged?: (root: string) => Promise<void> | void;
     private readonly shelfServiceForRepository?: (root: string) => ShelfService | undefined;
+    private readonly shelfRemoveOnUnshelve: boolean;
     private shelfService?: ShelfService;
     private readonly iconTheme: IconThemeService;
     private repoRootUri: vscode.Uri;
@@ -258,6 +261,7 @@ export class UndockedViewProvider {
         this.loadRepositoryData = options.loadRepositoryData;
         this.onSelectedRepositoryRootChanged = options.onSelectedRepositoryRootChanged;
         this.shelfServiceForRepository = options.shelfServiceForRepository;
+        this.shelfRemoveOnUnshelve = options.shelfRemoveOnUnshelve ?? true;
         this.repositories =
             options.repositories && options.repositories.length > 0
                 ? options.repositories
@@ -739,9 +743,18 @@ export class UndockedViewProvider {
         catalogGeneration: number;
         shelfFiles: ShelfFileEntry[];
         selectedShelfId: string | null;
+        shelfRemoveOnUnshelve: boolean;
+        shelfHealth: ShelfHealthWarning[];
     }> {
         if (!this.shelfService) {
-            return { shelves: [], catalogGeneration: 0, shelfFiles: [], selectedShelfId: null };
+            return {
+                shelves: [],
+                catalogGeneration: 0,
+                shelfFiles: [],
+                selectedShelfId: null,
+                shelfRemoveOnUnshelve: this.shelfRemoveOnUnshelve,
+                shelfHealth: [],
+            };
         }
         const listed = await this.shelfService.listShelves();
         const selectedShelfId = listed.shelves.some((shelf) => shelf.id === this.selectedShelfId)
@@ -754,6 +767,8 @@ export class UndockedViewProvider {
                 ? [...(await this.shelfService.getShelfFiles(selectedShelfId))]
                 : [],
             selectedShelfId,
+            shelfRemoveOnUnshelve: this.shelfRemoveOnUnshelve,
+            shelfHealth: this.shelfService.getHealthWarnings().map((warning) => ({ ...warning })),
         };
     }
 

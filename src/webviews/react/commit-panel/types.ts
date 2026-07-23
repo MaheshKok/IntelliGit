@@ -38,7 +38,16 @@ interface CommitPanelState {
     catalogGeneration: number;
     shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
-    shelfMutationOutcome: { requestId: string; status: ShelfMutationStatus; entries: PerEntryResult[]; message?: string; shelfId?: string; newGeneration?: number } | null;
+    shelfRemoveOnUnshelve: boolean;
+    shelfHealth: import("../../protocol/commitPanelMessages").ShelfHealthWarning[];
+    shelfMutationOutcome: {
+        requestId: string;
+        status: ShelfMutationStatus;
+        entries: PerEntryResult[];
+        message?: string;
+        shelfId?: string;
+        newGeneration?: number;
+    } | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -106,6 +115,8 @@ export type CommitPanelAction =
           catalogGeneration: number;
           shelfFiles: ShelfFileEntry[];
           selectedShelfId: string | null;
+          shelfRemoveOnUnshelve: boolean;
+          shelfHealth: import("../../protocol/commitPanelMessages").ShelfHealthWarning[];
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
           folderIconsByName?: ThemeFolderIconMap;

@@ -11,8 +11,10 @@ import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { WorktreeService } from "../services/worktreeService";
 import { ShelfService } from "../services/shelfService";
+import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
 import { ShelfStore } from "../shelf/store";
 import { resolveShelfPaths } from "../shelf/paths";
+import { readShelfSettings } from "./shelfSettings";
 import {
     discoverGitRepositories,
     type DiscoveredRepository,
@@ -115,15 +117,7 @@ export async function activateRepositoryMode(
         new RepositoryMutationCoordinator(),
         new RepositoryLock(),
     );
-    const shelfPathOverride = vscode.workspace
-        .getConfiguration("intelligit")
-        .get<string>("shelf.path");
-    const shelfConfiguration = vscode.workspace.getConfiguration("intelligit");
-    const recordBaseRevisions = shelfConfiguration.get<boolean>("shelf.recordBaseRevisions", true) !== false;
-    const configuredCleanupAfterDays = shelfConfiguration.get<number>("shelf.cleanupAfterDays", 0) ?? 0;
-    const cleanupAfterDays = Number.isFinite(configuredCleanupAfterDays)
-        ? Math.max(0, configuredCleanupAfterDays)
-        : 0;
+    const shelfSettings = readShelfSettings(vscode.workspace.getConfiguration("intelligit"));
     const shelfServices = new Map<string, ShelfService>();
     const globalStoragePath = context.globalStorageUri?.fsPath;
     if (globalStoragePath) {
@@ -132,7 +126,7 @@ export async function activateRepositoryMode(
                 const shelfPaths = await resolveShelfPaths({
                     repositoryRoot: repository.root,
                     globalStoragePath,
-                    overridePath: shelfPathOverride || undefined,
+                    overridePath: shelfSettings.pathOverride,
                 });
                 shelfServices.set(
                     repository.root,
@@ -141,7 +135,8 @@ export async function activateRepositoryMode(
                         executor: new GitExecutor(repository.root, mutationGate),
                         store: new ShelfStore(shelfPaths),
                         gate: mutationGate,
-                        recordBaseRevisions,
+                        recordBaseRevisions: shelfSettings.recordBaseRevisions,
+                        recoveryMinimumRetentionMs: shelfSettings.recoveryRetentionMs,
                     }),
                 );
             }),
@@ -152,9 +147,15 @@ export async function activateRepositoryMode(
     for (const [repositoryRoot, shelfService] of shelfServices) {
         void (async () => {
             await shelfService.resumePendingRecovery();
-            await shelfService.cleanUpExpiredGhosts(cleanupAfterDays);
+            logShelfOperation(
+                { operation: "resumePendingRecovery", repositoryRoot },
+                { status: "ok" },
+            );
+            const cleaned = await shelfService.cleanUpExpiredGhosts(shelfSettings.cleanupAfterDays);
+            logShelfOperation({ operation: "cleanUpExpiredGhosts", repositoryRoot }, cleaned);
         })().catch((error: unknown) => {
             const message = getErrorMessage(error);
+            logShelfWarning(`startup recovery for ${repositoryRoot}`, error);
             console.error(`[IntelliGit] Shelf recovery failed for ${repositoryRoot}:`, error);
             void vscode.window.showErrorMessage(message);
         });
@@ -259,6 +260,7 @@ export async function activateRepositoryMode(
         context.workspaceState,
         context.secrets,
         shelfServiceForRepository,
+        shelfSettings.removeOnUnshelve,
     );
     const mergeConflicts = new MergeConflictsTreeProvider(gitOps, repoRootUri);
     const worktreeService = new WorktreeService(executor, () => repoRoot);
@@ -730,6 +732,7 @@ export async function activateRepositoryMode(
                     await undockedSelectionWrite;
                 },
                 shelfServiceForRepository,
+                shelfRemoveOnUnshelve: shelfSettings.removeOnUnshelve,
             },
         );
         undocked.setRepositoryLabel(initialUndockedRepository.label);

@@ -101,6 +101,7 @@ export function RepositoryAccordion({
     const shelfDrag = useShelfDrag({
         repositoryRoot: repository.root || undefined,
         catalogGeneration: repository.catalogGeneration,
+        removeOnUnshelve: repository.shelfRemoveOnUnshelve,
         onMessage: (message) => vscode.postMessage(message),
     });
     const summary = branchSummary(repository);
@@ -254,6 +255,8 @@ export function RepositoryAccordion({
             shelfFiles={repository.shelfFiles}
             selectedShelfId={repository.selectedShelfId}
             catalogGeneration={repository.catalogGeneration}
+            shelfRemoveOnUnshelve={repository.shelfRemoveOnUnshelve ?? true}
+            shelfHealth={repository.shelfHealth ?? []}
             groupByDir={groupByDir}
             outcome={repository.shelfMutationOutcome ?? undefined}
             onSelect={(message) =>
@@ -306,6 +309,7 @@ export function RepositoryAccordion({
             <Flex direction="column" flex={1} minH={0} overflow="hidden">
                 <TabBar
                     stashCount={repository.stashes.length}
+                    shelfWarningCount={(repository.shelfHealth ?? []).length}
                     onSync={() => postRepositoryCommand("sync")}
                     onFetch={() => postRepositoryCommand("fetch")}
                     onPull={() => postRepositoryCommand("pull")}
@@ -412,6 +416,7 @@ export function RepositoryAccordion({
                     <Box flex={1} minH={0} overflow="hidden">
                         <TabBar
                             stashCount={repository.stashes.length}
+                            shelfWarningCount={(repository.shelfHealth ?? []).length}
                             onSync={() => postRepositoryCommand("sync")}
                             onFetch={() => postRepositoryCommand("fetch")}
                             onPull={() => postRepositoryCommand("pull")}

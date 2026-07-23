@@ -4,16 +4,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
+import { RepositoryLockBusyError } from "../git/repositoryLock";
 import type { RepositoryMutationGate } from "../git/repositoryMutationGate";
 import { validateShelfManifestPath } from "../shelf/importValidation";
 import { type ShelfFileEntry, type ShelfLayerBlock } from "../shelf/model";
 import { replaceRegularWorktreeFile } from "../shelf/safeWorktreeWrite";
 import {
     purgeRecoverySnapshots,
+    ShelfRecoveryFullError,
     ShelfReverter,
     type PendingShelfRecoveryResult,
 } from "../shelf/recovery";
-import type { ShelfStore } from "../shelf/store";
+import { ShelfStoreCorruptionError, type ShelfStore } from "../shelf/store";
 import {
     exportFlattenedPatch,
     importPatchFiles,
@@ -64,6 +66,16 @@ export type ShelfMutationStatus =
     | "busy"
     | "recoveryFull"
     | "error";
+/** Advisory shelf warning derived only from already-observed shelf state. */
+export type ShelfHealthWarning = {
+    readonly kind:
+        | "corruptShelf"
+        | "lockBusy"
+        | "checksumMismatch"
+        | "pendingRecovery"
+        | "recoveryFull";
+    readonly detail: string;
+};
 /** Result returned by every mutating shelf operation. */
 export interface ShelfMutationResult {
     readonly status: ShelfMutationStatus;
@@ -114,6 +126,7 @@ export interface ImportPatchInput {
 }
 /** Repository host orchestration for persisted shelves; providers and protocol stay outside this module. */
 export class ShelfService {
+    private healthWarnings = new Map<ShelfHealthWarning["kind"], readonly ShelfHealthWarning[]>();
     private readonly gitOps: GitOps;
     private readonly reverter: ShelfReverter;
     private readonly recoveryMinimumRetentionMs: number;
@@ -140,6 +153,10 @@ export class ShelfService {
             readBase: (id, entry) => this.baseForEntry(id, entry),
             getGitDirectories: () => this.gitOps.getGitDirectories(),
         });
+    }
+    /** Absolute repository root this service mutates; safe for logs and health rows. */
+    get repositoryRoot(): string {
+        return this.options.repositoryRoot;
     }
     /** Captures selected layers durably; Save to Shelf deliberately skips the destructive reverter. */
     async shelve(input: ShelveInput): Promise<ShelfMutationResult> {
@@ -416,6 +433,10 @@ export class ShelfService {
         const initial = await this.options.store.listShelves();
         await Promise.all(initial.shelfIds.map((id) => this.refreshHistoryBaseAvailability(id)));
         const listed = await this.options.store.listShelves();
+        this.replaceHealth(
+            "corruptShelf",
+            listed.corruptShelfIds.map((id) => ({ kind: "corruptShelf" as const, detail: id })),
+        );
         return {
             ...listed,
             shelves: await Promise.all(
@@ -425,6 +446,25 @@ export class ShelfService {
                 }),
             ),
         };
+    }
+    /** Returns a fresh immutable snapshot of bounded advisory health state. */
+    getHealthWarnings(): readonly ShelfHealthWarning[] {
+        return Object.freeze(
+            [...(this.healthWarnings?.values() ?? [])]
+                .flat()
+                .map((warning) => Object.freeze({ ...warning })),
+        );
+    }
+    private replaceHealth(
+        kind: ShelfHealthWarning["kind"],
+        warnings: readonly ShelfHealthWarning[],
+    ): void {
+        this.healthWarnings.delete(kind);
+        if (warnings.length)
+            this.healthWarnings.set(
+                kind,
+                warnings.map((warning) => ({ ...warning })),
+            );
     }
     /** Returns the immutable current entries for one shelf. */
     async getShelfFiles(id: string): Promise<readonly ShelfFileEntry[]> {
@@ -529,6 +569,18 @@ export class ShelfService {
                 });
             });
         }
+        const pending = await this.options.store.readJournals();
+        this.replaceHealth(
+            "pendingRecovery",
+            pending.length
+                ? [
+                      {
+                          kind: "pendingRecovery",
+                          detail: `${pending.length} pending recovery journal(s)`,
+                      },
+                  ]
+                : [],
+        );
         return result;
     }
     private async captureShelf(input: ShelveInput): Promise<ShelfMutationResult> {
@@ -936,8 +988,28 @@ export class ShelfService {
 
     private async withMutation<T>(operation: () => Promise<T>): Promise<T> {
         const directories = await this.gitOps.getGitDirectories();
-        return this.options.gate.run(this.options.repositoryRoot, directories.commonDir, () =>
-            this.options.store.withLock(operation),
-        );
+        try {
+            const result = await this.options.gate.run(
+                this.options.repositoryRoot,
+                directories.commonDir,
+                () => this.options.store.withLock(operation),
+            );
+            this.replaceHealth("lockBusy", []);
+            this.replaceHealth("recoveryFull", []);
+            return result;
+        } catch (error) {
+            if (error instanceof RepositoryLockBusyError) {
+                this.replaceHealth("lockBusy", [{ kind: "lockBusy", detail: error.message }]);
+            } else if (error instanceof ShelfRecoveryFullError) {
+                this.replaceHealth("recoveryFull", [
+                    { kind: "recoveryFull", detail: error.message },
+                ]);
+            } else if (error instanceof ShelfStoreCorruptionError) {
+                this.replaceHealth("checksumMismatch", [
+                    { kind: "checksumMismatch", detail: error.message },
+                ]);
+            }
+            throw error;
+        }
     }
 }

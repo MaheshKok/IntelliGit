@@ -27,6 +27,7 @@ export class CommitPanelRepositoryRuntime {
     catalogGeneration = 0;
     shelfFiles: ShelfFileEntry[] = [];
     selectedShelfId: string | null = null;
+    readonly shelfRemoveOnUnshelve: boolean;
     folderIconsByName: ThemeFolderIconMap = {};
     showIgnoredFiles = false;
     currentBranch: string | null = null;
@@ -57,10 +58,16 @@ export class CommitPanelRepositoryRuntime {
      * `gitOps` is injectable only so the existing single-repository activation path can keep using
      * its already-constructed facade; newly discovered roots get an executor bound to their root.
      */
-    constructor(repository: DiscoveredRepository, gitOps?: GitOps, shelfService?: ShelfService) {
+    constructor(
+        repository: DiscoveredRepository,
+        gitOps?: GitOps,
+        shelfService?: ShelfService,
+        shelfRemoveOnUnshelve = true,
+    ) {
         this.repository = repository;
         this.repoRootUri = vscode.Uri.file(repository.root);
         this.gitOps = gitOps ?? new GitOps(new GitExecutor(repository.root));
         this.shelfService = shelfService;
+        this.shelfRemoveOnUnshelve = shelfRemoveOnUnshelve;
     }
 }

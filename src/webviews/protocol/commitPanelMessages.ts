@@ -100,6 +100,10 @@ export interface CommitPanelRepositorySnapshot {
     shelfFiles: ShelfFileEntry[];
     /** Host-selected shelf ID, or `null` when this repository has no selected shelf. */
     selectedShelfId: string | null;
+    /** Activation-time default applied by shelf unshelve affordances. */
+    shelfRemoveOnUnshelve?: boolean;
+    /** Advisory shelf warnings observed by the host service. */
+    shelfHealth?: ShelfHealthWarning[];
     /** Default collapsed folder icon for file trees when the theme resolves one. */
     folderIcon?: ThemeTreeIcon;
     /** Default expanded folder icon for file trees when the theme resolves one. */
@@ -128,6 +132,11 @@ export interface CommitPanelRepositorySnapshot {
     /** Last repository-scoped refresh error, or `null` when the latest snapshot is healthy. */
     error?: string | null;
 }
+/** Webview-safe advisory warning for observable shelf health. */
+export type ShelfHealthWarning = {
+    kind: "corruptShelf" | "lockBusy" | "checksumMismatch" | "pendingRecovery" | "recoveryFull";
+    detail: string;
+};
 
 /**
  * Commit panel messages sent from the webview to the extension host.
