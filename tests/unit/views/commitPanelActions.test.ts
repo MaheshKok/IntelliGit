@@ -252,6 +252,19 @@ describe("runGitOperationFromPanel", () => {
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
     });
 
+    it("signals commit completion once when push rejects after a local commit", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.push).mockRejectedValueOnce(new Error("push failed"));
+
+        await expect(commitAndPushFromPanel(deps, "feat: push rejection", false)).rejects.toThrow(
+            "push failed",
+        );
+
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false);
+        expect(deps.postCommitted).toHaveBeenCalledTimes(1);
+    });
+
     it("commits selected files and routes requested push through publish branch", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
@@ -292,6 +305,24 @@ describe("runGitOperationFromPanel", () => {
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
             "There are uncommitted changes, please commit or stash them first.",
         );
+    });
+
+    it("signals commit completion once when push rejects after a selected-file commit", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.push).mockRejectedValueOnce(new Error("push failed"));
+
+        await expect(
+            commitSelectedFromPanel(deps, {
+                message: "feat: push rejection",
+                amend: false,
+                push: true,
+                paths: ["src/a.ts"],
+            }),
+        ).rejects.toThrow("push failed");
+
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false);
+        expect(deps.postCommitted).toHaveBeenCalledTimes(1);
     });
 });
 

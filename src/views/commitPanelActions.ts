@@ -16,7 +16,7 @@ interface CommitPanelActionDeps {
     refreshData: () => Promise<void>;
     refreshGraphData?: () => Promise<void>;
     fireWorkingTreeChanged: () => void;
-    postCommitted: () => void;
+    postCommitted: () => void | Promise<void>;
     maybeOfferPublishBranch: () => Promise<void>;
     publishBranch?: () => Promise<void>;
 }
@@ -181,15 +181,15 @@ export async function commitSelectedFromPanel(
         try {
             await runGitOperationFromPanel(deps, "push");
         } catch (err) {
-            postCommitted();
+            await postCommitted();
             await refreshData();
             fireWorkingTreeChanged();
             throw err;
         }
-        postCommitted();
+        await postCommitted();
     } else {
         showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
-        postCommitted();
+        await postCommitted();
         await refreshData();
         fireWorkingTreeChanged();
     }
@@ -214,7 +214,7 @@ export async function commitOnlyFromPanel(
         await deps.gitOps.commit(message, amend);
     });
     showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
-    deps.postCommitted();
+    await deps.postCommitted();
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
@@ -237,8 +237,13 @@ export async function commitAndPushFromPanel(
     await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
         await deps.gitOps.commit(message, amend);
     });
-    await runGitOperationFromPanel(deps, "push");
-    deps.postCommitted();
+    try {
+        await runGitOperationFromPanel(deps, "push");
+    } catch (error) {
+        await deps.postCommitted();
+        throw error;
+    }
+    await deps.postCommitted();
 }
 
 /**

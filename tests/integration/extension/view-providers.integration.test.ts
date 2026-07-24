@@ -312,6 +312,7 @@ const vscodeMock = {
             get: vi.fn((key: string) => {
                 if (key === "workbench.sideBar.location") return "left";
                 if (key === "commitChecks.hosts") return commitChecksConfiguration.hostMap;
+                if (key === "clearLastCommit") return commitChecksConfiguration.clearLastCommit;
                 return undefined;
             }),
         })),
@@ -342,6 +343,7 @@ const githubProviderKeys = vi.hoisted(() => [] as string[]);
 const githubSessionGet = vi.hoisted(() => vi.fn());
 const commitChecksConfiguration = vi.hoisted(() => ({
     hostMap: undefined as Record<string, string> | undefined,
+    clearLastCommit: true,
 }));
 // Network boundary for the real GitLabProvider. Mocked so self-hosted-routing tests
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
@@ -897,6 +899,7 @@ describe("view providers integration", () => {
         githubProviderKeys.length = 0;
         useRealGitHubCommitChecks.value = false;
         commitChecksConfiguration.hostMap = undefined;
+        commitChecksConfiguration.clearLastCommit = true;
         githubSessionGet.mockReset();
         activeTextEditor = undefined;
         activeGitRoot.value = "";
@@ -1611,6 +1614,95 @@ describe("view providers integration", () => {
             infoWidth: 300,
             commitPanelWidth: 200,
         });
+    });
+
+    it("UndockedViewProvider reports commit completion when draft cleanup rejects", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        const workspaceStore = createMemento();
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        workspaceStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
+
+        await testProvider.handleMessage({
+            type: "commitAndPush",
+            message: "feat: saved",
+            amend: false,
+        });
+
+        expect(postMessageSpy).toHaveBeenCalledWith({ type: "committed", clearCommitMessage: false });
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider keeps a delayed commit completion scoped to its original repository", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        let resolveCommit!: () => void;
+        gitOps.commit = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveCommit = resolve;
+                }),
+        );
+        const workspaceStore = createMemento({
+            "commitDraft:/repo-a": "draft A",
+            "commitDraft:/repo-b": "draft B",
+        });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (message: unknown) => Promise<void>;
+            refreshCommitPanelData: () => Promise<void>;
+            sendBranches: () => Promise<void>;
+            loadInitial: () => Promise<void>;
+            postCommitDetailState: () => void;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        testProvider.refreshCommitPanelData = vi.fn(async () => undefined);
+        testProvider.sendBranches = vi.fn(async () => undefined);
+        testProvider.loadInitial = vi.fn(async () => undefined);
+        testProvider.postCommitDetailState = vi.fn();
+
+        const commit = testProvider.handleMessage({
+            type: "commitAndPush",
+            message: "feat: delayed",
+            amend: false,
+        });
+        await flushMicrotasks();
+        provider.setRepositoryRootUri(
+            { fsPath: "/repo-b", path: "/repo-b" } as unknown as { fsPath: string; path: string },
+        );
+        resolveCommit();
+        await commit;
+
+        expect(workspaceStore.update).toHaveBeenCalledWith("commitDraft:/repo-a", undefined);
+        expect(workspaceStore.update).not.toHaveBeenCalledWith("commitDraft:/repo-b", undefined);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed" }),
+        );
+        provider.dispose();
     });
 
     it("UndockedViewProvider handles graph and commit-panel message protocols", async () => {
@@ -5228,7 +5320,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider preserves stored commit text after successful commit flows", async () => {
+    it("CommitPanelViewProvider clears stored commit text after successful commit flows by default", async () => {
         const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
         await webview.send({ type: "saveCommitDraft", message: "feat: keep draft" });
         await webview.send({ type: "commit", message: "", amend: false });
@@ -5258,13 +5350,10 @@ describe("view providers integration", () => {
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
         expect(gitOps.push).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
-        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: keep draft");
-        expect(
-            draftStore.update.mock.calls.some(
-                ([key, value]: [string, string | undefined]) =>
-                    key === "commitDraft:/repo" && value === undefined,
-            ),
-        ).toBe(false);
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", undefined);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: true }),
+        );
 
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({
@@ -5282,6 +5371,53 @@ describe("view providers integration", () => {
                 { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
             ],
         });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider retains stored commit text when clearLastCommit is false", async () => {
+        commitChecksConfiguration.clearLastCommit = false;
+        const { provider, webview, draftStore } = await setupCommitPanelProvider();
+        await webview.send({ type: "saveCommitDraft", message: "feat: retain" });
+        await webview.send({ type: "commit", message: "feat: retain", amend: false });
+
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: retain");
+        expect(draftStore.update).not.toHaveBeenCalledWith("commitDraft:/repo", undefined);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider reports commit completion when draft cleanup rejects", async () => {
+        const { provider, draftStore } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        draftStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
+
+        await testProvider.handleMessage({ type: "commit", message: "feat: saved", amend: false });
+
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider preserves push rejection when draft cleanup rejects", async () => {
+        const { provider, gitOps, draftStore } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        const pushError = new Error("push failed");
+        gitOps.push.mockRejectedValueOnce(pushError);
+        draftStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
+
+        await expect(
+            testProvider.handleMessage({ type: "commitAndPush", message: "feat: saved", amend: false }),
+        ).rejects.toThrow(pushError);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+        );
         provider.dispose();
     });
 

@@ -37,3 +37,8 @@ AGENTS.md
 
 .githooks/*
 .ruff_cache/
+
+.codex/
+.github/hooks
+.github/skills
+.impeccable/

@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.1] - 2026-07-23
+
+### Fixed
+
+- Added optional `intelligit.clearLastCommit` setting (default `true`) to clear commit-message drafts after successful local commits; set it to `false` to retain drafts, including when a following push fails.
+
 ## [0.19.0] - 2026-07-21
 
 ### Added

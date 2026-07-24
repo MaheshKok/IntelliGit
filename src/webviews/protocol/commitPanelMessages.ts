@@ -348,8 +348,10 @@ export type InboundMessage =
           commits: AmendBranchCommitSummary[];
       }>
     | RepositoryIdentifiedMessage<{
-          /** Event indicating a commit completed and the webview should clear committed state. */
+          /** Event indicating a commit completed and whether its draft should be cleared. */
           type: "committed";
+          /** Omitted legacy events clear the draft; only false preserves it. */
+          clearCommitMessage?: boolean;
       }>
     | RepositoryIdentifiedMessage<{
           /** Event acknowledging that a correlated stash mutation attempt has fully finished. */
