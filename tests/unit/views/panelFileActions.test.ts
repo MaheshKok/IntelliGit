@@ -66,7 +66,7 @@ describe("showStashDiffFromPanel", () => {
         });
     });
 
-    it("opens one stash file from the stashed revision to the current local file", async () => {
+    it("opens one stash file with Local File on the left and Stash 2 on the right", async () => {
         const gitOps = makeGitOps();
 
         await showStashDiffFromPanel(fileActionDeps(gitOps), 2, "src/a.ts", false);
@@ -75,7 +75,7 @@ describe("showStashDiffFromPanel", () => {
         expect(createReadonlyDiffUri).toHaveBeenCalledWith(
             "src/a.ts",
             "stash",
-            "Stashed: stash@{2}",
+            "Stash {2}",
         );
         expect(createReadonlyDiffUri).toHaveBeenCalledWith(
             "src/a.ts",
@@ -95,9 +95,9 @@ describe("showStashDiffFromPanel", () => {
         );
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
-            { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
             { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
-            "src/a.ts (Stashed: stash@{2}) <-> Local File",
+            { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
+            "src/a.ts (Local File <-> Stash {2})",
             { preview: false },
         );
     });
@@ -113,13 +113,13 @@ describe("showStashDiffFromPanel", () => {
 
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
+            { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
             {
                 filePath: "src/a.ts",
                 content: "",
-                ref: "Empty stashed file (missing: stash@{2})",
+                ref: "Empty stashed file (missing: Stash {2})",
             },
-            { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
-            "src/a.ts (Stashed: stash@{2}) <-> Local File",
+            "src/a.ts (Local File <-> Stash {2})",
             { preview: true },
         );
     });
@@ -134,8 +134,8 @@ describe("showStashDiffFromPanel", () => {
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             { filePath: "src/a.ts", content: "", ref: "Empty local file (missing)" },
-            { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
-            "src/a.ts (Empty local file (missing) <-> Stashed: stash@{2})",
+            { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
+            "src/a.ts (Local File <-> Stash {2})",
             { preview: true },
         );
         expect(vscodeMock.workspace.openTextDocument).not.toHaveBeenCalled();
@@ -156,8 +156,8 @@ describe("showStashDiffFromPanel", () => {
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.diff",
             { filePath: "src/a.ts", content: "", ref: "Empty local file (missing)" },
-            { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
-            "src/a.ts (Empty local file (missing) <-> Stashed: stash@{2})",
+            { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
+            "src/a.ts (Local File <-> Stash {2})",
             { preview: true },
         );
     });
@@ -216,17 +216,17 @@ describe("showStashDiffFromPanel", () => {
         expect(gitOps.getStashFiles).toHaveBeenCalledWith(2);
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.changes",
-            "Stash stash@{2}",
+            "Stash {2}",
             [
                 [
-                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
-                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
                     { filePath: "src/a.ts", content: "local file contents", ref: "Local File" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
                 ],
                 [
-                    { filePath: "new.txt", content: "new", ref: "Stashed: stash@{2}" },
-                    { filePath: "new.txt", content: "new", ref: "Stashed: stash@{2}" },
+                    { filePath: "new.txt", content: "new", ref: "Stash {2}" },
                     { filePath: "new.txt", content: "local file contents", ref: "Local File" },
+                    { filePath: "new.txt", content: "new", ref: "Stash {2}" },
                 ],
             ],
         );
@@ -252,13 +252,13 @@ describe("showStashDiffFromPanel", () => {
 
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.changes",
-            "Stash stash@{2}",
+            "Stash {2}",
             [
                 [
                     {
                         filePath: "gone.txt",
                         content: "",
-                        ref: "Empty stashed file (missing: stash@{2})",
+                        ref: "Empty stashed file (missing: Stash {2})",
                     },
                     {
                         filePath: "gone.txt",
@@ -268,7 +268,7 @@ describe("showStashDiffFromPanel", () => {
                     {
                         filePath: "gone.txt",
                         content: "",
-                        ref: "Empty stashed file (missing: stash@{2})",
+                        ref: "Empty stashed file (missing: Stash {2})",
                     },
                 ],
             ],
@@ -293,12 +293,12 @@ describe("showStashDiffFromPanel", () => {
 
         expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
             "vscode.changes",
-            "Stash stash@{2}",
+            "Stash {2}",
             [
                 [
-                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
-                    { filePath: "src/a.ts", content: "stash", ref: "Stashed: stash@{2}" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
                     { filePath: "src/a.ts", content: "unsaved local content", ref: "Local File" },
+                    { filePath: "src/a.ts", content: "stash", ref: "Stash {2}" },
                 ],
             ],
         );

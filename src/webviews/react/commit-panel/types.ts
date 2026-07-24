@@ -132,7 +132,7 @@ export type CommitPanelAction =
       }
     | { type: "RESTORE_COMMIT_DRAFT"; repositoryRoot?: string; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; repositoryRoot?: string; message: string }
-    | { type: "COMMITTED"; repositoryRoot?: string }
+    | { type: "COMMITTED"; repositoryRoot?: string; clearCommitMessage?: boolean }
     | { type: "SET_REFRESHING"; repositoryRoot?: string; active: boolean }
     | { type: "SET_ERROR"; repositoryRoot?: string; message: string }
     | {

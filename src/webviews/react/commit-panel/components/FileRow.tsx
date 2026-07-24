@@ -34,10 +34,50 @@ interface Props {
     onDragEnd?: () => void;
     checkboxVisibility?: "visible" | "hidden" | "none";
     onActivate?: (path: string) => void;
+    onOpenContextMenu?: (
+        file: WorkingFile,
+        x: number,
+        y: number,
+        returnFocusTarget: HTMLElement,
+    ) => void;
     dataStashFile?: string;
     dataShelfFile?: string;
     isCurrent?: boolean;
     contextMenuEnabled?: boolean;
+}
+
+/** Opens an opt-in custom row menu at pointer coordinates and suppresses the browser menu. */
+function openFileRowContextMenu(
+    event: React.MouseEvent<HTMLElement>,
+    file: WorkingFile,
+    onOpenContextMenu: Props["onOpenContextMenu"],
+): void {
+    if (!onOpenContextMenu) return;
+    event.preventDefault();
+    onOpenContextMenu(file, event.clientX, event.clientY, event.currentTarget);
+}
+
+/** Routes activation and context-menu keyboard gestures without changing working-tree row behavior. */
+function handleFileRowKeyDown(
+    event: React.KeyboardEvent<HTMLElement>,
+    file: WorkingFile,
+    onActivate: Props["onActivate"],
+    onOpenContextMenu: Props["onOpenContextMenu"],
+): void {
+    if (event.key === "Enter" && onActivate) {
+        event.preventDefault();
+        onActivate(file.path);
+        return;
+    }
+    if (
+        !onOpenContextMenu ||
+        (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))
+    ) {
+        return;
+    }
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    onOpenContextMenu(file, rect.left, rect.bottom, event.currentTarget);
 }
 
 function FileRowInner({
@@ -53,6 +93,7 @@ function FileRowInner({
     onDragEnd,
     checkboxVisibility = "visible",
     onActivate,
+    onOpenContextMenu,
     dataStashFile,
     dataShelfFile,
     isCurrent = false,
@@ -97,7 +138,6 @@ function FileRowInner({
                     ? "var(--intelligit-pycharm-selected)"
                     : "rgba(255,255,255,0.05)",
             }}
-            aria-selected={isDragSelected}
             aria-current={isCurrent ? "true" : undefined}
             data-stash-file={dataStashFile}
             data-shelf-file={dataShelfFile}
@@ -118,15 +158,8 @@ function FileRowInner({
             onDragStart={(event) => onDragStart?.(event, file)}
             onDragEnd={onDragEnd}
             onDoubleClick={onActivate ? () => onActivate(file.path) : undefined}
-            onKeyDown={
-                onActivate
-                    ? (event) => {
-                          if (event.key !== "Enter") return;
-                          event.preventDefault();
-                          onActivate(file.path);
-                      }
-                    : undefined
-            }
+            onContextMenu={(event) => openFileRowContextMenu(event, file, onOpenContextMenu)}
+            onKeyDown={(event) => handleFileRowKeyDown(event, file, onActivate, onOpenContextMenu)}
             title={file.path}
         >
             <IndentGuides treeDepth={depth} />
@@ -197,7 +230,7 @@ function FileRowInner({
  *
  * The row opens diffs when clicked, leaves checkbox changes to the selection
  * hook, and gives the leaf filename priority over its parent path. Optional
- * activation turns the row into a keyboard-focusable stash-file control without
- * changing commit-tree drag or checkbox behavior.
+ * Activation turns the row into a keyboard-focusable stash-file control. An optional custom
+ * context-menu callback uses browser or keyboard coordinates without enabling VS Code file actions.
  */
 export const FileRow = React.memo(FileRowInner);

@@ -284,6 +284,18 @@ export type OutboundMessage =
           index: number;
       }>
     | RepositoryScopedMessage<{
+          /** Command applying and staging exactly one file from a stable stash object. */
+          type: "cherryPickStashFile";
+          /** Current `stash@{n}` index, rechecked against `stashHash` immediately before mutation. */
+          index: number;
+          /** Full stash object ID captured with the selected stash entry. */
+          stashHash: string;
+          /** Repository-relative literal path from the selected stash file list. */
+          path: string;
+          /** Required correlation token echoed after success, cancellation, or failure. */
+          requestId: string;
+      }>
+    | RepositoryScopedMessage<{
           /** Command deleting a stashed change after host confirmation. */
           type: "stashDelete";
           /** Current `stash@{n}` index from `StashEntry.index`; unstable after stash mutations. */
@@ -498,8 +510,10 @@ export type InboundMessage =
           commits: AmendBranchCommitSummary[];
       }>
     | RepositoryIdentifiedMessage<{
-          /** Event indicating a commit completed and the webview should clear committed state. */
+          /** Event indicating a commit completed and whether its draft should be cleared. */
           type: "committed";
+          /** Omitted legacy events clear the draft; only false preserves it. */
+          clearCommitMessage?: boolean;
       }>
     | RepositoryIdentifiedMessage<{
           /** Event acknowledging that a correlated stash mutation attempt has fully finished. */

@@ -66,6 +66,7 @@ function makeGitOps(upstream?: string): GitOps {
         hasUncommittedChanges: vi.fn(async () => false),
         getStatus: vi.fn(async () => []),
         stashApply: vi.fn(async () => ""),
+        applyStashFile: vi.fn(async () => undefined),
         stashPop: vi.fn(async () => ""),
         stashBranch: vi.fn(async () => ""),
         stashDelete: vi.fn(async () => ""),
@@ -251,6 +252,19 @@ describe("runGitOperationFromPanel", () => {
         expect(deps.fireWorkingTreeChanged).toHaveBeenCalledTimes(1);
     });
 
+    it("signals commit completion once when push rejects after a local commit", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.push).mockRejectedValueOnce(new Error("push failed"));
+
+        await expect(commitAndPushFromPanel(deps, "feat: push rejection", false)).rejects.toThrow(
+            "push failed",
+        );
+
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false);
+        expect(deps.postCommitted).toHaveBeenCalledTimes(1);
+    });
+
     it("commits selected files and routes requested push through publish branch", async () => {
         const gitOps = makeGitOps();
         const deps = makeDeps(gitOps);
@@ -291,6 +305,24 @@ describe("runGitOperationFromPanel", () => {
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
             "There are uncommitted changes, please commit or stash them first.",
         );
+    });
+
+    it("signals commit completion once when push rejects after a selected-file commit", async () => {
+        const gitOps = makeGitOps("origin/main");
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.push).mockRejectedValueOnce(new Error("push failed"));
+
+        await expect(
+            commitSelectedFromPanel(deps, {
+                message: "feat: push rejection",
+                amend: false,
+                push: true,
+                paths: ["src/a.ts"],
+            }),
+        ).rejects.toThrow("push failed");
+
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false);
+        expect(deps.postCommitted).toHaveBeenCalledTimes(1);
     });
 });
 
@@ -424,5 +456,118 @@ describe("executeStashMutationRequest", () => {
         );
 
         expect(postCompleted).not.toHaveBeenCalled();
+    });
+
+    it("confirms, applies, stages, refreshes, notifies, and completes one stash file", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const postCompleted = vi.fn();
+        vi.mocked(vscodeMock.window.showWarningMessage).mockResolvedValueOnce("Apply Change");
+
+        await executeStashMutationRequest(
+            deps,
+            {
+                action: "cherryPickFile",
+                index: 2,
+                stashHash: "a".repeat(40),
+                path: "src/a.ts",
+            },
+            "request-file-success",
+            postCompleted,
+        );
+
+        expect(vscodeMock.window.showWarningMessage).toHaveBeenCalledWith(
+            "Apply the change from {short} for {path} to your working tree and stage it?",
+            { modal: true },
+            "Apply Change",
+        );
+        expect(gitOps.applyStashFile).toHaveBeenCalledWith(2, "a".repeat(40), "src/a.ts");
+        expect(vscodeMock.window.showInformationMessage).toHaveBeenCalledWith(
+            "Applied selected change from {short} for {path}.",
+        );
+        expect(deps.refreshData).toHaveBeenCalledOnce();
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledOnce();
+        expect(postCompleted).toHaveBeenCalledWith("request-file-success");
+    });
+
+    it("completes a cancelled stash-file request without mutating the repository", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const postCompleted = vi.fn();
+        vi.mocked(vscodeMock.window.showWarningMessage).mockResolvedValueOnce(undefined);
+
+        await executeStashMutationRequest(
+            deps,
+            {
+                action: "cherryPickFile",
+                index: 2,
+                stashHash: "b".repeat(40),
+                path: "src/a.ts",
+            },
+            "request-file-cancel",
+            postCompleted,
+        );
+
+        expect(gitOps.applyStashFile).not.toHaveBeenCalled();
+        expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
+        expect(postCompleted).toHaveBeenCalledWith("request-file-cancel");
+    });
+
+    it("completes stash-file failures without false success or mutation signals", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const postCompleted = vi.fn();
+        vi.mocked(vscodeMock.window.showWarningMessage).mockResolvedValueOnce("Apply Change");
+        vi.mocked(gitOps.applyStashFile).mockRejectedValueOnce(new Error("patch failed"));
+
+        await expect(
+            executeStashMutationRequest(
+                deps,
+                {
+                    action: "cherryPickFile",
+                    index: 2,
+                    stashHash: "c".repeat(40),
+                    path: "src/a.ts",
+                },
+                "request-file-error",
+                postCompleted,
+            ),
+        ).rejects.toThrow("patch failed");
+
+        expect(deps.refreshData).toHaveBeenCalledOnce();
+        expect(deps.fireWorkingTreeChanged).not.toHaveBeenCalled();
+        expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+        expect(postCompleted).toHaveBeenCalledWith("request-file-error");
+    });
+
+    it("opens the conflict session and signals state after a stash-file apply conflict", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        const postCompleted = vi.fn();
+        vi.mocked(vscodeMock.window.showWarningMessage).mockResolvedValueOnce("Apply Change");
+        vi.mocked(gitOps.applyStashFile).mockRejectedValueOnce(new Error("patch conflicted"));
+        vi.mocked(gitOps.getConflictFilesDetailed).mockResolvedValueOnce([
+            { path: "src/a.ts", code: "UU", ours: "Modified", theirs: "Modified" },
+        ]);
+
+        await executeStashMutationRequest(
+            deps,
+            {
+                action: "cherryPickFile",
+                index: 2,
+                stashHash: "d".repeat(40),
+                path: "src/a.ts",
+            },
+            "request-file-conflict",
+            postCompleted,
+        );
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "intelligit.openConflictSession",
+        );
+        expect(deps.refreshData).toHaveBeenCalledOnce();
+        expect(deps.fireWorkingTreeChanged).toHaveBeenCalledOnce();
+        expect(vscodeMock.window.showInformationMessage).not.toHaveBeenCalled();
+        expect(postCompleted).toHaveBeenCalledWith("request-file-conflict");
     });
 });

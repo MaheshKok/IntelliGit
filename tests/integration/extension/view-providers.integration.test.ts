@@ -315,6 +315,7 @@ const vscodeMock = {
             get: vi.fn((key: string) => {
                 if (key === "workbench.sideBar.location") return "left";
                 if (key === "commitChecks.hosts") return commitChecksConfiguration.hostMap;
+                if (key === "clearLastCommit") return commitChecksConfiguration.clearLastCommit;
                 return undefined;
             }),
         })),
@@ -345,6 +346,7 @@ const githubProviderKeys = vi.hoisted(() => [] as string[]);
 const githubSessionGet = vi.hoisted(() => vi.fn());
 const commitChecksConfiguration = vi.hoisted(() => ({
     hostMap: undefined as Record<string, string> | undefined,
+    clearLastCommit: true,
 }));
 // Network boundary for the real GitLabProvider. Mocked so self-hosted-routing tests
 // never touch the network; defaults are set per test. GitHub-remote tests never reach
@@ -681,12 +683,10 @@ function makeGitOpsMock() {
     return {
         // Derived per-root instances mirror the module-level MockGitOps: status comes
         // from gitStatusByRoot so multi-repo tests can script non-active repositories.
-        deriveFor: vi.fn(
-            (root: string): object => ({
-                ...makeGitOpsMock(),
-                getStatus: vi.fn(async () => gitStatusByRoot.get(root) ?? []),
-            }),
-        ),
+        deriveFor: vi.fn((root: string): object => ({
+            ...makeGitOpsMock(),
+            getStatus: vi.fn(async () => gitStatusByRoot.get(root) ?? []),
+        })),
         getLog: vi.fn(async () => [
             {
                 hash: "abc1234",
@@ -741,6 +741,7 @@ function makeGitOpsMock() {
         stashSave: vi.fn(async () => "saved"),
         stashPop: vi.fn(async () => "popped"),
         stashApply: vi.fn(async () => "applied"),
+        applyStashFile: vi.fn(async () => undefined),
         stashBranch: vi.fn(async () => "branched"),
         stashDelete: vi.fn(async () => "deleted"),
         stashClear: vi.fn(async () => "cleared"),
@@ -884,7 +885,7 @@ async function setupCommitPanelProvider(
         draftStore as unknown as object,
         options.secrets as unknown as object,
         options.shelfService
-            ? (() => options.shelfService) as unknown as (repositoryRoot: string) => object
+            ? ((() => options.shelfService) as unknown as (repositoryRoot: string) => object)
             : undefined,
     );
     const webview = createWebviewView();
@@ -912,6 +913,7 @@ describe("view providers integration", () => {
         githubProviderKeys.length = 0;
         useRealGitHubCommitChecks.value = false;
         commitChecksConfiguration.hostMap = undefined;
+        commitChecksConfiguration.clearLastCommit = true;
         githubSessionGet.mockReset();
         activeTextEditor = undefined;
         activeGitRoot.value = "";
@@ -1160,7 +1162,11 @@ describe("view providers integration", () => {
             const firstHash = "a".repeat(40);
             const secondHash = "b".repeat(40);
             let firstResponse:
-                | ((metadata: { url: string; statusCode: number; headers: Record<string, string> }) => void)
+                | ((metadata: {
+                      url: string;
+                      statusCode: number;
+                      headers: Record<string, string>;
+                  }) => void)
                 | undefined;
             let rejectFirstRequest: ((reason?: unknown) => void) | undefined;
             let markFirstRequestStarted: (() => void) | undefined;
@@ -1660,6 +1666,99 @@ describe("view providers integration", () => {
         });
     });
 
+    it("UndockedViewProvider reports commit completion when draft cleanup rejects", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        const workspaceStore = createMemento();
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        workspaceStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
+
+        await testProvider.handleMessage({
+            type: "commitAndPush",
+            message: "feat: saved",
+            amend: false,
+        });
+
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "committed",
+            clearCommitMessage: false,
+        });
+        provider.dispose();
+    });
+
+    it("UndockedViewProvider keeps a delayed commit completion scoped to its original repository", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const gitOps = makeGitOpsMock();
+        let resolveCommit!: () => void;
+        gitOps.commit = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    resolveCommit = resolve;
+                }),
+        );
+        const workspaceStore = createMemento({
+            "commitDraft:/repo-a": "draft A",
+            "commitDraft:/repo-b": "draft B",
+        });
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            gitOps as unknown as object,
+            { fsPath: "/repo-a", path: "/repo-a" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            workspaceStore as unknown as object,
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (message: unknown) => Promise<void>;
+            refreshCommitPanelData: () => Promise<void>;
+            sendBranches: () => Promise<void>;
+            loadInitial: () => Promise<void>;
+            postCommitDetailState: () => void;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        testProvider.refreshCommitPanelData = vi.fn(async () => undefined);
+        testProvider.sendBranches = vi.fn(async () => undefined);
+        testProvider.loadInitial = vi.fn(async () => undefined);
+        testProvider.postCommitDetailState = vi.fn();
+
+        const commit = testProvider.handleMessage({
+            type: "commitAndPush",
+            message: "feat: delayed",
+            amend: false,
+        });
+        await flushMicrotasks();
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as unknown as {
+            fsPath: string;
+            path: string;
+        });
+        resolveCommit();
+        await commit;
+
+        expect(workspaceStore.update).toHaveBeenCalledWith("commitDraft:/repo-a", undefined);
+        expect(workspaceStore.update).not.toHaveBeenCalledWith("commitDraft:/repo-b", undefined);
+        expect(postMessageSpy).not.toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed" }),
+        );
+        provider.dispose();
+    });
+
     it("UndockedViewProvider handles graph and commit-panel message protocols", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const gitOps = makeGitOpsMock();
@@ -1808,6 +1907,15 @@ describe("view providers integration", () => {
         await send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
         await send({ type: "stashPop", index: 0 });
         await send({ type: "stashApply", index: 0 });
+        showWarningMessage.mockResolvedValueOnce("Apply Change");
+        await send({
+            type: "cherryPickStashFile",
+            index: 0,
+            stashHash: "a".repeat(40),
+            path: "src/a.ts",
+            requestId: "undocked-file",
+            repositoryRoot: "/repo",
+        });
         await send({
             type: "stashUnstash",
             mode: "currentBranch",
@@ -1855,6 +1963,7 @@ describe("view providers integration", () => {
         expect(gitOps.stashSave).toHaveBeenCalledWith(["src/a.ts"], "work");
         expect(gitOps.stashPop).toHaveBeenCalledWith(0);
         expect(gitOps.stashApply).toHaveBeenCalledWith(0);
+        expect(gitOps.applyStashFile).toHaveBeenCalledWith(0, "a".repeat(40), "src/a.ts");
         expect(gitOps.stashApply).toHaveBeenCalledWith(0, true);
         expect(gitOps.stashBranch).toHaveBeenCalledWith("feature/unstash", 0);
         expect(gitOps.stashDelete).toHaveBeenCalledWith(0);
@@ -1864,6 +1973,7 @@ describe("view providers integration", () => {
                 .map(([message]) => message)
                 .filter((message) => message.type === "stashMutationCompleted"),
         ).toEqual([
+            { type: "stashMutationCompleted", requestId: "undocked-file" },
             { type: "stashMutationCompleted", requestId: "undocked-apply" },
             { type: "stashMutationCompleted", requestId: "undocked-branch" },
             { type: "stashMutationCompleted", requestId: "undocked-delete" },
@@ -1879,14 +1989,14 @@ describe("view providers integration", () => {
             expect.objectContaining({
                 scheme: "intelligit-diff",
                 path: "/src/a.ts",
-                query: expect.stringContaining('"ref":"Stashed: {ref}"'),
+                query: expect.stringContaining('"ref":"Local File"'),
             }),
             expect.objectContaining({
                 scheme: "intelligit-diff",
                 path: "/src/a.ts",
-                query: expect.stringContaining('"ref":"Local File"'),
+                query: expect.stringContaining('"ref":"Stash {reference}"'),
             }),
-            "{path} (Stashed: {ref}) <-> Local File",
+            "{path} (Local File <-> Stash {reference})",
             { preview: true },
         );
         expect(deleteFileWithFallback).toHaveBeenCalledWith(gitOps, expect.any(Object), "src/a.ts");
@@ -1897,7 +2007,12 @@ describe("view providers integration", () => {
     it("UndockedViewProvider dispatches shelf mutations for its selected repository", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const shelf = {
-            shelve: vi.fn(async () => ({ status: "ok", entries: [], shelfId: "shelf-u", newGeneration: 2 })),
+            shelve: vi.fn(async () => ({
+                status: "ok",
+                entries: [],
+                shelfId: "shelf-u",
+                newGeneration: 2,
+            })),
             listShelves: vi.fn(async () => ({
                 shelfIds: ["shelf-u"],
                 corruptShelfIds: [],
@@ -1924,7 +2039,10 @@ describe("view providers integration", () => {
             { shelfServiceForRepository: () => shelf as never },
         );
         const testProvider = provider as unknown as {
-            panel: { webview: { postMessage: typeof postMessageSpy }; dispose: ReturnType<typeof vi.fn> };
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
             iconTheme: {
                 initIconThemeData: ReturnType<typeof vi.fn>;
                 getThemeData: ReturnType<typeof vi.fn>;
@@ -5351,7 +5469,7 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
-    it("CommitPanelViewProvider preserves stored commit text after successful commit flows", async () => {
+    it("CommitPanelViewProvider clears stored commit text after successful commit flows by default", async () => {
         const { provider, gitOps, webview, draftStore } = await setupCommitPanelProvider();
         await webview.send({ type: "saveCommitDraft", message: "feat: keep draft" });
         await webview.send({ type: "commit", message: "", amend: false });
@@ -5381,13 +5499,10 @@ describe("view providers integration", () => {
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
         expect(gitOps.push).toHaveBeenCalled();
         expect(withProgress).toHaveBeenCalled();
-        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: keep draft");
-        expect(
-            draftStore.update.mock.calls.some(
-                ([key, value]: [string, string | undefined]) =>
-                    key === "commitDraft:/repo" && value === undefined,
-            ),
-        ).toBe(false);
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", undefined);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: true }),
+        );
 
         await webview.send({ type: "getLastCommitMessage" });
         expect(postMessageSpy).toHaveBeenCalledWith({
@@ -5405,6 +5520,57 @@ describe("view providers integration", () => {
                 { shortHash: "abc1234", subject: "feat: amend ctx", date: "2026-02-19T00:00:00Z" },
             ],
         });
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider retains stored commit text when clearLastCommit is false", async () => {
+        commitChecksConfiguration.clearLastCommit = false;
+        const { provider, webview, draftStore } = await setupCommitPanelProvider();
+        await webview.send({ type: "saveCommitDraft", message: "feat: retain" });
+        await webview.send({ type: "commit", message: "feat: retain", amend: false });
+
+        expect(draftStore.update).toHaveBeenCalledWith("commitDraft:/repo", "feat: retain");
+        expect(draftStore.update).not.toHaveBeenCalledWith("commitDraft:/repo", undefined);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider reports commit completion when draft cleanup rejects", async () => {
+        const { provider, draftStore } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        draftStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
+
+        await testProvider.handleMessage({ type: "commit", message: "feat: saved", amend: false });
+
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+        );
+        provider.dispose();
+    });
+
+    it("CommitPanelViewProvider preserves push rejection when draft cleanup rejects", async () => {
+        const { provider, gitOps, draftStore } = await setupCommitPanelProvider();
+        const testProvider = provider as unknown as {
+            handleMessage: (message: unknown) => Promise<void>;
+        };
+        const pushError = new Error("push failed");
+        gitOps.push.mockRejectedValueOnce(pushError);
+        draftStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
+
+        await expect(
+            testProvider.handleMessage({
+                type: "commitAndPush",
+                message: "feat: saved",
+                amend: false,
+            }),
+        ).rejects.toThrow(pushError);
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "committed", clearCommitMessage: false }),
+        );
         provider.dispose();
     });
 
@@ -5667,7 +5833,11 @@ describe("view providers integration", () => {
             getShelfFiles: vi.fn(async () => [
                 {
                     changeId: "change-1",
-                    worktreeBlock: { path: "src/a.ts", status: "M", patchObjectHash: "a".repeat(64) },
+                    worktreeBlock: {
+                        path: "src/a.ts",
+                        status: "M",
+                        patchObjectHash: "a".repeat(64),
+                    },
                     binary: false,
                     untracked: false,
                     baseAvailability: "none",
@@ -5738,6 +5908,15 @@ describe("view providers integration", () => {
         await webview.send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
         await webview.send({ type: "stashPop", index: 0 });
         await webview.send({ type: "stashApply", index: 0 });
+        showWarningMessage.mockResolvedValueOnce("Apply Change");
+        await webview.send({
+            type: "cherryPickStashFile",
+            index: 0,
+            stashHash: "a".repeat(40),
+            path: "src/a.ts",
+            requestId: "docked-file",
+            repositoryRoot: "/repo",
+        });
         await webview.send({
             type: "stashUnstash",
             mode: "currentBranch",
@@ -5760,6 +5939,7 @@ describe("view providers integration", () => {
         expect(gitOps.stashSave).toHaveBeenCalled();
         expect(gitOps.stashPop).toHaveBeenCalledWith(0);
         expect(gitOps.stashApply).toHaveBeenCalledWith(0);
+        expect(gitOps.applyStashFile).toHaveBeenCalledWith(0, "a".repeat(40), "src/a.ts");
         expect(gitOps.stashApply).toHaveBeenCalledWith(0, true);
         expect(gitOps.stashBranch).toHaveBeenCalledWith("feature/unstash", 0);
         expect(gitOps.stashDelete).toHaveBeenCalledWith(0);
@@ -5769,6 +5949,11 @@ describe("view providers integration", () => {
                 .map(([message]) => message)
                 .filter((message) => message.type === "stashMutationCompleted"),
         ).toEqual([
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-file",
+                repositoryRoot: "/repo",
+            },
             {
                 type: "stashMutationCompleted",
                 requestId: "docked-apply",
@@ -5799,6 +5984,58 @@ describe("view providers integration", () => {
             }),
         );
 
+        const applyCount = gitOps.applyStashFile.mock.calls.length;
+        await webview.send({
+            type: "cherryPickStashFile",
+            index: -1,
+            stashHash: "b".repeat(40),
+            path: "src/a.ts",
+            requestId: "docked-invalid-index",
+            repositoryRoot: "/repo",
+        });
+        await webview.send({
+            type: "cherryPickStashFile",
+            index: 0,
+            stashHash: "not-a-hash",
+            path: "src/a.ts",
+            requestId: "docked-invalid-hash",
+            repositoryRoot: "/repo",
+        });
+        await webview.send({
+            type: "cherryPickStashFile",
+            index: 0,
+            stashHash: "b".repeat(40),
+            path: "../secret.txt",
+            requestId: "docked-traversal",
+            repositoryRoot: "/repo",
+        });
+        expect(gitOps.applyStashFile).toHaveBeenCalledTimes(applyCount);
+        expect(
+            postMessageSpy.mock.calls
+                .map(([message]) => message)
+                .filter((message) =>
+                    ["docked-invalid-index", "docked-invalid-hash", "docked-traversal"].includes(
+                        message.requestId,
+                    ),
+                ),
+        ).toEqual([
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-invalid-index",
+                repositoryRoot: "/repo",
+            },
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-invalid-hash",
+                repositoryRoot: "/repo",
+            },
+            {
+                type: "stashMutationCompleted",
+                requestId: "docked-traversal",
+                repositoryRoot: "/repo",
+            },
+        ]);
+
         await webview.send({ type: "showStashDiff", index: 0, path: "src/a.ts" });
         expect(gitOps.getStashFileContents).toHaveBeenCalledWith(0, "src/a.ts");
         expect(openTextDocument).toHaveBeenCalledWith({
@@ -5810,14 +6047,14 @@ describe("view providers integration", () => {
             expect.objectContaining({
                 scheme: "intelligit-diff",
                 path: "/src/a.ts",
-                query: expect.stringContaining('"ref":"Stashed: {ref}"'),
+                query: expect.stringContaining('"ref":"Local File"'),
             }),
             expect.objectContaining({
                 scheme: "intelligit-diff",
                 path: "/src/a.ts",
-                query: expect.stringContaining('"ref":"Local File"'),
+                query: expect.stringContaining('"ref":"Stash {reference}"'),
             }),
-            "{path} (Stashed: {ref}) <-> Local File",
+            "{path} (Local File <-> Stash {reference})",
             { preview: true },
         );
         provider.dispose();

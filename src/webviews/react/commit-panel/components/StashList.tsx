@@ -9,6 +9,14 @@ import { FileRow } from "./FileRow";
 import { FolderRow } from "./FolderRow";
 import { SectionHeader } from "./SectionHeader";
 import { t } from "../../shared/i18n";
+import { formatDateTime } from "../../shared/date";
+
+type StashFileContextMenuHandler = (
+    path: string,
+    x: number,
+    y: number,
+    returnFocusTarget: HTMLElement,
+) => void;
 
 /** Props for the flat stash row list. */
 export interface StashListProps {
@@ -36,6 +44,7 @@ export interface StashFilePaneProps {
     onToggleDir: (path: string) => void;
     onFileSelect: (path: string) => void;
     onFileActivate: (path: string) => void;
+    onFileContextMenu: StashFileContextMenuHandler;
 }
 
 /** Derived state for one non-selectable stash file section. */
@@ -165,7 +174,9 @@ export function StashList({
                             {stash.date ? (
                                 <Box
                                     as="span"
+                                    data-stash-date
                                     flexShrink={0}
+                                    fontSize="12px"
                                     color={
                                         isSelected
                                             ? "var(--intelligit-pycharm-selected-foreground)"
@@ -173,7 +184,7 @@ export function StashList({
                                     }
                                     opacity={isSelected ? 0.8 : 1}
                                 >
-                                    {stash.date}
+                                    {formatDateTime(stash.date)}
                                 </Box>
                             ) : null}
                             <Box flex={1} minW={0} />
@@ -219,6 +230,7 @@ export function StashFilePane({
     onToggleDir,
     onFileSelect,
     onFileActivate,
+    onFileContextMenu,
 }: StashFilePaneProps): React.ReactElement {
     return (
         <Box
@@ -250,6 +262,7 @@ export function StashFilePane({
                         onToggleDir={onToggleDir}
                         onFileSelect={onFileSelect}
                         onFileActivate={onFileActivate}
+                        onFileContextMenu={onFileContextMenu}
                     />
                     {unversionedSection.files.length > 0 ? (
                         <StashFilePaneSection
@@ -264,6 +277,7 @@ export function StashFilePane({
                             onToggleDir={onToggleDir}
                             onFileSelect={onFileSelect}
                             onFileActivate={onFileActivate}
+                            onFileContextMenu={onFileContextMenu}
                         />
                     ) : null}
                 </>
@@ -289,6 +303,7 @@ function StashFilePaneSection({
     onToggleDir,
     onFileSelect,
     onFileActivate,
+    onFileContextMenu,
 }: {
     label: string;
     section: StashFileSection;
@@ -301,6 +316,7 @@ function StashFilePaneSection({
     onToggleDir: (path: string) => void;
     onFileSelect: (path: string) => void;
     onFileActivate: (path: string) => void;
+    onFileContextMenu: StashFileContextMenuHandler;
 }): React.ReactElement {
     return (
         <>
@@ -327,6 +343,7 @@ function StashFilePaneSection({
                     onToggleDir={onToggleDir}
                     onFileSelect={onFileSelect}
                     onFileActivate={onFileActivate}
+                    onFileContextMenu={onFileContextMenu}
                 />
             ) : null}
         </>
@@ -389,6 +406,7 @@ function StashFileTree({
     onToggleDir,
     onFileSelect,
     onFileActivate,
+    onFileContextMenu,
     depth = 0,
 }: {
     entries: TreeEntry[];
@@ -401,6 +419,7 @@ function StashFileTree({
     onToggleDir: (path: string) => void;
     onFileSelect: (path: string) => void;
     onFileActivate: (path: string) => void;
+    onFileContextMenu: StashFileContextMenuHandler;
     depth?: number;
 }): React.ReactElement {
     return (
@@ -419,6 +438,9 @@ function StashFileTree({
                             onToggle={() => undefined}
                             onClick={() => onFileSelect(entry.file.path)}
                             onActivate={onFileActivate}
+                            onOpenContextMenu={(file, x, y, returnFocusTarget) =>
+                                onFileContextMenu(file.path, x, y, returnFocusTarget)
+                            }
                             dataStashFile={entry.file.path}
                             isCurrent={isSelected}
                             contextMenuEnabled={false}
@@ -458,6 +480,7 @@ function StashFileTree({
                                 onToggleDir={onToggleDir}
                                 onFileSelect={onFileSelect}
                                 onFileActivate={onFileActivate}
+                                onFileContextMenu={onFileContextMenu}
                                 depth={depth + 1}
                             />
                         ) : null}

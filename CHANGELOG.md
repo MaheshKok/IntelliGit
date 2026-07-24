@@ -5,14 +5,25 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-07-24
+
+### Added
+
+- Added separate patch-based Shelve workflows in the Commit panel and Command Palette, including flattened and exact-state restore modes, patch import/export, and recovery-aware shelf storage.
+- Documented Shelve parity QA and security boundaries, including plaintext local storage, labeled IntelliGit extensions, and lossy flattened `.patch` exports.
+
+## [0.19.1] - 2026-07-23
+
+### Fixed
+
+- Added optional `intelligit.clearLastCommit` setting (default `true`) to clear commit-message drafts after successful local commits; set it to `false` to retain drafts, including when a following push fails.
+
 ## [0.19.0] - 2026-07-21
 
 ### Added
 
 - Added a PyCharm-style stash body with flat stash selection, a lower changed-file pane, keyboard navigation, and accessible resize and focus behavior.
 - Added complete stash actions for apply, pop, advanced unstash options, branch restore, drop, clear, and whole-stash diff sessions.
-- Added separate patch-based Shelve workflows in the Commit panel and Command Palette, including flattened and exact-state restore modes, patch import/export, and recovery-aware shelf storage.
-- Documented Shelve parity QA and security boundaries, including plaintext local storage, labeled IntelliGit extensions, and lossy flattened `.patch` exports.
 
 ### Fixed
 

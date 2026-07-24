@@ -18,6 +18,8 @@ import type {
     PerEntryResult,
     ShelfMutationStatus,
 } from "../webviews/protocol/commitPanelMessages";
+import { assertRepoRelativePath } from "../utils/fileOps";
+import { assertStashIndex } from "../git/operationSupport";
 import {
     assertNumber,
     assertRepoPathArray,
@@ -41,7 +43,7 @@ interface CommitPanelActionDeps {
     refreshData: () => Promise<void>;
     refreshGraphData?: () => Promise<void>;
     fireWorkingTreeChanged: () => void;
-    postCommitted: () => void;
+    postCommitted: () => void | Promise<void>;
     maybeOfferPublishBranch: () => Promise<void>;
     publishBranch?: () => Promise<void>;
 }
@@ -50,8 +52,23 @@ interface CommitPanelActionDeps {
 export type StashMutation =
     | { action: "apply" | "pop"; index: number; reinstateIndex: boolean }
     | { action: "branch"; index: number; branchName: string }
+    | { action: "cherryPickFile"; index: number; stashHash: string; path: string }
     | { action: "delete"; index: number }
     | { action: "clear" };
+
+/** Validates a typed single-file stash request before any repository mutation begins. */
+function stashFileMutationFromMessage(
+    message: Record<string, unknown>,
+): Extract<StashMutation, { action: "cherryPickFile" }> {
+    const index = assertNumber(message.index, "index");
+    assertStashIndex(index);
+    const stashHash = assertString(message.stashHash, "stashHash").trim();
+    if (!/^[0-9a-fA-F]{40}$/.test(stashHash)) {
+        throw new Error("Invalid stash hash received from webview.");
+    }
+    const path = assertRepoRelativePath(assertString(message.path, "path"));
+    return { action: "cherryPickFile", index, stashHash, path };
+}
 
 /**
  * Validates an untrusted typed unstash payload and translates it into a host mutation.
@@ -476,6 +493,28 @@ function assertAbsolutePath(value: unknown, field: string): string {
 }
 
 /**
+ * Validates and executes a correlated single-file stash request.
+ *
+ * Payload validation stays inside the completion `finally`, ensuring malformed or stale requests
+ * clear webview pending state without allowing an invalid index, hash, or path to reach Git.
+ */
+export async function executeStashFileMutationRequest(
+    deps: Pick<CommitPanelActionDeps, "gitOps" | "refreshData" | "fireWorkingTreeChanged">,
+    message: Record<string, unknown>,
+    postCompleted: (requestId: string) => void,
+): Promise<void> {
+    const requestId = assertString(message.requestId, "requestId");
+    if (requestId.trim().length === 0) {
+        throw new Error("Expected non-empty string for 'requestId'.");
+    }
+    try {
+        await stashMutationFromPanel(deps, stashFileMutationFromMessage(message));
+    } finally {
+        postCompleted(requestId);
+    }
+}
+
+/**
  * Git operation identifiers accepted from the Changes toolbar.
  *
  * `fetch` updates remote-tracking refs, `pull` rebases the current branch onto its upstream,
@@ -533,15 +572,15 @@ export async function commitSelectedFromPanel(
         try {
             await runGitOperationFromPanel(deps, "push");
         } catch (err) {
-            postCommitted();
+            await postCommitted();
             await refreshData();
             fireWorkingTreeChanged();
             throw err;
         }
-        postCommitted();
+        await postCommitted();
     } else {
         showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
-        postCommitted();
+        await postCommitted();
         await refreshData();
         fireWorkingTreeChanged();
     }
@@ -566,7 +605,7 @@ export async function commitOnlyFromPanel(
         await deps.gitOps.commit(message, amend);
     });
     showTimedInformationMessage(vscode.l10n.t("Committed successfully."));
-    deps.postCommitted();
+    await deps.postCommitted();
     await deps.refreshData();
     deps.fireWorkingTreeChanged();
 }
@@ -589,8 +628,13 @@ export async function commitAndPushFromPanel(
     await runWithNotificationProgress(vscode.l10n.t("Committing and pushing..."), async () => {
         await deps.gitOps.commit(message, amend);
     });
-    await runGitOperationFromPanel(deps, "push");
-    deps.postCommitted();
+    try {
+        await runGitOperationFromPanel(deps, "push");
+    } catch (error) {
+        await deps.postCommitted();
+        throw error;
+    }
+    await deps.postCommitted();
 }
 
 /**
@@ -796,6 +840,33 @@ export async function stashMutationFromPanel(
             if (confirm !== clearAction) return;
             await deps.gitOps.stashClear();
             showTimedInformationMessage(vscode.l10n.t("All stashed changes cleared."));
+            return;
+        }
+        if (mutation.action === "cherryPickFile") {
+            const applyAction = vscode.l10n.t("Apply Change");
+            const short = vscode.l10n.t("Stash {reference}", {
+                reference: `{${mutation.index}}`,
+            });
+            const confirm = await vscode.window.showWarningMessage(
+                vscode.l10n.t(
+                    "Apply the change from {short} for {path} to your working tree and stage it?",
+                    { short, path: mutation.path },
+                ),
+                { modal: true },
+                applyAction,
+            );
+            if (confirm !== applyAction) return;
+            const conflicted = await runStashMutationWithConflicts(deps, () =>
+                deps.gitOps.applyStashFile(mutation.index, mutation.stashHash, mutation.path),
+            );
+            workingTreeChanged = true;
+            if (conflicted) return;
+            showTimedInformationMessage(
+                vscode.l10n.t("Applied selected change from {short} for {path}.", {
+                    short,
+                    path: mutation.path,
+                }),
+            );
             return;
         }
 

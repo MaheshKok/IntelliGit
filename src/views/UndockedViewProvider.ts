@@ -66,8 +66,9 @@ import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
-    executeStashMutationRequest,
     executeShelfMutationRequest,
+    executeStashFileMutationRequest,
+    executeStashMutationRequest,
     openShelfConflictEditorFromMessage,
     rollbackFromPanel,
     runGitOperationFromPanel,
@@ -772,7 +773,22 @@ export class UndockedViewProvider {
         };
     }
 
+    /** Runs a correlated single-file stash request for the active undocked repository. */
+    private runStashFileMutationRequest(message: Record<string, unknown>): Promise<void> {
+        return executeStashFileMutationRequest(
+            {
+                gitOps: this.gitOps,
+                refreshData: () => this.refreshCommitPanelData(),
+                fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+            },
+            message,
+            (requestId) => this.postToWebview({ type: "stashMutationCompleted", requestId }),
+        );
+    }
+
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
+        const commitRepositoryRoot = this.repoRootUri.fsPath;
+        const commitDraftStorageKey = this.getCommitDraftStorageKey();
         const actionDeps = {
             gitOps: this.gitOps,
             refreshData: () => this.refreshCommitPanelData(),
@@ -782,7 +798,21 @@ export class UndockedViewProvider {
                 this.postCommitDetailState();
             },
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () => this.postToWebview({ type: "committed" }),
+            postCommitted: async () => {
+                let clearCommitMessage =
+                    vscode.workspace
+                        .getConfiguration("intelligit")
+                        .get<boolean>("clearLastCommit", true) !== false;
+                if (clearCommitMessage && this.workspaceState) {
+                    try {
+                        await this.workspaceState.update(commitDraftStorageKey, undefined);
+                    } catch {
+                        clearCommitMessage = false;
+                    }
+                }
+                if (this.repoRootUri.fsPath !== commitRepositoryRoot) return;
+                this.postToWebview({ type: "committed", clearCommitMessage });
+            },
             maybeOfferPublishBranch: () => Promise.resolve(),
         };
         const fileActionDeps = {
@@ -1025,6 +1055,9 @@ export class UndockedViewProvider {
                     index: assertNumber(msg.index, "index"),
                     reinstateIndex: false,
                 });
+                break;
+            case "cherryPickStashFile":
+                await this.runStashFileMutationRequest(msg);
                 break;
             case "stashDelete":
                 await this.runStashMutationRequest(

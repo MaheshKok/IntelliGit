@@ -199,7 +199,7 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
                     return;
 
                 case "committed":
-                    cpDispatch({ type: "COMMITTED" });
+                    cpDispatch({ type: "COMMITTED", clearCommitMessage: data.clearCommitMessage });
                     return;
 
                 case "shelfMutationCompleted":

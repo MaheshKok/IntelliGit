@@ -42,7 +42,10 @@ function applyNumstat(files: Map<string, WorkingFile>, output: string): void {
     const records = output.split("\0");
     for (let index = 0; index < records.length; index++) {
         const record = records[index];
+        // These are string delimiter lookups, not repeated array scans.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         const firstTab = record.indexOf("\t");
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         const secondTab = record.indexOf("\t", firstTab + 1);
         if (firstTab < 0 || secondTab < 0) continue;
         let path = record.slice(secondTab + 1);

@@ -42,8 +42,9 @@ import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
-    executeStashMutationRequest,
     executeShelfMutationRequest,
+    executeStashFileMutationRequest,
+    executeStashMutationRequest,
     openShelfConflictEditorFromMessage,
     rollbackFromPanel,
     runGitOperationFromPanel,
@@ -735,11 +736,27 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     ? this.refreshGraphData(runtime)
                     : Promise.resolve(),
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
-            postCommitted: () =>
+            postCommitted: async () => {
+                let clearCommitMessage =
+                    vscode.workspace
+                        .getConfiguration("intelligit")
+                        .get<boolean>("clearLastCommit", true) !== false;
+                if (clearCommitMessage && this.workspaceState) {
+                    try {
+                        await this.workspaceState.update(
+                            this.getCommitDraftStorageKey(runtime),
+                            undefined,
+                        );
+                    } catch {
+                        clearCommitMessage = false;
+                    }
+                }
                 this.postToWebview({
                     type: "committed",
+                    clearCommitMessage,
                     ...(runtime ? { repositoryRoot: runtime.repository.root } : {}),
-                }),
+                });
+            },
             maybeOfferPublishBranch: () =>
                 runtime ? this.maybeOfferPublishBranch(runtime) : Promise.resolve(),
             publishBranch: runtime ? () => this.publishBranch(runtime) : undefined,
@@ -856,6 +873,25 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     }),
             },
             message,
+        );
+    }
+
+    /** Runs a correlated single-file stash request against the repository captured at dispatch. */
+    private runStashFileMutationRequest(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: Record<string, unknown>,
+    ): Promise<void> {
+        return executeStashFileMutationRequest(
+            this.actionDepsForRuntime(runtime),
+            message,
+            (requestId) => {
+                const repositoryRoot = (runtime ?? this.requireActiveRuntime()).repository.root;
+                this.postToWebview({
+                    type: "stashMutationCompleted",
+                    repositoryRoot,
+                    requestId,
+                });
+            },
         );
     }
 
@@ -1594,6 +1630,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     index: assertNumber(msg.index, "index"),
                     reinstateIndex: false,
                 });
+                break;
+            case "cherryPickStashFile":
+                await this.runStashFileMutationRequest(scopedRuntime(), msg);
                 break;
             case "stashDelete":
                 await this.runStashMutationRequest(

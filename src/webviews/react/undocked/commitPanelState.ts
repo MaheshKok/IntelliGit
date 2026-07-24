@@ -117,7 +117,7 @@ export type CommitPanelAction =
       }
     | { type: "RESTORE_COMMIT_DRAFT"; message: string }
     | { type: "SET_LAST_COMMIT_MESSAGE"; message: string }
-    | { type: "COMMITTED" }
+    | { type: "COMMITTED"; clearCommitMessage?: boolean }
     | { type: "SET_REFRESHING"; active: boolean }
     | { type: "SET_ERROR"; message: string }
     | { type: "SET_SHELF_MUTATION_OUTCOME"; requestId: string; status: ShelfMutationStatus; entries: PerEntryResult[]; message?: string; shelfId?: string; newGeneration?: number }
@@ -211,7 +211,7 @@ export function commitPanelReducer(
         case "COMMITTED":
             return {
                 ...state,
-                commitMessage: "",
+                commitMessage: action.clearCommitMessage === false ? state.commitMessage : "",
                 isAmend: false,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,
