@@ -653,6 +653,8 @@ export class UndockedViewProvider {
     }
 
     private async handleMessage(msg: UnifiedOutbound): Promise<void> {
+        const commitRepositoryRoot = this.repoRootUri.fsPath;
+        const commitDraftStorageKey = this.getCommitDraftStorageKey();
         const actionDeps = {
             gitOps: this.gitOps,
             refreshData: () => this.refreshCommitPanelData(),
@@ -663,13 +665,18 @@ export class UndockedViewProvider {
             },
             fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
             postCommitted: async () => {
-                const clearCommitMessage =
+                let clearCommitMessage =
                     vscode.workspace
                         .getConfiguration("intelligit")
                         .get<boolean>("clearLastCommit", true) !== false;
-                if (clearCommitMessage) {
-                    await this.workspaceState?.update(this.getCommitDraftStorageKey(), undefined);
+                if (clearCommitMessage && this.workspaceState) {
+                    try {
+                        await this.workspaceState.update(commitDraftStorageKey, undefined);
+                    } catch {
+                        clearCommitMessage = false;
+                    }
                 }
+                if (this.repoRootUri.fsPath !== commitRepositoryRoot) return;
                 this.postToWebview({ type: "committed", clearCommitMessage });
             },
             maybeOfferPublishBranch: () => Promise.resolve(),
