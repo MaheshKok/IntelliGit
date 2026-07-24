@@ -209,7 +209,7 @@ function reducer(
         case "COMMITTED":
             return updateRepository(state, action.repositoryRoot, (repository) => ({
                 ...repository,
-                commitMessage: "",
+                commitMessage: action.clearCommitMessage === false ? repository.commitMessage : "",
                 isAmend: false,
                 amendBranchCommits: [],
                 amendBranchHistoryLoaded: false,
@@ -309,7 +309,11 @@ export function useExtensionMessages(): [
                     });
                     break;
                 case "committed":
-                    dispatch({ type: "COMMITTED", repositoryRoot: msg.repositoryRoot });
+                    dispatch({
+                        type: "COMMITTED",
+                        repositoryRoot: msg.repositoryRoot,
+                        clearCommitMessage: msg.clearCommitMessage,
+                    });
                     break;
                 case "refreshing":
                     dispatch({

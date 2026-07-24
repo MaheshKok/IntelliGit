@@ -49,6 +49,7 @@
     "command.initializeRepository": "Initialize Repository",
     "command.publishBranch": "Publish Branch",
     "configuration.tooltips.enabled.markdownDescription": "Enable or disable tooltips inside the IntelliGit window (Commit Graph, Branch Column, etc.).",
+    "configuration.clearLastCommit.markdownDescription": "Clear the commit message draft after a successful local commit. Disable to retain the draft in the Commit panel.",
     "configuration.undockableWindow.markdownDescription": "Open IntelliGit as a unified editor tab when Show Git Log is invoked, enabling native VS Code undocking to a second monitor.",
     "configuration.undockableWindowButtonVisability.markdownDescription": "Show the Undock button in the IntelliGit graph view title. Disable to hide the button while keeping the undock command available.",
     "configuration.worktree.includeFiles.markdownDescription": "Relative gitignored files or folders to copy from the current repository into each newly created worktree, such as `.env` or `.vscode/settings.json`.",

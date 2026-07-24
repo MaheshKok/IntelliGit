@@ -7,6 +7,10 @@ type CommitTabMockProps = {
     repositoryRoot: string;
     files: Array<{ path: string }>;
     commitMessage: string;
+    isAmend: boolean;
+    amendBranchCommits: Array<{ shortHash: string }>;
+    amendBranchHistoryLoaded: boolean;
+    onAmendChange: (isAmend: boolean) => void;
     onCommit: () => void;
 };
 
@@ -125,6 +129,14 @@ async function renderApp(): Promise<void> {
                 <span data-testid="commit-message" data-root={props.repositoryRoot}>
                     {props.commitMessage}
                 </span>
+                <span data-testid="amend-state" data-root={props.repositoryRoot}>
+                    {`${props.isAmend}:${props.amendBranchCommits.length}:${props.amendBranchHistoryLoaded}`}
+                </span>
+                <button
+                    data-testid="amend-toggle"
+                    data-root={props.repositoryRoot}
+                    onClick={() => props.onAmendChange(true)}
+                />
                 <button
                     data-testid="commit-action"
                     data-root={props.repositoryRoot}
@@ -298,7 +310,7 @@ describe("commit panel multi-repository view", () => {
         expect(row("/repo-b").textContent).not.toContain("src/a.ts");
     });
 
-    it("committed clears only the matching repository", async () => {
+    it("committed clears the matching repository draft by default and retains it when disabled", async () => {
         await renderApp();
         await hydrateTwoRepositories();
         click(header("/repo-b"));
@@ -312,11 +324,44 @@ describe("commit panel multi-repository view", () => {
             repositoryRoot: "/repo-b",
             message: "draft B",
         });
+        click(document.querySelector('[data-testid="amend-toggle"][data-root="/repo-b"]'));
+        await flush();
+        await sendHostMessage({
+            type: "amendBranchCommits",
+            repositoryRoot: "/repo-b",
+            commits: [
+                {
+                    shortHash: "deadbee",
+                    subject: "feat: amend",
+                    date: "2026-07-23T00:00:00Z",
+                },
+            ],
+        });
+        expect(
+            document.querySelector('[data-testid="amend-state"][data-root="/repo-b"]')?.textContent,
+        ).toBe("true:1:true");
 
         await sendHostMessage({ type: "committed", repositoryRoot: "/repo-b" });
 
         expect(messageText("/repo-a")).toBe("draft A");
         expect(messageText("/repo-b")).toBe("");
+        expect(
+            document.querySelector('[data-testid="amend-state"][data-root="/repo-b"]')?.textContent,
+        ).toBe("false:0:false");
+
+        await sendHostMessage({
+            type: "restoreCommitDraft",
+            repositoryRoot: "/repo-b",
+            message: "draft B",
+        });
+        await sendHostMessage({
+            type: "committed",
+            repositoryRoot: "/repo-b",
+            clearCommitMessage: false,
+        });
+
+        expect(messageText("/repo-a")).toBe("draft A");
+        expect(messageText("/repo-b")).toBe("draft B");
     });
 
     it("draft restore updates only the matching repository", async () => {

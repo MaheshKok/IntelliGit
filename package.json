@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.19.0",
+    "version": "0.19.1",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -767,6 +767,12 @@
                     "type": "boolean",
                     "default": true,
                     "markdownDescription": "%configuration.tooltips.enabled.markdownDescription%"
+                },
+                "intelligit.clearLastCommit": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "markdownDescription": "%configuration.clearLastCommit.markdownDescription%"
                 },
                 "intelligit.undockableWindow": {
                     "type": "boolean",
