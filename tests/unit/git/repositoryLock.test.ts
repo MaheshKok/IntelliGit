@@ -70,7 +70,12 @@ describe("RepositoryLock", () => {
         });
         const contender = () =>
             new RepositoryLock({
-                staleAfterMs: 0,
+                // The planted lock is stale under any threshold because its heartbeat sits
+                // at the epoch. A zero threshold would also make the winner's own fresh
+                // lock stale the moment a millisecond passes, letting the loser take that
+                // one over in turn and produce two winners — which is what happens once
+                // coverage instrumentation slows the retry past the winner's write.
+                staleAfterMs: 60_000,
                 livenessProbe: async () => false,
                 beforeTakeover: async () => {
                     arrived += 1;

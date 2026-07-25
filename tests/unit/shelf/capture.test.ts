@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { GitExecutor } from "../../../src/git/executor";
 import {
@@ -13,7 +12,6 @@ import { ShelfUnsupportedStateError, type ShelfFileEntry } from "../../../src/sh
 import { resolveShelfPaths } from "../../../src/shelf/paths";
 import { ShelfStore } from "../../../src/shelf/store";
 
-const execFileAsync = promisify(execFile);
 const directories: string[] = [];
 
 afterEach(async () => {
@@ -22,16 +20,30 @@ afterEach(async () => {
     );
 });
 
-async function git(directory: string, args: string[]): Promise<void> {
-    await execFileAsync("git", args, {
-        cwd: directory,
-        env: {
-            ...process.env,
-            GIT_AUTHOR_NAME: "Test",
-            GIT_AUTHOR_EMAIL: "test@example.invalid",
-            GIT_COMMITTER_NAME: "Test",
-            GIT_COMMITTER_EMAIL: "test@example.invalid",
-        },
+/** Runs git in `directory`, feeding `input` on stdin and returning stdout. */
+function git(directory: string, args: string[], input = ""): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        const child = execFile(
+            "git",
+            args,
+            {
+                cwd: directory,
+                env: {
+                    ...process.env,
+                    GIT_AUTHOR_NAME: "Test",
+                    GIT_AUTHOR_EMAIL: "test@example.invalid",
+                    GIT_COMMITTER_NAME: "Test",
+                    GIT_COMMITTER_EMAIL: "test@example.invalid",
+                },
+            },
+            (error, stdout) => {
+                if (error) reject(error);
+                else resolve(stdout);
+            },
+        );
+        // Closing stdin immediately keeps commands that would otherwise read it
+        // (update-index --index-info) from waiting on a caller that has nothing to say.
+        child.stdin?.end(input);
     });
 }
 
@@ -161,17 +173,36 @@ describe("Phase-1 shelf capture primitives", () => {
         [
             "unmerged-stage",
             async (root: string) => {
-                await git(root, ["checkout", "-b", "side"]);
-                await writeFile(path.join(root, "tracked.txt"), "side\n");
-                await git(root, ["add", "tracked.txt"]);
-                await git(root, ["commit", "-m", "side"]);
-                await git(root, ["checkout", "-"]);
-                await writeFile(path.join(root, "tracked.txt"), "main\n");
-                await git(root, ["add", "tracked.txt"]);
-                await git(root, ["commit", "-m", "main"]);
-                await expect(
-                    execFileAsync("git", ["merge", "side"], { cwd: root }),
-                ).rejects.toBeDefined();
+                // The stages are written straight into the index rather than produced by
+                // a real `git merge`. A non-zero merge exit does not prove the index is
+                // conflicted: merge can refuse before it touches the index at all, as a
+                // `merge.ff = only` or `merge.verifySignatures` setting demonstrates. On
+                // CI the index reached the expectation with nothing unmerged in it while
+                // the merge had duly "failed". Index plumbing depends on no configuration,
+                // and the precondition at the end of this fixture fails loudly rather than
+                // handing a clean index to an expectation that then reports the wrong
+                // thing.
+                const base = (await git(root, ["rev-parse", "HEAD:tracked.txt"])).trim();
+                await writeFile(path.join(root, "tracked.txt"), "ours\n");
+                const ours = (await git(root, ["hash-object", "-w", "tracked.txt"])).trim();
+                await writeFile(path.join(root, "tracked.txt"), "theirs\n");
+                const theirs = (await git(root, ["hash-object", "-w", "tracked.txt"])).trim();
+                await git(
+                    root,
+                    ["update-index", "--index-info"],
+                    // The mode-0 line drops the stage-0 entry; without it the index keeps
+                    // a merged entry alongside the stages, which git itself never emits.
+                    // Its null object id is sized from a real one so the repository's hash
+                    // algorithm, not this fixture, decides how wide it is.
+                    [
+                        `0 ${"0".repeat(base.length)}\ttracked.txt`,
+                        `100644 ${base} 1\ttracked.txt`,
+                        `100644 ${ours} 2\ttracked.txt`,
+                        `100644 ${theirs} 3\ttracked.txt`,
+                        "",
+                    ].join("\n"),
+                );
+                expect((await git(root, ["ls-files", "--unmerged"])).trim()).not.toBe("");
             },
         ],
         [
