@@ -24,6 +24,15 @@ export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): 
     const [isSpinHeld, setIsSpinHeld] = useState(false);
     const holdTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+    const holdSpin = useCallback(() => {
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+        setIsSpinHeld(true);
+        holdTimerRef.current = setTimeout(() => {
+            setIsSpinHeld(false);
+            holdTimerRef.current = undefined;
+        }, MIN_SPIN_MS);
+    }, []);
+
     useEffect(
         () => () => {
             if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
@@ -31,22 +40,25 @@ export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): 
         [],
     );
 
+    // A host-driven refresh can finish within a frame or two — the undocked window does
+    // not pad its refresh span the way the docked panel does — so a host refresh holds
+    // the spin exactly like a click does.
+    useEffect(() => {
+        if (isRefreshing) holdSpin();
+    }, [holdSpin, isRefreshing]);
+
     const handleClick = useCallback(() => {
-        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-        setIsSpinHeld(true);
-        holdTimerRef.current = setTimeout(() => {
-            setIsSpinHeld(false);
-            holdTimerRef.current = undefined;
-        }, MIN_SPIN_MS);
+        holdSpin();
         onRefresh();
-    }, [onRefresh]);
+    }, [holdSpin, onRefresh]);
 
     const spin = isRefreshing || isSpinHeld;
     const label = spin ? t("common.refreshing") : t("common.refresh");
+    // Spinning is the "working" signal, so the glyph keeps its accent color instead of
+    // fading to the disabled grey — a refresh in progress has to read louder than an
+    // idle one, not quieter.
     const iconStyle: React.CSSProperties = {
-        color: spin
-            ? "var(--vscode-disabledForeground)"
-            : resolveIconColor("#4ec7d6", "var(--vscode-icon-foreground)"),
+        color: resolveIconColor("#4ec7d6", "var(--vscode-icon-foreground)"),
         ...(spin
             ? {
                   animation: "intelligit-spin 0.8s linear infinite",
@@ -78,9 +90,8 @@ export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): 
                     isDisabled={spin}
                     _disabled={{
                         bg: "rgba(255,255,255,0.03)",
-                        color: "var(--vscode-disabledForeground)",
                         cursor: "default",
-                        opacity: 0.55,
+                        opacity: 1,
                     }}
                     data-refreshing={spin ? "true" : undefined}
                     icon={<IoMdRefresh size={16} aria-hidden focusable="false" style={iconStyle} />}

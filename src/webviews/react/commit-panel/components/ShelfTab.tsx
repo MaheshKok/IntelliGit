@@ -120,6 +120,23 @@ export interface ShelfTabProps {
     ) => void;
 }
 
+/**
+ * The outcome if it carries something the user has to see, otherwise undefined.
+ *
+ * A mutation that simply worked needs no report — PyCharm performs the action and
+ * says nothing — so the region stays empty unless the status, one of the entries, or
+ * an export's flattening caveat needs attention.
+ */
+function reportableOutcome(
+    outcome: ShelfMutationOutcome | undefined,
+    lastExportRequestId: string | null,
+): ShelfMutationOutcome | undefined {
+    if (outcome === undefined) return undefined;
+    if (outcome.status !== "ok") return outcome;
+    if (outcome.entries.some((entry) => entry.kind !== "applied")) return outcome;
+    return outcome.requestId === lastExportRequestId && !outcome.message ? outcome : undefined;
+}
+
 interface ShelfContextMenuState {
     shelf: ShelfEntry;
     targetChangeId?: string;
@@ -267,6 +284,7 @@ export function ShelfTab({
         pendingRename && outcome?.requestId === pendingRename.requestId
             ? outcome.message
             : undefined;
+    const reportedOutcome = reportableOutcome(outcome, lastExportRequestId);
 
     const selectShelf = useCallback(
         (shelfId: string): void => {
@@ -615,17 +633,17 @@ export function ShelfTab({
                 aria-label={t("a11y.shelfMutationOutcome")}
                 aria-live="polite"
                 flexShrink={0}
-                maxH={outcome ? "160px" : undefined}
-                overflowY={outcome ? "auto" : undefined}
-                p={outcome ? "10px" : 0}
+                maxH={reportedOutcome ? "160px" : undefined}
+                overflowY={reportedOutcome ? "auto" : undefined}
+                p={reportedOutcome ? "10px" : 0}
                 fontSize="12px"
             >
-                {outcome ? (
+                {reportedOutcome ? (
                     <>
                         <Box data-testid="shelf-mutation-status" fontWeight={600}>
-                            {outcome.status}: {statusMessage(outcome.status)}
+                            {statusMessage(reportedOutcome.status)}
                         </Box>
-                        {outcome.entries.map((result) => (
+                        {reportedOutcome.entries.map((result) => (
                             <Box key={`${result.changeId}-${result.kind}`} mt="3px">
                                 {result.changeId}: {resultMessage(result)}
                                 {result.kind === "conflicted" && outcomeShelf ? (
@@ -687,9 +705,9 @@ export function ShelfTab({
                                 ) : null}
                             </Box>
                         ))}
-                        {outcome.requestId === lastExportRequestId &&
-                        outcome.status === "ok" &&
-                        !outcome.message ? (
+                        {reportedOutcome.requestId === lastExportRequestId &&
+                        reportedOutcome.status === "ok" &&
+                        !reportedOutcome.message ? (
                             <Box mt="3px">{t("shelf.status.exportFlattened")}</Box>
                         ) : null}
                     </>

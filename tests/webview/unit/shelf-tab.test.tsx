@@ -47,6 +47,18 @@ const shelves: ShelfEntry[] = [
     },
 ];
 
+/** The sentence the outcome banner shows for each mutation status. */
+const STATUS_SENTENCES: Record<ShelfMutationStatus, string> = {
+    ok: "Shelf mutation completed.",
+    partial: "Shelf mutation partially completed.",
+    conflicts: "Shelf mutation completed with conflicts.",
+    staleShelf: "Shelf changed before this mutation.",
+    staleCatalog: "Shelf catalog changed before this mutation.",
+    busy: "Shelf mutation is busy.",
+    recoveryFull: "Shelf recovery storage is full.",
+    error: "Shelf mutation failed.",
+};
+
 function click(element: Element): void {
     act(() => element.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
@@ -696,6 +708,37 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
+    it("stays silent after a mutation that simply worked", () => {
+        const clean = renderShelfTab({
+            outcome: { requestId: "clean", status: "ok", entries: [] },
+        });
+        expect(clean.container.querySelector('[data-testid="shelf-mutation-status"]')).toBeNull();
+        unmount(clean.root, clean.container);
+
+        const applied = renderShelfTab({
+            outcome: {
+                requestId: "applied",
+                status: "ok",
+                entries: [{ kind: "applied", changeId: "a" }],
+            },
+        });
+        expect(applied.container.querySelector('[data-testid="shelf-mutation-status"]')).toBeNull();
+        unmount(applied.root, applied.container);
+
+        // Anything the user has to act on still reports.
+        const refused = renderShelfTab({
+            outcome: {
+                requestId: "refused",
+                status: "ok",
+                entries: [{ kind: "refused", changeId: "a", reason: "no" }],
+            },
+        });
+        expect(
+            refused.container.querySelector('[data-testid="shelf-mutation-status"]'),
+        ).not.toBeNull();
+        unmount(refused.root, refused.container);
+    });
+
     it("renders every per-entry result kind and mutation status", () => {
         const results: PerEntryResult[] = [
             { kind: "applied", changeId: "a" },
@@ -750,7 +793,9 @@ describe("ShelfTab", () => {
                     </ChakraProvider>,
                 ),
             );
-            expect(container.textContent).toContain(status);
+            // The banner speaks in sentences; the protocol enum stays out of the UI.
+            expect(container.textContent).toContain(STATUS_SENTENCES[status]);
+            expect(container.textContent).not.toContain(`${status}:`);
         }
         for (const result of results) expect(container.textContent).toContain(result.kind);
 
