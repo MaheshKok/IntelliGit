@@ -19,11 +19,14 @@ import { countFiles, type TreeEntry, type TreeFolder } from "../fileTree";
 
 /** Horizontal distance between nested tree levels. */
 export const TREE_INDENT_STEP = 14;
-/** Left padding before the first glyph of a depth-0 row. */
-export const TREE_INDENT_BASE = 18;
 /** Half a chevron, used to centre a guide line under the glyph above it. */
 const CHEVRON_HALF = 8;
-const GUIDE_BASE = TREE_INDENT_BASE + CHEVRON_HALF;
+/**
+ * Horizontal gap between the guide a parent row draws and its children's. Fixed
+ * rather than folded into the child indent, so the two lines stay equally far
+ * apart wherever the parent row's chevron sits.
+ */
+const GUIDE_STEP_FROM_PARENT = 10;
 /** Default guide offset: centred under a `SectionHeader` chevron. */
 const DEFAULT_SECTION_GUIDE = 8 + CHEVRON_HALF;
 /**
@@ -31,6 +34,10 @@ const DEFAULT_SECTION_GUIDE = 8 + CHEVRON_HALF;
  * one row margin (8px) plus one row padding (6px) from the tree's left edge.
  */
 export const ENTRY_ROW_GUIDE_LEFT = 8 + 6 + CHEVRON_HALF;
+/** Left padding of a depth-0 row whose parent draws its guide at `sectionGuideLeft`. */
+function rowIndentBase(sectionGuideLeft: number): number {
+    return sectionGuideLeft + GUIDE_STEP_FROM_PARENT - CHEVRON_HALF;
+}
 const GUIDE_COLOR = "var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))";
 
 /** The minimum a row needs; both `CommitFile` and `WorkingFile` satisfy it. */
@@ -141,7 +148,7 @@ function TreeFolderRow<F extends TreeRowFile>({
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
-    sectionGuideLeft,
+    sectionGuideLeft = DEFAULT_SECTION_GUIDE,
     ariaLevel,
     onToggle,
 }: {
@@ -170,7 +177,7 @@ function TreeFolderRow<F extends TreeRowFile>({
             align="center"
             gap="4px"
             w="100%"
-            pl={`${TREE_INDENT_BASE + depth * TREE_INDENT_STEP}px`}
+            pl={`${rowIndentBase(sectionGuideLeft) + depth * TREE_INDENT_STEP}px`}
             pr="6px"
             border="0"
             bg="transparent"
@@ -205,7 +212,7 @@ function TreeFileRow({
     file,
     depth,
     showParentPath,
-    sectionGuideLeft,
+    sectionGuideLeft = DEFAULT_SECTION_GUIDE,
     ariaLevel,
     wiring,
 }: {
@@ -258,7 +265,7 @@ function TreeFileRow({
             ref={rowRef}
             align="center"
             gap="4px"
-            pl={`${TREE_INDENT_BASE + depth * TREE_INDENT_STEP}px`}
+            pl={`${rowIndentBase(sectionGuideLeft) + depth * TREE_INDENT_STEP}px`}
             pr="6px"
             lineHeight="22px"
             fontSize="13px"
@@ -385,7 +392,7 @@ function TreeIndentGuides({
                     bottom={0}
                     w="1px"
                     bg={GUIDE_COLOR}
-                    left={`${GUIDE_BASE + level * TREE_INDENT_STEP}px`}
+                    left={`${rowIndentBase(sectionGuideLeft) + CHEVRON_HALF + level * TREE_INDENT_STEP}px`}
                 />
             ))}
         </>
