@@ -1083,6 +1083,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             .filter((runtime): runtime is CommitPanelRepositoryRuntime => runtime !== undefined);
     }
 
+    /** Tells the webview whether a visible refresh is running for this repository. */
+    private postRefreshing(runtime: CommitPanelRepositoryRuntime, active: boolean): void {
+        this.postToWebview({ type: "refreshing", repositoryRoot: runtime.repository.root, active });
+    }
+
     /**
      * Reloads full working-tree, stash, icon, and branch metadata for exactly one runtime.
      *
@@ -1096,11 +1101,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const refreshStartedAt = Date.now();
         const refreshRequestId = ++runtime.dataRefreshSeq;
         if (!silent) {
-            this.postToWebview({
-                type: "refreshing",
-                repositoryRoot: runtime.repository.root,
-                active: true,
-            });
+            this.postRefreshing(runtime, true);
         }
         if (!silent) {
             void Promise.resolve(
@@ -1191,11 +1192,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
                 }
                 if (refreshRequestId === runtime.dataRefreshSeq) {
-                    this.postToWebview({
-                        type: "refreshing",
-                        repositoryRoot: runtime.repository.root,
-                        active: false,
-                    });
+                    this.postRefreshing(runtime, false);
                 }
                 this.visibleRefreshCount = Math.max(0, this.visibleRefreshCount - 1);
                 void Promise.resolve(
@@ -1344,7 +1341,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postRepositoryListHydration();
         if (runtime) {
             this.postWorkingTreeSnapshot(runtime);
-            await this.refreshAllRepositories(true);
+            // The snapshot above comes from an empty cache on a cold start, so the first
+            // load announces itself: the panel would otherwise sit on "No shelves." with
+            // no sign that Git is still being read. The refresh itself stays silent and
+            // the flag is posted around it — the toolbar already holds the spin long
+            // enough to be seen, so this path skips the minimum-visible padding, which
+            // would delay the restored commit draft by more than half a second.
+            this.postRefreshing(runtime, true);
+            try {
+                await this.refreshAllRepositories(true);
+            } finally {
+                this.postRefreshing(runtime, false);
+            }
             await this.refreshGraphData(runtime);
         }
         this.postToWebview({

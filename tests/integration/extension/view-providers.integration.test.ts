@@ -5332,6 +5332,15 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider announces the cold-start load that fills the shelf and stash tabs", async () => {
+        // The webview mounts against an empty cache, so it renders "No shelves." while
+        // Git is still being read. Without this the wait is indistinguishable from an
+        // empty repository — the refresh icon has to say the panel is still working.
+        const { provider } = await setupCommitPanelProvider();
+        expect(refreshingStates()).toEqual([true, false]);
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider keeps the blue refresh indicator visible long enough to be seen", async () => {
         const { provider } = await setupCommitPanelProvider();
         await provider.refresh();
