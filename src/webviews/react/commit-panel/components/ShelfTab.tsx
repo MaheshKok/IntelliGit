@@ -144,6 +144,30 @@ function toggleMember(current: ReadonlySet<string>, key: string): Set<string> {
     return next;
 }
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
+/** The shelf file row that currently owns the tab's single selection. */
+interface ShelfFileSelection {
+    shelfId: string;
+    changeId: string;
+}
+
+/**
+ * The file selection if it is still on screen, otherwise null.
+ *
+ * A selection lapses when its shelf collapses or the file leaves the snapshot, handing
+ * the tree's single selection back to the shelf row rather than leaving nothing marked.
+ */
+function liveFileSelection(
+    selection: ShelfFileSelection | null,
+    shelves: readonly ShelfEntry[],
+    expandedShelfIds: ReadonlySet<string>,
+): ShelfFileSelection | null {
+    if (selection === null || !expandedShelfIds.has(selection.shelfId)) return null;
+    const shelf = shelves.find((entry) => entry.id === selection.shelfId);
+    return shelf?.files.some((file) => file.changeId === selection.changeId) === true
+        ? selection
+        : null;
+}
+
 export function ShelfTab({
     shelves,
     selectedShelfId,
@@ -180,6 +204,7 @@ export function ShelfTab({
     const tabRef = useRef<HTMLDivElement>(null);
     const dialogFocusTargetRef = useRef<HTMLElement | null>(null);
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
+    const [fileSelection, setFileSelection] = useState<ShelfFileSelection | null>(null);
     const [showAlreadyUnshelved, setShowAlreadyUnshelved] = useState(false);
     const [contextMenu, setContextMenu] = useState<ShelfContextMenuState | null>(null);
     const [expandedShelfIds, setExpandedShelfIds] = useState<ReadonlySet<string>>(
@@ -207,6 +232,7 @@ export function ShelfTab({
         { kind: "structuralPending" }
     > | null>(null);
     const displayedSelectedShelfId = selectionOverride ?? selectedShelfId;
+    const selectedFile = liveFileSelection(fileSelection, shelves, expandedShelfIds);
     const selectedShelf = useMemo(
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, shelves],
@@ -244,6 +270,8 @@ export function ShelfTab({
 
     const selectShelf = useCallback(
         (shelfId: string): void => {
+            // Selecting a shelf takes the tree's single selection back from any file row.
+            setFileSelection(null);
             setSelectionOverride(shelfId);
             onSelect({ type: "shelfSelect", shelfId });
         },
@@ -351,7 +379,9 @@ export function ShelfTab({
             returnFocusTarget: HTMLElement,
             targetChangeId?: string,
         ): void => {
-            selectShelf(shelf.id);
+            // A right-click selects what it targets, so a file row keeps the selection
+            // it just took rather than handing it straight back to its shelf.
+            if (targetChangeId === undefined) selectShelf(shelf.id);
             dialogFocusTargetRef.current = returnFocusTarget;
             setContextMenu({ shelf, targetChangeId, x, y, returnFocusTarget });
         },
@@ -517,6 +547,7 @@ export function ShelfTab({
             <ShelfList
                 shelves={shelves}
                 selectedShelfId={displayedSelectedShelfId}
+                hasSelectedFile={selectedFile !== null}
                 showAlreadyUnshelved={showAlreadyUnshelved}
                 expandedShelfIds={expandedShelfIds}
                 renamingShelfId={renamingShelfId}
@@ -528,6 +559,9 @@ export function ShelfTab({
                         entries={shelf.files}
                         groupByDir={groupByDir}
                         depth={0}
+                        selectedChangeId={
+                            selectedFile?.shelfId === shelf.id ? selectedFile.changeId : null
+                        }
                         isDirectoryCollapsed={(path) =>
                             collapsedDirectories.has(directoryKey(shelf.id, path))
                         }
@@ -535,6 +569,9 @@ export function ShelfTab({
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
                         folderIconsByName={folderIconsByName}
+                        onFileSelect={(entry) =>
+                            setFileSelection({ shelfId: shelf.id, changeId: entry.changeId })
+                        }
                         onFileActivate={(entry) =>
                             onShowDiff({
                                 type: "shelfDiff",

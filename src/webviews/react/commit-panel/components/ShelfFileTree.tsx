@@ -1,7 +1,7 @@
 // File rows for one shelf, rendered as a subtree beneath that shelf's row using
 // the same tree the commit-info pane draws for a commit's Changed Files.
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { Box } from "@chakra-ui/react";
 import type { ShelfFileView } from "../../../protocol/commitPanelMessages";
 import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
@@ -14,8 +14,12 @@ interface ShelfFileTreeProps {
     groupByDir: boolean;
     /** Indent level of the file rows; the owning shelf row acts as their header. */
     depth: number;
+    /** Change id of the tab's selected file, or null while the selection sits elsewhere. */
+    selectedChangeId: string | null;
     isDirectoryCollapsed: (path: string) => boolean;
     onToggleDirectory: (path: string) => void;
+    /** Moves the tab's single selection onto this file. */
+    onFileSelect: (entry: ShelfFileView) => void;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -50,16 +54,17 @@ export function ShelfFileTree({
     entries,
     groupByDir,
     depth,
+    selectedChangeId,
     isDirectoryCollapsed,
     onToggleDirectory,
     folderIcon,
     folderExpandedIcon,
     folderIconsByName,
+    onFileSelect,
     onFileActivate,
     onContextMenu,
     onDragStart,
 }: ShelfFileTreeProps): React.ReactElement {
-    const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
     const files = useMemo(() => entries.map(displayFile), [entries]);
     const tree = useMemo<TreeEntry<ShelfDisplayFile>[]>(
         () =>
@@ -93,13 +98,13 @@ export function ShelfFileTree({
                 return {
                     isSelected: selectedChangeId === entry.changeId,
                     onSelect: () => {
-                        setSelectedChangeId(entry.changeId);
+                        onFileSelect(entry);
                         onFileActivate(entry);
                     },
                     onActivate: () => onFileActivate(entry),
                     onContextMenu: onContextMenu
                         ? (x, y, returnFocusTarget) => {
-                              setSelectedChangeId(entry.changeId);
+                              onFileSelect(entry);
                               onContextMenu(entry, x, y, returnFocusTarget);
                           }
                         : undefined,

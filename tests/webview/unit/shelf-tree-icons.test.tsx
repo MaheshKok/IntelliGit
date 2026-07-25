@@ -27,8 +27,10 @@ function renderTree(props: Partial<React.ComponentProps<typeof ShelfFileTree>> =
                 entries={entries}
                 groupByDir={true}
                 depth={0}
+                selectedChangeId={null}
                 isDirectoryCollapsed={() => false}
                 onToggleDirectory={() => undefined}
+                onFileSelect={() => undefined}
                 onFileActivate={() => undefined}
                 {...props}
             />

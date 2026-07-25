@@ -135,6 +135,12 @@ export function StashTab({
         stashHash: null,
         path: null,
     });
+    // A file selection lapses when its stash collapses, handing the tree's single
+    // selection back to the stash row rather than leaving nothing highlighted.
+    const hasSelectedFile =
+        fileSelection.stashHash !== null &&
+        fileSelection.path !== null &&
+        expandedHashes.has(fileSelection.stashHash);
     const [contextMenu, setContextMenu] = useState<StashContextMenuState | null>(null);
     const [unstashDialog, setUnstashDialog] = useState<UnstashDialogState | null>(null);
     const stashTabRef = useRef<HTMLDivElement>(null);
@@ -185,6 +191,8 @@ export function StashTab({
 
     const selectStash = useCallback(
         (index: number) => {
+            // Selecting a row takes the tree's single selection back from any file row.
+            setFileSelection({ stashHash: null, path: null });
             if (displayedSelectedIndex === index) return;
             setSelectionOverride({ snapshot: stashes, index });
             vscode.postMessage(postRepositoryMessage({ type: "stashSelect", index }));
@@ -459,6 +467,7 @@ export function StashTab({
             <StashList
                 stashes={stashes}
                 selectedIndex={displayedSelectedIndex}
+                hasSelectedFile={hasSelectedFile}
                 expandedHashes={expandedHashes}
                 filesByHash={filesByHash}
                 onStashClick={selectStash}

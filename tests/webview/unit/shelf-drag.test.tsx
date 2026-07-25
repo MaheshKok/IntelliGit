@@ -394,6 +394,7 @@ describe("useShelfDrag", () => {
                 <ShelfRow
                     shelf={ghost}
                     selected={false}
+                    isFocusTarget={false}
                     isGhost
                     isExpanded={false}
                     isRenaming={false}

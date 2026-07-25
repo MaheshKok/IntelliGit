@@ -23,6 +23,8 @@ export type ShelfContextAction =
 export interface ShelfRowProps {
     shelf: ShelfEntry;
     selected: boolean;
+    /** Owns the list's roving tabindex, which stays on a shelf row even when a file is selected. */
+    isFocusTarget: boolean;
     isGhost: boolean;
     isExpanded: boolean;
     isRenaming: boolean;
@@ -55,6 +57,7 @@ function shelfMetaText(shelf: ShelfEntry): string {
 export function ShelfRow({
     shelf,
     selected,
+    isFocusTarget,
     isGhost,
     isExpanded,
     isRenaming,
@@ -76,7 +79,7 @@ export function ShelfRow({
             aria-selected={selected}
             aria-expanded={isExpanded}
             aria-level={1}
-            tabIndex={selected ? 0 : -1}
+            tabIndex={isFocusTarget ? 0 : -1}
             align="center"
             w="calc(100% - 16px)"
             minH="30px"

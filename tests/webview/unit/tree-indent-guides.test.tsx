@@ -37,8 +37,10 @@ function renderTree(groupByDir: boolean) {
                 entries={entries}
                 groupByDir={groupByDir}
                 depth={0}
+                selectedChangeId={null}
                 isDirectoryCollapsed={() => false}
                 onToggleDirectory={() => undefined}
+                onFileSelect={() => undefined}
                 onFileActivate={() => undefined}
             />
         </ChakraProvider>,

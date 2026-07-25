@@ -25,14 +25,18 @@ const entries = [
 function renderTree(overrides: Partial<React.ComponentProps<typeof ShelfFileTree>> = {}) {
     const onFileActivate = vi.fn();
     const onDragStart = vi.fn();
-    // Directory collapse belongs to the owning tab, so the harness holds that state here.
+    // Selection and directory collapse belong to the owning tab, so the harness holds
+    // that state here the way ShelfTab does.
     const ControlledShelfFileTree = (): React.ReactElement => {
         const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
+        const [selectedChangeId, setSelectedChangeId] = React.useState<string | null>(null);
         return (
             <ShelfFileTree
                 entries={entries}
                 groupByDir={false}
                 depth={1}
+                selectedChangeId={selectedChangeId}
+                onFileSelect={(entry) => setSelectedChangeId(entry.changeId)}
                 onFileActivate={onFileActivate}
                 onDragStart={onDragStart}
                 {...overrides}

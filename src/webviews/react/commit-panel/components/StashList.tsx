@@ -21,6 +21,8 @@ type StashFileContextMenuHandler = (
 export interface StashListProps {
     stashes: StashEntry[];
     selectedIndex: number | null;
+    /** True while a file row owns the tree's single selection. */
+    hasSelectedFile: boolean;
     /** Hashes of the stashes whose file subtree is currently rendered. */
     expandedHashes: ReadonlySet<string>;
     /** Files already loaded, by stash hash; a missing hash means "still loading". */
@@ -49,6 +51,7 @@ function stashMetaText(fileCount: number | undefined, date: string): string | nu
 export function StashList({
     stashes,
     selectedIndex,
+    hasSelectedFile,
     expandedHashes,
     filesByHash,
     onStashClick,
@@ -79,7 +82,11 @@ export function StashList({
             ) : (
                 stashes.map((stash) => {
                     const parsed = parseStashMessage(stash.message);
-                    const isSelected = selectedIndex === stash.index;
+                    // Exactly one node is selected; a picked file row owns it instead of this row.
+                    const isSelected = !hasSelectedFile && selectedIndex === stash.index;
+                    const isFocusTarget =
+                        selectedIndex === stash.index ||
+                        (selectedIndex === null && stash.index === stashes[0]?.index);
                     const isExpanded = expandedHashes.has(stash.hash);
                     const files = filesByHash[stash.hash];
                     const meta = stashMetaText(files?.length, stash.date);
@@ -91,12 +98,7 @@ export function StashList({
                                 aria-selected={isSelected}
                                 aria-expanded={isExpanded}
                                 aria-level={1}
-                                tabIndex={
-                                    isSelected ||
-                                    (selectedIndex === null && stash.index === stashes[0]?.index)
-                                        ? 0
-                                        : -1
-                                }
+                                tabIndex={isFocusTarget ? 0 : -1}
                                 align="center"
                                 w="calc(100% - 16px)"
                                 minH="26px"

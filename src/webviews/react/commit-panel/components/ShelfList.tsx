@@ -16,6 +16,8 @@ export function isActiveShelf(shelf: ShelfEntry): boolean {
 export interface ShelfListProps {
     shelves: ShelfEntry[];
     selectedShelfId: string | null;
+    /** True while a file row owns the tree's single selection. */
+    hasSelectedFile: boolean;
     showAlreadyUnshelved: boolean;
     /** Ids of the shelves whose file subtree is currently rendered. */
     expandedShelfIds: ReadonlySet<string>;
@@ -36,6 +38,7 @@ export interface ShelfListProps {
 export function ShelfList({
     shelves,
     selectedShelfId,
+    hasSelectedFile,
     showAlreadyUnshelved,
     expandedShelfIds,
     renamingShelfId,
@@ -52,9 +55,12 @@ export function ShelfList({
     const activeShelves = shelves.filter(isActiveShelf);
     const ghosts = showAlreadyUnshelved ? shelves.filter((shelf) => !isActiveShelf(shelf)) : [];
     const visibleShelves = [...activeShelves, ...ghosts];
-    const selected = visibleShelves.some((shelf) => shelf.id === selectedShelfId)
+    const focused = visibleShelves.some((shelf) => shelf.id === selectedShelfId)
         ? selectedShelfId
         : (visibleShelves[0]?.id ?? null);
+    // Exactly one node in the tree is selected. A file row owns it whenever one is
+    // picked, so no shelf row draws the indicator until the selection comes back up.
+    const selected = hasSelectedFile ? null : focused;
 
     const navigate = (shelfId: string, key: string, target: HTMLElement): void => {
         const index = visibleShelves.findIndex((shelf) => shelf.id === shelfId);
@@ -87,6 +93,7 @@ export function ShelfList({
                     <ShelfRow
                         shelf={shelf}
                         selected={selected === shelf.id}
+                        isFocusTarget={focused === shelf.id}
                         isGhost={ghost}
                         isExpanded={isExpanded}
                         isRenaming={renamingShelfId === shelf.id}
