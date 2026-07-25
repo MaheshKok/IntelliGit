@@ -224,7 +224,10 @@ export class ShelfStore {
             const manifestPath = this.manifestPath(shelfId, generation);
             await this.writeAtomic(manifestPath, encodeJson(complete));
             await this.options.beforeCurrentPointerRename?.();
-            await this.writeAtomic(this.currentPath(shelfId), Buffer.from(String(generation) + "\n"));
+            await this.writeAtomic(
+                this.currentPath(shelfId),
+                Buffer.from(String(generation) + "\n"),
+            );
             await this.addShelfToCatalog(shelfId);
             return complete;
         });
@@ -236,7 +239,10 @@ export class ShelfStore {
         input: ShelfPersistenceManifestInput,
     ): Promise<ShelfPersistenceManifest> {
         const manifest = await this.writeGeneration(shelfId, input);
-        const persistence = parseShelfPersistenceContract({ metadata: manifest.metadata, files: manifest.files });
+        const persistence = parseShelfPersistenceContract({
+            metadata: manifest.metadata,
+            files: manifest.files,
+        });
         return { ...manifest, ...persistence };
     }
 
@@ -283,7 +289,10 @@ export class ShelfStore {
             if (expected.expectedShelfGeneration !== undefined && expected.shelfId) {
                 const actualGeneration = await this.currentGenerationOrUndefined(expected.shelfId);
                 if (actualGeneration !== expected.expectedShelfGeneration) {
-                    throw new ShelfStaleShelfError(expected.expectedShelfGeneration, actualGeneration);
+                    throw new ShelfStaleShelfError(
+                        expected.expectedShelfGeneration,
+                        actualGeneration,
+                    );
                 }
             }
             return operation();
@@ -391,7 +400,9 @@ export class ShelfStore {
             const removed: string[] = [];
             for (const hash of [...candidates].sort()) {
                 if (!reachable.has(hash)) {
-                    await rm(await this.readableTarget(path.join(directory, hash)), { force: true });
+                    await rm(await this.readableTarget(path.join(directory, hash)), {
+                        force: true,
+                    });
                     removed.push(hash);
                 }
             }
@@ -448,9 +459,7 @@ export class ShelfStore {
     private async readManifest(shelfId: string, generation: number): Promise<ShelfManifest> {
         const target = await this.readableTarget(this.manifestPath(shelfId, generation));
         await assertNotSymlink(target);
-        const parsed = parseManifest(
-            await readFile(target, "utf8"),
-        );
+        const parsed = parseManifest(await readFile(target, "utf8"));
         if (
             parsed.generation !== generation ||
             parsed.checksum !== checksumManifest({ ...parsed, checksum: "" })
@@ -474,10 +483,13 @@ export class ShelfStore {
         }
         let storedGeneration = 0;
         try {
-            for (const entry of await readdir(await this.readableDirectory(this.shelfDirectory(shelfId)))) {
+            for (const entry of await readdir(
+                await this.readableDirectory(this.shelfDirectory(shelfId)),
+            )) {
                 const match = /^gen-([1-9]\d*)$/.exec(entry);
                 const generation = match ? Number(match[1]) : Number.NaN;
-                if (Number.isSafeInteger(generation)) storedGeneration = Math.max(storedGeneration, generation);
+                if (Number.isSafeInteger(generation))
+                    storedGeneration = Math.max(storedGeneration, generation);
             }
         } catch (error) {
             if (!isNotFound(error)) throw error;

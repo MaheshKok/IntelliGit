@@ -12,7 +12,8 @@ export function isSafeShelfRelativePath(value: unknown): value is string {
         /^[A-Za-z]:/.test(value) ||
         /^[/\\]{2}/.test(value) ||
         value.includes("\\")
-    ) return false;
+    )
+        return false;
     return value.split("/").every((segment) => isSafeShelfPathSegment(segment));
 }
 

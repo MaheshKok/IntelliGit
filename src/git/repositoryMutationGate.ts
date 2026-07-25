@@ -56,7 +56,8 @@ export class RepositoryMutationGate {
             try {
                 return await this.lock.acquire(commonDir);
             } catch (error) {
-                if (!(error instanceof RepositoryLockBusyError) || Date.now() >= deadline) throw error;
+                if (!(error instanceof RepositoryLockBusyError) || Date.now() >= deadline)
+                    throw error;
             }
             await new Promise<void>((resolve) => setTimeout(resolve, this.acquireRetryDelayMs));
         }

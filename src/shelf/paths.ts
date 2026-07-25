@@ -67,7 +67,10 @@ export function resolveShelfInternalPath(paths: ShelfPaths, relativePath: string
 }
 
 /** Creates and verifies an internal artifact parent without traversing shelf symlinks. */
-export async function ensureShelfInternalParent(paths: ShelfPaths, relativePath: string): Promise<string> {
+export async function ensureShelfInternalParent(
+    paths: ShelfPaths,
+    relativePath: string,
+): Promise<string> {
     const target = resolveShelfInternalPath(paths, relativePath);
     await ensureShelfRoot(paths);
     await verifyInternalParent(paths.root, path.dirname(target), true);
@@ -75,7 +78,10 @@ export async function ensureShelfInternalParent(paths: ShelfPaths, relativePath:
 }
 
 /** Verifies an existing internal artifact parent without following shelf symlinks. */
-export async function assertShelfInternalParent(paths: ShelfPaths, relativePath: string): Promise<string> {
+export async function assertShelfInternalParent(
+    paths: ShelfPaths,
+    relativePath: string,
+): Promise<string> {
     const target = resolveShelfInternalPath(paths, relativePath);
     await ensureShelfRoot(paths);
     await verifyInternalParent(paths.root, path.dirname(target), false);
@@ -99,7 +105,8 @@ async function ensurePrivateDirectory(directory: string): Promise<void> {
     const absolute = path.resolve(directory);
     const parsed = path.parse(absolute);
     const parts = absolute.slice(parsed.root.length).split(path.sep).filter(Boolean);
-    if (parts.length === 0) throw new ShelfPathError("Shelf storage root cannot be the filesystem root.");
+    if (parts.length === 0)
+        throw new ShelfPathError("Shelf storage root cannot be the filesystem root.");
     let current = parsed.root;
     for (const part of parts) {
         const candidate = path.join(current, part);
@@ -126,7 +133,11 @@ async function ensurePrivateDirectory(directory: string): Promise<void> {
     await chmod(absolute, 0o700);
 }
 
-async function verifyInternalParent(rootPath: string, directory: string, createMissing: boolean): Promise<void> {
+async function verifyInternalParent(
+    rootPath: string,
+    directory: string,
+    createMissing: boolean,
+): Promise<void> {
     const rootLexical = path.resolve(rootPath);
     const parentLexical = path.resolve(directory);
     const relative = path.relative(rootLexical, parentLexical);

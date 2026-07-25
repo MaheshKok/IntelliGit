@@ -1,7 +1,4 @@
-import {
-    ShelfPersistenceContractError,
-    type ShelfPersistenceContract,
-} from "./model";
+import { ShelfPersistenceContractError, type ShelfPersistenceContract } from "./model";
 
 /** Ensures every persisted per-layer artifact can be located in this shelf generation. */
 export function assertPersistedObjectReferences(

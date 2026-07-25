@@ -222,7 +222,10 @@ class PatchStreamValidator {
             this.processBinaryLine(current, line);
             return true;
         }
-        if (current?.hunk && (line[0] === 0x20 || line[0] === 0x2b || line[0] === 0x2d || line[0] === 0x5c)) {
+        if (
+            current?.hunk &&
+            (line[0] === 0x20 || line[0] === 0x2b || line[0] === 0x2d || line[0] === 0x5c)
+        ) {
             this.processHunkLine(current, line);
             return true;
         }
@@ -265,7 +268,12 @@ class PatchStreamValidator {
             current.touched = true;
             return;
         }
-        if (hasPrefix(line, "new file mode ") || hasPrefix(line, "deleted file mode ") || hasPrefix(line, "old mode ") || hasPrefix(line, "new mode ")) {
+        if (
+            hasPrefix(line, "new file mode ") ||
+            hasPrefix(line, "deleted file mode ") ||
+            hasPrefix(line, "old mode ") ||
+            hasPrefix(line, "new mode ")
+        ) {
             if (!current) fail();
             assertRegularMode(lastAsciiToken(line));
             current.touched = true;
@@ -334,7 +342,11 @@ class PatchStreamValidator {
         const kind = line[0];
         const consumesSource = kind === 0x20 || kind === 0x2d;
         const consumesDestination = kind === 0x20 || kind === 0x2b;
-        if ((!consumesSource && !consumesDestination) || (consumesSource && hunk.sourceRemaining === 0) || (consumesDestination && hunk.destinationRemaining === 0)) {
+        if (
+            (!consumesSource && !consumesDestination) ||
+            (consumesSource && hunk.sourceRemaining === 0) ||
+            (consumesDestination && hunk.destinationRemaining === 0)
+        ) {
             fail();
         }
         file.lineCount += 1;
@@ -379,7 +391,10 @@ class PatchStreamValidator {
             this.decodedBytes += amount;
             return;
         }
-        if (file.decodedBytes + amount > this.limits.maxDecodedBytesPerFile || this.decodedBytes + amount > this.limits.maxDecodedBytesTotal) {
+        if (
+            file.decodedBytes + amount > this.limits.maxDecodedBytesPerFile ||
+            this.decodedBytes + amount > this.limits.maxDecodedBytesTotal
+        ) {
             fail();
         }
         file.decodedBytes += amount;
@@ -421,7 +436,9 @@ class PatchStreamValidator {
     }
 }
 
-function mergedLimits(overrides: Partial<ShelfImportValidationLimits> | undefined): ShelfImportValidationLimits {
+function mergedLimits(
+    overrides: Partial<ShelfImportValidationLimits> | undefined,
+): ShelfImportValidationLimits {
     const limits = { ...DEFAULT_SHELF_IMPORT_VALIDATION_LIMITS, ...overrides };
     for (const value of Object.values(limits)) {
         if (!Number.isSafeInteger(value) || value <= 0) fail();
@@ -430,7 +447,10 @@ function mergedLimits(overrides: Partial<ShelfImportValidationLimits> | undefine
     return limits;
 }
 
-function parseDiffHeader(line: Uint8Array, stripLevel: number): readonly [string | undefined, string | undefined] {
+function parseDiffHeader(
+    line: Uint8Array,
+    stripLevel: number,
+): readonly [string | undefined, string | undefined] {
     const tokens = parseGitTokens(decodeHeader(line).slice("diff --git ".length));
     if (tokens.length !== 2) fail();
     return [
@@ -439,7 +459,11 @@ function parseDiffHeader(line: Uint8Array, stripLevel: number): readonly [string
     ];
 }
 
-function parseUnifiedHeaderPath(line: Uint8Array, prefix: "--- " | "+++ ", stripLevel: number): string | undefined {
+function parseUnifiedHeaderPath(
+    line: Uint8Array,
+    prefix: "--- " | "+++ ",
+    stripLevel: number,
+): string | undefined {
     const value = decodeHeader(line.subarray(prefix.length));
     const pathname = value.slice(0, value.indexOf("\t") >= 0 ? value.indexOf("\t") : value.length);
     if (pathname === "/dev/null") return undefined;
@@ -466,11 +490,15 @@ function parseGitTokens(value: string): string[] {
     return tokens;
 }
 
-function decodeGitQuotedPath(value: string, start: number): { readonly value: string; readonly next: number } {
+function decodeGitQuotedPath(
+    value: string,
+    start: number,
+): { readonly value: string; readonly next: number } {
     const bytes: number[] = [];
     for (let index = start + 1; index < value.length; index += 1) {
         const character = value[index];
-        if (character === '"') return { value: decodeHeader(Uint8Array.from(bytes)), next: index + 1 };
+        if (character === '"')
+            return { value: decodeHeader(Uint8Array.from(bytes)), next: index + 1 };
         if (character !== "\\") {
             const encoded = new TextEncoder().encode(character);
             bytes.push(...encoded);
@@ -495,7 +523,9 @@ function decodeGitQuotedPath(value: string, start: number): { readonly value: st
     fail();
 }
 
-function parseHunkHeader(value: string): Pick<MutableHunk, "sourceRemaining" | "destinationRemaining"> {
+function parseHunkHeader(
+    value: string,
+): Pick<MutableHunk, "sourceRemaining" | "destinationRemaining"> {
     const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?$/.exec(value);
     if (!match) fail();
     const source = parseHunkCount(match[2]);
@@ -530,7 +560,8 @@ function assertRegularMode(value: string): void {
 function isPlausibleGitBinaryPayload(line: Uint8Array): boolean {
     if (line.length < 2 || line.length > 53) return false;
     const lengthCode = line[0];
-    if (!((lengthCode >= 0x41 && lengthCode <= 0x5a) || (lengthCode >= 0x61 && lengthCode <= 0x7a))) return false;
+    if (!((lengthCode >= 0x41 && lengthCode <= 0x5a) || (lengthCode >= 0x61 && lengthCode <= 0x7a)))
+        return false;
     for (let index = 1; index < line.length; index += 1) {
         if (line[index] < 0x21 || line[index] > 0x7e) return false;
     }
@@ -572,11 +603,19 @@ function patchMetadataPathPrefix(line: Uint8Array): string | undefined {
 
 function assertLexicallyContained(root: string, target: string): void {
     const relation = path.relative(root, target);
-    if (relation === "" || relation === ".." || relation.startsWith(`..${path.sep}`) || path.isAbsolute(relation)) fail();
+    if (
+        relation === "" ||
+        relation === ".." ||
+        relation.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relation)
+    )
+        fail();
 }
 
 function isNotFound(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+    );
 }
 
 function fail(): never {

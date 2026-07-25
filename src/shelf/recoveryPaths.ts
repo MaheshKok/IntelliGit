@@ -47,7 +47,10 @@ export function assertRepositoryRelativePath(value: string): string {
 
 /** Realpath-checks an existing target parent against the repository root. */
 export async function assertContainedParent(repositoryRoot: string, target: string): Promise<void> {
-    const [root, parent] = await Promise.all([realpath(repositoryRoot), realpath(path.dirname(target))]);
+    const [root, parent] = await Promise.all([
+        realpath(repositoryRoot),
+        realpath(path.dirname(target)),
+    ]);
     assertContained(root, parent);
 }
 

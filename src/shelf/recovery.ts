@@ -1,15 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import {
-    chmod,
-    lstat,
-    open,
-    readFile,
-    readdir,
-    rename,
-    rm,
-    stat,
-} from "node:fs/promises";
+import { chmod, lstat, open, readFile, readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { GitExecutor } from "../git/executor";
 import type { RepositoryMutationGate } from "../git/repositoryMutationGate";
@@ -437,12 +428,17 @@ export class ShelfReverter {
             const recoveryFingerprint = await fingerprint(recoveryPath);
             if (progress.phase === "planned") {
                 if (!progress.hadOriginal) {
-                    if (targetFingerprint === "absent" && recoveryFingerprint === "absent") continue;
-                    throw new RecoverySafetyError("Planned recovery path has ambiguous filesystem state.");
+                    if (targetFingerprint === "absent" && recoveryFingerprint === "absent")
+                        continue;
+                    throw new RecoverySafetyError(
+                        "Planned recovery path has ambiguous filesystem state.",
+                    );
                 }
                 if (targetFingerprint !== "absent" && recoveryFingerprint === "absent") continue;
                 if (targetFingerprint !== "absent" || recoveryFingerprint === "non-regular") {
-                    throw new RecoverySafetyError("Planned recovery path has ambiguous filesystem state.");
+                    throw new RecoverySafetyError(
+                        "Planned recovery path has ambiguous filesystem state.",
+                    );
                 }
             }
             if (progress.hadOriginal && recoveryFingerprint === "absent") {
@@ -528,7 +524,9 @@ export async function purgeRecoverySnapshots(options: {
         await assertContainedParent(options.gitDir, target);
         const details = await lstat(target);
         if (details.isSymbolicLink()) {
-            throw new RecoverySafetyError("Recovery staging transaction is not a regular directory.");
+            throw new RecoverySafetyError(
+                "Recovery staging transaction is not a regular directory.",
+            );
         }
         if (
             !details.isDirectory() ||
@@ -615,7 +613,10 @@ async function matchesWrittenIndexState(
               (await git.getIndexFingerprint()) === expectedIndexFingerprint;
 }
 
-async function matchesOriginalIndexState(entry: MovedPath, git: ShelfRecoveryGit): Promise<boolean> {
+async function matchesOriginalIndexState(
+    entry: MovedPath,
+    git: ShelfRecoveryGit,
+): Promise<boolean> {
     if (!sameIndexEntry(await git.getIndexEntry(entry.relativePath), entry.originalIndexEntry)) {
         return false;
     }
@@ -693,10 +694,7 @@ function isJournalPathProgress(value: unknown): value is ShelfJournalPathProgres
         typeof progress.writtenFingerprint === "string" &&
         isOptionalIndexEntry(progress.originalIndexEntry) &&
         isOptionalIndexEntry(progress.writtenIndexEntry) &&
-        isIndexFingerprintPair(
-            progress.originalIndexFingerprint,
-            progress.writtenIndexFingerprint,
-        )
+        isIndexFingerprintPair(progress.originalIndexFingerprint, progress.writtenIndexFingerprint)
     );
 }
 

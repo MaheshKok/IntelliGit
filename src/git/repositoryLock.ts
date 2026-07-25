@@ -58,7 +58,11 @@ export class RepositoryLock {
 
         for (;;) {
             try {
-                await writeFile(lockPath, JSON.stringify(owner), { encoding: "utf8", flag: "wx", mode: 0o600 });
+                await writeFile(lockPath, JSON.stringify(owner), {
+                    encoding: "utf8",
+                    flag: "wx",
+                    mode: 0o600,
+                });
                 return this.releaseCallback(lockPath, owner);
             } catch (error) {
                 if (!isAlreadyExists(error)) throw error;
@@ -104,9 +108,10 @@ export class RepositoryLock {
         let released = false;
         const heartbeat = setInterval(() => {
             owner.heartbeatAt = Date.now();
-            void writeFile(lockPath, JSON.stringify(owner), { encoding: "utf8", mode: 0o600 }).catch(
-                () => undefined,
-            );
+            void writeFile(lockPath, JSON.stringify(owner), {
+                encoding: "utf8",
+                mode: 0o600,
+            }).catch(() => undefined);
         }, this.heartbeatIntervalMs);
         heartbeat.unref();
         return async () => {
@@ -126,7 +131,9 @@ async function readOwner(lockPath: string): Promise<LockOwner | undefined> {
         const parsed: unknown = JSON.parse(await readFile(lockPath, "utf8"));
         if (!parsed || typeof parsed !== "object") return undefined;
         const owner = parsed as Partial<LockOwner>;
-        return typeof owner.nonce === "string" && typeof owner.pid === "number" && typeof owner.heartbeatAt === "number"
+        return typeof owner.nonce === "string" &&
+            typeof owner.pid === "number" &&
+            typeof owner.heartbeatAt === "number"
             ? { nonce: owner.nonce, pid: owner.pid, heartbeatAt: owner.heartbeatAt }
             : undefined;
     } catch {
@@ -135,11 +142,15 @@ async function readOwner(lockPath: string): Promise<LockOwner | undefined> {
 }
 
 function isAlreadyExists(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
+    );
 }
 
 function isNotFound(error: unknown): boolean {
-    return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT"
+    );
 }
 
 function isProcessLive(pid: number): Promise<boolean> {
@@ -148,7 +159,10 @@ function isProcessLive(pid: number): Promise<boolean> {
         return Promise.resolve(true);
     } catch (error) {
         return Promise.resolve(
-            typeof error === "object" && error !== null && "code" in error && error.code === "EPERM",
+            typeof error === "object" &&
+                error !== null &&
+                "code" in error &&
+                error.code === "EPERM",
         );
     }
 }

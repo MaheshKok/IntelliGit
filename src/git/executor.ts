@@ -33,7 +33,10 @@ export class GitExecutor {
     /**
      * Creates an executor rooted at the repository path selected during activation.
      */
-    constructor(repoRoot: string, private readonly mutationGate?: RepositoryMutationGate) {
+    constructor(
+        repoRoot: string,
+        private readonly mutationGate?: RepositoryMutationGate,
+    ) {
         this.repoRoot = repoRoot;
         this.git = simpleGit(repoRoot, { maxConcurrentProcesses: 6 });
     }
@@ -68,15 +71,20 @@ export class GitExecutor {
     async run(args: string[]): Promise<string> {
         if (this.mutationGate && isMutatingGitCommand(args)) {
             const commonDir = await this.git.raw(["rev-parse", "--git-common-dir"]);
-            return this.mutationGate.run(this.repoRoot, this.mutationGate.resolveCommonDir(this.repoRoot, commonDir), () =>
-                this.git.raw(args),
+            return this.mutationGate.run(
+                this.repoRoot,
+                this.mutationGate.resolveCommonDir(this.repoRoot, commonDir),
+                () => this.git.raw(args),
             );
         }
         return this.git.raw(args);
     }
 
     /** Runs Git without decoding stdout; output-file mode streams stdout and returns an empty buffer. */
-    async runBinary(args: string[], options: GitBinaryRunOptions = {}): Promise<GitBinaryRunResult> {
+    async runBinary(
+        args: string[],
+        options: GitBinaryRunOptions = {},
+    ): Promise<GitBinaryRunResult> {
         const expectedExitCodes = options.expectedExitCodes ?? [0];
         return new Promise<GitBinaryRunResult>((resolve, reject) => {
             const child = spawn("git", args, { cwd: this.repoRoot, stdio: "pipe" });

@@ -69,7 +69,10 @@ export function TreeEntries({
                             groupByDir={groupByDir}
                             onToggle={onToggleFile}
                             onClick={onFileClick}
-                            draggable={entry.file.status === "?" || (entry.file.status !== "!" && Boolean(onShelfFileDragStart))}
+                            draggable={
+                                entry.file.status === "?" ||
+                                (entry.file.status !== "!" && Boolean(onShelfFileDragStart))
+                            }
                             onDragStart={(event, file) => {
                                 onFileDragStart?.(event, file);
                                 onShelfFileDragStart?.(event, file);
