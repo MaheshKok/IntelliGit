@@ -13,7 +13,7 @@ import { t } from "../../shared/i18n";
 export interface StashToolbarProps {
     selectedIndex: number | null;
     groupByDir: boolean;
-    hasGroupedDirectories: boolean;
+    canExpandOrCollapse: boolean;
     hoverDelay: number;
     tooltipsEnabled: boolean;
     onShowStashDiff: () => void;
@@ -26,7 +26,7 @@ export interface StashToolbarProps {
 export function StashToolbar({
     selectedIndex,
     groupByDir,
-    hasGroupedDirectories,
+    canExpandOrCollapse,
     hoverDelay,
     tooltipsEnabled,
     onShowStashDiff,
@@ -67,7 +67,7 @@ export function StashToolbar({
             <StashToolbarButton
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
-                isDisabled={selectedIndex === null || !hasGroupedDirectories}
+                isDisabled={!canExpandOrCollapse}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
@@ -76,7 +76,7 @@ export function StashToolbar({
             <StashToolbarButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
-                isDisabled={selectedIndex === null || !hasGroupedDirectories}
+                isDisabled={!canExpandOrCollapse}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >

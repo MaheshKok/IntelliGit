@@ -3,7 +3,6 @@ import { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import type { ShelfService } from "../services/shelfService";
-import type { ShelfFileEntry } from "../shelf/model";
 import type { ShelfEntry } from "../webviews/protocol/commitPanelMessages";
 import type { StashEntry, ThemeFolderIconMap, WorkingFile } from "../types";
 
@@ -25,7 +24,6 @@ export class CommitPanelRepositoryRuntime {
     readonly shelfService?: ShelfService;
     shelves: ShelfEntry[] = [];
     catalogGeneration = 0;
-    shelfFiles: ShelfFileEntry[] = [];
     selectedShelfId: string | null = null;
     readonly shelfRemoveOnUnshelve: boolean;
     folderIconsByName: ThemeFolderIconMap = {};

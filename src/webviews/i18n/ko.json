@@ -8,9 +8,7 @@
     "shelf.list.empty": "셸프가 없습니다.",
     "shelf.defaultName": "커밋되지 않은 변경 사항 {date}",
     "shelf.list.alreadyUnshelved": "이미 복원됨",
-    "shelf.filePane.label": "셸프 파일",
     "shelf.filePane.empty": "셸프 파일이 없습니다.",
-    "shelf.filePane.loading": "셸프 파일을 불러오는 중…",
     "shelf.rename.label": "셸프 이름 바꾸기",
     "shelf.action.restore": "복원",
     "shelf.action.compareWithLocal": "로컬과 비교",
@@ -71,7 +69,6 @@
     "shelf.result.flattenedResidue": "납작해진잔류물",
     "shelf.result.refused": "거부됨: {reason}",
     "shelf.result.structuralPending": "구조적 보류 중: {reason}",
-    "a11y.resizeShelfList": "셸프 목록 크기 조정",
     "a11y.shelfMutationOutcome": "셸프 작업 결과",
     "a11y.shelfWarning": "{count} 셸프 경고",
     "common.refresh": "새로 고침",
@@ -97,6 +94,7 @@
     "common.fileCount": {
         "other": "{count}개 파일"
     },
+    "common.filesAndDate": "{files}, {date}",
     "commit.message.placeholder": "커밋 메시지",
     "commit.amend": "커밋 수정",
     "commit.action.commit": "커밋",
@@ -304,7 +302,6 @@
     "common.show": "Show",
     "status.ignored": "Ignored",
     "commitPanel.ignoredFiles": "Ignored Files",
-    "stash.files": "선택한 스태시의 파일",
     "stash.action.applyStash": "스태시 적용",
     "stash.action.popStash": "스태시 적용 및 제거",
     "stash.action.branch": "브랜치",
@@ -314,7 +311,6 @@
     "stash.dialog.reinstateIndex": "인덱스 복원",
     "stash.dialog.noBranch": "브랜치 없음",
     "stash.dialog.invalidBranch": "유효한 브랜치 이름을 입력하세요.",
-    "a11y.resizeStashList": "스태시 목록 크기 조정",
     "stash.fileAction.openDiff": "차이점 열기",
     "stash.fileAction.editSource": "소스 편집",
     "stash.fileAction.cherryPickSelectedChanges": "선택한 변경 사항 체리픽"

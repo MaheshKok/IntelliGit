@@ -11,7 +11,6 @@ import type {
     ThemeTreeIcon,
     WorkingFile,
 } from "../../../types";
-import type { ShelfFileEntry } from "../../../shelf/model";
 import type {
     PerEntryResult,
     ShelfEntry,
@@ -70,9 +69,15 @@ export interface CommitPanelState {
     selectedStashIndex: number | null;
     shelves: ShelfEntry[];
     catalogGeneration: number;
-    shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
-    shelfMutationOutcome: { requestId: string; status: ShelfMutationStatus; entries: PerEntryResult[]; message?: string; shelfId?: string; newGeneration?: number } | null;
+    shelfMutationOutcome: {
+        requestId: string;
+        status: ShelfMutationStatus;
+        entries: PerEntryResult[];
+        message?: string;
+        shelfId?: string;
+        newGeneration?: number;
+    } | null;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
@@ -102,7 +107,6 @@ export type CommitPanelAction =
           selectedStashIndex: number | null;
           shelves: ShelfEntry[];
           catalogGeneration: number;
-          shelfFiles: ShelfFileEntry[];
           selectedShelfId: string | null;
           folderIcon?: ThemeTreeIcon;
           folderExpandedIcon?: ThemeTreeIcon;
@@ -120,7 +124,15 @@ export type CommitPanelAction =
     | { type: "COMMITTED"; clearCommitMessage?: boolean }
     | { type: "SET_REFRESHING"; active: boolean }
     | { type: "SET_ERROR"; message: string }
-    | { type: "SET_SHELF_MUTATION_OUTCOME"; requestId: string; status: ShelfMutationStatus; entries: PerEntryResult[]; message?: string; shelfId?: string; newGeneration?: number }
+    | {
+          type: "SET_SHELF_MUTATION_OUTCOME";
+          requestId: string;
+          status: ShelfMutationStatus;
+          entries: PerEntryResult[];
+          message?: string;
+          shelfId?: string;
+          newGeneration?: number;
+      }
     | { type: "SET_COMMIT_MESSAGE"; message: string }
     | { type: "SET_AMEND"; isAmend: boolean }
     | { type: "SET_AMEND_BRANCH_COMMITS"; commits: AmendBranchCommitSummary[] };
@@ -133,7 +145,6 @@ export const initialCommitPanelState: CommitPanelState = {
     selectedStashIndex: null,
     shelves: [],
     catalogGeneration: 0,
-    shelfFiles: [],
     selectedShelfId: null,
     shelfMutationOutcome: null,
     folderIcon: undefined,
@@ -174,7 +185,6 @@ export function commitPanelReducer(
                 selectedStashIndex: action.selectedStashIndex,
                 shelves: action.shelves,
                 catalogGeneration: action.catalogGeneration,
-                shelfFiles: action.shelfFiles,
                 selectedShelfId: action.selectedShelfId,
                 folderIcon: action.folderIcon ?? state.folderIcon,
                 folderExpandedIcon: action.folderExpandedIcon ?? state.folderExpandedIcon,
@@ -219,7 +229,17 @@ export function commitPanelReducer(
         case "SET_ERROR":
             return { ...state, error: action.message };
         case "SET_SHELF_MUTATION_OUTCOME":
-            return { ...state, shelfMutationOutcome: { requestId: action.requestId, status: action.status, entries: action.entries, message: action.message, shelfId: action.shelfId, newGeneration: action.newGeneration } };
+            return {
+                ...state,
+                shelfMutationOutcome: {
+                    requestId: action.requestId,
+                    status: action.status,
+                    entries: action.entries,
+                    message: action.message,
+                    shelfId: action.shelfId,
+                    newGeneration: action.newGeneration,
+                },
+            };
         case "SET_COMMIT_MESSAGE":
             return { ...state, commitMessage: action.message };
         case "SET_AMEND":

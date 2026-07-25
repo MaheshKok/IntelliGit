@@ -11,6 +11,7 @@ import type {
 } from "../../../src/webviews/protocol/commitPanelMessages";
 import { ShelfTab } from "../../../src/webviews/react/commit-panel/components/ShelfTab";
 import { CleanUpDialog } from "../../../src/webviews/react/commit-panel/components/CleanUpDialog";
+import { formatDateTime } from "../../../src/webviews/react/shared/date";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -27,14 +28,24 @@ vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({
 
 initReactDomTestEnvironment();
 
-const shelves: ShelfEntry[] = [
-    { id: "shelf-a", generation: 7, metadata: { name: "Parser repair", lifecycle: "shelved" } },
-    { id: "shelf-b", generation: 9, metadata: { name: "Old change", lifecycle: "applied" } },
-];
 const files = [
     { changeId: "change-a", worktreeBlock: { path: "src/parser.ts" } },
     { changeId: "change-b", worktreeBlock: { path: "src/lexer.ts" } },
 ] as ShelfFileEntry[];
+const shelves: ShelfEntry[] = [
+    {
+        id: "shelf-a",
+        generation: 7,
+        files,
+        metadata: { name: "Parser repair", lifecycle: "shelved" },
+    },
+    {
+        id: "shelf-b",
+        generation: 9,
+        files: [],
+        metadata: { name: "Old change", lifecycle: "applied" },
+    },
+];
 
 function click(element: Element): void {
     act(() => element.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -76,6 +87,11 @@ function iconButton(container: ParentNode, label: string): HTMLButtonElement {
     const found = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
     if (!found) throw new Error(`Missing icon button: ${label}`);
     return found;
+}
+
+/** Opens one shelf row's subtree through the standard tree key, as a user would. */
+function expandShelf(container: ParentNode, shelfId: string): void {
+    key(container.querySelector(`[data-shelf-id="${shelfId}"]`) as HTMLElement, "ArrowRight");
 }
 
 function openContextMenu(element: HTMLElement): void {
@@ -129,7 +145,6 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
         <ChakraProvider theme={theme}>
             <ShelfTab
                 shelves={shelves}
-                shelfFiles={files}
                 selectedShelfId="shelf-a"
                 catalogGeneration={12}
                 {...callbacks}
@@ -146,7 +161,6 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
                     <ChakraProvider theme={theme}>
                         <ShelfTab
                             shelves={shelves}
-                            shelfFiles={files}
                             selectedShelfId="shelf-a"
                             catalogGeneration={12}
                             {...callbacks}
@@ -164,16 +178,44 @@ describe("ShelfTab", () => {
         installWebviewI18n();
     });
 
-    it("renders an accessible shelf list and active selection", () => {
+    it("renders an accessible shelf tree and active selection", () => {
         const { root, container } = renderShelfTab();
-        const list = container.querySelector('[role="listbox"]') as HTMLElement;
+        const tree = container.querySelector('[role="tree"]') as HTMLElement;
         const row = container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
 
-        expect(list.getAttribute("aria-label")).toBe("Shelves");
-        expect(row.getAttribute("role")).toBe("option");
+        expect(tree.getAttribute("aria-label")).toBe("Shelves");
+        expect(row.getAttribute("role")).toBe("treeitem");
         expect(row.getAttribute("aria-selected")).toBe("true");
+        expect(row.getAttribute("aria-expanded")).toBe("false");
+        expect(row.getAttribute("aria-level")).toBe("1");
         expect(container.textContent).not.toContain("Old change");
 
+        unmount(root, container);
+    });
+
+    it("shows PyCharm's file-count and date meta line on each shelf row", () => {
+        const createdAt = Date.UTC(2026, 1, 22, 14, 55);
+        const { root, container } = renderShelfTab({
+            shelves: [
+                {
+                    ...shelves[0],
+                    metadata: { ...shelves[0].metadata, createdAt },
+                },
+            ],
+        });
+        const meta = container.querySelector("[data-shelf-meta]") as HTMLElement;
+
+        expect(meta.textContent).toBe(
+            `2 files, ${formatDateTime(new Date(createdAt).toISOString())}`,
+        );
+
+        // A shelf saved before createdAt existed still reports its count alone.
+        const { root: bareRoot, container: bareContainer } = renderShelfTab();
+        expect((bareContainer.querySelector("[data-shelf-meta]") as HTMLElement).textContent).toBe(
+            "2 files",
+        );
+
+        unmount(bareRoot, bareContainer);
         unmount(root, container);
     });
 
@@ -214,10 +256,13 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
-    it("does not use prior shelf entries while a newly selected shelf is loading", () => {
-        const nextShelf = {
+    it("gives every shelf its own files, with no cross-shelf leakage or loading step", () => {
+        const nextShelf: ShelfEntry = {
             id: "shelf-c",
             generation: 10,
+            files: [
+                { changeId: "change-c", worktreeBlock: { path: "src/emitter.ts" } },
+            ] as ShelfFileEntry[],
             metadata: { name: "New shelf", lifecycle: "shelved" as const },
         };
         const { root, container } = renderShelfTab({ shelves: [shelves[0], nextShelf] });
@@ -225,11 +270,55 @@ describe("ShelfTab", () => {
 
         click(nextRow);
         openContextMenu(nextRow);
-        expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("true");
-        expect(iconButton(container, "Expand All").disabled).toBe(true);
-        expect(iconButton(container, "Collapse All").disabled).toBe(true);
-        expect(container.querySelector('[data-testid="shelf-file-pane"]')).toBeNull();
-        expect(container.textContent).toContain("Loading shelf files…");
+        expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("false");
+        key(document.body, "Escape");
+        expect(iconButton(container, "Expand All").disabled).toBe(false);
+        expect(iconButton(container, "Collapse All").disabled).toBe(false);
+
+        expandShelf(container, "shelf-c");
+        expect(container.querySelector('[data-shelf-file="change-c"]')).not.toBeNull();
+        expect(container.querySelector('[data-shelf-file="change-a"]')).toBeNull();
+
+        unmount(root, container);
+    });
+
+    it("keeps two expanded shelves independent when one of them collapses", () => {
+        const nextShelf: ShelfEntry = {
+            id: "shelf-c",
+            generation: 10,
+            files: [
+                { changeId: "change-c", worktreeBlock: { path: "src/emitter.ts" } },
+            ] as ShelfFileEntry[],
+            metadata: { name: "New shelf", lifecycle: "shelved" as const },
+        };
+        const { root, container } = renderShelfTab({ shelves: [shelves[0], nextShelf] });
+
+        expandShelf(container, "shelf-a");
+        expandShelf(container, "shelf-c");
+        expect(container.querySelector('[data-shelf-file="change-a"]')).not.toBeNull();
+        expect(container.querySelector('[data-shelf-file="change-c"]')).not.toBeNull();
+
+        // ArrowLeft closes the open row it is sent to and leaves the other alone.
+        key(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement, "ArrowLeft");
+        expect(container.querySelector('[data-shelf-file="change-a"]')).toBeNull();
+        expect(container.querySelector('[data-shelf-file="change-c"]')).not.toBeNull();
+
+        unmount(root, container);
+    });
+
+    it("expands and collapses every shelf and directory from the toolbar", () => {
+        const { root, container } = renderShelfTab({ groupByDir: true });
+
+        click(iconButton(container, "Expand All"));
+        expect(container.querySelector('button[title="src"]')?.getAttribute("aria-expanded")).toBe(
+            "true",
+        );
+        expect(container.querySelector('[data-shelf-file="change-a"]')).not.toBeNull();
+        expect(container.querySelector('[data-shelf-file="change-b"]')).not.toBeNull();
+
+        click(iconButton(container, "Collapse All"));
+        expect(container.querySelector('button[title="src"]')).toBeNull();
+        expect(container.querySelector('[data-shelf-file="change-a"]')).toBeNull();
 
         unmount(root, container);
     });
@@ -279,13 +368,20 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
-    it("renders selected shelf files in the shared file-row pane and opens a per-file base diff", () => {
+    it("renders an expanded shelf's files in its own subtree and opens a per-file base diff", () => {
         const { root, container, callbacks } = renderShelfTab();
-        const pane = container.querySelector('[data-testid="shelf-file-pane"]') as HTMLElement;
-        const row = pane.querySelector('[data-shelf-file="change-a"]') as HTMLElement;
+        expandShelf(container, "shelf-a");
+        const group = container.querySelector(
+            '[data-testid="shelf-list"] [role="group"]',
+        ) as HTMLElement;
+        const row = group.querySelector('[data-shelf-file="change-a"]') as HTMLElement;
 
-        expect(pane.getAttribute("role")).toBe("region");
-        expect(pane.textContent).toContain("parser.ts");
+        expect(
+            (container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement).getAttribute(
+                "aria-expanded",
+            ),
+        ).toBe("true");
+        expect(group.textContent).toContain("parser.ts");
         click(row);
         expect(callbacks.onShowDiff).toHaveBeenCalledWith({
             type: "shelfDiff",
@@ -444,7 +540,7 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
-    it("disables patch export while a newly selected shelf is still loading its files", () => {
+    it("disables patch export for a shelf that holds no files", () => {
         const { root, container } = renderShelfTab();
         openOverflow(container);
         click(menuItem("Show Already Unshelved"));
@@ -456,7 +552,9 @@ describe("ShelfTab", () => {
     });
 
     it("keeps selected-shelf controls enabled when its file list is empty", () => {
-        const { root, container } = renderShelfTab({ shelfFiles: [] });
+        const { root, container } = renderShelfTab({
+            shelves: [{ ...shelves[0], files: [] }, shelves[1]],
+        });
         openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
         expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("false");
         expect(menuItem("Unshelve Silently").getAttribute("aria-disabled")).toBe("false");
@@ -491,11 +589,19 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
-    it("disables patch export when no shelf is selected", () => {
-        const { root, container } = renderShelfTab({ selectedShelfId: null });
+    it("exports the right-clicked shelf even when nothing was selected", () => {
+        const { root, container, callbacks } = renderShelfTab({ selectedShelfId: null });
         openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
-        expect(menuItem("Create Patch…").getAttribute("aria-disabled")).toBe("true");
         expect(menuItem("Import Patches…").getAttribute("aria-disabled")).toBe("false");
+        expect(menuItem("Create Patch…").getAttribute("aria-disabled")).toBe("false");
+        click(menuItem("Create Patch…"));
+        expect(callbacks.onExportPatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                shelfId: "shelf-a",
+                expectedGeneration: 7,
+                changeIds: ["change-a", "change-b"],
+            }),
+        );
         unmount(root, container);
     });
 
@@ -624,7 +730,6 @@ describe("ShelfTab", () => {
                     <ChakraProvider theme={theme}>
                         <ShelfTab
                             shelves={shelves}
-                            shelfFiles={files}
                             selectedShelfId="shelf-a"
                             catalogGeneration={12}
                             onSelect={vi.fn()}

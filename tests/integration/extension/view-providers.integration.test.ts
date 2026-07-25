@@ -5811,6 +5811,21 @@ describe("view providers integration", () => {
     });
 
     it("CommitPanelViewProvider dispatches shelf mutations and publishes shelf snapshots", async () => {
+        const shelfOneFiles = [
+            {
+                changeId: "change-1",
+                worktreeBlock: {
+                    path: "src/a.ts",
+                    status: "M",
+                    patchObjectHash: "a".repeat(64),
+                },
+                binary: false,
+                untracked: false,
+                baseAvailability: "none",
+                exactReconstruction: true,
+                lifecycle: "shelved",
+            },
+        ];
         const shelf = {
             shelve: vi.fn(async () => ({
                 status: "ok",
@@ -5826,25 +5841,12 @@ describe("view providers integration", () => {
                     {
                         id: "shelf-1",
                         generation: 3,
+                        files: shelfOneFiles,
                         metadata: { name: "Shelf one", lifecycle: "shelved" },
                     },
                 ],
             })),
-            getShelfFiles: vi.fn(async () => [
-                {
-                    changeId: "change-1",
-                    worktreeBlock: {
-                        path: "src/a.ts",
-                        status: "M",
-                        patchObjectHash: "a".repeat(64),
-                    },
-                    binary: false,
-                    untracked: false,
-                    baseAvailability: "none",
-                    exactReconstruction: true,
-                    lifecycle: "shelved",
-                },
-            ]),
+            getShelfFiles: vi.fn(async () => shelfOneFiles),
             getHealthWarnings: vi.fn(() => []),
         };
         const { provider, webview } = await setupCommitPanelProvider(undefined, {
@@ -5883,16 +5885,23 @@ describe("view providers integration", () => {
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",
-                shelves: [expect.objectContaining({ id: "shelf-1", generation: 3 })],
+                shelves: [
+                    expect.objectContaining({
+                        id: "shelf-1",
+                        generation: 3,
+                        files: [expect.objectContaining({ changeId: "change-1" })],
+                    }),
+                ],
                 catalogGeneration: 7,
                 selectedShelfId: "shelf-1",
-                shelfFiles: [expect.objectContaining({ changeId: "change-1" })],
             }),
         );
 
         postMessageSpy.mockClear();
+        shelf.getShelfFiles.mockClear();
         await webview.send({ type: "shelfSelect", shelfId: "shelf-1" });
-        expect(shelf.getShelfFiles).toHaveBeenCalledWith("shelf-1");
+        // Listing already shipped every shelf's files, so selecting one reads nothing more.
+        expect(shelf.getShelfFiles).not.toHaveBeenCalled();
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "update",

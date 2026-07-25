@@ -8,7 +8,6 @@ import type {
     ThemeTreeIcon,
     WorkingFile,
 } from "../../../types";
-import type { ShelfFileEntry } from "../../../shelf/model";
 import type {
     PerEntryResult,
     ShelfEntry,
@@ -36,7 +35,6 @@ interface CommitPanelState {
     selectedStashIndex: number | null;
     shelves: ShelfEntry[];
     catalogGeneration: number;
-    shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
     shelfRemoveOnUnshelve: boolean;
     shelfHealth: import("../../protocol/commitPanelMessages").ShelfHealthWarning[];
@@ -113,7 +111,6 @@ export type CommitPanelAction =
           selectedStashIndex: number | null;
           shelves: ShelfEntry[];
           catalogGeneration: number;
-          shelfFiles: ShelfFileEntry[];
           selectedShelfId: string | null;
           shelfRemoveOnUnshelve: boolean;
           shelfHealth: import("../../protocol/commitPanelMessages").ShelfHealthWarning[];

@@ -5,7 +5,6 @@ import * as vscode from "vscode";
 import type { GitExecutor } from "../git/executor";
 import { GitOps } from "../git/operations";
 import type { ShelfService } from "../services/shelfService";
-import type { ShelfFileEntry } from "../shelf/model";
 import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commitPanelMessages";
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
@@ -201,7 +200,6 @@ export class UndockedViewProvider {
     private stashFiles: WorkingFile[] = [];
     private shelves: ShelfEntry[] = [];
     private catalogGeneration = 0;
-    private shelfFiles: ShelfFileEntry[] = [];
     private selectedShelfId: string | null = null;
     private lastFileCount = 0;
     private showIgnoredFiles = false;
@@ -432,7 +430,6 @@ export class UndockedViewProvider {
         this.stashFiles = [];
         this.shelves = [];
         this.catalogGeneration = 0;
-        this.shelfFiles = [];
         this.selectedShelfId = null;
         this.branches = [];
         this.worktrees = [];
@@ -676,7 +673,6 @@ export class UndockedViewProvider {
         this.shelves = [...listed.shelves];
         this.catalogGeneration = listed.catalogGeneration;
         this.selectedShelfId = shelfId;
-        this.shelfFiles = [...(await service.getShelfFiles(shelfId))];
         await this.refreshCommitPanelData(true);
     }
 
@@ -742,7 +738,6 @@ export class UndockedViewProvider {
     private async shelfSnapshot(): Promise<{
         shelves: ShelfEntry[];
         catalogGeneration: number;
-        shelfFiles: ShelfFileEntry[];
         selectedShelfId: string | null;
         shelfRemoveOnUnshelve: boolean;
         shelfHealth: ShelfHealthWarning[];
@@ -751,7 +746,6 @@ export class UndockedViewProvider {
             return {
                 shelves: [],
                 catalogGeneration: 0,
-                shelfFiles: [],
                 selectedShelfId: null,
                 shelfRemoveOnUnshelve: this.shelfRemoveOnUnshelve,
                 shelfHealth: [],
@@ -764,9 +758,6 @@ export class UndockedViewProvider {
         return {
             shelves: [...listed.shelves],
             catalogGeneration: listed.catalogGeneration,
-            shelfFiles: selectedShelfId
-                ? [...(await this.shelfService.getShelfFiles(selectedShelfId))]
-                : [],
             selectedShelfId,
             shelfRemoveOnUnshelve: this.shelfRemoveOnUnshelve,
             shelfHealth: this.shelfService.getHealthWarnings().map((warning) => ({ ...warning })),
@@ -1093,7 +1084,6 @@ export class UndockedViewProvider {
                                 ...message,
                                 shelves: this.shelves,
                                 catalogGeneration: this.catalogGeneration,
-                                shelfFiles: this.shelfFiles,
                                 selectedShelfId: this.selectedShelfId,
                             }),
                     },
@@ -1409,7 +1399,6 @@ export class UndockedViewProvider {
                 this.shelfSnapshot().catch(() => ({
                     shelves: this.shelves,
                     catalogGeneration: this.catalogGeneration,
-                    shelfFiles: this.shelfFiles,
                     selectedShelfId: this.selectedShelfId,
                 })),
             ]);
@@ -1441,7 +1430,6 @@ export class UndockedViewProvider {
             this.stashFiles = stashFiles;
             this.shelves = shelfState.shelves;
             this.catalogGeneration = shelfState.catalogGeneration;
-            this.shelfFiles = shelfState.shelfFiles;
             this.selectedShelfId = shelfState.selectedShelfId;
             const uniquePaths = new Set<string>();
             for (const file of files) {
@@ -1458,7 +1446,6 @@ export class UndockedViewProvider {
                 selectedStashIndex,
                 shelves: this.shelves,
                 catalogGeneration: this.catalogGeneration,
-                shelfFiles: this.shelfFiles,
                 selectedShelfId: this.selectedShelfId,
                 folderIcon: folderIcons.folderIcon,
                 folderExpandedIcon: folderIcons.folderExpandedIcon,

@@ -8,9 +8,7 @@
     "shelf.list.empty": "没有搁置架。",
     "shelf.defaultName": "未提交的更改 {date}",
     "shelf.list.alreadyUnshelved": "已恢复",
-    "shelf.filePane.label": "搁置架文件",
     "shelf.filePane.empty": "没有搁置架文件。",
-    "shelf.filePane.loading": "正在加载搁置架文件...",
     "shelf.rename.label": "重命名搁置架",
     "shelf.action.restore": "恢复",
     "shelf.action.compareWithLocal": "与本地比较",
@@ -71,7 +69,6 @@
     "shelf.result.flattenedResidue": "扁平残渣",
     "shelf.result.refused": "拒绝：{reason}",
     "shelf.result.structuralPending": "结构待定：{reason}",
-    "a11y.resizeShelfList": "调整搁置架列表的大小",
     "a11y.shelfMutationOutcome": "搁置操作结果",
     "a11y.shelfWarning": "{count} 搁置架警告",
     "common.refresh": "刷新",
@@ -97,6 +94,7 @@
     "common.fileCount": {
         "other": "{count} 个文件"
     },
+    "common.filesAndDate": "{files}，{date}",
     "commit.message.placeholder": "提交信息",
     "commit.amend": "修改提交",
     "commit.action.commit": "提交",
@@ -304,7 +302,6 @@
     "status.ignored": "已忽略",
     "commitPanel.ignoredFiles": "已忽略文件",
     "merge.action.abortMerge": "中止合并",
-    "stash.files": "所选储藏中的文件",
     "stash.action.applyStash": "应用储藏",
     "stash.action.popStash": "应用并删除储藏",
     "stash.action.branch": "分支",
@@ -314,7 +311,6 @@
     "stash.dialog.reinstateIndex": "恢复索引",
     "stash.dialog.noBranch": "没有分支",
     "stash.dialog.invalidBranch": "请输入有效的分支名称。",
-    "a11y.resizeStashList": "调整储藏列表大小",
     "stash.fileAction.openDiff": "打开差异",
     "stash.fileAction.editSource": "编辑源文件",
     "stash.fileAction.cherryPickSelectedChanges": "挑选选定的更改"

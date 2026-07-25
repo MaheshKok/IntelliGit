@@ -134,7 +134,6 @@ export function CommitPanelPane({
                         <ShelfTab
                             repositoryRoot={repositoryRoot}
                             shelves={cpState.shelves}
-                            shelfFiles={cpState.shelfFiles}
                             selectedShelfId={cpState.selectedShelfId}
                             catalogGeneration={cpState.catalogGeneration}
                             groupByDir={groupByDir}

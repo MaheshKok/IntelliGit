@@ -12,7 +12,7 @@ export interface UnshelveDialogSubmit {
 
 /** Inputs and callbacks for the flattened unshelve dialog. */
 export interface UnshelveDialogProps {
-    entries: ShelfFileEntry[];
+    entries: readonly ShelfFileEntry[];
     /** Activation-time default for removal after a successful apply. */
     defaultRemoveFromShelf?: boolean;
     returnFocusTarget?: HTMLElement | null;

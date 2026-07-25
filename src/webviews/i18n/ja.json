@@ -8,9 +8,7 @@
     "shelf.list.empty": "シェルフはありません。",
     "shelf.defaultName": "コミットされていない変更 {date}",
     "shelf.list.alreadyUnshelved": "すでに復元済み",
-    "shelf.filePane.label": "シェルフファイル",
     "shelf.filePane.empty": "シェルフファイルはありません。",
-    "shelf.filePane.loading": "シェルフファイルをロード中…",
     "shelf.rename.label": "シェルフの名前を変更する",
     "shelf.action.restore": "復元",
     "shelf.action.compareWithLocal": "ローカルと比較",
@@ -71,7 +69,6 @@
     "shelf.result.flattenedResidue": "平らにした残差",
     "shelf.result.refused": "拒否されました: {reason}",
     "shelf.result.structuralPending": "構造保留中: {reason}",
-    "a11y.resizeShelfList": "シェルフリストのサイズを変更する",
     "a11y.shelfMutationOutcome": "シェルフ操作の結果",
     "a11y.shelfWarning": "{count} シェルフの警告",
     "common.refresh": "更新",
@@ -97,6 +94,7 @@
     "common.fileCount": {
         "other": "{count}個のファイル"
     },
+    "common.filesAndDate": "{files}、{date}",
     "commit.message.placeholder": "コミットメッセージ",
     "commit.amend": "コミットを修正",
     "commit.action.commit": "コミット",
@@ -304,7 +302,6 @@
     "common.show": "Show",
     "status.ignored": "Ignored",
     "commitPanel.ignoredFiles": "Ignored Files",
-    "stash.files": "選択したスタッシュ内のファイル",
     "stash.action.applyStash": "スタッシュを適用",
     "stash.action.popStash": "スタッシュを適用して削除",
     "stash.action.branch": "ブランチ",
@@ -314,7 +311,6 @@
     "stash.dialog.reinstateIndex": "インデックスを復元",
     "stash.dialog.noBranch": "ブランチなし",
     "stash.dialog.invalidBranch": "有効なブランチ名を入力してください。",
-    "a11y.resizeStashList": "スタッシュリストのサイズを変更",
     "stash.fileAction.openDiff": "差分を開く",
     "stash.fileAction.editSource": "ソースを編集",
     "stash.fileAction.cherryPickSelectedChanges": "選択した変更をチェリーピック"

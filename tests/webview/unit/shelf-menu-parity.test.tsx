@@ -25,14 +25,24 @@ vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({
 
 initReactDomTestEnvironment();
 
-const shelves: ShelfEntry[] = [
-    { id: "shelf-a", generation: 7, metadata: { name: "Parser repair", lifecycle: "shelved" } },
-    { id: "shelf-b", generation: 9, metadata: { name: "Old change", lifecycle: "applied" } },
-];
 const files = [
     { changeId: "change-a", worktreeBlock: { path: "src/parser.ts" } },
     { changeId: "change-b", worktreeBlock: { path: "src/lexer.ts" } },
 ] as ShelfFileEntry[];
+const shelves: ShelfEntry[] = [
+    {
+        id: "shelf-a",
+        generation: 7,
+        files,
+        metadata: { name: "Parser repair", lifecycle: "shelved" },
+    },
+    {
+        id: "shelf-b",
+        generation: 9,
+        files: [],
+        metadata: { name: "Old change", lifecycle: "applied" },
+    },
+];
 
 function click(element: Element): void {
     act(() => element.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -74,6 +84,11 @@ function iconButton(container: ParentNode, label: string): HTMLButtonElement {
     const found = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
     if (!found) throw new Error(`Missing icon button: ${label}`);
     return found;
+}
+
+/** Opens one shelf row's subtree through the standard tree key, as a user would. */
+function expandShelf(container: ParentNode, shelfId: string): void {
+    key(container.querySelector(`[data-shelf-id="${shelfId}"]`) as HTMLElement, "ArrowRight");
 }
 
 function openContextMenu(element: HTMLElement): void {
@@ -123,7 +138,6 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
         <ChakraProvider theme={theme}>
             <ShelfTab
                 shelves={shelves}
-                shelfFiles={files}
                 selectedShelfId="shelf-a"
                 catalogGeneration={12}
                 {...callbacks}
@@ -156,7 +170,6 @@ function SharedGroupingHarness(): React.ReactElement {
             />
             <ShelfTab
                 shelves={shelves}
-                shelfFiles={files}
                 selectedShelfId="shelf-a"
                 catalogGeneration={12}
                 groupByDir={groupByDir}
@@ -289,6 +302,7 @@ describe("Shelf menu and toolbar parity", () => {
 
     it("scopes file-row context actions to its change ID for mouse and keyboard gestures", () => {
         const { root, container, callbacks } = renderShelfTab();
+        expandShelf(container, "shelf-a");
         const file = container.querySelector('[data-shelf-file="change-a"]') as HTMLElement;
         const secondFile = container.querySelector('[data-shelf-file="change-b"]') as HTMLElement;
 
@@ -404,16 +418,22 @@ describe("Shelf menu and toolbar parity", () => {
         unmount(root, container);
     });
 
-    it("expands and collapses the controlled Shelf file pane", () => {
+    it("keeps shelf and directory expansion on one controlled state", () => {
         const { root, container } = renderShelfTab({ groupByDir: true });
 
         click(iconButton(container, "Collapse All"));
+        expect(container.querySelector('button[title="src"]')).toBeNull();
         expect(container.querySelector('[data-shelf-file="change-a"]')).toBeNull();
         expect(container.querySelector('[data-shelf-file="change-b"]')).toBeNull();
-        click(container.querySelector('[data-testid="shelf-file-pane"] > div') as HTMLElement);
+
+        // Opening one shelf reveals its directories; collapsing a directory hides only its files.
+        expandShelf(container, "shelf-a");
+        expect(container.querySelector('button[title="src"]')).not.toBeNull();
+        click(container.querySelector('button[title="src"]') as HTMLElement);
         expect(container.querySelector('button[title="src"]')).not.toBeNull();
         expect(container.querySelector('[data-shelf-file="change-a"]')).toBeNull();
         expect(container.querySelector('[data-shelf-file="change-b"]')).toBeNull();
+
         click(iconButton(container, "Expand All"));
         expect(container.querySelector('[data-shelf-file="change-a"]')).not.toBeNull();
         expect(container.querySelector('[data-shelf-file="change-b"]')).not.toBeNull();
@@ -423,6 +443,7 @@ describe("Shelf menu and toolbar parity", () => {
 
     it("runs Shelf shortcuts from list and file-pane focus but guards rename and dialog fields", () => {
         const { root, container, callbacks } = renderShelfTab();
+        expandShelf(container, "shelf-a");
         const row = container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
         const file = container.querySelector('[data-shelf-file="change-a"]') as HTMLElement;
 

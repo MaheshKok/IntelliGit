@@ -17,35 +17,37 @@ export interface ShelfListProps {
     shelves: ShelfEntry[];
     selectedShelfId: string | null;
     showAlreadyUnshelved: boolean;
-    height: number;
-    maxHeight: string;
+    /** Ids of the shelves whose file subtree is currently rendered. */
+    expandedShelfIds: ReadonlySet<string>;
     renamingShelfId: string | null;
     renameError?: string;
     onSelect: (shelfId: string) => void;
+    onToggleExpand: (shelfId: string) => void;
+    /** Renders one shelf's file rows; called only while that shelf is expanded. */
+    renderSubtree: (shelf: ShelfEntry) => React.ReactNode;
     onContextMenu: (shelf: ShelfEntry, x: number, y: number, target: HTMLElement) => void;
     onRenameSubmit: (shelf: ShelfEntry, name: string) => void;
     onRenameCancel: () => void;
     onRestore: (shelf: ShelfEntry) => void;
     onDragStart?: (event: React.DragEvent<HTMLElement>, shelf: ShelfEntry) => void;
-    dragEnabledShelfId?: string | null;
 }
 
-/** Flat shelf list with roving tabindex and an optional muted ghost group. */
+/** Shelf tree with roving tabindex, expandable rows and an optional ghost group. */
 export function ShelfList({
     shelves,
     selectedShelfId,
     showAlreadyUnshelved,
-    height,
-    maxHeight,
+    expandedShelfIds,
     renamingShelfId,
     renameError,
     onSelect,
+    onToggleExpand,
+    renderSubtree,
     onContextMenu,
     onRenameSubmit,
     onRenameCancel,
     onRestore,
     onDragStart,
-    dragEnabledShelfId,
 }: ShelfListProps): React.ReactElement {
     const activeShelves = shelves.filter(isActiveShelf);
     const ghosts = showAlreadyUnshelved ? shelves.filter((shelf) => !isActiveShelf(shelf)) : [];
@@ -57,6 +59,11 @@ export function ShelfList({
     const navigate = (shelfId: string, key: string, target: HTMLElement): void => {
         const index = visibleShelves.findIndex((shelf) => shelf.id === shelfId);
         if (index < 0) return;
+        if (key === "ArrowRight" || key === "ArrowLeft") {
+            // Standard tree keys: right opens a closed row, left closes an open one.
+            if (expandedShelfIds.has(shelfId) === (key === "ArrowLeft")) onToggleExpand(shelfId);
+            return;
+        }
         const next =
             key === "Home"
                 ? visibleShelves[0]
@@ -73,32 +80,38 @@ export function ShelfList({
     };
 
     const rows = (items: ShelfEntry[], ghost: boolean): React.ReactNode =>
-        items.map((shelf) => (
-            <ShelfRow
-                key={shelf.id}
-                shelf={shelf}
-                selected={selected === shelf.id}
-                isGhost={ghost}
-                isRenaming={renamingShelfId === shelf.id}
-                renameError={renamingShelfId === shelf.id ? renameError : undefined}
-                onSelect={onSelect}
-                onNavigate={navigate}
-                onContextMenu={onContextMenu}
-                onRenameSubmit={onRenameSubmit}
-                onRenameCancel={onRenameCancel}
-                onRestore={onRestore}
-                onDragStart={shelf.id === dragEnabledShelfId ? onDragStart : undefined}
-            />
-        ));
+        items.map((shelf) => {
+            const isExpanded = expandedShelfIds.has(shelf.id);
+            return (
+                <React.Fragment key={shelf.id}>
+                    <ShelfRow
+                        shelf={shelf}
+                        selected={selected === shelf.id}
+                        isGhost={ghost}
+                        isExpanded={isExpanded}
+                        isRenaming={renamingShelfId === shelf.id}
+                        renameError={renamingShelfId === shelf.id ? renameError : undefined}
+                        onSelect={onSelect}
+                        onToggleExpand={onToggleExpand}
+                        onNavigate={navigate}
+                        onContextMenu={onContextMenu}
+                        onRenameSubmit={onRenameSubmit}
+                        onRenameCancel={onRenameCancel}
+                        onRestore={onRestore}
+                        onDragStart={onDragStart}
+                    />
+                    {isExpanded ? <Box role="group">{renderSubtree(shelf)}</Box> : null}
+                </React.Fragment>
+            );
+        });
 
     return (
         <Box
             data-testid="shelf-list"
-            role="listbox"
+            role="tree"
             aria-label={t("shelf.list.label")}
-            style={{ height: `${height}px`, maxHeight }}
-            minH="100px"
-            flexShrink={0}
+            flex={1}
+            minH={0}
             overflowY="auto"
             py="6px"
             bg="var(--intelligit-pycharm-panel)"

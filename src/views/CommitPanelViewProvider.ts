@@ -517,7 +517,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             selectedStashIndex: runtime.selectedStashIndex,
             shelves: runtime.shelves,
             catalogGeneration: runtime.catalogGeneration,
-            shelfFiles: runtime.shelfFiles,
             selectedShelfId: runtime.selectedShelfId,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
@@ -538,7 +537,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
     private async shelfSnapshotForRuntime(runtime: CommitPanelRepositoryRuntime): Promise<{
         shelves: CommitPanelRepositorySnapshot["shelves"];
         catalogGeneration: number;
-        shelfFiles: CommitPanelRepositorySnapshot["shelfFiles"];
         selectedShelfId: string | null;
         shelfRemoveOnUnshelve: boolean;
         shelfHealth: CommitPanelRepositorySnapshot["shelfHealth"];
@@ -547,7 +545,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             return {
                 shelves: [],
                 catalogGeneration: 0,
-                shelfFiles: [],
                 selectedShelfId: null,
                 shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
                 shelfHealth: [],
@@ -560,9 +557,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return {
             shelves: [...listed.shelves],
             catalogGeneration: listed.catalogGeneration,
-            shelfFiles: selectedShelfId
-                ? [...(await runtime.shelfService.getShelfFiles(selectedShelfId))]
-                : [],
             selectedShelfId,
             shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
             shelfHealth: runtime.shelfService
@@ -806,7 +800,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         runtime.shelves = [...listed.shelves];
         runtime.catalogGeneration = listed.catalogGeneration;
         runtime.selectedShelfId = shelfId;
-        runtime.shelfFiles = [...(await service.getShelfFiles(shelfId))];
         this.postWorkingTreeSnapshot(runtime);
     }
 
@@ -1137,7 +1130,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 this.shelfSnapshotForRuntime(runtime).catch(() => ({
                     shelves: runtime.shelves,
                     catalogGeneration: runtime.catalogGeneration,
-                    shelfFiles: runtime.shelfFiles,
                     selectedShelfId: runtime.selectedShelfId,
                 })),
             ]);
@@ -1170,7 +1162,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 runtime.stashFiles = stashFiles;
                 runtime.shelves = shelfState.shelves;
                 runtime.catalogGeneration = shelfState.catalogGeneration;
-                runtime.shelfFiles = shelfState.shelfFiles;
                 runtime.selectedShelfId = shelfState.selectedShelfId;
                 runtime.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
                 runtime.hasRemotesCache = currentBranchStatus.hasRemotes;
@@ -1410,7 +1401,6 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         repositoryRoot: runtime.repository.root,
                         shelves: runtime.shelves,
                         catalogGeneration: runtime.catalogGeneration,
-                        shelfFiles: runtime.shelfFiles,
                         selectedShelfId: runtime.selectedShelfId,
                     }),
             },

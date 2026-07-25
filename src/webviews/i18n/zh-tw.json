@@ -8,9 +8,7 @@
     "shelf.list.empty": "沒有擱置架。",
     "shelf.defaultName": "未提交的變更 {date}",
     "shelf.list.alreadyUnshelved": "已還原",
-    "shelf.filePane.label": "擱置架文件",
     "shelf.filePane.empty": "沒有擱置架文件。",
-    "shelf.filePane.loading": "正在加載擱置架文件...",
     "shelf.rename.label": "重新命名擱置架",
     "shelf.action.restore": "恢復",
     "shelf.action.compareWithLocal": "與本機比較",
@@ -71,7 +69,6 @@
     "shelf.result.flattenedResidue": "扁平殘渣",
     "shelf.result.refused": "拒絕：{reason}",
     "shelf.result.structuralPending": "結構待定：{reason}",
-    "a11y.resizeShelfList": "調整擱置架清單的大小",
     "a11y.shelfMutationOutcome": "擱置操作結果",
     "a11y.shelfWarning": "{count} 擱置架警告",
     "common.refresh": "重新整理",
@@ -97,6 +94,7 @@
     "common.fileCount": {
         "other": "{count} 個文件"
     },
+    "common.filesAndDate": "{files}，{date}",
     "commit.message.placeholder": "提交訊息",
     "commit.amend": "修改提交",
     "commit.action.commit": "提交",
@@ -304,7 +302,6 @@
     "status.ignored": "已忽略",
     "commitPanel.ignoredFiles": "已忽略檔案",
     "merge.action.abortMerge": "中止合併",
-    "stash.files": "所選儲藏中的檔案",
     "stash.action.applyStash": "套用儲藏",
     "stash.action.popStash": "套用並移除儲藏",
     "stash.action.branch": "分支",
@@ -314,7 +311,6 @@
     "stash.dialog.reinstateIndex": "還原索引",
     "stash.dialog.noBranch": "沒有分支",
     "stash.dialog.invalidBranch": "請輸入有效的分支名稱。",
-    "a11y.resizeStashList": "調整儲藏清單大小",
     "stash.fileAction.openDiff": "開啟差異",
     "stash.fileAction.editSource": "編輯原始檔",
     "stash.fileAction.cherryPickSelectedChanges": "挑選選取的變更"

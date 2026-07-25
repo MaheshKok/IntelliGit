@@ -19,6 +19,8 @@ export interface ShelfEntry {
     generation: number;
     /** Read-only shelf metadata from the current manifest. */
     metadata: ShelfMetadata;
+    /** Entries of the current manifest, shipped with the list so a row can expand without a round trip. */
+    files: readonly ShelfFileEntry[];
 }
 
 /** Per-entry unshelve outcome; each discriminant keeps UI handling exhaustive. */
@@ -96,8 +98,6 @@ export interface CommitPanelRepositorySnapshot {
     shelves: ShelfEntry[];
     /** Catalog generation used by create/import/clean-up compare-and-swap operations. */
     catalogGeneration: number;
-    /** Files belonging to `selectedShelfId`; empty when no shelf is selected. */
-    shelfFiles: ShelfFileEntry[];
     /** Host-selected shelf ID, or `null` when this repository has no selected shelf. */
     selectedShelfId: string | null;
     /** Activation-time default applied by shelf unshelve affordances. */

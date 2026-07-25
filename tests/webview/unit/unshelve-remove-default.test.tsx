@@ -118,14 +118,18 @@ describe("unshelve remove-on-success default", () => {
     it("posts the snapshot setting from the silent unshelve toolbar action", () => {
         installWebviewI18n();
         const shelves: ShelfEntry[] = [
-            { id: "shelf-a", generation: 7, metadata: { name: "A", lifecycle: "shelved" } },
+            {
+                id: "shelf-a",
+                generation: 7,
+                files: [shelfEntry],
+                metadata: { name: "A", lifecycle: "shelved" },
+            },
         ];
         const onUnshelveSilently = vi.fn();
         const { root, container } = mount(
             <ChakraProvider theme={theme}>
                 <ShelfTab
                     shelves={shelves}
-                    shelfFiles={[shelfEntry]}
                     selectedShelfId="shelf-a"
                     catalogGeneration={12}
                     shelfRemoveOnUnshelve={false}
@@ -147,11 +151,13 @@ describe("unshelve remove-on-success default", () => {
         );
         const row = container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
         act(() =>
-            row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 })),
+            row.dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }),
+            ),
         );
-        const silentUnshelve = Array.from(document.querySelectorAll<HTMLElement>(".intelligit-context-item")).find(
-            (candidate) => candidate.textContent?.trim().startsWith("Unshelve Silently"),
-        );
+        const silentUnshelve = Array.from(
+            document.querySelectorAll<HTMLElement>(".intelligit-context-item"),
+        ).find((candidate) => candidate.textContent?.trim().startsWith("Unshelve Silently"));
         if (!silentUnshelve) throw new Error('Menu item "Unshelve Silently" not found');
         click(silentUnshelve);
         expect(onUnshelveSilently).toHaveBeenCalledWith(

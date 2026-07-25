@@ -33,9 +33,6 @@ function renderTabBar(shelfWarningCount: number) {
 
 function renderShelfTab(shelfHealth: ShelfHealthWarning[]) {
     installWebviewI18n();
-    const shelves: ShelfEntry[] = [
-        { id: "shelf-a", generation: 7, metadata: { name: "A", lifecycle: "shelved" } },
-    ];
     const shelfFiles: ShelfFileEntry[] = [
         {
             changeId: "change-a",
@@ -47,11 +44,18 @@ function renderShelfTab(shelfHealth: ShelfHealthWarning[]) {
             lifecycle: "shelved",
         },
     ];
+    const shelves: ShelfEntry[] = [
+        {
+            id: "shelf-a",
+            generation: 7,
+            files: shelfFiles,
+            metadata: { name: "A", lifecycle: "shelved" },
+        },
+    ];
     return mount(
         <ChakraProvider theme={theme}>
             <ShelfTab
                 shelves={shelves}
-                shelfFiles={shelfFiles}
                 selectedShelfId="shelf-a"
                 catalogGeneration={12}
                 shelfHealth={shelfHealth}

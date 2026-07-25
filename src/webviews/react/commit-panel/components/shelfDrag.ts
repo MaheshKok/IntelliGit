@@ -7,44 +7,31 @@ type ShelfEntryDragStart = (
     input: { shelfId: string; generation: number; changeIds: string[] },
 ) => void;
 
-/** Returns a whole-shelf drag handler only for a current non-applied shelf. */
-export function shelfRowDragStart(
-    onShelfEntryDragStart: ShelfEntryDragStart | undefined,
-    selectedShelf: ShelfEntry | null,
-    shelfFiles: ShelfFileEntry[],
-) {
-    if (
-        !onShelfEntryDragStart ||
-        !selectedShelf ||
-        selectedShelf.metadata.lifecycle === "applied"
-    ) {
-        return undefined;
-    }
+/** Returns a whole-shelf drag handler; every shelf carries its own files, so any of them drags. */
+export function shelfRowDragStart(onShelfEntryDragStart: ShelfEntryDragStart | undefined) {
+    if (!onShelfEntryDragStart) return undefined;
     return (event: React.DragEvent<HTMLElement>, shelf: ShelfEntry): void => {
+        if (shelf.metadata.lifecycle === "applied") return;
         onShelfEntryDragStart(event, {
             shelfId: shelf.id,
             generation: shelf.generation,
-            changeIds: shelfFiles.map((entry) => entry.changeId),
+            changeIds: shelf.files.map((entry) => entry.changeId),
         });
     };
 }
 
-/** Returns a single-entry drag handler only for a current non-applied shelf. */
+/** Returns a single-entry drag handler only for a non-applied shelf. */
 export function shelfFileDragStart(
     onShelfEntryDragStart: ShelfEntryDragStart | undefined,
-    selectedShelf: ShelfEntry | null,
+    shelf: ShelfEntry | null,
 ) {
-    if (
-        !onShelfEntryDragStart ||
-        !selectedShelf ||
-        selectedShelf.metadata.lifecycle === "applied"
-    ) {
+    if (!onShelfEntryDragStart || !shelf || shelf.metadata.lifecycle === "applied") {
         return undefined;
     }
     return (event: React.DragEvent<HTMLElement>, entry: ShelfFileEntry): void => {
         onShelfEntryDragStart(event, {
-            shelfId: selectedShelf.id,
-            generation: selectedShelf.generation,
+            shelfId: shelf.id,
+            generation: shelf.generation,
             changeIds: [entry.changeId],
         });
     };

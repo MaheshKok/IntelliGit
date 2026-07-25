@@ -253,7 +253,6 @@ export function RepositoryAccordion({
         <ShelfTab
             repositoryRoot={repository.root || undefined}
             shelves={repository.shelves}
-            shelfFiles={repository.shelfFiles}
             selectedShelfId={repository.selectedShelfId}
             catalogGeneration={repository.catalogGeneration}
             shelfRemoveOnUnshelve={repository.shelfRemoveOnUnshelve ?? true}

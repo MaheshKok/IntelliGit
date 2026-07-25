@@ -171,7 +171,6 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
                         selectedStashIndex: data.selectedStashIndex,
                         shelves: data.shelves ?? [],
                         catalogGeneration: data.catalogGeneration ?? 0,
-                        shelfFiles: data.shelfFiles ?? [],
                         selectedShelfId: data.selectedShelfId ?? null,
                         folderIcon: data.folderIcon,
                         folderExpandedIcon: data.folderExpandedIcon,

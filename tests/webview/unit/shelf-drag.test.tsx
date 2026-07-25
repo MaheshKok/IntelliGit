@@ -271,12 +271,8 @@ describe("useShelfDrag", () => {
         unmount(root, container);
     });
 
-    it("does not start a shelf drag until the selected shelf files are current", () => {
+    it("drags any shelf row with its own files, whichever shelf is selected", () => {
         installWebviewI18n();
-        const shelves: ShelfEntry[] = [
-            { id: "shelf-a", generation: 7, metadata: { name: "A", lifecycle: "shelved" } },
-            { id: "shelf-b", generation: 8, metadata: { name: "B", lifecycle: "shelved" } },
-        ];
         const shelfAFiles: ShelfFileEntry[] = [
             {
                 changeId: "change-a",
@@ -289,12 +285,25 @@ describe("useShelfDrag", () => {
             },
         ];
         const shelfBFiles: ShelfFileEntry[] = [{ ...shelfAFiles[0], changeId: "change-b" }];
+        const shelves: ShelfEntry[] = [
+            {
+                id: "shelf-a",
+                generation: 7,
+                files: shelfAFiles,
+                metadata: { name: "A", lifecycle: "shelved" },
+            },
+            {
+                id: "shelf-b",
+                generation: 8,
+                files: shelfBFiles,
+                metadata: { name: "B", lifecycle: "shelved" },
+            },
+        ];
         const onShelfEntryDragStart = vi.fn();
-        const renderTab = (selectedShelfId: string, shelfFiles: ShelfFileEntry[]) => (
+        const renderTab = (selectedShelfId: string) => (
             <ChakraProvider theme={theme}>
                 <ShelfTab
                     shelves={shelves}
-                    shelfFiles={shelfFiles}
                     selectedShelfId={selectedShelfId}
                     catalogGeneration={12}
                     onSelect={vi.fn()}
@@ -313,31 +322,26 @@ describe("useShelfDrag", () => {
                 />
             </ChakraProvider>
         );
-        const mounted = mount(renderTab("shelf-a", shelfAFiles));
+        // shelf-a is selected throughout: the unselected row still drags its own change ids.
+        const mounted = mount(renderTab("shelf-a"));
         const row = mounted.container.querySelector('[data-shelf-id="shelf-b"]') as HTMLElement;
-        act(() => row.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-        expect(row.draggable).toBe(false);
-        expect(mounted.container.querySelector('[data-shelf-file="change-a"]')).toBeNull();
+        expect(row.draggable).toBe(true);
         dispatchDragStart(row, createDataTransfer());
-        expect(onShelfEntryDragStart).not.toHaveBeenCalled();
-
-        act(() => mounted.root.render(renderTab("shelf-b", shelfBFiles)));
-        const currentRow = mounted.container.querySelector(
-            '[data-shelf-id="shelf-b"]',
-        ) as HTMLElement;
-        const transfer = createDataTransfer();
-        expect(currentRow.draggable).toBe(true);
-        dispatchDragStart(currentRow, transfer);
         expect(onShelfEntryDragStart).toHaveBeenCalledWith(expect.anything(), {
             shelfId: "shelf-b",
             generation: 8,
             changeIds: ["change-b"],
         });
-        const currentFileRow = mounted.container.querySelector(
+
+        expect(mounted.container.querySelector('[data-shelf-file="change-b"]')).toBeNull();
+        act(() =>
+            row.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })),
+        );
+        const fileRow = mounted.container.querySelector(
             '[data-shelf-file="change-b"]',
         ) as HTMLElement;
-        expect(currentFileRow.draggable).toBe(true);
-        dispatchDragStart(currentFileRow, createDataTransfer());
+        expect(fileRow.draggable).toBe(true);
+        dispatchDragStart(fileRow, createDataTransfer());
         expect(onShelfEntryDragStart).toHaveBeenLastCalledWith(expect.anything(), {
             shelfId: "shelf-b",
             generation: 8,
@@ -381,6 +385,7 @@ describe("useShelfDrag", () => {
         const ghost: ShelfEntry = {
             id: "ghost",
             generation: 1,
+            files: [],
             metadata: { name: "Ghost", lifecycle: "applied" },
         };
         const ghostMounted = mount(
@@ -389,8 +394,10 @@ describe("useShelfDrag", () => {
                     shelf={ghost}
                     selected={false}
                     isGhost
+                    isExpanded={false}
                     isRenaming={false}
                     onSelect={vi.fn()}
+                    onToggleExpand={vi.fn()}
                     onNavigate={vi.fn()}
                     onContextMenu={vi.fn()}
                     onRenameSubmit={vi.fn()}

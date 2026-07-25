@@ -75,11 +75,11 @@ function snapshot(root: string, label: string, path: string): object {
             {
                 id: `shelf-${root.endsWith("a") ? "a" : "b"}`,
                 generation: 1,
+                files: [],
                 metadata: { name: `Shelf ${label}`, lifecycle: "shelved" },
             },
         ],
         catalogGeneration: root.endsWith("a") ? 3 : 4,
-        shelfFiles: [],
         selectedShelfId: `shelf-${root.endsWith("a") ? "a" : "b"}`,
         currentBranchHasUpstream: true,
         hasRemotes: true,
@@ -173,7 +173,9 @@ async function renderApp(): Promise<void> {
         ShelfTab: (props: ShelfTabMockProps) => (
             <div data-testid="shelf-tab" data-shelf-id={props.selectedShelfId}>
                 {props.shelves.map((shelf) => shelf.id).join(",")}
-                {props.outcome ? ` ${props.outcome.status}:${props.outcome.entries.map((entry) => entry.kind).join(",")}` : ""}
+                {props.outcome
+                    ? ` ${props.outcome.status}:${props.outcome.entries.map((entry) => entry.kind).join(",")}`
+                    : ""}
             </div>
         ),
     }));
@@ -262,9 +264,8 @@ describe("commit panel multi-repository view", () => {
             }),
         }));
         const { createRoot } = await import("react-dom/client");
-        const { useCheckedFiles } = await import(
-            "../../../src/webviews/react/commit-panel/hooks/useCheckedFiles"
-        );
+        const { useCheckedFiles } =
+            await import("../../../src/webviews/react/commit-panel/hooks/useCheckedFiles");
         const host = document.createElement("div");
         document.body.appendChild(host);
         const root = createRoot(host);
@@ -324,7 +325,6 @@ describe("commit panel multi-repository view", () => {
         const legacySnapshot = snapshot("/repo-a", "Repo A", "src/a.ts") as Record<string, unknown>;
         delete legacySnapshot.shelves;
         delete legacySnapshot.catalogGeneration;
-        delete legacySnapshot.shelfFiles;
         delete legacySnapshot.selectedShelfId;
         await sendHostMessage(legacySnapshot);
 
@@ -485,7 +485,9 @@ describe("commit panel multi-repository view", () => {
         });
         postMessage.mockClear();
 
-        expect(row("/repo-b").querySelector('[data-testid="repository-action-toolbar"]')).toBeNull();
+        expect(
+            row("/repo-b").querySelector('[data-testid="repository-action-toolbar"]'),
+        ).toBeNull();
         click(row("/repo-b").querySelector('[aria-label="common.fetch"]'));
         click(row("/repo-b").querySelector('[data-testid="commit-action"][data-root="/repo-b"]'));
 

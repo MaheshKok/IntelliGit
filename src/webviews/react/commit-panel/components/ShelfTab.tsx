@@ -1,6 +1,5 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
-import type { ShelfFileEntry } from "../../../../shelf/model";
 import type {
     OutboundMessage,
     PerEntryResult,
@@ -14,7 +13,7 @@ import { resultMessage, statusMessage } from "./ShelfMessages";
 import { type ShelfContextAction } from "./ShelfRow";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
-import { ShelfFilePane, shelfDirectoryPaths } from "./ShelfFilePane";
+import { ShelfFileTree } from "./ShelfFileTree";
 import { CleanUpDialog } from "./CleanUpDialog";
 import {
     RenameStructuralDialog,
@@ -84,7 +83,6 @@ export interface ShelfMutationOutcome {
 export interface ShelfTabProps {
     repositoryRoot?: string;
     shelves: ShelfEntry[];
-    shelfFiles: ShelfFileEntry[];
     selectedShelfId: string | null;
     catalogGeneration: number;
     shelfRemoveOnUnshelve?: boolean;
@@ -124,35 +122,23 @@ interface ShelfContextMenuState {
 }
 const isMacWebview =
     typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent + navigator.platform);
-const MIN_SHELF_LIST_HEIGHT = 100;
-const SHELF_LOWER_PANE_RESERVED_HEIGHT = 166;
-const SHELF_SPLITTER_STEP = 10;
 let shelfRequestSequence = 0;
 function nextRequestId(): string {
     shelfRequestSequence += 1;
     return `shelf-mutation-${shelfRequestSequence}`;
 }
-function areShelfFilesCurrent(
-    selectionOverride: string | null,
-    selectedShelfId: string | null,
-): boolean {
-    return selectionOverride === null || selectionOverride === selectedShelfId;
+/** Composite key so two expanded shelves cannot share one directory's collapse state. */
+function directoryKey(shelfId: string, dirPath: string): string {
+    return `${shelfId}\n${dirPath}`;
 }
-function canUnshelveShelf(
-    shelfFilesAreCurrent: boolean,
-    selectedShelf: ShelfEntry | null,
-): boolean {
-    return (
-        shelfFilesAreCurrent &&
-        selectedShelf !== null &&
-        selectedShelf.metadata.lifecycle !== "applied"
-    );
+function toggleMember(current: ReadonlySet<string>, key: string): Set<string> {
+    const next = new Set(current);
+    if (!next.delete(key)) next.add(key);
+    return next;
 }
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
-// eslint-disable-next-line complexity -- existing shelf action surface is intentionally kept in one host-routed component.
 export function ShelfTab({
     shelves,
-    shelfFiles,
     selectedShelfId,
     catalogGeneration,
     shelfRemoveOnUnshelve = true,
@@ -184,8 +170,12 @@ export function ShelfTab({
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
     const [showAlreadyUnshelved, setShowAlreadyUnshelved] = useState(false);
     const [contextMenu, setContextMenu] = useState<ShelfContextMenuState | null>(null);
-    const [isFilePaneOpen, setIsFilePaneOpen] = useState(true);
-    const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
+    const [expandedShelfIds, setExpandedShelfIds] = useState<ReadonlySet<string>>(
+        () => new Set<string>(),
+    );
+    const [collapsedDirectories, setCollapsedDirectories] = useState<ReadonlySet<string>>(
+        () => new Set<string>(),
+    );
     const [unshelveShelf, setUnshelveShelf] = useState<ShelfEntry | null>(null);
     const [renamingShelfId, setRenamingShelfId] = useState<string | null>(null);
     const [pendingRename, setPendingRename] = useState<{
@@ -204,16 +194,12 @@ export function ShelfTab({
         PerEntryResult,
         { kind: "structuralPending" }
     > | null>(null);
-    const [listHeight, setListHeight] = useState(220);
-    const [listMaxHeight, setListMaxHeight] = useState(220);
-    const listHeightRef = useRef(listHeight);
     const displayedSelectedShelfId = selectionOverride ?? selectedShelfId;
     const selectedShelf = useMemo(
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, shelves],
     );
-    const shelfFilesAreCurrent = areShelfFilesCurrent(selectionOverride, selectedShelfId);
-    const canUnshelve = canUnshelveShelf(shelfFilesAreCurrent, selectedShelf);
+    const canUnshelve = selectedShelf !== null && selectedShelf.metadata.lifecycle !== "applied";
     const outcomeShelf = useMemo(
         () =>
             outcome?.shelfId
@@ -244,36 +230,6 @@ export function ShelfTab({
             ? outcome.message
             : undefined;
 
-    const constrainListHeight = useCallback((requestedHeight: number): void => {
-        const containerHeight = tabRef.current?.clientHeight ?? 0;
-        const maximum =
-            containerHeight > 0
-                ? Math.max(
-                      MIN_SHELF_LIST_HEIGHT,
-                      containerHeight - SHELF_LOWER_PANE_RESERVED_HEIGHT,
-                  )
-                : 220;
-        const next = Math.max(MIN_SHELF_LIST_HEIGHT, Math.min(requestedHeight, maximum));
-        listHeightRef.current = next;
-        setListMaxHeight(maximum);
-        setListHeight(next);
-    }, []);
-
-    useLayoutEffect(() => {
-        const element = tabRef.current;
-        if (!element) return;
-        const syncBounds = (): void => constrainListHeight(listHeightRef.current);
-        syncBounds();
-        window.addEventListener("resize", syncBounds);
-        const observer =
-            typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(syncBounds);
-        observer?.observe(element);
-        return () => {
-            window.removeEventListener("resize", syncBounds);
-            observer?.disconnect();
-        };
-    }, [constrainListHeight]);
-
     const selectShelf = useCallback(
         (shelfId: string): void => {
             setSelectionOverride(shelfId);
@@ -281,6 +237,15 @@ export function ShelfTab({
         },
         [onSelect],
     );
+
+    // Selection is left to the row's own click handler, so expanding also selects.
+    const toggleShelfExpansion = useCallback((shelfId: string): void => {
+        setExpandedShelfIds((current) => toggleMember(current, shelfId));
+    }, []);
+
+    const toggleDirectory = useCallback((shelfId: string, dirPath: string): void => {
+        setCollapsedDirectories((current) => toggleMember(current, directoryKey(shelfId, dirPath)));
+    }, []);
 
     const requestUnshelve = useCallback(
         (shelf: ShelfEntry, input: UnshelveDialogSubmit, silently = false): void => {
@@ -312,7 +277,7 @@ export function ShelfTab({
     const exportPatch = useCallback(
         (
             shelf: ShelfEntry = selectedShelf!,
-            changeIds = shelfFiles.map((entry) => entry.changeId),
+            changeIds = shelf?.files.map((entry) => entry.changeId) ?? [],
         ): void => {
             if (!shelf || changeIds.length === 0) return;
             const requestId = nextRequestId();
@@ -325,7 +290,7 @@ export function ShelfTab({
                 changeIds,
             });
         },
-        [onExportPatch, selectedShelf, shelfFiles],
+        [onExportPatch, selectedShelf],
     );
 
     const copyPatch = useCallback(
@@ -385,7 +350,7 @@ export function ShelfTab({
         (shelf: ShelfEntry, action: ShelfContextAction, targetChangeId?: string): void => {
             const scopedChangeIds = targetChangeId
                 ? [targetChangeId]
-                : shelfFiles.map((entry) => entry.changeId);
+                : shelf.files.map((entry) => entry.changeId);
             if (action === "unshelve") {
                 if (canUnshelve) setUnshelveShelf(shelf);
                 return;
@@ -395,7 +360,7 @@ export function ShelfTab({
                     requestUnshelve(
                         shelf,
                         {
-                            changeIds: shelfFiles.map((entry) => entry.changeId),
+                            changeIds: shelf.files.map((entry) => entry.changeId),
                             removeFromShelf: shelfRemoveOnUnshelve,
                         },
                         true,
@@ -443,17 +408,11 @@ export function ShelfTab({
             onRestoreGhost,
             onShowDiff,
             requestUnshelve,
-            shelfFiles,
             shelfRemoveOnUnshelve,
         ],
     );
 
-    const handleShelfRowDragStart = shelfRowDragStart(
-        onShelfEntryDragStart,
-        selectedShelf,
-        shelfFiles,
-    );
-    const handleShelfFileDragStart = shelfFileDragStart(onShelfEntryDragStart, selectedShelf);
+    const handleShelfRowDragStart = shelfRowDragStart(onShelfEntryDragStart);
 
     const handleShelfShortcut = useCallback(
         (event: React.KeyboardEvent<HTMLElement>): void => {
@@ -522,15 +481,57 @@ export function ShelfTab({
             onKeyDown={handleShelfShortcut}
         >
             <ShelfHealthWarningBanner warnings={shelfHealth} />
+            <ShelfToolbar
+                canExpandOrCollapse={shelves.length > 0}
+                groupByDir={groupByDir}
+                showAlreadyUnshelved={showAlreadyUnshelved}
+                onToggleGroupBy={onToggleGroupBy}
+                onExpandAll={() => {
+                    setExpandedShelfIds(new Set(shelves.map((shelf) => shelf.id)));
+                    setCollapsedDirectories(new Set());
+                }}
+                onCollapseAll={() => {
+                    setExpandedShelfIds(new Set());
+                    setCollapsedDirectories(new Set());
+                }}
+                onToggleAlreadyUnshelved={() => setShowAlreadyUnshelved((value) => !value)}
+                onCleanUp={() => {
+                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
+                    setIsCleanUpOpen(true);
+                }}
+            />
             <ShelfList
                 shelves={shelves}
                 selectedShelfId={displayedSelectedShelfId}
                 showAlreadyUnshelved={showAlreadyUnshelved}
-                height={listHeight}
-                maxHeight={`calc(100% - ${SHELF_LOWER_PANE_RESERVED_HEIGHT}px)`}
+                expandedShelfIds={expandedShelfIds}
                 renamingShelfId={renamingShelfId}
                 renameError={renameError}
                 onSelect={selectShelf}
+                onToggleExpand={toggleShelfExpansion}
+                renderSubtree={(shelf) => (
+                    <ShelfFileTree
+                        entries={shelf.files}
+                        groupByDir={groupByDir}
+                        depth={1}
+                        isDirectoryCollapsed={(path) =>
+                            collapsedDirectories.has(directoryKey(shelf.id, path))
+                        }
+                        onToggleDirectory={(path) => toggleDirectory(shelf.id, path)}
+                        onFileActivate={(entry) =>
+                            onShowDiff({
+                                type: "shelfDiff",
+                                shelfId: shelf.id,
+                                expectedGeneration: shelf.generation,
+                                changeId: entry.changeId,
+                            })
+                        }
+                        onContextMenu={(entry, x, y, target) =>
+                            openContextMenu(shelf, x, y, target, entry.changeId)
+                        }
+                        onDragStart={shelfFileDragStart(onShelfEntryDragStart, shelf)}
+                    />
+                )}
                 onContextMenu={(shelf, x, y, target) => openContextMenu(shelf, x, y, target)}
                 onRenameSubmit={(shelf, name) => {
                     const requestId = nextRequestId();
@@ -553,55 +554,7 @@ export function ShelfTab({
                     setPendingRename(null);
                 }}
                 onRestore={(shelf) => handleContextAction(shelf, "restore")}
-                dragEnabledShelfId={
-                    shelfFilesAreCurrent && selectedShelf?.metadata.lifecycle !== "applied"
-                        ? selectedShelf?.id
-                        : null
-                }
                 onDragStart={handleShelfRowDragStart}
-            />
-            <Box
-                data-testid="shelf-splitter"
-                role="separator"
-                aria-label={t("a11y.resizeShelfList")}
-                aria-orientation="horizontal"
-                aria-valuemin={MIN_SHELF_LIST_HEIGHT}
-                aria-valuemax={listMaxHeight}
-                aria-valuenow={listHeight}
-                tabIndex={0}
-                h="4px"
-                flexShrink={0}
-                cursor="row-resize"
-                bg="var(--intelligit-pycharm-border)"
-                onKeyDown={(event) => {
-                    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-                    event.preventDefault();
-                    constrainListHeight(
-                        listHeightRef.current +
-                            (event.key === "ArrowDown"
-                                ? SHELF_SPLITTER_STEP
-                                : -SHELF_SPLITTER_STEP),
-                    );
-                }}
-            />
-            <ShelfToolbar
-                canExpandOrCollapse={shelfFilesAreCurrent && shelfFiles.length > 0}
-                groupByDir={groupByDir}
-                showAlreadyUnshelved={showAlreadyUnshelved}
-                onToggleGroupBy={onToggleGroupBy}
-                onExpandAll={() => {
-                    setIsFilePaneOpen(true);
-                    setCollapsedDirectories(new Set());
-                }}
-                onCollapseAll={() => {
-                    setIsFilePaneOpen(false);
-                    setCollapsedDirectories(shelfDirectoryPaths(shelfFiles));
-                }}
-                onToggleAlreadyUnshelved={() => setShowAlreadyUnshelved((value) => !value)}
-                onCleanUp={() => {
-                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
-                    setIsCleanUpOpen(true);
-                }}
             />
             <Box
                 role="region"
@@ -688,42 +641,6 @@ export function ShelfTab({
                     </>
                 ) : null}
             </Box>
-            {shelfFilesAreCurrent ? (
-                <ShelfFilePane
-                    entries={shelfFiles}
-                    groupByDir={groupByDir}
-                    isOpen={isFilePaneOpen}
-                    onOpenChange={setIsFilePaneOpen}
-                    collapsedDirectories={collapsedDirectories}
-                    onCollapsedDirectoriesChange={setCollapsedDirectories}
-                    onFileActivate={(entry) => {
-                        if (!selectedShelf) return;
-                        onShowDiff({
-                            type: "shelfDiff",
-                            shelfId: selectedShelf.id,
-                            expectedGeneration: selectedShelf.generation,
-                            changeId: entry.changeId,
-                        });
-                    }}
-                    onContextMenu={(entry, x, y, target) => {
-                        if (selectedShelf)
-                            openContextMenu(selectedShelf, x, y, target, entry.changeId);
-                    }}
-                    onDragStart={handleShelfFileDragStart}
-                />
-            ) : (
-                <Box
-                    role="status"
-                    flex={1}
-                    minH="80px"
-                    px="12px"
-                    py="6px"
-                    fontSize="12px"
-                    color="var(--intelligit-pycharm-muted)"
-                >
-                    {t("shelf.filePane.loading")}
-                </Box>
-            )}
             {contextMenu ? (
                 <ContextMenu
                     x={contextMenu.x}
@@ -740,18 +657,19 @@ export function ShelfTab({
                     items={getShelfMenuItems({
                         shelf: contextMenu.shelf,
                         targetChangeId: contextMenu.targetChangeId,
-                        shelfFilesAreCurrent,
+                        // Part A ships every shelf's files with the list, so they are never stale.
+                        shelfFilesAreCurrent: true,
                         canUnshelve,
                         canExportPatch:
-                            shelfFilesAreCurrent &&
-                            (contextMenu.targetChangeId !== undefined || shelfFiles.length > 0),
+                            contextMenu.targetChangeId !== undefined ||
+                            contextMenu.shelf.files.length > 0,
                         isMac: isMacWebview,
                     })}
                 />
             ) : null}
             {unshelveShelf ? (
                 <UnshelveDialog
-                    entries={shelfFiles}
+                    entries={unshelveShelf.files}
                     defaultRemoveFromShelf={shelfRemoveOnUnshelve}
                     returnFocusTarget={dialogFocusTargetRef.current}
                     onClose={() => setUnshelveShelf(null)}

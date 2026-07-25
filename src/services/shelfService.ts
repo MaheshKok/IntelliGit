@@ -442,7 +442,12 @@ export class ShelfService {
             shelves: await Promise.all(
                 listed.shelfIds.map(async (id) => {
                     const manifest = await this.options.store.readCurrentShelfManifest(id);
-                    return { id, generation: manifest.generation, metadata: manifest.metadata };
+                    return {
+                        id,
+                        generation: manifest.generation,
+                        metadata: manifest.metadata,
+                        files: manifest.files,
+                    };
                 }),
             ),
         };

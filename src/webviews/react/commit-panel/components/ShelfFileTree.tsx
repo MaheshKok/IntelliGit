@@ -1,3 +1,5 @@
+// File rows for one shelf, rendered as a subtree beneath that shelf's row.
+
 import React, { useMemo, useState } from "react";
 import { Box } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
@@ -5,16 +7,15 @@ import type { WorkingFile } from "../../../../types";
 import { buildFileTree, countFiles, type TreeEntry } from "../../shared/fileTree";
 import { FileRow } from "./FileRow";
 import { FolderRow } from "./FolderRow";
-import { SectionHeader } from "./SectionHeader";
 import { t } from "../../shared/i18n";
 
-interface ShelfFilePaneProps {
-    entries: ShelfFileEntry[];
+interface ShelfFileTreeProps {
+    entries: readonly ShelfFileEntry[];
     groupByDir: boolean;
-    isOpen: boolean;
-    onOpenChange: (isOpen: boolean) => void;
-    collapsedDirectories: Set<string>;
-    onCollapsedDirectoriesChange: (directories: Set<string>) => void;
+    /** Indent level of the file rows; one level deeper than the owning shelf row. */
+    depth: number;
+    isDirectoryCollapsed: (path: string) => boolean;
+    onToggleDirectory: (path: string) => void;
     onFileActivate: (entry: ShelfFileEntry) => void;
     onContextMenu?: (
         entry: ShelfFileEntry,
@@ -40,44 +41,28 @@ function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
     };
 }
 
-/** Returns every directory currently represented by the selected shelf's file tree. */
-export function shelfDirectoryPaths(entries: ShelfFileEntry[]): Set<string> {
-    const tree = buildFileTree(entries.map(displayFile));
-    const paths = new Set<string>();
-    const collect = (nodes: TreeEntry<ShelfDisplayFile>[]): void => {
-        for (const node of nodes) {
-            if (node.type === "file") continue;
-            paths.add(node.path);
-            collect(node.children);
-        }
-    };
-    collect(tree);
-    return paths;
-}
-
-/** Read-only file rows for the selected shelf; activation always opens its base-to-shelved diff. */
-export function ShelfFilePane({
+/** Read-only file rows for one shelf; activation always opens its base-to-shelved diff. */
+export function ShelfFileTree({
     entries,
     groupByDir,
-    isOpen,
-    onOpenChange,
-    collapsedDirectories,
-    onCollapsedDirectoriesChange,
+    depth,
+    isDirectoryCollapsed,
+    onToggleDirectory,
     onFileActivate,
     onContextMenu,
     onDragStart,
-}: ShelfFilePaneProps): React.ReactElement {
+}: ShelfFileTreeProps): React.ReactElement {
     const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
     const files = useMemo(() => entries.map(displayFile), [entries]);
     const tree = useMemo(() => buildFileTree(files), [files]);
 
-    const renderFile = (file: ShelfDisplayFile, depth: number): React.ReactElement => {
+    const renderFile = (file: ShelfDisplayFile, fileDepth: number): React.ReactElement => {
         const entry = file.shelfEntry;
         return (
             <FileRow
                 key={entry.changeId}
                 file={file}
-                depth={depth}
+                depth={fileDepth}
                 isChecked={false}
                 isDragSelected={selectedChangeId === entry.changeId}
                 groupByDir={groupByDir}
@@ -100,71 +85,38 @@ export function ShelfFilePane({
             />
         );
     };
-    const renderTree = (nodes: TreeEntry<ShelfDisplayFile>[], depth = 0): React.ReactNode =>
+    const renderTree = (nodes: TreeEntry<ShelfDisplayFile>[], nodeDepth: number): React.ReactNode =>
         nodes.map((node) => {
-            if (node.type === "file") return renderFile(node.file, depth);
-            const isExpanded = !collapsedDirectories.has(node.path);
+            if (node.type === "file") return renderFile(node.file, nodeDepth);
+            const isExpanded = !isDirectoryCollapsed(node.path);
             return (
                 <React.Fragment key={node.path}>
                     <FolderRow
                         name={node.name}
                         dirPath={node.path}
-                        depth={depth}
+                        depth={nodeDepth}
                         isExpanded={isExpanded}
                         fileCount={countFiles(node.children)}
                         isAllChecked={false}
                         isSomeChecked={false}
-                        onToggleExpand={(path) =>
-                            onCollapsedDirectoriesChange(
-                                (() => {
-                                    const next = new Set(collapsedDirectories);
-                                    if (next.has(path)) next.delete(path);
-                                    else next.add(path);
-                                    return next;
-                                })(),
-                            )
-                        }
+                        onToggleExpand={onToggleDirectory}
                         onToggleCheck={() => undefined}
                         checkboxVisibility="none"
                         interactive
                     />
-                    {isExpanded ? renderTree(node.children, depth + 1) : null}
+                    {isExpanded ? renderTree(node.children, nodeDepth + 1) : null}
                 </React.Fragment>
             );
         });
 
+    if (entries.length === 0) {
+        return (
+            <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
+                {t("shelf.filePane.empty")}
+            </Box>
+        );
+    }
     return (
-        <Box
-            data-testid="shelf-file-pane"
-            role="region"
-            aria-label={t("shelf.filePane.label")}
-            flex={1}
-            minH="80px"
-            overflowY="auto"
-            py="6px"
-            bg="var(--intelligit-pycharm-panel)"
-        >
-            <SectionHeader
-                label={t("shelf.filePane.label")}
-                count={files.length}
-                stats={{ additions: 0, deletions: 0 }}
-                isOpen={isOpen}
-                isAllChecked={false}
-                isSomeChecked={false}
-                onToggleOpen={() => onOpenChange(!isOpen)}
-                onToggleCheck={() => undefined}
-                checkboxVisibility="none"
-            />
-            {isOpen
-                ? groupByDir
-                    ? renderTree(tree)
-                    : files.map((file) => renderFile(file, 0))
-                : null}
-            {entries.length === 0 ? (
-                <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    {t("shelf.filePane.empty")}
-                </Box>
-            ) : null}
-        </Box>
+        <>{groupByDir ? renderTree(tree, depth) : files.map((file) => renderFile(file, depth))}</>
     );
 }

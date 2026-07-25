@@ -16,6 +16,12 @@ export interface ShelfSummary {
     readonly id: string;
     readonly generation: number;
     readonly metadata: ShelfMetadata;
+    /**
+     * Entries of this shelf's current manifest. Listing already reads every
+     * manifest to resolve the generation, so carrying the files costs no extra
+     * I/O and lets the panel render one shelf tree without a follow-up request.
+     */
+    readonly files: readonly ShelfFileEntry[];
 }
 /** Lock-consistent shelf catalog view returned by the host service. */
 export interface ShelfListResult {

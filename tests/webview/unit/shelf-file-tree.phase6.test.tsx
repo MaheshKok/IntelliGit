@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
-import { ShelfFilePane } from "../../../src/webviews/react/commit-panel/components/ShelfFilePane";
+import { ShelfFileTree } from "../../../src/webviews/react/commit-panel/components/ShelfFileTree";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -22,41 +22,44 @@ const entries = [
     },
 ] as ShelfFileEntry[];
 
-function renderPane(overrides: Partial<React.ComponentProps<typeof ShelfFilePane>> = {}) {
+function renderTree(overrides: Partial<React.ComponentProps<typeof ShelfFileTree>> = {}) {
     const onFileActivate = vi.fn();
     const onDragStart = vi.fn();
-    const ControlledShelfFilePane = (): React.ReactElement => {
-        const [isOpen, setIsOpen] = React.useState(true);
-        const [collapsedDirectories, setCollapsedDirectories] = React.useState<Set<string>>(
-            () => new Set(),
-        );
+    // Directory collapse belongs to the owning tab, so the harness holds that state here.
+    const ControlledShelfFileTree = (): React.ReactElement => {
+        const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
         return (
-            <ShelfFilePane
+            <ShelfFileTree
                 entries={entries}
                 groupByDir={false}
+                depth={1}
                 onFileActivate={onFileActivate}
                 onDragStart={onDragStart}
                 {...overrides}
-                isOpen={isOpen}
-                onOpenChange={setIsOpen}
-                collapsedDirectories={collapsedDirectories}
-                onCollapsedDirectoriesChange={setCollapsedDirectories}
+                isDirectoryCollapsed={(path) => collapsed.has(path)}
+                onToggleDirectory={(path) =>
+                    setCollapsed((current) => {
+                        const next = new Set(current);
+                        if (!next.delete(path)) next.add(path);
+                        return next;
+                    })
+                }
             />
         );
     };
     const mounted = mount(
         <ChakraProvider theme={theme}>
-            <ControlledShelfFilePane />
+            <ControlledShelfFileTree />
         </ChakraProvider>,
     );
     return { ...mounted, onFileActivate, onDragStart };
 }
 
-describe("ShelfFilePane boundary behavior", () => {
+describe("ShelfFileTree boundary behavior", () => {
     beforeEach(() => installWebviewI18n());
 
     it("uses index-only paths, normalizes type changes, and activates the owning shelf entry", () => {
-        const { root, container, onFileActivate } = renderPane();
+        const { root, container, onFileActivate } = renderTree();
         const row = container.querySelector('[data-shelf-file="type-change"]') as HTMLElement;
 
         expect(row.getAttribute("title")).toBe("src/index-only.ts");
@@ -69,7 +72,7 @@ describe("ShelfFilePane boundary behavior", () => {
     });
 
     it("uses the change id for an untracked entry, supports dragging, and renders the empty state", () => {
-        const { root, container, onDragStart } = renderPane();
+        const { root, container, onDragStart } = renderTree();
         const row = container.querySelector('[data-shelf-file="untracked"]') as HTMLElement;
 
         expect(row.getAttribute("title")).toBe("untracked");
@@ -77,16 +80,13 @@ describe("ShelfFilePane boundary behavior", () => {
         expect(onDragStart).toHaveBeenCalledWith(expect.anything(), entries[1]);
         unmount(root, container);
 
-        const empty = renderPane({ entries: [], onDragStart: undefined });
+        const empty = renderTree({ entries: [], onDragStart: undefined });
         expect(empty.container.textContent).toContain("No shelf files.");
         unmount(empty.root, empty.container);
     });
 
     it("renders and collapses grouped directories while retaining keyboard-style file activation", () => {
-        const { root, container, onFileActivate } = renderPane({ groupByDir: true });
-        const section = container.querySelector(
-            '[data-testid="shelf-file-pane"] > div',
-        ) as HTMLElement;
+        const { root, container, onFileActivate } = renderTree({ groupByDir: true });
         const folder = container.querySelector('button[title="src"]') as HTMLElement;
 
         expect(folder.getAttribute("aria-expanded")).toBe("true");
@@ -101,8 +101,6 @@ describe("ShelfFilePane boundary behavior", () => {
         ) as HTMLElement;
         act(() => restoredFile.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })));
         expect(onFileActivate).toHaveBeenCalledWith(entries[0]);
-        act(() => section.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-        expect(container.querySelector('[data-shelf-file="type-change"]')).toBeNull();
         unmount(root, container);
     });
 });
