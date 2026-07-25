@@ -37,6 +37,8 @@ interface StashSelectionDeps extends PanelFileActionDeps {
     iconTheme: IconThemeService;
     getFiles: () => WorkingFile[];
     getStashes: () => StashEntry[];
+    /** Shelf paths keep folder icons resolved for the Shelf tree, which this update also reaches. */
+    getShelfFilePaths: () => string[];
     currentBranchHasUpstream: () => Promise<boolean>;
     setStashState: (state: {
         selectedStashIndex: number;
@@ -341,9 +343,10 @@ export async function selectStashFromPanel(
     const stashFiles = await deps.iconTheme.decorateWorkingFiles(
         await deps.gitOps.getStashFiles(selectedStashIndex),
     );
-    const folderIconsByName = await deps.iconTheme.getFolderIconsByWorkingFiles([
-        ...files,
-        ...stashFiles,
+    const folderIconsByName = await deps.iconTheme.getFolderIconsByPaths([
+        ...files.map((file) => file.path),
+        ...stashFiles.map((file) => file.path),
+        ...deps.getShelfFilePaths(),
     ]);
     deps.setStashState({ selectedStashIndex, stashFiles, folderIconsByName });
     const { folderIcons, iconFonts } = deps.iconTheme.getThemeData();

@@ -11,6 +11,11 @@ import type {
 } from "../../types";
 import type { ShelfFileEntry, ShelfMetadata } from "../../shelf/model";
 
+/** A shelf manifest entry carrying the file icon its path resolves to in the active theme. */
+export interface ShelfFileView extends ShelfFileEntry {
+    icon?: ThemeTreeIcon;
+}
+
 /** One persisted shelf exposed to host snapshots without leaking storage internals. */
 export interface ShelfEntry {
     /** Host-generated immutable shelf identifier. */
@@ -20,7 +25,7 @@ export interface ShelfEntry {
     /** Read-only shelf metadata from the current manifest. */
     metadata: ShelfMetadata;
     /** Entries of the current manifest, shipped with the list so a row can expand without a round trip. */
-    files: readonly ShelfFileEntry[];
+    files: readonly ShelfFileView[];
 }
 
 /** Per-entry unshelve outcome; each discriminant keeps UI handling exhaustive. */

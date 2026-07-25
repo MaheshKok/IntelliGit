@@ -6,6 +6,7 @@ import type {
     ShelfEntry,
     ShelfMutationStatus,
 } from "../../../protocol/commitPanelMessages";
+import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { t } from "../../shared/i18n";
 import { ShelfList } from "./ShelfList";
@@ -90,6 +91,9 @@ export interface ShelfTabProps {
     outcome?: ShelfMutationOutcome;
     /** Error text returned by the host for the current rename; rendered unchanged. */
     groupByDir?: boolean;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
     isRefreshing?: boolean;
     /** Asks the host to reload this repository; the toolbar's refresh icon. */
     onRefresh: () => void;
@@ -167,6 +171,9 @@ export function ShelfTab({
     onDragOver,
     onDrop,
     onShelfEntryDragStart,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     isRefreshing = false,
     onRefresh,
 }: ShelfTabProps): React.ReactElement {
@@ -525,6 +532,9 @@ export function ShelfTab({
                             collapsedDirectories.has(directoryKey(shelf.id, path))
                         }
                         onToggleDirectory={(path) => toggleDirectory(shelf.id, path)}
+                        folderIcon={folderIcon}
+                        folderExpandedIcon={folderExpandedIcon}
+                        folderIconsByName={folderIconsByName}
                         onFileActivate={(entry) =>
                             onShowDiff({
                                 type: "shelfDiff",

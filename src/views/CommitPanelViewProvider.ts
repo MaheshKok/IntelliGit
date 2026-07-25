@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
+import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { mapWithConcurrency } from "../utils/concurrency";
 import { assertRepoRelativePath } from "../utils/fileOps";
@@ -555,7 +556,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             ? runtime.selectedShelfId
             : (listed.shelves[0]?.id ?? null);
         return {
-            shelves: [...listed.shelves],
+            shelves: await decorateShelfFiles(this.iconTheme, listed.shelves),
             catalogGeneration: listed.catalogGeneration,
             selectedShelfId,
             shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
@@ -797,7 +798,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         if (!listed.shelves.some((shelf) => shelf.id === shelfId)) {
             throw new Error("Shelf does not exist.");
         }
-        runtime.shelves = [...listed.shelves];
+        runtime.shelves = await decorateShelfFiles(this.iconTheme, listed.shelves);
         runtime.catalogGeneration = listed.catalogGeneration;
         runtime.selectedShelfId = shelfId;
         this.postWorkingTreeSnapshot(runtime);
@@ -1152,7 +1153,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                           .catch(() => (selectedStashIndexUnchanged ? runtime.stashFiles : []))
                     : [];
             const folderIconsByName = await this.iconTheme
-                .getFolderIconsByWorkingFiles([...files, ...stashFiles])
+                .getFolderIconsByPaths([
+                    ...files.map((file) => file.path),
+                    ...stashFiles.map((file) => file.path),
+                    ...shelfFilePaths(shelfState.shelves),
+                ])
                 .catch(() => runtime.folderIconsByName);
             if (refreshRequestId === runtime.dataRefreshSeq) {
                 runtime.folderIconsByName = folderIconsByName;
@@ -1388,6 +1393,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 iconTheme: this.iconTheme,
                 getFiles: () => runtime.files,
                 getStashes: () => runtime.stashes,
+                getShelfFilePaths: () => shelfFilePaths(runtime.shelves),
                 currentBranchHasUpstream: async () =>
                     (await this.currentBranchStatus(runtime)).hasUpstream,
                 setStashState: (state) => {

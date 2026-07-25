@@ -1796,6 +1796,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
                 decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
                 dispose: ReturnType<typeof vi.fn>;
             };
@@ -1814,6 +1816,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
             decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
                 detail,
                 folderIconsByName: {},
@@ -2022,6 +2026,7 @@ describe("view providers integration", () => {
                         id: "shelf-u",
                         generation: 2,
                         metadata: { name: "Undocked shelf", lifecycle: "shelved" },
+                        files: [],
                     },
                 ],
             })),
@@ -2048,6 +2053,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
             };
             handleMessage: (msg: unknown) => Promise<void>;
         };
@@ -2060,6 +2067,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
         };
         postMessageSpy.mockClear();
 
@@ -2169,6 +2178,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
                 decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
                 dispose: ReturnType<typeof vi.fn>;
             };
@@ -2187,6 +2198,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
             decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
                 detail,
                 folderIconsByName: {},
@@ -2337,6 +2350,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
                 dispose: ReturnType<typeof vi.fn>;
             };
             handleMessage: (msg: unknown) => Promise<void>;
@@ -2354,6 +2369,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
             dispose: vi.fn(),
         };
         const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);

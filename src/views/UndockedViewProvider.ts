@@ -9,6 +9,7 @@ import type { ShelfEntry, ShelfHealthWarning } from "../webviews/protocol/commit
 import { IconThemeService } from "./shared/IconThemeService";
 import { registerThemeChangeListeners, disposeAll } from "./shared/themeListeners";
 import { buildWebviewShellHtml } from "./webviewHtml";
+import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertValidBranchName } from "../utils/gitRefs";
@@ -670,7 +671,7 @@ export class UndockedViewProvider {
         if (!listed.shelves.some((shelf) => shelf.id === shelfId)) {
             throw new Error("Shelf does not exist.");
         }
-        this.shelves = [...listed.shelves];
+        this.shelves = await decorateShelfFiles(this.iconTheme, listed.shelves);
         this.catalogGeneration = listed.catalogGeneration;
         this.selectedShelfId = shelfId;
         await this.refreshCommitPanelData(true);
@@ -756,7 +757,7 @@ export class UndockedViewProvider {
             ? this.selectedShelfId
             : (listed.shelves[0]?.id ?? null);
         return {
-            shelves: [...listed.shelves],
+            shelves: await decorateShelfFiles(this.iconTheme, listed.shelves),
             catalogGeneration: listed.catalogGeneration,
             selectedShelfId,
             shelfRemoveOnUnshelve: this.shelfRemoveOnUnshelve,
@@ -1074,6 +1075,7 @@ export class UndockedViewProvider {
                         iconTheme: this.iconTheme,
                         getFiles: () => this.files,
                         getStashes: () => this.stashes,
+                        getShelfFilePaths: () => shelfFilePaths(this.shelves),
                         currentBranchHasUpstream: () => this.currentBranchHasUpstream(),
                         setStashState: (state) => {
                             this.selectedStashIndex = state.selectedStashIndex;
@@ -1419,9 +1421,10 @@ export class UndockedViewProvider {
                           await this.gitOps.getStashFiles(selectedStashIndex),
                       )
                     : [];
-            const cpFolderIconsByName = await this.iconTheme.getFolderIconsByWorkingFiles([
-                ...files,
-                ...stashFiles,
+            const cpFolderIconsByName = await this.iconTheme.getFolderIconsByPaths([
+                ...files.map((file) => file.path),
+                ...stashFiles.map((file) => file.path),
+                ...shelfFilePaths(shelfState.shelves),
             ]);
             if (!shouldContinue()) return;
             this.files = files;

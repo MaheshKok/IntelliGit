@@ -3,32 +3,35 @@
 
 import React, { useMemo, useState } from "react";
 import { Box } from "@chakra-ui/react";
-import type { ShelfFileEntry } from "../../../../shelf/model";
-import type { WorkingFile } from "../../../../types";
+import type { ShelfFileView } from "../../../protocol/commitPanelMessages";
+import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { buildFileTree, type TreeEntry } from "../../shared/fileTree";
 import { FileTreeRows, ENTRY_ROW_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 
 interface ShelfFileTreeProps {
-    entries: readonly ShelfFileEntry[];
+    entries: readonly ShelfFileView[];
     groupByDir: boolean;
     /** Indent level of the file rows; the owning shelf row acts as their header. */
     depth: number;
     isDirectoryCollapsed: (path: string) => boolean;
     onToggleDirectory: (path: string) => void;
-    onFileActivate: (entry: ShelfFileEntry) => void;
+    folderIcon?: ThemeTreeIcon;
+    folderExpandedIcon?: ThemeTreeIcon;
+    folderIconsByName?: ThemeFolderIconMap;
+    onFileActivate: (entry: ShelfFileView) => void;
     onContextMenu?: (
-        entry: ShelfFileEntry,
+        entry: ShelfFileView,
         x: number,
         y: number,
         returnFocusTarget: HTMLElement,
     ) => void;
-    onDragStart?: (event: React.DragEvent<HTMLElement>, entry: ShelfFileEntry) => void;
+    onDragStart?: (event: React.DragEvent<HTMLElement>, entry: ShelfFileView) => void;
 }
 
-type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileEntry };
+type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileView };
 
-function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
+function displayFile(entry: ShelfFileView): ShelfDisplayFile {
     const block = entry.worktreeBlock ?? entry.indexBlock;
     const status = block?.status === "T" ? "M" : (block?.status ?? (entry.untracked ? "?" : "M"));
     return {
@@ -37,6 +40,7 @@ function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
         staged: entry.indexBlock !== undefined,
         additions: 0,
         deletions: 0,
+        icon: entry.icon,
         shelfEntry: entry,
     };
 }
@@ -48,6 +52,9 @@ export function ShelfFileTree({
     depth,
     isDirectoryCollapsed,
     onToggleDirectory,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
     onFileActivate,
     onContextMenu,
     onDragStart,
@@ -76,6 +83,9 @@ export function ShelfFileTree({
             ariaLevel={depth + 2}
             sectionGuideLeft={ENTRY_ROW_GUIDE_LEFT}
             showParentPath={!groupByDir}
+            folderIcon={folderIcon}
+            folderExpandedIcon={folderExpandedIcon}
+            folderIconsByName={folderIconsByName}
             isDirectoryExpanded={(path) => !isDirectoryCollapsed(path)}
             onToggleDirectory={onToggleDirectory}
             fileWiring={(file) => {

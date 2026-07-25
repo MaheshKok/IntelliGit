@@ -259,6 +259,9 @@ export function RepositoryAccordion({
             shelfRemoveOnUnshelve={repository.shelfRemoveOnUnshelve ?? true}
             shelfHealth={repository.shelfHealth ?? []}
             groupByDir={groupByDir}
+            folderIcon={repository.folderIcon}
+            folderExpandedIcon={repository.folderExpandedIcon}
+            folderIconsByName={repository.folderIconsByName}
             isRefreshing={repository.isRefreshing}
             outcome={repository.shelfMutationOutcome ?? undefined}
             onRefresh={() =>

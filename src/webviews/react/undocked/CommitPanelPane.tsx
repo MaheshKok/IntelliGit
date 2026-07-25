@@ -139,6 +139,9 @@ export function CommitPanelPane({
                             catalogGeneration={cpState.catalogGeneration}
                             groupByDir={groupByDir}
                             outcome={cpState.shelfMutationOutcome ?? undefined}
+                            folderIcon={cpState.folderIcon}
+                            folderExpandedIcon={cpState.folderExpandedIcon}
+                            folderIconsByName={cpState.folderIconsByName}
                             isRefreshing={cpState.isRefreshing}
                             onRefresh={() =>
                                 vscode.postMessage({
