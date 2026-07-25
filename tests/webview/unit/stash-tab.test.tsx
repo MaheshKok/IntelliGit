@@ -205,7 +205,7 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
-    it("renders flat stash files with only the 18px chevron-equivalent spacer before each icon", () => {
+    it("renders flat stash files as Changed-Files tree items with one chevron-width spacer", () => {
         const ignoredFile: WorkingFile = {
             path: "ignored.log",
             status: "!",
@@ -222,7 +222,9 @@ describe("StashTab", () => {
         ) as HTMLElement;
         const ignored = container.querySelector('[data-stash-file="ignored.log"]') as HTMLElement;
 
-        expect(file.tagName).toBe("BUTTON");
+        // Rows are focusable tree items, exactly as the Changed Files tree renders them.
+        expect(file.getAttribute("role")).toBe("treeitem");
+        expect(file.getAttribute("tabindex")).toBe("0");
         expect(file.textContent).toContain("first.ts");
         expect(file.textContent).toContain("src");
         expect(file.textContent).toContain("+1");
@@ -231,19 +233,22 @@ describe("StashTab", () => {
         for (const stashFile of [file, otherFile, ignored]) {
             const chevronSpacer = stashFile.querySelector('[data-tree-icon="file"]')
                 ?.previousElementSibling as HTMLElement;
-            expect(getComputedStyle(chevronSpacer).width).toBe("18px");
+            // One Changed-Files indent step stands in for the chevron a file has no room for.
+            expect(getComputedStyle(chevronSpacer).width).toBe("14px");
         }
         expect(file.getAttribute("data-vscode-context")).toBeNull();
-        expect(file.hasAttribute("aria-selected")).toBe(false);
-        expect(otherFile.hasAttribute("aria-selected")).toBe(false);
+        // Each row reports its own selection, so an unselected file says so rather than staying silent.
+        expect(file.getAttribute("aria-selected")).toBe("false");
+        expect(otherFile.getAttribute("aria-selected")).toBe("false");
         // Expanding a row selects the stash, never one of its files.
         expect(file.hasAttribute("aria-current")).toBe(false);
 
         click(file);
+        expect(file.getAttribute("aria-selected")).toBe("true");
         expect(file.getAttribute("aria-current")).toBe("true");
         click(otherFile);
-        expect(file.hasAttribute("aria-selected")).toBe(false);
-        expect(otherFile.hasAttribute("aria-selected")).toBe(false);
+        expect(file.getAttribute("aria-selected")).toBe("false");
+        expect(otherFile.getAttribute("aria-selected")).toBe("true");
         expect(file.hasAttribute("aria-current")).toBe(false);
         expect(otherFile.getAttribute("aria-current")).toBe("true");
 
@@ -396,7 +401,7 @@ describe("StashTab", () => {
         expect(file.querySelector('input[type="checkbox"]')).toBeNull();
         const fileChevronSpacer = file.querySelector('[data-tree-icon="file"]')
             ?.previousElementSibling as HTMLElement;
-        expect(getComputedStyle(fileChevronSpacer).width).toBe("18px");
+        expect(getComputedStyle(fileChevronSpacer).width).toBe("14px");
 
         click(folder);
         expect(container.querySelector('[data-stash-file="src/first.ts"]')).toBeNull();

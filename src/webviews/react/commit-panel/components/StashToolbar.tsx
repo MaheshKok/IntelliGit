@@ -7,6 +7,7 @@ import {
     ExpandAllIconGlyph,
     GroupByDirectoryIconGlyph,
 } from "../../shared/components/Icons";
+import { RefreshButton } from "../../shared/components/RefreshButton";
 import { t } from "../../shared/i18n";
 
 /** Props for selected-stash file-pane toolbar controls. */
@@ -16,6 +17,8 @@ export interface StashToolbarProps {
     canExpandOrCollapse: boolean;
     hoverDelay: number;
     tooltipsEnabled: boolean;
+    isRefreshing: boolean;
+    onRefresh: () => void;
     onShowStashDiff: () => void;
     onToggleGroupBy: () => void;
     onExpandAll: () => void;
@@ -29,6 +32,8 @@ export function StashToolbar({
     canExpandOrCollapse,
     hoverDelay,
     tooltipsEnabled,
+    isRefreshing,
+    onRefresh,
     onShowStashDiff,
     onToggleGroupBy,
     onExpandAll,
@@ -43,6 +48,7 @@ export function StashToolbar({
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >
+            <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
             <StashToolbarButton
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}

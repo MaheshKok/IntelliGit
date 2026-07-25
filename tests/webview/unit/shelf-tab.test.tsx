@@ -138,6 +138,7 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
         onCopyPatch: vi.fn(),
         onCleanUp: vi.fn(),
         onToggleGroupBy: vi.fn(),
+        onRefresh: vi.fn(),
         onOpenConflictEditor: vi.fn(),
         onResolveStructural: vi.fn(),
     };

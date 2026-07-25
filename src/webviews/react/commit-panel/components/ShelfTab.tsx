@@ -90,6 +90,9 @@ export interface ShelfTabProps {
     outcome?: ShelfMutationOutcome;
     /** Error text returned by the host for the current rename; rendered unchanged. */
     groupByDir?: boolean;
+    isRefreshing?: boolean;
+    /** Asks the host to reload this repository; the toolbar's refresh icon. */
+    onRefresh: () => void;
     onSelect: (message: ShelfSelectMessage) => void;
     onUnshelve: (message: ShelfUnshelveMessage) => void;
     onUnshelveSilently?: (message: ShelfUnshelveMessage) => void;
@@ -164,6 +167,8 @@ export function ShelfTab({
     onDragOver,
     onDrop,
     onShelfEntryDragStart,
+    isRefreshing = false,
+    onRefresh,
 }: ShelfTabProps): React.ReactElement {
     const tabRef = useRef<HTMLDivElement>(null);
     const dialogFocusTargetRef = useRef<HTMLElement | null>(null);
@@ -484,6 +489,8 @@ export function ShelfTab({
             <ShelfToolbar
                 canExpandOrCollapse={shelves.length > 0}
                 groupByDir={groupByDir}
+                isRefreshing={isRefreshing}
+                onRefresh={onRefresh}
                 showAlreadyUnshelved={showAlreadyUnshelved}
                 onToggleGroupBy={onToggleGroupBy}
                 onExpandAll={() => {
@@ -513,7 +520,7 @@ export function ShelfTab({
                     <ShelfFileTree
                         entries={shelf.files}
                         groupByDir={groupByDir}
-                        depth={1}
+                        depth={0}
                         isDirectoryCollapsed={(path) =>
                             collapsedDirectories.has(directoryKey(shelf.id, path))
                         }

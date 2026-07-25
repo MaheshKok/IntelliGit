@@ -133,6 +133,7 @@ describe("unshelve remove-on-success default", () => {
                     selectedShelfId="shelf-a"
                     catalogGeneration={12}
                     shelfRemoveOnUnshelve={false}
+                    onRefresh={vi.fn()}
                     onSelect={vi.fn()}
                     onUnshelve={vi.fn()}
                     onUnshelveSilently={onUnshelveSilently}

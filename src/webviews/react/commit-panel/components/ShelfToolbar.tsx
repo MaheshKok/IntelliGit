@@ -6,6 +6,7 @@ import {
     ExpandAllIconGlyph,
     GroupByDirectoryIconGlyph,
 } from "../../shared/components/Icons";
+import { RefreshButton } from "../../shared/components/RefreshButton";
 import { getSettings } from "../../shared/settings";
 import { t } from "../../shared/i18n";
 
@@ -14,6 +15,8 @@ export interface ShelfToolbarProps {
     canExpandOrCollapse: boolean;
     groupByDir: boolean;
     showAlreadyUnshelved: boolean;
+    isRefreshing: boolean;
+    onRefresh: () => void;
     onToggleGroupBy: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
@@ -43,6 +46,8 @@ export function ShelfToolbar({
     canExpandOrCollapse,
     groupByDir,
     showAlreadyUnshelved,
+    isRefreshing,
+    onRefresh,
     onToggleGroupBy,
     onExpandAll,
     onCollapseAll,
@@ -77,6 +82,7 @@ export function ShelfToolbar({
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >
+            <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
             <ShelfToolbarIconButton
                 label={t("shelf.action.groupBy")}
                 icon={icon(<GroupByDirectoryIconGlyph />)}

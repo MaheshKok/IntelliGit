@@ -59,6 +59,7 @@ function renderShelfTab(shelfHealth: ShelfHealthWarning[]) {
                 selectedShelfId="shelf-a"
                 catalogGeneration={12}
                 shelfHealth={shelfHealth}
+                onRefresh={vi.fn()}
                 onSelect={vi.fn()}
                 onUnshelve={vi.fn()}
                 onRename={vi.fn()}

@@ -1,18 +1,18 @@
-// File rows for one shelf, rendered as a subtree beneath that shelf's row.
+// File rows for one shelf, rendered as a subtree beneath that shelf's row using
+// the same tree the commit-info pane draws for a commit's Changed Files.
 
 import React, { useMemo, useState } from "react";
 import { Box } from "@chakra-ui/react";
 import type { ShelfFileEntry } from "../../../../shelf/model";
 import type { WorkingFile } from "../../../../types";
-import { buildFileTree, countFiles, type TreeEntry } from "../../shared/fileTree";
-import { FileRow } from "./FileRow";
-import { FolderRow } from "./FolderRow";
+import { buildFileTree, type TreeEntry } from "../../shared/fileTree";
+import { FileTreeRows, ENTRY_ROW_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 
 interface ShelfFileTreeProps {
     entries: readonly ShelfFileEntry[];
     groupByDir: boolean;
-    /** Indent level of the file rows; one level deeper than the owning shelf row. */
+    /** Indent level of the file rows; the owning shelf row acts as their header. */
     depth: number;
     isDirectoryCollapsed: (path: string) => boolean;
     onToggleDirectory: (path: string) => void;
@@ -54,60 +54,13 @@ export function ShelfFileTree({
 }: ShelfFileTreeProps): React.ReactElement {
     const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
     const files = useMemo(() => entries.map(displayFile), [entries]);
-    const tree = useMemo(() => buildFileTree(files), [files]);
-
-    const renderFile = (file: ShelfDisplayFile, fileDepth: number): React.ReactElement => {
-        const entry = file.shelfEntry;
-        return (
-            <FileRow
-                key={entry.changeId}
-                file={file}
-                depth={fileDepth}
-                isChecked={false}
-                isDragSelected={selectedChangeId === entry.changeId}
-                groupByDir={groupByDir}
-                onToggle={() => undefined}
-                onClick={() => {
-                    setSelectedChangeId(entry.changeId);
-                    onFileActivate(entry);
-                }}
-                onActivate={() => onFileActivate(entry)}
-                onOpenContextMenu={(_, x, y, returnFocusTarget) => {
-                    setSelectedChangeId(entry.changeId);
-                    onContextMenu?.(entry, x, y, returnFocusTarget);
-                }}
-                dataShelfFile={entry.changeId}
-                isCurrent={selectedChangeId === entry.changeId}
-                contextMenuEnabled={false}
-                checkboxVisibility="none"
-                draggable={Boolean(onDragStart)}
-                onDragStart={(event) => onDragStart?.(event, entry)}
-            />
-        );
-    };
-    const renderTree = (nodes: TreeEntry<ShelfDisplayFile>[], nodeDepth: number): React.ReactNode =>
-        nodes.map((node) => {
-            if (node.type === "file") return renderFile(node.file, nodeDepth);
-            const isExpanded = !isDirectoryCollapsed(node.path);
-            return (
-                <React.Fragment key={node.path}>
-                    <FolderRow
-                        name={node.name}
-                        dirPath={node.path}
-                        depth={nodeDepth}
-                        isExpanded={isExpanded}
-                        fileCount={countFiles(node.children)}
-                        isAllChecked={false}
-                        isSomeChecked={false}
-                        onToggleExpand={onToggleDirectory}
-                        onToggleCheck={() => undefined}
-                        checkboxVisibility="none"
-                        interactive
-                    />
-                    {isExpanded ? renderTree(node.children, nodeDepth + 1) : null}
-                </React.Fragment>
-            );
-        });
+    const tree = useMemo<TreeEntry<ShelfDisplayFile>[]>(
+        () =>
+            groupByDir
+                ? buildFileTree(files)
+                : files.map((file) => ({ type: "file" as const, file })),
+        [files, groupByDir],
+    );
 
     if (entries.length === 0) {
         return (
@@ -117,6 +70,34 @@ export function ShelfFileTree({
         );
     }
     return (
-        <>{groupByDir ? renderTree(tree, depth) : files.map((file) => renderFile(file, depth))}</>
+        <FileTreeRows
+            entries={tree}
+            depth={depth}
+            ariaLevel={depth + 2}
+            sectionGuideLeft={ENTRY_ROW_GUIDE_LEFT}
+            showParentPath={!groupByDir}
+            isDirectoryExpanded={(path) => !isDirectoryCollapsed(path)}
+            onToggleDirectory={onToggleDirectory}
+            fileWiring={(file) => {
+                const entry = file.shelfEntry;
+                return {
+                    isSelected: selectedChangeId === entry.changeId,
+                    onSelect: () => {
+                        setSelectedChangeId(entry.changeId);
+                        onFileActivate(entry);
+                    },
+                    onActivate: () => onFileActivate(entry),
+                    onContextMenu: onContextMenu
+                        ? (x, y, returnFocusTarget) => {
+                              setSelectedChangeId(entry.changeId);
+                              onContextMenu(entry, x, y, returnFocusTarget);
+                          }
+                        : undefined,
+                    dataAttributes: { "shelf-file": entry.changeId },
+                    draggable: Boolean(onDragStart),
+                    onDragStart: onDragStart ? (event) => onDragStart(event, entry) : undefined,
+                };
+            }}
+        />
     );
 }

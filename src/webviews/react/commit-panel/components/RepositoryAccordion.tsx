@@ -246,6 +246,7 @@ export function RepositoryAccordion({
             folderExpandedIcon={repository.folderExpandedIcon}
             folderIconsByName={repository.folderIconsByName}
             groupByDir={groupByDir}
+            isRefreshing={repository.isRefreshing}
             onToggleGroupBy={onToggleGroupBy}
         />
     );
@@ -258,7 +259,11 @@ export function RepositoryAccordion({
             shelfRemoveOnUnshelve={repository.shelfRemoveOnUnshelve ?? true}
             shelfHealth={repository.shelfHealth ?? []}
             groupByDir={groupByDir}
+            isRefreshing={repository.isRefreshing}
             outcome={repository.shelfMutationOutcome ?? undefined}
+            onRefresh={() =>
+                vscode.postMessage({ type: "refresh", ...repositoryScope(repository.root) })
+            }
             onSelect={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }

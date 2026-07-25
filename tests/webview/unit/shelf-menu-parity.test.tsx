@@ -131,6 +131,7 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
         onCopyPatch: vi.fn(),
         onCleanUp: vi.fn(),
         onToggleGroupBy: vi.fn(),
+        onRefresh: vi.fn(),
         onOpenConflictEditor: vi.fn(),
         onResolveStructural: vi.fn(),
     };
@@ -173,6 +174,7 @@ function SharedGroupingHarness(): React.ReactElement {
                 selectedShelfId="shelf-a"
                 catalogGeneration={12}
                 groupByDir={groupByDir}
+                onRefresh={noop}
                 onSelect={noop as React.ComponentProps<typeof ShelfTab>["onSelect"]}
                 onUnshelve={noop as React.ComponentProps<typeof ShelfTab>["onUnshelve"]}
                 onRename={noop as React.ComponentProps<typeof ShelfTab>["onRename"]}
@@ -381,10 +383,11 @@ describe("Shelf menu and toolbar parity", () => {
         unmount(root, container);
     });
 
-    it("renders only the three Shelf icon controls plus overflow, and opens its two-item menu", () => {
+    it("renders refresh plus the three Shelf icon controls and overflow, and opens its two-item menu", () => {
         const { root, container, callbacks } = renderShelfTab();
         const toolbar = container.querySelector('[data-testid="shelf-toolbar"]') as HTMLElement;
-        expect(toolbar.querySelectorAll("button")).toHaveLength(4);
+        expect(toolbar.querySelectorAll("button")).toHaveLength(5);
+        expect(toolbar.querySelector('[data-testid="refresh-button"]')).toBeTruthy();
         expect(iconButton(container, "Group by Directory").getAttribute("aria-pressed")).toBe(
             "false",
         );

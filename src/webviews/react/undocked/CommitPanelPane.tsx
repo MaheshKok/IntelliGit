@@ -127,6 +127,7 @@ export function CommitPanelPane({
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}
                             groupByDir={groupByDir}
+                            isRefreshing={cpState.isRefreshing}
                             onToggleGroupBy={onToggleGroupBy}
                         />
                     }
@@ -138,6 +139,13 @@ export function CommitPanelPane({
                             catalogGeneration={cpState.catalogGeneration}
                             groupByDir={groupByDir}
                             outcome={cpState.shelfMutationOutcome ?? undefined}
+                            isRefreshing={cpState.isRefreshing}
+                            onRefresh={() =>
+                                vscode.postMessage({
+                                    type: "refresh",
+                                    ...(repositoryRoot ? { repositoryRoot } : {}),
+                                })
+                            }
                             onSelect={(message) => vscode.postMessage(message)}
                             onUnshelve={(message) => vscode.postMessage(message)}
                             onUnshelveSilently={(message) => vscode.postMessage(message)}

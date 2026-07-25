@@ -22,6 +22,7 @@ interface Props {
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
     groupByDir: boolean;
+    isRefreshing?: boolean;
     onToggleGroupBy: () => void;
 }
 
@@ -114,6 +115,7 @@ export function StashTab({
     folderExpandedIcon,
     folderIconsByName,
     groupByDir,
+    isRefreshing = false,
     onToggleGroupBy,
     // react-doctor-disable-next-line react-doctor/prefer-useReducer
 }: Props): React.ReactElement {
@@ -356,7 +358,7 @@ export function StashTab({
             <StashFileTree
                 files={files}
                 groupByDir={groupByDir}
-                depth={1}
+                depth={0}
                 selectedFilePath={
                     fileSelection.stashHash === stash.hash ? fileSelection.path : null
                 }
@@ -439,6 +441,13 @@ export function StashTab({
                 canExpandOrCollapse={stashes.length > 0}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
+                isRefreshing={isRefreshing}
+                onRefresh={() =>
+                    vscode.postMessage({
+                        type: "refresh",
+                        ...(repositoryRoot ? { repositoryRoot } : {}),
+                    })
+                }
                 onShowStashDiff={() => {
                     if (displayedSelectedIndex !== null)
                         showStashDiff(displayedSelectedIndex, true);

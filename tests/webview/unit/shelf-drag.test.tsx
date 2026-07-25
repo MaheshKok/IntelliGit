@@ -306,6 +306,7 @@ describe("useShelfDrag", () => {
                     shelves={shelves}
                     selectedShelfId={selectedShelfId}
                     catalogGeneration={12}
+                    onRefresh={vi.fn()}
                     onSelect={vi.fn()}
                     onUnshelve={vi.fn()}
                     onRename={vi.fn()}
@@ -396,6 +397,7 @@ describe("useShelfDrag", () => {
                     isGhost
                     isExpanded={false}
                     isRenaming={false}
+                    onRefresh={vi.fn()}
                     onSelect={vi.fn()}
                     onToggleExpand={vi.fn()}
                     onNavigate={vi.fn()}

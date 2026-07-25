@@ -4,10 +4,9 @@ import React, { useMemo } from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
-import { buildFileTree, countFiles, type TreeEntry } from "../../shared/fileTree";
+import { buildFileTree, type TreeEntry } from "../../shared/fileTree";
 import { ChevronIcon } from "../../shared/components/Icons";
-import { FileRow } from "./FileRow";
-import { FolderRow } from "./FolderRow";
+import { FileTreeRows, ENTRY_ROW_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 import { formatDateTime } from "../../shared/date";
 
@@ -277,57 +276,13 @@ export function StashFileTree({
     onFileActivate,
     onFileContextMenu,
 }: StashFileTreeProps): React.ReactElement {
-    const tree = useMemo(() => buildFileTree(files), [files]);
-
-    const renderFile = (file: WorkingFile, fileDepth: number): React.ReactElement => {
-        const isSelected = selectedFilePath === file.path;
-        return (
-            <FileRow
-                key={file.path}
-                file={file}
-                depth={fileDepth}
-                isChecked={false}
-                isDragSelected={isSelected}
-                groupByDir={groupByDir}
-                onToggle={() => undefined}
-                onClick={() => onFileSelect(file.path)}
-                onActivate={onFileActivate}
-                onOpenContextMenu={(contextFile, x, y, returnFocusTarget) =>
-                    onFileContextMenu(contextFile.path, x, y, returnFocusTarget)
-                }
-                dataStashFile={file.path}
-                isCurrent={isSelected}
-                contextMenuEnabled={false}
-                checkboxVisibility="none"
-            />
-        );
-    };
-    const renderTree = (nodes: TreeEntry<WorkingFile>[], nodeDepth: number): React.ReactNode =>
-        nodes.map((node) => {
-            if (node.type === "file") return renderFile(node.file, nodeDepth);
-            const isExpanded = !isDirectoryCollapsed(node.path);
-            return (
-                <React.Fragment key={node.path}>
-                    <FolderRow
-                        name={node.name}
-                        dirPath={node.path}
-                        depth={nodeDepth}
-                        isExpanded={isExpanded}
-                        folderIcon={folderIcon}
-                        folderExpandedIcon={folderExpandedIcon}
-                        folderIconsByName={folderIconsByName}
-                        fileCount={countFiles(node.children)}
-                        isAllChecked={false}
-                        isSomeChecked={false}
-                        onToggleExpand={onToggleDirectory}
-                        onToggleCheck={() => undefined}
-                        checkboxVisibility="none"
-                        interactive
-                    />
-                    {isExpanded ? renderTree(node.children, nodeDepth + 1) : null}
-                </React.Fragment>
-            );
-        });
+    const tree = useMemo<TreeEntry<WorkingFile>[]>(
+        () =>
+            groupByDir
+                ? buildFileTree(files)
+                : files.map((file) => ({ type: "file" as const, file })),
+        [files, groupByDir],
+    );
 
     if (files.length === 0) {
         return (
@@ -337,7 +292,26 @@ export function StashFileTree({
         );
     }
     return (
-        <>{groupByDir ? renderTree(tree, depth) : files.map((file) => renderFile(file, depth))}</>
+        <FileTreeRows
+            entries={tree}
+            depth={depth}
+            ariaLevel={depth + 2}
+            sectionGuideLeft={ENTRY_ROW_GUIDE_LEFT}
+            showParentPath={!groupByDir}
+            folderIcon={folderIcon}
+            folderExpandedIcon={folderExpandedIcon}
+            folderIconsByName={folderIconsByName}
+            isDirectoryExpanded={(path) => !isDirectoryCollapsed(path)}
+            onToggleDirectory={onToggleDirectory}
+            fileWiring={(file) => ({
+                isSelected: selectedFilePath === file.path,
+                onSelect: () => onFileSelect(file.path),
+                onActivate: () => onFileActivate(file.path),
+                onContextMenu: (x, y, returnFocusTarget) =>
+                    onFileContextMenu(file.path, x, y, returnFocusTarget),
+                dataAttributes: { "stash-file": file.path },
+            })}
+        />
     );
 }
 
