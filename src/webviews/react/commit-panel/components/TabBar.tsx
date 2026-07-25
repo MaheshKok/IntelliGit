@@ -17,6 +17,7 @@ import { t } from "../../shared/i18n";
 
 interface Props {
     stashCount: number;
+    shelfCount?: number;
     shelfWarningCount?: number;
     onSync?: () => void;
     onFetch?: () => void;
@@ -56,6 +57,7 @@ const sharedTabStyles = {
  */
 export function TabBar({
     stashCount,
+    shelfCount = 0,
     shelfWarningCount = 0,
     onSync,
     onFetch,
@@ -79,7 +81,14 @@ export function TabBar({
                     : t("commit.tab.stash"),
             content: stashContent,
         },
-        { key: "shelf", label: t("commit.tab.shelf"), content: shelfContent },
+        {
+            key: "shelf",
+            label:
+                shelfCount > 0
+                    ? t("commit.tab.shelfWithCount", { count: shelfCount })
+                    : t("commit.tab.shelf"),
+            content: shelfContent,
+        },
     ];
     const gitActions =
         onSync && onFetch && onPull && onPush ? { onSync, onFetch, onPull, onPush } : null;

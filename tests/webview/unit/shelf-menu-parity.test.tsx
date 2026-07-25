@@ -165,15 +165,21 @@ function SharedGroupingHarness(): React.ReactElement {
                 onRename={noop as React.ComponentProps<typeof ShelfTab>["onRename"]}
                 onDelete={noop as React.ComponentProps<typeof ShelfTab>["onDelete"]}
                 onShowDiff={noop as React.ComponentProps<typeof ShelfTab>["onShowDiff"]}
-                onCompareWithLocal={noop as React.ComponentProps<typeof ShelfTab>["onCompareWithLocal"]}
+                onCompareWithLocal={
+                    noop as React.ComponentProps<typeof ShelfTab>["onCompareWithLocal"]
+                }
                 onRestoreGhost={noop as React.ComponentProps<typeof ShelfTab>["onRestoreGhost"]}
                 onImportPatch={noop as React.ComponentProps<typeof ShelfTab>["onImportPatch"]}
                 onExportPatch={noop as React.ComponentProps<typeof ShelfTab>["onExportPatch"]}
                 onCopyPatch={noop as React.ComponentProps<typeof ShelfTab>["onCopyPatch"]}
                 onCleanUp={noop as React.ComponentProps<typeof ShelfTab>["onCleanUp"]}
                 onToggleGroupBy={toggleGroupBy}
-                onOpenConflictEditor={noop as React.ComponentProps<typeof ShelfTab>["onOpenConflictEditor"]}
-                onResolveStructural={noop as React.ComponentProps<typeof ShelfTab>["onResolveStructural"]}
+                onOpenConflictEditor={
+                    noop as React.ComponentProps<typeof ShelfTab>["onOpenConflictEditor"]
+                }
+                onResolveStructural={
+                    noop as React.ComponentProps<typeof ShelfTab>["onResolveStructural"]
+                }
             />
         </>
     );
@@ -231,7 +237,8 @@ describe("Shelf menu and toolbar parity", () => {
                 ["Delete", expectedHints[3]],
             ] as const) {
                 expect(
-                    items.find((item) => item.textContent?.startsWith(label))?.lastElementChild?.textContent,
+                    items.find((item) => item.textContent?.startsWith(label))?.lastElementChild
+                        ?.textContent,
                 ).toBe(hint);
             }
             unmount(mounted.root, mounted.container);
@@ -331,7 +338,9 @@ describe("Shelf menu and toolbar parity", () => {
         );
         key(file, "F10", { shiftKey: true });
         click(menuItem("Rename"));
-        const rename = container.querySelector('input[aria-label="Rename shelf"]') as HTMLInputElement;
+        const rename = container.querySelector(
+            'input[aria-label="Rename shelf"]',
+        ) as HTMLInputElement;
         expect(rename).not.toBeNull();
         inputValue(rename, "file menu rename");
         key(rename, "Enter");
@@ -358,11 +367,10 @@ describe("Shelf menu and toolbar parity", () => {
         unmount(root, container);
     });
 
-    it("renders only the four Shelf icon controls plus overflow, and opens its two-item menu", () => {
+    it("renders only the three Shelf icon controls plus overflow, and opens its two-item menu", () => {
         const { root, container, callbacks } = renderShelfTab();
         const toolbar = container.querySelector('[data-testid="shelf-toolbar"]') as HTMLElement;
-        expect(toolbar.querySelectorAll("button")).toHaveLength(5);
-        expect(iconButton(container, "Unshelve")).toBeTruthy();
+        expect(toolbar.querySelectorAll("button")).toHaveLength(4);
         expect(iconButton(container, "Group by Directory").getAttribute("aria-pressed")).toBe(
             "false",
         );
@@ -380,6 +388,7 @@ describe("Shelf menu and toolbar parity", () => {
         for (const label of [
             "Import Patches…",
             "Create Patch…",
+            "Unshelve",
             "Unshelve Silently",
             "Show Diff",
             "Compare with Local",
@@ -435,7 +444,9 @@ describe("Shelf menu and toolbar parity", () => {
         const first = renderShelfTab();
         const firstRow = first.container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
         key(firstRow, "F2");
-        const rename = first.container.querySelector('input[aria-label="Rename shelf"]') as HTMLElement;
+        const rename = first.container.querySelector(
+            'input[aria-label="Rename shelf"]',
+        ) as HTMLElement;
         expect(rename).not.toBeNull();
         key(rename, "d", { ctrlKey: true });
         expect(first.callbacks.onShowDiff).not.toHaveBeenCalled();
@@ -445,7 +456,10 @@ describe("Shelf menu and toolbar parity", () => {
         unmount(first.root, first.container);
 
         const second = renderShelfTab();
-        key(second.container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement, "Backspace");
+        key(
+            second.container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement,
+            "Backspace",
+        );
         expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
         unmount(second.root, second.container);
     });

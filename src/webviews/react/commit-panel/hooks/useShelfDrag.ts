@@ -41,7 +41,7 @@ function nextRequestId(): string {
 }
 
 function defaultShelfName(): string {
-    return `Uncommitted changes [${new Date().toLocaleString()}]`;
+    return `Uncommitted changes ${new Date().toLocaleString()}`;
 }
 
 function readPayload<T>(dataTransfer: DataTransfer, mime: string): T | undefined {

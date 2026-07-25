@@ -24,9 +24,9 @@ function click(element: Element): void {
 }
 
 function menuItem(label: string): HTMLElement {
-    const item = Array.from(document.querySelectorAll<HTMLElement>(".intelligit-context-item")).find(
-        (candidate) => candidate.textContent?.trim() === label,
-    );
+    const item = Array.from(
+        document.querySelectorAll<HTMLElement>(".intelligit-context-item"),
+    ).find((candidate) => candidate.textContent?.trim() === label);
     if (!item) throw new Error(`Missing menu item: ${label}`);
     return item;
 }
@@ -74,11 +74,15 @@ describe("CommitTab shelving", () => {
         const { root, container } = renderCommitTab({ commitMessage: "" });
         vi.setSystemTime(new Date("2026-07-22T10:05:00Z"));
         const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;
-        act(() => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
-        click(menuItem("Shelve Changes…"));
-        expect((document.querySelector('input[aria-label="Shelf name"]') as HTMLInputElement).value).toBe(
-            `Uncommitted changes [${new Date().toLocaleString()}]`,
+        act(() =>
+            tab.dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }),
+            ),
         );
+        click(menuItem("Shelve Changes…"));
+        expect(
+            (document.querySelector('input[aria-label="Shelf name"]') as HTMLInputElement).value,
+        ).toBe(`Uncommitted changes ${new Date().toLocaleString()}`);
         unmount(root, container);
         vi.useRealTimers();
     });
@@ -86,15 +90,25 @@ describe("CommitTab shelving", () => {
     it("leaves FileRow context menus to VS Code and opens shelf actions at the cursor elsewhere", () => {
         const { root, container } = renderCommitTab();
         const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;
-        const fileRow = container.querySelector('[data-vscode-context]') as HTMLElement;
+        const fileRow = container.querySelector("[data-vscode-context]") as HTMLElement;
         expect(fileRow).not.toBeNull();
 
-        const fileEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 13, clientY: 17 });
+        const fileEvent = new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 13,
+            clientY: 17,
+        });
         act(() => fileRow.dispatchEvent(fileEvent));
         expect(fileEvent.defaultPrevented).toBe(false);
-        expect(document.querySelector('.intelligit-context-menu')).toBeNull();
+        expect(document.querySelector(".intelligit-context-menu")).toBeNull();
 
-        const emptyEvent = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 31, clientY: 47 });
+        const emptyEvent = new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 31,
+            clientY: 47,
+        });
         act(() => tab.dispatchEvent(emptyEvent));
         const menu = document.querySelector('[role="menu"]') as HTMLElement;
         expect(emptyEvent.defaultPrevented).toBe(true);
@@ -108,21 +122,33 @@ describe("CommitTab shelving", () => {
         const { root, container } = renderCommitTab();
         const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;
 
-        act(() => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
+        act(() =>
+            tab.dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }),
+            ),
+        );
         click(menuItem("Shelve Changes…"));
         const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
-        expect((dialog.querySelector('input[aria-label="Shelf name"]') as HTMLInputElement).value).toBe("draft shelf");
-        click(Array.from(dialog.querySelectorAll("button")).find((button) => button.textContent === "Shelve Changes")!);
+        expect(
+            (dialog.querySelector('input[aria-label="Shelf name"]') as HTMLInputElement).value,
+        ).toBe("draft shelf");
+        click(
+            Array.from(dialog.querySelectorAll("button")).find(
+                (button) => button.textContent === "Shelve Changes",
+            )!,
+        );
 
-        expect(vscode.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-            type: "shelveSave",
-            repositoryRoot: "/repo",
-            name: "draft shelf",
-            paths: ["src/a.ts"],
-            silent: false,
-            keepLocal: false,
-            expectedCatalogGeneration: 12,
-        }));
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "shelveSave",
+                repositoryRoot: "/repo",
+                name: "draft shelf",
+                paths: ["src/a.ts"],
+                silent: false,
+                keepLocal: false,
+                expectedCatalogGeneration: 12,
+            }),
+        );
         unmount(root, container);
     });
 
@@ -131,21 +157,33 @@ describe("CommitTab shelving", () => {
         const { root, container } = renderCommitTab();
         const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;
 
-        act(() => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
+        act(() =>
+            tab.dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }),
+            ),
+        );
         click(menuItem("Shelve Silently"));
-        expect(vscode.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
-            type: "shelveSave",
-            paths: ["src/a.ts"],
-            silent: true,
-            keepLocal: false,
-        }));
-        act(() => tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 })));
+        expect(vscode.postMessage).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                type: "shelveSave",
+                paths: ["src/a.ts"],
+                silent: true,
+                keepLocal: false,
+            }),
+        );
+        act(() =>
+            tab.dispatchEvent(
+                new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }),
+            ),
+        );
         click(menuItem("Save to Shelf"));
-        expect(vscode.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
-            type: "shelveSave",
-            paths: ["src/a.ts"],
-            keepLocal: true,
-        }));
+        expect(vscode.postMessage).toHaveBeenLastCalledWith(
+            expect.objectContaining({
+                type: "shelveSave",
+                paths: ["src/a.ts"],
+                keepLocal: true,
+            }),
+        );
         unmount(root, container);
     });
 });

@@ -224,7 +224,8 @@ describe("ShelfTab", () => {
         const nextRow = container.querySelector('[data-shelf-id="shelf-c"]') as HTMLElement;
 
         click(nextRow);
-        expect(iconButton(container, "Unshelve").disabled).toBe(true);
+        openContextMenu(nextRow);
+        expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("true");
         expect(iconButton(container, "Expand All").disabled).toBe(true);
         expect(iconButton(container, "Collapse All").disabled).toBe(true);
         expect(container.querySelector('[data-testid="shelf-file-pane"]')).toBeNull();
@@ -297,7 +298,8 @@ describe("ShelfTab", () => {
 
     it("submits selected unshelve entries, defaults removal on, and rejects an empty selection", () => {
         const { root, container, callbacks } = renderShelfTab();
-        click(iconButton(container, "Unshelve"));
+        openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
+        click(menuItem("Unshelve…"));
         const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
         const first = dialog.querySelector('input[aria-label="src/parser.ts"]') as HTMLInputElement;
         const remove = dialog.querySelector(
@@ -456,7 +458,6 @@ describe("ShelfTab", () => {
     it("keeps selected-shelf controls enabled when its file list is empty", () => {
         const { root, container } = renderShelfTab({ shelfFiles: [] });
         openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
-        expect(iconButton(container, "Unshelve").disabled).toBe(false);
         expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("false");
         expect(menuItem("Unshelve Silently").getAttribute("aria-disabled")).toBe("false");
         expect(menuItem("Rename").getAttribute("aria-disabled")).toBe("false");

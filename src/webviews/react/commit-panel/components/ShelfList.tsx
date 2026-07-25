@@ -4,6 +4,14 @@ import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { ShelfRow } from "./ShelfRow";
 import { t } from "../../shared/i18n";
 
+/**
+ * A shelf the list shows unconditionally. "applied" shelves are ghosts, hidden
+ * until the user opts in, so the Shelf tab count reports active shelves only.
+ */
+export function isActiveShelf(shelf: ShelfEntry): boolean {
+    return shelf.metadata.lifecycle !== "applied";
+}
+
 /** State and callbacks for the keyboard-navigable shelf row list. */
 export interface ShelfListProps {
     shelves: ShelfEntry[];
@@ -39,10 +47,8 @@ export function ShelfList({
     onDragStart,
     dragEnabledShelfId,
 }: ShelfListProps): React.ReactElement {
-    const activeShelves = shelves.filter((shelf) => shelf.metadata.lifecycle !== "applied");
-    const ghosts = showAlreadyUnshelved
-        ? shelves.filter((shelf) => shelf.metadata.lifecycle === "applied")
-        : [];
+    const activeShelves = shelves.filter(isActiveShelf);
+    const ghosts = showAlreadyUnshelved ? shelves.filter((shelf) => !isActiveShelf(shelf)) : [];
     const visibleShelves = [...activeShelves, ...ghosts];
     const selected = visibleShelves.some((shelf) => shelf.id === selectedShelfId)
         ? selectedShelfId

@@ -100,7 +100,7 @@ describe("registerShelfCommands", () => {
         await mocks.commands.get("intelligit.purgeShelfRecovery")?.();
 
         const defaultName = mocks.showInputBox.mock.calls[0]?.[0]?.value;
-        expect(defaultName).toMatch(/^Uncommitted changes \[/);
+        expect(defaultName).toBe("Uncommitted changes {date}");
         expect(service.shelve).toHaveBeenNthCalledWith(1, {
             name: "Prompted shelf",
             paths: [],

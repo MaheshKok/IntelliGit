@@ -585,14 +585,9 @@ export function ShelfTab({
                 }}
             />
             <ShelfToolbar
-                canUnshelve={canUnshelve}
                 canExpandOrCollapse={shelfFilesAreCurrent && shelfFiles.length > 0}
                 groupByDir={groupByDir}
                 showAlreadyUnshelved={showAlreadyUnshelved}
-                onUnshelve={() => {
-                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
-                    if (selectedShelf) setUnshelveShelf(selectedShelf);
-                }}
                 onToggleGroupBy={onToggleGroupBy}
                 onExpandAll={() => {
                     setIsFilePaneOpen(true);
@@ -612,10 +607,10 @@ export function ShelfTab({
                 role="region"
                 aria-label={t("a11y.shelfMutationOutcome")}
                 aria-live="polite"
-                flex={1}
-                minH="80px"
-                overflowY="auto"
-                p="10px"
+                flexShrink={0}
+                maxH={outcome ? "160px" : undefined}
+                overflowY={outcome ? "auto" : undefined}
+                p={outcome ? "10px" : 0}
                 fontSize="12px"
             >
                 {outcome ? (
@@ -691,11 +686,7 @@ export function ShelfTab({
                             <Box mt="3px">{t("shelf.status.exportFlattened")}</Box>
                         ) : null}
                     </>
-                ) : (
-                    <Box color="var(--intelligit-pycharm-muted)">
-                        {t("shelf.status.selectAction")}
-                    </Box>
-                )}
+                ) : null}
             </Box>
             {shelfFilesAreCurrent ? (
                 <ShelfFilePane

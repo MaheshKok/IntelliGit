@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "在此工作区中找不到 Git 存储库。",
     "Select a repository for shelf changes": "选择存储架更改的存储库",
     "Shelf service is unavailable for this repository.": "此仓库无法使用搁置架服务。",
-    "Uncommitted changes [{date}]": "未提交的更改 [{date}]",
+    "Uncommitted changes {date}": "未提交的更改 {date}",
     "Shelf name": "搁置架名称",
     "Changes saved to shelf.": "更改已保存到搁置架上。",
     "Changes shelved.": "更改已搁置。",

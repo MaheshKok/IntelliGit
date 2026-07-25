@@ -4,6 +4,7 @@ import { TabBar } from "../commit-panel/components/TabBar";
 import { CommitTab } from "../commit-panel/components/CommitTab";
 import { StashTab } from "../commit-panel/components/StashTab";
 import { ShelfTab } from "../commit-panel/components/ShelfTab";
+import { isActiveShelf } from "../commit-panel/components/ShelfList";
 import { getVsCodeApi } from "../commit-panel/hooks/useVsCodeApi";
 import type { WorkingFile } from "../../../types";
 import type { CommitPanelState } from "./commitPanelState";
@@ -78,6 +79,7 @@ export function CommitPanelPane({
             <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
                 <TabBar
                     stashCount={cpState.stashes.length}
+                    shelfCount={(cpState.shelves ?? []).filter(isActiveShelf).length}
                     onSync={onSync}
                     onFetch={onFetch}
                     onPull={onPull}

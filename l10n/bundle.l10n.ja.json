@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "このワークスペースには Git リポジトリが見つかりません。",
     "Select a repository for shelf changes": "シェルフ変更用のリポジトリを選択してください",
     "Shelf service is unavailable for this repository.": "このリポジトリではシェルフサービスを利用できません。",
-    "Uncommitted changes [{date}]": "コミットされていない変更 [{date}]",
+    "Uncommitted changes {date}": "コミットされていない変更 {date}",
     "Shelf name": "シェルフ名",
     "Changes saved to shelf.": "変更はシェルフに保存されました。",
     "Changes shelved.": "変更をシェルフに保存しました。",

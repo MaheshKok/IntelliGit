@@ -2,7 +2,11 @@
 
 import React from "react";
 import { Box, Flex, IconButton, Tooltip } from "@chakra-ui/react";
-import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
+import {
+    CollapseAllIconGlyph,
+    ExpandAllIconGlyph,
+    GroupByDirectoryIconGlyph,
+} from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 
 /** Props for selected-stash file-pane toolbar controls. */
@@ -57,10 +61,7 @@ export function StashToolbar({
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
-                <path
-                    fill="currentColor"
-                    d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h4v4h-4v-4z"
-                />
+                <GroupByDirectoryIconGlyph />
             </StashToolbarButton>
             <Box flex={1} />
             <StashToolbarButton

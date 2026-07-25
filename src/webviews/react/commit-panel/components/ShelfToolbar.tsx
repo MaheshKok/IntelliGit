@@ -1,16 +1,19 @@
 import React, { useState } from "react";
 import { Button, Flex, Tooltip } from "@chakra-ui/react";
 import { ContextMenu } from "../../shared/components/ContextMenu";
+import {
+    CollapseAllIconGlyph,
+    ExpandAllIconGlyph,
+    GroupByDirectoryIconGlyph,
+} from "../../shared/components/Icons";
 import { getSettings } from "../../shared/settings";
 import { t } from "../../shared/i18n";
 
 /** Callbacks and state for the compact Shelf toolbar. */
 export interface ShelfToolbarProps {
-    canUnshelve: boolean;
     canExpandOrCollapse: boolean;
     groupByDir: boolean;
     showAlreadyUnshelved: boolean;
-    onUnshelve: () => void;
     onToggleGroupBy: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
@@ -26,39 +29,6 @@ function icon(path: React.ReactNode): React.ReactElement {
     );
 }
 
-function unshelveIcon(): React.ReactElement {
-    return icon(
-        <path fill="currentColor" d="M8 1l4 4H9v5H7V5H4l4-4zm-5 9h10v5H3v-5zm1 1v3h8v-3H4z" />,
-    );
-}
-
-function groupIcon(): React.ReactElement {
-    return icon(
-        <path
-            fill="currentColor"
-            d="M2 2h5v2H2V2zm0 4h5v2H2V6zm0 4h5v2H2v-2zm7-6h5v2H9V4zm0 4h5v2H9V8zm0 4h5v2H9v-2z"
-        />,
-    );
-}
-
-function expandIcon(): React.ReactElement {
-    return icon(
-        <path
-            fill="currentColor"
-            d="M2 2h5v1H3v4H2V2zm7 0h5v5h-1V3H9V2zM3 9h4v1H3v3h4v1H2V9h1zm10 0h1v5H9v-1h4V9z"
-        />,
-    );
-}
-
-function collapseIcon(): React.ReactElement {
-    return icon(
-        <path
-            fill="currentColor"
-            d="M3 2h4v1H3v4H2V2h1zm6 0h5v5h-1V3H9V2zM2 9h5v1H3v4H2V9zm7 0h5v5H9v-1h4v-3H9V9z"
-        />,
-    );
-}
-
 function moreIcon(): React.ReactElement {
     return icon(
         <path
@@ -68,13 +38,11 @@ function moreIcon(): React.ReactElement {
     );
 }
 
-/** PyCharm-parity Shelf controls: four icon actions and one overflow trigger. */
+/** PyCharm-parity Shelf controls: three icon actions and one overflow trigger. */
 export function ShelfToolbar({
-    canUnshelve,
     canExpandOrCollapse,
     groupByDir,
     showAlreadyUnshelved,
-    onUnshelve,
     onToggleGroupBy,
     onExpandAll,
     onCollapseAll,
@@ -110,16 +78,8 @@ export function ShelfToolbar({
             flexShrink={0}
         >
             <ShelfToolbarIconButton
-                label={t("shelf.action.unshelve")}
-                icon={unshelveIcon()}
-                onClick={onUnshelve}
-                disabled={!canUnshelve}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
-            />
-            <ShelfToolbarIconButton
                 label={t("shelf.action.groupBy")}
-                icon={groupIcon()}
+                icon={icon(<GroupByDirectoryIconGlyph />)}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
                 disabled={false}
@@ -128,7 +88,7 @@ export function ShelfToolbar({
             />
             <ShelfToolbarIconButton
                 label={t("shelf.action.expandAll")}
-                icon={expandIcon()}
+                icon={icon(<ExpandAllIconGlyph />)}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
                 hoverDelay={hoverDelay}
@@ -136,7 +96,7 @@ export function ShelfToolbar({
             />
             <ShelfToolbarIconButton
                 label={t("shelf.action.collapseAll")}
-                icon={collapseIcon()}
+                icon={icon(<CollapseAllIconGlyph />)}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
                 hoverDelay={hoverDelay}

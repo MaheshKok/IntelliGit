@@ -6,6 +6,7 @@ import { TabBar } from "./TabBar";
 import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
 import { ShelfTab } from "./ShelfTab";
+import { isActiveShelf } from "./ShelfList";
 import { useCheckedFiles } from "../hooks/useCheckedFiles";
 import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
@@ -313,6 +314,7 @@ export function RepositoryAccordion({
             <Flex direction="column" flex={1} minH={0} overflow="hidden">
                 <TabBar
                     stashCount={repository.stashes.length}
+                    shelfCount={(repository.shelves ?? []).filter(isActiveShelf).length}
                     shelfWarningCount={(repository.shelfHealth ?? []).length}
                     onSync={() => postRepositoryCommand("sync")}
                     onFetch={() => postRepositoryCommand("fetch")}
@@ -420,6 +422,7 @@ export function RepositoryAccordion({
                     <Box flex={1} minH={0} overflow="hidden">
                         <TabBar
                             stashCount={repository.stashes.length}
+                            shelfCount={(repository.shelves ?? []).filter(isActiveShelf).length}
                             shelfWarningCount={(repository.shelfHealth ?? []).length}
                             onSync={() => postRepositoryCommand("sync")}
                             onFetch={() => postRepositoryCommand("fetch")}
