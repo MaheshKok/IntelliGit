@@ -18,7 +18,7 @@ import { t } from "../i18n";
 import { countFiles, type TreeEntry, type TreeFolder } from "../fileTree";
 
 /** Horizontal distance between nested tree levels. */
-export const TREE_INDENT_STEP = 14;
+const TREE_INDENT_STEP = 14;
 /** Half a chevron, used to centre a guide line under the glyph above it. */
 const CHEVRON_HALF = 8;
 /**
@@ -50,7 +50,7 @@ export interface TreeRowFile {
 }
 
 /** Per-file wiring a caller supplies. Everything beyond selection is optional. */
-export interface TreeFileWiring {
+interface TreeFileWiring {
     /** Whether this row is the tree's current file; the caller owns the identity. */
     isSelected: boolean;
     onSelect: () => void;

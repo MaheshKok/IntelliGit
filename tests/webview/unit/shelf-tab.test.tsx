@@ -9,7 +9,10 @@ import type {
     ShelfEntry,
     ShelfMutationStatus,
 } from "../../../src/webviews/protocol/commitPanelMessages";
-import { ShelfTab } from "../../../src/webviews/react/commit-panel/components/ShelfTab";
+import {
+    ShelfTab,
+    type ShelfMutationOutcome,
+} from "../../../src/webviews/react/commit-panel/components/ShelfTab";
 import { CleanUpDialog } from "../../../src/webviews/react/commit-panel/components/CleanUpDialog";
 import { formatDateTime } from "../../../src/webviews/react/shared/date";
 import theme from "../../../src/webviews/react/commit-panel/theme";

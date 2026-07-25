@@ -229,7 +229,7 @@ export async function executeShelfMutationRequest(
 }
 
 /** Validates and executes a single shelf request without pre-checking any service CAS input. */
-export async function shelfMutationFromMessage(
+async function shelfMutationFromMessage(
     shelfService: ShelfService,
     message: Record<string, unknown>,
     hostExportFileUri?: string,

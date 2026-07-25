@@ -3,7 +3,7 @@ import path from "node:path";
 import { isSafeShelfRelativePath } from "./pathValidation";
 
 /** Limits enforced before imported patch metadata can drive storage or worktree writes. */
-export interface ShelfImportValidationLimits {
+interface ShelfImportValidationLimits {
     readonly maxSourceBytes: number;
     readonly maxFiles: number;
     readonly maxDecodedBytesPerFile: number;
@@ -21,7 +21,7 @@ export interface ShelfImportValidationOptions {
 }
 
 /** Metadata retained after parsing patch bytes without materializing their payload. */
-export interface ValidatedImportedPatchFile {
+interface ValidatedImportedPatchFile {
     readonly path: string;
     readonly type: "regular";
     readonly decodedBytes: number;
@@ -47,7 +47,7 @@ export class ShelfImportValidationError extends Error {
 }
 
 /** Conservative defaults; callers can lower, but never disable, individual bounds. */
-export const DEFAULT_SHELF_IMPORT_VALIDATION_LIMITS: Readonly<ShelfImportValidationLimits> = {
+const DEFAULT_SHELF_IMPORT_VALIDATION_LIMITS: Readonly<ShelfImportValidationLimits> = {
     maxSourceBytes: 32 * 1024 * 1024,
     maxFiles: 10_000,
     maxDecodedBytesPerFile: 16 * 1024 * 1024,

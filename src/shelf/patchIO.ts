@@ -130,7 +130,7 @@ const QUOTE = 0x22;
 const BACKSLASH = 0x5c;
 
 /** Raised when a patch header cannot provide a safe, unambiguous destination path. */
-export class ShelfPatchPathError extends Error {
+class ShelfPatchPathError extends Error {
     /** Creates a metadata-only parse failure without exposing patch content. */
     constructor() {
         super("Patch block has no safe destination path.");

@@ -57,7 +57,7 @@ export type PerEntryResult =
           readonly pathFingerprint: string;
       };
 /** Aggregate state returned by a shelf mutation. */
-export type ShelfMutationStatus =
+type ShelfMutationStatus =
     | "ok"
     | "partial"
     | "conflicts"

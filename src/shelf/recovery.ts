@@ -59,7 +59,7 @@ export interface PendingShelfRecoveryResult {
 }
 
 /** Raised before mutation when recovery staging is not on the worktree device. */
-export class RecoveryExdevError extends Error {
+class RecoveryExdevError extends Error {
     /** Creates the fixed cross-device recovery refusal. */
     constructor() {
         super("EXDEV: recovery staging is not on the worktree filesystem.");

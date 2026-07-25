@@ -100,7 +100,7 @@ export function extractOursFromConflictMarkers(content: string): string {
 }
 
 /** Runs the same temporary-directory patch materialization used by flattened merge-file fallback. */
-export async function materializeShelfPatchedBase(
+async function materializeShelfPatchedBase(
     input: MaterializeInput,
     dependencies: Pick<ShelfConflictSessionDependencies, "store" | "executor">,
 ): Promise<Buffer | undefined> {
@@ -324,7 +324,7 @@ export class ShelfConflictSessionService {
 }
 
 /** Preserves overridden local bytes in the same recovery area that explicit recovery purge manages. */
-export async function parkShelfConflictCurrent(
+async function parkShelfConflictCurrent(
     store: ShelfStore,
     gitDir: string,
     input: ParkCurrentInput,
@@ -362,7 +362,7 @@ export async function parkShelfConflictCurrent(
 }
 
 /** Reuses the ordinary applied-entry journal and ghost transition for a successful resolution. */
-export async function markShelfEntryApplied(
+async function markShelfEntryApplied(
     store: ShelfStore,
     shelfId: string,
     manifest: ShelfPersistenceManifest,

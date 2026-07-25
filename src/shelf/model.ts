@@ -22,10 +22,10 @@ export interface ShelfLayerBlock {
 }
 
 /** Whether the captured base can be read later for conflict handling. */
-export type ShelfBaseAvailability = "full" | "history" | "none";
+type ShelfBaseAvailability = "full" | "history" | "none";
 
 /** Lifecycle retained for an individual shelf change. */
-export type ShelfFileLifecycle = "shelved" | "applied" | "retained";
+type ShelfFileLifecycle = "shelved" | "applied" | "retained";
 
 /** Shelf-wide metadata retained with every immutable generation. */
 export interface ShelfMetadata {

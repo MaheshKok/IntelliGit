@@ -25,50 +25,40 @@ import { getShelfMenuItems } from "./shelfMenu";
 import { shelfFileDragStart, shelfRowDragStart } from "./shelfDrag";
 
 /** Selects one shelf and requests its associated file entries. */
-export type ShelfSelectMessage = Extract<OutboundMessage, { type: "shelfSelect" }>;
+type ShelfSelectMessage = Extract<OutboundMessage, { type: "shelfSelect" }>;
 
 /** Applies a non-empty flattened shelf-entry selection. */
-export type ShelfUnshelveMessage = Extract<OutboundMessage, { type: "unshelve" }> & {
+type ShelfUnshelveMessage = Extract<OutboundMessage, { type: "unshelve" }> & {
     changeIds: string[];
     mode: "flattened";
 };
 
 /** Renames a shelf with its expected immutable generation. */
-export type ShelfRenameMessage = Extract<OutboundMessage, { type: "shelfRename" }>;
+type ShelfRenameMessage = Extract<OutboundMessage, { type: "shelfRename" }>;
 /** Deletes a shelf with its expected immutable generation. */
-export type ShelfDeleteMessage = Extract<OutboundMessage, { type: "shelfDelete" }>;
+type ShelfDeleteMessage = Extract<OutboundMessage, { type: "shelfDelete" }>;
 /** Opens the immutable base-to-shelved diff. */
-export type ShelfDiffMessage = Extract<OutboundMessage, { type: "shelfDiff" }>;
+type ShelfDiffMessage = Extract<OutboundMessage, { type: "shelfDiff" }>;
 /** Opens the immutable shelved-to-local comparison. */
-export type ShelfCompareWithLocalMessage = Extract<
-    OutboundMessage,
-    { type: "shelfCompareWithLocal" }
->;
+type ShelfCompareWithLocalMessage = Extract<OutboundMessage, { type: "shelfCompareWithLocal" }>;
 /** Restores an applied shelf with its expected immutable generation. */
-export type ShelfRestoreGhostMessage = Extract<OutboundMessage, { type: "shelfRestoreGhost" }>;
+type ShelfRestoreGhostMessage = Extract<OutboundMessage, { type: "shelfRestoreGhost" }>;
 /** Idempotent request importing host-picked patch files as a new shelf. */
-export type ShelfImportPatchMessage = Extract<OutboundMessage, { type: "shelfImportPatch" }>;
+type ShelfImportPatchMessage = Extract<OutboundMessage, { type: "shelfImportPatch" }>;
 /** CAS-protected whole-shelf flattened patch export request. */
-export type ShelfExportPatchMessage = Extract<OutboundMessage, { type: "shelfExportPatch" }> & {
+type ShelfExportPatchMessage = Extract<OutboundMessage, { type: "shelfExportPatch" }> & {
     changeIds: string[];
 };
 /** Copies a scoped flattened shelf patch through the extension host. */
-export type ShelfCopyPatchMessage = Extract<
-    OutboundMessage,
-    { type: "shelfCopyPatchToClipboard" }
-> & { changeIds: string[] };
+type ShelfCopyPatchMessage = Extract<OutboundMessage, { type: "shelfCopyPatchToClipboard" }> & {
+    changeIds: string[];
+};
 /** Catalog-CAS deletion request for selected already-unshelved ghosts. */
-export type ShelfCleanUpMessage = Extract<OutboundMessage, { type: "shelfCleanUp" }>;
+type ShelfCleanUpMessage = Extract<OutboundMessage, { type: "shelfCleanUp" }>;
 /** Non-mutating request opening the host-owned shelf merge editor. */
-export type ShelfOpenConflictEditorMessage = Extract<
-    OutboundMessage,
-    { type: "shelfOpenConflictEditor" }
->;
+type ShelfOpenConflictEditorMessage = Extract<OutboundMessage, { type: "shelfOpenConflictEditor" }>;
 /** CAS-protected structural shelf-conflict resolution. */
-export type ShelfResolveStructuralMessage = Extract<
-    OutboundMessage,
-    { type: "shelfResolveStructural" }
->;
+type ShelfResolveStructuralMessage = Extract<OutboundMessage, { type: "shelfResolveStructural" }>;
 
 /** Typed result rendered after one shelf mutation completes. */
 export interface ShelfMutationOutcome {
