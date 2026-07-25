@@ -147,7 +147,9 @@ export function CommitPanelPane({
                             onRestoreGhost={(message) => vscode.postMessage(message)}
                             onImportPatch={(message) => vscode.postMessage(message)}
                             onExportPatch={(message) => vscode.postMessage(message)}
+                            onCopyPatch={(message) => vscode.postMessage(message)}
                             onCleanUp={(message) => vscode.postMessage(message)}
+                            onToggleGroupBy={onToggleGroupBy}
                             onOpenConflictEditor={(message) => vscode.postMessage(message)}
                             onResolveStructural={(message) => vscode.postMessage(message)}
                         />

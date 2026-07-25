@@ -145,7 +145,15 @@ describe("unshelve remove-on-success default", () => {
                 />
             </ChakraProvider>,
         );
-        click(buttonByText(container, "Unshelve Silently"));
+        const row = container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
+        act(() =>
+            row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 })),
+        );
+        const silentUnshelve = Array.from(document.querySelectorAll<HTMLElement>(".intelligit-context-item")).find(
+            (candidate) => candidate.textContent?.trim().startsWith("Unshelve Silently"),
+        );
+        if (!silentUnshelve) throw new Error('Menu item "Unshelve Silently" not found');
+        click(silentUnshelve);
         expect(onUnshelveSilently).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: "unshelve",

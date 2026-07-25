@@ -127,7 +127,9 @@ export async function materializeShelfPatchedBase(
         });
         if (checked.exitCode !== 0) return undefined;
         await executor.runBinary(["-C", directory, "apply", "-"], { input: patch });
-        return readFile(target);
+        // Must await before the finally removes `directory`: returning the pending
+        // readFile lets the rm win the race and surface a spurious ENOENT.
+        return await readFile(target);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

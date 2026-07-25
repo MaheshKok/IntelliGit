@@ -11,7 +11,17 @@ import { t } from "../../shared/i18n";
 interface ShelfFilePaneProps {
     entries: ShelfFileEntry[];
     groupByDir: boolean;
+    isOpen: boolean;
+    onOpenChange: (isOpen: boolean) => void;
+    collapsedDirectories: Set<string>;
+    onCollapsedDirectoriesChange: (directories: Set<string>) => void;
     onFileActivate: (entry: ShelfFileEntry) => void;
+    onContextMenu?: (
+        entry: ShelfFileEntry,
+        x: number,
+        y: number,
+        returnFocusTarget: HTMLElement,
+    ) => void;
     onDragStart?: (event: React.DragEvent<HTMLElement>, entry: ShelfFileEntry) => void;
 }
 
@@ -30,16 +40,34 @@ function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
     };
 }
 
+/** Returns every directory currently represented by the selected shelf's file tree. */
+export function shelfDirectoryPaths(entries: ShelfFileEntry[]): Set<string> {
+    const tree = buildFileTree(entries.map(displayFile));
+    const paths = new Set<string>();
+    const collect = (nodes: TreeEntry<ShelfDisplayFile>[]): void => {
+        for (const node of nodes) {
+            if (node.type === "file") continue;
+            paths.add(node.path);
+            collect(node.children);
+        }
+    };
+    collect(tree);
+    return paths;
+}
+
 /** Read-only file rows for the selected shelf; activation always opens its base-to-shelved diff. */
 export function ShelfFilePane({
     entries,
     groupByDir,
+    isOpen,
+    onOpenChange,
+    collapsedDirectories,
+    onCollapsedDirectoriesChange,
     onFileActivate,
+    onContextMenu,
     onDragStart,
 }: ShelfFilePaneProps): React.ReactElement {
-    const [isOpen, setIsOpen] = useState(true);
     const [selectedChangeId, setSelectedChangeId] = useState<string | null>(null);
-    const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
     const files = useMemo(() => entries.map(displayFile), [entries]);
     const tree = useMemo(() => buildFileTree(files), [files]);
 
@@ -59,6 +87,10 @@ export function ShelfFilePane({
                     onFileActivate(entry);
                 }}
                 onActivate={() => onFileActivate(entry)}
+                onOpenContextMenu={(_, x, y, returnFocusTarget) => {
+                    setSelectedChangeId(entry.changeId);
+                    onContextMenu?.(entry, x, y, returnFocusTarget);
+                }}
                 dataShelfFile={entry.changeId}
                 isCurrent={selectedChangeId === entry.changeId}
                 contextMenuEnabled={false}
@@ -83,12 +115,14 @@ export function ShelfFilePane({
                         isAllChecked={false}
                         isSomeChecked={false}
                         onToggleExpand={(path) =>
-                            setCollapsedDirectories((current) => {
-                                const next = new Set(current);
-                                if (next.has(path)) next.delete(path);
-                                else next.add(path);
-                                return next;
-                            })
+                            onCollapsedDirectoriesChange(
+                                (() => {
+                                    const next = new Set(collapsedDirectories);
+                                    if (next.has(path)) next.delete(path);
+                                    else next.add(path);
+                                    return next;
+                                })(),
+                            )
                         }
                         onToggleCheck={() => undefined}
                         checkboxVisibility="none"
@@ -117,7 +151,7 @@ export function ShelfFilePane({
                 isOpen={isOpen}
                 isAllChecked={false}
                 isSomeChecked={false}
-                onToggleOpen={() => setIsOpen((current) => !current)}
+                onToggleOpen={() => onOpenChange(!isOpen)}
                 onToggleCheck={() => undefined}
                 checkboxVisibility="none"
             />

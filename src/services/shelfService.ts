@@ -885,8 +885,10 @@ export class ShelfService {
                 indexPatch ?? Buffer.alloc(0),
                 worktreePatch ?? Buffer.alloc(0),
             ]);
+            // Must await before the finally removes `temp`: returning the pending
+            // readFile lets the rm win the race and surface a spurious ENOENT.
             return (await this.applyPatchUnder(temp, safeRelativePath, patch))
-                ? readFile(target)
+                ? await readFile(target)
                 : undefined;
         } finally {
             await rm(temp, { recursive: true, force: true });

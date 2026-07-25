@@ -1459,6 +1459,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             case "shelfDelete":
             case "shelfRename":
             case "shelfExportPatch":
+            case "shelfCopyPatchToClipboard":
             case "shelfImportPatch":
             case "shelfRestoreGhost":
             case "shelfCleanUp":

@@ -40,8 +40,10 @@ function click(element: Element): void {
     act(() => element.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
-function key(element: Element, value: string): void {
-    act(() => element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: value })));
+function key(element: Element, value: string, init: KeyboardEventInit = {}): void {
+    act(() =>
+        element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: value, ...init })),
+    );
 }
 
 function inputValue(input: HTMLInputElement, value: string): void {
@@ -65,9 +67,44 @@ function button(container: ParentNode, label: string): HTMLButtonElement {
 function menuItem(label: string): HTMLElement {
     const found = Array.from(
         document.querySelectorAll<HTMLElement>(".intelligit-context-item"),
-    ).find((candidate) => candidate.textContent?.trim() === label);
+    ).find((candidate) => candidate.textContent?.trim().startsWith(label));
     if (!found) throw new Error(`Missing menu item: ${label}`);
     return found;
+}
+
+function iconButton(container: ParentNode, label: string): HTMLButtonElement {
+    const found = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    if (!found) throw new Error(`Missing icon button: ${label}`);
+    return found;
+}
+
+function openContextMenu(element: HTMLElement): void {
+    act(() =>
+        element.dispatchEvent(
+            new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }),
+        ),
+    );
+}
+
+function contextMenuLabels(): string[] {
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((item) => {
+        const children = Array.from(item.children);
+        return (children.length === 3 ? children[1] : children[0])?.textContent?.trim() ?? "";
+    });
+}
+
+function contextMenuSequence(): string[] {
+    const menu = document.querySelector('[role="menu"]') as HTMLElement;
+    return Array.from(menu.children).map((child) => {
+        if (child.tagName === "HR") return "separator";
+        const item = child as HTMLElement;
+        const children = Array.from(item.children);
+        return (children.length === 3 ? children[1] : children[0])?.textContent?.trim() ?? "";
+    });
+}
+
+function openOverflow(container: ParentNode): void {
+    click(iconButton(container, "More Options"));
 }
 
 function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>> = {}) {
@@ -82,7 +119,9 @@ function renderShelfTab(overrides: Partial<React.ComponentProps<typeof ShelfTab>
         onRestoreGhost: vi.fn(),
         onImportPatch: vi.fn(),
         onExportPatch: vi.fn(),
+        onCopyPatch: vi.fn(),
         onCleanUp: vi.fn(),
+        onToggleGroupBy: vi.fn(),
         onOpenConflictEditor: vi.fn(),
         onResolveStructural: vi.fn(),
     };
@@ -155,18 +194,22 @@ describe("ShelfTab", () => {
             shelfId: "shelf-c",
         });
         key(second, "ContextMenu");
-        expect(
-            Array.from(document.querySelectorAll('[role="menuitem"]')).map((item) =>
-                item.textContent?.trim(),
-            ),
-        ).toEqual([
+        expect(contextMenuSequence()).toEqual([
             "Unshelve…",
             "Unshelve Silently",
+            "Restore",
+            "Show Diff",
+            "Show Diff in a New Tab",
+            "Compare with Local",
+            "Create Patch…",
+            "Copy as Patch to Clipboard",
+            "Import Patches…",
+            "separator",
             "Rename",
             "Delete",
-            "Show Diff",
-            "Compare with Local",
         ]);
+        expect(document.querySelectorAll('[role="menu"] hr')).toHaveLength(1);
+        expect(menuItem("Restore").getAttribute("aria-disabled")).toBe("true");
 
         unmount(root, container);
     });
@@ -181,7 +224,9 @@ describe("ShelfTab", () => {
         const nextRow = container.querySelector('[data-shelf-id="shelf-c"]') as HTMLElement;
 
         click(nextRow);
-        expect(button(container, "Unshelve").disabled).toBe(true);
+        expect(iconButton(container, "Unshelve").disabled).toBe(true);
+        expect(iconButton(container, "Expand All").disabled).toBe(true);
+        expect(iconButton(container, "Collapse All").disabled).toBe(true);
         expect(container.querySelector('[data-testid="shelf-file-pane"]')).toBeNull();
         expect(container.textContent).toContain("Loading shelf files…");
 
@@ -230,13 +275,6 @@ describe("ShelfTab", () => {
             }),
         );
 
-        click(button(container, "Compare with Local"));
-        expect(callbacks.onCompareWithLocal).toHaveBeenCalledWith({
-            type: "shelfCompareWithLocal",
-            shelfId: "shelf-a",
-            expectedGeneration: 7,
-        });
-
         unmount(root, container);
     });
 
@@ -259,7 +297,7 @@ describe("ShelfTab", () => {
 
     it("submits selected unshelve entries, defaults removal on, and rejects an empty selection", () => {
         const { root, container, callbacks } = renderShelfTab();
-        click(button(container, "Unshelve"));
+        click(iconButton(container, "Unshelve"));
         const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
         const first = dialog.querySelector('input[aria-label="src/parser.ts"]') as HTMLInputElement;
         const remove = dialog.querySelector(
@@ -367,7 +405,8 @@ describe("ShelfTab", () => {
 
     it("reveals ghost rows only when requested and restores a ghost with its generation", () => {
         const { root, container, callbacks } = renderShelfTab();
-        click(button(container, "Show Already Unshelved"));
+        openOverflow(container);
+        click(menuItem("Show Already Unshelved"));
         const ghost = container.querySelector('[data-shelf-id="shelf-b"]') as HTMLElement;
         expect(ghost.getAttribute("data-ghost")).toBe("true");
         act(() =>
@@ -375,11 +414,22 @@ describe("ShelfTab", () => {
                 new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }),
             ),
         );
-        expect(
-            Array.from(document.querySelectorAll('[role="menuitem"]')).map((item) =>
-                item.textContent?.trim(),
-            ),
-        ).toEqual(["Restore", "Show Diff", "Compare with Local", "Delete"]);
+        expect(contextMenuSequence()).toEqual([
+            "Unshelve…",
+            "Unshelve Silently",
+            "Restore",
+            "Show Diff",
+            "Show Diff in a New Tab",
+            "Compare with Local",
+            "Create Patch…",
+            "Copy as Patch to Clipboard",
+            "Import Patches…",
+            "separator",
+            "Rename",
+            "Delete",
+        ]);
+        expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("true");
+        expect(menuItem("Restore").getAttribute("aria-disabled")).toBe("false");
         click(menuItem("Restore"));
         expect(callbacks.onRestoreGhost).toHaveBeenCalledWith(
             expect.objectContaining({
@@ -394,25 +444,32 @@ describe("ShelfTab", () => {
 
     it("disables patch export while a newly selected shelf is still loading its files", () => {
         const { root, container } = renderShelfTab();
-        click(button(container, "Show Already Unshelved"));
+        openOverflow(container);
+        click(menuItem("Show Already Unshelved"));
         click(container.querySelector('[data-shelf-id="shelf-b"]') as HTMLElement);
 
-        expect(button(container, "Create Patch…").disabled).toBe(true);
+        openContextMenu(container.querySelector('[data-shelf-id="shelf-b"]') as HTMLElement);
+        expect(menuItem("Create Patch…").getAttribute("aria-disabled")).toBe("true");
         unmount(root, container);
     });
 
     it("keeps selected-shelf controls enabled when its file list is empty", () => {
         const { root, container } = renderShelfTab({ shelfFiles: [] });
-        expect(button(container, "Rename").disabled).toBe(false);
-        expect(button(container, "Delete").disabled).toBe(false);
-        expect(button(container, "Show Diff").disabled).toBe(false);
+        openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
+        expect(iconButton(container, "Unshelve").disabled).toBe(false);
+        expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("false");
+        expect(menuItem("Unshelve Silently").getAttribute("aria-disabled")).toBe("false");
+        expect(menuItem("Rename").getAttribute("aria-disabled")).toBe("false");
+        expect(menuItem("Delete").getAttribute("aria-disabled")).toBe("false");
+        expect(menuItem("Show Diff").getAttribute("aria-disabled")).toBe("false");
         unmount(root, container);
     });
 
     it("imports without paths and exports every selected shelf change", () => {
         const { root, container, callbacks } = renderShelfTab();
 
-        click(button(container, "Import Patches…"));
+        openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
+        click(menuItem("Import Patches…"));
         expect(callbacks.onImportPatch).toHaveBeenCalledWith({
             type: "shelfImportPatch",
             requestId: expect.any(String),
@@ -420,7 +477,8 @@ describe("ShelfTab", () => {
             expectedCatalogGeneration: 12,
         });
         expect(callbacks.onImportPatch.mock.calls[0][0]).not.toHaveProperty("fileUris");
-        click(button(container, "Create Patch…"));
+        openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
+        click(menuItem("Create Patch…"));
         expect(callbacks.onExportPatch).toHaveBeenCalledWith({
             type: "shelfExportPatch",
             requestId: expect.any(String),
@@ -434,8 +492,9 @@ describe("ShelfTab", () => {
 
     it("disables patch export when no shelf is selected", () => {
         const { root, container } = renderShelfTab({ selectedShelfId: null });
-        expect(button(container, "Create Patch…").disabled).toBe(true);
-        expect(button(container, "Import Patches…").disabled).toBe(false);
+        openContextMenu(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement);
+        expect(menuItem("Create Patch…").getAttribute("aria-disabled")).toBe("true");
+        expect(menuItem("Import Patches…").getAttribute("aria-disabled")).toBe("false");
         unmount(root, container);
     });
 
@@ -516,7 +575,8 @@ describe("ShelfTab", () => {
                 },
             ],
         });
-        click(button(container, "Clean Up Shelf…"));
+        openOverflow(container);
+        click(menuItem("Clean Up Shelf…"));
         const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
         click(button(dialog, "Clean Up Shelf"));
         expect(callbacks.onCleanUp).toHaveBeenCalledWith({

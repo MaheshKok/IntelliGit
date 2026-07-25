@@ -33,15 +33,26 @@ export async function showShelfDiffFromPanel(
     shelfId: string,
     changeId: string | undefined,
     mode: ShelfDiffMode,
+    newTab = false,
 ): Promise<void> {
     if (changeId !== undefined) {
         const snapshot = await snapshotFor(deps, shelfId, changeId, mode);
-        await vscode.commands.executeCommand(
-            "vscode.diff",
-            snapshot.left,
-            snapshot.right,
-            `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`,
-        );
+        if (newTab) {
+            await vscode.commands.executeCommand(
+                "vscode.diff",
+                snapshot.left,
+                snapshot.right,
+                `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`,
+                { preview: false },
+            );
+        } else {
+            await vscode.commands.executeCommand(
+                "vscode.diff",
+                snapshot.left,
+                snapshot.right,
+                `${snapshot.path} (${snapshot.leftLabel} <-> ${snapshot.rightLabel})`,
+            );
+        }
         return;
     }
 
@@ -49,12 +60,11 @@ export async function showShelfDiffFromPanel(
     const snapshots = await Promise.all(
         files.map((file) => snapshotFor(deps, shelfId, file.changeId, mode)),
     );
-    const changes = snapshots.map((snapshot): ShelfChange => [
-        snapshot.left,
-        snapshot.left,
-        snapshot.right,
-    ]);
+    const changes = snapshots.map(
+        (snapshot): ShelfChange => [snapshot.left, snapshot.left, snapshot.right],
+    );
     await vscode.commands.executeCommand("vscode.changes", `Shelf ${shelfId}`, changes);
+    if (newTab) await vscode.commands.executeCommand("workbench.action.keepEditor");
 }
 
 async function snapshotFor(
@@ -72,9 +82,7 @@ async function snapshotFor(
     const contents = await deps.shelfReader.getShelfDiffContents(shelfId, changeId);
     if (contents.binary) {
         const [leftLabel, rightLabel] =
-            mode === "baseToShelved"
-                ? [BASE_LABEL, SHELVED_LABEL]
-                : [SHELVED_LABEL, LOCAL_LABEL];
+            mode === "baseToShelved" ? [BASE_LABEL, SHELVED_LABEL] : [SHELVED_LABEL, LOCAL_LABEL];
         return {
             path: contents.path,
             left: createReadonlyDiffUri(contents.path, BINARY_DIFF_PLACEHOLDER, leftLabel),

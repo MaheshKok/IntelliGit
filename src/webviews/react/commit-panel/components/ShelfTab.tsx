@@ -14,35 +14,37 @@ import { resultMessage, statusMessage } from "./ShelfMessages";
 import { type ShelfContextAction } from "./ShelfRow";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
-import { ShelfFilePane } from "./ShelfFilePane";
+import { ShelfFilePane, shelfDirectoryPaths } from "./ShelfFilePane";
 import { CleanUpDialog } from "./CleanUpDialog";
 import {
     RenameStructuralDialog,
     ShelfDeleteConfirmation,
     ShelfHealthWarningBanner,
 } from "./ShelfTabDialogs";
+import { getShelfMenuItems } from "./shelfMenu";
+import { shelfFileDragStart, shelfRowDragStart } from "./shelfDrag";
 
-/** Host message selecting one shelf and fetching its files. */
+/** Selects one shelf and requests its associated file entries. */
 export type ShelfSelectMessage = Extract<OutboundMessage, { type: "shelfSelect" }>;
 
-/** Flattened unshelve request with a non-empty whole-entry selection. */
+/** Applies a non-empty flattened shelf-entry selection. */
 export type ShelfUnshelveMessage = Extract<OutboundMessage, { type: "unshelve" }> & {
     changeIds: string[];
     mode: "flattened";
 };
 
-/** CAS-protected shelf rename request. */
+/** Renames a shelf with its expected immutable generation. */
 export type ShelfRenameMessage = Extract<OutboundMessage, { type: "shelfRename" }>;
-/** CAS-protected shelf deletion request. */
+/** Deletes a shelf with its expected immutable generation. */
 export type ShelfDeleteMessage = Extract<OutboundMessage, { type: "shelfDelete" }>;
-/** Request for an immutable base-to-shelved comparison. */
+/** Opens the immutable base-to-shelved diff. */
 export type ShelfDiffMessage = Extract<OutboundMessage, { type: "shelfDiff" }>;
-/** Request for an immutable shelved-to-local comparison. */
+/** Opens the immutable shelved-to-local comparison. */
 export type ShelfCompareWithLocalMessage = Extract<
     OutboundMessage,
     { type: "shelfCompareWithLocal" }
 >;
-/** CAS-protected request restoring a completed ghost shelf. */
+/** Restores an applied shelf with its expected immutable generation. */
 export type ShelfRestoreGhostMessage = Extract<OutboundMessage, { type: "shelfRestoreGhost" }>;
 /** Idempotent request importing host-picked patch files as a new shelf. */
 export type ShelfImportPatchMessage = Extract<OutboundMessage, { type: "shelfImportPatch" }>;
@@ -50,6 +52,11 @@ export type ShelfImportPatchMessage = Extract<OutboundMessage, { type: "shelfImp
 export type ShelfExportPatchMessage = Extract<OutboundMessage, { type: "shelfExportPatch" }> & {
     changeIds: string[];
 };
+/** Copies a scoped flattened shelf patch through the extension host. */
+export type ShelfCopyPatchMessage = Extract<
+    OutboundMessage,
+    { type: "shelfCopyPatchToClipboard" }
+> & { changeIds: string[] };
 /** Catalog-CAS deletion request for selected already-unshelved ghosts. */
 export type ShelfCleanUpMessage = Extract<OutboundMessage, { type: "shelfCleanUp" }>;
 /** Non-mutating request opening the host-owned shelf merge editor. */
@@ -95,7 +102,9 @@ export interface ShelfTabProps {
     onRestoreGhost: (message: ShelfRestoreGhostMessage) => void;
     onImportPatch: (message: ShelfImportPatchMessage) => void;
     onExportPatch: (message: ShelfExportPatchMessage) => void;
+    onCopyPatch: (message: ShelfCopyPatchMessage) => void;
     onCleanUp: (message: ShelfCleanUpMessage) => void;
+    onToggleGroupBy: () => void;
     onOpenConflictEditor: (message: ShelfOpenConflictEditorMessage) => void;
     onResolveStructural: (message: ShelfResolveStructuralMessage) => void;
     onDragOver?: (event: React.DragEvent<HTMLElement>) => void;
@@ -108,10 +117,13 @@ export interface ShelfTabProps {
 
 interface ShelfContextMenuState {
     shelf: ShelfEntry;
+    targetChangeId?: string;
     x: number;
     y: number;
     returnFocusTarget: HTMLElement;
 }
+const isMacWebview =
+    typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent + navigator.platform);
 const MIN_SHELF_LIST_HEIGHT = 100;
 const SHELF_LOWER_PANE_RESERVED_HEIGHT = 166;
 const SHELF_SPLITTER_STEP = 10;
@@ -119,45 +131,6 @@ let shelfRequestSequence = 0;
 function nextRequestId(): string {
     shelfRequestSequence += 1;
     return `shelf-mutation-${shelfRequestSequence}`;
-}
-function shelfRowDragStart(
-    onShelfEntryDragStart: ShelfTabProps["onShelfEntryDragStart"],
-    selectedShelf: ShelfEntry | null,
-    shelfFiles: ShelfFileEntry[],
-) {
-    if (
-        !onShelfEntryDragStart ||
-        !selectedShelf ||
-        selectedShelf.metadata.lifecycle === "applied"
-    ) {
-        return undefined;
-    }
-    return (event: React.DragEvent<HTMLElement>, shelf: ShelfEntry): void => {
-        onShelfEntryDragStart(event, {
-            shelfId: shelf.id,
-            generation: shelf.generation,
-            changeIds: shelfFiles.map((entry) => entry.changeId),
-        });
-    };
-}
-function shelfFileDragStart(
-    onShelfEntryDragStart: ShelfTabProps["onShelfEntryDragStart"],
-    selectedShelf: ShelfEntry | null,
-) {
-    if (
-        !onShelfEntryDragStart ||
-        !selectedShelf ||
-        selectedShelf.metadata.lifecycle === "applied"
-    ) {
-        return undefined;
-    }
-    return (event: React.DragEvent<HTMLElement>, entry: ShelfFileEntry): void => {
-        onShelfEntryDragStart(event, {
-            shelfId: selectedShelf.id,
-            generation: selectedShelf.generation,
-            changeIds: [entry.changeId],
-        });
-    };
 }
 function areShelfFilesCurrent(
     selectionOverride: string | null,
@@ -168,13 +141,11 @@ function areShelfFilesCurrent(
 function canUnshelveShelf(
     shelfFilesAreCurrent: boolean,
     selectedShelf: ShelfEntry | null,
-    shelfFiles: ShelfFileEntry[],
 ): boolean {
     return (
         shelfFilesAreCurrent &&
         selectedShelf !== null &&
-        selectedShelf.metadata.lifecycle !== "applied" &&
-        shelfFiles.length > 0
+        selectedShelf.metadata.lifecycle !== "applied"
     );
 }
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
@@ -198,7 +169,9 @@ export function ShelfTab({
     onRestoreGhost,
     onImportPatch,
     onExportPatch,
+    onCopyPatch,
     onCleanUp,
+    onToggleGroupBy,
     repositoryRoot,
     onOpenConflictEditor,
     onResolveStructural,
@@ -211,6 +184,8 @@ export function ShelfTab({
     const [selectionOverride, setSelectionOverride] = useState<string | null>(null);
     const [showAlreadyUnshelved, setShowAlreadyUnshelved] = useState(false);
     const [contextMenu, setContextMenu] = useState<ShelfContextMenuState | null>(null);
+    const [isFilePaneOpen, setIsFilePaneOpen] = useState(true);
+    const [collapsedDirectories, setCollapsedDirectories] = useState<Set<string>>(() => new Set());
     const [unshelveShelf, setUnshelveShelf] = useState<ShelfEntry | null>(null);
     const [renamingShelfId, setRenamingShelfId] = useState<string | null>(null);
     const [pendingRename, setPendingRename] = useState<{
@@ -238,7 +213,7 @@ export function ShelfTab({
         [displayedSelectedShelfId, shelves],
     );
     const shelfFilesAreCurrent = areShelfFilesCurrent(selectionOverride, selectedShelfId);
-    const canUnshelve = canUnshelveShelf(shelfFilesAreCurrent, selectedShelf, shelfFiles);
+    const canUnshelve = canUnshelveShelf(shelfFilesAreCurrent, selectedShelf);
     const outcomeShelf = useMemo(
         () =>
             outcome?.shelfId
@@ -334,18 +309,38 @@ export function ShelfTab({
         });
     }, [catalogGeneration, onImportPatch]);
 
-    const exportPatch = useCallback((): void => {
-        if (!selectedShelf) return;
-        const requestId = nextRequestId();
-        setLastExportRequestId(requestId);
-        onExportPatch({
-            type: "shelfExportPatch",
-            requestId,
-            shelfId: selectedShelf.id,
-            expectedGeneration: selectedShelf.generation,
-            changeIds: shelfFiles.map((entry) => entry.changeId),
-        });
-    }, [onExportPatch, selectedShelf, shelfFiles]);
+    const exportPatch = useCallback(
+        (
+            shelf: ShelfEntry = selectedShelf!,
+            changeIds = shelfFiles.map((entry) => entry.changeId),
+        ): void => {
+            if (!shelf || changeIds.length === 0) return;
+            const requestId = nextRequestId();
+            setLastExportRequestId(requestId);
+            onExportPatch({
+                type: "shelfExportPatch",
+                requestId,
+                shelfId: shelf.id,
+                expectedGeneration: shelf.generation,
+                changeIds,
+            });
+        },
+        [onExportPatch, selectedShelf, shelfFiles],
+    );
+
+    const copyPatch = useCallback(
+        (shelf: ShelfEntry, changeIds: string[]): void => {
+            if (changeIds.length === 0) return;
+            onCopyPatch({
+                type: "shelfCopyPatchToClipboard",
+                requestId: nextRequestId(),
+                shelfId: shelf.id,
+                expectedGeneration: shelf.generation,
+                changeIds,
+            });
+        },
+        [onCopyPatch],
+    );
 
     const resolveStructural = useCallback(
         (
@@ -372,47 +367,50 @@ export function ShelfTab({
     );
 
     const openContextMenu = useCallback(
-        (shelf: ShelfEntry, x: number, y: number, returnFocusTarget: HTMLElement): void => {
+        (
+            shelf: ShelfEntry,
+            x: number,
+            y: number,
+            returnFocusTarget: HTMLElement,
+            targetChangeId?: string,
+        ): void => {
             selectShelf(shelf.id);
             dialogFocusTargetRef.current = returnFocusTarget;
-            setContextMenu({ shelf, x, y, returnFocusTarget });
+            setContextMenu({ shelf, targetChangeId, x, y, returnFocusTarget });
         },
         [selectShelf],
     );
 
     const handleContextAction = useCallback(
-        (shelf: ShelfEntry, action: ShelfContextAction): void => {
-            if (!shelfFilesAreCurrent && (action === "unshelve" || action === "unshelveSilently")) {
-                return;
-            }
+        (shelf: ShelfEntry, action: ShelfContextAction, targetChangeId?: string): void => {
+            const scopedChangeIds = targetChangeId
+                ? [targetChangeId]
+                : shelfFiles.map((entry) => entry.changeId);
             if (action === "unshelve") {
-                setUnshelveShelf(shelf);
+                if (canUnshelve) setUnshelveShelf(shelf);
                 return;
             }
             if (action === "unshelveSilently") {
-                requestUnshelve(
-                    shelf,
-                    {
-                        changeIds: shelfFiles.map((entry) => entry.changeId),
-                        removeFromShelf: shelfRemoveOnUnshelve,
-                    },
-                    true,
-                );
+                if (canUnshelve)
+                    requestUnshelve(
+                        shelf,
+                        {
+                            changeIds: shelfFiles.map((entry) => entry.changeId),
+                            removeFromShelf: shelfRemoveOnUnshelve,
+                        },
+                        true,
+                    );
                 return;
             }
-            if (action === "rename") {
-                setRenamingShelfId(shelf.id);
-                return;
-            }
-            if (action === "delete") {
-                setDeleteShelf(shelf);
-                return;
-            }
-            if (action === "showDiff") {
+            if (action === "rename") return void setRenamingShelfId(shelf.id);
+            if (action === "delete") return void setDeleteShelf(shelf);
+            if (action === "showDiff" || action === "showDiffNewTab") {
                 onShowDiff({
                     type: "shelfDiff",
                     shelfId: shelf.id,
                     expectedGeneration: shelf.generation,
+                    ...(targetChangeId ? { changeId: targetChangeId } : {}),
+                    ...(action === "showDiffNewTab" ? { newTab: true } : {}),
                 });
                 return;
             }
@@ -421,23 +419,31 @@ export function ShelfTab({
                     type: "shelfCompareWithLocal",
                     shelfId: shelf.id,
                     expectedGeneration: shelf.generation,
+                    ...(targetChangeId ? { changeId: targetChangeId } : {}),
                 });
                 return;
             }
-            onRestoreGhost({
-                type: "shelfRestoreGhost",
-                requestId: nextRequestId(),
-                shelfId: shelf.id,
-                expectedGeneration: shelf.generation,
-            });
+            if (action === "createPatch") return void exportPatch(shelf, scopedChangeIds);
+            if (action === "copyPatchToClipboard") return void copyPatch(shelf, scopedChangeIds);
+            if (action === "importPatches") return void importPatch();
+            if (shelf.metadata.lifecycle === "applied")
+                onRestoreGhost({
+                    type: "shelfRestoreGhost",
+                    requestId: nextRequestId(),
+                    shelfId: shelf.id,
+                    expectedGeneration: shelf.generation,
+                });
         },
         [
+            canUnshelve,
+            copyPatch,
+            exportPatch,
+            importPatch,
             onCompareWithLocal,
             onRestoreGhost,
             onShowDiff,
             requestUnshelve,
             shelfFiles,
-            shelfFilesAreCurrent,
             shelfRemoveOnUnshelve,
         ],
     );
@@ -449,23 +455,57 @@ export function ShelfTab({
     );
     const handleShelfFileDragStart = shelfFileDragStart(onShelfEntryDragStart, selectedShelf);
 
-    const activeContextItems = [
-        {
-            label: t("shelf.action.unshelveMenu"),
-            action: "unshelve",
-            disabled: !shelfFilesAreCurrent,
+    const handleShelfShortcut = useCallback(
+        (event: React.KeyboardEvent<HTMLElement>): void => {
+            const target = event.target as HTMLElement;
+            if (
+                !selectedShelf ||
+                renamingShelfId ||
+                unshelveShelf ||
+                deleteShelf ||
+                isCleanUpOpen ||
+                renameStructuralResult ||
+                contextMenu ||
+                target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]') ||
+                target.closest("input, textarea, select, [contenteditable='true']") ||
+                target.isContentEditable
+            ) {
+                return;
+            }
+            const modifier = isMacWebview ? event.metaKey : event.ctrlKey;
+            if (event.key === "F2") {
+                event.preventDefault();
+                setRenamingShelfId(selectedShelf.id);
+            } else if (event.key === "Delete" || event.key === "Backspace") {
+                event.preventDefault();
+                dialogFocusTargetRef.current = document.activeElement as HTMLElement;
+                setDeleteShelf(selectedShelf);
+            } else if (modifier && event.key.toLowerCase() === "d") {
+                event.preventDefault();
+                handleContextAction(selectedShelf, "showDiff");
+            } else if (
+                modifier &&
+                event.shiftKey &&
+                event.key.toLowerCase() === "u" &&
+                canUnshelve
+            ) {
+                event.preventDefault();
+                dialogFocusTargetRef.current = document.activeElement as HTMLElement;
+                setUnshelveShelf(selectedShelf);
+            }
         },
-        {
-            label: t("shelf.action.unshelveSilently"),
-            action: "unshelveSilently",
-            disabled: !shelfFilesAreCurrent,
-        },
-        { label: t("shelf.action.rename"), action: "rename" },
-        { label: t("shelf.action.delete"), action: "delete" },
-        { label: "", action: "shelf-divider", separator: true },
-        { label: t("common.showDiff"), action: "showDiff" },
-        { label: t("shelf.action.compareWithLocal"), action: "compareWithLocal" },
-    ];
+        [
+            canUnshelve,
+            contextMenu,
+            deleteShelf,
+            handleContextAction,
+            isCleanUpOpen,
+            renameStructuralResult,
+            renamingShelfId,
+            selectedShelf,
+            unshelveShelf,
+        ],
+    );
 
     return (
         <Flex
@@ -479,6 +519,7 @@ export function ShelfTab({
             color="var(--intelligit-pycharm-foreground)"
             onDragOver={onDragOver}
             onDrop={onDrop}
+            onKeyDown={handleShelfShortcut}
         >
             <ShelfHealthWarningBanner warnings={shelfHealth} />
             <ShelfList
@@ -545,36 +586,23 @@ export function ShelfTab({
             />
             <ShelfToolbar
                 canUnshelve={canUnshelve}
-                hasSelectedShelf={selectedShelf !== null}
-                canExportPatch={selectedShelf !== null && shelfFilesAreCurrent}
+                canExpandOrCollapse={shelfFilesAreCurrent && shelfFiles.length > 0}
+                groupByDir={groupByDir}
                 showAlreadyUnshelved={showAlreadyUnshelved}
                 onUnshelve={() => {
                     dialogFocusTargetRef.current = document.activeElement as HTMLElement;
                     if (selectedShelf) setUnshelveShelf(selectedShelf);
                 }}
-                onUnshelveSilently={() => {
-                    if (!selectedShelf) return;
-                    requestUnshelve(
-                        selectedShelf,
-                        {
-                            changeIds: shelfFiles.map((entry) => entry.changeId),
-                            removeFromShelf: shelfRemoveOnUnshelve,
-                        },
-                        true,
-                    );
+                onToggleGroupBy={onToggleGroupBy}
+                onExpandAll={() => {
+                    setIsFilePaneOpen(true);
+                    setCollapsedDirectories(new Set());
                 }}
-                onShowDiff={() => selectedShelf && handleContextAction(selectedShelf, "showDiff")}
-                onCompareWithLocal={() =>
-                    selectedShelf && handleContextAction(selectedShelf, "compareWithLocal")
-                }
-                onRename={() => selectedShelf && setRenamingShelfId(selectedShelf.id)}
-                onDelete={() => {
-                    dialogFocusTargetRef.current = document.activeElement as HTMLElement;
-                    if (selectedShelf) setDeleteShelf(selectedShelf);
+                onCollapseAll={() => {
+                    setIsFilePaneOpen(false);
+                    setCollapsedDirectories(shelfDirectoryPaths(shelfFiles));
                 }}
                 onToggleAlreadyUnshelved={() => setShowAlreadyUnshelved((value) => !value)}
-                onImportPatch={importPatch}
-                onExportPatch={exportPatch}
                 onCleanUp={() => {
                     dialogFocusTargetRef.current = document.activeElement as HTMLElement;
                     setIsCleanUpOpen(true);
@@ -673,6 +701,10 @@ export function ShelfTab({
                 <ShelfFilePane
                     entries={shelfFiles}
                     groupByDir={groupByDir}
+                    isOpen={isFilePaneOpen}
+                    onOpenChange={setIsFilePaneOpen}
+                    collapsedDirectories={collapsedDirectories}
+                    onCollapsedDirectoriesChange={setCollapsedDirectories}
                     onFileActivate={(entry) => {
                         if (!selectedShelf) return;
                         onShowDiff({
@@ -681,6 +713,10 @@ export function ShelfTab({
                             expectedGeneration: selectedShelf.generation,
                             changeId: entry.changeId,
                         });
+                    }}
+                    onContextMenu={(entry, x, y, target) => {
+                        if (selectedShelf)
+                            openContextMenu(selectedShelf, x, y, target, entry.changeId);
                     }}
                     onDragStart={handleShelfFileDragStart}
                 />
@@ -704,21 +740,22 @@ export function ShelfTab({
                     minWidth={220}
                     onClose={() => setContextMenu(null)}
                     onSelect={(action) =>
-                        handleContextAction(contextMenu.shelf, action as ShelfContextAction)
+                        handleContextAction(
+                            contextMenu.shelf,
+                            action as ShelfContextAction,
+                            contextMenu.targetChangeId,
+                        )
                     }
-                    items={
-                        contextMenu.shelf.metadata.lifecycle === "applied"
-                            ? [
-                                  { label: t("shelf.action.restore"), action: "restore" },
-                                  { label: t("common.showDiff"), action: "showDiff" },
-                                  {
-                                      label: t("shelf.action.compareWithLocal"),
-                                      action: "compareWithLocal",
-                                  },
-                                  { label: t("shelf.action.delete"), action: "delete" },
-                              ]
-                            : activeContextItems
-                    }
+                    items={getShelfMenuItems({
+                        shelf: contextMenu.shelf,
+                        targetChangeId: contextMenu.targetChangeId,
+                        shelfFilesAreCurrent,
+                        canUnshelve,
+                        canExportPatch:
+                            shelfFilesAreCurrent &&
+                            (contextMenu.targetChangeId !== undefined || shelfFiles.length > 0),
+                        isMac: isMacWebview,
+                    })}
                 />
             ) : null}
             {unshelveShelf ? (

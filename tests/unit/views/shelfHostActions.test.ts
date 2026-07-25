@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+const writeClipboardText = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("vscode", () => ({
+    env: { clipboard: { writeText: writeClipboardText } },
     l10n: { t: (message: string) => message },
     commands: { executeCommand: vi.fn(async () => undefined) },
     window: { showWarningMessage: vi.fn(), showInformationMessage: vi.fn() },
@@ -140,6 +143,88 @@ describe("openShelfConflictEditorFromMessage", () => {
 });
 
 describe("executeShelfMutationRequest", () => {
+    it("copies a selected shelf patch as UTF-8 without opening the export picker", async () => {
+        const exportPatch = vi.fn(async () => Buffer.from("diff --git a/a.ts b/a.ts\n"));
+        const selectExportDestination = vi.fn(async () => "/host/export.patch");
+        const postCompleted = vi.fn();
+        writeClipboardText.mockClear();
+        writeClipboardText.mockResolvedValueOnce(undefined);
+
+        await executeShelfMutationRequest(
+            {
+                shelfService: {
+                    listShelves: vi.fn(async () => ({
+                        shelfIds: ["shelf-1"],
+                        corruptShelfIds: [],
+                        shelves: [{ id: "shelf-1" }],
+                        catalogGeneration: 1,
+                    })),
+                    getShelfFiles: vi.fn(async () => [{ changeId: "change-1" }]),
+                    exportPatch,
+                },
+                refreshData: vi.fn(async () => undefined),
+                fireWorkingTreeChanged: vi.fn(),
+                selectExportDestination,
+            } as never,
+            {
+                type: "shelfCopyPatchToClipboard",
+                requestId: "request-copy",
+                shelfId: "shelf-1",
+                changeIds: ["change-1"],
+                expectedGeneration: 1,
+            },
+            postCompleted,
+        );
+
+        expect(exportPatch).toHaveBeenCalledWith({ id: "shelf-1", changeIds: ["change-1"] });
+        expect(writeClipboardText).toHaveBeenCalledWith("diff --git a/a.ts b/a.ts\n");
+        expect(selectExportDestination).not.toHaveBeenCalled();
+        expect(postCompleted).toHaveBeenCalledWith(
+            expect.objectContaining({ requestId: "request-copy", status: "ok", entries: [] }),
+        );
+    });
+
+    it("posts an error completion when copying a shelf patch to the clipboard fails", async () => {
+        const error = new Error("Clipboard unavailable.");
+        const postCompleted = vi.fn();
+        writeClipboardText.mockClear();
+        writeClipboardText.mockRejectedValueOnce(error);
+
+        await expect(
+            executeShelfMutationRequest(
+                {
+                    shelfService: {
+                        listShelves: vi.fn(async () => ({
+                            shelfIds: ["shelf-1"],
+                            corruptShelfIds: [],
+                            shelves: [{ id: "shelf-1" }],
+                            catalogGeneration: 1,
+                        })),
+                        getShelfFiles: vi.fn(async () => [{ changeId: "change-1" }]),
+                        exportPatch: vi.fn(async () => Buffer.from("patch")),
+                    },
+                    refreshData: vi.fn(async () => undefined),
+                    fireWorkingTreeChanged: vi.fn(),
+                } as never,
+                {
+                    type: "shelfCopyPatchToClipboard",
+                    requestId: "request-copy-failure",
+                    shelfId: "shelf-1",
+                    expectedGeneration: 1,
+                },
+                postCompleted,
+            ),
+        ).rejects.toBe(error);
+
+        expect(postCompleted).toHaveBeenCalledWith(
+            expect.objectContaining({
+                requestId: "request-copy-failure",
+                status: "error",
+                message: "Clipboard unavailable.",
+            }),
+        );
+    });
+
     it("includes the verbatim mutation failure text in its completion", async () => {
         const postCompleted = vi.fn();
         const error = new Error("Name conflicts with a locked shelf.");

@@ -946,6 +946,7 @@ export class UndockedViewProvider {
             case "shelfDelete":
             case "shelfRename":
             case "shelfExportPatch":
+            case "shelfCopyPatchToClipboard":
             case "shelfImportPatch":
             case "shelfRestoreGhost":
             case "shelfCleanUp":

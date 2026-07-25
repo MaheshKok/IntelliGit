@@ -25,15 +25,28 @@ const entries = [
 function renderPane(overrides: Partial<React.ComponentProps<typeof ShelfFilePane>> = {}) {
     const onFileActivate = vi.fn();
     const onDragStart = vi.fn();
-    const mounted = mount(
-        <ChakraProvider theme={theme}>
+    const ControlledShelfFilePane = (): React.ReactElement => {
+        const [isOpen, setIsOpen] = React.useState(true);
+        const [collapsedDirectories, setCollapsedDirectories] = React.useState<Set<string>>(
+            () => new Set(),
+        );
+        return (
             <ShelfFilePane
                 entries={entries}
                 groupByDir={false}
                 onFileActivate={onFileActivate}
                 onDragStart={onDragStart}
                 {...overrides}
+                isOpen={isOpen}
+                onOpenChange={setIsOpen}
+                collapsedDirectories={collapsedDirectories}
+                onCollapsedDirectoriesChange={setCollapsedDirectories}
             />
+        );
+    };
+    const mounted = mount(
+        <ChakraProvider theme={theme}>
+            <ControlledShelfFilePane />
         </ChakraProvider>,
     );
     return { ...mounted, onFileActivate, onDragStart };

@@ -84,6 +84,20 @@ describe("showShelfDiffFromPanel", () => {
         );
     });
 
+    it("opens a selected shelf diff in a non-preview editor tab when requested", async () => {
+        const source = reader();
+
+        await showShelfDiffFromPanel(deps(source), "shelf-1", "change-1", "baseToShelved", true);
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledWith(
+            "vscode.diff",
+            { filePath: "src/a.ts", content: "base contents", ref: "Base (HEAD at shelve)" },
+            { filePath: "src/a.ts", content: "shelved contents", ref: "Shelved" },
+            "src/a.ts (Base (HEAD at shelve) <-> Shelved)",
+            { preview: false },
+        );
+    });
+
     it("uses an explicit unavailable-base document instead of current file history", async () => {
         const source = reader({
             getShelfDiffContents: vi.fn(async () => ({
@@ -165,6 +179,50 @@ describe("showShelfDiffFromPanel", () => {
             { filePath: "src/a.ts", content: "shelved contents", ref: "Shelved" },
             { filePath: "src/a.ts", content: "local file contents", ref: "Local" },
             "src/a.ts (Shelved <-> Local)",
+        );
+    });
+
+    it("opens one pinned whole-shelf changes session when requested", async () => {
+        const source = reader({
+            getShelfFiles: vi.fn(async () => [
+                ...shelfFiles,
+                {
+                    ...shelfFiles[0],
+                    changeId: "change-2",
+                    worktreeBlock: { path: "src/b.ts", status: "M" as const },
+                },
+            ]),
+            getShelfDiffContents: vi.fn(async (_id, changeId) => ({
+                path: changeId === "change-1" ? "src/a.ts" : "src/b.ts",
+                binary: false,
+                base: Buffer.from("base"),
+                shelved: Buffer.from("shelved"),
+            })),
+        });
+
+        await showShelfDiffFromPanel(deps(source), "shelf-1", undefined, "baseToShelved", true);
+
+        expect(vscodeMock.commands.executeCommand).toHaveBeenCalledTimes(2);
+        expect(vscodeMock.commands.executeCommand).toHaveBeenNthCalledWith(
+            1,
+            "vscode.changes",
+            "Shelf shelf-1",
+            expect.arrayContaining([
+                [
+                    { filePath: "src/a.ts", content: "base", ref: "Base (HEAD at shelve)" },
+                    { filePath: "src/a.ts", content: "base", ref: "Base (HEAD at shelve)" },
+                    { filePath: "src/a.ts", content: "shelved", ref: "Shelved" },
+                ],
+                [
+                    { filePath: "src/b.ts", content: "base", ref: "Base (HEAD at shelve)" },
+                    { filePath: "src/b.ts", content: "base", ref: "Base (HEAD at shelve)" },
+                    { filePath: "src/b.ts", content: "shelved", ref: "Shelved" },
+                ],
+            ]),
+        );
+        expect(vscodeMock.commands.executeCommand).toHaveBeenNthCalledWith(
+            2,
+            "workbench.action.keepEditor",
         );
     });
 

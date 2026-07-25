@@ -10,8 +10,12 @@ export type ShelfContextAction =
     | "rename"
     | "delete"
     | "showDiff"
+    | "showDiffNewTab"
     | "compareWithLocal"
-    | "restore";
+    | "restore"
+    | "createPatch"
+    | "copyPatchToClipboard"
+    | "importPatches";
 
 /** Presentation and interaction state for one shelf row. */
 export interface ShelfRowProps {

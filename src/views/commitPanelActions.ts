@@ -297,6 +297,18 @@ export async function shelfMutationFromMessage(
             await writeFile(fileUri, await shelfService.exportPatch({ id: shelfId, changeIds }));
             return { status: "ok", entries: [], shelfId };
         }
+        case "shelfCopyPatchToClipboard": {
+            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
+            const changeIds = await assertExistingChangeIds(
+                shelfService,
+                shelfId,
+                message.changeIds,
+            );
+            assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
+            const patch = await shelfService.exportPatch({ id: shelfId, changeIds });
+            await vscode.env.clipboard.writeText(patch.toString("utf8"));
+            return { status: "ok", entries: [], shelfId };
+        }
         case "shelfImportPatch":
             return shelfService.importPatch({
                 fileUris: assertAbsolutePaths(hostImportFileUris, "host import sources"),
@@ -379,11 +391,16 @@ export async function shelfReadFromMessage(
               ? "shelvedToLocal"
               : undefined;
     if (!mode) throw new Error("Invalid shelf diff request received from webview.");
+    const newTab =
+        message.type === "shelfDiff" && message.newTab !== undefined
+            ? assertBoolean(message.newTab, "newTab")
+            : false;
     await showShelfDiffFromPanel(
         { shelfReader: shelfService, getWorkspaceRoot },
         shelfId,
         changeId,
         mode,
+        newTab,
     );
 }
 

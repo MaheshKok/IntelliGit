@@ -404,6 +404,8 @@ export type OutboundMessage =
           shelfId: string;
           expectedGeneration: number;
           changeId?: string;
+          /** False or absent keeps the existing preview behavior; true opens a persistent diff tab. */
+          newTab?: boolean;
       }>
     | RepositoryScopedMessage<{
           /** Loads immutable shelf artifacts for a shelved-to-local comparison. */
@@ -415,6 +417,14 @@ export type OutboundMessage =
     | RepositoryScopedMessage<{
           /** Exports a flattened shelf patch to a destination chosen by the extension host. */
           type: "shelfExportPatch";
+          requestId: string;
+          shelfId: string;
+          expectedGeneration: number;
+          changeIds?: string[];
+      }>
+    | RepositoryScopedMessage<{
+          /** Copies a flattened shelf patch to the host clipboard without a file picker. */
+          type: "shelfCopyPatchToClipboard";
           requestId: string;
           shelfId: string;
           expectedGeneration: number;

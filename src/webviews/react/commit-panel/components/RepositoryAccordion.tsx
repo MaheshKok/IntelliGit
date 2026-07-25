@@ -289,9 +289,13 @@ export function RepositoryAccordion({
             onExportPatch={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
+            onCopyPatch={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
             onCleanUp={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
+            onToggleGroupBy={onToggleGroupBy}
             onOpenConflictEditor={(message) =>
                 vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
             }
