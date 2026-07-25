@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type {
     OutboundMessage,
@@ -127,6 +127,49 @@ function reportableOutcome(
     return outcome.requestId === lastExportRequestId && !outcome.message ? outcome : undefined;
 }
 
+/** The rename a dialog has posted and is waiting for the host to confirm. */
+interface PendingRename {
+    requestId: string;
+    shelfId: string;
+    name: string;
+    expectedGeneration: number;
+}
+
+/**
+ * Clears the rename and structural-choice markers as soon as the snapshot that settles
+ * them arrives.
+ *
+ * Called during render on purpose. The host answers both by publishing a new snapshot,
+ * and routing the dismissal through an effect would leave the dialog on screen for one
+ * extra commit after the answer already landed.
+ */
+function settleShelfDialogs(input: {
+    shelves: ShelfEntry[];
+    outcome: ShelfMutationOutcome | undefined;
+    pendingRename: PendingRename | null;
+    structuralPendingRequestId: string | null;
+    setRenamingShelfId: (value: string | null) => void;
+    setPendingRename: (value: PendingRename | null) => void;
+    setStructuralPendingRequestId: (value: string | null) => void;
+}): void {
+    const { outcome, pendingRename, shelves, structuralPendingRequestId } = input;
+    if (
+        pendingRename !== null &&
+        shelves.some(
+            (shelf) =>
+                shelf.id === pendingRename.shelfId &&
+                (shelf.metadata.name === pendingRename.name ||
+                    shelf.generation > pendingRename.expectedGeneration),
+        )
+    ) {
+        input.setRenamingShelfId(null);
+        input.setPendingRename(null);
+    }
+    if (structuralPendingRequestId !== null && outcome?.requestId === structuralPendingRequestId) {
+        input.setStructuralPendingRequestId(null);
+    }
+}
+
 interface ShelfContextMenuState {
     shelf: ShelfEntry;
     targetChangeId?: string;
@@ -222,12 +265,7 @@ export function ShelfTab({
     );
     const [unshelveShelf, setUnshelveShelf] = useState<ShelfEntry | null>(null);
     const [renamingShelfId, setRenamingShelfId] = useState<string | null>(null);
-    const [pendingRename, setPendingRename] = useState<{
-        requestId: string;
-        shelfId: string;
-        name: string;
-        expectedGeneration: number;
-    } | null>(null);
+    const [pendingRename, setPendingRename] = useState<PendingRename | null>(null);
     const [deleteShelf, setDeleteShelf] = useState<ShelfEntry | null>(null);
     const [isCleanUpOpen, setIsCleanUpOpen] = useState(false);
     const [lastExportRequestId, setLastExportRequestId] = useState<string | null>(null);
@@ -252,23 +290,15 @@ export function ShelfTab({
                 : null,
         [outcome?.shelfId, shelves],
     );
-    useEffect(() => {
-        if (!pendingRename) return;
-        const shelf = shelves.find((item) => item.id === pendingRename.shelfId);
-        if (
-            shelf &&
-            (shelf.metadata.name === pendingRename.name ||
-                shelf.generation > pendingRename.expectedGeneration)
-        ) {
-            setRenamingShelfId(null);
-            setPendingRename(null);
-        }
-    }, [pendingRename, shelves]);
-    useEffect(() => {
-        if (structuralPendingRequestId && outcome?.requestId === structuralPendingRequestId) {
-            setStructuralPendingRequestId(null);
-        }
-    }, [outcome?.requestId, structuralPendingRequestId]);
+    settleShelfDialogs({
+        shelves,
+        outcome,
+        pendingRename,
+        structuralPendingRequestId,
+        setRenamingShelfId,
+        setPendingRename,
+        setStructuralPendingRequestId,
+    });
 
     const renameError =
         pendingRename && outcome?.requestId === pendingRename.requestId

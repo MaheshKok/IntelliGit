@@ -1,7 +1,7 @@
 // Blue refresh control for the Shelf and Stash toolbars, matching the spinning
 // icon the Commit toolbar already shows.
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { IconButton, Tooltip } from "@chakra-ui/react";
 import { IoMdRefresh } from "react-icons/io";
 import { getSettings, resolveIconColor } from "../settings";
@@ -22,35 +22,31 @@ interface RefreshButtonProps {
 export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): React.ReactElement {
     const { hoverDelay, tooltipsEnabled } = getSettings();
     const [isSpinHeld, setIsSpinHeld] = useState(false);
-    const holdTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-    const holdSpin = useCallback(() => {
-        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-        setIsSpinHeld(true);
-        holdTimerRef.current = setTimeout(() => {
-            setIsSpinHeld(false);
-            holdTimerRef.current = undefined;
-        }, MIN_SPIN_MS);
-    }, []);
-
-    useEffect(
-        () => () => {
-            if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
-        },
-        [],
-    );
+    const [holdCount, setHoldCount] = useState(0);
+    const [wasRefreshing, setWasRefreshing] = useState(isRefreshing);
 
     // A host-driven refresh can finish within a frame or two — the undocked window does
-    // not pad its refresh span the way the docked panel does — so a host refresh holds
-    // the spin exactly like a click does.
+    // not pad its refresh span the way the docked panel does — so the spin gets its own
+    // tail when the host's flag drops. The edge is read during render because spending a
+    // commit on it would lose exactly the fast refreshes this exists to show.
+    if (isRefreshing !== wasRefreshing) {
+        setWasRefreshing(isRefreshing);
+        if (!isRefreshing) setHoldCount((count) => count + 1);
+    }
+
+    // Each request restarts the tail, so a click landing mid-tail extends it instead of
+    // inheriting the leftover of the previous one.
     useEffect(() => {
-        if (isRefreshing) holdSpin();
-    }, [holdSpin, isRefreshing]);
+        if (holdCount === 0) return undefined;
+        setIsSpinHeld(true);
+        const timer = setTimeout(() => setIsSpinHeld(false), MIN_SPIN_MS);
+        return () => clearTimeout(timer);
+    }, [holdCount]);
 
     const handleClick = useCallback(() => {
-        holdSpin();
+        setHoldCount((count) => count + 1);
         onRefresh();
-    }, [holdSpin, onRefresh]);
+    }, [onRefresh]);
 
     const spin = isRefreshing || isSpinHeld;
     const label = spin ? t("common.refreshing") : t("common.refresh");
