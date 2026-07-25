@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "В этой рабочей области не найдено репозиториев Git.",
     "Select a repository for shelf changes": "Выберите хранилище для изменений полки",
     "Shelf service is unavailable for this repository.": "Служба полок недоступна для этого репозитория.",
-    "Uncommitted changes {date}": "Незафиксированные изменения {date}",
+    "Uncommitted changes": "Незафиксированные изменения",
     "Shelf name": "Название полки",
     "Changes saved to shelf.": "Изменения сохранены на полке.",
     "Changes shelved.": "Изменения помещены на полку.",

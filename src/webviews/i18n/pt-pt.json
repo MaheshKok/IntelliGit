@@ -6,7 +6,7 @@
     "shelf.health.close": "Fechar",
     "shelf.list.label": "prateleiras",
     "shelf.list.empty": "Não há prateleiras.",
-    "shelf.defaultName": "Alterações não confirmadas {date}",
+    "shelf.defaultName": "Alterações não confirmadas",
     "shelf.list.alreadyUnshelved": "Já restaurado",
     "shelf.filePane.empty": "Sem arquivos de prateleira.",
     "shelf.rename.label": "Renomear prateleira",

@@ -6,7 +6,7 @@
     "shelf.health.close": "Cerrar",
     "shelf.list.label": "estantes",
     "shelf.list.empty": "No hay estantes.",
-    "shelf.defaultName": "Cambios sin confirmar {date}",
+    "shelf.defaultName": "Cambios sin confirmar",
     "shelf.list.alreadyUnshelved": "Ya restaurado",
     "shelf.filePane.empty": "Sin archivos de estante.",
     "shelf.rename.label": "Cambiar nombre de estante",

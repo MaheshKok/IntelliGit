@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "No se encontraron repositorios Git en este espacio de trabajo.",
     "Select a repository for shelf changes": "Seleccione un repositorio para cambios de estante",
     "Shelf service is unavailable for this repository.": "El servicio de estantes no está disponible para este repositorio.",
-    "Uncommitted changes {date}": "Cambios no confirmados {date}",
+    "Uncommitted changes": "Cambios no confirmados",
     "Shelf name": "Nombre del estante",
     "Changes saved to shelf.": "Cambios guardados en el estante.",
     "Changes shelved.": "Los cambios se guardaron en el estante.",

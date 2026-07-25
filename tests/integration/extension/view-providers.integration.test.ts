@@ -2106,6 +2106,9 @@ describe("view providers integration", () => {
                 selectedShelfId: "shelf-u",
             }),
         );
+        // The mutation re-reads the shelf catalog, so the refresh icon spins for the
+        // fetch instead of leaving the panel looking idle while Git runs.
+        expect(refreshingStates()).toEqual([true, false]);
     });
 
     it("UndockedViewProvider hydrates and switches repositories through its own runtime root", async () => {
@@ -5913,6 +5916,9 @@ describe("view providers integration", () => {
                 selectedShelfId: "shelf-1",
             }),
         );
+        // The mutation re-reads the shelf catalog, so the refresh icon spins for the
+        // fetch instead of leaving the panel looking idle while Git runs.
+        expect(refreshingStates()).toEqual([true, false]);
 
         postMessageSpy.mockClear();
         shelf.getShelfFiles.mockClear();

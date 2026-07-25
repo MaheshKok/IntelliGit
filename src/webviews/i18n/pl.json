@@ -6,7 +6,7 @@
     "shelf.health.close": "Zamknij",
     "shelf.list.label": "półki",
     "shelf.list.empty": "Brak półek.",
-    "shelf.defaultName": "Niezatwierdzone zmiany {date}",
+    "shelf.defaultName": "Niezatwierdzone zmiany",
     "shelf.list.alreadyUnshelved": "Już przywrócono",
     "shelf.filePane.empty": "Brak plików półki.",
     "shelf.rename.label": "Zmień nazwę półki",

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import type React from "react";
 import type { WorkingFile } from "../../../../types";
 import type { OutboundMessage } from "../../../protocol/commitPanelMessages";
+import { t } from "../../shared/i18n";
 
 /** MIME type for Commit-tab file selections dragged toward a shelf target. */
 export const SHELF_FILES_DRAG_MIME = "application/x-intelligit-shelf-files";
@@ -38,10 +39,6 @@ let requestSequence = 0;
 function nextRequestId(): string {
     requestSequence += 1;
     return `shelf-drag-${Date.now()}-${requestSequence}`;
-}
-
-function defaultShelfName(): string {
-    return `Uncommitted changes ${new Date().toLocaleString()}`;
 }
 
 function readPayload<T>(dataTransfer: DataTransfer, mime: string): T | undefined {
@@ -133,7 +130,7 @@ export function useShelfDrag({
                 type: "shelveSave",
                 ...(repositoryRoot ? { repositoryRoot } : {}),
                 requestId,
-                name: defaultShelfName(),
+                name: t("shelf.defaultName"),
                 paths: payload.paths,
                 silent: true,
                 keepLocal: event.ctrlKey,

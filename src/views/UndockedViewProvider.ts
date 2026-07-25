@@ -685,7 +685,7 @@ export class UndockedViewProvider {
             await executeShelfMutationRequest(
                 {
                     shelfService,
-                    refreshData: () => this.refreshCommitPanelData(true),
+                    refreshData: () => this.refreshCommitPanelData(false),
                     fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
                     selectExportDestination: async () =>
                         (await vscode.window.showSaveDialog())?.fsPath,
@@ -727,7 +727,7 @@ export class UndockedViewProvider {
                         shelfId,
                         changeId,
                         onApplied: async () => {
-                            await this.refreshCommitPanelData(true);
+                            await this.refreshCommitPanelData(false);
                             this._onDidChangeWorkingTree.fire();
                         },
                     }),

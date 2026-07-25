@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "Aucun référentiel Git trouvé dans cet espace de travail.",
     "Select a repository for shelf changes": "Sélectionnez un référentiel pour les modifications d'étagère",
     "Shelf service is unavailable for this repository.": "Le service d'étagère n'est pas disponible pour ce dépôt.",
-    "Uncommitted changes {date}": "Modifications non validées {date}",
+    "Uncommitted changes": "Modifications non validées",
     "Shelf name": "Nom de l'étagère",
     "Changes saved to shelf.": "Modifications enregistrées sur l'étagère.",
     "Changes shelved.": "Les modifications ont été mises en étagère.",

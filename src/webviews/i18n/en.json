@@ -6,7 +6,7 @@
     "shelf.health.close": "Close",
     "shelf.list.label": "Shelves",
     "shelf.list.empty": "No shelves.",
-    "shelf.defaultName": "Uncommitted changes {date}",
+    "shelf.defaultName": "Uncommitted changes",
     "shelf.list.alreadyUnshelved": "Already Unshelved",
     "shelf.filePane.empty": "No shelf files.",
     "shelf.rename.label": "Rename shelf",

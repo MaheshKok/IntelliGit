@@ -6,7 +6,7 @@
     "shelf.health.close": "Закрыть",
     "shelf.list.label": "полки",
     "shelf.list.empty": "Нет полок.",
-    "shelf.defaultName": "Незафиксированные изменения {date}",
+    "shelf.defaultName": "Незафиксированные изменения",
     "shelf.list.alreadyUnshelved": "Уже восстановлено",
     "shelf.filePane.empty": "Никаких файлов на полке.",
     "shelf.rename.label": "Переименовать полку",

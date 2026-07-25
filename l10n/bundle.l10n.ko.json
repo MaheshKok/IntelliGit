@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "이 작업공간에는 Git 저장소가 없습니다.",
     "Select a repository for shelf changes": "셸프 변경을 위한 저장소 선택",
     "Shelf service is unavailable for this repository.": "이 리포지토리에서는 셸프 서비스를 사용할 수 없습니다.",
-    "Uncommitted changes {date}": "커밋되지 않은 변경 사항 {date}",
+    "Uncommitted changes": "커밋되지 않은 변경 사항",
     "Shelf name": "셸프 이름",
     "Changes saved to shelf.": "변경 사항을 셸프에 저장했습니다.",
     "Changes shelved.": "변경 사항을 셸프에 저장했습니다.",

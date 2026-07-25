@@ -6,7 +6,7 @@
     "shelf.health.close": "Fermer",
     "shelf.list.label": "étagères",
     "shelf.list.empty": "Aucune étagère.",
-    "shelf.defaultName": "Modifications non validées {date}",
+    "shelf.defaultName": "Modifications non validées",
     "shelf.list.alreadyUnshelved": "Déjà restauré",
     "shelf.filePane.empty": "Pas de fichiers d'étagère.",
     "shelf.rename.label": "Renommer l'étagère",

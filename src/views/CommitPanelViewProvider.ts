@@ -816,7 +816,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             await executeShelfMutationRequest(
                 {
                     shelfService: service,
-                    refreshData: () => this.refreshData(true, runtime),
+                    refreshData: () => this.refreshData(false, runtime),
                     fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
                     selectExportDestination: async () =>
                         (await vscode.window.showSaveDialog())?.fsPath,
@@ -861,7 +861,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                         shelfId,
                         changeId,
                         onApplied: async () => {
-                            await this.refreshData(true, runtime);
+                            await this.refreshData(false, runtime);
                             this._onDidChangeWorkingTree.fire();
                         },
                     }),

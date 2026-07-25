@@ -86,8 +86,7 @@ export function registerShelfCommands(deps: ShelfCommandsDeps): void {
         }
     };
 
-    const defaultName = (): string =>
-        localize("Uncommitted changes {date}", { date: new Date().toLocaleString() });
+    const defaultName = (): string => localize("Uncommitted changes");
     const shelve = async (silent: boolean, keepLocal: boolean, prompt: boolean): Promise<void> => {
         const service = await selectService();
         if (!service) return;

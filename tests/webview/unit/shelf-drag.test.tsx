@@ -127,6 +127,7 @@ describe("useShelfDrag", () => {
             expect.objectContaining({
                 type: "shelveSave",
                 repositoryRoot: "/repo",
+                name: "Uncommitted changes",
                 paths: ["src/parser.ts", "src/lexer.ts"],
                 silent: true,
                 keepLocal: false,

@@ -6,7 +6,7 @@
     "shelf.health.close": "閉じる",
     "shelf.list.label": "シェルフ",
     "shelf.list.empty": "シェルフはありません。",
-    "shelf.defaultName": "コミットされていない変更 {date}",
+    "shelf.defaultName": "コミットされていない変更",
     "shelf.list.alreadyUnshelved": "すでに復元済み",
     "shelf.filePane.empty": "シェルフファイルはありません。",
     "shelf.rename.label": "シェルフの名前を変更する",

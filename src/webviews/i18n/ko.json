@@ -6,7 +6,7 @@
     "shelf.health.close": "닫기",
     "shelf.list.label": "셸프",
     "shelf.list.empty": "셸프가 없습니다.",
-    "shelf.defaultName": "커밋되지 않은 변경 사항 {date}",
+    "shelf.defaultName": "커밋되지 않은 변경 사항",
     "shelf.list.alreadyUnshelved": "이미 복원됨",
     "shelf.filePane.empty": "셸프 파일이 없습니다.",
     "shelf.rename.label": "셸프 이름 바꾸기",

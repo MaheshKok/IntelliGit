@@ -68,11 +68,8 @@ function renderCommitTab({ commitMessage = "draft shelf" }: { commitMessage?: st
 }
 
 describe("CommitTab shelving", () => {
-    it("captures the default shelf timestamp when the menu opens", () => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date("2026-07-22T10:00:00Z"));
+    it("suggests a date-free default shelf name when the menu opens", () => {
         const { root, container } = renderCommitTab({ commitMessage: "" });
-        vi.setSystemTime(new Date("2026-07-22T10:05:00Z"));
         const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;
         act(() =>
             tab.dispatchEvent(
@@ -80,11 +77,12 @@ describe("CommitTab shelving", () => {
             ),
         );
         click(menuItem("Shelve Changes…"));
+        // The shelf row prints its creation date in the meta column, so the name is a
+        // plain label rather than a second copy of the same timestamp.
         expect(
             (document.querySelector('input[aria-label="Shelf name"]') as HTMLInputElement).value,
-        ).toBe(`Uncommitted changes ${new Date().toLocaleString()}`);
+        ).toBe("Uncommitted changes");
         unmount(root, container);
-        vi.useRealTimers();
     });
 
     it("leaves FileRow context menus to VS Code and opens shelf actions at the cursor elsewhere", () => {

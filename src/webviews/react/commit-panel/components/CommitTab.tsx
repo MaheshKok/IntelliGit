@@ -131,9 +131,7 @@ export function CommitTab({
     }, [checkedPaths, files]);
     const openShelfMenuAt = useCallback(
         (x: number, y: number) => {
-            setDefaultShelfName(
-                commitMessage || t("shelf.defaultName", { date: new Date().toLocaleString() }),
-            );
+            setDefaultShelfName(commitMessage || t("shelf.defaultName"));
             setShelfMenuPosition({ x, y });
         },
         [commitMessage],

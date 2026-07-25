@@ -2,7 +2,7 @@
     "No Git repositories found in this workspace.": "No Git repositories found in this workspace.",
     "Select a repository for shelf changes": "Select a repository for shelf changes",
     "Shelf service is unavailable for this repository.": "Shelf service is unavailable for this repository.",
-    "Uncommitted changes {date}": "Uncommitted changes {date}",
+    "Uncommitted changes": "Uncommitted changes",
     "Shelf name": "Shelf name",
     "Changes saved to shelf.": "Changes saved to shelf.",
     "Changes shelved.": "Changes shelved.",

@@ -6,7 +6,7 @@
     "shelf.health.close": "关闭",
     "shelf.list.label": "搁置架",
     "shelf.list.empty": "没有搁置架。",
-    "shelf.defaultName": "未提交的更改 {date}",
+    "shelf.defaultName": "未提交的更改",
     "shelf.list.alreadyUnshelved": "已恢复",
     "shelf.filePane.empty": "没有搁置架文件。",
     "shelf.rename.label": "重命名搁置架",

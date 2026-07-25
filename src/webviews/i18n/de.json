@@ -6,7 +6,7 @@
     "shelf.health.close": "Schließen",
     "shelf.list.label": "Ablagen",
     "shelf.list.empty": "Keine Ablagen.",
-    "shelf.defaultName": "Nicht festgeschriebene Änderungen {date}",
+    "shelf.defaultName": "Nicht festgeschriebene Änderungen",
     "shelf.list.alreadyUnshelved": "Bereits wiederhergestellt",
     "shelf.filePane.empty": "Keine Ablagedateien.",
     "shelf.rename.label": "Ablage umbenennen",
