@@ -440,7 +440,15 @@ export function RepositoryAccordion({
                     minH={isOnlyRepository ? 0 : "360px"}
                     overflow="hidden"
                 >
-                    <Box flex={1} minH={0} overflow="hidden">
+                    <Box
+                        data-testid="repository-accordion-content"
+                        data-repository-root={repository.root}
+                        flex={1}
+                        minW={0}
+                        minH={0}
+                        overflow="hidden"
+                        pl="12px"
+                    >
                         <TabBar
                             stashCount={repository.stashes.length}
                             shelfCount={(repository.shelves ?? []).filter(isActiveShelf).length}

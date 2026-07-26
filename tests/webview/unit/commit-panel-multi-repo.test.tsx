@@ -308,11 +308,37 @@ describe("commit panel multi-repository view", () => {
         await hydrateOneRepository();
 
         expect(document.querySelectorAll('[data-testid="repository-accordion"]')).toHaveLength(0);
+        expect(
+            document.querySelectorAll('[data-testid="repository-accordion-content"]'),
+        ).toHaveLength(0);
         expect(document.querySelector('[data-testid="tabbar"]')).toBeTruthy();
         expect(
             document.querySelector('[data-testid="commit-files"][data-root="/repo-a"]')
                 ?.textContent,
         ).toBe("src/a.ts");
+    });
+
+    it("keeps expanded tab content owned by each repository", async () => {
+        await renderApp();
+        await hydrateTwoRepositories();
+        click(header("/repo-b"));
+        await flush();
+
+        const contents = Array.from(
+            document.querySelectorAll<HTMLElement>('[data-testid="repository-accordion-content"]'),
+        );
+        expect(contents).toHaveLength(2);
+
+        for (const root of ["/repo-a", "/repo-b"]) {
+            const content = document.querySelector<HTMLElement>(
+                `[data-testid="repository-accordion-content"][data-repository-root="${root}"]`,
+            );
+            expect(content).not.toBeNull();
+            expect(content?.querySelectorAll('[data-testid="tabbar"]')).toHaveLength(1);
+            expect(row(root).querySelector('[data-testid="repository-accordion-content"]')).toBe(
+                content,
+            );
+        }
     });
 
     it("tolerates a legacy snapshot without the additive shelf fields", async () => {
