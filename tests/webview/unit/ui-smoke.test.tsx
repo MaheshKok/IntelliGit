@@ -20,18 +20,24 @@ import {
 } from "../../../src/webviews/react/branch-column/icons";
 import { CommitArea } from "../../../src/webviews/react/commit-panel/components/CommitArea";
 import { FileTree } from "../../../src/webviews/react/commit-panel/components/FileTree";
-import { FileTypeIcon } from "../../../src/webviews/react/commit-panel/components/FileTypeIcon";
-import { FolderRow } from "../../../src/webviews/react/commit-panel/components/FolderRow";
-import { IndentGuides } from "../../../src/webviews/react/commit-panel/components/IndentGuides";
-import { SectionHeader } from "../../../src/webviews/react/commit-panel/components/SectionHeader";
-import { StashRow } from "../../../src/webviews/react/commit-panel/components/StashRow";
-import { StatusBadge } from "../../../src/webviews/react/commit-panel/components/StatusBadge";
 import { TabBar } from "../../../src/webviews/react/commit-panel/components/TabBar";
 import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
-import { VscCheckbox } from "../../../src/webviews/react/commit-panel/components/VscCheckbox";
+import { SectionHeader } from "../../../src/webviews/react/shared/components/SectionHeader";
+import {
+    FileTreeRows,
+    TreeFileRow,
+    TreeFolderRow,
+    TreeIndentGuides,
+} from "../../../src/webviews/react/shared/components/FileTreeRows";
+import { VscCheckbox } from "../../../src/webviews/react/shared/components/VscCheckbox";
 import { CommitChecksButton } from "../../../src/webviews/react/commit-list/CommitChecksPopover";
-import { mount, unmount } from "../../helpers/reactDomTestUtils";
+import { StatusBadge } from "../../../src/webviews/react/shared/components/StatusBadge";
+import { TreeFileIcon } from "../../../src/webviews/react/shared/components/TreeIcons";
+import { buildFileTree } from "../../../src/webviews/react/shared/fileTree";
+import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
+
+initReactDomTestEnvironment();
 
 /** Renders Chakra-wrapped UI into static markup for smoke assertions. */
 function renderUi(node: React.ReactElement): string {
@@ -400,10 +406,18 @@ describe("webview ui smoke", () => {
             <>
                 <StatusBadge status="M" />
                 <StatusBadge status="?" />
-                <FileTypeIcon />
-                <FileTypeIcon status="D" />
-                <FileTypeIcon icon={{ glyph: "\uea60", fontFamily: "codicon" }} />
-                <IndentGuides treeDepth={2} />
+                <TreeFileIcon />
+                <TreeFileIcon status="D" />
+                <TreeFileIcon icon={{ glyph: "\uea60", fontFamily: "codicon" }} />
+                <TreeIndentGuides
+                    treeDepth={2}
+                    indentMetrics={{
+                        indentStep: 18,
+                        indentBase: 20,
+                        guideBase: 28,
+                        sectionGuideLeft: 17,
+                    }}
+                />
                 <VscCheckbox isChecked={true} onChange={vi.fn()} />
                 <VscCheckbox isChecked={false} isIndeterminate={true} onChange={vi.fn()} />
             </>,
@@ -411,6 +425,70 @@ describe("webview ui smoke", () => {
         expect(html).toContain('data-tree-icon="file"');
         expect(html).toContain("\uea60");
         expect(html).toContain("svg");
+    });
+
+    it("makes commit-panel section headers keyboard-operable without toggling from their checkbox", () => {
+        const onToggleOpen = vi.fn();
+        const checkboxToggle = vi.fn();
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <SectionHeader
+                    label="Changes"
+                    isOpen={true}
+                    onToggleOpen={onToggleOpen}
+                    checkbox={{ isAllChecked: false, isSomeChecked: false, onToggle: checkboxToggle }}
+                />
+            </ChakraProvider>,
+        );
+        const header = mounted.container.querySelector('[role="button"]') as HTMLElement;
+        const input = header.querySelector("input") as HTMLInputElement;
+
+        expect(header.tabIndex).toBe(0);
+        expect(header.getAttribute("aria-expanded")).toBe("true");
+        act(() => header.click());
+        act(() => header.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+        const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+        act(() => header.dispatchEvent(space));
+        expect(space.defaultPrevented).toBe(true);
+        expect(onToggleOpen).toHaveBeenCalledTimes(3);
+
+        act(() => input.click());
+        act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
+        expect(onToggleOpen).toHaveBeenCalledTimes(3);
+        expect(checkboxToggle).toHaveBeenCalledOnce();
+        unmount(mounted.root, mounted.container);
+
+        const closed = mount(
+            <ChakraProvider theme={theme}>
+                <SectionHeader label="Changes" isOpen={false} onToggleOpen={vi.fn()} />
+            </ChakraProvider>,
+        );
+        expect(closed.container.querySelector('[role="button"]')?.getAttribute("aria-expanded")).toBe(
+            "false",
+        );
+        unmount(closed.root, closed.container);
+    });
+
+    it("mirrors checkbox focus on the visual shell while preserving native input behavior", () => {
+        const onChange = vi.fn();
+        const mounted = mount(
+            <VscCheckbox isChecked={true} isIndeterminate={true} onChange={onChange} ariaLabel="Changes" />,
+        );
+        const input = mounted.container.querySelector("input") as HTMLInputElement;
+        const shell = input.nextElementSibling as HTMLElement;
+
+        expect(input.checked).toBe(true);
+        expect(input.indeterminate).toBe(true);
+        expect(shell.getAttribute("data-focused")).toBeNull();
+        act(() => input.focus());
+        expect(shell.getAttribute("data-focused")).toBe("true");
+        expect(shell.style.outline).toContain("solid");
+        act(() => input.blur());
+        expect(shell.getAttribute("data-focused")).toBeNull();
+        expect(shell.style.outline).toBe("");
+        act(() => input.click());
+        expect(onChange).toHaveBeenCalledOnce();
+        unmount(mounted.root, mounted.container);
     });
 
     it("opens GitHub commit checks popover on click and closes on outside pointer", () => {
@@ -717,13 +795,6 @@ describe("webview ui smoke", () => {
 
     it("renders section/folder/stash/toolbar/tab and commit area layouts", () => {
         const noop = vi.fn();
-        const stash = {
-            index: 1,
-            message: "On feature/test: save work",
-            date: "2026-02-19T00:00:00Z",
-            hash: "abc123",
-        };
-
         const html = renderUi(
             <>
                 <SectionHeader
@@ -731,23 +802,26 @@ describe("webview ui smoke", () => {
                     count={2}
                     stats={{ additions: 5, deletions: 1 }}
                     isOpen={true}
-                    isAllChecked={true}
-                    isSomeChecked={false}
                     onToggleOpen={noop}
-                    onToggleCheck={noop}
+                    checkbox={{ isAllChecked: true, isSomeChecked: false, onToggle: noop }}
                 />
-                <FolderRow
-                    name="src"
-                    dirPath="src"
+                <TreeFolderRow
+                    folder={
+                        buildFileTree([
+                            { path: "src/example.ts", status: "M", additions: 0, deletions: 0 },
+                        ])[0]!
+                    }
                     depth={1}
                     isExpanded={true}
                     fileCount={3}
-                    isAllChecked={false}
-                    isSomeChecked={true}
-                    onToggleExpand={noop}
-                    onToggleCheck={noop}
+                    onToggle={noop}
+                    rowVariant="commit-panel"
+                    wiring={{
+                        isAllChecked: false,
+                        isSomeChecked: true,
+                        onToggleFolderCheck: noop,
+                    }}
                 />
-                <StashRow stash={stash} onApply={noop} onPop={noop} onDrop={noop} />
                 <Toolbar
                     onRefresh={noop}
                     onRollback={noop}
@@ -791,7 +865,6 @@ describe("webview ui smoke", () => {
         expect(html).toContain("+5");
         expect(html).toContain("-1");
         expect(html).toContain('type="checkbox"');
-        expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
         expect(html).toContain("Abort Merge");
@@ -811,11 +884,13 @@ describe("webview ui smoke", () => {
                     label="Ignored Files"
                     count={1}
                     isOpen={true}
-                    isAllChecked={false}
-                    isSomeChecked={false}
                     onToggleOpen={noop}
-                    onToggleCheck={noop}
-                    checkboxVisibility="hidden"
+                    checkbox={{
+                        isAllChecked: false,
+                        isSomeChecked: false,
+                        onToggle: noop,
+                        visibility: "hidden",
+                    }}
                 />
             </ChakraProvider>,
         );
@@ -1060,5 +1135,172 @@ describe("webview ui smoke", () => {
         expect(rowText).toContain(fileName);
         expect(rowText).toContain(parentPath);
         expect(rowText.indexOf(fileName)).toBeLessThan(rowText.indexOf(parentPath));
+    });
+
+    it("keeps commit-panel row DOM and click events in the shared compatibility variant", () => {
+        const onSelectWithEvent = vi.fn();
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <TreeFileRow
+                    file={{ path: "src/compat.ts", status: "M", additions: 2, deletions: 1 }}
+                    depth={1}
+                    rowVariant="commit-panel"
+                    indentMetrics={{
+                        indentStep: 18,
+                        indentBase: 20,
+                        guideBase: 28,
+                        sectionGuideLeft: 17,
+                    }}
+                    wiring={{
+                        isSelected: false,
+                        onSelect: vi.fn(),
+                        onSelectWithEvent,
+                        isChecked: true,
+                        onToggleCheck: vi.fn(),
+                        vscodeContext: JSON.stringify({ webviewSection: "file" }),
+                    }}
+                />
+            </ChakraProvider>,
+        );
+        const row = mounted.container.querySelector('[title="src/compat.ts"]') as HTMLElement;
+
+        expect(row.getAttribute("role")).toBeNull();
+        expect(row.getAttribute("tabindex")).toBeNull();
+        expect(row.getAttribute("aria-selected")).toBeNull();
+        expect(row.getAttribute("data-vscode-context")).toContain('"webviewSection":"file"');
+        expect(getComputedStyle(row).paddingLeft).toBe("38px");
+        act(() => row.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        expect(onSelectWithEvent).toHaveBeenCalledOnce();
+        unmount(mounted.root, mounted.container);
+    });
+
+    it("limits shelf drag wiring to root rows while retaining nested unversioned native drag", () => {
+        const onShelfFileDragStart = vi.fn();
+        const dataTransfer = {
+            effectAllowed: "",
+            setData: vi.fn(),
+            setDragImage: vi.fn(),
+        } as unknown as DataTransfer;
+        const mounted = mount(
+            <FileTree
+                files={[
+                    { path: "root.ts", status: "M", staged: false, additions: 0, deletions: 0 },
+                    {
+                        path: "folder/tracked.ts",
+                        status: "M",
+                        staged: false,
+                        additions: 0,
+                        deletions: 0,
+                    },
+                    {
+                        path: "folder/new.ts",
+                        status: "?",
+                        staged: false,
+                        additions: 0,
+                        deletions: 0,
+                    },
+                ]}
+                groupByDir={true}
+                showIgnoredFiles={false}
+                checkedPaths={new Set()}
+                onToggleFile={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onToggleSection={vi.fn()}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={vi.fn()}
+                onShelfFileDragStart={onShelfFileDragStart}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+            />,
+        );
+        const rootRow = mounted.container.querySelector('[title="root.ts"]') as HTMLElement;
+        const nestedTrackedRow = mounted.container.querySelector(
+            '[title="folder/tracked.ts"]',
+        ) as HTMLElement;
+        const nestedUnversionedRow = mounted.container.querySelector(
+            '[title="folder/new.ts"]',
+        ) as HTMLElement;
+        const dragStart = (row: HTMLElement) => {
+            const event = new Event("dragstart", { bubbles: true, cancelable: true });
+            Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+            act(() => row.dispatchEvent(event));
+        };
+
+        expect(rootRow.draggable).toBe(true);
+        dragStart(rootRow);
+        expect(onShelfFileDragStart).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ path: "root.ts" }),
+            expect.any(Set),
+        );
+        expect(nestedTrackedRow.draggable).toBe(false);
+        expect(onShelfFileDragStart).toHaveBeenCalledTimes(1);
+        expect(nestedUnversionedRow.draggable).toBe(true);
+        dragStart(nestedUnversionedRow);
+        // Root shelf handler fires; nested tracked is draggable=false/calls=0; nested unversioned shelf calls=0.
+        expect(onShelfFileDragStart).toHaveBeenCalledTimes(1);
+        unmount(mounted.root, mounted.container);
+    });
+
+    it("uses a staged row-key discriminator without changing the shared path-key default", () => {
+        const onConsoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        const samePathFiles: WorkingFile[] = [
+            { path: "src/shared.ts", status: "M", staged: true, additions: 1, deletions: 0 },
+            { path: "src/shared.ts", status: "M", staged: false, additions: 0, deletions: 1 },
+        ];
+        const mountedTree = mount(
+            <FileTree
+                files={samePathFiles}
+                groupByDir={false}
+                showIgnoredFiles={false}
+                checkedPaths={new Set()}
+                onToggleFile={vi.fn()}
+                onToggleFolder={vi.fn()}
+                onToggleSection={vi.fn()}
+                isAllChecked={() => false}
+                isSomeChecked={() => false}
+                onFileClick={vi.fn()}
+                expandAllSignal={0}
+                collapseAllSignal={0}
+            />,
+        );
+        const duplicateKeyErrors = () =>
+            onConsoleError.mock.calls.filter((call) =>
+                call.some(
+                    (value) =>
+                        typeof value === "string" &&
+                        value.includes("Encountered two children with the same key"),
+                ),
+            );
+
+        // A staged/unstaged same-path pair must emit zero duplicate-key console errors.
+        expect(duplicateKeyErrors()).toHaveLength(0);
+        unmount(mountedTree.root, mountedTree.container);
+
+        const mountedSharedRows = mount(
+            <ChakraProvider theme={theme}>
+                <FileTreeRows
+                    entries={[
+                        {
+                            type: "file",
+                            file: { path: "src/one.ts", status: "M", additions: 0, deletions: 0 },
+                        },
+                        {
+                            type: "file",
+                            file: { path: "src/two.ts", status: "M", additions: 0, deletions: 0 },
+                        },
+                    ]}
+                    depth={0}
+                    isDirectoryExpanded={() => true}
+                    onToggleDirectory={vi.fn()}
+                    fileWiring={() => ({ isSelected: false, onSelect: vi.fn() })}
+                />
+            </ChakraProvider>,
+        );
+        expect(mountedSharedRows.container.querySelector('[title="src/one.ts"]')).not.toBeNull();
+        expect(duplicateKeyErrors()).toHaveLength(0);
+        unmount(mountedSharedRows.root, mountedSharedRows.container);
+        onConsoleError.mockRestore();
     });
 });

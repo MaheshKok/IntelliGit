@@ -3,8 +3,9 @@
 import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkingFile } from "../../../src/types";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
-import { ShelfFileTree } from "../../../src/webviews/react/commit-panel/components/ShelfFileTree";
+import { ChangesFileTree } from "../../../src/webviews/react/shared/components/ChangesFileTree";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -22,24 +23,49 @@ const entries = [
     },
 ] as ShelfFileEntry[];
 
-function renderTree(overrides: Partial<React.ComponentProps<typeof ShelfFileTree>> = {}) {
+type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileEntry };
+
+function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
+    const block = entry.worktreeBlock ?? entry.indexBlock;
+    return {
+        path: block?.path ?? entry.changeId,
+        status: block?.status === "T" ? "M" : (block?.status ?? (entry.untracked ? "?" : "M")),
+        staged: entry.indexBlock !== undefined,
+        additions: 0,
+        deletions: 0,
+        icon: entry.icon,
+        shelfEntry: entry,
+    };
+}
+
+function renderTree(
+    overrides: { entries?: ShelfFileEntry[]; groupByDir?: boolean; onDragStart?: boolean } = {},
+) {
     const onFileActivate = vi.fn();
     const onDragStart = vi.fn();
-    // Selection and directory collapse belong to the owning tab, so the harness holds
-    // that state here the way ShelfTab does.
     const ControlledShelfFileTree = (): React.ReactElement => {
         const [collapsed, setCollapsed] = React.useState<ReadonlySet<string>>(() => new Set());
         const [selectedChangeId, setSelectedChangeId] = React.useState<string | null>(null);
+        const files = (overrides.entries ?? entries).map(displayFile);
         return (
-            <ShelfFileTree
-                entries={entries}
-                groupByDir={false}
+            <ChangesFileTree
+                files={files}
+                groupByDir={overrides.groupByDir ?? false}
                 depth={1}
-                selectedChangeId={selectedChangeId}
-                onFileSelect={(entry) => setSelectedChangeId(entry.changeId)}
-                onFileActivate={onFileActivate}
-                onDragStart={onDragStart}
-                {...overrides}
+                selectedId={selectedChangeId}
+                getId={(file) => file.shelfEntry.changeId}
+                onSelect={(file) => {
+                    setSelectedChangeId(file.shelfEntry.changeId);
+                    onFileActivate(file.shelfEntry);
+                }}
+                onActivate={(file) => onFileActivate(file.shelfEntry)}
+                onDragStart={
+                    overrides.onDragStart === false
+                        ? undefined
+                        : (event, file) => onDragStart(event, file.shelfEntry)
+                }
+                dataAttributes={(file) => ({ "shelf-file": file.shelfEntry.changeId })}
+                emptyState={<span>No shelf files.</span>}
                 isDirectoryCollapsed={(path) => collapsed.has(path)}
                 onToggleDirectory={(path) =>
                     setCollapsed((current) => {
@@ -59,7 +85,7 @@ function renderTree(overrides: Partial<React.ComponentProps<typeof ShelfFileTree
     return { ...mounted, onFileActivate, onDragStart };
 }
 
-describe("ShelfFileTree boundary behavior", () => {
+describe("ChangesFileTree shelf configuration", () => {
     beforeEach(() => installWebviewI18n());
 
     it("uses index-only paths, normalizes type changes, and activates the owning shelf entry", () => {
@@ -84,7 +110,7 @@ describe("ShelfFileTree boundary behavior", () => {
         expect(onDragStart).toHaveBeenCalledWith(expect.anything(), entries[1]);
         unmount(root, container);
 
-        const empty = renderTree({ entries: [], onDragStart: undefined });
+        const empty = renderTree({ entries: [], onDragStart: false });
         expect(empty.container.textContent).toContain("No shelf files.");
         unmount(empty.root, empty.container);
     });

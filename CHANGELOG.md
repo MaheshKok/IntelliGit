@@ -5,6 +5,12 @@ All notable changes to IntelliGit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-07-26
+
+### Changed
+
+- Consolidated duplicated webview UI internals into shared components: one file-tree renderer (rows, folders, indent guides, tri-state checkboxes, drag wiring, keyboard handling) plus shared section headers, checkboxes, and toolbar icon buttons now serve the Commit, Stash, Shelf, and Commit Details panels. Rendered UI is unchanged and was verified byte-for-byte; commit-panel folder rows may carry different auto-generated style class names with identical computed styles.
+
 ## [0.20.0] - 2026-07-24
 
 ### Added

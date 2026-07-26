@@ -1,16 +1,17 @@
 // Stash tab: one tree whose rows expand in place into their own files.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Flex } from "@chakra-ui/react";
+import { Box, Button, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
-import { StashFileTree, StashList } from "./StashList";
+import { StashList } from "./StashList";
 import { StashToolbar } from "./StashToolbar";
 import { StashUnstashDialog } from "./StashUnstashDialog";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import { getSettings } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
+import { ChangesFileTree } from "../../shared/components/ChangesFileTree";
 import { t } from "../../shared/i18n";
+import { directoryKey, toggleMember } from "../../shared/treeExpansion";
 
 interface Props {
     repositoryRoot?: string;
@@ -85,18 +86,6 @@ function rejectUnhandledStashAction(_action: never): never {
     throw new Error("Unhandled stash context action.");
 }
 
-/** Composite key so two expanded stashes cannot share one directory's collapse state. */
-function directoryKey(stashHash: string, dirPath: string): string {
-    return `${stashHash}\n${dirPath}`;
-}
-
-/** Returns a copy of the set with `key` added when absent and removed when present. */
-function toggleMember(current: ReadonlySet<string>, key: string): Set<string> {
-    const next = new Set(current);
-    if (!next.delete(key)) next.add(key);
-    return next;
-}
-
 /**
  * Renders the stash tree and its typed actions.
  *
@@ -120,7 +109,6 @@ export function StashTab({
     // react-doctor-disable-next-line react-doctor/prefer-useReducer
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
-    const { hoverDelay, tooltipsEnabled } = getSettings();
     const [selectionOverride, setSelectionOverride] = useState<SelectionOverride | null>(null);
     const displayedSelectedIndex =
         selectionOverride?.snapshot === stashes ? selectionOverride.index : selectedIndex;
@@ -363,13 +351,12 @@ export function StashTab({
 
     const renderSubtree = useCallback(
         (stash: StashEntry, files: WorkingFile[]): React.ReactNode => (
-            <StashFileTree
+            <ChangesFileTree
                 files={files}
                 groupByDir={groupByDir}
                 depth={0}
-                selectedFilePath={
-                    fileSelection.stashHash === stash.hash ? fileSelection.path : null
-                }
+                selectedId={fileSelection.stashHash === stash.hash ? fileSelection.path : null}
+                getId={(file) => file.path}
                 isDirectoryCollapsed={(path) =>
                     collapsedDirectories.has(directoryKey(stash.hash, path))
                 }
@@ -377,20 +364,26 @@ export function StashTab({
                 folderExpandedIcon={folderExpandedIcon}
                 folderIconsByName={folderIconsByName}
                 onToggleDirectory={(path) => toggleDirectory(stash.hash, path)}
-                onFileSelect={(path) => setFileSelection({ stashHash: stash.hash, path })}
-                onFileActivate={(path) => showStashDiff(stash.index, true, path)}
-                onFileContextMenu={(path, x, y, returnFocusTarget) => {
-                    setFileSelection({ stashHash: stash.hash, path });
+                onSelect={(file) => setFileSelection({ stashHash: stash.hash, path: file.path })}
+                onActivate={(file) => showStashDiff(stash.index, true, file.path)}
+                onContextMenu={(file, x, y, returnFocusTarget) => {
+                    setFileSelection({ stashHash: stash.hash, path: file.path });
                     setContextMenu({
                         kind: "stash-file",
                         index: stash.index,
                         stashHash: stash.hash,
-                        path,
+                        path: file.path,
                         x,
                         y,
                         returnFocusTarget,
                     });
                 }}
+                dataAttributes={(file) => ({ "stash-file": file.path })}
+                emptyState={
+                    <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
+                        {t("stash.noFiles")}
+                    </Box>
+                }
             />
         ),
         [
@@ -447,8 +440,6 @@ export function StashTab({
                 selectedIndex={displayedSelectedIndex}
                 groupByDir={groupByDir}
                 canExpandOrCollapse={stashes.length > 0}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
                 isRefreshing={isRefreshing}
                 onRefresh={() =>
                     vscode.postMessage({

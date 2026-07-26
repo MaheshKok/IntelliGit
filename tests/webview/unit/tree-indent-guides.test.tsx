@@ -3,8 +3,9 @@
 import React from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { WorkingFile } from "../../../src/types";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
-import { ShelfFileTree } from "../../../src/webviews/react/commit-panel/components/ShelfFileTree";
+import { ChangesFileTree } from "../../../src/webviews/react/shared/components/ChangesFileTree";
 import { FileTreeRows } from "../../../src/webviews/react/shared/components/FileTreeRows";
 import { buildFileTree } from "../../../src/webviews/react/shared/fileTree";
 import theme from "../../../src/webviews/react/commit-panel/theme";
@@ -17,6 +18,21 @@ const entries = [
     { changeId: "root", worktreeBlock: { path: "CHANGELOG.md", status: "M" } },
     { changeId: "nested", worktreeBlock: { path: "src/app.ts", status: "M" } },
 ] as ShelfFileEntry[];
+
+type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileEntry };
+
+function displayFile(entry: ShelfFileEntry): ShelfDisplayFile {
+    const block = entry.worktreeBlock ?? entry.indexBlock;
+    return {
+        path: block?.path ?? entry.changeId,
+        status: block?.status === "T" ? "M" : (block?.status ?? (entry.untracked ? "?" : "M")),
+        staged: entry.indexBlock !== undefined,
+        additions: 0,
+        deletions: 0,
+        icon: entry.icon,
+        shelfEntry: entry,
+    };
+}
 
 /** Left offsets, in render order, of the vertical rules a row draws for tree depth. */
 function guideOffsets(row: HTMLElement): number[] {
@@ -33,15 +49,16 @@ function guideCount(row: HTMLElement): number {
 function renderTree(groupByDir: boolean) {
     return mount(
         <ChakraProvider theme={theme}>
-            <ShelfFileTree
-                entries={entries}
+            <ChangesFileTree
+                files={entries.map(displayFile)}
                 groupByDir={groupByDir}
                 depth={0}
-                selectedChangeId={null}
+                selectedId={null}
+                getId={(file) => file.shelfEntry.changeId}
                 isDirectoryCollapsed={() => false}
                 onToggleDirectory={() => undefined}
-                onFileSelect={() => undefined}
-                onFileActivate={() => undefined}
+                onSelect={() => undefined}
+                dataAttributes={(file) => ({ "shelf-file": file.shelfEntry.changeId })}
             />
         </ChakraProvider>,
     );

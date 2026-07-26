@@ -3,9 +3,9 @@
 
 import React from "react";
 import { Box } from "@chakra-ui/react";
-import { GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../../shared/tokens";
-import { getSettings } from "../../shared/settings";
-import { t } from "../../shared/i18n";
+import { GIT_STATUS_COLORS, GIT_STATUS_LABELS } from "../tokens";
+import { getSettings } from "../settings";
+import { t } from "../i18n";
 
 interface Props {
     status: string;
@@ -61,7 +61,7 @@ function StatusBadgeInner({ status }: Props): React.ReactElement {
 }
 
 /**
- * Memoized Git status badge for commit-panel file rows.
+ * Memoized Git status badge for file rows.
  *
  * The badge maps status codes to localized tooltips and PyCharm-colored glyphs,
  * displaying unversioned `?` files as the user-facing `U` marker.

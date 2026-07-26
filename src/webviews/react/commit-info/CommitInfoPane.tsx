@@ -5,8 +5,9 @@ import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from
 import { formatDateTime } from "../shared/date";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
-import { ChevronIcon } from "../shared/components/Icons";
 import { FileTreeRows } from "../shared/components/FileTreeRows";
+import { SectionHeader } from "../shared/components/SectionHeader";
+import { SPIN_KEYFRAMES } from "../shared/components/iconStyles";
 import { splitCommitRefs } from "../shared/utils/refs";
 import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
@@ -42,7 +43,6 @@ interface CommitInfoPaneProps {
     onOpenDiff?: (commitHash: string, filePath: string) => void;
 }
 
-const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
 const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
     position: "absolute",
     width: 1,
@@ -235,6 +235,7 @@ function CommitInfoLoadingPane({ bottomHeight }: { bottomHeight: number }): Reac
         >
             <style>{SPIN_KEYFRAMES}</style>
             <SectionHeader
+                variant="commit-info"
                 label={t("commitInfo.changedFiles")}
                 expanded={true}
                 borderBottom={true}
@@ -242,7 +243,11 @@ function CommitInfoLoadingPane({ bottomHeight }: { bottomHeight: number }): Reac
             <LoadingSection label={`${t("common.loading")} ${t("commitInfo.changedFiles")}`} />
             <Box flex="0 0 5px" bg={JETBRAINS_UI.color.divider} />
             <Box flexShrink={0} h={`${bottomHeight}px`} overflow="hidden">
-                <SectionHeader label={t("commitInfo.details")} expanded={true} />
+                <SectionHeader
+                    variant="commit-info"
+                    label={t("commitInfo.details")}
+                    expanded={true}
+                />
                 <LoadingSection
                     label={`${t("common.loading")} ${t("commitInfo.details")}`}
                     h={`calc(100% - 28px)`}
@@ -300,70 +305,6 @@ function LoadingSection({
     );
 }
 
-function SectionHeader({
-    label,
-    expanded,
-    onToggle,
-    stats,
-    borderBottom = false,
-}: {
-    label: string;
-    expanded: boolean;
-    onToggle?: () => void;
-    stats?: FileStats;
-    borderBottom?: boolean;
-}): React.ReactElement {
-    return (
-        <Box
-            display="flex"
-            alignItems="center"
-            px="8px"
-            py="4px"
-            fontWeight={600}
-            fontSize="12px"
-            color={JETBRAINS_UI.color.muted}
-            bg={JETBRAINS_UI.color.toolbar}
-            borderBottom={borderBottom ? `1px solid ${JETBRAINS_UI.color.border}` : undefined}
-            cursor={onToggle ? "pointer" : undefined}
-            tabIndex={onToggle ? 0 : undefined}
-            role={onToggle ? "button" : undefined}
-            aria-expanded={onToggle ? expanded : undefined}
-            onClick={onToggle}
-            onKeyDown={
-                onToggle
-                    ? (event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                              event.preventDefault();
-                              onToggle();
-                          }
-                      }
-                    : undefined
-            }
-        >
-            <ChevronIcon expanded={expanded} />
-            <Box as="span">{label}</Box>
-            {stats && (stats.additions > 0 || stats.deletions > 0) && (
-                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
-                    {stats.additions > 0 && (
-                        <Box
-                            as="span"
-                            color="var(--intelligit-pycharm-added)"
-                            mr={stats.deletions > 0 ? "4px" : "0"}
-                        >
-                            +{stats.additions}
-                        </Box>
-                    )}
-                    {stats.deletions > 0 && (
-                        <Box as="span" color="var(--intelligit-pycharm-deleted)">
-                            -{stats.deletions}
-                        </Box>
-                    )}
-                </Box>
-            )}
-        </Box>
-    );
-}
-
 function CommitChangedFilesPanel({
     detail,
     tree,
@@ -396,6 +337,7 @@ function CommitChangedFilesPanel({
     return (
         <>
             <SectionHeader
+                variant="commit-info"
                 label={t("commitInfo.changedFiles")}
                 expanded={!filesCollapsed}
                 onToggle={onToggleFiles}
@@ -490,6 +432,7 @@ function CommitDetailsPanel({
             overflow="hidden"
         >
             <SectionHeader
+                variant="commit-info"
                 label={t("commitInfo.details")}
                 expanded={!detailCollapsed}
                 onToggle={onToggleDetail}
