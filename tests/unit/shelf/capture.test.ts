@@ -20,8 +20,8 @@ afterEach(async () => {
     );
 });
 
-/** Runs git in `directory`, feeding `input` on stdin and returning stdout. */
-function git(directory: string, args: string[], input = ""): Promise<string> {
+/** Runs git in `directory`, feeding explicitly supplied stdin and returning stdout. */
+function git(directory: string, args: string[], input?: string): Promise<string> {
     return new Promise<string>((resolve, reject) => {
         const child = execFile(
             "git",
@@ -41,9 +41,9 @@ function git(directory: string, args: string[], input = ""): Promise<string> {
                 else resolve(stdout);
             },
         );
-        // Closing stdin immediately keeps commands that would otherwise read it
-        // (update-index --index-info) from waiting on a caller that has nothing to say.
-        child.stdin?.end(input);
+        // Only stdin-driven plumbing (update-index --index-info) receives input. Closing
+        // the pipe for short-lived commands that do not read stdin can race their exit.
+        if (input !== undefined) child.stdin?.end(input);
     });
 }
 
