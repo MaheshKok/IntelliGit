@@ -16,6 +16,7 @@ import {
     workspaceRoots,
 } from "./common";
 import { showTimedInformationMessage } from "../utils/notifications";
+import { SHELF_COMMAND_IDS } from "./shelfCommands";
 
 /**
  * Hooks that let no-repository activation transition after a repository appears.
@@ -188,6 +189,7 @@ export function activateNoRepositoryMode(
         "intelligit.graph.push.color",
         "intelligit.graph.sync",
         "intelligit.graph.sync.color",
+        ...SHELF_COMMAND_IDS,
     ]) {
         registerNoRepositoryDisposable(
             vscode.commands.registerCommand(command, () => {

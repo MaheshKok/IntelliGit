@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 type MessageHandler = (message: unknown) => void | Promise<void>;
 type CommandHandler = (...args: unknown[]) => unknown;
@@ -413,7 +416,7 @@ vi.mock("../../../src/services/repositoryDiscovery", async () => {
     };
 });
 vi.mock("../../../src/git/executor", () => ({
-    GitExecutor: class {
+    GitExecutor: class MockGitExecutor {
         public root: string;
 
         constructor(root: string) {
@@ -425,10 +428,11 @@ vi.mock("../../../src/git/executor", () => ({
             activeGitRoot.value = root;
             gitExecutorSetRoot(root);
         });
+        deriveFor = (root: string) => new MockGitExecutor(root);
     },
 }));
 vi.mock("../../../src/git/operations", () => ({
-    GitOps: class {
+    GitOps: class MockGitOps {
         constructor(private readonly executor?: { root?: string }) {}
 
         private currentRoot(): string {
@@ -453,6 +457,7 @@ vi.mock("../../../src/git/operations", () => ({
         getStatus = vi.fn(async () => gitStatusByRoot.get(this.currentRoot()) ?? []);
         listStashes = vi.fn(async () => []);
         getConflictFilesDetailed = vi.fn(async () => []);
+        deriveFor = vi.fn((root: string) => new MockGitOps({ root }));
     },
 }));
 vi.mock("../../../src/services/worktreeService", () => ({
@@ -676,6 +681,12 @@ function renderedButtonActions(html: string): string[] {
 
 function makeGitOpsMock() {
     return {
+        // Derived per-root instances mirror the module-level MockGitOps: status comes
+        // from gitStatusByRoot so multi-repo tests can script non-active repositories.
+        deriveFor: vi.fn((root: string): object => ({
+            ...makeGitOpsMock(),
+            getStatus: vi.fn(async () => gitStatusByRoot.get(root) ?? []),
+        })),
         getLog: vi.fn(async () => [
             {
                 hash: "abc1234",
@@ -861,7 +872,7 @@ function lastCommitChecksSnapshot():
 
 async function setupCommitPanelProvider(
     configure?: (gitOps: ReturnType<typeof makeGitOpsMock>) => void,
-    options: { secrets?: ReturnType<typeof makeSecretStorage> } = {},
+    options: { secrets?: ReturnType<typeof makeSecretStorage>; shelfService?: unknown } = {},
 ) {
     const { CommitPanelViewProvider } = await import("../../../src/views/CommitPanelViewProvider");
     const gitOps = makeGitOpsMock();
@@ -873,6 +884,9 @@ async function setupCommitPanelProvider(
         { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
         draftStore as unknown as object,
         options.secrets as unknown as object,
+        options.shelfService
+            ? ((() => options.shelfService) as unknown as (repositoryRoot: string) => object)
+            : undefined,
     );
     const webview = createWebviewView();
     provider.resolveWebviewView(
@@ -920,6 +934,38 @@ describe("view providers integration", () => {
             summary: "All checks passed",
             items: [],
         }));
+    });
+
+    it("starts shelf recovery before initial snapshots without blocking activation", async () => {
+        const repositoryRoot = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-repository-"));
+        const globalStoragePath = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-storage-"));
+        const { ShelfService } = await import("../../../src/services/shelfService");
+        const { activateRepositoryMode } = await import("../../../src/activation/repositoryMode");
+        const resumePendingRecovery = vi
+            .spyOn(ShelfService.prototype, "resumePendingRecovery")
+            .mockRejectedValueOnce(new Error("resume failed"));
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+        try {
+            await activateRepositoryMode(
+                {
+                    extensionUri: vscodeMock.Uri.file("/ext"),
+                    globalStorageUri: vscodeMock.Uri.file(globalStoragePath),
+                    subscriptions: [],
+                    workspaceState: createMemento(),
+                    secrets: {},
+                } as never,
+                [{ root: repositoryRoot, label: "Shelf repository" }],
+            );
+
+            expect(resumePendingRecovery).toHaveBeenCalledOnce();
+            await flushMicrotasks();
+            expect(showErrorMessage).toHaveBeenCalledWith("resume failed");
+        } finally {
+            resumePendingRecovery.mockRestore();
+            consoleError.mockRestore();
+            await rm(repositoryRoot, { recursive: true, force: true });
+            await rm(globalStoragePath, { recursive: true, force: true });
+        }
     });
 
     it("graph active repository follows the active editor without mutating commit accordion expansion", async () => {
@@ -1116,7 +1162,11 @@ describe("view providers integration", () => {
             const firstHash = "a".repeat(40);
             const secondHash = "b".repeat(40);
             let firstResponse:
-                | ((metadata: { url: string; statusCode: number; headers: Record<string, string> }) => void)
+                | ((metadata: {
+                      url: string;
+                      statusCode: number;
+                      headers: Record<string, string>;
+                  }) => void)
                 | undefined;
             let rejectFirstRequest: ((reason?: unknown) => void) | undefined;
             let markFirstRequestStarted: (() => void) | undefined;
@@ -1643,7 +1693,10 @@ describe("view providers integration", () => {
             amend: false,
         });
 
-        expect(postMessageSpy).toHaveBeenCalledWith({ type: "committed", clearCommitMessage: false });
+        expect(postMessageSpy).toHaveBeenCalledWith({
+            type: "committed",
+            clearCommitMessage: false,
+        });
         provider.dispose();
     });
 
@@ -1691,9 +1744,10 @@ describe("view providers integration", () => {
             amend: false,
         });
         await flushMicrotasks();
-        provider.setRepositoryRootUri(
-            { fsPath: "/repo-b", path: "/repo-b" } as unknown as { fsPath: string; path: string },
-        );
+        provider.setRepositoryRootUri({ fsPath: "/repo-b", path: "/repo-b" } as unknown as {
+            fsPath: string;
+            path: string;
+        });
         resolveCommit();
         await commit;
 
@@ -1742,6 +1796,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
                 decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
                 dispose: ReturnType<typeof vi.fn>;
             };
@@ -1760,6 +1816,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
             decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
                 detail,
                 folderIconsByName: {},
@@ -1950,6 +2008,109 @@ describe("view providers integration", () => {
         expect(fileCounts.length).toBeGreaterThan(0);
     });
 
+    it("UndockedViewProvider dispatches shelf mutations for its selected repository", async () => {
+        const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
+        const shelf = {
+            shelve: vi.fn(async () => ({
+                status: "ok",
+                entries: [],
+                shelfId: "shelf-u",
+                newGeneration: 2,
+            })),
+            listShelves: vi.fn(async () => ({
+                shelfIds: ["shelf-u"],
+                corruptShelfIds: [],
+                catalogGeneration: 4,
+                shelves: [
+                    {
+                        id: "shelf-u",
+                        generation: 2,
+                        metadata: { name: "Undocked shelf", lifecycle: "shelved" },
+                        files: [],
+                    },
+                ],
+            })),
+            getShelfFiles: vi.fn(async () => []),
+            getHealthWarnings: vi.fn(() => []),
+        };
+        const provider = new UndockedViewProvider(
+            { fsPath: "/ext", path: "/ext" } as unknown as { fsPath: string; path: string },
+            makeGitOpsMock() as unknown as object,
+            { fsPath: "/repo", path: "/repo" } as unknown as { fsPath: string; path: string },
+            makeCredentialStore() as unknown as object,
+            createMemento() as unknown as object,
+            {},
+            undefined,
+            { shelfServiceForRepository: () => shelf as never },
+        );
+        const testProvider = provider as unknown as {
+            panel: {
+                webview: { postMessage: typeof postMessageSpy };
+                dispose: ReturnType<typeof vi.fn>;
+            };
+            iconTheme: {
+                initIconThemeData: ReturnType<typeof vi.fn>;
+                getThemeData: ReturnType<typeof vi.fn>;
+                decorateWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
+            };
+            handleMessage: (msg: unknown) => Promise<void>;
+        };
+        testProvider.panel = { webview: { postMessage: postMessageSpy }, dispose: vi.fn() };
+        testProvider.iconTheme = {
+            initIconThemeData: vi.fn(async () => undefined),
+            getThemeData: vi.fn(() => ({
+                folderIcons: { folderIcon: "folder", folderExpandedIcon: "folder-open" },
+                iconFonts: [],
+            })),
+            decorateWorkingFiles: vi.fn(async (files: unknown) => files),
+            getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
+        };
+        postMessageSpy.mockClear();
+
+        await testProvider.handleMessage.call(provider, {
+            type: "shelveSave",
+            requestId: "undocked-shelf",
+            name: "Undocked shelf",
+            paths: ["src/a.ts"],
+            silent: true,
+            keepLocal: true,
+            idempotencyToken: "undocked-token",
+            expectedCatalogGeneration: 3,
+        });
+
+        expect(shelf.shelve).toHaveBeenCalledWith(
+            expect.objectContaining({
+                idempotencyToken: "undocked-token",
+                expectedCatalogGeneration: 3,
+                keepLocal: true,
+            }),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "shelfMutationCompleted",
+                requestId: "undocked-shelf",
+                status: "ok",
+                newCatalogGeneration: 4,
+            }),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                shelves: [expect.objectContaining({ id: "shelf-u", generation: 2 })],
+                catalogGeneration: 4,
+                selectedShelfId: "shelf-u",
+            }),
+        );
+        // The mutation re-reads the shelf catalog, so the refresh icon spins for the
+        // fetch instead of leaving the panel looking idle while Git runs.
+        expect(refreshingStates()).toEqual([true, false]);
+    });
+
     it("UndockedViewProvider hydrates and switches repositories through its own runtime root", async () => {
         const { UndockedViewProvider } = await import("../../../src/views/UndockedViewProvider");
         const executor = {
@@ -2020,6 +2181,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
                 decorateCommitDetailWithFolderIcons: ReturnType<typeof vi.fn>;
                 dispose: ReturnType<typeof vi.fn>;
             };
@@ -2038,6 +2201,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
             decorateCommitDetailWithFolderIcons: vi.fn(async (detail: unknown) => ({
                 detail,
                 folderIconsByName: {},
@@ -2188,6 +2353,8 @@ describe("view providers integration", () => {
                 getThemeData: ReturnType<typeof vi.fn>;
                 decorateWorkingFiles: ReturnType<typeof vi.fn>;
                 getFolderIconsByWorkingFiles: ReturnType<typeof vi.fn>;
+                getFolderIconsByPaths: ReturnType<typeof vi.fn>;
+                decorateFilePaths: ReturnType<typeof vi.fn>;
                 dispose: ReturnType<typeof vi.fn>;
             };
             handleMessage: (msg: unknown) => Promise<void>;
@@ -2205,6 +2372,8 @@ describe("view providers integration", () => {
             })),
             decorateWorkingFiles: vi.fn(async (files: unknown) => files),
             getFolderIconsByWorkingFiles: vi.fn(async () => ({})),
+            getFolderIconsByPaths: vi.fn(async () => ({})),
+            decorateFilePaths: vi.fn(async (items: unknown) => items),
             dispose: vi.fn(),
         };
         const send = (msg: unknown) => testProvider.handleMessage.call(provider, msg);
@@ -5163,6 +5332,15 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider announces the cold-start load that fills the shelf and stash tabs", async () => {
+        // The webview mounts against an empty cache, so it renders "No shelves." while
+        // Git is still being read. Without this the wait is indistinguishable from an
+        // empty repository — the refresh icon has to say the panel is still working.
+        const { provider } = await setupCommitPanelProvider();
+        expect(refreshingStates()).toEqual([true, false]);
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider keeps the blue refresh indicator visible long enough to be seen", async () => {
         const { provider } = await setupCommitPanelProvider();
         await provider.refresh();
@@ -5413,7 +5591,11 @@ describe("view providers integration", () => {
         draftStore.update.mockRejectedValueOnce(new Error("draft cleanup failed"));
 
         await expect(
-            testProvider.handleMessage({ type: "commitAndPush", message: "feat: saved", amend: false }),
+            testProvider.handleMessage({
+                type: "commitAndPush",
+                message: "feat: saved",
+                amend: false,
+            }),
         ).rejects.toThrow(pushError);
         expect(postMessageSpy).toHaveBeenCalledWith(
             expect.objectContaining({ type: "committed", clearCommitMessage: false }),
@@ -5657,6 +5839,111 @@ describe("view providers integration", () => {
         provider.dispose();
     });
 
+    it("CommitPanelViewProvider dispatches shelf mutations and publishes shelf snapshots", async () => {
+        const shelfOneFiles = [
+            {
+                changeId: "change-1",
+                worktreeBlock: {
+                    path: "src/a.ts",
+                    status: "M",
+                    patchObjectHash: "a".repeat(64),
+                },
+                binary: false,
+                untracked: false,
+                baseAvailability: "none",
+                exactReconstruction: true,
+                lifecycle: "shelved",
+            },
+        ];
+        const shelf = {
+            shelve: vi.fn(async () => ({
+                status: "ok",
+                entries: [],
+                shelfId: "shelf-1",
+                newGeneration: 3,
+            })),
+            listShelves: vi.fn(async () => ({
+                shelfIds: ["shelf-1"],
+                corruptShelfIds: [],
+                catalogGeneration: 7,
+                shelves: [
+                    {
+                        id: "shelf-1",
+                        generation: 3,
+                        files: shelfOneFiles,
+                        metadata: { name: "Shelf one", lifecycle: "shelved" },
+                    },
+                ],
+            })),
+            getShelfFiles: vi.fn(async () => shelfOneFiles),
+            getHealthWarnings: vi.fn(() => []),
+        };
+        const { provider, webview } = await setupCommitPanelProvider(undefined, {
+            shelfService: shelf,
+        });
+        postMessageSpy.mockClear();
+
+        await webview.send({
+            type: "shelveSave",
+            requestId: "dock-shelf",
+            name: "Shelf one",
+            paths: ["src/a.ts"],
+            silent: false,
+            keepLocal: false,
+            idempotencyToken: "dock-token",
+            expectedCatalogGeneration: 6,
+        });
+
+        expect(shelf.shelve).toHaveBeenCalledWith({
+            name: "Shelf one",
+            paths: ["src/a.ts"],
+            silent: false,
+            keepLocal: false,
+            idempotencyToken: "dock-token",
+            expectedCatalogGeneration: 6,
+        });
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "shelfMutationCompleted",
+                repositoryRoot: "/repo",
+                requestId: "dock-shelf",
+                status: "ok",
+                newCatalogGeneration: 7,
+            }),
+        );
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                shelves: [
+                    expect.objectContaining({
+                        id: "shelf-1",
+                        generation: 3,
+                        files: [expect.objectContaining({ changeId: "change-1" })],
+                    }),
+                ],
+                catalogGeneration: 7,
+                selectedShelfId: "shelf-1",
+            }),
+        );
+        // The mutation re-reads the shelf catalog, so the refresh icon spins for the
+        // fetch instead of leaving the panel looking idle while Git runs.
+        expect(refreshingStates()).toEqual([true, false]);
+
+        postMessageSpy.mockClear();
+        shelf.getShelfFiles.mockClear();
+        await webview.send({ type: "shelfSelect", shelfId: "shelf-1" });
+        // Listing already shipped every shelf's files, so selecting one reads nothing more.
+        expect(shelf.getShelfFiles).not.toHaveBeenCalled();
+        expect(postMessageSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "update",
+                selectedShelfId: "shelf-1",
+                catalogGeneration: 7,
+            }),
+        );
+        provider.dispose();
+    });
+
     it("CommitPanelViewProvider handles stash operations", async () => {
         const { provider, gitOps, webview } = await setupCommitPanelProvider();
         await webview.send({ type: "stashSave", name: "work", paths: ["src/a.ts"] });
@@ -5768,11 +6055,9 @@ describe("view providers integration", () => {
             postMessageSpy.mock.calls
                 .map(([message]) => message)
                 .filter((message) =>
-                    [
-                        "docked-invalid-index",
-                        "docked-invalid-hash",
-                        "docked-traversal",
-                    ].includes(message.requestId),
+                    ["docked-invalid-index", "docked-invalid-hash", "docked-traversal"].includes(
+                        message.requestId,
+                    ),
                 ),
         ).toEqual([
             {

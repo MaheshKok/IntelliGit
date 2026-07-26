@@ -41,6 +41,7 @@ interface Props {
         returnFocusTarget: HTMLElement,
     ) => void;
     dataStashFile?: string;
+    dataShelfFile?: string;
     isCurrent?: boolean;
     contextMenuEnabled?: boolean;
 }
@@ -94,6 +95,7 @@ function FileRowInner({
     onActivate,
     onOpenContextMenu,
     dataStashFile,
+    dataShelfFile,
     isCurrent = false,
     contextMenuEnabled,
 }: Props): React.ReactElement {
@@ -138,6 +140,7 @@ function FileRowInner({
             }}
             aria-current={isCurrent ? "true" : undefined}
             data-stash-file={dataStashFile}
+            data-shelf-file={dataShelfFile}
             data-vscode-context={optionalContextMenuMetadata(
                 contextMenuEnabled,
                 JSON.stringify({

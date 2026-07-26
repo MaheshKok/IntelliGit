@@ -2,16 +2,23 @@
 
 import React from "react";
 import { Box, Flex, IconButton, Tooltip } from "@chakra-ui/react";
-import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
+import {
+    CollapseAllIconGlyph,
+    ExpandAllIconGlyph,
+    GroupByDirectoryIconGlyph,
+} from "../../shared/components/Icons";
+import { RefreshButton } from "../../shared/components/RefreshButton";
 import { t } from "../../shared/i18n";
 
 /** Props for selected-stash file-pane toolbar controls. */
 export interface StashToolbarProps {
     selectedIndex: number | null;
     groupByDir: boolean;
-    hasGroupedDirectories: boolean;
+    canExpandOrCollapse: boolean;
     hoverDelay: number;
     tooltipsEnabled: boolean;
+    isRefreshing: boolean;
+    onRefresh: () => void;
     onShowStashDiff: () => void;
     onToggleGroupBy: () => void;
     onExpandAll: () => void;
@@ -22,9 +29,11 @@ export interface StashToolbarProps {
 export function StashToolbar({
     selectedIndex,
     groupByDir,
-    hasGroupedDirectories,
+    canExpandOrCollapse,
     hoverDelay,
     tooltipsEnabled,
+    isRefreshing,
+    onRefresh,
     onShowStashDiff,
     onToggleGroupBy,
     onExpandAll,
@@ -39,6 +48,7 @@ export function StashToolbar({
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >
+            <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
             <StashToolbarButton
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}
@@ -57,16 +67,13 @@ export function StashToolbar({
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
-                <path
-                    fill="currentColor"
-                    d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h4v4h-4v-4z"
-                />
+                <GroupByDirectoryIconGlyph />
             </StashToolbarButton>
             <Box flex={1} />
             <StashToolbarButton
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
-                isDisabled={selectedIndex === null || !hasGroupedDirectories}
+                isDisabled={!canExpandOrCollapse}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >
@@ -75,7 +82,7 @@ export function StashToolbar({
             <StashToolbarButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
-                isDisabled={selectedIndex === null || !hasGroupedDirectories}
+                isDisabled={!canExpandOrCollapse}
                 hoverDelay={hoverDelay}
                 tooltipsEnabled={tooltipsEnabled}
             >

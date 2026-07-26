@@ -5,7 +5,10 @@ import { Box, Flex } from "@chakra-ui/react";
 import { TabBar } from "./TabBar";
 import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
+import { ShelfTab } from "./ShelfTab";
+import { isActiveShelf } from "./ShelfList";
 import { useCheckedFiles } from "../hooks/useCheckedFiles";
+import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { canRunCommitAction } from "../commitEligibility";
 import { ChevronIcon } from "../../shared/components/Icons";
@@ -96,6 +99,12 @@ export function RepositoryAccordion({
     const showIgnoredFilesPostedRef = useRef(false);
     const { checkedPaths, toggleFile, toggleFolder, toggleSection, isAllChecked, isSomeChecked } =
         useCheckedFiles(repository.files, repository.root || undefined);
+    const shelfDrag = useShelfDrag({
+        repositoryRoot: repository.root || undefined,
+        catalogGeneration: repository.catalogGeneration,
+        removeOnUnshelve: repository.shelfRemoveOnUnshelve,
+        onMessage: (message) => vscode.postMessage(message),
+    });
     const summary = branchSummary(repository);
     const canCommit = canRunCommitAction(
         repository.isAmend,
@@ -222,6 +231,8 @@ export function RepositoryAccordion({
             showIgnoredFiles={showIgnoredFiles}
             onToggleGroupBy={onToggleGroupBy}
             onToggleShowIgnoredFiles={handleToggleShowIgnoredFiles}
+            catalogGeneration={repository.catalogGeneration}
+            onShelfFileDragStart={shelfDrag.onCommitFileDragStart}
         />
     );
     const stashContent = (
@@ -235,7 +246,73 @@ export function RepositoryAccordion({
             folderExpandedIcon={repository.folderExpandedIcon}
             folderIconsByName={repository.folderIconsByName}
             groupByDir={groupByDir}
+            isRefreshing={repository.isRefreshing}
             onToggleGroupBy={onToggleGroupBy}
+        />
+    );
+    const shelfContent = (
+        <ShelfTab
+            repositoryRoot={repository.root || undefined}
+            shelves={repository.shelves}
+            selectedShelfId={repository.selectedShelfId}
+            catalogGeneration={repository.catalogGeneration}
+            shelfRemoveOnUnshelve={repository.shelfRemoveOnUnshelve ?? true}
+            shelfHealth={repository.shelfHealth ?? []}
+            groupByDir={groupByDir}
+            folderIcon={repository.folderIcon}
+            folderExpandedIcon={repository.folderExpandedIcon}
+            folderIconsByName={repository.folderIconsByName}
+            isRefreshing={repository.isRefreshing}
+            outcome={repository.shelfMutationOutcome ?? undefined}
+            onRefresh={() =>
+                vscode.postMessage({ type: "refresh", ...repositoryScope(repository.root) })
+            }
+            onSelect={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onUnshelve={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onUnshelveSilently={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onRename={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onDelete={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onShowDiff={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onCompareWithLocal={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onRestoreGhost={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onImportPatch={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onExportPatch={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onCopyPatch={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onCleanUp={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onToggleGroupBy={onToggleGroupBy}
+            onOpenConflictEditor={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onResolveStructural={(message) =>
+                vscode.postMessage({ ...message, ...repositoryScope(repository.root) })
+            }
+            onDragOver={shelfDrag.onShelfDragOver}
+            onDrop={shelfDrag.onShelfDrop}
+            onShelfEntryDragStart={shelfDrag.onShelfEntryDragStart}
         />
     );
 
@@ -244,12 +321,19 @@ export function RepositoryAccordion({
             <Flex direction="column" flex={1} minH={0} overflow="hidden">
                 <TabBar
                     stashCount={repository.stashes.length}
+                    shelfCount={(repository.shelves ?? []).filter(isActiveShelf).length}
+                    shelfWarningCount={(repository.shelfHealth ?? []).length}
                     onSync={() => postRepositoryCommand("sync")}
                     onFetch={() => postRepositoryCommand("fetch")}
                     onPull={() => postRepositoryCommand("pull")}
                     onPush={handlePush}
                     commitContent={commitContent}
                     stashContent={stashContent}
+                    shelfContent={shelfContent}
+                    onCommitDragOver={shelfDrag.onCommitDragOver}
+                    onCommitDrop={shelfDrag.onCommitDrop}
+                    onShelfDragOver={shelfDrag.onShelfDragOver}
+                    onShelfDrop={shelfDrag.onShelfDrop}
                 />
             </Flex>
         );
@@ -345,12 +429,19 @@ export function RepositoryAccordion({
                     <Box flex={1} minH={0} overflow="hidden">
                         <TabBar
                             stashCount={repository.stashes.length}
+                            shelfCount={(repository.shelves ?? []).filter(isActiveShelf).length}
+                            shelfWarningCount={(repository.shelfHealth ?? []).length}
                             onSync={() => postRepositoryCommand("sync")}
                             onFetch={() => postRepositoryCommand("fetch")}
                             onPull={() => postRepositoryCommand("pull")}
                             onPush={handlePush}
                             commitContent={commitContent}
                             stashContent={stashContent}
+                            shelfContent={shelfContent}
+                            onCommitDragOver={shelfDrag.onCommitDragOver}
+                            onCommitDrop={shelfDrag.onCommitDrop}
+                            onShelfDragOver={shelfDrag.onShelfDragOver}
+                            onShelfDrop={shelfDrag.onShelfDrop}
                         />
                     </Box>
                 </Flex>

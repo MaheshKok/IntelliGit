@@ -1,3 +1,4 @@
+import path from "node:path";
 import { GitExecutor } from "./executor";
 import type {
     Branch,
@@ -243,6 +244,26 @@ export class GitOps {
         private readonly executor: GitExecutor,
         private readonly confirmSetUpstreamPush?: ConfirmSetUpstreamPush,
     ) {}
+    /**
+     * Creates a facade for another repository root whose executor shares this
+     * facade's mutation gate, keeping multi-repository mutations serialized.
+     */
+    deriveFor(repoRoot: string): GitOps {
+        return new GitOps(this.executor.deriveFor(repoRoot), this.confirmSetUpstreamPush);
+    }
+    /** Resolves worktree and common Git directories through Git itself. */
+    async getGitDirectories(): Promise<{ gitDir: string; commonDir: string }> {
+        const [gitDir, commonDir, repoRoot] = await Promise.all([
+            this.executor.run(["rev-parse", "--git-dir"]),
+            this.executor.run(["rev-parse", "--git-common-dir"]),
+            this.executor.run(["rev-parse", "--show-toplevel"]),
+        ]);
+        const root = repoRoot.trim();
+        return {
+            gitDir: path.resolve(root, gitDir.trim()),
+            commonDir: path.resolve(root, commonDir.trim()),
+        };
+    }
     /** Initializes a Git repository at the supplied filesystem path and returns Git output. */
     async init(repoPath: string): Promise<string> {
         const executor = new GitExecutor(repoPath);

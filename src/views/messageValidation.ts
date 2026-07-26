@@ -1,7 +1,8 @@
 import { isValidGitHash } from "../services/gitHelpers";
 import { assertRepoRelativePath } from "../utils/fileOps";
 
-function assertStringArray(value: unknown, field: string): string[] {
+/** Validates an untrusted payload field as an array containing only strings. */
+export function assertStringArray(value: unknown, field: string): string[] {
     if (!Array.isArray(value)) {
         throw new Error(`Expected string[] for '${field}', got ${typeof value}`);
     }
@@ -71,6 +72,51 @@ export function assertNumber(value: unknown, field: string): number {
         throw new Error(`Expected number for '${field}', got ${typeof value}`);
     }
     return value;
+}
+
+/** Validates a host-generated shelf identifier without accepting path-like values. */
+export function assertShelfId(value: unknown, field: string): string {
+    const id = assertString(value, field);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) {
+        throw new Error(`Invalid shelf ID for '${field}'.`);
+    }
+    return id;
+}
+
+/** Validates a persisted logical shelf change identifier. */
+export function assertShelfChangeId(value: unknown, field: string): string {
+    const id = assertString(value, field);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) {
+        throw new Error(`Invalid shelf change ID for '${field}'.`);
+    }
+    return id;
+}
+
+/** Validates catalog and manifest generations used as literal compare-and-swap inputs. */
+export function assertShelfGeneration(value: unknown, field: string): number {
+    const generation = assertNumber(value, field);
+    if (!Number.isSafeInteger(generation) || generation < 0) {
+        throw new Error(`Invalid shelf generation for '${field}'.`);
+    }
+    return generation;
+}
+
+/** Validates an opaque idempotency or request token without modifying it. */
+export function assertShelfToken(value: unknown, field: string): string {
+    const token = assertString(value, field);
+    if (token.length === 0 || token.length > 256 || token.includes("\0")) {
+        throw new Error(`Invalid shelf token for '${field}'.`);
+    }
+    return token;
+}
+
+/** Rejects invalid shelf metadata names without trimming, replacing, or otherwise rewriting them. */
+export function assertShelfName(value: unknown, field: string): string {
+    const name = assertString(value, field);
+    if (!name.trim() || name.length > 255 || name.includes("\0")) {
+        throw new Error(`Invalid shelf name for '${field}'.`);
+    }
+    return name;
 }
 
 /**

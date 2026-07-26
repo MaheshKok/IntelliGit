@@ -3,11 +3,15 @@ import { Box } from "@chakra-ui/react";
 import { TabBar } from "../commit-panel/components/TabBar";
 import { CommitTab } from "../commit-panel/components/CommitTab";
 import { StashTab } from "../commit-panel/components/StashTab";
+import { ShelfTab } from "../commit-panel/components/ShelfTab";
+import { isActiveShelf } from "../commit-panel/components/ShelfList";
+import { getVsCodeApi } from "../commit-panel/hooks/useVsCodeApi";
 import type { WorkingFile } from "../../../types";
 import type { CommitPanelState } from "./commitPanelState";
 
 interface CommitPanelPaneProps {
     width: number;
+    repositoryRoot?: string;
     cpState: CommitPanelState;
     checkedPaths: Set<string>;
     onToggleFile: (path: string) => void;
@@ -39,6 +43,7 @@ interface CommitPanelPaneProps {
 // react-doctor-disable-next-line react-doctor/no-many-boolean-props
 export function CommitPanelPane({
     width,
+    repositoryRoot,
     cpState,
     checkedPaths,
     onToggleFile,
@@ -61,6 +66,7 @@ export function CommitPanelPane({
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
 }: CommitPanelPaneProps): React.ReactElement {
+    const vscode = getVsCodeApi();
     return (
         <Box
             data-testid="undocked-commit-panel-section"
@@ -73,6 +79,7 @@ export function CommitPanelPane({
             <Box flex={1} overflow="hidden" display="flex" flexDirection="column">
                 <TabBar
                     stashCount={cpState.stashes.length}
+                    shelfCount={(cpState.shelves ?? []).filter(isActiveShelf).length}
                     onSync={onSync}
                     onFetch={onFetch}
                     onPull={onPull}
@@ -107,6 +114,7 @@ export function CommitPanelPane({
                             showIgnoredFiles={showIgnoredFiles}
                             onToggleGroupBy={onToggleGroupBy}
                             onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
+                            catalogGeneration={cpState.catalogGeneration}
                         />
                     }
                     stashContent={
@@ -119,7 +127,43 @@ export function CommitPanelPane({
                             folderExpandedIcon={cpState.folderExpandedIcon}
                             folderIconsByName={cpState.folderIconsByName}
                             groupByDir={groupByDir}
+                            isRefreshing={cpState.isRefreshing}
                             onToggleGroupBy={onToggleGroupBy}
+                        />
+                    }
+                    shelfContent={
+                        <ShelfTab
+                            repositoryRoot={repositoryRoot}
+                            shelves={cpState.shelves}
+                            selectedShelfId={cpState.selectedShelfId}
+                            catalogGeneration={cpState.catalogGeneration}
+                            groupByDir={groupByDir}
+                            outcome={cpState.shelfMutationOutcome ?? undefined}
+                            folderIcon={cpState.folderIcon}
+                            folderExpandedIcon={cpState.folderExpandedIcon}
+                            folderIconsByName={cpState.folderIconsByName}
+                            isRefreshing={cpState.isRefreshing}
+                            onRefresh={() =>
+                                vscode.postMessage({
+                                    type: "refresh",
+                                    ...(repositoryRoot ? { repositoryRoot } : {}),
+                                })
+                            }
+                            onSelect={(message) => vscode.postMessage(message)}
+                            onUnshelve={(message) => vscode.postMessage(message)}
+                            onUnshelveSilently={(message) => vscode.postMessage(message)}
+                            onRename={(message) => vscode.postMessage(message)}
+                            onDelete={(message) => vscode.postMessage(message)}
+                            onShowDiff={(message) => vscode.postMessage(message)}
+                            onCompareWithLocal={(message) => vscode.postMessage(message)}
+                            onRestoreGhost={(message) => vscode.postMessage(message)}
+                            onImportPatch={(message) => vscode.postMessage(message)}
+                            onExportPatch={(message) => vscode.postMessage(message)}
+                            onCopyPatch={(message) => vscode.postMessage(message)}
+                            onCleanUp={(message) => vscode.postMessage(message)}
+                            onToggleGroupBy={onToggleGroupBy}
+                            onOpenConflictEditor={(message) => vscode.postMessage(message)}
+                            onResolveStructural={(message) => vscode.postMessage(message)}
                         />
                     }
                 />

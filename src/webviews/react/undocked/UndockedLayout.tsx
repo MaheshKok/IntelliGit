@@ -211,6 +211,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
                         <>
                             <CommitPanelPane
                                 width={commitPanelWidth}
+                                repositoryRoot={selectedRepositoryRoot ?? undefined}
                                 cpState={cpState}
                                 checkedPaths={checkedPaths}
                                 onToggleFile={toggleFile}
@@ -397,6 +398,7 @@ export function UndockedLayout(props: UndockedLayoutProps): React.ReactElement {
 
                             <CommitPanelPane
                                 width={commitPanelWidth}
+                                repositoryRoot={selectedRepositoryRoot ?? undefined}
                                 cpState={cpState}
                                 checkedPaths={checkedPaths}
                                 onToggleFile={toggleFile}

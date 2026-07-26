@@ -26,6 +26,11 @@ interface Props {
     isSomeChecked: (files: WorkingFile[]) => boolean;
     onFileClick: (path: string) => void;
     onTrackUnversionedFiles?: (paths: string[]) => void;
+    onShelfFileDragStart?: (
+        event: React.DragEvent<HTMLElement>,
+        file: WorkingFile,
+        checkedPaths: ReadonlySet<string>,
+    ) => void;
     expandAllSignal: number;
     collapseAllSignal: number;
 }
@@ -71,6 +76,7 @@ interface FileSectionProps {
     onToggleDir: (dirPath: string) => void;
     onFileClick: (event: React.MouseEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
+    onShelfFileDragStart?: (event: React.DragEvent<HTMLElement>, file: WorkingFile) => void;
     onFileDragEnd?: () => void;
     checkboxVisibility?: "visible" | "hidden";
 }
@@ -133,6 +139,7 @@ function FileSection({
     onToggleDir,
     onFileClick,
     onFileDragStart,
+    onShelfFileDragStart,
     onFileDragEnd,
     checkboxVisibility = "visible",
 }: FileSectionProps): React.ReactElement {
@@ -168,6 +175,7 @@ function FileSection({
                     onToggleDir={onToggleDir}
                     onFileClick={onFileClick}
                     onFileDragStart={onFileDragStart}
+                    onShelfFileDragStart={onShelfFileDragStart}
                     onFileDragEnd={onFileDragEnd}
                     checkboxVisibility={checkboxVisibility}
                 />
@@ -198,6 +206,7 @@ export function FileTree({
     isSomeChecked,
     onFileClick,
     onTrackUnversionedFiles,
+    onShelfFileDragStart,
     expandAllSignal,
     collapseAllSignal,
 }: Props): React.ReactElement {
@@ -369,6 +378,9 @@ export function FileTree({
                         onToggleDir={toggleDir}
                         onFileClick={handleTreeFileClick}
                         onFileDragStart={handleFileDragStart}
+                        onShelfFileDragStart={(event, file) =>
+                            onShelfFileDragStart?.(event, file, checkedPaths)
+                        }
                         onFileDragEnd={handleFileDragEnd}
                     />
                 </Box>
@@ -399,6 +411,9 @@ export function FileTree({
                     onToggleDir={toggleDir}
                     onFileClick={handleTreeFileClick}
                     onFileDragStart={handleFileDragStart}
+                    onShelfFileDragStart={(event, file) =>
+                        onShelfFileDragStart?.(event, file, checkedPaths)
+                    }
                     onFileDragEnd={handleFileDragEnd}
                 />
             )}
@@ -427,6 +442,9 @@ export function FileTree({
                     onToggleDir={toggleDir}
                     onFileClick={handleTreeFileClick}
                     onFileDragStart={handleFileDragStart}
+                    onShelfFileDragStart={(event, file) =>
+                        onShelfFileDragStart?.(event, file, checkedPaths)
+                    }
                     onFileDragEnd={handleFileDragEnd}
                     checkboxVisibility="hidden"
                 />
