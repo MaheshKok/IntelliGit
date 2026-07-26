@@ -38,18 +38,19 @@ export function CleanUpDialog({
         () => new Set(candidates.map((shelf) => shelf.id)),
     );
     const [days, setDays] = useState("30");
-    const selectedIds = candidates
-        .filter((shelf) => selected.has(shelf.id))
-        .map((shelf) => shelf.id);
+    const selectedIds: string[] = [];
+    for (const shelf of candidates) {
+        if (selected.has(shelf.id)) selectedIds.push(shelf.id);
+    }
     const selectOlderThan = (): void => {
         const daysValue = Number(days);
         if (!Number.isFinite(daysValue) || daysValue < 0) return;
         const cutoff = now - daysValue * 86_400_000;
-        setSelected(
-            new Set(
-                candidates.filter((shelf) => shelf.appliedAt < cutoff).map((shelf) => shelf.id),
-            ),
-        );
+        const olderShelfIds = new Set<string>();
+        for (const shelf of candidates) {
+            if (shelf.appliedAt < cutoff) olderShelfIds.add(shelf.id);
+        }
+        setSelected(olderShelfIds);
     };
     const close = (): void => {
         onClose();

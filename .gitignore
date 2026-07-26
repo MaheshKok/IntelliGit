@@ -42,3 +42,5 @@ AGENTS.md
 .github/hooks
 .github/skills
 .impeccable/
+
+.claudex-gates.json

@@ -46,13 +46,14 @@ function guideCount(row: HTMLElement): number {
     return guideOffsets(row).length;
 }
 
-function renderTree(groupByDir: boolean) {
+function renderTree(groupByDir: boolean, sectionGuideLeft?: number) {
     return mount(
         <ChakraProvider theme={theme}>
             <ChangesFileTree
                 files={entries.map(displayFile)}
                 groupByDir={groupByDir}
                 depth={0}
+                sectionGuideLeft={sectionGuideLeft}
                 selectedId={null}
                 getId={(file) => file.shelfEntry.changeId}
                 isDirectoryCollapsed={() => false}
@@ -74,6 +75,24 @@ describe("shelf file rows draw one indent guide per real ancestor", () => {
             const row = container.querySelector(`[data-shelf-file="${changeId}"]`) as HTMLElement;
             expect(guideCount(row)).toBe(1);
         }
+
+        unmount(root, container);
+    });
+
+    it("anchors the outer Stash and Shelf guide at the repository chevron", () => {
+        const { root, container } = renderTree(false, 17);
+        const row = container.querySelector('[data-shelf-file="root"]') as HTMLElement;
+
+        expect(guideOffsets(row)[0]).toBe(17);
+
+        unmount(root, container);
+    });
+
+    it("keeps the entry-row anchor as the generic tree default", () => {
+        const { root, container } = renderTree(false);
+        const row = container.querySelector('[data-shelf-file="root"]') as HTMLElement;
+
+        expect(guideOffsets(row)[0]).toBe(22);
 
         unmount(root, container);
     });

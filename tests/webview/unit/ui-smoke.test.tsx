@@ -947,14 +947,17 @@ describe("webview ui smoke", () => {
                     canCommit={true}
                     canPush={true}
                     pushLabel="common.push"
+                    currentBranchAhead={3}
                     currentBranchName="main"
                     currentBranchUpstream="origin/main"
                 />
             </ChakraProvider>,
         );
-        const dirtyPushButton = getButtonByText(dirtyPushableHtml, "Push");
+        const dirtyPushButton = getButtonByText(dirtyPushableHtml, "Push↑3");
         expect(dirtyPushButton.disabled).toBe(false);
         expect(dirtyPushButton.getAttribute("aria-disabled")).toBeNull();
+        expect(dirtyPushableHtml).toContain('data-testid="push-ahead-count"');
+        expect(dirtyPushableHtml).toContain("↑3");
 
         const localOnlyCommitHtml = renderUi(
             <CommitArea

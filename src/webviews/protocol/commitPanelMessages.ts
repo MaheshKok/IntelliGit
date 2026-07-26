@@ -79,6 +79,8 @@ interface CommitPanelRepositorySummary {
     root: string;
     /** Stable display label for repository pickers and headings. */
     label: string;
+    /** Native Git classification supplied only during static repository-list hydration. */
+    kind: "repository" | "worktree";
     /** Last-known non-ignored changed-file count for collapsed repository rows. */
     changedFileCount: number;
 }

@@ -33,10 +33,13 @@ export function ShelveDialog({
     useShelfDialogFocus(returnFocusTarget, nameRef);
     const [name, setName] = useState(defaultName);
     const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedPaths));
-    const paths = useMemo(
-        () => files.filter((file) => selected.has(file.path)).map((file) => file.path),
-        [files, selected],
-    );
+    const paths = useMemo(() => {
+        const selectedFilePaths: string[] = [];
+        for (const file of files) {
+            if (selected.has(file.path)) selectedFilePaths.push(file.path);
+        }
+        return selectedFilePaths;
+    }, [files, selected]);
 
     const toggle = (path: string): void => {
         setSelected((current) => {

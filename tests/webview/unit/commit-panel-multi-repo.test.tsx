@@ -206,8 +206,8 @@ async function hydrateTwoRepositories(): Promise<void> {
     await sendHostMessage({
         type: "setRepositories",
         repositories: [
-            { root: "/repo-a", label: "Repo A", changedFileCount: 1 },
-            { root: "/repo-b", label: "Repo B", changedFileCount: 1 },
+            { root: "/repo-a", label: "Repo A", kind: "repository", changedFileCount: 1 },
+            { root: "/repo-b", label: "Repo B", kind: "worktree", changedFileCount: 1 },
         ],
         activeRepositoryRoot: "/repo-a",
     });
@@ -218,7 +218,9 @@ async function hydrateTwoRepositories(): Promise<void> {
 async function hydrateOneRepository(): Promise<void> {
     await sendHostMessage({
         type: "setRepositories",
-        repositories: [{ root: "/repo-a", label: "Repo A", changedFileCount: 1 }],
+        repositories: [
+            { root: "/repo-a", label: "Repo A", kind: "repository", changedFileCount: 1 },
+        ],
         activeRepositoryRoot: "/repo-a",
     });
     await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
@@ -308,11 +310,46 @@ describe("commit panel multi-repository view", () => {
         await hydrateOneRepository();
 
         expect(document.querySelectorAll('[data-testid="repository-accordion"]')).toHaveLength(0);
+        expect(
+            document.querySelectorAll('[data-testid="repository-accordion-content"]'),
+        ).toHaveLength(0);
+        expect(
+            document.querySelectorAll('[data-testid="repository-accordion-guide"]'),
+        ).toHaveLength(0);
+        expect(document.querySelectorAll('[data-testid="repository-kind-icon"]')).toHaveLength(0);
         expect(document.querySelector('[data-testid="tabbar"]')).toBeTruthy();
         expect(
             document.querySelector('[data-testid="commit-files"][data-root="/repo-a"]')
                 ?.textContent,
         ).toBe("src/a.ts");
+    });
+
+    it("keeps expanded tab content owned by each repository", async () => {
+        await renderApp();
+        await hydrateTwoRepositories();
+        click(header("/repo-b"));
+        await flush();
+
+        const contents = Array.from(
+            document.querySelectorAll<HTMLElement>('[data-testid="repository-accordion-content"]'),
+        );
+        expect(contents).toHaveLength(2);
+
+        for (const root of ["/repo-a", "/repo-b"]) {
+            const content = document.querySelector<HTMLElement>(
+                `[data-testid="repository-accordion-content"][data-repository-root="${root}"]`,
+            );
+            expect(content).not.toBeNull();
+            expect(content?.querySelectorAll('[data-testid="tabbar"]')).toHaveLength(1);
+            expect(row(root).querySelector('[data-testid="repository-accordion-content"]')).toBe(
+                content,
+            );
+            const guide = row(root).querySelector<HTMLElement>(
+                '[data-testid="repository-accordion-guide"]',
+            );
+            expect(guide).not.toBeNull();
+            expect(window.getComputedStyle(guide as HTMLElement).left).toBe("17px");
+        }
     });
 
     it("tolerates a legacy snapshot without the additive shelf fields", async () => {
@@ -340,6 +377,61 @@ describe("commit panel multi-repository view", () => {
         expect(row("/repo-b").textContent).toContain("Repo B");
     });
 
+    it("renders a worktree's short name before its local branch", async () => {
+        await renderApp();
+        await sendHostMessage({
+            type: "setRepositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A", kind: "repository", changedFileCount: 1 },
+                {
+                    root: "/repo-b",
+                    label: ".claude/worktrees/dry-components",
+                    kind: "worktree",
+                    changedFileCount: 1,
+                },
+            ],
+            activeRepositoryRoot: "/repo-a",
+        });
+        await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
+        const worktreeSnapshot = snapshot(
+            "/repo-b",
+            ".claude/worktrees/dry-components",
+            "src/b.ts",
+        ) as Record<string, unknown>;
+        worktreeSnapshot.currentBranchAhead = 1;
+        worktreeSnapshot.currentBranchBehind = 1;
+        await sendHostMessage(worktreeSnapshot);
+
+        const text = header("/repo-b").textContent ?? "";
+        expect(text).toContain("dry-components");
+        expect(text).not.toContain(".claude/worktrees/dry-components");
+        expect(text.indexOf("dry-components")).toBeLessThan(text.indexOf("feature"));
+        expect(text).not.toContain("origin/feature");
+        expect(text).not.toContain("↑1");
+        expect(text).not.toContain("↓1");
+    });
+
+    it("renders each native repository kind icon immediately after its chevron", async () => {
+        await renderApp();
+        await hydrateTwoRepositories();
+
+        const repositoryIcon = header("/repo-a").querySelector<HTMLElement>(
+            '[data-testid="repository-kind-icon"]',
+        );
+        const worktreeIcon = header("/repo-b").querySelector<HTMLElement>(
+            '[data-testid="repository-kind-icon"]',
+        );
+
+        expect(repositoryIcon).not.toBeNull();
+        expect(repositoryIcon?.getAttribute("data-repository-kind")).toBe("repository");
+        expect(repositoryIcon?.previousElementSibling?.querySelector("svg")).not.toBeNull();
+        expect(repositoryIcon?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 16 16");
+        expect(worktreeIcon).not.toBeNull();
+        expect(worktreeIcon?.getAttribute("data-repository-kind")).toBe("worktree");
+        expect(worktreeIcon?.previousElementSibling?.querySelector("svg")).not.toBeNull();
+        expect(worktreeIcon?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 10 10");
+    });
+
     it("updates repository B without overwriting repository A", async () => {
         await renderApp();
         await hydrateTwoRepositories();
@@ -351,6 +443,11 @@ describe("commit panel multi-repository view", () => {
         expect(row("/repo-a").textContent).toContain("src/a.ts");
         expect(row("/repo-b").textContent).toContain("src/b2.ts");
         expect(row("/repo-b").textContent).not.toContain("src/a.ts");
+        expect(
+            row("/repo-b")
+                .querySelector('[data-testid="repository-kind-icon"]')
+                ?.getAttribute("data-repository-kind"),
+        ).toBe("worktree");
     });
 
     it("committed clears the matching repository draft by default and retains it when disabled", async () => {
@@ -457,8 +554,8 @@ describe("commit panel multi-repository view", () => {
         await sendHostMessage({
             type: "setRepositories",
             repositories: [
-                { root: "/repo-a", label: "Repo A", changedFileCount: 1 },
-                { root: "/repo-b", label: "Repo B", changedFileCount: 1 },
+                { root: "/repo-a", label: "Repo A", kind: "repository", changedFileCount: 1 },
+                { root: "/repo-b", label: "Repo B", kind: "worktree", changedFileCount: 1 },
             ],
             activeRepositoryRoot: "/repo-a",
         });

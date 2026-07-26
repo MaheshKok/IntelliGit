@@ -92,10 +92,10 @@ const theme = extendTheme({
                 toolbarGhost: {
                     bg: "none",
                     color: "var(--intelligit-pycharm-muted)",
-                    borderRadius: "3px",
+                    borderRadius: "4px",
                     padding: "2px 4px",
-                    minW: "auto",
-                    h: "22px",
+                    minW: "24px",
+                    h: "24px",
                     _hover: {
                         bg: "rgba(255,255,255,0.06)",
                         color: "var(--intelligit-pycharm-foreground)",

@@ -394,12 +394,13 @@ describe("useShelfDrag", () => {
             <ChakraProvider theme={theme}>
                 <ShelfRow
                     shelf={ghost}
-                    selected={false}
-                    isFocusTarget={false}
-                    isGhost
-                    isExpanded={false}
-                    isRenaming={false}
-                    onRefresh={vi.fn()}
+                    state={{
+                        selected: false,
+                        isFocusTarget: false,
+                        isGhost: true,
+                        isExpanded: false,
+                        isRenaming: false,
+                    }}
                     onSelect={vi.fn()}
                     onToggleExpand={vi.fn()}
                     onNavigate={vi.fn()}

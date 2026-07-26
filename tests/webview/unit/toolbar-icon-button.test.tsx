@@ -4,6 +4,8 @@ import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolbarIconButton } from "../../../src/webviews/react/shared/components/ToolbarIconButton";
+import { ShelfToolbar } from "../../../src/webviews/react/commit-panel/components/ShelfToolbar";
+import { StashToolbar } from "../../../src/webviews/react/commit-panel/components/StashToolbar";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 
@@ -108,30 +110,77 @@ describe("ToolbarIconButton", () => {
         unmount(root, container);
     });
 
-    it("keeps commit-toolbar-only attributes off the stash and shelf presentations", () => {
-        // Non-standard icon style so the toolbar branch honors `color`, making the
-        // stash branch's forced icon-foreground a real discriminator.
+    it("resolves icon color and spin state through one contract for every toolbar", () => {
+        // iconStyle "color" honors the per-icon accent; spin always advertises
+        // data-refreshing, no matter which toolbar renders the button.
         window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "color" };
 
-        const stash = renderButton({ presentation: "stash", spin: true, color: "#123456" });
-        const stashButton = stash.container.querySelector("button") as HTMLButtonElement;
-        const stashIcon = stashButton.querySelector("svg") as SVGElement;
-        expect(stashButton.getAttribute("data-refreshing")).toBeNull();
-        expect(stashIcon.style.color).toBe("var(--vscode-icon-foreground)");
+        const spinning = renderButton({ spin: true, color: "#123456" });
+        const spinningButton = spinning.container.querySelector("button") as HTMLButtonElement;
+        const spinningIcon = spinningButton.querySelector("svg") as SVGElement;
+        expect(spinningButton.getAttribute("data-refreshing")).toBe("true");
+        expect(spinningIcon.style.color).toBe("rgb(18, 52, 86)");
+        unmount(spinning.root, spinning.container);
+
+        const accent = renderButton({ color: "#123456" });
+        const accentButton = accent.container.querySelector("button") as HTMLButtonElement;
+        const accentIcon = accentButton.querySelector("svg") as SVGElement;
+        expect(accentButton.getAttribute("data-refreshing")).toBeNull();
+        expect(accentIcon.style.color).toBe("rgb(18, 52, 86)");
+        unmount(accent.root, accent.container);
+
+        window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "standard" };
+        const standard = renderButton({ color: "#123456" });
+        const standardIcon = standard.container.querySelector("svg") as SVGElement;
+        expect(standardIcon.style.color).toBe("var(--vscode-icon-foreground)");
+        unmount(standard.root, standard.container);
+    });
+
+    it("uses the shared accent palette in the Stash and Shelf toolbars", () => {
+        window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "color" };
+        const stash = mount(
+            <ChakraProvider theme={theme}>
+                <StashToolbar
+                    selectedIndex={0}
+                    groupByDir={false}
+                    canExpandOrCollapse
+                    isRefreshing={false}
+                    onRefresh={vi.fn()}
+                    onShowStashDiff={vi.fn()}
+                    onToggleGroupBy={vi.fn()}
+                    onExpandAll={vi.fn()}
+                    onCollapseAll={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+        const stashIcons = stash.container.querySelectorAll("svg");
+        expect(stashIcons[1]?.style.color).toBe("rgb(143, 213, 255)");
+        expect(stashIcons[2]?.style.color).toBe("rgb(143, 213, 255)");
+        expect(stashIcons[3]?.style.color).toBe("rgb(243, 177, 207)");
+        expect(stashIcons[4]?.style.color).toBe("rgb(243, 177, 207)");
         unmount(stash.root, stash.container);
 
-        const shelf = renderButton({ presentation: "shelf", spin: true, color: "#123456" });
-        const shelfButton = shelf.container.querySelector("button") as HTMLButtonElement;
-        const shelfIcon = shelfButton.querySelector("svg") as SVGElement;
-        expect(shelfButton.getAttribute("data-refreshing")).toBeNull();
-        expect(shelfIcon.style.color).toBe("");
+        const shelf = mount(
+            <ChakraProvider theme={theme}>
+                <ShelfToolbar
+                    canExpandOrCollapse
+                    groupByDir={false}
+                    showAlreadyUnshelved={false}
+                    isRefreshing={false}
+                    onRefresh={vi.fn()}
+                    onToggleGroupBy={vi.fn()}
+                    onExpandAll={vi.fn()}
+                    onCollapseAll={vi.fn()}
+                    onCleanUp={vi.fn()}
+                    onToggleAlreadyUnshelved={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+        const shelfIcons = shelf.container.querySelectorAll("svg");
+        expect(shelfIcons[1]?.style.color).toBe("rgb(143, 213, 255)");
+        expect(shelfIcons[2]?.style.color).toBe("rgb(243, 177, 207)");
+        expect(shelfIcons[3]?.style.color).toBe("rgb(243, 177, 207)");
+        expect(shelfIcons[4]?.style.color).toBe("rgb(243, 177, 207)");
         unmount(shelf.root, shelf.container);
-
-        const toolbar = renderButton({ spin: true, color: "#123456" });
-        const toolbarButton = toolbar.container.querySelector("button") as HTMLButtonElement;
-        const toolbarIcon = toolbarButton.querySelector("svg") as SVGElement;
-        expect(toolbarButton.getAttribute("data-refreshing")).toBe("true");
-        expect(toolbarIcon.style.color).not.toBe("var(--vscode-icon-foreground)");
-        unmount(toolbar.root, toolbar.container);
     });
 });

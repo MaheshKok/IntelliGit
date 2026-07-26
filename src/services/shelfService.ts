@@ -189,19 +189,17 @@ export class ShelfService {
                         input.mode === "flattened" ? await this.indexFingerprint() : undefined;
                     const entries: PerEntryResult[] = [];
                     for (const entry of selected) {
+                        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Each apply mutates the worktree, and flattened mode verifies the index after every entry.
                         entries.push(await this.applyEntry(input.id, entry, input.mode));
                         if (indexBefore && (await this.indexFingerprint()) !== indexBefore) {
                             throw new Error("Flattened unshelve changed the Git index.");
                         }
                     }
-                    const successful = new Set(
-                        entries
-                            .filter(
-                                (entry) =>
-                                    entry.kind === "applied" || entry.kind === "flattenedResidue",
-                            )
-                            .map((entry) => entry.changeId),
-                    );
+                    const successful = new Set<string>();
+                    for (const entry of entries) {
+                        if (entry.kind === "applied" || entry.kind === "flattenedResidue")
+                            successful.add(entry.changeId);
+                    }
                     let nextGeneration = manifest.generation;
                     if (input.removeFromShelf && successful.size > 0) {
                         const files = manifest.files.map((entry) =>
@@ -211,6 +209,7 @@ export class ShelfService {
                         );
                         const allApplied = files.every((entry) => entry.lifecycle === "applied");
                         const journalId = `unshelve-${randomUUID().replaceAll("-", "")}`;
+                        // react-doctor-disable-next-line react-doctor/async-parallel -- Recovery requires the pending journal to be durable before its shelf generation changes.
                         await this.options.store.writeJournal({
                             id: journalId,
                             state: "unshelvePending",
@@ -362,21 +361,22 @@ export class ShelfService {
         const cutoff = now - days * 24 * 60 * 60 * 1000;
         return this.withMutation(async () => {
             const listed = await this.options.store.listShelves();
-            const shelfIds = (
-                await Promise.all(
-                    listed.shelfIds.map(async (id) => ({
-                        id,
-                        manifest: await this.options.store.readCurrentShelfManifest(id),
-                    })),
-                )
-            )
-                .filter(
-                    ({ manifest }) =>
-                        manifest.metadata.lifecycle === "applied" &&
-                        manifest.metadata.appliedAt !== undefined &&
-                        manifest.metadata.appliedAt < cutoff,
-                )
-                .map(({ id }) => id);
+            const manifests = await Promise.all(
+                listed.shelfIds.map(async (id) => ({
+                    id,
+                    manifest: await this.options.store.readCurrentShelfManifest(id),
+                })),
+            );
+            const shelfIds: string[] = [];
+            for (const { id, manifest } of manifests) {
+                if (
+                    manifest.metadata.lifecycle === "applied" &&
+                    manifest.metadata.appliedAt !== undefined &&
+                    manifest.metadata.appliedAt < cutoff
+                ) {
+                    shelfIds.push(id);
+                }
+            }
             if (shelfIds.length === 0) return { status: "ok", entries: [] };
             return this.cleanUpSelection({
                 shelfIds,
@@ -430,6 +430,7 @@ export class ShelfService {
     }
     /** Lists usable shelves with the lock-authoritative catalog generation. */
     async listShelves(): Promise<ShelfListResult> {
+        // react-doctor-disable-next-line react-doctor/async-parallel -- The authoritative catalog must be read before deriving the history-base refresh targets.
         const initial = await this.options.store.listShelves();
         await Promise.all(initial.shelfIds.map((id) => this.refreshHistoryBaseAvailability(id)));
         const listed = await this.options.store.listShelves();
@@ -559,15 +560,17 @@ export class ShelfService {
     }
     /** Rolls back incomplete destructive captures and removes their now-cancelled durable shelves. */
     async resumePendingRecovery(): Promise<PendingShelfRecoveryResult> {
-        const links = new Map(
-            (await this.options.store.readJournals())
-                .filter((journal) => journal.state === "shelvePendingRevert" && journal.shelf)
-                .map((journal) => [journal.id, journal.shelf!]),
-        );
+        const journals = await this.options.store.readJournals();
+        const links = new Map<string, NonNullable<(typeof journals)[number]["shelf"]>>();
+        for (const journal of journals) {
+            if (journal.state === "shelvePendingRevert" && journal.shelf)
+                links.set(journal.id, journal.shelf);
+        }
         const result = await this.reverter.resumePending();
         for (const id of result.rolledBackIds) {
             const shelf = links.get(id);
             if (!shelf) continue;
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Stop at the first failed deletion so later recovery shelves remain available for retry.
             await this.withMutation(async () => {
                 await this.options.store.deleteShelf(shelf.id).catch((error: unknown) => {
                     if (!isNotFound(error)) throw error;
@@ -621,6 +624,7 @@ export class ShelfService {
             { expectedCatalogGeneration: selection.expectedCatalogGeneration },
             async () => {
                 for (const id of selection.shelfIds) {
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Verify each ghost and delete it under the same CAS before examining the next selection.
                     const manifest = await this.options.store.readCurrentShelfManifest(id);
                     if (manifest.metadata.lifecycle !== "applied")
                         throw new Error("Clean up only accepts already-unshelved ghosts.");
@@ -688,6 +692,7 @@ export class ShelfService {
         entry: ShelfFileEntry,
     ): Promise<PerEntryResult> {
         const indexPatch = await this.blockPatch(shelfId, entry.indexBlock);
+        // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- Preserve the index-layer checksum failure before reading the worktree layer.
         const worktreePatch = await this.blockPatch(shelfId, entry.worktreeBlock);
         if (
             indexPatch &&
@@ -725,6 +730,7 @@ export class ShelfService {
     }
     private async applyExactEntry(shelfId: string, entry: ShelfFileEntry): Promise<PerEntryResult> {
         const indexPatch = await this.blockPatch(shelfId, entry.indexBlock);
+        // react-doctor-disable-next-line react-doctor/server-sequential-independent-await -- Preserve the index-layer checksum failure before reading the worktree layer.
         const worktreePatch = await this.blockPatch(shelfId, entry.worktreeBlock);
         const exactPath = entry.indexBlock?.path ?? entry.worktreeBlock?.path;
         if (exactPath && (await this.pathHasStagedDivergence(exactPath))) {
@@ -753,6 +759,7 @@ export class ShelfService {
             };
         }
         if (indexPatch) {
+            // react-doctor-disable-next-line react-doctor/async-parallel -- Exact restoration writes the worktree layer before the index and then verifies their combined state.
             await this.applyWorktreeUnchecked(indexPatch);
             await this.applyIndexUnchecked(indexPatch);
             await this.assertExactIndex(shelfId, entry, indexPatch);
@@ -781,6 +788,7 @@ export class ShelfService {
         const safeRelativePath = validateShelfManifestPath(relativePath);
         const temp = await mkdtemp(path.join(tmpdir(), "intelligit-shelf-residue-"));
         try {
+            // react-doctor-disable-next-line react-doctor/async-defer-await -- Attempt the direct write first so simple paths do not create an unnecessary nested directory.
             await writeFile(path.join(temp, safeRelativePath), base).catch(async () => {
                 await mkdir(path.dirname(path.join(temp, safeRelativePath)), {
                     recursive: true,
@@ -833,6 +841,7 @@ export class ShelfService {
                         continue;
                     }
                     const relativePath = validateShelfManifestPath(block.renamedFrom ?? block.path);
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Keep Git history probes ordered while the repository mutation and store locks are held.
                     const result = await this.options.executor.runBinary(
                         ["show", `${manifest.metadata.baseCommit}:${relativePath}`],
                         { expectedExitCodes: [0, 128] },

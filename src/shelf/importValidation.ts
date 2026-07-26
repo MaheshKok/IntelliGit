@@ -123,6 +123,7 @@ export async function resolveValidatedImportPath(
         const candidate = path.join(current, segment);
         let details: Awaited<ReturnType<typeof lstat>>;
         try {
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Each ancestor must be checked and canonicalized before the next candidate preserves containment.
             details = await lstat(candidate);
         } catch (error) {
             if (isNotFound(error)) return target;
@@ -477,6 +478,7 @@ function parseGitTokens(value: string): string[] {
         while (value[offset] === " ") offset += 1;
         if (offset >= value.length) break;
         if (value[offset] !== '"') {
+            // react-doctor-disable-next-line react-doctor/js-set-map-lookups -- Parsing requires the next delimiter index to preserve token boundaries; a Set cannot provide it.
             const end = value.indexOf(" ", offset);
             tokens.push(value.slice(offset, end < 0 ? value.length : end));
             offset = end < 0 ? value.length : end + 1;
