@@ -27,7 +27,7 @@ export interface ShelfToolbarProps {
 
 function icon(path: React.ReactNode): React.ReactElement {
     return (
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
             {path}
         </svg>
     );
@@ -66,10 +66,10 @@ export function ShelfToolbar({
         <Flex
             data-testid="shelf-toolbar"
             align="center"
-            minH="34px"
-            px="8px"
-            gap="4px"
-            bg="var(--intelligit-pycharm-header)"
+            minH="30px"
+            px="6px"
+            gap="2px"
+            bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >
@@ -79,32 +79,30 @@ export function ShelfToolbar({
                 icon={icon(<GroupByDirectoryIconGlyph />)}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
-                disabled={false}
-                presentation="shelf"
+                color="#8fd5ff"
             />
             <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
                 icon={icon(<ExpandAllIconGlyph />)}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                presentation="shelf"
+                color="#f3b1cf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
                 icon={icon(<CollapseAllIconGlyph />)}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                presentation="shelf"
+                color="#f3b1cf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}
                 icon={icon(<MoreOptionsIconGlyph />)}
+                color="#f3b1cf"
                 onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
                     setOverflow({ x: rect.left, y: rect.bottom });
                 }}
-                disabled={false}
-                presentation="shelf"
             />
             {overflow ? (
                 <ContextMenu

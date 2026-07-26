@@ -184,4 +184,61 @@ describe("CommitTab shelving", () => {
         );
         unmount(root, container);
     });
+
+    it("exposes a focusable horizontal resize separator with clamped arrow controls", () => {
+        const { root, container } = renderCommitTab();
+        const tab = container.querySelector('[data-testid="commit-tab"]') as HTMLElement;
+        Object.defineProperty(tab, "clientHeight", { configurable: true, value: 600 });
+        const separator = container.querySelector('[role="separator"]') as HTMLElement;
+        const bottomArea = separator.nextElementSibling as HTMLElement;
+
+        expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
+        expect(separator.tabIndex).toBe(0);
+        act(() =>
+            separator.dispatchEvent(
+                new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowUp" }),
+            ),
+        );
+        expect(getComputedStyle(bottomArea).height).toBe("120px");
+        act(() =>
+            separator.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                    bubbles: true,
+                    cancelable: true,
+                    key: "ArrowDown",
+                }),
+            ),
+        );
+        expect(getComputedStyle(bottomArea).height).toBe("110px");
+        act(() =>
+            separator.dispatchEvent(
+                new KeyboardEvent("keydown", {
+                    bubbles: true,
+                    cancelable: true,
+                    key: "ArrowDown",
+                }),
+            ),
+        );
+        expect(getComputedStyle(bottomArea).height).toBe("110px");
+        act(() => {
+            for (let count = 0; count < 50; count += 1) {
+                separator.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                        bubbles: true,
+                        cancelable: true,
+                        key: "ArrowUp",
+                    }),
+                );
+            }
+        });
+        expect(getComputedStyle(bottomArea).height).toBe("540px");
+        const unhandled = new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            key: "Enter",
+        });
+        act(() => separator.dispatchEvent(unhandled));
+        expect(unhandled.defaultPrevented).toBe(false);
+        unmount(root, container);
+    });
 });

@@ -97,6 +97,7 @@ async function addUntrackedBlocks(
 ): Promise<void> {
     for (const relativePath of paths) {
         const patchPath = path.join(directory, `untracked-${patchByPath.size}.patch`);
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Git generates one untracked patch at a time, and each result is immediately assigned to its source path.
         await generateUntrackedPatch(executor, { patchPath, relativePath });
         patchByPath.set(relativePath, { worktree: await readFile(patchPath), untracked: true });
     }
@@ -113,9 +114,10 @@ async function persistCaptureSource(
         readonly { readonly relativePath: string; readonly baseBytes?: Uint8Array }[]
     > = [];
     const objectHashes = new Set<string>();
-    for (const [relativePath, patches] of [...source.patchByPath.entries()].sort(([a], [b]) =>
-        a.localeCompare(b),
-    )) {
+    const sortedPatches = Array.from(source.patchByPath.entries());
+    sortedPatches.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const [relativePath, patches] of sortedPatches) {
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Persist entries in sorted path order so object writes and recovery metadata remain deterministic.
         const captured = await persistCaptureEntry(
             shelfId,
             relativePath,

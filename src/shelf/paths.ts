@@ -43,6 +43,8 @@ export async function resolveShelfPaths(options: ResolveShelfPathsOptions): Prom
 
 /** Creates the shelf root with owner-only permissions and rejects symlinked roots. */
 export async function ensureShelfRoot(paths: ShelfPaths): Promise<void> {
+    // Each nested root must be hardened before a child is created or checked.
+    // react-doctor-disable-next-line react-doctor/async-parallel
     await ensurePrivateDirectory(paths.scopeRoot);
     await ensurePrivateDirectory(paths.storageBase);
     await ensurePrivateDirectory(paths.root);
@@ -112,6 +114,8 @@ async function ensurePrivateDirectory(directory: string): Promise<void> {
         const candidate = path.join(current, part);
         let details: Awaited<ReturnType<typeof lstat>>;
         try {
+            // Ancestor validation and creation are an ordered no-symlink walk.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             details = await lstat(candidate);
         } catch (error) {
             if (!isNotFound(error)) throw error;
@@ -144,6 +148,8 @@ async function verifyInternalParent(
     if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
         throw new ShelfPathError("Shelf artifact path escapes the shelf root.");
     }
+    // Revalidate the root before the direct-child fast path; it closes a symlink substitution window.
+    // react-doctor-disable-next-line react-doctor/async-defer-await
     const root = await realpath(rootPath);
     if (relative === "") return;
     let current = root;
@@ -151,6 +157,8 @@ async function verifyInternalParent(
         const candidate = path.join(current, part);
         let details: Awaited<ReturnType<typeof lstat>>;
         try {
+            // Ancestor validation and creation are an ordered no-symlink walk.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             details = await lstat(candidate);
         } catch (error) {
             if (!isNotFound(error)) throw error;

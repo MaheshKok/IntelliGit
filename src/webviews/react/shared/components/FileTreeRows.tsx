@@ -35,6 +35,10 @@ const DEFAULT_INDENT_METRICS = Object.freeze({
 const CHECKBOX_SLOT_SIZE = 14;
 const GUIDE_COLOR = "var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))";
 
+/** Host-themed guide color shared by the Commit tree and repository rail. */
+export const COMMIT_PANEL_INDENT_GUIDE_COLOR =
+    "var(--vscode-editorIndentGuide-background1, var(--vscode-tree-indentGuidesStroke, rgba(160, 168, 184, 0.28)))";
+
 /** Immutable geometry values shared by tree row padding and indent guides. */
 export interface TreeIndentMetrics {
     readonly indentStep: number;
@@ -49,6 +53,9 @@ export interface TreeIndentMetrics {
  * edge: `8 + 6 + CHEVRON_HALF = 22`.
  */
 export const ENTRY_ROW_GUIDE_LEFT = 22;
+
+/** Outer guide anchor shared by the repository chevron and commit-panel entry subtrees. */
+export const COMMIT_PANEL_SECTION_GUIDE_LEFT = 17;
 const ENTRY_ROW_INDENT_METRICS = Object.freeze({
     ...DEFAULT_INDENT_METRICS,
     indentBase:
@@ -709,9 +716,7 @@ function TreeIndentGuidesImpl({
     rowVariant?: "default" | "commit-panel";
 }): React.ReactElement {
     const guideColor =
-        rowVariant === "commit-panel"
-            ? "var(--vscode-editorIndentGuide-background1, var(--vscode-tree-indentGuidesStroke, rgba(160, 168, 184, 0.28)))"
-            : GUIDE_COLOR;
+        rowVariant === "commit-panel" ? COMMIT_PANEL_INDENT_GUIDE_COLOR : GUIDE_COLOR;
     return (
         <>
             <Box

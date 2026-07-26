@@ -16,11 +16,13 @@ const LEGACY_REPOSITORY_ROOT = "";
 function createRepositoryState(
     root: string,
     label: string,
+    kind: "repository" | "worktree" = "repository",
     changedFileCount: number = 0,
 ): RepositoryCommitPanelState {
     return {
         root,
         label,
+        kind,
         changedFileCount,
         files: [],
         stashes: [],
@@ -123,6 +125,7 @@ function updateRepositoryMetadata(
         ...repository,
         root: summary.root,
         label: summary.label,
+        kind: summary.kind,
         changedFileCount: summary.changedFileCount,
     };
 }
@@ -144,7 +147,8 @@ function reducer(
                         (repository) => repository.root === summary.root,
                     );
                     return updateRepositoryMetadata(
-                        existing ?? createRepositoryState(summary.root, summary.label),
+                        existing ??
+                            createRepositoryState(summary.root, summary.label, summary.kind),
                         summary,
                     );
                 }),

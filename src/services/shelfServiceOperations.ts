@@ -51,6 +51,7 @@ export async function exportFlattenedPatch(
     for (const entry of entries) {
         for (const block of [entry.indexBlock, entry.worktreeBlock]) {
             if (block?.patchObjectHash)
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Export concatenation must read and append blocks in their selected index/worktree order.
                 pieces.push(await store.readObject(shelfId, block.patchObjectHash));
         }
     }
@@ -68,10 +69,12 @@ export async function importPatchFiles(
     const hashes = new Set<string>();
     const files: ShelfFileEntry[] = [];
     for (const fileUri of fileUris) {
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Validate imports in user-selected order so a failure leaves later files untouched.
         const patch = await readImportPatch(fileUri);
         validateImportedPatch(patch);
         for (const block of indexPatchBlocks(patch)) {
             const bytes = patch.subarray(block.start, block.end);
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Store each block before assigning its hash and sequential import change ID.
             const object = await store.putObject(shelfId, bytes);
             const classification = classifyPatchHeader(bytes);
             hashes.add(object.hash);
@@ -193,6 +196,7 @@ async function assertFreshStructuralSource(
     target: string,
     expectedFingerprint: string,
 ): Promise<void> {
+    // react-doctor-disable-next-line react-doctor/async-defer-await -- Parent containment must be checked before fingerprinting an untrusted structural source path.
     await ensureContainedParent(repositoryRoot, target);
     if ((await pathFingerprint(target)) !== expectedFingerprint) {
         throw new Error("Structural resolution path is stale.");
@@ -200,6 +204,7 @@ async function assertFreshStructuralSource(
 }
 
 async function assertAbsentStructuralTarget(repositoryRoot: string, target: string): Promise<void> {
+    // react-doctor-disable-next-line react-doctor/async-defer-await -- Parent containment must be checked before fingerprinting an untrusted structural target path.
     await ensureContainedParent(repositoryRoot, target);
     if ((await pathFingerprint(target)) !== "absent") {
         throw new Error("Structural rename target already exists.");

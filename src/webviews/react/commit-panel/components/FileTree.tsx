@@ -4,7 +4,10 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Box } from "@chakra-ui/react";
 import { SectionHeader } from "../../shared/components/SectionHeader";
-import { FileTreeRows } from "../../shared/components/FileTreeRows";
+import {
+    COMMIT_PANEL_SECTION_GUIDE_LEFT,
+    FileTreeRows,
+} from "../../shared/components/FileTreeRows";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import { useFileDrag } from "../hooks/useFileDrag";
 import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
@@ -59,7 +62,7 @@ const COMMIT_PANEL_INDENT_METRICS = Object.freeze({
     indentStep: 18,
     indentBase: 20,
     guideBase: 28,
-    sectionGuideLeft: 17,
+    sectionGuideLeft: COMMIT_PANEL_SECTION_GUIDE_LEFT,
 });
 
 interface FileSectionProps {

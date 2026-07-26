@@ -178,6 +178,8 @@ export class ShelfReverter {
                                 "Pending recovery journal has no valid index fingerprint.",
                             );
                         }
+                        // Roll back one journal at a time under the repository gate and store lock.
+                        // react-doctor-disable-next-line react-doctor/async-await-in-loop
                         const moved = await this.pendingMovedPaths(journal, directories.gitDir);
                         const retained = await rollbackMovedPaths(
                             moved,
@@ -236,6 +238,8 @@ export class ShelfReverter {
             await this.writePendingJournal(state);
             await this.checkpoint("journal-created");
             for (const file of input.files) {
+                // Per-path journal checkpoints and index fingerprints make this transaction ordered.
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop
                 await this.revertFile(file, state, recoveryDirectory, gitDirectory);
             }
             await this.commitJournal(state);
@@ -270,8 +274,12 @@ export class ShelfReverter {
             );
         }
         state.seenPaths.add(relativePath);
+        // Snapshot index state only after the transaction-wide Git precondition has held.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await this.verifyGitPreconditions(state.originalHead, state.expectedIndex);
         const originalIndexEntry = await this.git.getIndexEntry(relativePath);
+        // Preserve index-entry failure precedence before its fingerprint is read.
+        // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
         const originalIndexFingerprint = await this.git.getIndexPathFingerprint(relativePath);
         const target = resolveRepositoryPath(this.options.repositoryRoot, relativePath);
         const recoveryPath = resolveRecoveryPath(recoveryDirectory, relativePath);
@@ -289,6 +297,8 @@ export class ShelfReverter {
             writtenIndexFingerprint: originalIndexFingerprint,
         };
         state.pathProgress[entry.relativePath] = journalProgress(entry, "planned");
+        // Persist the planned state before a source move can make recovery necessary.
+        // react-doctor-disable-next-line react-doctor/async-parallel, react-doctor/async-defer-await
         await this.writePendingJournal(state);
         await this.moveOriginal(entry, state, gitDirectory);
 
@@ -315,6 +325,8 @@ export class ShelfReverter {
         if (!details.isFile() || details.isSymbolicLink()) {
             throw new RecoverySafetyError("Only regular files can enter recovery staging.");
         }
+        // Containment must be checked before fingerprinting a recovery target.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await ensureContainedParent(gitDirectory, entry.recoveryPath);
         if ((await fingerprint(entry.recoveryPath)) !== "absent") {
             throw new RecoverySafetyError("Recovery staging path already exists.");
@@ -324,11 +336,15 @@ export class ShelfReverter {
         await rename(entry.target, entry.recoveryPath);
         state.moved.push(entry);
         state.pathProgress[entry.relativePath] = journalProgress(entry, "moved");
+        // The move must be journaled before checkpoint code or a subsequent guard can fail.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.writePendingJournal(state);
         await this.checkpoint("source-moved");
         if ((await fingerprint(entry.target)) !== "absent") {
             throw new RecoverySafetyError("A path reappeared during the recovery transaction.");
         }
+        // Re-check recovery containment after rename before preserving a recovery snapshot.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await assertContainedParent(gitDirectory, entry.recoveryPath);
         const snapshot = await this.options.store.putObject(
             "recovery-" + state.transactionId,
@@ -358,6 +374,8 @@ export class ShelfReverter {
             entry.writtenFingerprint = await fingerprint(entry.target);
         }
         state.pathProgress[entry.relativePath] = journalProgress(entry, "written");
+        // A written base must be durable in the journal before the mutation checkpoint runs.
+        // react-doctor-disable-next-line react-doctor/async-defer-await
         await this.writePendingJournal(state);
         await this.checkpoint("base-written");
         if ((await fingerprint(entry.target)) !== entry.writtenFingerprint) {
@@ -422,6 +440,8 @@ export class ShelfReverter {
             const safeRelativePath = assertRepositoryRelativePath(relativePath);
             const target = resolveRepositoryPath(this.options.repositoryRoot, safeRelativePath);
             const recoveryPath = resolveRecoveryPath(recoveryDirectory, safeRelativePath);
+            // Keep path checks ordered and fail closed before reading either filesystem location.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop, react-doctor/async-parallel
             await assertContainedParentIfPresent(this.options.repositoryRoot, target);
             await assertContainedParentIfPresent(gitDir, recoveryPath);
             const targetFingerprint = await fingerprint(target);
@@ -519,8 +539,12 @@ export async function purgeRecoverySnapshots(options: {
     }
     const now = options.now ?? Date.now();
     const purged: string[] = [];
+    // Extension host target is ES2022, so retain the compatible immutable copy before sorting.
+    // react-doctor-disable-next-line react-doctor/js-tosorted-immutable
     for (const transactionId of [...transactionIds].sort()) {
         const target = resolveRecoveryPath(recoveryRoot, assertIdentifier(transactionId));
+        // Purge in stable order so a safety failure leaves the remaining snapshots untouched.
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop
         await assertContainedParent(options.gitDir, target);
         const details = await lstat(target);
         if (details.isSymbolicLink()) {
@@ -550,6 +574,8 @@ async function rollbackMovedPaths(
     const retained: string[] = [];
     for (const entry of [...moved].reverse()) {
         try {
+            // Validate recovery containment before any guard can inspect or alter its path.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             await assertContainedParentIfPresent(gitDirectory, entry.recoveryPath);
             if (!(await matchesWrittenIndexState(entry, git, expectedIndexFingerprint))) {
                 retained.push(entry.relativePath);
@@ -571,6 +597,7 @@ async function rollbackMovedPaths(
             }
 
             // Restore the index first so a later filesystem failure leaves the recovery copy intact.
+            // react-doctor-disable-next-line react-doctor/async-defer-await
             await git.writeIndexEntry(entry.relativePath, entry.originalIndexEntry);
             if (!(await matchesOriginalIndexState(entry, git))) {
                 retained.push(entry.relativePath);
@@ -584,6 +611,8 @@ async function rollbackMovedPaths(
                 await rm(entry.target, { force: true });
             }
             if (entry.hadOriginal) {
+                // Refuse a symlinked target before checking whether it remains absent.
+                // react-doctor-disable-next-line react-doctor/async-defer-await
                 await ensureContainedParent(repositoryRoot, entry.target);
                 if ((await fingerprint(entry.target)) !== "absent") {
                     retained.push(entry.relativePath);
@@ -639,6 +668,8 @@ async function writeBaseFile(
     bytes: Uint8Array,
 ): Promise<void> {
     const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+    // Containment is a prerequisite for the absent-target guard and exclusive creation.
+    // react-doctor-disable-next-line react-doctor/async-defer-await
     await ensureContainedParent(repositoryRoot, target);
     if ((await fingerprint(target)) !== "absent") {
         throw new RecoverySafetyError("Refusing to replace an existing recovery target.");

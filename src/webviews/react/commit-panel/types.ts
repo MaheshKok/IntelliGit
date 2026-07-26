@@ -69,6 +69,8 @@ interface CommitPanelState {
 export interface CommitPanelRepositorySummary {
     root: string;
     label: string;
+    /** Native Git classification supplied by static repository-list hydration. */
+    kind: "repository" | "worktree";
     changedFileCount: number;
 }
 
@@ -76,6 +78,8 @@ export interface CommitPanelRepositorySummary {
 export interface RepositoryCommitPanelState extends CommitPanelState {
     root: string;
     label: string;
+    /** Native Git classification retained across repository snapshot updates. */
+    kind: "repository" | "worktree";
     changedFileCount: number;
 }
 

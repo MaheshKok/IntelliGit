@@ -38,11 +38,13 @@ export function UnshelveDialog({
         () => new Set(entries.map((entry) => entry.changeId)),
     );
     const [removeFromShelf, setRemoveFromShelf] = useState(defaultRemoveFromShelf);
-    const selectedIds = useMemo(
-        () =>
-            entries.filter((entry) => selected.has(entry.changeId)).map((entry) => entry.changeId),
-        [entries, selected],
-    );
+    const selectedIds = useMemo(() => {
+        const ids: string[] = [];
+        for (const entry of entries) {
+            if (selected.has(entry.changeId)) ids.push(entry.changeId);
+        }
+        return ids;
+    }, [entries, selected]);
     const toggle = (changeId: string): void => {
         setSelected((current) => {
             const next = new Set(current);

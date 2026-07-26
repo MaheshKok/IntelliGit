@@ -251,15 +251,16 @@ export class GitOps {
     deriveFor(repoRoot: string): GitOps {
         return new GitOps(this.executor.deriveFor(repoRoot), this.confirmSetUpstreamPush);
     }
-    /** Resolves worktree and common Git directories through Git itself. */
-    async getGitDirectories(): Promise<{ gitDir: string; commonDir: string }> {
+    /** Resolves Git-reported root, worktree Git directory, and shared common Git directory. */
+    async getGitDirectories(): Promise<{ root: string; gitDir: string; commonDir: string }> {
         const [gitDir, commonDir, repoRoot] = await Promise.all([
             this.executor.run(["rev-parse", "--git-dir"]),
             this.executor.run(["rev-parse", "--git-common-dir"]),
             this.executor.run(["rev-parse", "--show-toplevel"]),
         ]);
-        const root = repoRoot.trim();
+        const root = path.resolve(repoRoot.trim());
         return {
+            root,
             gitDir: path.resolve(root, gitDir.trim()),
             commonDir: path.resolve(root, commonDir.trim()),
         };

@@ -58,6 +58,7 @@ export class RepositoryLock {
 
         for (;;) {
             try {
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Exclusive create attempts are ordered lock-ownership transitions; parallel attempts could bypass takeover checks.
                 await writeFile(lockPath, JSON.stringify(owner), {
                     encoding: "utf8",
                     flag: "wx",

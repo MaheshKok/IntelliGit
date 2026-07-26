@@ -383,6 +383,88 @@ describe("StashTab", () => {
         unmount(root, container);
     });
 
+    it("hydrates every expanded cache miss in source order without duplicate selection requests", () => {
+        const orderedStashes: StashEntry[] = [
+            ...stashes,
+            { index: 2, message: "On feature/third: Last", date: "2026-07-19 08:00", hash: "ghi" },
+        ];
+        const secondFiles: WorkingFile[] = [
+            { path: "src/second-stash.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ];
+        const thirdFiles: WorkingFile[] = [
+            { path: "src/third-stash.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ];
+        const { root, container } = renderStashTab({ stashes: orderedStashes });
+
+        click(container.querySelector('button[aria-label="Expand All"]') as HTMLButtonElement);
+        expect(lastMessage()).toEqual({ type: "stashSelect", repositoryRoot: "/repo", index: 1 });
+        act(() =>
+            root.render(
+                <ChakraProvider theme={theme}>
+                    <StashTab
+                        repositoryRoot="/repo"
+                        currentBranchName="main"
+                        stashes={orderedStashes}
+                        stashFiles={secondFiles}
+                        selectedIndex={1}
+                        groupByDir={false}
+                        onToggleGroupBy={vi.fn()}
+                    />
+                </ChakraProvider>,
+            ),
+        );
+        expect(lastMessage()).toEqual({ type: "stashSelect", repositoryRoot: "/repo", index: 2 });
+        act(() =>
+            root.render(
+                <ChakraProvider theme={theme}>
+                    <StashTab
+                        repositoryRoot="/repo"
+                        currentBranchName="main"
+                        stashes={orderedStashes}
+                        stashFiles={thirdFiles}
+                        selectedIndex={2}
+                        groupByDir={false}
+                        onToggleGroupBy={vi.fn()}
+                    />
+                </ChakraProvider>,
+            ),
+        );
+        expect(vscode.postMessage).toHaveBeenCalledTimes(2);
+        unmount(root, container);
+    });
+
+    it("cancels an expand-all scan before a delayed host response can load the next stash", () => {
+        const orderedStashes: StashEntry[] = [
+            ...stashes,
+            { index: 2, message: "On feature/third: Last", date: "2026-07-19 08:00", hash: "ghi" },
+        ];
+        const secondFiles: WorkingFile[] = [
+            { path: "src/second-stash.ts", status: "M", staged: false, additions: 1, deletions: 0 },
+        ];
+        const { root, container } = renderStashTab({ stashes: orderedStashes });
+
+        click(container.querySelector('button[aria-label="Expand All"]') as HTMLButtonElement);
+        expect(lastMessage()).toEqual({ type: "stashSelect", repositoryRoot: "/repo", index: 1 });
+        click(container.querySelector('button[aria-label="Collapse All"]') as HTMLButtonElement);
+        act(() =>
+            root.render(
+                <ChakraProvider theme={theme}>
+                    <StashTab
+                        repositoryRoot="/repo"
+                        currentBranchName="main"
+                        stashes={orderedStashes}
+                        stashFiles={secondFiles}
+                        selectedIndex={1}
+                        groupByDir={false}
+                        onToggleGroupBy={vi.fn()}
+                    />
+                </ChakraProvider>,
+            ),
+        );
+        expect(vscode.postMessage).toHaveBeenCalledTimes(1);
+        unmount(root, container);
+    });
+
     it("renders grouped stash folders with icons directly after chevrons and no inputs or redundant parent paths", () => {
         const { root, container } = renderStashTab({ groupByDir: true });
         expandStash(container, 0);

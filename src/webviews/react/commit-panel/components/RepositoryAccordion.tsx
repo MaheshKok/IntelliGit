@@ -7,11 +7,15 @@ import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
 import { ShelfTab } from "./ShelfTab";
 import { isActiveShelf } from "./ShelfList";
+import {
+    COMMIT_PANEL_INDENT_GUIDE_COLOR,
+    COMMIT_PANEL_SECTION_GUIDE_LEFT,
+} from "../../shared/components/FileTreeRows";
 import { useCheckedFiles } from "../hooks/useCheckedFiles";
 import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { canRunCommitAction } from "../commitEligibility";
-import { ChevronIcon } from "../../shared/components/Icons";
+import { ChevronIcon, RepoIcon, WorktreeSmallIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import type { CommitPanelAction, RepositoryCommitPanelState } from "../types";
 
@@ -54,20 +58,14 @@ function savedObjectByRepository(saved: SavedWebviewState, key: string): Record<
         : {};
 }
 
-function branchSummary(repository: RepositoryCommitPanelState): string {
-    const parts: string[] = [];
-    if (repository.currentBranchName) {
-        parts.push(
-            repository.currentBranchUpstream
-                ? `${repository.currentBranchName} -> ${repository.currentBranchUpstream}`
-                : repository.currentBranchName,
-        );
-    }
-    const divergence: string[] = [];
-    if (repository.currentBranchAhead > 0) divergence.push(`+${repository.currentBranchAhead}`);
-    if (repository.currentBranchBehind > 0) divergence.push(`-${repository.currentBranchBehind}`);
-    if (divergence.length > 0) parts.push(divergence.join(" "));
-    return parts.join(" | ");
+function branchSummary(repository: RepositoryCommitPanelState): string | null {
+    return repository.currentBranchName;
+}
+
+/** Uses the Worktrees section's short-name convention while retaining repository labels unchanged. */
+function displayRepositoryLabel(repository: RepositoryCommitPanelState): string {
+    if (repository.kind !== "worktree") return repository.label;
+    return repository.label.split(/[\\/]/).filter(Boolean).pop() ?? repository.label;
 }
 
 function repositoryScope(root: string): { repositoryRoot?: string } {
@@ -106,6 +104,7 @@ export function RepositoryAccordion({
         onMessage: (message) => vscode.postMessage(message),
     });
     const summary = branchSummary(repository);
+    const displayLabel = displayRepositoryLabel(repository);
     const canCommit = canRunCommitAction(
         repository.isAmend,
         checkedPaths.size,
@@ -222,6 +221,7 @@ export function RepositoryAccordion({
             onPush={handlePush}
             canPush={canPush}
             pushLabel={pushLabel}
+            currentBranchAhead={repository.currentBranchAhead}
             currentBranchName={repository.currentBranchName}
             currentBranchUpstream={repository.currentBranchUpstream}
             folderIcon={repository.folderIcon}
@@ -352,14 +352,16 @@ export function RepositoryAccordion({
                 type="button"
                 data-testid="repository-accordion-header"
                 align="center"
-                gap="8px"
+                gap="6px"
                 w="100%"
-                minH="34px"
+                minH="32px"
                 px="8px"
                 py="4px"
-                bg="var(--intelligit-pycharm-header)"
+                bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
                 textAlign="left"
+                transition="background-color 120ms ease-out"
+                _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
                 onClick={() => onToggleExpanded(repository.root)}
                 aria-expanded={isExpanded}
             >
@@ -372,22 +374,46 @@ export function RepositoryAccordion({
                 >
                     <ChevronIcon expanded={isExpanded} />
                 </Box>
-                <Box as="span" flexShrink={0} fontSize="12px" fontWeight={700}>
-                    {repository.label}
+                <Box
+                    as="span"
+                    data-testid="repository-kind-icon"
+                    data-repository-kind={repository.kind}
+                    display="inline-flex"
+                    alignItems="center"
+                    w="16px"
+                    flexShrink={0}
+                    color="var(--vscode-descriptionForeground)"
+                >
+                    {repository.kind === "worktree" ? (
+                        <WorktreeSmallIcon color="var(--vscode-descriptionForeground)" />
+                    ) : (
+                        <RepoIcon color="var(--vscode-descriptionForeground)" />
+                    )}
+                </Box>
+                <Box as="span" flexShrink={0} fontSize="13px" fontWeight={600}>
+                    {displayLabel}
                 </Box>
                 {summary ? (
-                    <Box
+                    <Flex
                         as="span"
+                        align="center"
+                        gap="6px"
                         flex={1}
                         minW={0}
                         overflow="hidden"
-                        textOverflow="ellipsis"
-                        whiteSpace="nowrap"
-                        color="var(--vscode-descriptionForeground)"
                         fontSize="11px"
+                        color="var(--vscode-descriptionForeground)"
                     >
-                        {summary}
-                    </Box>
+                        <Box
+                            as="span"
+                            minW={0}
+                            overflow="hidden"
+                            textOverflow="ellipsis"
+                            whiteSpace="nowrap"
+                        >
+                            {summary}
+                        </Box>
+                    </Flex>
                 ) : (
                     <Box as="span" flex={1} />
                 )}
@@ -408,12 +434,15 @@ export function RepositoryAccordion({
                 ) : null}
                 <Box
                     as="span"
-                    minW="22px"
-                    px="5px"
+                    minW="18px"
+                    h="16px"
+                    lineHeight="16px"
+                    px="6px"
+                    flexShrink={0}
                     textAlign="center"
                     fontSize="11px"
-                    color="var(--vscode-descriptionForeground)"
-                    border="1px solid var(--intelligit-pycharm-border)"
+                    bg="var(--vscode-badge-background, rgba(255, 255, 255, 0.12))"
+                    color="var(--vscode-badge-foreground, #d6dbe5)"
                     borderRadius="999px"
                 >
                     {repository.changedFileCount}
@@ -425,8 +454,29 @@ export function RepositoryAccordion({
                     h={isOnlyRepository ? "100%" : "520px"}
                     minH={isOnlyRepository ? 0 : "360px"}
                     overflow="hidden"
+                    position="relative"
                 >
-                    <Box flex={1} minH={0} overflow="hidden">
+                    <Box
+                        aria-hidden
+                        data-testid="repository-accordion-guide"
+                        position="absolute"
+                        top={0}
+                        bottom={0}
+                        left={`${COMMIT_PANEL_SECTION_GUIDE_LEFT}px`}
+                        w="1px"
+                        bg={COMMIT_PANEL_INDENT_GUIDE_COLOR}
+                        pointerEvents="none"
+                        zIndex={1}
+                    />
+                    <Box
+                        data-testid="repository-accordion-content"
+                        data-repository-root={repository.root}
+                        flex={1}
+                        minW={0}
+                        minH={0}
+                        overflow="hidden"
+                        pl="19px"
+                    >
                         <TabBar
                             stashCount={repository.stashes.length}
                             shelfCount={(repository.shelves ?? []).filter(isActiveShelf).length}

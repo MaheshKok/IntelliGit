@@ -54,6 +54,7 @@ export class RepositoryMutationGate {
         const deadline = Date.now() + this.acquireTimeoutMs;
         for (;;) {
             try {
+                // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Ordered retries prevent a later acquire from overtaking an earlier mutation request.
                 return await this.lock.acquire(commonDir);
             } catch (error) {
                 if (!(error instanceof RepositoryLockBusyError) || Date.now() >= deadline)

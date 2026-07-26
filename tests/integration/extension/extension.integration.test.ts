@@ -703,6 +703,12 @@ vi.mock("../../../src/git/operations", async (importOriginal) => {
             constructor(private readonly executor: { repoRoot: string }) {}
             isRepository = () => gitOpsState.isRepository(this.executor.repoRoot);
             getRepositoryRoot = () => gitOpsState.getRepositoryRoot(this.executor.repoRoot);
+            getGitDirectories = async () => {
+                await gitOpsState.getRepositoryRoot(this.executor.repoRoot);
+                const root = this.executor.repoRoot;
+                const gitDir = path.join(root, ".git");
+                return { root, gitDir, commonDir: gitDir };
+            };
             getBranches = gitOpsState.getBranches;
             getCommitDetail = gitOpsState.getCommitDetail;
             getUnpushedCommitHashes = gitOpsState.getUnpushedCommitHashes;

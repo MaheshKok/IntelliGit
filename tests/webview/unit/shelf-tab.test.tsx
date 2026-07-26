@@ -31,6 +31,14 @@ vi.mock("../../../src/webviews/react/shared/vscodeApi", () => ({
 
 initReactDomTestEnvironment();
 
+const css = (globalThis.CSS ?? {}) as { escape?: (value: string) => string };
+if (!globalThis.CSS) Object.defineProperty(globalThis, "CSS", { value: css });
+if (!css.escape) {
+    Object.defineProperty(css, "escape", {
+        value: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, (character) => `\\${character}`),
+    });
+}
+
 const files = [
     { changeId: "change-a", worktreeBlock: { path: "src/parser.ts" } },
     { changeId: "change-b", worktreeBlock: { path: "src/lexer.ts" } },
@@ -228,6 +236,34 @@ describe("ShelfTab", () => {
         });
 
         expect(container.querySelector('[data-shelf-file="change-c"]')).not.toBeNull();
+        unmount(root, container);
+    });
+
+    it("drops a local shelf selection when the host replaces its snapshot", () => {
+        const initialShelves = [
+            shelves[0]!,
+            {
+                ...shelves[0]!,
+                id: "shelf:transient",
+                metadata: { name: "Transient", lifecycle: "shelved" as const },
+            },
+        ];
+        const { root, container, rerender } = renderShelfTab({
+            shelves: initialShelves,
+            selectedShelfId: "shelf-a",
+        });
+        key(container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement, "ArrowDown");
+        const locallySelected = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-shelf-id]'),
+        ).find((row) => row.dataset.shelfId === "shelf:transient");
+        expect(locallySelected?.getAttribute("aria-selected")).toBe("true");
+        expect(document.activeElement).toBe(locallySelected);
+
+        rerender({ shelves: [shelves[0]!], selectedShelfId: "shelf-a" });
+        const hostSelected = container.querySelector('[data-shelf-id="shelf-a"]') as HTMLElement;
+        expect(hostSelected.getAttribute("aria-selected")).toBe("true");
+        openContextMenu(hostSelected);
+        expect(menuItem("Unshelve…").getAttribute("aria-disabled")).toBe("false");
         unmount(root, container);
     });
 

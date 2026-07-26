@@ -28,6 +28,8 @@ export function classifyPatchHeader(patch: Uint8Array): PatchHeaderClassificatio
     let binary = false;
     let renamedFrom: string | undefined;
     for (let start = 0; start < patch.length; ) {
+        // This is an ordered patch-stream delimiter scan; a Set cannot represent repeated line feeds.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         const lineEnd = patch.indexOf(LINE_FEED, start);
         const end = lineEnd < 0 ? patch.length : lineEnd;
         const line = withoutTerminalCarriageReturn(patch.subarray(start, end));

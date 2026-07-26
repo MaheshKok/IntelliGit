@@ -70,7 +70,7 @@ function CommitPanelSectionHeader({
         <Flex
             align="center"
             gap="4px"
-            px="5px"
+            px="6px"
             py="2px"
             mx="4px"
             my="1px"

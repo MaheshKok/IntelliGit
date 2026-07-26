@@ -215,6 +215,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         return {
             root,
             label: parts[parts.length - 1] ?? root,
+            kind: "repository",
         };
     }
 
