@@ -67,7 +67,7 @@ CONFIRMED as reviewer-scale fixups → root fixed directly (no Codex round):
 Root edits flagged to final verifier (root does not self-certify).
 Verdict: ACCEPT, proceed to acceptance.
 
-#### Final pre-commit verifier (FRESH opus, Gates 4–5; condensed, verdicts intact)
+#### Phase 1 final pre-commit verifier (FRESH opus, Gates 4–5; condensed, verdicts intact)
 
 First pass — VERDICT: FINDINGS. 1 BLOCKER: format:check exit 1 (root's
 `prominent` removal left the Toolbar.tsx abort-merge tag unformatted — a
@@ -102,3 +102,116 @@ typecheck 0 (3.6s) · lint:strict 0 (9.7s) · react-doctor 0 (7.4s) ·
 test 0 (29.6s) · deps:check:strict 0 (0.8s) · format:check 0 (2.0s) —
 ALL GREEN. Tree at acceptance: exactly the 9 expected modified files (8 src +
 this log) + 2 new — no proof-run mutations. Phase 1 ACCEPTED; root commits.
+
+#### Phase 1 commit
+
+408efe52695e6f4559f3cb3cbcf95e54132cfb91
+`refactor(webview): shared ToolbarIconButton + spin keyframes + glyph consolidation`
+Post-commit gate: tree clean, HEAD advanced 0407ed77 → 408efe52.
+
+### Phase 2 — Round 1 — Codex build (gpt-5.6-terra/high)
+
+BASE_HEAD 408efe52695e6f4559f3cb3cbcf95e54132cfb91
+SID(prev) 019f9bd3-c635-7db3-b11f-e4d0374812f8 → SID(new)
+019f9bfc-044c-7100-9476-516a4015bc99 (fresh session). Heartbeat armed
+(watch 600s). Work order: p2-build.md — shared ChangesFileTree replacing
+ShelfFileTree + StashFileTree, shared treeExpansion.ts, layering fix
+(StatusBadge→shared, delete FileTypeIcon/TreeIcons shims), delete dead
+StashRow.tsx, new changes-file-tree test.
+Telemetry: PEAK=178405 LAST=178405 PCT=69% NONRESUMABLE=yes (sizing note:
+69% > 50% target — phase was bigger than predicted; single round, no resume
+needed under fresh-session protocol, but Phase 3/4 stay sliced small).
+Run: RC=0, OUT non-empty (4011B), thread.started seen. Diff 18 files
+±(222/566) + 4 new (ChangesFileTree.tsx, shared StatusBadge.tsx,
+treeExpansion.ts, changes-file-tree.test.tsx); 5 deletions (ShelfFileTree,
+StashRow, FileTypeIcon, commit-panel TreeIcons shim, commit-panel StatusBadge).
+Codex report: 9/9 DONE; RED→GREEN on new test; focused 80 tests/9 files,
+typecheck, lint:strict, knip, format green. Deviation reported: react-doctor
+exit 0 with pre-existing warnings in unchanged StashTab/ShelfTab code.
+
+#### Verifier Gate-5 report (FRESH opus, fable-method; condensed, verdict intact)
+
+HEAD == BASE_HEAD; scope exactly 13 M + 5 D + 4 untracked; no lockfile change.
+All 9 deliverables DONE with file:line evidence; no CRITICAL/MAJOR. Behavior
+preservation PRESERVED prop-by-prop vs `git show BASE_HEAD:` of both old
+adapters — including the two compositions baked into old ShelfFileTree
+(select-also-activates, contextmenu-also-selects) correctly re-created at the
+ShelfTab call site. Codex's call to keep expand/collapse-all builders local
+CONFIRMED correct (they share only `setCollapsedDirectories(new Set())`).
+Gates run by verifier: focused 9 files 80/80, FULL 125 files 1894/1894,
+typecheck, lint:strict, react-doctor, deps:check:strict, format:check — all
+exit 0. Drag regression suites pass and are unmodified. Whole-repo grep: zero
+live references to the 6 deleted symbols. PLAN-DRY-LOG.md diff = reviewer
+appends only, no Codex tampering. react-doctor warnings mapped to lines
+outside every diff hunk — pre-existing confirmed (Codex said "9", actual 94
+repo-wide/5 in-file; substantive claim holds).
+Findings: MINOR ×6 — draggable="false" now emitted on stash rows (property-
+identical, unobservable); ShelfTab inline .map(displayFile) drops old per-shelf
+useMemo (bounded — rows unmemoized; note upgrade path); shelf empty-state
+assertion in phase6 test now tautological (render unguarded); localization
+repoint created duplicate "ShelfTab.tsx" entry (guard EQUIVALENT, dedup
+cleaner); changes-file-tree test lacks positive onSelect assertion; StatusBadge
+docstring condensed on move.
+VERDICT: ACCEPT
+
+#### Claude's verdict (root)
+
+HEAD gate restated by root: BASE_HEAD 408efe52695e6f4559f3cb3cbcf95e54132cfb91
+== HEAD 408efe52695e6f4559f3cb3cbcf95e54132cfb91 via `git rev-parse HEAD`
+after the round. Root spot-read: ChangesFileTree.tsx + treeExpansion.ts in
+full (thin generic adapter, caller-owned identity/callbacks, draggable only
+when onDragStart given; toggleMember immutable). Verifier findings triaged:
+4 reviewer-scale fixups applied by root directly (no Codex round) —
+- shelf-tab.test.tsx: +test "renders the localized empty message for an
+  expanded shelf with no files" (closes the unguarded shelf empty-state
+  render; uses existing empty-files fixture + expandShelf helper).
+- changes-file-tree.test.tsx: +positive onSelect assertion (click → called
+  with file) after the existing negative dblclick/contextmenu guard.
+- shelfLocalization.test.ts: deleted duplicate "ShelfTab.tsx" entry.
+- StatusBadge.tsx: restored fuller docstring (status-code mapping + "?"→"U").
+Touched-suite run: 3 files 31/31 green; prettier: all files unchanged
+(StatusBadge docstring prettier-stable).
+2 findings ACCEPTED-AND-NOTED, no code change: draggable="false" emission
+(property-identical, untested, unobservable); ShelfTab inline map (hook cannot
+live in renderSubtree render-prop without component extraction — over-scoped;
+upgrade path: extract per-shelf subtree component if mapping cost grows).
+Root edits flagged to final verifier (root does not self-certify).
+Verdict: ACCEPT, proceed to acceptance.
+
+#### Phase 2 final pre-commit verifier (FRESH opus, Gates 4–5; condensed, verdict intact)
+
+Base integrity PASS: HEAD == BASE_HEAD 408efe52; scope exactly 14 M + 5 D +
+4 untracked; no lockfile diff; HEAD + scope byte-identical AFTER all gate runs;
+drag suites unmodified and passing; log diff pure append. Gates run by
+verifier: typecheck 0 · lint:strict 0 · react-doctor 0 · FULL test 0
+(125 files/1895 — exactly +1 vs round verifier's 1894, matching root's single
+new test) · deps:check:strict 0 · format:check 0 · extra prettier pass on the
+3 root-edited test files (outside the gate glob) clean.
+Root-edit verdicts: EDIT 1 VALID non-tautological (en.json:11 confirmed
+"No shelf files."; ChangesFileTree.tsx:52 is the sole empty-path render —
+dropping/mis-keying emptyState fails the test; phase6 hardcoded assertion
+confirmed tautological, new test is the only real guard). EDIT 2 VALID
+(negative guard precedes click; closure identity proven via
+toHaveBeenCalledWith(file)). EDIT 3 VALID zero coverage loss PROVEN (harvest is
+a Set union — duplicate idempotent; BASE_HEAD ShelfFileTree contributed only
+shelf.filePane.empty, still harvested via ShelfTab.tsx:658). EDIT 4 ACCURATE
+(docstring claims traced to STATUS_LABEL_KEYS/PYCHARM_STATUS_COLORS/"?"→"U"
+code; prettier-clean; omits "!"→"I" and standard-iconStyle bypass — incomplete
+not wrong). Both accepted-and-noted items judged defensible, neither unsafe
+(div default draggable resolves non-draggable either way; hook-in-render-prop
+constraint correct). Layering fix confirmed in passing: FileTreeRows has zero
+commit-panel imports.
+ASSUMED (explicit): EDIT 1 failure-on-mutation is deductive (read-only mandate
+— did not physically delete the prop and re-run).
+New findings: MINOR pre-existing — shelfWebviewComponents harvester omits
+ShelfMessages.ts + shelfMenu.tsx (their shelf.*/a11y.* keys never
+locale-checked; absent at BASE_HEAD too, grep-confirmed; follow-up, not
+blocker); ShelfDialogFocus.tsx listed but contributes zero keys. MINOR
+informational — tests/** not prettier-gated by format:check glob.
+VERDICT: OK
+
+#### Phase 2 acceptance proof (root-run, full PROOF_CMD)
+
+typecheck 0 (3.6s) · lint:strict 0 (9.4s) · react-doctor 0 (7.3s) ·
+test 0 (28.5s) · deps:check:strict 0 (0.7s) · format:check 0 (2.0s) —
+ALL GREEN. Phase 2 ACCEPTED; root commits.

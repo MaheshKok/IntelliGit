@@ -7,7 +7,7 @@ import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { VscCheckbox } from "./VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
-import { TreeFolderIcon } from "./TreeIcons";
+import { TreeFolderIcon } from "../../shared/components/TreeIcons";
 import { ChevronIcon } from "../../shared/components/Icons";
 import { resolveFolderIcon } from "../../shared/utils/folderIcons";
 import { t } from "../../shared/i18n";

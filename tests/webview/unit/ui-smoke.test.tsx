@@ -20,16 +20,15 @@ import {
 } from "../../../src/webviews/react/branch-column/icons";
 import { CommitArea } from "../../../src/webviews/react/commit-panel/components/CommitArea";
 import { FileTree } from "../../../src/webviews/react/commit-panel/components/FileTree";
-import { FileTypeIcon } from "../../../src/webviews/react/commit-panel/components/FileTypeIcon";
 import { FolderRow } from "../../../src/webviews/react/commit-panel/components/FolderRow";
 import { IndentGuides } from "../../../src/webviews/react/commit-panel/components/IndentGuides";
 import { SectionHeader } from "../../../src/webviews/react/commit-panel/components/SectionHeader";
-import { StashRow } from "../../../src/webviews/react/commit-panel/components/StashRow";
-import { StatusBadge } from "../../../src/webviews/react/commit-panel/components/StatusBadge";
 import { TabBar } from "../../../src/webviews/react/commit-panel/components/TabBar";
 import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
 import { VscCheckbox } from "../../../src/webviews/react/commit-panel/components/VscCheckbox";
 import { CommitChecksButton } from "../../../src/webviews/react/commit-list/CommitChecksPopover";
+import { StatusBadge } from "../../../src/webviews/react/shared/components/StatusBadge";
+import { TreeFileIcon } from "../../../src/webviews/react/shared/components/TreeIcons";
 import { mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
@@ -400,9 +399,9 @@ describe("webview ui smoke", () => {
             <>
                 <StatusBadge status="M" />
                 <StatusBadge status="?" />
-                <FileTypeIcon />
-                <FileTypeIcon status="D" />
-                <FileTypeIcon icon={{ glyph: "\uea60", fontFamily: "codicon" }} />
+                <TreeFileIcon />
+                <TreeFileIcon status="D" />
+                <TreeFileIcon icon={{ glyph: "\uea60", fontFamily: "codicon" }} />
                 <IndentGuides treeDepth={2} />
                 <VscCheckbox isChecked={true} onChange={vi.fn()} />
                 <VscCheckbox isChecked={false} isIndeterminate={true} onChange={vi.fn()} />
@@ -717,13 +716,6 @@ describe("webview ui smoke", () => {
 
     it("renders section/folder/stash/toolbar/tab and commit area layouts", () => {
         const noop = vi.fn();
-        const stash = {
-            index: 1,
-            message: "On feature/test: save work",
-            date: "2026-02-19T00:00:00Z",
-            hash: "abc123",
-        };
-
         const html = renderUi(
             <>
                 <SectionHeader
@@ -747,7 +739,6 @@ describe("webview ui smoke", () => {
                     onToggleExpand={noop}
                     onToggleCheck={noop}
                 />
-                <StashRow stash={stash} onApply={noop} onPop={noop} onDrop={noop} />
                 <Toolbar
                     onRefresh={noop}
                     onRollback={noop}
@@ -791,7 +782,6 @@ describe("webview ui smoke", () => {
         expect(html).toContain("+5");
         expect(html).toContain("-1");
         expect(html).toContain('type="checkbox"');
-        expect(html).toContain("Apply");
         expect(html).toContain("Refresh");
         expect(html).toContain("View Options");
         expect(html).toContain("Abort Merge");

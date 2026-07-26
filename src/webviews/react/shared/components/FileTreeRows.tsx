@@ -7,9 +7,8 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
-import { FileTypeIcon } from "../../commit-panel/components/FileTypeIcon";
-import { StatusBadge } from "../../commit-panel/components/StatusBadge";
-import { TreeFolderIcon } from "./TreeIcons";
+import { StatusBadge } from "./StatusBadge";
+import { TreeFileIcon, TreeFolderIcon } from "./TreeIcons";
 import { ChevronIcon } from "./Icons";
 import { resolveFolderIcon } from "../utils/folderIcons";
 import { getLeafName, getParentPath } from "../utils/path";
@@ -296,7 +295,7 @@ function TreeFileRow({
         >
             <TreeIndentGuides treeDepth={depth} sectionGuideLeft={sectionGuideLeft} />
             <Box as="span" w={`${TREE_INDENT_STEP}px`} flexShrink={0} />
-            <FileTypeIcon status={file.status} icon={file.icon} />
+            <TreeFileIcon status={file.status} icon={file.icon} />
             <Flex as="span" align="baseline" gap="4px" flex={1} minW={0} overflow="hidden">
                 <Box
                     as="span"

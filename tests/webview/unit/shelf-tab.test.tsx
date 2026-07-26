@@ -580,6 +580,15 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
+    it("renders the localized empty message for an expanded shelf with no files", () => {
+        const { root, container } = renderShelfTab({
+            shelves: [{ ...shelves[0], files: [] }, shelves[1]],
+        });
+        expandShelf(container, "shelf-a");
+        expect(container.textContent).toContain("No shelf files.");
+        unmount(root, container);
+    });
+
     it("imports without paths and exports every selected shelf change", () => {
         const { root, container, callbacks } = renderShelfTab();
 

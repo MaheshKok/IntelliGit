@@ -5,8 +5,8 @@ import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { VscCheckbox } from "./VscCheckbox";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
-import { FileTypeIcon } from "./FileTypeIcon";
-import { StatusBadge } from "./StatusBadge";
+import { StatusBadge } from "../../shared/components/StatusBadge";
+import { TreeFileIcon } from "../../shared/components/TreeIcons";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import type { WorkingFile } from "../../../../types";
 import { getLeafName, getParentPath } from "../../shared/utils/path";
@@ -178,7 +178,7 @@ function FileRowInner({
                     ariaLabel={file.path}
                 />
             ) : null}
-            <FileTypeIcon status={file.status} icon={file.icon} />
+            <TreeFileIcon status={file.status} icon={file.icon} />
             <Flex as="span" align="baseline" gap="4px" flex={1} minW={0} overflow="hidden">
                 <Box
                     as="span"

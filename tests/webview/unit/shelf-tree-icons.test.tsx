@@ -3,8 +3,9 @@
 import React from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ThemeTreeIcon, WorkingFile } from "../../../src/types";
 import type { ShelfFileView } from "../../../src/webviews/protocol/commitPanelMessages";
-import { ShelfFileTree } from "../../../src/webviews/react/commit-panel/components/ShelfFileTree";
+import { ChangesFileTree } from "../../../src/webviews/react/shared/components/ChangesFileTree";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
@@ -20,18 +21,36 @@ const entries = [
     { changeId: "plain", worktreeBlock: { path: "src/notes.md", status: "M" } },
 ] as ShelfFileView[];
 
-function renderTree(props: Partial<React.ComponentProps<typeof ShelfFileTree>> = {}) {
+type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileView };
+
+function displayFile(entry: ShelfFileView): ShelfDisplayFile {
+    const block = entry.worktreeBlock ?? entry.indexBlock;
+    return {
+        path: block?.path ?? entry.changeId,
+        status: block?.status === "T" ? "M" : (block?.status ?? (entry.untracked ? "?" : "M")),
+        staged: entry.indexBlock !== undefined,
+        additions: 0,
+        deletions: 0,
+        icon: entry.icon,
+        shelfEntry: entry,
+    };
+}
+
+function renderTree(
+    props: { folderIcon?: ThemeTreeIcon; folderExpandedIcon?: ThemeTreeIcon } = {},
+) {
     return mount(
         <ChakraProvider theme={theme}>
-            <ShelfFileTree
-                entries={entries}
+            <ChangesFileTree
+                files={entries.map(displayFile)}
                 groupByDir={true}
                 depth={0}
-                selectedChangeId={null}
+                selectedId={null}
+                getId={(file) => file.shelfEntry.changeId}
                 isDirectoryCollapsed={() => false}
                 onToggleDirectory={() => undefined}
-                onFileSelect={() => undefined}
-                onFileActivate={() => undefined}
+                onSelect={() => undefined}
+                dataAttributes={(file) => ({ "shelf-file": file.shelfEntry.changeId })}
                 {...props}
             />
         </ChakraProvider>,
