@@ -113,7 +113,7 @@ export function StashTab({
     const [selectionOverride, setSelectionOverride] = useState<SelectionOverride | null>(null);
     const displayedSelectedIndex =
         selectionOverride?.snapshot === stashes ? selectionOverride.index : selectedIndex;
-    const [filesByHash, setFilesByHash] = useState<Readonly<Record<string, WorkingFile[]>>>({});
+    const filesByHashRef = useRef<Readonly<Record<string, WorkingFile[]>>>({});
     const [expandedHashes, setExpandedHashes] = useState<ReadonlySet<string>>(
         () => new Set<string>(),
     );
@@ -161,14 +161,29 @@ export function StashTab({
 
     // The host only ever ships files for the stash it considers selected, so pairing
     // this snapshot's files with this snapshot's selection is what makes the cache safe.
+    const selectedStashHash = stashes.find((stash) => stash.index === selectedIndex)?.hash;
+    // The selected stash's latest host payload must render immediately, while the cache itself
+    // only changes after commit so an abandoned concurrent render cannot leak files into it.
+    const filesByHash = useMemo(
+        () =>
+            selectedStashHash === undefined ||
+            filesByHashRef.current[selectedStashHash] === stashFiles
+                ? filesByHashRef.current
+                : { ...filesByHashRef.current, [selectedStashHash]: stashFiles },
+        [selectedStashHash, stashFiles],
+    );
     useEffect(() => {
-        if (selectedIndex === null) return;
-        const hash = stashes.find((stash) => stash.index === selectedIndex)?.hash;
-        if (hash === undefined) return;
-        setFilesByHash((current) =>
-            current[hash] === stashFiles ? current : { ...current, [hash]: stashFiles },
-        );
-    }, [selectedIndex, stashFiles, stashes]);
+        if (
+            selectedStashHash === undefined ||
+            filesByHashRef.current[selectedStashHash] === stashFiles
+        ) {
+            return;
+        }
+        filesByHashRef.current = {
+            ...filesByHashRef.current,
+            [selectedStashHash]: stashFiles,
+        };
+    }, [selectedStashHash, stashFiles]);
 
     const postRepositoryMessage = useCallback(
         <T extends object>(message: T): T & { repositoryRoot?: string } => ({
@@ -189,18 +204,17 @@ export function StashTab({
         [displayedSelectedIndex, postRepositoryMessage, stashes, vscode],
     );
 
-    // Expanding a row implies selecting it, and selecting is what loads its files.
-    // One request at a time: the next uncached row is asked for after this one lands.
-    useEffect(() => {
-        const pending = stashes.find(
-            (stash) => expandedHashes.has(stash.hash) && filesByHash[stash.hash] === undefined,
-        );
-        if (pending) selectStash(pending.index);
-    }, [expandedHashes, filesByHash, selectStash, stashes]);
-
-    const toggleStashExpansion = useCallback((stash: StashEntry): void => {
-        setExpandedHashes((current) => toggleMember(current, stash.hash));
-    }, []);
+    // Expanding a row implies selecting it, and selection is the host contract for loading files.
+    const toggleStashExpansion = useCallback(
+        (stash: StashEntry): void => {
+            const isExpanding = !expandedHashes.has(stash.hash);
+            setExpandedHashes((current) => toggleMember(current, stash.hash));
+            if (isExpanding && filesByHashRef.current[stash.hash] === undefined) {
+                selectStash(stash.index);
+            }
+        },
+        [expandedHashes, selectStash],
+    );
 
     const toggleDirectory = useCallback((stashHash: string, dirPath: string): void => {
         setCollapsedDirectories((current) =>
@@ -343,7 +357,11 @@ export function StashTab({
     const expandAll = useCallback(() => {
         setExpandedHashes(new Set(stashes.map((stash) => stash.hash)));
         setCollapsedDirectories(new Set<string>());
-    }, [stashes]);
+        const firstUncachedStash = stashes.find(
+            (stash) => filesByHashRef.current[stash.hash] === undefined,
+        );
+        if (firstUncachedStash) selectStash(firstUncachedStash.index);
+    }, [selectStash, stashes]);
 
     const collapseAll = useCallback(() => {
         setExpandedHashes(new Set<string>());

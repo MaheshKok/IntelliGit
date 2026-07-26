@@ -222,6 +222,8 @@ export class ShelfStore {
                 checksum: checksumManifest(manifest),
             };
             const manifestPath = this.manifestPath(shelfId, generation);
+            // The immutable manifest must be durable before the current-pointer crash boundary.
+            // react-doctor-disable-next-line react-doctor/async-parallel
             await this.writeAtomic(manifestPath, encodeJson(complete));
             await this.options.beforeCurrentPointerRename?.();
             await this.writeAtomic(
@@ -317,8 +319,12 @@ export class ShelfStore {
             }
             const shelfIds: string[] = [];
             const corruptShelfIds: string[] = [];
+            // Extension host target is ES2022, so retain the compatible immutable copy before sorting.
+            // react-doctor-disable-next-line react-doctor/js-tosorted-immutable
             for (const shelfId of [...entries].sort()) {
                 try {
+                    // Stable traversal preserves the first corrupt manifest observed by callers.
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop
                     await this.readCurrentManifest(shelfId);
                     shelfIds.push(shelfId);
                 } catch {
@@ -364,6 +370,7 @@ export class ShelfStore {
             const result = await operation();
             // The operation may create a generation, which updates the catalog under this reentrant lock.
             // Re-read it so recording the idempotency result cannot erase that shelf membership.
+            // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
             const catalogAfterOperation = await this.readCatalog();
             const next: Catalog = {
                 ...catalogAfterOperation,
@@ -398,8 +405,12 @@ export class ShelfStore {
                 throw error;
             }
             const removed: string[] = [];
+            // Extension host target is ES2022, so retain the compatible immutable copy before sorting.
+            // react-doctor-disable-next-line react-doctor/js-tosorted-immutable
             for (const hash of [...candidates].sort()) {
                 if (!reachable.has(hash)) {
+                    // Delete in stable order so a failure leaves a deterministic, auditable remainder.
+                    // react-doctor-disable-next-line react-doctor/async-await-in-loop
                     await rm(await this.readableTarget(path.join(directory, hash)), {
                         force: true,
                     });

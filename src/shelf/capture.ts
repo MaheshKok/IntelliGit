@@ -56,6 +56,8 @@ export async function captureWorktreeRawFidelity(
         throw new Error("Raw worktree fidelity requires a worktree layer block.");
     }
     const before = await input.store.putObject(input.shelfId, input.preimageBytes);
+    // Preserve preimage failure ordering; the reentrant store lock serializes these durable writes.
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
     const after = await input.store.putObject(input.shelfId, worktree);
     return {
         entry: {
@@ -78,6 +80,8 @@ export async function assertShelfCaptureStateSupported(
     repositoryRoot: string,
 ): Promise<void> {
     const trackedPaths = await assertIndexEntriesSupported(git, repositoryRoot);
+    // Keep index validation before HEAD validation so unsupported index state wins deterministically.
+    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
     const pinnedBasePaths = await assertPinnedBaseEntriesSupported(git, repositoryRoot);
     assertIndexAndPinnedBasePathsDoNotSwapTypes(trackedPaths, pinnedBasePaths);
     await assertStatusEntriesSupported(git, repositoryRoot, trackedPaths, pinnedBasePaths);
@@ -149,6 +153,8 @@ async function assertStatusEntriesSupported(
                 trackedPaths,
                 pinnedBasePaths,
             );
+            // Preserve porcelain order so the first unsafe path is the reported capture failure.
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop
             await assertUntrackedPathSupported(repositoryRoot, parsed.path);
         }
         if (parsed.state === "tracked-worktree-change") {

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { ChevronIcon } from "../../shared/components/Icons";
@@ -22,13 +22,15 @@ export type ShelfContextAction =
 /** Presentation and interaction state for one shelf row. */
 export interface ShelfRowProps {
     shelf: ShelfEntry;
-    selected: boolean;
-    /** Owns the list's roving tabindex, which stays on a shelf row even when a file is selected. */
-    isFocusTarget: boolean;
-    isGhost: boolean;
-    isExpanded: boolean;
-    isRenaming: boolean;
-    renameError?: string;
+    state: {
+        selected: boolean;
+        /** Owns the list's roving tabindex, which stays on a shelf row even when a file is selected. */
+        isFocusTarget: boolean;
+        isGhost: boolean;
+        isExpanded: boolean;
+        isRenaming: boolean;
+        renameError?: string;
+    };
     onSelect: (shelfId: string) => void;
     onToggleExpand: (shelfId: string) => void;
     onNavigate: (shelfId: string, key: string, target: HTMLElement) => void;
@@ -56,12 +58,7 @@ function shelfMetaText(shelf: ShelfEntry): string {
 /** One selectable shelf row. Ghosts stay visually present but intentionally muted. */
 export function ShelfRow({
     shelf,
-    selected,
-    isFocusTarget,
-    isGhost,
-    isExpanded,
-    isRenaming,
-    renameError,
+    state,
     onSelect,
     onToggleExpand,
     onNavigate,
@@ -71,15 +68,19 @@ export function ShelfRow({
     onRestore,
     onDragStart,
 }: ShelfRowProps): React.ReactElement {
+    const focusRenameInput = useCallback((input: HTMLInputElement | null): void => {
+        input?.focus();
+    }, []);
+
     return (
         <Flex
             role="treeitem"
             data-shelf-id={shelf.id}
-            data-ghost={isGhost || undefined}
-            aria-selected={selected}
-            aria-expanded={isExpanded}
+            data-ghost={state.isGhost || undefined}
+            aria-selected={state.selected}
+            aria-expanded={state.isExpanded}
             aria-level={1}
-            tabIndex={isFocusTarget ? 0 : -1}
+            tabIndex={state.isFocusTarget ? 0 : -1}
             align="center"
             w="calc(100% - 8px)"
             minH="24px"
@@ -91,15 +92,15 @@ export function ShelfRow({
             cursor="pointer"
             fontSize="13px"
             textAlign="left"
-            opacity={isGhost ? 0.55 : 1}
+            opacity={state.isGhost ? 0.55 : 1}
             color={
-                selected
+                state.selected
                     ? "var(--intelligit-pycharm-selected-foreground)"
                     : "var(--intelligit-pycharm-foreground)"
             }
-            bg={selected ? "var(--intelligit-pycharm-selected)" : "transparent"}
+            bg={state.selected ? "var(--intelligit-pycharm-selected)" : "transparent"}
             _hover={{
-                bg: selected
+                bg: state.selected
                     ? "var(--intelligit-pycharm-selected)"
                     : "var(--intelligit-pycharm-selected-hover)",
             }}
@@ -118,7 +119,7 @@ export function ShelfRow({
                 onNavigate(shelf.id, event.key, event.currentTarget);
             }}
             title={shelf.metadata.name}
-            draggable={!isGhost && Boolean(onDragStart)}
+            draggable={!state.isGhost && Boolean(onDragStart)}
             onDragStart={(event) => onDragStart?.(event, shelf)}
         >
             <Box
@@ -129,13 +130,13 @@ export function ShelfRow({
                 aria-hidden
                 onClick={() => onToggleExpand(shelf.id)}
             >
-                <ChevronIcon expanded={isExpanded} />
+                <ChevronIcon expanded={state.isExpanded} />
             </Box>
-            {isRenaming ? (
+            {state.isRenaming ? (
                 <Box flex={1} minW={0}>
                     <input
                         aria-label={t("shelf.rename.label")}
-                        autoFocus
+                        ref={focusRenameInput}
                         defaultValue={shelf.metadata.name}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => {
@@ -154,14 +155,14 @@ export function ShelfRow({
                             borderRadius: "4px",
                         }}
                     />
-                    {renameError ? (
+                    {state.renameError ? (
                         <Box
                             role="alert"
                             mt="2px"
                             fontSize="12px"
                             color="var(--vscode-errorForeground)"
                         >
-                            {renameError}
+                            {state.renameError}
                         </Box>
                     ) : null}
                 </Box>
@@ -181,16 +182,16 @@ export function ShelfRow({
                 flexShrink={0}
                 fontSize="11px"
                 color={
-                    selected
+                    state.selected
                         ? "var(--intelligit-pycharm-selected-foreground)"
                         : "var(--intelligit-pycharm-muted)"
                 }
-                opacity={selected ? 0.8 : 1}
+                opacity={state.selected ? 0.8 : 1}
             >
                 {shelfMetaText(shelf)}
             </Box>
             <Box flex={1} minW={0} />
-            {isGhost ? (
+            {state.isGhost ? (
                 <Button
                     aria-label={t("shelf.action.restore")}
                     variant="toolbarGhost"

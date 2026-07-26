@@ -91,6 +91,8 @@ export async function materializeLayerPatches(
     patches: Pick<LayerPatchPaths, "indexPatchPath" | "worktreePatchPath">,
 ): Promise<void> {
     if (await hasPatchBytes(patches.indexPatchPath)) {
+        // The mutation is permitted only after its matching check succeeds on the same index state.
+        // react-doctor-disable-next-line react-doctor/async-parallel
         await git.run(["apply", "--check", "--cached", patches.indexPatchPath]);
         await git.run(["apply", "--cached", patches.indexPatchPath]);
         // Apply the same base-to-index bytes to the clean worktree before checkout-index:
@@ -174,11 +176,12 @@ export function selectPatchBlocks(
     selectedChangeIds: readonly string[],
 ): Buffer {
     const selected = new Set(selectedChangeIds);
-    return Buffer.concat(
-        blocks
-            .filter((block) => selected.has(block.changeId))
-            .map((block) => patch.subarray(block.start, block.end)),
-    );
+    const selectedBlocks: Buffer[] = [];
+    for (const block of blocks) {
+        if (selected.has(block.changeId))
+            selectedBlocks.push(patch.subarray(block.start, block.end));
+    }
+    return Buffer.concat(selectedBlocks);
 }
 
 /**
@@ -245,8 +248,12 @@ function readUnquotedSamePathDestination(line: Buffer): string | undefined {
 function findDiffHeaderOffsets(patch: Buffer): number[] {
     const offsets: number[] = [];
     for (
+        // This is an ordered byte-stream delimiter scan; a Set cannot represent repeated offsets.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         let offset = patch.indexOf(DIFF_HEADER);
         offset >= 0;
+        // The next occurrence advances the same byte-stream cursor rather than looking up collection members.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         offset = patch.indexOf(DIFF_HEADER, offset + 1)
     ) {
         if (!isDiffHeaderStart(patch, offset)) continue;
@@ -258,8 +265,12 @@ function findDiffHeaderOffsets(patch: Buffer): number[] {
 function findPlainUnifiedHeaderOffsets(patch: Buffer): number[] {
     const offsets: number[] = [];
     for (
+        // This is an ordered byte-stream delimiter scan; a Set cannot represent repeated offsets.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         let offset = patch.indexOf(PLAIN_UNIFIED_SOURCE_HEADER);
         offset >= 0;
+        // The next occurrence advances the same byte-stream cursor rather than looking up collection members.
+        // react-doctor-disable-next-line react-doctor/js-set-map-lookups
         offset = patch.indexOf(PLAIN_UNIFIED_SOURCE_HEADER, offset + 1)
     ) {
         if (!isPlainUnifiedHeaderStart(patch, offset)) continue;

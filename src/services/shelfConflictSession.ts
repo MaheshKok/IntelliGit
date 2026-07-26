@@ -189,6 +189,7 @@ export class ShelfConflictSessionService {
             const basePath = path.join(directory, "base");
             const currentPath = path.join(directory, "current");
             const shelvedPath = path.join(directory, "shelved");
+            // react-doctor-disable-next-line react-doctor/async-parallel -- All three temporary merge inputs must be durable before Git reads any of them.
             await Promise.all([
                 writeFile(basePath, base),
                 writeFile(currentPath, current),
@@ -373,6 +374,7 @@ async function markShelfEntryApplied(
     );
     const allApplied = files.every((entry) => entry.lifecycle === "applied");
     const journalId = `unshelve-${randomUUID().replaceAll("-", "")}`;
+    // react-doctor-disable-next-line react-doctor/async-parallel -- Recovery requires the pending journal to be durable before its shelf generation changes.
     await store.writeJournal({
         id: journalId,
         state: "unshelvePending",

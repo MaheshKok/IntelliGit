@@ -49,14 +49,13 @@ export function logShelfOperation(
 ): void {
     const entries = result.entries ?? [];
     const countsByKind = new Map<string, number>();
+    const pendingPaths: string[] = [];
     for (const entry of entries) {
         countsByKind.set(entry.kind, (countsByKind.get(entry.kind) ?? 0) + 1);
+        if (entry.kind === "structuralPending" && entry.path) pendingPaths.push(entry.path);
     }
     const counts = [...countsByKind].map(([kind, count]) => `${kind}:${count}`).join(",");
-    const pending = entries
-        .filter((entry) => entry.kind === "structuralPending" && entry.path)
-        .map((entry) => entry.path)
-        .join(",");
+    const pending = pendingPaths.join(",");
     channel().appendLine(
         `[Shelf] operation=${context.operation} repository=${context.repositoryRoot} ` +
             `status=${result.status ?? ""} shelfId=${result.shelfId ?? ""} ` +

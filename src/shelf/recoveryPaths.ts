@@ -96,6 +96,7 @@ async function walkContainedParent(
         const candidate = path.join(current, component);
         let details: Awaited<ReturnType<typeof lstat>>;
         try {
+            // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Parent components must be checked and canonicalized in order before creating a child.
             details = await lstat(candidate);
         } catch (error) {
             if (!isNotFound(error)) throw error;
