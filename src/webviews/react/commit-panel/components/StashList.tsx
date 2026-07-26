@@ -91,12 +91,13 @@ export function StashList({
                                 aria-level={1}
                                 tabIndex={isFocusTarget ? 0 : -1}
                                 align="center"
-                                w="calc(100% - 16px)"
-                                minH="26px"
-                                mx="8px"
+                                w="calc(100% - 8px)"
+                                minH="24px"
+                                mx="4px"
                                 px="6px"
                                 gap="6px"
-                                borderRadius="3px"
+                                borderRadius="5px"
+                                transition="background-color 120ms ease-out"
                                 cursor="pointer"
                                 fontFamily={SYSTEM_FONT_STACK}
                                 fontSize="13px"
@@ -240,11 +241,18 @@ function adjacentStashIndex(
 /** Renders a semantic branch tag icon and adjacent plain branch label. */
 function StashBranchLabel({ branch }: { branch: string }): React.ReactElement {
     return (
-        <Box as="span" display="inline-flex" alignItems="center" gap="4px" flexShrink={0}>
+        <Box
+            as="span"
+            display="inline-flex"
+            alignItems="center"
+            gap="4px"
+            flexShrink={0}
+            fontSize="12px"
+        >
             <Box
                 as="svg"
-                w="14px"
-                h="14px"
+                w="12px"
+                h="12px"
                 viewBox="0 0 16 16"
                 aria-hidden
                 color="var(--vscode-charts-yellow, var(--intelligit-pycharm-modified))"

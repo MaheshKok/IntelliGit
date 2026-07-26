@@ -480,9 +480,8 @@ export function StashTab({
             />
             <Flex
                 align="center"
-                gap="10px"
-                px="30px"
-                py="12px"
+                gap="8px"
+                p="6px 8px 8px"
                 borderTop="1px solid var(--intelligit-pycharm-border)"
                 bg="var(--intelligit-pycharm-panel)"
             >

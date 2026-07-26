@@ -150,7 +150,7 @@ export function TabBar({
                     ))}
                 </TabList>
                 {gitActions ? (
-                    <Flex align="center" ml="auto">
+                    <Flex align="center" ml="auto" gap="2px" pr="6px">
                         <GitActionButton
                             label={t("common.sync")}
                             onClick={gitActions.onSync}
@@ -260,7 +260,6 @@ function GitActionButton({
                 variant="toolbarGhost"
                 size="sm"
                 alignSelf="center"
-                mx="4px"
                 opacity={disabled ? 0.55 : undefined}
                 cursor={disabled ? "default" : undefined}
                 onClick={disabled ? undefined : onClick}

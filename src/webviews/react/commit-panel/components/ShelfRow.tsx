@@ -81,12 +81,13 @@ export function ShelfRow({
             aria-level={1}
             tabIndex={isFocusTarget ? 0 : -1}
             align="center"
-            w="calc(100% - 16px)"
-            minH="30px"
-            mx="8px"
+            w="calc(100% - 8px)"
+            minH="24px"
+            mx="4px"
             px="6px"
             gap="6px"
-            borderRadius="3px"
+            borderRadius="5px"
+            transition="background-color 120ms ease-out"
             cursor="pointer"
             fontSize="13px"
             textAlign="left"
@@ -150,7 +151,7 @@ export function ShelfRow({
                             color: "var(--intelligit-pycharm-foreground)",
                             background: "var(--intelligit-pycharm-input)",
                             border: "1px solid var(--intelligit-pycharm-input-border)",
-                            borderRadius: "3px",
+                            borderRadius: "4px",
                         }}
                     />
                     {renameError ? (
@@ -166,7 +167,7 @@ export function ShelfRow({
                 </Box>
             ) : (
                 <Box
-                    flex={1}
+                    as="span"
                     minW={0}
                     overflow="hidden"
                     textOverflow="ellipsis"
@@ -179,10 +180,16 @@ export function ShelfRow({
                 data-shelf-meta
                 flexShrink={0}
                 fontSize="11px"
-                color="var(--intelligit-pycharm-muted)"
+                color={
+                    selected
+                        ? "var(--intelligit-pycharm-selected-foreground)"
+                        : "var(--intelligit-pycharm-muted)"
+                }
+                opacity={selected ? 0.8 : 1}
             >
                 {shelfMetaText(shelf)}
             </Box>
+            <Box flex={1} minW={0} />
             {isGhost ? (
                 <Button
                     aria-label={t("shelf.action.restore")}

@@ -1,8 +1,7 @@
 // Toolbar with commit-view Git and file actions.
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Button, Flex, Tooltip } from "@chakra-ui/react";
-import { IoMdRefresh } from "react-icons/io";
+import { Box, Button, Flex, Tooltip } from "@chakra-ui/react";
 import { LuEye } from "react-icons/lu";
 import { getSettings } from "../../shared/settings";
 import {
@@ -11,8 +10,8 @@ import {
     ShowDiffIconGlyph,
 } from "../../shared/components/Icons";
 import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
+import { RefreshButton } from "../../shared/components/RefreshButton";
 import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
-import { SPIN_KEYFRAMES } from "../../shared/components/iconStyles";
 import { t } from "../../shared/i18n";
 
 interface Props {
@@ -89,23 +88,18 @@ export function Toolbar({
     return (
         <Flex
             align="center"
-            gap="12px"
-            px="8px"
-            py="2px"
-            minH="28px"
+            gap="2px"
+            px="6px"
+            minH="30px"
             bg="var(--intelligit-pycharm-header)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
             w="100%"
         >
-            {isRefreshing && <style>{SPIN_KEYFRAMES}</style>}
-            <ToolbarIconButton
-                label={isRefreshing ? t("common.refreshing") : t("common.refresh")}
-                onClick={onRefresh}
-                color="#4ec7d6"
-                spin={isRefreshing}
-                disabled={isRefreshing}
-                icon={<IoMdRefresh size={16} />}
+            <RefreshButton
+                isRefreshing={isRefreshing ?? false}
+                holdFeedback={false}
+                onRefresh={onRefresh}
             />
             <ToolbarIconButton
                 label={t("common.rollback")}
@@ -134,6 +128,7 @@ export function Toolbar({
                     onClose={() => setViewMenuPosition(null)}
                 />
             )}
+            <ToolbarSeparator />
             <ToolbarIconButton
                 label={t("common.stashChanges")}
                 onClick={onStash}
@@ -158,6 +153,7 @@ export function Toolbar({
                     )}
                 />
             ) : null}
+            <ToolbarSeparator />
             <ToolbarIconButton
                 label={t("common.showDiffPreview")}
                 onClick={onShowDiff}
@@ -177,11 +173,28 @@ export function Toolbar({
                 icon={toolbarIcon(<CollapseAllIconGlyph />)}
             />
             {showAbortMerge ? (
-                <ToolbarButton label={t("merge.action.abortMerge")} onClick={onAbortMerge}>
-                    <path fill="currentColor" d="M4 4h8v8H4z" />
-                </ToolbarButton>
+                <>
+                    <ToolbarSeparator />
+                    <ToolbarButton label={t("merge.action.abortMerge")} onClick={onAbortMerge}>
+                        <path fill="currentColor" d="M4 4h8v8H4z" />
+                    </ToolbarButton>
+                </>
             ) : null}
         </Flex>
+    );
+}
+
+/** Hairline divider between commit-toolbar action groups. */
+function ToolbarSeparator(): React.ReactElement {
+    return (
+        <Box
+            aria-hidden
+            w="1px"
+            h="16px"
+            mx="4px"
+            flexShrink={0}
+            bg="var(--intelligit-pycharm-border)"
+        />
     );
 }
 
@@ -232,7 +245,7 @@ function ToolbarButton({
                 onClick={onClick}
                 leftIcon={toolbarIcon(children)}
                 minW="auto"
-                h="26px"
+                h="24px"
                 px="8px"
                 fontSize="12px"
                 fontWeight={600}

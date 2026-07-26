@@ -73,8 +73,8 @@ export function CommitArea({
         <Flex direction="column" overflow="hidden" flex={1} bg="var(--intelligit-pycharm-panel)">
             {branchLabel ? (
                 <Box
-                    px="7px"
-                    py="5px"
+                    px="8px"
+                    py="4px"
                     fontSize="12px"
                     color="var(--vscode-descriptionForeground)"
                     borderBottom="1px solid var(--intelligit-pycharm-border)"
@@ -91,7 +91,7 @@ export function CommitArea({
                 htmlFor={amendCheckboxId}
                 align="center"
                 gap="5px"
-                px="7px"
+                px="8px"
                 py="3px"
                 fontSize="12px"
                 minH="24px"
@@ -108,7 +108,7 @@ export function CommitArea({
                     {t("commit.amend")}
                 </Box>
             </Flex>
-            <Box px="7px" flex={1} overflow="hidden">
+            <Box px="8px" flex={1} overflow="hidden">
                 <Textarea
                     value={commitMessage}
                     onChange={(e) => onMessageChange(e.target.value)}
@@ -120,8 +120,8 @@ export function CommitArea({
                     color="var(--intelligit-pycharm-foreground)"
                     border="1px solid"
                     borderColor="var(--intelligit-pycharm-input-border)"
-                    borderRadius="3px"
-                    p="7px 9px"
+                    borderRadius="4px"
+                    p="6px 8px"
                     fontFamily={SYSTEM_FONT_STACK}
                     fontSize="12px"
                     _placeholder={{ color: "rgba(214, 219, 229, 0.48)" }}
@@ -131,7 +131,7 @@ export function CommitArea({
                     }}
                 />
             </Box>
-            <Flex align="center" gap="8px" p="6px 7px 8px">
+            <Flex align="center" gap="8px" p="6px 8px 8px">
                 <Button
                     variant="primary"
                     size="sm"

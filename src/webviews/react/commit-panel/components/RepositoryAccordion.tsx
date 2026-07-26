@@ -54,20 +54,11 @@ function savedObjectByRepository(saved: SavedWebviewState, key: string): Record<
         : {};
 }
 
-function branchSummary(repository: RepositoryCommitPanelState): string {
-    const parts: string[] = [];
-    if (repository.currentBranchName) {
-        parts.push(
-            repository.currentBranchUpstream
-                ? `${repository.currentBranchName} -> ${repository.currentBranchUpstream}`
-                : repository.currentBranchName,
-        );
-    }
-    const divergence: string[] = [];
-    if (repository.currentBranchAhead > 0) divergence.push(`+${repository.currentBranchAhead}`);
-    if (repository.currentBranchBehind > 0) divergence.push(`-${repository.currentBranchBehind}`);
-    if (divergence.length > 0) parts.push(divergence.join(" "));
-    return parts.join(" | ");
+function branchSummary(repository: RepositoryCommitPanelState): string | null {
+    if (!repository.currentBranchName) return null;
+    return repository.currentBranchUpstream
+        ? `${repository.currentBranchName} → ${repository.currentBranchUpstream}`
+        : repository.currentBranchName;
 }
 
 function repositoryScope(root: string): { repositoryRoot?: string } {
@@ -352,14 +343,16 @@ export function RepositoryAccordion({
                 type="button"
                 data-testid="repository-accordion-header"
                 align="center"
-                gap="8px"
+                gap="6px"
                 w="100%"
-                minH="34px"
+                minH="32px"
                 px="8px"
                 py="4px"
                 bg="var(--intelligit-pycharm-header)"
                 color="var(--intelligit-pycharm-foreground)"
                 textAlign="left"
+                transition="background-color 120ms ease-out"
+                _hover={{ bg: "var(--intelligit-pycharm-selected-hover)" }}
                 onClick={() => onToggleExpanded(repository.root)}
                 aria-expanded={isExpanded}
             >
@@ -372,22 +365,40 @@ export function RepositoryAccordion({
                 >
                     <ChevronIcon expanded={isExpanded} />
                 </Box>
-                <Box as="span" flexShrink={0} fontSize="12px" fontWeight={700}>
+                <Box as="span" flexShrink={0} fontSize="13px" fontWeight={600}>
                     {repository.label}
                 </Box>
                 {summary ? (
-                    <Box
+                    <Flex
                         as="span"
+                        align="center"
+                        gap="6px"
                         flex={1}
                         minW={0}
                         overflow="hidden"
-                        textOverflow="ellipsis"
-                        whiteSpace="nowrap"
-                        color="var(--vscode-descriptionForeground)"
                         fontSize="11px"
+                        color="var(--vscode-descriptionForeground)"
                     >
-                        {summary}
-                    </Box>
+                        <Box
+                            as="span"
+                            minW={0}
+                            overflow="hidden"
+                            textOverflow="ellipsis"
+                            whiteSpace="nowrap"
+                        >
+                            {summary}
+                        </Box>
+                        {repository.currentBranchAhead > 0 ? (
+                            <Box as="span" flexShrink={0} color="var(--intelligit-pycharm-added)">
+                                ↑{repository.currentBranchAhead}
+                            </Box>
+                        ) : null}
+                        {repository.currentBranchBehind > 0 ? (
+                            <Box as="span" flexShrink={0} color="var(--intelligit-pycharm-deleted)">
+                                ↓{repository.currentBranchBehind}
+                            </Box>
+                        ) : null}
+                    </Flex>
                 ) : (
                     <Box as="span" flex={1} />
                 )}
@@ -408,12 +419,15 @@ export function RepositoryAccordion({
                 ) : null}
                 <Box
                     as="span"
-                    minW="22px"
-                    px="5px"
+                    minW="18px"
+                    h="16px"
+                    lineHeight="16px"
+                    px="6px"
+                    flexShrink={0}
                     textAlign="center"
                     fontSize="11px"
-                    color="var(--vscode-descriptionForeground)"
-                    border="1px solid var(--intelligit-pycharm-border)"
+                    bg="var(--vscode-badge-background, rgba(255, 255, 255, 0.12))"
+                    color="var(--vscode-badge-foreground, #d6dbe5)"
                     borderRadius="999px"
                 >
                     {repository.changedFileCount}

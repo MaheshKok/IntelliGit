@@ -108,30 +108,29 @@ describe("ToolbarIconButton", () => {
         unmount(root, container);
     });
 
-    it("keeps commit-toolbar-only attributes off the stash and shelf presentations", () => {
-        // Non-standard icon style so the toolbar branch honors `color`, making the
-        // stash branch's forced icon-foreground a real discriminator.
+    it("resolves icon color and spin state through one contract for every toolbar", () => {
+        // iconStyle "color" honors the per-icon accent; spin always advertises
+        // data-refreshing, no matter which toolbar renders the button.
         window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "color" };
 
-        const stash = renderButton({ presentation: "stash", spin: true, color: "#123456" });
-        const stashButton = stash.container.querySelector("button") as HTMLButtonElement;
-        const stashIcon = stashButton.querySelector("svg") as SVGElement;
-        expect(stashButton.getAttribute("data-refreshing")).toBeNull();
-        expect(stashIcon.style.color).toBe("var(--vscode-icon-foreground)");
-        unmount(stash.root, stash.container);
+        const spinning = renderButton({ spin: true, color: "#123456" });
+        const spinningButton = spinning.container.querySelector("button") as HTMLButtonElement;
+        const spinningIcon = spinningButton.querySelector("svg") as SVGElement;
+        expect(spinningButton.getAttribute("data-refreshing")).toBe("true");
+        expect(spinningIcon.style.color).toBe("rgb(18, 52, 86)");
+        unmount(spinning.root, spinning.container);
 
-        const shelf = renderButton({ presentation: "shelf", spin: true, color: "#123456" });
-        const shelfButton = shelf.container.querySelector("button") as HTMLButtonElement;
-        const shelfIcon = shelfButton.querySelector("svg") as SVGElement;
-        expect(shelfButton.getAttribute("data-refreshing")).toBeNull();
-        expect(shelfIcon.style.color).toBe("");
-        unmount(shelf.root, shelf.container);
+        const accent = renderButton({ color: "#123456" });
+        const accentButton = accent.container.querySelector("button") as HTMLButtonElement;
+        const accentIcon = accentButton.querySelector("svg") as SVGElement;
+        expect(accentButton.getAttribute("data-refreshing")).toBeNull();
+        expect(accentIcon.style.color).toBe("rgb(18, 52, 86)");
+        unmount(accent.root, accent.container);
 
-        const toolbar = renderButton({ spin: true, color: "#123456" });
-        const toolbarButton = toolbar.container.querySelector("button") as HTMLButtonElement;
-        const toolbarIcon = toolbarButton.querySelector("svg") as SVGElement;
-        expect(toolbarButton.getAttribute("data-refreshing")).toBe("true");
-        expect(toolbarIcon.style.color).not.toBe("var(--vscode-icon-foreground)");
-        unmount(toolbar.root, toolbar.container);
+        window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "standard" };
+        const standard = renderButton({ color: "#123456" });
+        const standardIcon = standard.container.querySelector("svg") as SVGElement;
+        expect(standardIcon.style.color).toBe("var(--vscode-icon-foreground)");
+        unmount(standard.root, standard.container);
     });
 });

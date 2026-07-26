@@ -40,8 +40,9 @@ export function StashToolbar({
     return (
         <Flex
             align="center"
-            minH="34px"
-            px="8px"
+            gap="2px"
+            minH="30px"
+            px="6px"
             bg="var(--intelligit-pycharm-header)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
@@ -51,13 +52,12 @@ export function StashToolbar({
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}
                 disabled={selectedIndex === null}
-                presentation="stash"
                 icon={icon(<ShowDiffIconGlyph />)}
             />
             <ToolbarIconButton
                 label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
                 onClick={onToggleGroupBy}
-                presentation="stash"
+                pressed={groupByDir}
                 icon={icon(<GroupByDirectoryIconGlyph />)}
             />
             <Box flex={1} />
@@ -65,14 +65,12 @@ export function StashToolbar({
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                presentation="stash"
                 icon={icon(<ExpandAllIconGlyph />)}
             />
             <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                presentation="stash"
                 icon={icon(<CollapseAllIconGlyph />)}
             />
         </Flex>

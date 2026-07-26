@@ -14,11 +14,20 @@ const MIN_SPIN_MS = 700;
 interface RefreshButtonProps {
     /** Host refresh state; a click spins too, in case the host finishes first. */
     isRefreshing: boolean;
+    /**
+     * Keeps feedback visible after a click or completed host refresh. Defaults to
+     * `true` for undocked toolbars whose hosts can finish before the next paint.
+     */
+    holdFeedback?: boolean;
     onRefresh: () => void;
 }
 
 /** Refresh icon shared by the shelf and stash toolbars. */
-export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): React.ReactElement {
+export function RefreshButton({
+    isRefreshing,
+    holdFeedback = true,
+    onRefresh,
+}: RefreshButtonProps): React.ReactElement {
     const { hoverDelay, tooltipsEnabled } = getSettings();
     const [isSpinHeld, setIsSpinHeld] = useState(false);
     const [holdCount, setHoldCount] = useState(0);
@@ -30,7 +39,7 @@ export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): 
     // commit on it would lose exactly the fast refreshes this exists to show.
     if (isRefreshing !== wasRefreshing) {
         setWasRefreshing(isRefreshing);
-        if (!isRefreshing) setHoldCount((count) => count + 1);
+        if (holdFeedback && !isRefreshing) setHoldCount((count) => count + 1);
     }
 
     // Each request restarts the tail, so a click landing mid-tail extends it instead of
@@ -43,11 +52,11 @@ export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): 
     }, [holdCount]);
 
     const handleClick = useCallback(() => {
-        setHoldCount((count) => count + 1);
+        if (holdFeedback) setHoldCount((count) => count + 1);
         onRefresh();
-    }, [onRefresh]);
+    }, [holdFeedback, onRefresh]);
 
-    const spin = isRefreshing || isSpinHeld;
+    const spin = isRefreshing || (holdFeedback && isSpinHeld);
     const label = spin ? t("common.refreshing") : t("common.refresh");
     // Spinning is the "working" signal, so the glyph keeps its accent color instead of
     // fading to the disabled grey — a refresh in progress has to read louder than an
@@ -79,8 +88,6 @@ export function RefreshButton({ isRefreshing, onRefresh }: RefreshButtonProps): 
                     data-testid="refresh-button"
                     variant="toolbarGhost"
                     size="xs"
-                    minW="26px"
-                    h="26px"
                     onClick={spin ? undefined : handleClick}
                     isDisabled={spin}
                     _disabled={{

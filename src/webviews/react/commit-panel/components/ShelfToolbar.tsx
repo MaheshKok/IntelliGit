@@ -27,7 +27,7 @@ export interface ShelfToolbarProps {
 
 function icon(path: React.ReactNode): React.ReactElement {
     return (
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
             {path}
         </svg>
     );
@@ -66,9 +66,9 @@ export function ShelfToolbar({
         <Flex
             data-testid="shelf-toolbar"
             align="center"
-            minH="34px"
-            px="8px"
-            gap="4px"
+            minH="30px"
+            px="6px"
+            gap="2px"
             bg="var(--intelligit-pycharm-header)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
@@ -79,22 +79,18 @@ export function ShelfToolbar({
                 icon={icon(<GroupByDirectoryIconGlyph />)}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
-                disabled={false}
-                presentation="shelf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
                 icon={icon(<ExpandAllIconGlyph />)}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                presentation="shelf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
                 icon={icon(<CollapseAllIconGlyph />)}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                presentation="shelf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}
@@ -103,8 +99,6 @@ export function ShelfToolbar({
                     const rect = event.currentTarget.getBoundingClientRect();
                     setOverflow({ x: rect.left, y: rect.bottom });
                 }}
-                disabled={false}
-                presentation="shelf"
             />
             {overflow ? (
                 <ContextMenu

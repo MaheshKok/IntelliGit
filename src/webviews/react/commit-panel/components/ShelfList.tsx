@@ -138,10 +138,11 @@ export function ShelfList({
                     {ghosts.length > 0 ? (
                         <>
                             <Box
-                                px="12px"
-                                pt="8px"
-                                pb="3px"
+                                px="10px"
+                                pt="10px"
+                                pb="4px"
                                 fontSize="11px"
+                                fontWeight={600}
                                 color="var(--intelligit-pycharm-muted)"
                             >
                                 {t("shelf.list.alreadyUnshelved")}
