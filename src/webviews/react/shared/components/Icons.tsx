@@ -317,6 +317,12 @@ export function ExpandAllIconGlyph(): React.ReactElement {
     );
 }
 
+export function GroupByDirectoryIconGlyph(): React.ReactElement {
+    return (
+        <path fill="currentColor" d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h4v4h-4v-4z" />
+    );
+}
+
 export function CollapseAllIconGlyph(): React.ReactElement {
     return (
         <path

@@ -4,6 +4,7 @@ import type {
     CommitDetail,
     ThemeFolderIconMap,
     ThemeIconFont,
+    ThemeTreeIcon,
     WorkingFile,
 } from "../../types";
 import { FileIconThemeResolver, type ThemeFolderIcons } from "../../utils/fileIconTheme";
@@ -162,6 +163,19 @@ export class IconThemeService implements vscode.Disposable {
     }
 
     /**
+     * Decorates any path-carrying rows with file icons, for trees whose rows are not working files.
+     *
+     * Shelf manifest entries reach the webview through this so the Shelf tree resolves the same
+     * theme icons as the commit and stash trees, and returns them untouched with no resolver.
+     */
+    async decorateFilePaths<T extends { path: string; icon?: ThemeTreeIcon }>(
+        items: T[],
+    ): Promise<T[]> {
+        if (!this.iconResolver) return items;
+        return this.iconResolver.decoratePathItems(items);
+    }
+
+    /**
      * Decorates commit details and derives folder icon metadata in one theme-initialized pass.
      *
      * Providers remain responsible for sequence checks before storing the result because icon-theme
@@ -262,7 +276,13 @@ export class IconThemeService implements vscode.Disposable {
         return typed.fsPath ?? typed.path ?? typed.toString?.() ?? "";
     }
 
-    private async getFolderIconsByPaths(paths: string[]): Promise<ThemeFolderIconMap> {
+    /**
+     * Resolves folder icons for the parent directories of repository-relative display paths.
+     *
+     * Callers that mix row kinds — working files, stash files, and shelf entries — pass their
+     * paths together so one map covers every tree the panel can show.
+     */
+    async getFolderIconsByPaths(paths: string[]): Promise<ThemeFolderIconMap> {
         const names: string[] = [];
         for (const path of paths) {
             const parts = path.split("/").slice(0, -1);

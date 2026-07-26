@@ -38,13 +38,16 @@ export class WorktreeService implements vscode.Disposable {
     readonly onDidChangeWorktrees = this._onDidChangeWorktrees.event;
     private cache: GitWorktree[] | undefined;
 
+    private readonly createExecutor: (repoRoot: string) => GitExecutor;
+
     /** Bind worktree reads to the shared executor and active root lookup. */
     constructor(
         private readonly executor: GitExecutor,
         private readonly getCurrentRoot: () => string,
-        private readonly createExecutor: (repoRoot: string) => GitExecutor = (repoRoot) =>
-            new GitExecutor(repoRoot),
-    ) {}
+        createExecutor?: (repoRoot: string) => GitExecutor,
+    ) {
+        this.createExecutor = createExecutor ?? ((repoRoot) => this.executor.deriveFor(repoRoot));
+    }
 
     /** Return cached worktrees, loading them from Git on first use. */
     async listWorktrees(): Promise<GitWorktree[]> {

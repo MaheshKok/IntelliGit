@@ -682,7 +682,7 @@ vi.mock("../../../src/utils/notifications", () => ({
 }));
 
 vi.mock("../../../src/git/executor", () => ({
-    GitExecutor: class {
+    GitExecutor: class MockGitExecutor {
         repoRoot: string;
         constructor(repoRoot: string) {
             this.repoRoot = repoRoot;
@@ -691,6 +691,7 @@ vi.mock("../../../src/git/executor", () => ({
         setRoot = vi.fn((repoRoot: string) => {
             this.repoRoot = repoRoot;
         });
+        deriveFor = (repoRoot: string) => new MockGitExecutor(repoRoot);
     },
 }));
 

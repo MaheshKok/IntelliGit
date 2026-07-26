@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import { GitOps } from "../git/operations";
 import type { Branch, CommitDetail, ThemeFolderIconMap } from "../types";
 import { buildWebviewShellHtml } from "./webviewHtml";
+import { decorateShelfFiles, shelfFilePaths } from "./shelfIconDecoration";
 import { getErrorMessage } from "../utils/errors";
 import { mapWithConcurrency } from "../utils/concurrency";
 import { assertRepoRelativePath } from "../utils/fileOps";
@@ -15,8 +16,10 @@ import type {
     CommitPanelRepositorySnapshot,
     InboundMessage,
 } from "../webviews/protocol/commitPanelMessages";
+import type { ShelfService } from "../services/shelfService";
 import type { DiscoveredRepository } from "../services/repositoryDiscovery";
 import { CommitPanelRepositoryRuntime } from "./commitPanelRepositoryRuntime";
+import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
 import { runPublishBranchFlow } from "../services/publishService";
 import { showTimedWarningMessage } from "../utils/notifications";
 import type {
@@ -33,19 +36,23 @@ import {
     assertNullableString,
     assertNumber,
     assertRepoPathArray,
+    assertShelfId,
     assertString,
 } from "./messageValidation";
 import {
     commitAndPushFromPanel,
     commitOnlyFromPanel,
     commitSelectedFromPanel,
+    executeShelfMutationRequest,
     executeStashFileMutationRequest,
     executeStashMutationRequest,
+    openShelfConflictEditorFromMessage,
     rollbackFromPanel,
     runGitOperationFromPanel,
     stashMutationFromPanel,
     stashMutationFromUnstashMessage,
     stashSaveFromPanel,
+    shelfReadFromMessage,
     type StashMutation,
 } from "./commitPanelActions";
 import {
@@ -148,6 +155,10 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         private repoRootUri?: vscode.Uri,
         private readonly workspaceState?: vscode.Memento,
         private readonly secrets?: vscode.SecretStorage,
+        private readonly shelfServiceForRepository?: (
+            repositoryRoot: string,
+        ) => ShelfService | undefined,
+        private readonly shelfRemoveOnUnshelve: boolean = true,
     ) {
         this.iconTheme = new IconThemeService(this.extensionUri);
         this.loadStoredChangedFileCounts();
@@ -232,8 +243,16 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 existing.repository = repository;
                 continue;
             }
-            const gitOps = repository.root === activeRoot ? activeGitOps : undefined;
-            const runtime = new CommitPanelRepositoryRuntime(repository, gitOps);
+            const gitOps =
+                repository.root === activeRoot && activeGitOps
+                    ? activeGitOps
+                    : this.gitOps.deriveFor(repository.root);
+            const runtime = new CommitPanelRepositoryRuntime(
+                repository,
+                gitOps,
+                this.shelfServiceForRepository?.(repository.root),
+                this.shelfRemoveOnUnshelve,
+            );
             runtime.lastKnownChangedFileCount = this.getStoredChangedFileCount(runtime);
             this.runtimes.set(repository.root, runtime);
         }
@@ -253,25 +272,31 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
 
         const activeRuntime = this.getActiveRuntime();
         this.repoRootUri = activeRuntime?.repoRootUri;
-        if (activeChanged || options.resetActiveState) {
-            this.selectedCommitDetail = null;
-            this.commitDetailFolderIconsByName = {};
-            this.branchFolderIconsByName = {};
-            this.commitDetailSeq += 1;
-            if (activeRuntime) {
-                this.postToWebview({
-                    type: "restoreCommitDraft",
-                    repositoryRoot: activeRuntime.repository.root,
-                    message: this.getStoredCommitDraft(activeRuntime),
-                });
-            }
-        }
+        this.resetActiveRepositoryState(activeRuntime, activeChanged || options.resetActiveState);
         this.postRepositoryListHydration();
         this.syncRuntimeWatchers();
         this.scanInitialCollapsedCounts();
         if (activeChanged && previousActiveRoot !== null && activeRuntime) {
             void this.scanRepositoryFileCount(activeRuntime);
         }
+    }
+
+    /** Clears active-repository state and restores its persisted draft after a repository change. */
+    private resetActiveRepositoryState(
+        activeRuntime: CommitPanelRepositoryRuntime | undefined,
+        shouldReset: boolean | undefined,
+    ): void {
+        if (!shouldReset) return;
+        this.selectedCommitDetail = null;
+        this.commitDetailFolderIconsByName = {};
+        this.branchFolderIconsByName = {};
+        this.commitDetailSeq += 1;
+        if (!activeRuntime) return;
+        this.postToWebview({
+            type: "restoreCommitDraft",
+            repositoryRoot: activeRuntime.repository.root,
+            message: this.getStoredCommitDraft(activeRuntime),
+        });
     }
 
     private postRepositoryListHydration(): void {
@@ -491,6 +516,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             stashes: runtime.stashes,
             stashFiles: runtime.stashFiles,
             selectedStashIndex: runtime.selectedStashIndex,
+            shelves: runtime.shelves,
+            catalogGeneration: runtime.catalogGeneration,
+            selectedShelfId: runtime.selectedShelfId,
             folderIcon: folderIcons.folderIcon,
             folderExpandedIcon: folderIcons.folderExpandedIcon,
             folderIconsByName: runtime.folderIconsByName,
@@ -503,6 +531,38 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             currentBranchUpstream: runtime.currentBranchUpstreamCache,
             refreshing: false,
             error: null,
+        };
+    }
+
+    /** Reads shelf state from the runtime-scoped service without crossing repository boundaries. */
+    private async shelfSnapshotForRuntime(runtime: CommitPanelRepositoryRuntime): Promise<{
+        shelves: CommitPanelRepositorySnapshot["shelves"];
+        catalogGeneration: number;
+        selectedShelfId: string | null;
+        shelfRemoveOnUnshelve: boolean;
+        shelfHealth: CommitPanelRepositorySnapshot["shelfHealth"];
+    }> {
+        if (!runtime.shelfService) {
+            return {
+                shelves: [],
+                catalogGeneration: 0,
+                selectedShelfId: null,
+                shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
+                shelfHealth: [],
+            };
+        }
+        const listed = await runtime.shelfService.listShelves();
+        const selectedShelfId = listed.shelves.some((shelf) => shelf.id === runtime.selectedShelfId)
+            ? runtime.selectedShelfId
+            : (listed.shelves[0]?.id ?? null);
+        return {
+            shelves: await decorateShelfFiles(this.iconTheme, listed.shelves),
+            catalogGeneration: listed.catalogGeneration,
+            selectedShelfId,
+            shelfRemoveOnUnshelve: runtime.shelfRemoveOnUnshelve,
+            shelfHealth: runtime.shelfService
+                .getHealthWarnings()
+                .map((warning) => ({ ...warning })),
         };
     }
 
@@ -719,6 +779,97 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         );
     }
 
+    /** Returns the shelf service bound to exactly one repository runtime. */
+    private requireShelfService(runtime: CommitPanelRepositoryRuntime | undefined): ShelfService {
+        if (!runtime?.shelfService)
+            throw new Error("Shelf service is unavailable for this repository.");
+        return runtime.shelfService;
+    }
+
+    /** Selects an existing shelf after validating it against the current repository catalog. */
+    private async selectShelf(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        shelfIdValue: unknown,
+    ): Promise<void> {
+        if (!runtime) throw new Error("No active repository selected.");
+        const shelfId = assertShelfId(shelfIdValue, "shelfId");
+        const service = this.requireShelfService(runtime);
+        const listed = await service.listShelves();
+        if (!listed.shelves.some((shelf) => shelf.id === shelfId)) {
+            throw new Error("Shelf does not exist.");
+        }
+        runtime.shelves = await decorateShelfFiles(this.iconTheme, listed.shelves);
+        runtime.catalogGeneration = listed.catalogGeneration;
+        runtime.selectedShelfId = shelfId;
+        this.postWorkingTreeSnapshot(runtime);
+    }
+
+    /** Runs one correlated shelf mutation and scopes its completion to the addressed runtime. */
+    private async runShelfMutationRequest(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: Record<string, unknown>,
+    ): Promise<void> {
+        const service = this.requireShelfService(runtime);
+        if (!runtime) throw new Error("No active repository selected.");
+        assertString(message.requestId, "requestId");
+        try {
+            await executeShelfMutationRequest(
+                {
+                    shelfService: service,
+                    refreshData: () => this.refreshData(false, runtime),
+                    fireWorkingTreeChanged: () => this._onDidChangeWorkingTree.fire(),
+                    selectExportDestination: async () =>
+                        (await vscode.window.showSaveDialog())?.fsPath,
+                    selectImportSources: async () =>
+                        (
+                            await vscode.window.showOpenDialog({
+                                canSelectFiles: true,
+                                canSelectFolders: false,
+                                canSelectMany: true,
+                                filters: { "Patch files": ["patch", "diff"] },
+                            })
+                        )?.map((uri) => uri.fsPath),
+                },
+                message,
+                (completion) => {
+                    this.postToWebview({
+                        ...completion,
+                        repositoryRoot: runtime.repository.root,
+                    });
+                },
+            );
+        } catch {
+            // A valid correlated request already posted shelfMutationCompleted.
+        }
+    }
+
+    /** Validates and opens a non-mutating shelf conflict editor for one repository runtime. */
+    private async openShelfConflictEditor(
+        runtime: CommitPanelRepositoryRuntime | undefined,
+        message: Record<string, unknown>,
+    ): Promise<void> {
+        if (!runtime) throw new Error("No active repository selected.");
+        const shelfService = this.requireShelfService(runtime);
+        await openShelfConflictEditorFromMessage(
+            {
+                shelfService,
+                openShelfConflictEditor: (shelfId, changeId) =>
+                    ShelfConflictEditorPanel.open({
+                        extensionUri: this.extensionUri,
+                        repositoryRoot: runtime.repository.root,
+                        shelfService,
+                        shelfId,
+                        changeId,
+                        onApplied: async () => {
+                            await this.refreshData(false, runtime);
+                            this._onDidChangeWorkingTree.fire();
+                        },
+                    }),
+            },
+            message,
+        );
+    }
+
     /** Runs a correlated single-file stash request against the repository captured at dispatch. */
     private runStashFileMutationRequest(
         runtime: CommitPanelRepositoryRuntime | undefined,
@@ -932,6 +1083,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
             .filter((runtime): runtime is CommitPanelRepositoryRuntime => runtime !== undefined);
     }
 
+    /** Tells the webview whether a visible refresh is running for this repository. */
+    private postRefreshing(runtime: CommitPanelRepositoryRuntime, active: boolean): void {
+        this.postToWebview({ type: "refreshing", repositoryRoot: runtime.repository.root, active });
+    }
+
     /**
      * Reloads full working-tree, stash, icon, and branch metadata for exactly one runtime.
      *
@@ -945,11 +1101,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         const refreshStartedAt = Date.now();
         const refreshRequestId = ++runtime.dataRefreshSeq;
         if (!silent) {
-            this.postToWebview({
-                type: "refreshing",
-                repositoryRoot: runtime.repository.root,
-                active: true,
-            });
+            this.postRefreshing(runtime, true);
         }
         if (!silent) {
             void Promise.resolve(
@@ -967,7 +1119,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 includeIgnored: runtime.showIgnoredFiles,
             });
             await this.iconTheme.initIconThemeData().catch(() => {});
-            const [stashes, currentBranchStatus] = await Promise.all([
+            const [stashes, currentBranchStatus, shelfState] = await Promise.all([
                 runtime.gitOps.listStashes().catch(() => runtime.stashes),
                 this.currentBranchStatus(runtime).catch(() => ({
                     hasUpstream: runtime.currentBranchHasUpstreamCache,
@@ -976,6 +1128,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     behind: runtime.currentBranchBehindCache,
                     name: runtime.currentBranchNameCache,
                     upstream: runtime.currentBranchUpstreamCache,
+                })),
+                this.shelfSnapshotForRuntime(runtime).catch(() => ({
+                    shelves: runtime.shelves,
+                    catalogGeneration: runtime.catalogGeneration,
+                    selectedShelfId: runtime.selectedShelfId,
                 })),
             ]);
             const files = await this.iconTheme.decorateWorkingFiles(status).catch(() => status);
@@ -997,7 +1154,11 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                           .catch(() => (selectedStashIndexUnchanged ? runtime.stashFiles : []))
                     : [];
             const folderIconsByName = await this.iconTheme
-                .getFolderIconsByWorkingFiles([...files, ...stashFiles])
+                .getFolderIconsByPaths([
+                    ...files.map((file) => file.path),
+                    ...stashFiles.map((file) => file.path),
+                    ...shelfFilePaths(shelfState.shelves),
+                ])
                 .catch(() => runtime.folderIconsByName);
             if (refreshRequestId === runtime.dataRefreshSeq) {
                 runtime.folderIconsByName = folderIconsByName;
@@ -1005,6 +1166,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 runtime.stashes = stashes;
                 runtime.selectedStashIndex = selectedStashIndex;
                 runtime.stashFiles = stashFiles;
+                runtime.shelves = shelfState.shelves;
+                runtime.catalogGeneration = shelfState.catalogGeneration;
+                runtime.selectedShelfId = shelfState.selectedShelfId;
                 runtime.currentBranchHasUpstreamCache = currentBranchStatus.hasUpstream;
                 runtime.hasRemotesCache = currentBranchStatus.hasRemotes;
                 runtime.currentBranchAheadCache = currentBranchStatus.ahead;
@@ -1028,11 +1192,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     await new Promise<void>((resolve) => setTimeout(resolve, remainingMs));
                 }
                 if (refreshRequestId === runtime.dataRefreshSeq) {
-                    this.postToWebview({
-                        type: "refreshing",
-                        repositoryRoot: runtime.repository.root,
-                        active: false,
-                    });
+                    this.postRefreshing(runtime, false);
                 }
                 this.visibleRefreshCount = Math.max(0, this.visibleRefreshCount - 1);
                 void Promise.resolve(
@@ -1181,7 +1341,18 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
         this.postRepositoryListHydration();
         if (runtime) {
             this.postWorkingTreeSnapshot(runtime);
-            await this.refreshAllRepositories(true);
+            // The snapshot above comes from an empty cache on a cold start, so the first
+            // load announces itself: the panel would otherwise sit on "No shelves." with
+            // no sign that Git is still being read. The refresh itself stays silent and
+            // the flag is posted around it — the toolbar already holds the spin long
+            // enough to be seen, so this path skips the minimum-visible padding, which
+            // would delay the restored commit draft by more than half a second.
+            this.postRefreshing(runtime, true);
+            try {
+                await this.refreshAllRepositories(true);
+            } finally {
+                this.postRefreshing(runtime, false);
+            }
             await this.refreshGraphData(runtime);
         }
         this.postToWebview({
@@ -1230,6 +1401,7 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 iconTheme: this.iconTheme,
                 getFiles: () => runtime.files,
                 getStashes: () => runtime.stashes,
+                getShelfFilePaths: () => shelfFilePaths(runtime.shelves),
                 currentBranchHasUpstream: async () =>
                     (await this.currentBranchStatus(runtime)).hasUpstream,
                 setStashState: (state) => {
@@ -1241,6 +1413,9 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                     this.postToWebview({
                         ...message,
                         repositoryRoot: runtime.repository.root,
+                        shelves: runtime.shelves,
+                        catalogGeneration: runtime.catalogGeneration,
+                        selectedShelfId: runtime.selectedShelfId,
                     }),
             },
             index,
@@ -1265,6 +1440,36 @@ export class CommitPanelViewProvider implements vscode.WebviewViewProvider {
                 break;
             case "refresh":
                 await this.refreshFromUserAction(scopedRuntime());
+                break;
+            case "shelfSelect":
+                await this.selectShelf(scopedRuntime(), msg.shelfId);
+                break;
+            case "shelfOpenConflictEditor":
+                await this.openShelfConflictEditor(scopedRuntime(), msg);
+                break;
+            case "shelfDiff":
+            case "shelfCompareWithLocal": {
+                const runtime = scopedRuntime();
+                if (!runtime) throw new Error("No active repository selected.");
+                await shelfReadFromMessage(
+                    this.requireShelfService(runtime),
+                    msg,
+                    () => runtime.repoRootUri,
+                );
+                break;
+            }
+            case "shelveSave":
+            case "unshelve":
+            case "shelfDelete":
+            case "shelfRename":
+            case "shelfExportPatch":
+            case "shelfCopyPatchToClipboard":
+            case "shelfImportPatch":
+            case "shelfRestoreGhost":
+            case "shelfCleanUp":
+            case "shelfResolveStructural":
+            case "shelfPurgeRecovery":
+                await this.runShelfMutationRequest(scopedRuntime(), msg);
                 break;
             case "setExpandedRepositories":
                 await this.setExpandedRepositories(msg.repositoryRoots);

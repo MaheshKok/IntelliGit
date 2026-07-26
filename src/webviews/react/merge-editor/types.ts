@@ -1,8 +1,16 @@
 // Typed message protocol for the 3-way merge editor webview.
 
-import type { MergeEditorData, MergeSegment } from "../../../mergeEditor/conflictParser";
+import type {
+    MergeEditorData as ConflictParserMergeEditorData,
+    MergeSegment,
+} from "../../../mergeEditor/conflictParser";
 
-export type { MergeEditorData, MergeSegment };
+/** Conflict payload for the merge webview, optionally tagged with its hosting session kind. */
+export interface MergeEditorData extends ConflictParserMergeEditorData {
+    sessionKind?: "gitMerge" | "shelf";
+}
+
+export type { MergeSegment };
 export type { CommonSegment, ConflictSegment } from "../../../mergeEditor/conflictParser";
 
 /** Commands the merge editor posts to the extension host for loading, saving, and file-wide actions. */

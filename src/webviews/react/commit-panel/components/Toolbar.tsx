@@ -18,6 +18,7 @@ interface Props {
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
     onStash: () => void;
+    onOpenShelfMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
     onShowDiff: () => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
@@ -43,6 +44,7 @@ export function Toolbar({
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
     onStash,
+    onOpenShelfMenu,
     onShowDiff,
     onExpandAll,
     onCollapseAll,
@@ -129,6 +131,18 @@ export function Toolbar({
                     d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"
                 />
             </ToolbarButton>
+            {onOpenShelfMenu ? (
+                <ToolbarButton
+                    label={t("shelf.action.toolbar")}
+                    onClick={onOpenShelfMenu}
+                    color="#ea8fb3"
+                >
+                    <path
+                        fill="currentColor"
+                        d="M1.5 3.5h13v9h-13zM3 1.5h10v2H3zm1.5 5h7v1h-7zm-2 4h11v1h-11z"
+                    />
+                </ToolbarButton>
+            ) : null}
             <ToolbarButton label={t("common.showDiffPreview")} onClick={onShowDiff} color="#8fd5ff">
                 <path
                     fill="currentColor"

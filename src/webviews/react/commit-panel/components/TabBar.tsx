@@ -17,12 +17,19 @@ import { t } from "../../shared/i18n";
 
 interface Props {
     stashCount: number;
+    shelfCount?: number;
+    shelfWarningCount?: number;
     onSync?: () => void;
     onFetch?: () => void;
     onPull?: () => void;
     onPush?: () => void;
     commitContent: React.ReactNode;
     stashContent: React.ReactNode;
+    shelfContent?: React.ReactNode;
+    onCommitDragOver?: (event: React.DragEvent<HTMLElement>) => void;
+    onCommitDrop?: (event: React.DragEvent<HTMLElement>) => void;
+    onShelfDragOver?: (event: React.DragEvent<HTMLElement>) => void;
+    onShelfDrop?: (event: React.DragEvent<HTMLElement>) => void;
 }
 
 const sharedTabStyles = {
@@ -50,12 +57,19 @@ const sharedTabStyles = {
  */
 export function TabBar({
     stashCount,
+    shelfCount = 0,
+    shelfWarningCount = 0,
     onSync,
     onFetch,
     onPull,
     onPush,
     commitContent,
     stashContent,
+    shelfContent,
+    onCommitDragOver,
+    onCommitDrop,
+    onShelfDragOver,
+    onShelfDrop,
 }: Props): React.ReactElement {
     const tabs: Array<{ key: string; label: string; content: React.ReactNode }> = [
         { key: "commit", label: t("commit.tab.commit"), content: commitContent },
@@ -66,6 +80,14 @@ export function TabBar({
                     ? t("commit.tab.stashWithCount", { count: stashCount })
                     : t("commit.tab.stash"),
             content: stashContent,
+        },
+        {
+            key: "shelf",
+            label:
+                shelfCount > 0
+                    ? t("commit.tab.shelfWithCount", { count: shelfCount })
+                    : t("commit.tab.shelf"),
+            content: shelfContent,
         },
     ];
     const gitActions =
@@ -88,8 +110,42 @@ export function TabBar({
             >
                 <TabList>
                     {tabs.map((tab) => (
-                        <Tab key={tab.key} {...sharedTabStyles}>
+                        <Tab
+                            key={tab.key}
+                            {...sharedTabStyles}
+                            onDragOver={
+                                tab.key === "commit"
+                                    ? onCommitDragOver
+                                    : tab.key === "shelf"
+                                      ? onShelfDragOver
+                                      : undefined
+                            }
+                            onDrop={
+                                tab.key === "commit"
+                                    ? onCommitDrop
+                                    : tab.key === "shelf"
+                                      ? onShelfDrop
+                                      : undefined
+                            }
+                        >
                             {tab.label}
+                            {tab.key === "shelf" && shelfWarningCount > 0 ? (
+                                <span
+                                    aria-label={t("a11y.shelfWarning", {
+                                        count: shelfWarningCount,
+                                    })}
+                                    style={{
+                                        marginLeft: 4,
+                                        borderRadius: 999,
+                                        padding: "0 5px",
+                                        background:
+                                            "var(--vscode-inputValidation-warningBackground)",
+                                        color: "var(--vscode-inputValidation-warningForeground)",
+                                    }}
+                                >
+                                    {shelfWarningCount}
+                                </span>
+                            ) : null}
                         </Tab>
                     ))}
                 </TabList>

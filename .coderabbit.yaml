@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit reviews at most 100 changed files per pull request; past that it
+# reviews nothing at all. There is no setting for the cap — the only lever is
+# `path_filters`, which CodeRabbit applies as a sparse-checkout, so excluded
+# files are never even fetched. This file therefore spends the 100 slots
+# deliberately instead of letting a large branch spill over the edge.
+#
+# Priority: every source file gets reviewed. What is cut is generated or
+# mechanical content (translations, docs, release notes) plus the test suites
+# whose failures are loud and local. What survives is the shelf engine and the
+# git concurrency layer — the two places where a wrong assertion hides a real
+# defect instead of turning CI red.
+#
+# On the shelve-parity branch this leaves 97 of 182 changed files reviewed:
+# 81 source/config and 16 tests. Source count is fixed, so the tests are the
+# only adjustable part. If a branch ever crosses the cap again, cut
+# `tests/unit/git/**` next (5 files), then `tests/unit/shelf/**` (11).
+reviews:
+    path_filters:
+        # Translation and docs data: no logic, 12 locales of churn per string.
+        - "!l10n/**"
+        - "!package.nls.*"
+        - "!src/webviews/i18n/**"
+        - "!docs/**"
+        - "!src/i18n/glossary.md"
+        - "!CHANGELOG.md"
+        # Reviewing the review config against itself buys nothing, and the slot
+        # it frees does.
+        - "!.coderabbit.yaml"
+        # DOM and host-wiring tests: breakage shows up as a red suite, not as a
+        # silently-passing test, so an extra reviewer buys the least here.
+        - "!tests/webview/**"
+        - "!tests/integration/extension/**"
+        - "!tests/integration/webviews/**"
+        - "!tests/integration/shelf/**"
+        - "!tests/unit/views/**"
+        - "!tests/unit/activation/**"
+        - "!tests/unit/localization/**"
+        - "!tests/unit/services/**"

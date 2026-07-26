@@ -2,7 +2,7 @@
     "name": "intelligit",
     "displayName": "IntelliGit",
     "description": "%extension.description%",
-    "version": "0.19.1",
+    "version": "0.20.0",
     "publisher": "MaheshKok",
     "icon": "media/intelligit-icon.png",
     "license": "MIT",
@@ -513,6 +513,41 @@
                 "title": "%command.commitChecksSignOut%",
                 "category": "%intelligit%",
                 "icon": "$(sign-out)"
+            },
+            {
+                "command": "intelligit.shelveChanges",
+                "title": "%command.shelf.shelveChanges%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.shelveSilently",
+                "title": "%command.shelf.shelveSilently%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.saveToShelf",
+                "title": "%command.shelf.saveToShelf%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.unshelve",
+                "title": "%command.shelf.unshelve%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.importPatch",
+                "title": "%command.shelf.importPatch%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.cleanUpShelf",
+                "title": "%command.shelf.cleanUp%",
+                "category": "%intelligit%"
+            },
+            {
+                "command": "intelligit.purgeShelfRecovery",
+                "title": "%command.shelf.purgeRecovery%",
+                "category": "%intelligit%"
             }
         ],
         "submenus": [
@@ -768,6 +803,38 @@
                     "default": true,
                     "markdownDescription": "%configuration.tooltips.enabled.markdownDescription%"
                 },
+                "intelligit.shelf.recordBaseRevisions": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "description": "%configuration.shelf.recordBaseRevisions.description%"
+                },
+                "intelligit.shelf.path": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "machine",
+                    "description": "%configuration.shelf.path.description%"
+                },
+                "intelligit.shelf.removeOnUnshelve": {
+                    "type": "boolean",
+                    "default": true,
+                    "scope": "window",
+                    "description": "%configuration.shelf.removeOnUnshelve.description%"
+                },
+                "intelligit.shelf.recoveryRetentionHours": {
+                    "type": "number",
+                    "default": 24,
+                    "minimum": 1,
+                    "scope": "window",
+                    "description": "%configuration.shelf.recoveryRetentionHours.description%"
+                },
+                "intelligit.shelf.cleanupAfterDays": {
+                    "type": "number",
+                    "default": 0,
+                    "minimum": 0,
+                    "scope": "window",
+                    "description": "%configuration.shelf.cleanupAfterDays.description%"
+                },
                 "intelligit.clearLastCommit": {
                     "type": "boolean",
                     "default": true,
@@ -908,6 +975,11 @@
         "test:watch": "bun vitest",
         "package": "vsce package --no-dependencies",
         "publish": "vsce publish --no-dependencies"
+    },
+    "knip": {
+        "ignore": [
+            "tests/integration/shelf/shelfCrashWorker.ts"
+        ]
     },
     "devDependencies": {
         "@chakra-ui/react": "^2.8.2",

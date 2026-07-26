@@ -169,6 +169,9 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
                         stashes: data.stashes,
                         stashFiles: data.stashFiles,
                         selectedStashIndex: data.selectedStashIndex,
+                        shelves: data.shelves ?? [],
+                        catalogGeneration: data.catalogGeneration ?? 0,
+                        selectedShelfId: data.selectedShelfId ?? null,
                         folderIcon: data.folderIcon,
                         folderExpandedIcon: data.folderExpandedIcon,
                         folderIconsByName: data.folderIconsByName,
@@ -196,6 +199,18 @@ export function useUnifiedMessages(params: UseUnifiedMessagesParams): void {
 
                 case "committed":
                     cpDispatch({ type: "COMMITTED", clearCommitMessage: data.clearCommitMessage });
+                    return;
+
+                case "shelfMutationCompleted":
+                    cpDispatch({
+                        type: "SET_SHELF_MUTATION_OUTCOME",
+                        requestId: data.requestId,
+                        status: data.status,
+                        entries: data.entries,
+                        message: data.message,
+                        shelfId: data.shelfId,
+                        newGeneration: data.newGeneration,
+                    });
                     return;
 
                 case "refreshing":

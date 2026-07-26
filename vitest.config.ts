@@ -7,6 +7,12 @@ export default defineConfig({
     test: {
         include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
         globals: true,
+        // The shelf suites drive a real repository, so one test can spawn dozens of
+        // git processes. Vitest's 5s default is comfortable until v8 coverage
+        // instrumentation is layered on top, at which point the slowest of them time
+        // out — which reads as a broken test rather than a slow one.
+        testTimeout: 30_000,
+        hookTimeout: 30_000,
         coverage: {
             provider: "v8",
             reporter: ["text", "html"],

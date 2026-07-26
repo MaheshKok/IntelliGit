@@ -1,13 +1,12 @@
-// Flat stash rows and the selected stash's file list.
+// Stash tree rows and the file subtree rendered beneath an expanded row.
 
-import React from "react";
+import React, { useMemo } from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
-import type { TreeEntry } from "../types";
-import { FileRow } from "./FileRow";
-import { FolderRow } from "./FolderRow";
-import { SectionHeader } from "./SectionHeader";
+import { buildFileTree, type TreeEntry } from "../../shared/fileTree";
+import { ChevronIcon } from "../../shared/components/Icons";
+import { FileTreeRows, ENTRY_ROW_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 import { formatDateTime } from "../../shared/date";
 
@@ -18,62 +17,55 @@ type StashFileContextMenuHandler = (
     returnFocusTarget: HTMLElement,
 ) => void;
 
-/** Props for the flat stash row list. */
+/** State and callbacks for the keyboard-navigable stash row tree. */
 export interface StashListProps {
     stashes: StashEntry[];
     selectedIndex: number | null;
-    height: number;
-    maxHeight: string;
+    /** True while a file row owns the tree's single selection. */
+    hasSelectedFile: boolean;
+    /** Hashes of the stashes whose file subtree is currently rendered. */
+    expandedHashes: ReadonlySet<string>;
+    /** Files already loaded, by stash hash; a missing hash means "still loading". */
+    filesByHash: Readonly<Record<string, WorkingFile[]>>;
     onStashClick: (index: number) => void;
+    onToggleExpand: (stash: StashEntry) => void;
     onStashContextMenu: (index: number, x: number, y: number) => void;
+    /** Renders one stash's file rows; called only once that stash's files are cached. */
+    renderSubtree: (stash: StashEntry, files: WorkingFile[]) => React.ReactNode;
 }
 
-/** Props for the selected stash's lower file pane. */
-export interface StashFilePaneProps {
-    stashFiles: WorkingFile[];
-    selectedIndex: number | null;
-    isLoading: boolean;
-    groupByDir: boolean;
-    selectedFilePath: string | null;
-    changesSection: StashFileSection;
-    unversionedSection: StashFileSection;
-    expandedDirs: Set<string>;
-    folderIcon?: ThemeTreeIcon;
-    folderExpandedIcon?: ThemeTreeIcon;
-    folderIconsByName?: ThemeFolderIconMap;
-    onToggleDir: (path: string) => void;
-    onFileSelect: (path: string) => void;
-    onFileActivate: (path: string) => void;
-    onFileContextMenu: StashFileContextMenuHandler;
+/**
+ * PyCharm's stash meta line: `2 files, 2/22/26, 8:55 AM`. The count only appears
+ * once the stash has been expanded, since its files load one entry at a time.
+ */
+function stashMetaText(fileCount: number | undefined, date: string): string | null {
+    const files = fileCount === undefined ? null : t("common.fileCount", { count: fileCount });
+    const formatted = date ? formatDateTime(date) : null;
+    if (files !== null && formatted !== null) {
+        return t("common.filesAndDate", { files, date: formatted });
+    }
+    return files ?? formatted;
 }
 
-/** Derived state for one non-selectable stash file section. */
-export interface StashFileSection {
-    files: WorkingFile[];
-    tree: TreeEntry[];
-    count: number;
-    stats: { additions: number; deletions: number };
-    isOpen: boolean;
-    onToggleOpen: () => void;
-}
-
-/** Renders one flat, selectable stash row list without nested file previews. */
+/** Stash tree with roving tabindex and rows that expand in place into their files. */
 export function StashList({
     stashes,
     selectedIndex,
-    height,
-    maxHeight,
+    hasSelectedFile,
+    expandedHashes,
+    filesByHash,
     onStashClick,
+    onToggleExpand,
     onStashContextMenu,
+    renderSubtree,
 }: StashListProps): React.ReactElement {
     return (
         <Box
             data-testid="stash-list"
-            role="listbox"
+            role="tree"
             aria-label={t("stash.defaultTitle")}
-            style={{ height: `${height}px`, maxHeight }}
-            minH="100px"
-            flexShrink={0}
+            flex={1}
+            minH={0}
             overflowY="auto"
             py="6px"
             bg="var(--intelligit-pycharm-panel)"
@@ -90,106 +82,146 @@ export function StashList({
             ) : (
                 stashes.map((stash) => {
                     const parsed = parseStashMessage(stash.message);
-                    const isSelected = selectedIndex === stash.index;
+                    // Exactly one node is selected; a picked file row owns it instead of this row.
+                    const isSelected = !hasSelectedFile && selectedIndex === stash.index;
+                    const isFocusTarget =
+                        selectedIndex === stash.index ||
+                        (selectedIndex === null && stash.index === stashes[0]?.index);
+                    const isExpanded = expandedHashes.has(stash.hash);
+                    const files = filesByHash[stash.hash];
+                    const meta = stashMetaText(files?.length, stash.date);
                     return (
-                        <Flex
-                            as="button"
-                            type="button"
-                            key={stash.index}
-                            role="option"
-                            data-stash-index={stash.index}
-                            aria-selected={isSelected}
-                            tabIndex={
-                                isSelected ||
-                                (selectedIndex === null && stash.index === stashes[0]?.index)
-                                    ? 0
-                                    : -1
-                            }
-                            align="center"
-                            w="calc(100% - 16px)"
-                            minH="26px"
-                            mx="8px"
-                            px="6px"
-                            gap="6px"
-                            border="0"
-                            borderRadius="3px"
-                            cursor="pointer"
-                            fontFamily={SYSTEM_FONT_STACK}
-                            fontSize="13px"
-                            textAlign="left"
-                            color={
-                                isSelected
-                                    ? "var(--intelligit-pycharm-selected-foreground)"
-                                    : "var(--intelligit-pycharm-foreground)"
-                            }
-                            bg={isSelected ? "var(--intelligit-pycharm-selected)" : "transparent"}
-                            _hover={{
-                                bg: isSelected
-                                    ? "var(--intelligit-pycharm-selected)"
-                                    : "var(--intelligit-pycharm-selected-hover)",
-                            }}
-                            onClick={() => onStashClick(stash.index)}
-                            onContextMenu={(event) => {
-                                event.preventDefault();
-                                onStashContextMenu(stash.index, event.clientX, event.clientY);
-                            }}
-                            onKeyDown={(event) => {
-                                const adjacentIndex = adjacentStashIndex(
-                                    stashes,
-                                    stash.index,
-                                    event.key,
-                                );
-                                if (adjacentIndex !== null) {
+                        <React.Fragment key={stash.index}>
+                            <Flex
+                                role="treeitem"
+                                data-stash-index={stash.index}
+                                aria-selected={isSelected}
+                                aria-expanded={isExpanded}
+                                aria-level={1}
+                                tabIndex={isFocusTarget ? 0 : -1}
+                                align="center"
+                                w="calc(100% - 16px)"
+                                minH="26px"
+                                mx="8px"
+                                px="6px"
+                                gap="6px"
+                                borderRadius="3px"
+                                cursor="pointer"
+                                fontFamily={SYSTEM_FONT_STACK}
+                                fontSize="13px"
+                                textAlign="left"
+                                color={
+                                    isSelected
+                                        ? "var(--intelligit-pycharm-selected-foreground)"
+                                        : "var(--intelligit-pycharm-foreground)"
+                                }
+                                bg={
+                                    isSelected
+                                        ? "var(--intelligit-pycharm-selected)"
+                                        : "transparent"
+                                }
+                                _hover={{
+                                    bg: isSelected
+                                        ? "var(--intelligit-pycharm-selected)"
+                                        : "var(--intelligit-pycharm-selected-hover)",
+                                }}
+                                onClick={() => onStashClick(stash.index)}
+                                onContextMenu={(event) => {
                                     event.preventDefault();
-                                    onStashClick(adjacentIndex);
-                                    event.currentTarget
-                                        .closest('[role="listbox"]')
-                                        ?.querySelector<HTMLElement>(
-                                            `[data-stash-index="${adjacentIndex}"]`,
-                                        )
-                                        ?.focus();
-                                    return;
-                                }
-                                if (
-                                    event.key !== "ContextMenu" &&
-                                    !(event.shiftKey && event.key === "F10")
-                                ) {
-                                    return;
-                                }
-                                event.preventDefault();
-                                const rect = event.currentTarget.getBoundingClientRect();
-                                onStashContextMenu(stash.index, rect.left, rect.bottom);
-                            }}
-                            title={stash.message}
-                        >
-                            <Box
-                                as="span"
-                                minW={0}
-                                overflow="hidden"
-                                textOverflow="ellipsis"
-                                whiteSpace="nowrap"
+                                    onStashContextMenu(stash.index, event.clientX, event.clientY);
+                                }}
+                                onKeyDown={(event) => {
+                                    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                                        // Standard tree keys: right opens a closed row, left closes an open one.
+                                        event.preventDefault();
+                                        if (isExpanded === (event.key === "ArrowLeft")) {
+                                            onToggleExpand(stash);
+                                        }
+                                        return;
+                                    }
+                                    const adjacentIndex = adjacentStashIndex(
+                                        stashes,
+                                        stash.index,
+                                        event.key,
+                                    );
+                                    if (adjacentIndex !== null) {
+                                        event.preventDefault();
+                                        onStashClick(adjacentIndex);
+                                        event.currentTarget
+                                            .closest('[role="tree"]')
+                                            ?.querySelector<HTMLElement>(
+                                                `[data-stash-index="${adjacentIndex}"]`,
+                                            )
+                                            ?.focus();
+                                        return;
+                                    }
+                                    if (
+                                        event.key !== "ContextMenu" &&
+                                        !(event.shiftKey && event.key === "F10")
+                                    ) {
+                                        return;
+                                    }
+                                    event.preventDefault();
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    onStashContextMenu(stash.index, rect.left, rect.bottom);
+                                }}
+                                title={stash.message}
                             >
-                                {parsed.title}
-                            </Box>
-                            {stash.date ? (
                                 <Box
                                     as="span"
-                                    data-stash-date
+                                    display="inline-flex"
+                                    alignItems="center"
                                     flexShrink={0}
-                                    fontSize="12px"
-                                    color={
-                                        isSelected
-                                            ? "var(--intelligit-pycharm-selected-foreground)"
-                                            : "var(--intelligit-pycharm-muted)"
-                                    }
-                                    opacity={isSelected ? 0.8 : 1}
+                                    aria-hidden
+                                    onClick={() => onToggleExpand(stash)}
                                 >
-                                    {formatDateTime(stash.date)}
+                                    <ChevronIcon expanded={isExpanded} />
+                                </Box>
+                                <Box
+                                    as="span"
+                                    minW={0}
+                                    overflow="hidden"
+                                    textOverflow="ellipsis"
+                                    whiteSpace="nowrap"
+                                >
+                                    {parsed.title}
+                                </Box>
+                                {meta ? (
+                                    <Box
+                                        as="span"
+                                        data-stash-meta
+                                        flexShrink={0}
+                                        fontSize="11px"
+                                        color={
+                                            isSelected
+                                                ? "var(--intelligit-pycharm-selected-foreground)"
+                                                : "var(--intelligit-pycharm-muted)"
+                                        }
+                                        opacity={isSelected ? 0.8 : 1}
+                                    >
+                                        {meta}
+                                    </Box>
+                                ) : null}
+                                <Box flex={1} minW={0} />
+                                {parsed.branch ? <StashBranchLabel branch={parsed.branch} /> : null}
+                            </Flex>
+                            {isExpanded ? (
+                                <Box role="group">
+                                    {files === undefined ? (
+                                        <Box
+                                            px="12px"
+                                            py="6px"
+                                            fontSize="12px"
+                                            color="var(--intelligit-pycharm-muted)"
+                                        >
+                                            {t("common.loading")}
+                                        </Box>
+                                    ) : (
+                                        renderSubtree(stash, files)
+                                    )}
                                 </Box>
                             ) : null}
-                            <Box flex={1} minW={0} />
-                            {parsed.branch ? <StashBranchLabel branch={parsed.branch} /> : null}
-                        </Flex>
+                        </React.Fragment>
                     );
                 })
             )}
@@ -197,7 +229,7 @@ export function StashList({
     );
 }
 
-/** Returns the next row selected by the standard listbox navigation keys. */
+/** Returns the next row selected by the standard tree navigation keys. */
 function adjacentStashIndex(
     stashes: StashEntry[],
     currentIndex: number,
@@ -214,139 +246,74 @@ function adjacentStashIndex(
     return null;
 }
 
-/** Renders the selected stash's one lower file region without incomplete listbox semantics. */
-export function StashFilePane({
-    stashFiles,
-    selectedIndex,
-    isLoading,
-    groupByDir,
-    selectedFilePath,
-    changesSection,
-    unversionedSection,
-    expandedDirs,
-    folderIcon,
-    folderExpandedIcon,
-    folderIconsByName,
-    onToggleDir,
-    onFileSelect,
-    onFileActivate,
-    onFileContextMenu,
-}: StashFilePaneProps): React.ReactElement {
-    return (
-        <Box
-            data-testid="stash-file-pane"
-            role="region"
-            aria-label={t("stash.files")}
-            aria-busy={isLoading || undefined}
-            flex={1}
-            minH="80px"
-            overflowY="auto"
-            py="6px"
-            bg="var(--intelligit-pycharm-panel)"
-        >
-            {selectedIndex === null ? null : isLoading ? (
-                <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    {t("common.loading")}
-                </Box>
-            ) : stashFiles.length > 0 ? (
-                <>
-                    <StashFilePaneSection
-                        label={t("commitPanel.changes")}
-                        section={changesSection}
-                        groupByDir={groupByDir}
-                        selectedFilePath={selectedFilePath}
-                        expandedDirs={expandedDirs}
-                        folderIcon={folderIcon}
-                        folderExpandedIcon={folderExpandedIcon}
-                        folderIconsByName={folderIconsByName}
-                        onToggleDir={onToggleDir}
-                        onFileSelect={onFileSelect}
-                        onFileActivate={onFileActivate}
-                        onFileContextMenu={onFileContextMenu}
-                    />
-                    {unversionedSection.files.length > 0 ? (
-                        <StashFilePaneSection
-                            label={t("commitPanel.unversionedFiles")}
-                            section={unversionedSection}
-                            groupByDir={groupByDir}
-                            selectedFilePath={selectedFilePath}
-                            expandedDirs={expandedDirs}
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
-                            onToggleDir={onToggleDir}
-                            onFileSelect={onFileSelect}
-                            onFileActivate={onFileActivate}
-                            onFileContextMenu={onFileContextMenu}
-                        />
-                    ) : null}
-                </>
-            ) : (
-                <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                    {t("stash.noFiles")}
-                </Box>
-            )}
-        </Box>
-    );
-}
-
-/** Renders one stash-file section without exposing any file-selection controls. */
-function StashFilePaneSection({
-    label,
-    section,
-    groupByDir,
-    selectedFilePath,
-    expandedDirs,
-    folderIcon,
-    folderExpandedIcon,
-    folderIconsByName,
-    onToggleDir,
-    onFileSelect,
-    onFileActivate,
-    onFileContextMenu,
-}: {
-    label: string;
-    section: StashFileSection;
+/** Props for the file rows nested beneath one expanded stash row. */
+export interface StashFileTreeProps {
+    files: WorkingFile[];
     groupByDir: boolean;
+    /** Indent level of the file rows; one level deeper than the owning stash row. */
+    depth: number;
     selectedFilePath: string | null;
-    expandedDirs: Set<string>;
+    isDirectoryCollapsed: (path: string) => boolean;
     folderIcon?: ThemeTreeIcon;
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
-    onToggleDir: (path: string) => void;
+    onToggleDirectory: (path: string) => void;
     onFileSelect: (path: string) => void;
     onFileActivate: (path: string) => void;
     onFileContextMenu: StashFileContextMenuHandler;
-}): React.ReactElement {
+}
+
+/** Read-only file rows for one stash; activation always opens that file's stash diff. */
+export function StashFileTree({
+    files,
+    groupByDir,
+    depth,
+    selectedFilePath,
+    isDirectoryCollapsed,
+    folderIcon,
+    folderExpandedIcon,
+    folderIconsByName,
+    onToggleDirectory,
+    onFileSelect,
+    onFileActivate,
+    onFileContextMenu,
+}: StashFileTreeProps): React.ReactElement {
+    const tree = useMemo<TreeEntry<WorkingFile>[]>(
+        () =>
+            groupByDir
+                ? buildFileTree(files)
+                : files.map((file) => ({ type: "file" as const, file })),
+        [files, groupByDir],
+    );
+
+    if (files.length === 0) {
+        return (
+            <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
+                {t("stash.noFiles")}
+            </Box>
+        );
+    }
     return (
-        <>
-            <SectionHeader
-                label={label}
-                count={section.count}
-                stats={section.stats}
-                isOpen={section.isOpen}
-                isAllChecked={false}
-                isSomeChecked={false}
-                onToggleOpen={section.onToggleOpen}
-                onToggleCheck={() => undefined}
-                checkboxVisibility="none"
-            />
-            {section.isOpen ? (
-                <StashFileTree
-                    entries={section.tree}
-                    groupByDir={groupByDir}
-                    selectedFilePath={selectedFilePath}
-                    expandedDirs={expandedDirs}
-                    folderIcon={folderIcon}
-                    folderExpandedIcon={folderExpandedIcon}
-                    folderIconsByName={folderIconsByName}
-                    onToggleDir={onToggleDir}
-                    onFileSelect={onFileSelect}
-                    onFileActivate={onFileActivate}
-                    onFileContextMenu={onFileContextMenu}
-                />
-            ) : null}
-        </>
+        <FileTreeRows
+            entries={tree}
+            depth={depth}
+            ariaLevel={depth + 2}
+            sectionGuideLeft={ENTRY_ROW_GUIDE_LEFT}
+            showParentPath={!groupByDir}
+            folderIcon={folderIcon}
+            folderExpandedIcon={folderExpandedIcon}
+            folderIconsByName={folderIconsByName}
+            isDirectoryExpanded={(path) => !isDirectoryCollapsed(path)}
+            onToggleDirectory={onToggleDirectory}
+            fileWiring={(file) => ({
+                isSelected: selectedFilePath === file.path,
+                onSelect: () => onFileSelect(file.path),
+                onActivate: () => onFileActivate(file.path),
+                onContextMenu: (x, y, returnFocusTarget) =>
+                    onFileContextMenu(file.path, x, y, returnFocusTarget),
+                dataAttributes: { "stash-file": file.path },
+            })}
+        />
     );
 }
 
@@ -392,101 +359,4 @@ function parseStashMessage(message: string): { title: string; branch: string | n
         title: match[2]?.trim() || t("stash.defaultTitle"),
         branch: branch && branch.toLowerCase() !== "(no branch)" ? branch : null,
     };
-}
-
-/** Renders nested folders only within the selected stash's single lower file pane. */
-function StashFileTree({
-    entries,
-    groupByDir,
-    selectedFilePath,
-    expandedDirs,
-    folderIcon,
-    folderExpandedIcon,
-    folderIconsByName,
-    onToggleDir,
-    onFileSelect,
-    onFileActivate,
-    onFileContextMenu,
-    depth = 0,
-}: {
-    entries: TreeEntry[];
-    groupByDir: boolean;
-    selectedFilePath: string | null;
-    expandedDirs: Set<string>;
-    folderIcon?: ThemeTreeIcon;
-    folderExpandedIcon?: ThemeTreeIcon;
-    folderIconsByName?: ThemeFolderIconMap;
-    onToggleDir: (path: string) => void;
-    onFileSelect: (path: string) => void;
-    onFileActivate: (path: string) => void;
-    onFileContextMenu: StashFileContextMenuHandler;
-    depth?: number;
-}): React.ReactElement {
-    return (
-        <>
-            {entries.map((entry) => {
-                if (entry.type === "file") {
-                    const isSelected = selectedFilePath === entry.file.path;
-                    return (
-                        <FileRow
-                            key={entry.file.path}
-                            file={entry.file}
-                            depth={depth}
-                            isChecked={false}
-                            isDragSelected={isSelected}
-                            groupByDir={groupByDir}
-                            onToggle={() => undefined}
-                            onClick={() => onFileSelect(entry.file.path)}
-                            onActivate={onFileActivate}
-                            onOpenContextMenu={(file, x, y, returnFocusTarget) =>
-                                onFileContextMenu(file.path, x, y, returnFocusTarget)
-                            }
-                            dataStashFile={entry.file.path}
-                            isCurrent={isSelected}
-                            contextMenuEnabled={false}
-                            checkboxVisibility="none"
-                        />
-                    );
-                }
-
-                const isExpanded = expandedDirs.has(entry.path);
-                return (
-                    <React.Fragment key={entry.path}>
-                        <FolderRow
-                            name={entry.name}
-                            dirPath={entry.path}
-                            depth={depth}
-                            isExpanded={isExpanded}
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
-                            fileCount={entry.descendantFiles.length}
-                            isAllChecked={false}
-                            isSomeChecked={false}
-                            onToggleExpand={onToggleDir}
-                            onToggleCheck={() => undefined}
-                            checkboxVisibility="none"
-                            interactive
-                        />
-                        {isExpanded ? (
-                            <StashFileTree
-                                entries={entry.children}
-                                groupByDir={groupByDir}
-                                selectedFilePath={selectedFilePath}
-                                expandedDirs={expandedDirs}
-                                folderIcon={folderIcon}
-                                folderExpandedIcon={folderExpandedIcon}
-                                folderIconsByName={folderIconsByName}
-                                onToggleDir={onToggleDir}
-                                onFileSelect={onFileSelect}
-                                onFileActivate={onFileActivate}
-                                onFileContextMenu={onFileContextMenu}
-                                depth={depth + 1}
-                            />
-                        ) : null}
-                    </React.Fragment>
-                );
-            })}
-        </>
-    );
 }

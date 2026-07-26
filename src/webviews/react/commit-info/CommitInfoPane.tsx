@@ -1,29 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { SYSTEM_FONT_STACK } from "../../../utils/constants";
 import { Box, Flex } from "@chakra-ui/react";
 import type { CommitDetail, CommitFile, ThemeFolderIconMap, ThemeTreeIcon } from "../../../types";
 import { formatDateTime } from "../shared/date";
-import { FileTypeIcon } from "../commit-panel/components/FileTypeIcon";
-import { StatusBadge } from "../commit-panel/components/StatusBadge";
 import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
-import { TreeFolderIcon } from "../shared/components/TreeIcons";
 import { ChevronIcon } from "../shared/components/Icons";
-import { resolveFolderIcon } from "../shared/utils/folderIcons";
-import { getLeafName } from "../shared/utils/path";
+import { FileTreeRows } from "../shared/components/FileTreeRows";
 import { splitCommitRefs } from "../shared/utils/refs";
 import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
 import {
     buildFileTree,
     collectDirPaths,
-    countFiles,
     type TreeEntry as GenericTreeEntry,
-    type TreeFolder as GenericTreeFolder,
 } from "../shared/fileTree";
 
 type TreeEntry = GenericTreeEntry<CommitFile>;
-type TreeFolder = GenericTreeFolder<CommitFile>;
 
 interface FileStats {
     additions: number;
@@ -49,10 +42,6 @@ interface CommitInfoPaneProps {
     onOpenDiff?: (commitHash: string, filePath: string) => void;
 }
 
-const INFO_INDENT_BASE = 18;
-const INFO_INDENT_STEP = 14;
-const INFO_GUIDE_BASE = INFO_INDENT_BASE + 16 / 2;
-const INFO_SECTION_GUIDE = 8 + 16 / 2;
 const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
 const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
     position: "absolute",
@@ -415,19 +404,26 @@ function CommitChangedFilesPanel({
             />
             {!filesCollapsed && (
                 <Box flex="1 1 auto" overflowY="auto" minH="40px" py="4px">
-                    <TreeRows
+                    <FileTreeRows
                         entries={tree}
                         depth={0}
-                        commitHash={detail.hash}
-                        commitShortHash={detail.shortHash}
-                        expandedDirs={expandedDirs}
-                        selectedFilePath={selectedFilePath}
                         folderIcon={folderIcon}
                         folderExpandedIcon={folderExpandedIcon}
                         folderIconsByName={folderIconsByName}
-                        onToggleDir={onToggleDir}
-                        onSelectFile={onSelectFile}
-                        onOpenDiff={onOpenDiff}
+                        isDirectoryExpanded={(path) => expandedDirs.has(path)}
+                        onToggleDirectory={onToggleDir}
+                        fileWiring={(file) => ({
+                            isSelected: selectedFilePath === file.path,
+                            onSelect: () => onSelectFile(file.path),
+                            onActivate: () => onOpenDiff?.(detail.hash, file.path),
+                            vscodeContext: JSON.stringify({
+                                webviewSection: "commitInfoFile",
+                                filePath: file.path,
+                                commitHash: detail.hash,
+                                commitShortHash: detail.shortHash,
+                                preventDefaultContextMenuItems: true,
+                            }),
+                        })}
                     />
                 </Box>
             )}
@@ -638,290 +634,5 @@ function LoadingSpinner(): React.ReactElement {
                 d="M12,23a9.63,9.63,0,0,1-8-9.5,9.51,9.51,0,0,1,6.79-9.1A1.66,1.66,0,0,0,12,2.81h0a1.67,1.67,0,0,0-1.94-1.64A11,11,0,0,0,12,23Z"
             />
         </svg>
-    );
-}
-
-function TreeRows({
-    entries,
-    depth,
-    commitHash,
-    commitShortHash,
-    expandedDirs,
-    selectedFilePath,
-    folderIcon,
-    folderExpandedIcon,
-    folderIconsByName,
-    onToggleDir,
-    onSelectFile,
-    onOpenDiff,
-}: {
-    entries: TreeEntry[];
-    depth: number;
-    commitHash: string;
-    commitShortHash: string;
-    expandedDirs: Set<string>;
-    selectedFilePath: string | null;
-    folderIcon?: ThemeTreeIcon;
-    folderExpandedIcon?: ThemeTreeIcon;
-    folderIconsByName?: ThemeFolderIconMap;
-    onToggleDir: (path: string) => void;
-    onSelectFile: (path: string) => void;
-    onOpenDiff?: (commitHash: string, filePath: string) => void;
-}): React.ReactElement {
-    return (
-        <>
-            {entries.map((entry) => {
-                if (entry.type === "file") {
-                    return (
-                        <CommitFileRow
-                            key={entry.file.path}
-                            file={entry.file}
-                            depth={depth}
-                            commitHash={commitHash}
-                            commitShortHash={commitShortHash}
-                            isSelected={selectedFilePath === entry.file.path}
-                            onSelect={onSelectFile}
-                            onOpenDiff={onOpenDiff}
-                        />
-                    );
-                }
-                const isExpanded = expandedDirs.has(entry.path);
-                const fileCount = countFiles(entry.children);
-                return (
-                    <React.Fragment key={entry.path}>
-                        <CommitFolderRow
-                            folder={entry}
-                            depth={depth}
-                            isExpanded={isExpanded}
-                            folderIcon={folderIcon}
-                            folderExpandedIcon={folderExpandedIcon}
-                            folderIconsByName={folderIconsByName}
-                            fileCount={fileCount}
-                            onToggle={() => onToggleDir(entry.path)}
-                        />
-                        {isExpanded && (
-                            <TreeRows
-                                entries={entry.children}
-                                depth={depth + 1}
-                                commitHash={commitHash}
-                                commitShortHash={commitShortHash}
-                                expandedDirs={expandedDirs}
-                                selectedFilePath={selectedFilePath}
-                                folderIcon={folderIcon}
-                                folderExpandedIcon={folderExpandedIcon}
-                                folderIconsByName={folderIconsByName}
-                                onToggleDir={onToggleDir}
-                                onSelectFile={onSelectFile}
-                                onOpenDiff={onOpenDiff}
-                            />
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </>
-    );
-}
-
-function CommitFolderRow({
-    folder,
-    depth,
-    isExpanded,
-    folderIcon,
-    folderExpandedIcon,
-    folderIconsByName,
-    fileCount,
-    onToggle,
-}: {
-    folder: TreeFolder;
-    depth: number;
-    isExpanded: boolean;
-    folderIcon?: ThemeTreeIcon;
-    folderExpandedIcon?: ThemeTreeIcon;
-    folderIconsByName?: ThemeFolderIconMap;
-    fileCount: number;
-    onToggle: () => void;
-}): React.ReactElement {
-    const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
-    const resolvedIcon = resolveFolderIcon(
-        folder.path || folder.name,
-        isExpanded,
-        folderIconsByName,
-        folderIcon,
-        folderExpandedIcon,
-    );
-    return (
-        <Flex
-            align="center"
-            gap="4px"
-            pl={`${padLeft}px`}
-            pr="6px"
-            lineHeight="22px"
-            fontSize="13px"
-            fontFamily={SYSTEM_FONT_STACK}
-            cursor="pointer"
-            position="relative"
-            _hover={{ bg: JETBRAINS_UI.color.hover }}
-            onClick={onToggle}
-            title={folder.path}
-        >
-            <InfoIndentGuides treeDepth={depth} />
-            <ChevronIcon expanded={isExpanded} />
-            <TreeFolderIcon isExpanded={isExpanded} icon={resolvedIcon} />
-            <Box as="span" flex={1} opacity={0.85}>
-                {folder.name}
-            </Box>
-            <Box as="span" ml="auto" fontSize="11px" color="var(--vscode-descriptionForeground)">
-                {t("common.fileCount", { count: fileCount })}
-            </Box>
-        </Flex>
-    );
-}
-
-const CommitFileRow = React.memo(function CommitFileRow({
-    file,
-    depth,
-    commitHash,
-    commitShortHash,
-    isSelected,
-    onSelect,
-    onOpenDiff,
-}: {
-    file: CommitFile;
-    depth: number;
-    commitHash: string;
-    commitShortHash: string;
-    isSelected: boolean;
-    onSelect: (path: string) => void;
-    onOpenDiff?: (commitHash: string, filePath: string) => void;
-}): React.ReactElement {
-    const padLeft = INFO_INDENT_BASE + depth * INFO_INDENT_STEP;
-    const fileName = getLeafName(file.path);
-    const rowRef = useRef<HTMLDivElement>(null);
-
-    const openDiff = useCallback(() => {
-        onOpenDiff?.(commitHash, file.path);
-    }, [onOpenDiff, commitHash, file.path]);
-
-    const selectRow = useCallback(() => {
-        onSelect(file.path);
-    }, [onSelect, file.path]);
-
-    useEffect(() => {
-        const el = rowRef.current;
-        if (!el) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                openDiff();
-            } else if (e.key === " " || e.code === "Space") {
-                e.preventDefault();
-                selectRow();
-            }
-        };
-        el.addEventListener("keydown", handleKeyDown);
-        return () => {
-            el.removeEventListener("keydown", handleKeyDown);
-        };
-    }, [openDiff, selectRow]);
-
-    const vscodeContext = useMemo(
-        () =>
-            JSON.stringify({
-                webviewSection: "commitInfoFile",
-                filePath: file.path,
-                commitHash,
-                commitShortHash,
-                preventDefaultContextMenuItems: true,
-            }),
-        [file.path, commitHash, commitShortHash],
-    );
-
-    return (
-        <Flex
-            ref={rowRef}
-            align="center"
-            gap="4px"
-            pl={`${padLeft}px`}
-            pr="6px"
-            lineHeight="22px"
-            fontSize="13px"
-            fontFamily={SYSTEM_FONT_STACK}
-            cursor="pointer"
-            position="relative"
-            tabIndex={0}
-            role="treeitem"
-            aria-selected={isSelected}
-            bg={isSelected ? JETBRAINS_UI.color.selected : undefined}
-            color={isSelected ? JETBRAINS_UI.color.selectedForeground : undefined}
-            boxShadow={isSelected ? `inset 2px 0 0 ${JETBRAINS_UI.color.focus}` : undefined}
-            _hover={{
-                bg: isSelected ? JETBRAINS_UI.color.selected : JETBRAINS_UI.color.hover,
-            }}
-            _focusVisible={{
-                outline: `1px solid ${JETBRAINS_UI.color.focus}`,
-                outlineOffset: "-1px",
-            }}
-            data-vscode-context={vscodeContext}
-            onClick={selectRow}
-            onDoubleClick={openDiff}
-            title={file.path}
-        >
-            <InfoIndentGuides treeDepth={depth} />
-            <Box as="span" w="14px" flexShrink={0} />
-            <FileTypeIcon status={file.status} icon={file.icon} />
-            <Box as="span" flex={1} overflow="hidden" textOverflow="ellipsis" whiteSpace="nowrap">
-                {fileName}
-            </Box>
-            {(file.additions > 0 || file.deletions > 0) && (
-                <Box as="span" ml="auto" fontSize="11px" flexShrink={0}>
-                    {file.additions > 0 && (
-                        <Box
-                            as="span"
-                            color="var(--vscode-gitDecoration-addedResourceForeground, #8bcf7b)"
-                            mr="4px"
-                        >
-                            +{file.additions}
-                        </Box>
-                    )}
-                    {file.deletions > 0 && (
-                        <Box
-                            as="span"
-                            color="var(--vscode-gitDecoration-deletedResourceForeground, #d76f6f)"
-                        >
-                            -{file.deletions}
-                        </Box>
-                    )}
-                </Box>
-            )}
-            <StatusBadge status={file.status} />
-        </Flex>
-    );
-});
-
-function InfoIndentGuides({ treeDepth }: { treeDepth: number }): React.ReactElement {
-    return (
-        <>
-            <Box
-                as="span"
-                position="absolute"
-                top={0}
-                bottom={0}
-                w="1px"
-                bg="var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))"
-                left={`${INFO_SECTION_GUIDE}px`}
-            />
-            {Array.from({ length: treeDepth }, (_, i) => (
-                <Box
-                    key={i}
-                    as="span"
-                    position="absolute"
-                    top={0}
-                    bottom={0}
-                    w="1px"
-                    bg="var(--vscode-tree-indentGuidesStroke, rgba(154, 169, 198, 0.22))"
-                    left={`${INFO_GUIDE_BASE + i * INFO_INDENT_STEP}px`}
-                />
-            ))}
-        </>
     );
 }

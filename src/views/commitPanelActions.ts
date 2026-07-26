@@ -1,15 +1,42 @@
 import * as vscode from "vscode";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { GitOps } from "../git/operations";
+import { RepositoryLockBusyError } from "../git/repositoryLock";
+import {
+    ShelfRecoveryFullError,
+    ShelfStaleCatalogError,
+    ShelfStaleShelfError,
+    type ShelfMutationResult,
+    type ShelfService,
+} from "../services/shelfService";
+import { logShelfOperation, logShelfWarning } from "../services/shelfObservability";
 import { promptRebaseAfterPushRejection } from "../services/gitHelpers";
 import { assertValidBranchName } from "../utils/gitRefs";
+import type {
+    InboundMessage,
+    PerEntryResult,
+    ShelfMutationStatus,
+} from "../webviews/protocol/commitPanelMessages";
 import { assertRepoRelativePath } from "../utils/fileOps";
 import { assertStashIndex } from "../git/operationSupport";
-import { assertNumber, assertString } from "./messageValidation";
+import {
+    assertNumber,
+    assertRepoPathArray,
+    assertShelfChangeId,
+    assertShelfGeneration,
+    assertShelfId,
+    assertShelfName,
+    assertShelfToken,
+    assertString,
+    assertStringArray,
+} from "./messageValidation";
 import {
     runWithNotificationProgress,
     showTimedWarningMessage,
     showTimedInformationMessage,
 } from "../utils/notifications";
+import { showShelfDiffFromPanel } from "./shelfDiffActions";
 
 interface CommitPanelActionDeps {
     gitOps: GitOps;
@@ -99,6 +126,387 @@ export async function executeStashMutationRequest(
     } finally {
         if (requestId !== undefined) postCompleted(requestId);
     }
+}
+
+/** Narrow host dependency surface used by both commit-panel providers for shelf requests. */
+export interface ShelfActionDeps {
+    shelfService: ShelfService;
+    refreshData: () => Promise<void>;
+    fireWorkingTreeChanged: () => void;
+    /** Resolves an export destination from a host-owned picker, never from webview input. */
+    selectExportDestination?: () => Promise<string | undefined>;
+    /** Resolves import sources from a host-owned picker, never from webview input. */
+    selectImportSources?: () => Promise<readonly string[] | undefined>;
+}
+
+/** Narrow host dependency surface for the non-mutating shelf merge-editor launch. */
+export interface ShelfConflictEditorActionDeps {
+    shelfService: ShelfService;
+    openShelfConflictEditor: (shelfId: string, changeId: string) => Promise<void>;
+}
+
+/** Revalidates an untrusted shelf conflict launch before opening the host-owned panel. */
+export async function openShelfConflictEditorFromMessage(
+    deps: ShelfConflictEditorActionDeps,
+    message: Record<string, unknown>,
+): Promise<void> {
+    if (message.type !== "shelfOpenConflictEditor") {
+        throw new Error("Invalid shelf conflict editor request received from webview.");
+    }
+    const shelfId = await assertExistingShelf(deps.shelfService, message.shelfId);
+    const changeId = assertShelfChangeId(message.changeId, "changeId");
+    await assertExistingChangeIds(deps.shelfService, shelfId, [changeId]);
+    await deps.openShelfConflictEditor(shelfId, changeId);
+}
+
+type ShelfMutationCompleted = Extract<InboundMessage, { type: "shelfMutationCompleted" }>;
+
+/** Executes all correlated shelf mutations and posts a typed completion even after failures. */
+export async function executeShelfMutationRequest(
+    deps: ShelfActionDeps,
+    message: Record<string, unknown>,
+    postCompleted: (message: ShelfMutationCompleted) => void,
+): Promise<void> {
+    const requestId = assertShelfToken(message.requestId, "requestId");
+    let completion: ShelfMutationCompleted = {
+        type: "shelfMutationCompleted",
+        requestId,
+        status: "error",
+        entries: [],
+    };
+    let workingTreeChanged = false;
+    try {
+        const exportFileUri =
+            message.type === "shelfExportPatch"
+                ? await deps.selectExportDestination?.()
+                : undefined;
+        const importFileUris =
+            message.type === "shelfImportPatch" ? await deps.selectImportSources?.() : undefined;
+        if (message.type === "shelfExportPatch" && exportFileUri === undefined) {
+            completion = {
+                type: "shelfMutationCompleted",
+                requestId,
+                status: "ok",
+                entries: [],
+                message: "Patch export cancelled.",
+            };
+            return;
+        }
+        if (message.type === "shelfImportPatch" && importFileUris === undefined) {
+            completion = {
+                type: "shelfMutationCompleted",
+                requestId,
+                status: "ok",
+                entries: [],
+                message: "Patch import cancelled.",
+            };
+            return;
+        }
+        const result = await shelfMutationFromMessage(
+            deps.shelfService,
+            message,
+            exportFileUri,
+            importFileUris,
+        );
+        workingTreeChanged = changesWorkingTree(message.type) && result.status !== "error";
+        completion = await shelfCompletion(requestId, result, deps.shelfService);
+    } catch (error) {
+        completion = completionForShelfError(requestId, error);
+        logShelfWarning(`${String(message.type)} failed`, error);
+        throw error;
+    } finally {
+        logShelfOperation(
+            { operation: String(message.type), repositoryRoot: deps.shelfService.repositoryRoot },
+            completion,
+        );
+        try {
+            await deps.refreshData();
+            if (workingTreeChanged) deps.fireWorkingTreeChanged();
+        } finally {
+            postCompleted(completion);
+        }
+    }
+}
+
+/** Validates and executes a single shelf request without pre-checking any service CAS input. */
+async function shelfMutationFromMessage(
+    shelfService: ShelfService,
+    message: Record<string, unknown>,
+    hostExportFileUri?: string,
+    hostImportFileUris?: readonly string[],
+): Promise<ShelfMutationResult> {
+    switch (message.type) {
+        case "shelveSave": {
+            if ("shelfId" in message) throw new Error("Shelf IDs are generated by the host.");
+            return shelfService.shelve({
+                name: assertShelfName(message.name, "name"),
+                paths: assertRepoPathArray(message.paths, "paths"),
+                silent: assertBoolean(message.silent, "silent"),
+                keepLocal: assertBoolean(message.keepLocal, "keepLocal"),
+                idempotencyToken: assertShelfToken(message.idempotencyToken, "idempotencyToken"),
+                expectedCatalogGeneration: assertShelfGeneration(
+                    message.expectedCatalogGeneration,
+                    "expectedCatalogGeneration",
+                ),
+            });
+        }
+        case "unshelve": {
+            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
+            const changeIds = await assertExistingChangeIds(
+                shelfService,
+                shelfId,
+                message.changeIds,
+            );
+            return shelfService.unshelve({
+                id: shelfId,
+                expectedShelfGeneration: assertShelfGeneration(
+                    message.expectedGeneration,
+                    "expectedGeneration",
+                ),
+                changeIds,
+                removeFromShelf: assertBoolean(message.removeFromShelf, "removeFromShelf"),
+                mode: assertUnshelveMode(message.mode),
+            });
+        }
+        case "shelfDelete":
+            return shelfService.deleteShelf({
+                id: await assertExistingShelf(shelfService, message.shelfId),
+                expectedShelfGeneration: assertShelfGeneration(
+                    message.expectedGeneration,
+                    "expectedGeneration",
+                ),
+            });
+        case "shelfRename":
+            return shelfService.renameShelf({
+                id: await assertExistingShelf(shelfService, message.shelfId),
+                expectedShelfGeneration: assertShelfGeneration(
+                    message.expectedGeneration,
+                    "expectedGeneration",
+                ),
+                name: assertShelfName(message.name, "name"),
+            });
+        case "shelfExportPatch": {
+            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
+            const changeIds = await assertExistingChangeIds(
+                shelfService,
+                shelfId,
+                message.changeIds,
+            );
+            assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
+            const fileUri = assertAbsolutePath(hostExportFileUri, "host export destination");
+            await writeFile(fileUri, await shelfService.exportPatch({ id: shelfId, changeIds }));
+            return { status: "ok", entries: [], shelfId };
+        }
+        case "shelfCopyPatchToClipboard": {
+            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
+            const changeIds = await assertExistingChangeIds(
+                shelfService,
+                shelfId,
+                message.changeIds,
+            );
+            assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
+            const patch = await shelfService.exportPatch({ id: shelfId, changeIds });
+            await vscode.env.clipboard.writeText(patch.toString("utf8"));
+            return { status: "ok", entries: [], shelfId };
+        }
+        case "shelfImportPatch":
+            return shelfService.importPatch({
+                fileUris: assertAbsolutePaths(hostImportFileUris, "host import sources"),
+                idempotencyToken: assertShelfToken(message.idempotencyToken, "idempotencyToken"),
+                expectedCatalogGeneration: assertShelfGeneration(
+                    message.expectedCatalogGeneration,
+                    "expectedCatalogGeneration",
+                ),
+            });
+        case "shelfRestoreGhost":
+            return shelfService.restoreGhost({
+                id: await assertExistingShelf(shelfService, message.shelfId),
+                expectedShelfGeneration: assertShelfGeneration(
+                    message.expectedGeneration,
+                    "expectedGeneration",
+                ),
+            });
+        case "shelfCleanUp": {
+            const shelfIds = assertStringArray(message.shelfIds, "shelfIds").map((value) =>
+                assertShelfId(value, "shelfIds"),
+            );
+            await Promise.all(
+                shelfIds.map((shelfId) => assertExistingShelf(shelfService, shelfId)),
+            );
+            return shelfService.cleanUp({
+                shelfIds,
+                expectedCatalogGeneration: assertShelfGeneration(
+                    message.expectedCatalogGeneration,
+                    "expectedCatalogGeneration",
+                ),
+            });
+        }
+        case "shelfResolveStructural": {
+            const shelfId = await assertExistingShelf(shelfService, message.shelfId);
+            const changeId = assertShelfChangeId(message.changeId, "changeId");
+            await assertExistingChangeIds(shelfService, shelfId, [changeId]);
+            return shelfService.resolveStructural({
+                id: shelfId,
+                changeId,
+                expectedShelfGeneration: assertShelfGeneration(
+                    message.expectedGeneration,
+                    "expectedGeneration",
+                ),
+                expectedPathFingerprint: assertShelfToken(
+                    message.expectedPathFingerprint,
+                    "expectedPathFingerprint",
+                ),
+                action: assertStructuralAction(message.action),
+                targetPath:
+                    message.targetPath === undefined
+                        ? undefined
+                        : assertRepoPathArray([message.targetPath], "targetPath")[0],
+            });
+        }
+        case "shelfPurgeRecovery":
+            await shelfService.purgeRecovery();
+            return { status: "ok", entries: [] };
+        default:
+            throw new Error("Invalid shelf mutation received from webview.");
+    }
+}
+
+/** Validates and opens immutable shelf artifacts as read-only diff documents. */
+export async function shelfReadFromMessage(
+    shelfService: ShelfService,
+    message: Record<string, unknown>,
+    getWorkspaceRoot: () => vscode.Uri,
+): Promise<void> {
+    const shelfId = await assertExistingShelf(shelfService, message.shelfId);
+    assertShelfGeneration(message.expectedGeneration, "expectedGeneration");
+    const changeId =
+        message.changeId === undefined
+            ? undefined
+            : assertShelfChangeId(message.changeId, "changeId");
+    if (changeId !== undefined) await assertExistingChangeIds(shelfService, shelfId, [changeId]);
+    const mode =
+        message.type === "shelfDiff"
+            ? "baseToShelved"
+            : message.type === "shelfCompareWithLocal"
+              ? "shelvedToLocal"
+              : undefined;
+    if (!mode) throw new Error("Invalid shelf diff request received from webview.");
+    const newTab =
+        message.type === "shelfDiff" && message.newTab !== undefined
+            ? assertBoolean(message.newTab, "newTab")
+            : false;
+    await showShelfDiffFromPanel(
+        { shelfReader: shelfService, getWorkspaceRoot },
+        shelfId,
+        changeId,
+        mode,
+        newTab,
+    );
+}
+
+/** Converts service outcomes into the protocol's explicit per-entry contract. */
+async function shelfCompletion(
+    requestId: string,
+    result: ShelfMutationResult,
+    shelfService: ShelfService,
+): Promise<ShelfMutationCompleted> {
+    const catalog = await shelfService.listShelves();
+    return {
+        type: "shelfMutationCompleted",
+        requestId,
+        status: result.status,
+        entries: result.entries.map(protocolEntry),
+        shelfId: result.shelfId,
+        newGeneration: result.newGeneration,
+        newCatalogGeneration: catalog.catalogGeneration,
+    };
+}
+
+function protocolEntry(entry: PerEntryResult): PerEntryResult {
+    return { ...entry };
+}
+
+function completionForShelfError(requestId: string, error: unknown): ShelfMutationCompleted {
+    return {
+        type: "shelfMutationCompleted",
+        requestId,
+        status: shelfStatusForError(error),
+        entries: [],
+        message: error instanceof Error ? error.message : String(error),
+    };
+}
+
+function shelfStatusForError(error: unknown): ShelfMutationStatus {
+    if (error instanceof RepositoryLockBusyError) return "busy";
+    if (error instanceof ShelfStaleShelfError) return "staleShelf";
+    if (error instanceof ShelfStaleCatalogError) return "staleCatalog";
+    if (error instanceof ShelfRecoveryFullError) return "recoveryFull";
+    return "error";
+}
+
+function changesWorkingTree(type: unknown): boolean {
+    return type === "shelveSave" || type === "unshelve" || type === "shelfResolveStructural";
+}
+
+async function assertExistingShelf(shelfService: ShelfService, value: unknown): Promise<string> {
+    const shelfId = assertShelfId(value, "shelfId");
+    const catalog = await shelfService.listShelves();
+    if (!catalog.shelves.some((shelf) => shelf.id === shelfId)) {
+        throw new Error("Shelf does not exist.");
+    }
+    return shelfId;
+}
+
+async function assertExistingChangeIds(
+    shelfService: ShelfService,
+    shelfId: string,
+    value: unknown,
+): Promise<string[] | undefined> {
+    if (value === undefined) return undefined;
+    const changeIds = assertStringArray(value, "changeIds").map((changeId) =>
+        assertShelfChangeId(changeId, "changeIds"),
+    );
+    const known = new Set(
+        (await shelfService.getShelfFiles(shelfId)).map((entry) => entry.changeId),
+    );
+    if (changeIds.some((changeId) => !known.has(changeId))) {
+        throw new Error("Shelf change ID does not exist.");
+    }
+    return changeIds;
+}
+
+function assertBoolean(value: unknown, field: string): boolean {
+    if (typeof value !== "boolean") throw new Error(`Expected boolean for '${field}'.`);
+    return value;
+}
+
+function assertUnshelveMode(value: unknown): "flattened" | "exactState" {
+    if (value === "flattened" || value === "exactState") return value;
+    throw new Error("Invalid shelf unshelve mode received from webview.");
+}
+
+function assertStructuralAction(
+    value: unknown,
+): "keepLocal" | "useShelved" | "deleteLocal" | "renameLocal" {
+    if (
+        value === "keepLocal" ||
+        value === "useShelved" ||
+        value === "deleteLocal" ||
+        value === "renameLocal"
+    ) {
+        return value;
+    }
+    throw new Error("Invalid structural shelf action received from webview.");
+}
+
+function assertAbsolutePaths(value: unknown, field: string): string[] {
+    return assertStringArray(value, field).map((item) => assertAbsolutePath(item, field));
+}
+
+function assertAbsolutePath(value: unknown, field: string): string {
+    const filePath = assertString(value, field);
+    if (!path.isAbsolute(filePath)) throw new Error(`Expected absolute path for '${field}'.`);
+    return filePath;
 }
 
 /**

@@ -249,7 +249,7 @@ function getVsCodeApi() {
  */
 // Webview entrypoint owns merge-editor state orchestration and root render side effects.
 // react-doctor-disable-next-line react-doctor/only-export-components, react-doctor/no-giant-component, react-doctor/prefer-useReducer
-function App() {
+export function App() {
     const [state, dispatch] = useReducer(reducer, {
         data: null,
         error: null,
@@ -267,6 +267,7 @@ function App() {
     // nothing — reopen the merge editor to pick up a changed theme.
     const [shikiTheme] = useState(() => detectTheme());
     const segments = state.data?.segments ?? EMPTY_SEGMENTS;
+    const isShelfSession = state.data?.sessionKind === "shelf";
     const filePath = state.data?.filePath;
     const syntaxHighlightState = useMemo(
         () => ({
@@ -1517,23 +1518,27 @@ function App() {
                         >
                             {t("merge.footer.useFileTheirs")}
                         </button>
-                        <button
-                            type="button"
-                            className="footer-btn secondary ghost"
-                            onClick={handleOpenConflictSession}
-                        >
-                            {t("mergeSession.title")}
-                        </button>
+                        {!isShelfSession ? (
+                            <button
+                                type="button"
+                                className="footer-btn secondary ghost"
+                                onClick={handleOpenConflictSession}
+                            >
+                                {t("mergeSession.title")}
+                            </button>
+                        ) : null}
                         <span className="footer-hint">{t("merge.footer.hint")}</span>
                     </div>
                     <div className="footer-right">
-                        <button
-                            type="button"
-                            className="footer-btn danger"
-                            onClick={handleAbortMerge}
-                        >
-                            {t("merge.action.abortMerge")}
-                        </button>
+                        {!isShelfSession ? (
+                            <button
+                                type="button"
+                                className="footer-btn danger"
+                                onClick={handleAbortMerge}
+                            >
+                                {t("merge.action.abortMerge")}
+                            </button>
+                        ) : null}
                         <button
                             type="button"
                             className="footer-btn secondary"

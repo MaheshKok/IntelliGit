@@ -100,6 +100,10 @@ const theme = extendTheme({
                         bg: "rgba(255,255,255,0.06)",
                         color: "var(--intelligit-pycharm-foreground)",
                     },
+                    _pressed: {
+                        bg: "color-mix(in srgb, var(--vscode-button-background, #0e639c) 34%, transparent)",
+                        color: "var(--intelligit-pycharm-foreground)",
+                    },
                 },
                 danger: {
                     bg: "color-mix(in srgb, var(--intelligit-pycharm-deleted) 16%, transparent)",

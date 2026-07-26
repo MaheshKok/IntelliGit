@@ -1,7 +1,7 @@
 // The main Commit tab: toolbar + file tree + drag handle + commit area.
 // Composes all commit-related sub-components into the commit workflow.
 
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { Toolbar } from "./Toolbar";
 import { FileTree } from "./FileTree";
@@ -15,8 +15,17 @@ import type {
     AmendBranchCommitSummary,
 } from "../../../../types";
 import { AmendContextSection } from "./AmendContextSection";
+import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
+import { t } from "../../shared/i18n";
+import { ShelveDialog, type ShelveDialogSubmit } from "./ShelveDialog";
 
 const MIN_REFRESH_FEEDBACK_MS = 700;
+let shelfRequestSequence = 0;
+
+function nextShelfRequestId(): string {
+    shelfRequestSequence += 1;
+    return `shelf-${Date.now()}-${shelfRequestSequence}`;
+}
 
 interface Props {
     repositoryRoot?: string;
@@ -48,6 +57,12 @@ interface Props {
     showIgnoredFiles: boolean;
     onToggleGroupBy: () => void;
     onToggleShowIgnoredFiles: () => void;
+    catalogGeneration: number;
+    onShelfFileDragStart?: (
+        event: React.DragEvent<HTMLElement>,
+        file: WorkingFile,
+        checkedPaths: ReadonlySet<string>,
+    ) => void;
 }
 
 /**
@@ -89,6 +104,8 @@ export function CommitTab({
     showIgnoredFiles,
     onToggleGroupBy,
     onToggleShowIgnoredFiles,
+    catalogGeneration,
+    onShelfFileDragStart,
 }: Props): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
     const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
@@ -100,8 +117,25 @@ export function CommitTab({
     const [expandAllSignal, setExpandAllSignal] = useState(0);
     const [collapseAllSignal, setCollapseAllSignal] = useState(0);
     const [isRefreshFeedbackActive, setIsRefreshFeedbackActive] = useState(false);
+    const [shelfMenuPosition, setShelfMenuPosition] = useState<{ x: number; y: number } | null>(
+        null,
+    );
+    const [isShelveDialogOpen, setIsShelveDialogOpen] = useState(false);
+    const [defaultShelfName, setDefaultShelfName] = useState("");
+    const shelfDialogFocusRef = useRef<HTMLElement | null>(null);
     const refreshFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const hasMergeConflicts = files.some((file) => file.status === "U");
+    const shelvePaths = useMemo(() => {
+        const selected = Array.from(checkedPaths);
+        return selected.length > 0 ? selected : files.map((file) => file.path);
+    }, [checkedPaths, files]);
+    const openShelfMenuAt = useCallback(
+        (x: number, y: number) => {
+            setDefaultShelfName(commitMessage || t("shelf.defaultName"));
+            setShelfMenuPosition({ x, y });
+        },
+        [commitMessage],
+    );
 
     const clearRefreshFeedbackTimer = useCallback(() => {
         if (refreshFeedbackTimerRef.current) {
@@ -152,6 +186,65 @@ export function CommitTab({
         });
     }, [repositoryRoot, vscode, checkedPaths]);
 
+    const handleShelve = useCallback(
+        (input: ShelveDialogSubmit, silent: boolean, keepLocal: boolean) => {
+            if (input.paths.length === 0) return;
+            const requestId = nextShelfRequestId();
+            vscode.postMessage({
+                type: "shelveSave",
+                ...(repositoryRoot ? { repositoryRoot } : {}),
+                requestId,
+                name: input.name,
+                paths: input.paths,
+                silent,
+                keepLocal,
+                idempotencyToken: requestId,
+                expectedCatalogGeneration: catalogGeneration,
+            });
+        },
+        [catalogGeneration, repositoryRoot, vscode],
+    );
+
+    const handleOpenShelfMenu = useCallback(
+        (event: React.MouseEvent<HTMLElement>) => {
+            shelfDialogFocusRef.current = event.currentTarget;
+            const rect = event.currentTarget.getBoundingClientRect();
+            openShelfMenuAt(rect.left, rect.bottom + 4);
+        },
+        [openShelfMenuAt],
+    );
+    const shelfMenuItems = useMemo<MenuItem[]>(
+        () => [
+            {
+                label: t("shelf.action.shelveChangesMenu"),
+                action: "openDialog",
+                disabled: shelvePaths.length === 0,
+            },
+            {
+                label: t("shelf.action.shelveSilently"),
+                action: "silent",
+                disabled: shelvePaths.length === 0,
+            },
+            {
+                label: t("shelf.action.save"),
+                action: "keepLocal",
+                disabled: shelvePaths.length === 0,
+            },
+        ],
+        [shelvePaths.length],
+    );
+    const handleSelectShelfMenuItem = useCallback(
+        (action: string) => {
+            setShelfMenuPosition(null);
+            if (action === "openDialog") setIsShelveDialogOpen(true);
+            if (action === "silent")
+                handleShelve({ name: defaultShelfName, paths: shelvePaths }, true, false);
+            if (action === "keepLocal")
+                handleShelve({ name: defaultShelfName, paths: shelvePaths }, false, true);
+        },
+        [defaultShelfName, handleShelve, shelvePaths],
+    );
+
     const handleShowDiff = useCallback(() => {
         const selected = Array.from(checkedPaths);
         if (selected.length > 0) {
@@ -190,7 +283,22 @@ export function CommitTab({
     );
 
     return (
-        <Flex ref={containerRef} direction="column" flex={1} overflow="hidden">
+        <Flex
+            ref={containerRef}
+            data-testid="commit-tab"
+            direction="column"
+            flex={1}
+            overflow="hidden"
+            onContextMenu={(event) => {
+                if (
+                    event.target instanceof Element &&
+                    event.target.closest("[data-vscode-context]")
+                )
+                    return;
+                event.preventDefault();
+                openShelfMenuAt(event.clientX, event.clientY);
+            }}
+        >
             <Toolbar
                 onRefresh={handleRefresh}
                 isRefreshing={isRefreshing || isRefreshFeedbackActive}
@@ -200,12 +308,23 @@ export function CommitTab({
                 onToggleGroupBy={onToggleGroupBy}
                 onToggleShowIgnoredFiles={onToggleShowIgnoredFiles}
                 onStash={handleStash}
+                onOpenShelfMenu={handleOpenShelfMenu}
                 onShowDiff={handleShowDiff}
                 onExpandAll={() => setExpandAllSignal((s) => s + 1)}
                 onCollapseAll={() => setCollapseAllSignal((s) => s + 1)}
                 showAbortMerge={hasMergeConflicts}
                 onAbortMerge={handleAbortMerge}
             />
+            {shelfMenuPosition ? (
+                <ContextMenu
+                    x={shelfMenuPosition.x}
+                    y={shelfMenuPosition.y}
+                    minWidth={190}
+                    items={shelfMenuItems}
+                    onSelect={handleSelectShelfMenuItem}
+                    onClose={() => setShelfMenuPosition(null)}
+                />
+            ) : null}
 
             {isAmend ? (
                 <AmendContextSection
@@ -230,6 +349,7 @@ export function CommitTab({
                     isSomeChecked={isSomeChecked}
                     onFileClick={handleFileClick}
                     onTrackUnversionedFiles={handleTrackUnversionedFiles}
+                    onShelfFileDragStart={onShelfFileDragStart}
                     expandAllSignal={expandAllSignal}
                     collapseAllSignal={collapseAllSignal}
                 />
@@ -279,6 +399,19 @@ export function CommitTab({
                     currentBranchUpstream={currentBranchUpstream}
                 />
             </Box>
+            {isShelveDialogOpen ? (
+                <ShelveDialog
+                    files={files}
+                    defaultName={defaultShelfName}
+                    selectedPaths={shelvePaths}
+                    returnFocusTarget={shelfDialogFocusRef.current}
+                    onClose={() => setIsShelveDialogOpen(false)}
+                    onSubmit={(input) => {
+                        handleShelve(input, false, false);
+                        setIsShelveDialogOpen(false);
+                    }}
+                />
+            ) : null}
         </Flex>
     );
 }

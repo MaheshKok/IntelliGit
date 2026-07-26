@@ -1,0 +1,251 @@
+import path from "node:path";
+import * as vscode from "vscode";
+import {
+    detectEolMetadata,
+    parseConflictVersions,
+    type MergeDiffOptions,
+    type MergeEditorData,
+} from "../mergeEditor/conflictParser";
+import type {
+    ApplyShelfConflictResolutionInput,
+    ApplyShelfConflictResolutionResult,
+    ShelfConflictSessionPayload,
+} from "../services/shelfConflictSession";
+import type { ShelfService } from "../services/shelfService";
+import { getErrorMessage } from "../utils/errors";
+import { buildWebviewShellHtml } from "./webviewHtml";
+
+const MAX_APPLY_CONTENT_BYTES = 100 * 1024 * 1024;
+
+/** Host dependencies extracted from the VS Code panel so message behavior is unit-testable. */
+export interface ShelfConflictEditorMessageDeps {
+    readonly shelfId: string;
+    readonly changeId: string;
+    readonly payload: ShelfConflictSessionPayload;
+    readonly apply: (
+        input: ApplyShelfConflictResolutionInput,
+    ) => Promise<ApplyShelfConflictResolutionResult>;
+    readonly postConflictData: (diffOptions: MergeDiffOptions) => Promise<void>;
+    readonly chooseStaleResolution: () => Promise<"keep" | "overwrite">;
+    readonly onApplied: () => Promise<void>;
+    readonly dispose: () => void;
+}
+
+/** Options for one repository-scoped shelf conflict editor. */
+export interface ShelfConflictEditorPanelOptions {
+    readonly extensionUri: vscode.Uri;
+    readonly repositoryRoot: string;
+    readonly shelfService: Pick<
+        ShelfService,
+        "openShelfConflictSession" | "applyShelfConflictResolution"
+    >;
+    readonly shelfId: string;
+    readonly changeId: string;
+    readonly onApplied: () => Promise<void>;
+}
+
+/** Creates the untrusted-webview message handler without requiring a real WebviewPanel in tests. */
+export function createShelfConflictEditorMessageHandler(
+    dependencies: ShelfConflictEditorMessageDeps,
+): (raw: unknown) => Promise<void> {
+    const apply = async (content: string): Promise<void> => {
+        const input = {
+            id: dependencies.shelfId,
+            changeId: dependencies.changeId,
+            content,
+            expectedShelfGeneration: dependencies.payload.shelfGeneration,
+            expectedPathFingerprint: dependencies.payload.worktreeFingerprint,
+        } satisfies ApplyShelfConflictResolutionInput;
+        const result = await dependencies.apply(input);
+        if (result.status === "stale") {
+            if ((await dependencies.chooseStaleResolution()) !== "overwrite") return;
+            const override = await dependencies.apply({
+                ...input,
+                staleOverride: "overwriteParkingCurrent",
+            });
+            await finishApply(override, dependencies);
+            return;
+        }
+        await finishApply(result, dependencies);
+    };
+
+    return async (raw: unknown): Promise<void> => {
+        const message =
+            typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+        switch (message.type) {
+            case "ready":
+                await dependencies.postConflictData({});
+                return;
+            case "setIgnoreMode":
+                if (message.mode === "none" || message.mode === "whitespace") {
+                    await dependencies.postConflictData({
+                        ignoreWhitespace: message.mode === "whitespace",
+                    });
+                }
+                return;
+            case "applyResolution":
+                if (typeof message.content !== "string") {
+                    throw new Error("Shelf merge result payload must be a string.");
+                }
+                if (message.content.length > MAX_APPLY_CONTENT_BYTES) {
+                    throw new Error("Shelf merge result payload exceeds the supported size.");
+                }
+                await apply(message.content);
+                return;
+            case "acceptYours":
+                await apply(dependencies.payload.current);
+                return;
+            case "acceptTheirs":
+                await apply(dependencies.payload.patchedBase);
+                return;
+            case "openConflictSession":
+                return;
+            case "abortMerge":
+            case "close":
+                dependencies.dispose();
+                return;
+            default:
+                return;
+        }
+    };
+}
+
+async function finishApply(
+    result: ApplyShelfConflictResolutionResult,
+    dependencies: ShelfConflictEditorMessageDeps,
+): Promise<void> {
+    if (result.status === "stale") return;
+    if (result.status === "refused") throw new Error(result.reason);
+    await dependencies.onApplied();
+    dependencies.dispose();
+}
+
+/** Hosts one working-tree-only editor per repository, shelf, and logical change. */
+export class ShelfConflictEditorPanel {
+    private static readonly panels = new Map<string, ShelfConflictEditorPanel>();
+
+    private readonly panel: vscode.WebviewPanel;
+    private readonly key: string;
+    private disposed = false;
+    private payload: ShelfConflictSessionPayload | undefined;
+
+    private constructor(
+        panel: vscode.WebviewPanel,
+        private readonly options: ShelfConflictEditorPanelOptions,
+    ) {
+        this.panel = panel;
+        this.key = `${options.repositoryRoot}\u0000${options.shelfId}\u0000${options.changeId}`;
+        panel.webview.html = buildWebviewShellHtml({
+            extensionUri: options.extensionUri,
+            webview: panel.webview,
+            scriptFile: "webview-mergeeditor.js",
+            styleFiles: ["webview-mergeeditor.css"],
+            title: `Resolve shelf conflict: ${path.posix.basename(options.changeId)}`,
+        });
+        panel.webview.onDidReceiveMessage(async (message) => {
+            try {
+                await this.handleMessage(message);
+            } catch (error) {
+                if (this.disposed) return;
+                const text = getErrorMessage(error);
+                vscode.window.showErrorMessage(text);
+                await this.panel.webview.postMessage({ type: "loadError", message: text });
+            }
+        });
+        panel.onDidDispose(() => {
+            this.disposed = true;
+            if (ShelfConflictEditorPanel.panels.get(this.key) === this) {
+                ShelfConflictEditorPanel.panels.delete(this.key);
+            }
+        });
+    }
+
+    /** Reveals an existing session or opens one new shelf-only merge editor. */
+    static async open(options: ShelfConflictEditorPanelOptions): Promise<void> {
+        const key = `${options.repositoryRoot}\u0000${options.shelfId}\u0000${options.changeId}`;
+        const existing = this.panels.get(key);
+        if (existing && !existing.disposed) {
+            existing.panel.reveal(vscode.ViewColumn.Active);
+            return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+            "intelligit.shelfConflictEditor",
+            "Resolve shelf conflict",
+            vscode.ViewColumn.Active,
+            {
+                enableScripts: true,
+                retainContextWhenHidden: true,
+                localResourceRoots: [vscode.Uri.joinPath(options.extensionUri, "dist")],
+            },
+        );
+        const instance = new ShelfConflictEditorPanel(panel, options);
+        this.panels.set(key, instance);
+        try {
+            await instance.load();
+        } catch (error) {
+            panel.dispose();
+            throw error;
+        }
+    }
+
+    private async load(): Promise<void> {
+        const payload = await this.options.shelfService.openShelfConflictSession(
+            this.options.shelfId,
+            this.options.changeId,
+        );
+        this.payload = payload;
+        this.panel.title = `Resolve shelf conflict: ${path.posix.basename(payload.path)}`;
+        await this.postConflictData({});
+    }
+
+    private async handleMessage(raw: unknown): Promise<void> {
+        if (!this.payload) {
+            const type =
+                typeof raw === "object" && raw !== null
+                    ? (raw as Record<string, unknown>).type
+                    : undefined;
+            if (type === "ready") return;
+            throw new Error("Shelf conflict session is not loaded.");
+        }
+        const handler = createShelfConflictEditorMessageHandler({
+            shelfId: this.options.shelfId,
+            changeId: this.options.changeId,
+            payload: this.payload,
+            apply: (input) => this.options.shelfService.applyShelfConflictResolution(input),
+            postConflictData: (diffOptions) => this.postConflictData(diffOptions),
+            chooseStaleResolution: () => this.chooseStaleResolution(),
+            onApplied: this.options.onApplied,
+            dispose: () => {
+                this.panel.dispose();
+            },
+        });
+        await handler(raw);
+    }
+
+    private async postConflictData(diffOptions: MergeDiffOptions): Promise<void> {
+        if (!this.payload || this.disposed) return;
+        const { base, current, patchedBase } = this.payload;
+        const eol = detectEolMetadata(current, patchedBase, base);
+        const data: MergeEditorData & { sessionKind: "shelf" } = {
+            filePath: this.payload.path,
+            segments: parseConflictVersions(base, current, patchedBase, diffOptions),
+            oursLabel: "Local",
+            theirsLabel: "Shelved",
+            eol: eol.eol,
+            hasTrailingNewline: eol.hasTrailingNewline,
+            diffOptions,
+            sessionKind: "shelf",
+        };
+        await this.panel.webview.postMessage({ type: "setConflictData", data });
+    }
+
+    private async chooseStaleResolution(): Promise<"keep" | "overwrite"> {
+        const choice = await vscode.window.showWarningMessage(
+            "The shelf conflict changed while this editor was open.",
+            { modal: true },
+            "Keep working tree",
+            "Overwrite (previous content saved to recovery)",
+        );
+        return choice === "Overwrite (previous content saved to recovery)" ? "overwrite" : "keep";
+    }
+}
