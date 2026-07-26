@@ -28,11 +28,12 @@ async function git(directory: string, args: string[]): Promise<void> {
 }
 
 describe("GitOps.getGitDirectories", () => {
-    it("resolves Git-managed directories instead of assuming a literal .git path", async () => {
+    it("resolves Git-managed directories and the normalized repository root", async () => {
         const directories = await new GitOps(new GitExecutor(process.cwd())).getGitDirectories();
 
         expect(directories.gitDir).toMatch(/\.git/);
         expect(directories.commonDir).toMatch(/\.git/);
+        expect(directories.root).toBe(path.resolve(process.cwd()));
     });
 
     it("resolves linked-worktree directories when .git is a file", async () => {
@@ -49,5 +50,6 @@ describe("GitOps.getGitDirectories", () => {
 
         expect(gitDirectories.gitDir).toContain(`${path.sep}.git${path.sep}worktrees${path.sep}`);
         expect(gitDirectories.commonDir).toBe(path.join(await realpath(root), ".git"));
+        expect(gitDirectories.root).toBe(await realpath(linked));
     });
 });

@@ -31,40 +31,49 @@ export interface DiscoveredRepository {
     root: string;
     /** Display label relative to the containing workspace folder when possible. */
     label: string;
+    /** Native Git classification based on the resolved worktree and common Git directories. */
+    kind: "repository" | "worktree";
 }
 
 /**
- * Resolves a directory candidate to its actual Git root, or `null` when it is not a repository.
+ * Git metadata resolved from one candidate directory through `git rev-parse`.
  *
- * Tests can inject this contract to avoid spawning Git while production uses
- * `GitOps` so worktrees and nested repository roots resolve the same way as
- * runtime commands.
+ * The directory pair distinguishes linked worktrees from standalone or nested repositories.
  */
-export type ResolveGitRoot = (candidateRoot: string) => Promise<string | null>;
+interface ResolvedGitRepository {
+    /** Absolute repository root reported by Git. */
+    root: string;
+    /** Absolute Git directory for this worktree. */
+    gitDir: string;
+    /** Absolute Git directory shared by linked worktrees. */
+    commonDir: string;
+}
+
+/** Resolves candidate Git metadata without relying on the filesystem form of `.git`. */
+export type ResolveGitRepository = (candidateRoot: string) => Promise<ResolvedGitRepository | null>;
 
 /**
  * Options that customize repository discovery without changing filesystem traversal.
  */
 export interface DiscoverGitRepositoriesOptions {
     /** Optional resolver used to validate and canonicalize each `.git` marker hit. */
-    resolveGitRoot?: ResolveGitRoot;
+    resolveGitRepository?: ResolveGitRepository;
 }
 
 /**
- * Default resolver that asks Git whether a candidate directory is a repository root.
+ * Default resolver that asks Git for repository metadata from a candidate directory.
  *
  * Discovery callers receive `null` for non-repositories instead of a user-facing
  * error because missing or inaccessible nested folders are expected during scans.
  */
-async function defaultResolveGitRoot(candidateRoot: string): Promise<string | null> {
+async function defaultResolveGitRepository(
+    candidateRoot: string,
+): Promise<ResolvedGitRepository | null> {
     const gitOps = new GitOps(new GitExecutor(candidateRoot));
-    // A single `git rev-parse --show-toplevel` both validates that the candidate is
-    // inside a work tree and returns its canonical root: non-repositories reject and
-    // resolve to `null`. This replaces the former is-repository + show-toplevel pair,
-    // halving Git subprocesses per candidate during discovery.
+    // `getGitDirectories` validates the candidate and concurrently resolves its root plus
+    // Git directories, so discovery does not need another Git call for classification.
     try {
-        const root = await gitOps.getRepositoryRoot();
-        return root || null;
+        return await gitOps.getGitDirectories();
     } catch {
         return null;
     }
@@ -105,11 +114,11 @@ async function addResolvedRoot(
     candidateRoot: string,
     workspaceRoots: string[],
     seen: Map<string, DiscoveredRepository>,
-    resolveGitRoot: ResolveGitRoot,
+    resolveGitRepository: ResolveGitRepository,
 ): Promise<void> {
-    const resolved = await resolveGitRoot(candidateRoot).catch(() => null);
+    const resolved = await resolveGitRepository(candidateRoot).catch(() => null);
     if (!resolved) return;
-    const root = await normalizeRoot(resolved);
+    const root = await normalizeRoot(resolved.root);
     // Accept when the git root is inside the workspace (the common monorepo case) OR
     // when the workspace is inside the git root (e.g. user opened a project subdirectory
     // while the .git lives one level above). Reject roots that are completely outside to
@@ -121,7 +130,11 @@ async function addResolvedRoot(
     )
         return;
     if (seen.has(root)) return;
-    seen.set(root, { root, label: labelForRoot(root, workspaceRoots) });
+    seen.set(root, {
+        root,
+        label: labelForRoot(root, workspaceRoots),
+        kind: resolved.gitDir === resolved.commonDir ? "repository" : "worktree",
+    });
 }
 
 /**
@@ -166,7 +179,7 @@ export async function discoverGitRepositories(
 ): Promise<DiscoveredRepository[]> {
     const roots = await Promise.all(workspaceRoots.map(normalizeRoot));
     const seen = new Map<string, DiscoveredRepository>();
-    const resolveGitRoot = options.resolveGitRoot ?? defaultResolveGitRoot;
+    const resolveGitRepository = options.resolveGitRepository ?? defaultResolveGitRepository;
 
     // Phase 1 — cheap filesystem walk that only collects candidate directories. Each
     // workspace root is itself a candidate (the user may have opened a repository or a
@@ -184,7 +197,7 @@ export async function discoverGitRepositories(
     // first, then keying `seen` by canonical root and sorting by label at the end, keeps
     // results deterministic regardless of the order resolutions complete in.
     await mapWithConcurrency([...new Set(candidates)], GIT_RESOLVE_CONCURRENCY, (candidate) =>
-        addResolvedRoot(candidate, roots, seen, resolveGitRoot),
+        addResolvedRoot(candidate, roots, seen, resolveGitRepository),
     );
 
     // Spread already isolates the map values before sorting; no shared array is mutated.

@@ -15,7 +15,7 @@ import { useCheckedFiles } from "../hooks/useCheckedFiles";
 import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { canRunCommitAction } from "../commitEligibility";
-import { ChevronIcon } from "../../shared/components/Icons";
+import { ChevronIcon, RepoIcon, WorktreeSmallIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import type { CommitPanelAction, RepositoryCommitPanelState } from "../types";
 
@@ -368,6 +368,22 @@ export function RepositoryAccordion({
                     color="var(--vscode-descriptionForeground)"
                 >
                     <ChevronIcon expanded={isExpanded} />
+                </Box>
+                <Box
+                    as="span"
+                    data-testid="repository-kind-icon"
+                    data-repository-kind={repository.kind}
+                    display="inline-flex"
+                    alignItems="center"
+                    w="16px"
+                    flexShrink={0}
+                    color="var(--vscode-descriptionForeground)"
+                >
+                    {repository.kind === "worktree" ? (
+                        <WorktreeSmallIcon color="var(--vscode-descriptionForeground)" />
+                    ) : (
+                        <RepoIcon color="var(--vscode-descriptionForeground)" />
+                    )}
                 </Box>
                 <Box as="span" flexShrink={0} fontSize="13px" fontWeight={600}>
                     {repository.label}
