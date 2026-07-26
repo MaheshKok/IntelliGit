@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type {
     OutboundMessage,
@@ -187,6 +187,10 @@ function nextRequestId(): string {
     return `shelf-mutation-${shelfRequestSequence}`;
 }
 type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileView };
+type CachedShelfDisplayFiles = {
+    source: ShelfEntry["files"];
+    files: ShelfDisplayFile[];
+};
 
 function displayFile(entry: ShelfFileView): ShelfDisplayFile {
     const block = entry.worktreeBlock ?? entry.indexBlock;
@@ -286,6 +290,23 @@ export function ShelfTab({
     > | null>(null);
     const displayedSelectedShelfId = selectionOverride ?? selectedShelfId;
     const selectedFile = liveFileSelection(fileSelection, shelves, expandedShelfIds);
+    const shelfDisplayFilesCacheRef = useRef<Map<string, CachedShelfDisplayFiles>>(new Map());
+    const shelfDisplayFilesById = useMemo(() => {
+        const next = new Map<string, CachedShelfDisplayFiles>();
+        for (const shelf of shelves) {
+            const cached = shelfDisplayFilesCacheRef.current.get(shelf.id);
+            next.set(
+                shelf.id,
+                cached?.source === shelf.files
+                    ? cached
+                    : { source: shelf.files, files: shelf.files.map(displayFile) },
+            );
+        }
+        return next;
+    }, [shelves]);
+    useEffect(() => {
+        shelfDisplayFilesCacheRef.current = shelfDisplayFilesById;
+    }, [shelfDisplayFilesById]);
     const selectedShelf = useMemo(
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, shelves],
@@ -604,7 +625,7 @@ export function ShelfTab({
                     const onDragStart = shelfFileDragStart(onShelfEntryDragStart, shelf);
                     return (
                         <ChangesFileTree
-                            files={shelf.files.map(displayFile)}
+                            files={shelfDisplayFilesById.get(shelf.id)?.files ?? []}
                             groupByDir={groupByDir}
                             depth={0}
                             selectedId={

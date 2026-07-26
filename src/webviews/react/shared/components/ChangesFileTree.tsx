@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
 import { buildFileTree, type TreeEntry } from "../fileTree";
 import { ENTRY_ROW_GUIDE_LEFT, FileTreeRows, type TreeRowFile } from "./FileTreeRows";
@@ -49,6 +49,27 @@ export function ChangesFileTree<F extends TreeRowFile>({
                 : files.map((file) => ({ type: "file" as const, file })),
         [files, groupByDir],
     );
+    const isDirectoryExpanded = useCallback(
+        (path: string): boolean => !isDirectoryCollapsed(path),
+        [isDirectoryCollapsed],
+    );
+    const fileWiring = useCallback(
+        (file: F) => ({
+            isSelected: selectedId === getId(file),
+            onSelect: () => onSelect(file),
+            onActivate: onActivate ? () => onActivate(file) : undefined,
+            onContextMenu: onContextMenu
+                ? (x: number, y: number, returnFocusTarget: HTMLElement) =>
+                      onContextMenu(file, x, y, returnFocusTarget)
+                : undefined,
+            dataAttributes: dataAttributes(file),
+            draggable: Boolean(onDragStart),
+            onDragStart: onDragStart
+                ? (event: React.DragEvent<HTMLElement>) => onDragStart(event, file)
+                : undefined,
+        }),
+        [selectedId, getId, onSelect, onActivate, onContextMenu, dataAttributes, onDragStart],
+    );
 
     if (files.length === 0) return <>{emptyState}</>;
 
@@ -62,19 +83,9 @@ export function ChangesFileTree<F extends TreeRowFile>({
             folderIcon={folderIcon}
             folderExpandedIcon={folderExpandedIcon}
             folderIconsByName={folderIconsByName}
-            isDirectoryExpanded={(path) => !isDirectoryCollapsed(path)}
+            isDirectoryExpanded={isDirectoryExpanded}
             onToggleDirectory={onToggleDirectory}
-            fileWiring={(file) => ({
-                isSelected: selectedId === getId(file),
-                onSelect: () => onSelect(file),
-                onActivate: onActivate ? () => onActivate(file) : undefined,
-                onContextMenu: onContextMenu
-                    ? (x, y, returnFocusTarget) => onContextMenu(file, x, y, returnFocusTarget)
-                    : undefined,
-                dataAttributes: dataAttributes(file),
-                draggable: Boolean(onDragStart),
-                onDragStart: onDragStart ? (event) => onDragStart(event, file) : undefined,
-            })}
+            fileWiring={fileWiring}
         />
     );
 }

@@ -427,6 +427,70 @@ describe("webview ui smoke", () => {
         expect(html).toContain("svg");
     });
 
+    it("makes commit-panel section headers keyboard-operable without toggling from their checkbox", () => {
+        const onToggleOpen = vi.fn();
+        const checkboxToggle = vi.fn();
+        const mounted = mount(
+            <ChakraProvider theme={theme}>
+                <SectionHeader
+                    label="Changes"
+                    isOpen={true}
+                    onToggleOpen={onToggleOpen}
+                    checkbox={{ isAllChecked: false, isSomeChecked: false, onToggle: checkboxToggle }}
+                />
+            </ChakraProvider>,
+        );
+        const header = mounted.container.querySelector('[role="button"]') as HTMLElement;
+        const input = header.querySelector("input") as HTMLInputElement;
+
+        expect(header.tabIndex).toBe(0);
+        expect(header.getAttribute("aria-expanded")).toBe("true");
+        act(() => header.click());
+        act(() => header.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+        const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+        act(() => header.dispatchEvent(space));
+        expect(space.defaultPrevented).toBe(true);
+        expect(onToggleOpen).toHaveBeenCalledTimes(3);
+
+        act(() => input.click());
+        act(() => input.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true })));
+        expect(onToggleOpen).toHaveBeenCalledTimes(3);
+        expect(checkboxToggle).toHaveBeenCalledOnce();
+        unmount(mounted.root, mounted.container);
+
+        const closed = mount(
+            <ChakraProvider theme={theme}>
+                <SectionHeader label="Changes" isOpen={false} onToggleOpen={vi.fn()} />
+            </ChakraProvider>,
+        );
+        expect(closed.container.querySelector('[role="button"]')?.getAttribute("aria-expanded")).toBe(
+            "false",
+        );
+        unmount(closed.root, closed.container);
+    });
+
+    it("mirrors checkbox focus on the visual shell while preserving native input behavior", () => {
+        const onChange = vi.fn();
+        const mounted = mount(
+            <VscCheckbox isChecked={true} isIndeterminate={true} onChange={onChange} ariaLabel="Changes" />,
+        );
+        const input = mounted.container.querySelector("input") as HTMLInputElement;
+        const shell = input.nextElementSibling as HTMLElement;
+
+        expect(input.checked).toBe(true);
+        expect(input.indeterminate).toBe(true);
+        expect(shell.getAttribute("data-focused")).toBeNull();
+        act(() => input.focus());
+        expect(shell.getAttribute("data-focused")).toBe("true");
+        expect(shell.style.outline).toContain("solid");
+        act(() => input.blur());
+        expect(shell.getAttribute("data-focused")).toBeNull();
+        expect(shell.style.outline).toBe("");
+        act(() => input.click());
+        expect(onChange).toHaveBeenCalledOnce();
+        unmount(mounted.root, mounted.container);
+    });
+
     it("opens GitHub commit checks popover on click and closes on outside pointer", () => {
         const onRequestChecks = vi.fn();
         const onOpenCheckUrl = vi.fn();

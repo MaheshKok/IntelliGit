@@ -49,6 +49,16 @@ export interface TreeIndentMetrics {
  * edge: `8 + 6 + CHEVRON_HALF = 22`.
  */
 export const ENTRY_ROW_GUIDE_LEFT = 22;
+const ENTRY_ROW_INDENT_METRICS = Object.freeze({
+    ...DEFAULT_INDENT_METRICS,
+    indentBase:
+        DEFAULT_INDENT_METRICS.indentBase +
+        (ENTRY_ROW_GUIDE_LEFT - DEFAULT_INDENT_METRICS.sectionGuideLeft),
+    guideBase:
+        DEFAULT_INDENT_METRICS.guideBase +
+        (ENTRY_ROW_GUIDE_LEFT - DEFAULT_INDENT_METRICS.sectionGuideLeft),
+    sectionGuideLeft: ENTRY_ROW_GUIDE_LEFT,
+});
 
 /** The minimum a row needs; both `CommitFile` and `WorkingFile` satisfy it. */
 export interface TreeRowFile {
@@ -182,6 +192,7 @@ function resolveIndentMetrics(
 ): TreeIndentMetrics {
     if (metrics) return metrics;
     if (legacySectionGuideLeft === undefined) return DEFAULT_INDENT_METRICS;
+    if (legacySectionGuideLeft === ENTRY_ROW_GUIDE_LEFT) return ENTRY_ROW_INDENT_METRICS;
     const offset = legacySectionGuideLeft - DEFAULT_INDENT_METRICS.sectionGuideLeft;
     return {
         ...DEFAULT_INDENT_METRICS,
@@ -454,7 +465,10 @@ function TreeFileCheckbox({
     wiring: TreeFileWiring;
 }): React.ReactElement | null {
     if (wiring.checkboxVisibility === "none") return null;
-    if (wiring.checkboxVisibility === "hidden") {
+    if (
+        wiring.checkboxVisibility === "hidden" ||
+        (wiring.checkboxVisibility === "visible" && !wiring.onToggleCheck)
+    ) {
         return (
             <Box
                 as="span"

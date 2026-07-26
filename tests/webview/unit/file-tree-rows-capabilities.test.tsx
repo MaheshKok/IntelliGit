@@ -151,6 +151,27 @@ describe("FileTreeRows additive capabilities", () => {
         unmount(root, container);
     });
 
+    it("reserves the visible file checkbox slot when toggle wiring is absent", () => {
+        installWebviewI18n();
+        const { root, container } = renderRows({
+            fileWiring: () => ({
+                isSelected: false,
+                onSelect: noop,
+                checkboxVisibility: "visible",
+            }),
+        });
+        const fileRow = container.querySelector('[title="src/app.ts"]') as HTMLElement;
+        const fileIcon = fileRow.querySelector('[data-tree-icon="file"]') as HTMLElement;
+        const checkboxSlot = fileIcon.previousElementSibling as HTMLElement;
+        const indentSlot = checkboxSlot.previousElementSibling as HTMLElement;
+
+        expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+        expect(getComputedStyle(checkboxSlot).width).toBe("14px");
+        expect(getComputedStyle(checkboxSlot).height).toBe("14px");
+        expect(getComputedStyle(indentSlot).width).toBe("14px");
+        unmount(root, container);
+    });
+
     it("reserves the hidden folder checkbox slot", () => {
         installWebviewI18n();
         const { root, container } = renderRows({

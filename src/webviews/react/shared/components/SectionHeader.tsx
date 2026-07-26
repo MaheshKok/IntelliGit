@@ -90,8 +90,18 @@ function CommitPanelSectionHeader({
             }
             outline={isDragOver ? "2px solid var(--intelligit-pycharm-blue)" : "none"}
             outlineOffset="-1px"
+            tabIndex={0}
+            role="button"
+            aria-expanded={isOpen}
             onClick={(event) => {
                 if ((event.target as HTMLElement).tagName !== "INPUT") onToggleOpen?.();
+            }}
+            onKeyDown={(event) => {
+                if ((event.target as HTMLElement).tagName === "INPUT") return;
+                if (event.key === "Enter" || event.key === " ") {
+                    if (event.key === " ") event.preventDefault();
+                    onToggleOpen?.();
+                }
             }}
             onDragOver={drag?.onDragOver}
             onDragLeave={drag?.onDragLeave}

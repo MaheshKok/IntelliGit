@@ -209,6 +209,28 @@ describe("ShelfTab", () => {
         unmount(root, container);
     });
 
+    it("refreshes an expanded shelf tree when that shelf's files change", () => {
+        const { root, container, rerender } = renderShelfTab();
+        expandShelf(container, "shelf-a");
+        expect(container.querySelector('[data-shelf-file="change-a"]')).not.toBeNull();
+
+        rerender({
+            shelves: [
+                {
+                    ...shelves[0],
+                    files: [
+                        ...files,
+                        { changeId: "change-c", worktreeBlock: { path: "src/renderer.ts" } },
+                    ],
+                },
+                shelves[1],
+            ],
+        });
+
+        expect(container.querySelector('[data-shelf-file="change-c"]')).not.toBeNull();
+        unmount(root, container);
+    });
+
     it("shows PyCharm's file-count and date meta line on each shelf row", () => {
         const createdAt = Date.UTC(2026, 1, 22, 14, 55);
         const { root, container } = renderShelfTab({

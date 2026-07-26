@@ -34,11 +34,13 @@ export function ToolbarIconButton({
     const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
     const isToolbar = presentation === "toolbar";
     const resolvedColor = isToolbar
-        ? disabled
-            ? "var(--vscode-disabledForeground)"
-            : iconStyle === "standard"
-              ? "var(--vscode-icon-foreground)"
-              : (color ?? undefined)
+        ? spin
+            ? (color ?? (iconStyle === "standard" ? "var(--vscode-icon-foreground)" : undefined))
+            : disabled
+              ? "var(--vscode-disabledForeground)"
+              : iconStyle === "standard"
+                ? "var(--vscode-icon-foreground)"
+                : (color ?? undefined)
         : presentation === "stash"
           ? "var(--vscode-icon-foreground)"
           : undefined;

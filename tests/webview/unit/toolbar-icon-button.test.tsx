@@ -86,6 +86,16 @@ describe("ToolbarIconButton", () => {
         act(() => disabledButton.click());
         expect(disabled.onClick).not.toHaveBeenCalled();
         unmount(disabled.root, disabled.container);
+
+        const disabledSpinner = renderButton({ disabled: true, spin: true, color: "#4ec7d6" });
+        const disabledSpinnerButton = disabledSpinner.container.querySelector("button") as HTMLButtonElement;
+        const disabledSpinnerIcon = disabledSpinnerButton.querySelector("svg") as SVGElement;
+        expect(disabledSpinnerButton.disabled).toBe(true);
+        expect(disabledSpinnerIcon.style.color).toBe("rgb(78, 199, 214)");
+        expect(disabledSpinnerIcon.style.animation).toContain("intelligit-spin");
+        act(() => disabledSpinnerButton.click());
+        expect(disabledSpinner.onClick).not.toHaveBeenCalled();
+        unmount(disabledSpinner.root, disabledSpinner.container);
     });
 
     it("renders the tooltip with the label when tooltips are enabled", () => {
