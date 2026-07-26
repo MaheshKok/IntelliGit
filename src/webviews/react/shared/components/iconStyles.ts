@@ -1,6 +1,9 @@
 import type { CSSProperties } from "react";
 import { JETBRAINS_UI } from "../tokens";
 
+/** Shared refresh/loading rotation used by every webview spinner. */
+export const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+
 // Shared icon style constants for branch, tag, and file-tree glyph components.
 // Kept outside component modules so shared constants do not trip Fast Refresh rules.
 

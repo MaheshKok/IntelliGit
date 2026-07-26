@@ -8,7 +8,6 @@ import { StashFileTree, StashList } from "./StashList";
 import { StashToolbar } from "./StashToolbar";
 import { StashUnstashDialog } from "./StashUnstashDialog";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
-import { getSettings } from "../../shared/settings";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { t } from "../../shared/i18n";
 
@@ -120,7 +119,6 @@ export function StashTab({
     // react-doctor-disable-next-line react-doctor/prefer-useReducer
 }: Props): React.ReactElement {
     const vscode = getVsCodeApi();
-    const { hoverDelay, tooltipsEnabled } = getSettings();
     const [selectionOverride, setSelectionOverride] = useState<SelectionOverride | null>(null);
     const displayedSelectedIndex =
         selectionOverride?.snapshot === stashes ? selectionOverride.index : selectedIndex;
@@ -447,8 +445,6 @@ export function StashTab({
                 selectedIndex={displayedSelectedIndex}
                 groupByDir={groupByDir}
                 canExpandOrCollapse={stashes.length > 0}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
                 isRefreshing={isRefreshing}
                 onRefresh={() =>
                     vscode.postMessage({

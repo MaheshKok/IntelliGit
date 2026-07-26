@@ -6,8 +6,7 @@ import { IconButton, Tooltip } from "@chakra-ui/react";
 import { IoMdRefresh } from "react-icons/io";
 import { getSettings, resolveIconColor } from "../settings";
 import { t } from "../i18n";
-
-const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
+import { SPIN_KEYFRAMES } from "./iconStyles";
 
 /** Keeps a refresh that finishes instantly on screen long enough to be read. */
 const MIN_SPIN_MS = 700;

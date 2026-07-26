@@ -7,6 +7,7 @@ import { useDragResize } from "../commit-panel/hooks/useDragResize";
 import { RefTypeIcon } from "../shared/components/RefTypeIcon";
 import { ChevronIcon } from "../shared/components/Icons";
 import { FileTreeRows } from "../shared/components/FileTreeRows";
+import { SPIN_KEYFRAMES } from "../shared/components/iconStyles";
 import { splitCommitRefs } from "../shared/utils/refs";
 import { JETBRAINS_UI } from "../shared/tokens";
 import { t } from "../shared/i18n";
@@ -42,7 +43,6 @@ interface CommitInfoPaneProps {
     onOpenDiff?: (commitHash: string, filePath: string) => void;
 }
 
-const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
 const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
     position: "absolute",
     width: 1,

@@ -1,13 +1,14 @@
 import React, { useState } from "react";
-import { Button, Flex, Tooltip } from "@chakra-ui/react";
+import { Flex } from "@chakra-ui/react";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import {
     CollapseAllIconGlyph,
     ExpandAllIconGlyph,
     GroupByDirectoryIconGlyph,
+    MoreOptionsIconGlyph,
 } from "../../shared/components/Icons";
 import { RefreshButton } from "../../shared/components/RefreshButton";
-import { getSettings } from "../../shared/settings";
+import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
 
 /** Callbacks and state for the compact Shelf toolbar. */
@@ -32,15 +33,6 @@ function icon(path: React.ReactNode): React.ReactElement {
     );
 }
 
-function moreIcon(): React.ReactElement {
-    return icon(
-        <path
-            fill="currentColor"
-            d="M8 3a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 8 3zm0 6.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5zm0 6.25a1.25 1.25 0 1 0 0-2.5A1.25 1.25 0 0 0 8 15.5z"
-        />,
-    );
-}
-
 /** PyCharm-parity Shelf controls: three icon actions and one overflow trigger. */
 export function ShelfToolbar({
     canExpandOrCollapse,
@@ -54,7 +46,6 @@ export function ShelfToolbar({
     onCleanUp,
     onToggleAlreadyUnshelved,
 }: ShelfToolbarProps): React.ReactElement {
-    const { hoverDelay, tooltipsEnabled } = getSettings();
     const [overflow, setOverflow] = useState<{ x: number; y: number } | null>(null);
     const overflowItems = [
         {
@@ -83,41 +74,37 @@ export function ShelfToolbar({
             flexShrink={0}
         >
             <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
-            <ShelfToolbarIconButton
+            <ToolbarIconButton
                 label={t("shelf.action.groupBy")}
                 icon={icon(<GroupByDirectoryIconGlyph />)}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
                 disabled={false}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
+                presentation="shelf"
             />
-            <ShelfToolbarIconButton
+            <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
                 icon={icon(<ExpandAllIconGlyph />)}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
+                presentation="shelf"
             />
-            <ShelfToolbarIconButton
+            <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
                 icon={icon(<CollapseAllIconGlyph />)}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
+                presentation="shelf"
             />
-            <ShelfToolbarIconButton
+            <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}
-                icon={moreIcon()}
+                icon={icon(<MoreOptionsIconGlyph />)}
                 onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
                     setOverflow({ x: rect.left, y: rect.bottom });
                 }}
                 disabled={false}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
+                presentation="shelf"
             />
             {overflow ? (
                 <ContextMenu
@@ -130,38 +117,5 @@ export function ShelfToolbar({
                 />
             ) : null}
         </Flex>
-    );
-}
-
-function ShelfToolbarIconButton({
-    label,
-    icon,
-    onClick,
-    pressed,
-    disabled,
-    hoverDelay,
-    tooltipsEnabled,
-}: {
-    label: string;
-    icon: React.ReactElement;
-    onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-    pressed?: boolean;
-    disabled: boolean;
-    hoverDelay: number;
-    tooltipsEnabled: boolean;
-}): React.ReactElement {
-    return (
-        <Tooltip label={label} fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
-            <Button
-                variant="toolbarGhost"
-                size="xs"
-                aria-label={label}
-                aria-pressed={pressed}
-                onClick={onClick}
-                isDisabled={disabled}
-            >
-                {icon}
-            </Button>
-        </Tooltip>
     );
 }
