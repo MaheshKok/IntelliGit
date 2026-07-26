@@ -4,6 +4,8 @@ import React, { act } from "react";
 import { ChakraProvider } from "@chakra-ui/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ToolbarIconButton } from "../../../src/webviews/react/shared/components/ToolbarIconButton";
+import { ShelfToolbar } from "../../../src/webviews/react/commit-panel/components/ShelfToolbar";
+import { StashToolbar } from "../../../src/webviews/react/commit-panel/components/StashToolbar";
 import theme from "../../../src/webviews/react/commit-panel/theme";
 import { initReactDomTestEnvironment, mount, unmount } from "../../helpers/reactDomTestUtils";
 
@@ -132,5 +134,53 @@ describe("ToolbarIconButton", () => {
         const standardIcon = standard.container.querySelector("svg") as SVGElement;
         expect(standardIcon.style.color).toBe("var(--vscode-icon-foreground)");
         unmount(standard.root, standard.container);
+    });
+
+    it("uses the shared accent palette in the Stash and Shelf toolbars", () => {
+        window.intelligitSettings = { ...window.intelligitSettings, iconStyle: "color" };
+        const stash = mount(
+            <ChakraProvider theme={theme}>
+                <StashToolbar
+                    selectedIndex={0}
+                    groupByDir={false}
+                    canExpandOrCollapse
+                    isRefreshing={false}
+                    onRefresh={vi.fn()}
+                    onShowStashDiff={vi.fn()}
+                    onToggleGroupBy={vi.fn()}
+                    onExpandAll={vi.fn()}
+                    onCollapseAll={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+        const stashIcons = stash.container.querySelectorAll("svg");
+        expect(stashIcons[1]?.style.color).toBe("rgb(143, 213, 255)");
+        expect(stashIcons[2]?.style.color).toBe("rgb(143, 213, 255)");
+        expect(stashIcons[3]?.style.color).toBe("rgb(243, 177, 207)");
+        expect(stashIcons[4]?.style.color).toBe("rgb(243, 177, 207)");
+        unmount(stash.root, stash.container);
+
+        const shelf = mount(
+            <ChakraProvider theme={theme}>
+                <ShelfToolbar
+                    canExpandOrCollapse
+                    groupByDir={false}
+                    showAlreadyUnshelved={false}
+                    isRefreshing={false}
+                    onRefresh={vi.fn()}
+                    onToggleGroupBy={vi.fn()}
+                    onExpandAll={vi.fn()}
+                    onCollapseAll={vi.fn()}
+                    onCleanUp={vi.fn()}
+                    onToggleAlreadyUnshelved={vi.fn()}
+                />
+            </ChakraProvider>,
+        );
+        const shelfIcons = shelf.container.querySelectorAll("svg");
+        expect(shelfIcons[1]?.style.color).toBe("rgb(143, 213, 255)");
+        expect(shelfIcons[2]?.style.color).toBe("rgb(243, 177, 207)");
+        expect(shelfIcons[3]?.style.color).toBe("rgb(243, 177, 207)");
+        expect(shelfIcons[4]?.style.color).toBe("rgb(243, 177, 207)");
+        unmount(shelf.root, shelf.container);
     });
 });

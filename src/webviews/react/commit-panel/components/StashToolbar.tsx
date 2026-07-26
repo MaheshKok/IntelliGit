@@ -52,12 +52,14 @@ export function StashToolbar({
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}
                 disabled={selectedIndex === null}
+                color="#8fd5ff"
                 icon={icon(<ShowDiffIconGlyph />)}
             />
             <ToolbarIconButton
                 label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
+                color="#8fd5ff"
                 icon={icon(<GroupByDirectoryIconGlyph />)}
             />
             <Box flex={1} />
@@ -65,12 +67,14 @@ export function StashToolbar({
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
+                color="#f3b1cf"
                 icon={icon(<ExpandAllIconGlyph />)}
             />
             <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
+                color="#f3b1cf"
                 icon={icon(<CollapseAllIconGlyph />)}
             />
         </Flex>

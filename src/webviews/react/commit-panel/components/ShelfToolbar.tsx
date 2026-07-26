@@ -79,22 +79,26 @@ export function ShelfToolbar({
                 icon={icon(<GroupByDirectoryIconGlyph />)}
                 onClick={onToggleGroupBy}
                 pressed={groupByDir}
+                color="#8fd5ff"
             />
             <ToolbarIconButton
                 label={t("shelf.action.expandAll")}
                 icon={icon(<ExpandAllIconGlyph />)}
                 onClick={onExpandAll}
                 disabled={!canExpandOrCollapse}
+                color="#f3b1cf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.collapseAll")}
                 icon={icon(<CollapseAllIconGlyph />)}
                 onClick={onCollapseAll}
                 disabled={!canExpandOrCollapse}
+                color="#f3b1cf"
             />
             <ToolbarIconButton
                 label={t("shelf.action.moreOptions")}
                 icon={icon(<MoreOptionsIconGlyph />)}
+                color="#f3b1cf"
                 onClick={(event) => {
                     const rect = event.currentTarget.getBoundingClientRect();
                     setOverflow({ x: rect.left, y: rect.bottom });
