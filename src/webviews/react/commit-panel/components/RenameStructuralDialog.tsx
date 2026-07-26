@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Box, Button, Flex, Input } from "@chakra-ui/react";
 import { t } from "../../shared/i18n";
 import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
@@ -18,24 +18,16 @@ export function RenameStructuralDialog({
     returnFocusTarget,
 }: RenameStructuralDialogProps): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
-    const submitRef = useRef<HTMLButtonElement>(null);
     const targetPathRef = useRef(path);
+    const [isDisabled, setIsDisabled] = useState(!path.trim());
     useShelfDialogFocus(returnFocusTarget, inputRef);
     const close = (): void => {
         onClose();
         restoreShelfDialogFocus(returnFocusTarget);
     };
-    const updateTargetPath = (targetPath: string): void => {
-        targetPathRef.current = targetPath;
-        const isDisabled = !targetPath.trim();
-        if (submitRef.current) {
-            submitRef.current.disabled = isDisabled;
-            submitRef.current.setAttribute("aria-disabled", String(isDisabled));
-        }
-    };
     const submit = (): void => {
-        const targetPath = targetPathRef.current.trim();
-        if (targetPath) onConfirm(targetPath);
+        const trimmedTargetPath = targetPathRef.current.trim();
+        if (trimmedTargetPath) onConfirm(trimmedTargetPath);
     };
     return (
         <Flex
@@ -70,23 +62,19 @@ export function RenameStructuralDialog({
                 </Box>
                 <Input
                     aria-label={t("shelf.dialog.renameLocal.input")}
-                    autoFocus
                     ref={inputRef}
                     size="sm"
                     defaultValue={path}
-                    onChange={(event) => updateTargetPath(event.target.value)}
+                    onChange={(event) => {
+                        targetPathRef.current = event.target.value;
+                        setIsDisabled(!event.target.value.trim());
+                    }}
                 />
                 <Flex justify="flex-end" gap="8px">
                     <Button variant="secondary" size="sm" onClick={close}>
                         {t("common.cancel")}
                     </Button>
-                    <Button
-                        ref={submitRef}
-                        variant="primary"
-                        size="sm"
-                        isDisabled={!path.trim()}
-                        onClick={submit}
-                    >
+                    <Button variant="primary" size="sm" isDisabled={isDisabled} onClick={submit}>
                         {t("shelf.action.renameLocal")}
                     </Button>
                 </Flex>

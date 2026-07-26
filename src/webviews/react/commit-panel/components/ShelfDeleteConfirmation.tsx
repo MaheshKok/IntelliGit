@@ -24,6 +24,10 @@ export function ShelfDeleteConfirmation({
         onClose();
         restoreShelfDialogFocus(returnFocusTarget);
     };
+    const confirm = (): void => {
+        restoreShelfDialogFocus(returnFocusTarget);
+        onConfirm();
+    };
     return (
         <Flex
             role="presentation"
@@ -60,7 +64,7 @@ export function ShelfDeleteConfirmation({
                     <Button ref={cancelRef} variant="secondary" size="sm" onClick={close}>
                         {t("common.cancel")}
                     </Button>
-                    <Button variant="danger" size="sm" onClick={onConfirm}>
+                    <Button variant="danger" size="sm" onClick={confirm}>
                         {t("shelf.action.deleteShelf")}
                     </Button>
                 </Flex>

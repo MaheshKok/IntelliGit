@@ -117,6 +117,8 @@ export function StashTab({
     const [expandedHashes, setExpandedHashes] = useState<ReadonlySet<string>>(
         () => new Set<string>(),
     );
+    const expandAllActiveRef = useRef(false);
+    const expandAllInFlightHashRef = useRef<string | null>(null);
     const [collapsedDirectories, setCollapsedDirectories] = useState<ReadonlySet<string>>(
         () => new Set<string>(),
     );
@@ -193,15 +195,23 @@ export function StashTab({
         [repositoryRoot],
     );
 
+    const requestStashLoad = useCallback(
+        (index: number): boolean => {
+            if (displayedSelectedIndex === index) return false;
+            vscode.postMessage(postRepositoryMessage({ type: "stashSelect", index }));
+            return true;
+        },
+        [displayedSelectedIndex, postRepositoryMessage, vscode],
+    );
+
     const selectStash = useCallback(
         (index: number) => {
             // Selecting a row takes the tree's single selection back from any file row.
             setFileSelection({ stashHash: null, path: null });
-            if (displayedSelectedIndex === index) return;
+            if (!requestStashLoad(index)) return;
             setSelectionOverride({ snapshot: stashes, index });
-            vscode.postMessage(postRepositoryMessage({ type: "stashSelect", index }));
         },
-        [displayedSelectedIndex, postRepositoryMessage, stashes, vscode],
+        [requestStashLoad, stashes],
     );
 
     // Expanding a row implies selecting it, and selection is the host contract for loading files.
@@ -357,15 +367,32 @@ export function StashTab({
     const expandAll = useCallback(() => {
         setExpandedHashes(new Set(stashes.map((stash) => stash.hash)));
         setCollapsedDirectories(new Set<string>());
-        const firstUncachedStash = stashes.find(
-            (stash) => filesByHashRef.current[stash.hash] === undefined,
+        expandAllActiveRef.current = true;
+        expandAllInFlightHashRef.current = null;
+    }, [stashes]);
+
+    useEffect(() => {
+        if (!expandAllActiveRef.current) return;
+        const inFlightHash = expandAllInFlightHashRef.current;
+        if (inFlightHash !== null && filesByHash[inFlightHash] === undefined) return;
+        expandAllInFlightHashRef.current = null;
+        const nextUncachedStash = stashes.find(
+            (stash) =>
+                expandedHashes.has(stash.hash) && filesByHashRef.current[stash.hash] === undefined,
         );
-        if (firstUncachedStash) selectStash(firstUncachedStash.index);
-    }, [selectStash, stashes]);
+        if (!nextUncachedStash) {
+            expandAllActiveRef.current = false;
+            return;
+        }
+        expandAllInFlightHashRef.current = nextUncachedStash.hash;
+        requestStashLoad(nextUncachedStash.index);
+    }, [expandedHashes, filesByHash, requestStashLoad, stashes]);
 
     const collapseAll = useCallback(() => {
         setExpandedHashes(new Set<string>());
         setCollapsedDirectories(new Set<string>());
+        expandAllActiveRef.current = false;
+        expandAllInFlightHashRef.current = null;
     }, []);
 
     const renderSubtree = useCallback(

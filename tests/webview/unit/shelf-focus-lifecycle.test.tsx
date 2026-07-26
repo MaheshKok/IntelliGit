@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ShelfFileEntry } from "../../../src/shelf/model";
 import { ShelfDeleteConfirmation } from "../../../src/webviews/react/commit-panel/components/ShelfTabDialogs";
 import { RenameStructuralDialog } from "../../../src/webviews/react/commit-panel/components/RenameStructuralDialog";
+import { ShelfHealthWarningBanner } from "../../../src/webviews/react/commit-panel/components/ShelfHealthWarningBanner";
 import { ShelfRow } from "../../../src/webviews/react/commit-panel/components/ShelfRow";
 import { UnshelveDialog } from "../../../src/webviews/react/commit-panel/components/UnshelveDialog";
 import theme from "../../../src/webviews/react/commit-panel/theme";
@@ -67,8 +68,22 @@ describe("shelf dialog focus lifecycle", () => {
         const submit = dialog.querySelectorAll<HTMLButtonElement>("button").item(1);
 
         expect(input.value).toBe("src/original.ts");
+        expect(document.activeElement).toBe(input);
         expect(submit.disabled).toBe(false);
         changeInput(input, "   ");
+        expect(submit.disabled).toBe(true);
+        act(() =>
+            root.render(
+                <ChakraProvider theme={theme}>
+                    <RenameStructuralDialog
+                        path="src/original.ts"
+                        returnFocusTarget={launcher}
+                        onClose={onClose}
+                        onConfirm={onConfirm}
+                    />
+                </ChakraProvider>,
+            ),
+        );
         expect(submit.disabled).toBe(true);
         changeInput(input, "  src/renamed.ts  ");
         expect(submit.disabled).toBe(false);
@@ -166,4 +181,58 @@ describe("shelf dialog focus lifecycle", () => {
         unmount(root, container);
         launcher.remove();
     });
+
+    it("restores Delete launcher focus before confirming", () => {
+        const launcher = document.createElement("button");
+        document.body.append(launcher);
+        const observedFocus = vi.fn();
+        const { root, container } = mount(
+            <ChakraProvider theme={theme}>
+                <ShelfDeleteConfirmation
+                    shelf={{
+                        id: "shelf-a",
+                        generation: 1,
+                        metadata: { name: "A", lifecycle: "shelved" },
+                    }}
+                    returnFocusTarget={launcher}
+                    onClose={vi.fn()}
+                    onConfirm={() => observedFocus(document.activeElement)}
+                />
+            </ChakraProvider>,
+        );
+        const dialog = container.querySelector('[role="alertdialog"]') as HTMLElement;
+        click(dialog.querySelectorAll<HTMLButtonElement>("button").item(1));
+        expect(observedFocus).toHaveBeenCalledWith(launcher);
+        unmount(root, container);
+        launcher.remove();
+    });
+
+    it.each(["button", "backdrop", "escape"] as const)(
+        "restores health details focus after closing with %s",
+        (dismissal) => {
+            const { root, container } = mount(
+                <ChakraProvider theme={theme}>
+                    <ShelfHealthWarningBanner
+                        warnings={[{ kind: "warning", detail: "Needs repair" }]}
+                    />
+                </ChakraProvider>,
+            );
+            const details = container.querySelector("button") as HTMLButtonElement;
+            details.focus();
+            click(details);
+            const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+            if (dismissal === "button") click(dialog.querySelector("button") as HTMLButtonElement);
+            else if (dismissal === "backdrop") {
+                act(() =>
+                    (container.querySelector('[role="presentation"]') as HTMLElement).dispatchEvent(
+                        new MouseEvent("mousedown", { bubbles: true }),
+                    ),
+                );
+            } else {
+                escape(container.querySelector('[role="presentation"]') as HTMLElement);
+            }
+            expect(document.activeElement).toBe(details);
+            unmount(root, container);
+        },
+    );
 });

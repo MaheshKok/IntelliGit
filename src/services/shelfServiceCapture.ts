@@ -115,7 +115,7 @@ async function persistCaptureSource(
     > = [];
     const objectHashes = new Set<string>();
     const sortedPatches = Array.from(source.patchByPath.entries());
-    sortedPatches.sort(([a], [b]) => a.localeCompare(b));
+    sortedPatches.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     for (const [relativePath, patches] of sortedPatches) {
         // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Persist entries in sorted path order so object writes and recovery metadata remain deterministic.
         const captured = await persistCaptureEntry(

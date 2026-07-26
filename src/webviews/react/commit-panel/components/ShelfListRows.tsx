@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { Box } from "@chakra-ui/react";
 import type { ShelfEntry } from "../../../protocol/commitPanelMessages";
 import { ShelfRow } from "./ShelfRow";
@@ -43,19 +43,12 @@ export function ShelfListRows({
     onRestore,
     onDragStart,
 }: ShelfListRowsProps): React.ReactElement {
-    const renderedSubtreesById = useMemo(() => {
-        const subtrees = new Map<string, React.ReactNode>();
-        for (const shelf of shelves) {
-            if (expandedShelfIds.has(shelf.id)) subtrees.set(shelf.id, renderSubtree(shelf));
-        }
-        return subtrees;
-    }, [expandedShelfIds, renderSubtree, shelves]);
-
     return (
         <>
             {shelves.map((shelf) => {
                 const isExpanded = expandedShelfIds.has(shelf.id);
                 const isRenaming = renamingShelfId === shelf.id;
+                const renderedSubtree = isExpanded ? renderSubtree(shelf) : null;
                 return (
                     <React.Fragment key={shelf.id}>
                         <ShelfRow
@@ -77,9 +70,7 @@ export function ShelfListRows({
                             onRestore={onRestore}
                             onDragStart={onDragStart}
                         />
-                        {isExpanded ? (
-                            <Box role="group">{renderedSubtreesById.get(shelf.id)}</Box>
-                        ) : null}
+                        {isExpanded ? <Box role="group">{renderedSubtree}</Box> : null}
                     </React.Fragment>
                 );
             })}

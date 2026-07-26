@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react
 interface DragResizeAPI {
     height: number;
     onMouseDown: (e: React.MouseEvent) => void;
+    onKeyDown: (e: React.KeyboardEvent) => void;
 }
 
 /** Options that constrain and observe commit-panel drag resizing. */
@@ -74,6 +75,20 @@ export function useDragResize(
         }
     }, [containerRef, maxReservedHeight, minHeight]);
 
+    const updateHeight = useCallback(
+        (requestedHeight: number): void => {
+            const nextHeight = clampHeight(
+                requestedHeight,
+                minHeight,
+                getMaxHeight(containerRef, maxReservedHeight),
+            );
+            heightRef.current = nextHeight;
+            setHeight(nextHeight);
+            onResizeRef.current?.(nextHeight);
+        },
+        [containerRef, maxReservedHeight, minHeight],
+    );
+
     const onMouseDown = useCallback(
         (e: React.MouseEvent) => {
             e.preventDefault();
@@ -84,10 +99,7 @@ export function useDragResize(
             const onMouseMove = (ev: MouseEvent) => {
                 if (!dragging.current) return;
                 const delta = startY - ev.clientY;
-                const maxH = getMaxHeight(containerRef, maxReservedHeight);
-                const nextHeight = clampHeight(startH + delta, minHeight, maxH);
-                setHeight(nextHeight);
-                onResizeRef.current?.(nextHeight);
+                updateHeight(startH + delta);
             };
 
             const onMouseUp = () => {
@@ -103,8 +115,18 @@ export function useDragResize(
             document.body.style.cursor = "row-resize";
             document.body.style.userSelect = "none";
         },
-        [containerRef, maxReservedHeight, minHeight],
+        [updateHeight],
     );
 
-    return { height: visibleHeight, onMouseDown };
+    const onKeyDown = useCallback(
+        (event: React.KeyboardEvent): void => {
+            const delta = event.key === "ArrowUp" ? 10 : event.key === "ArrowDown" ? -10 : 0;
+            if (delta === 0) return;
+            event.preventDefault();
+            updateHeight(heightRef.current + delta);
+        },
+        [updateHeight],
+    );
+
+    return { height: visibleHeight, onMouseDown, onKeyDown };
 }

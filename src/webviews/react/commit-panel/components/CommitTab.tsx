@@ -12,11 +12,11 @@ import { type CommitTabProps, useCommitTabController } from "./CommitTabControll
 /** Renders the working-tree commit workflow and delegates its interaction state to a controller. */
 export function CommitTab(props: CommitTabProps): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
-    const { height: bottomHeight, onMouseDown: onDragMouseDown } = useDragResize(
-        170,
-        110,
-        containerRef,
-    );
+    const {
+        height: bottomHeight,
+        onMouseDown: onDragMouseDown,
+        onKeyDown: onDragKeyDown,
+    } = useDragResize(170, 110, containerRef);
     const controller = useCommitTabController(props);
     return (
         <CommitTabLayout
@@ -24,6 +24,7 @@ export function CommitTab(props: CommitTabProps): React.ReactElement {
             containerRef={containerRef}
             controller={controller}
             onDragMouseDown={onDragMouseDown}
+            onDragKeyDown={onDragKeyDown}
             props={props}
         />
     );
@@ -34,6 +35,7 @@ interface CommitTabLayoutProps {
     containerRef: React.RefObject<HTMLDivElement>;
     controller: ReturnType<typeof useCommitTabController>;
     onDragMouseDown: React.MouseEventHandler<HTMLDivElement>;
+    onDragKeyDown: React.KeyboardEventHandler<HTMLDivElement>;
     props: CommitTabProps;
 }
 
@@ -43,6 +45,7 @@ function CommitTabLayout({
     containerRef,
     controller,
     onDragMouseDown,
+    onDragKeyDown,
     props,
 }: CommitTabLayoutProps): React.ReactElement {
     return (
@@ -107,7 +110,7 @@ function CommitTabLayout({
                     collapseAllSignal={controller.collapseAllSignal}
                 />
             </Box>
-            <CommitResizeHandle onDragMouseDown={onDragMouseDown} />
+            <CommitResizeHandle onDragMouseDown={onDragMouseDown} onDragKeyDown={onDragKeyDown} />
             <Box
                 flexShrink={0}
                 h={`${bottomHeight}px`}
@@ -146,15 +149,20 @@ function CommitTabLayout({
 /** Preserves the original pointer target and visual affordance for resizing the commit area. */
 function CommitResizeHandle({
     onDragMouseDown,
-}: Pick<CommitTabLayoutProps, "onDragMouseDown">): React.ReactElement {
+    onDragKeyDown,
+}: Pick<CommitTabLayoutProps, "onDragMouseDown" | "onDragKeyDown">): React.ReactElement {
     return (
         <Box
             flex="0 0 4px"
             cursor="row-resize"
+            role="separator"
+            aria-orientation="horizontal"
+            tabIndex={0}
             bg="var(--intelligit-pycharm-border)"
             position="relative"
             _hover={{ bg: "var(--intelligit-pycharm-blue)" }}
             onMouseDown={onDragMouseDown}
+            onKeyDown={onDragKeyDown}
             _after={{
                 content: '""',
                 position: "absolute",

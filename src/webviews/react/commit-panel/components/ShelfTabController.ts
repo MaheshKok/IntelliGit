@@ -34,6 +34,11 @@ interface ShelfFileSelection {
     changeId: string;
 }
 
+interface ShelfSelectionOverride {
+    snapshot: ShelfTabProps["shelves"];
+    shelfId: string;
+}
+
 interface PendingRename {
     requestId: string;
     shelfId: string;
@@ -50,7 +55,7 @@ interface ShelfContextMenuState {
 }
 
 interface ShelfTabState {
-    selectionOverride: string | null;
+    selectionOverride: ShelfSelectionOverride | null;
     fileSelection: ShelfFileSelection | null;
     showAlreadyUnshelved: boolean;
     contextMenu: ShelfContextMenuState | null;
@@ -67,7 +72,7 @@ interface ShelfTabState {
 }
 
 type ShelfTabAction =
-    | { type: "setSelectionOverride"; value: string | null }
+    | { type: "setSelectionOverride"; value: ShelfSelectionOverride | null }
     | { type: "setFileSelection"; value: ShelfFileSelection | null }
     | { type: "setShowAlreadyUnshelved"; value: boolean }
     | { type: "setContextMenu"; value: ShelfContextMenuState | null }
@@ -255,7 +260,10 @@ export function useShelfTabController(props: ShelfTabProps): ShelfTabController 
         shelfDisplayFilesCacheRef.current = new Map<string, CachedShelfDisplayFiles>();
     }
     const shelfDisplayFilesCache = shelfDisplayFilesCacheRef.current;
-    const displayedSelectedShelfId = state.selectionOverride ?? props.selectedShelfId;
+    const displayedSelectedShelfId =
+        state.selectionOverride?.snapshot === props.shelves
+            ? state.selectionOverride.shelfId
+            : props.selectedShelfId;
     const selectedFile = liveFileSelection(
         state.fileSelection,
         props.shelves,
@@ -318,7 +326,7 @@ export function useShelfTabController(props: ShelfTabProps): ShelfTabController 
     const selectShelf = useCallback(
         (shelfId: string): void => {
             dispatch({ type: "setFileSelection", value: null });
-            dispatch({ type: "setSelectionOverride", value: shelfId });
+            dispatch({ type: "setSelectionOverride", value: { snapshot: props.shelves, shelfId } });
             props.onSelect({ type: "shelfSelect", shelfId });
         },
         [props],
@@ -368,7 +376,7 @@ export function useShelfTabController(props: ShelfTabProps): ShelfTabController 
     }, [props]);
     const exportPatch = useCallback(
         (
-            shelf: ShelfEntry = selectedShelf!,
+            shelf: ShelfEntry | null = selectedShelf,
             changeIds = shelf?.files.map((entry) => entry.changeId) ?? [],
         ): void => {
             if (!shelf || changeIds.length === 0) return;

@@ -70,7 +70,9 @@ export function ShelfList({
                       ? visibleShelves[Math.min(visibleShelves.length - 1, index + 1)]
                       : undefined;
         if (!next) return;
-        target.ownerDocument.querySelector<HTMLElement>(`[data-shelf-id="${next.id}"]`)?.focus();
+        target.ownerDocument
+            .querySelector<HTMLElement>(`[data-shelf-id="${CSS.escape(next.id)}"]`)
+            ?.focus();
         onSelect(next.id);
     };
 

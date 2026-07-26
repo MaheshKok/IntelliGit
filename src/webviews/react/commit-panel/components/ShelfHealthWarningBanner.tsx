@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type { ShelfHealthWarning } from "../../../protocol/commitPanelMessages";
 import { t } from "../../shared/i18n";
-import { useShelfDialogFocus } from "./ShelfDialogFocus";
+import { restoreShelfDialogFocus, useShelfDialogFocus } from "./ShelfDialogFocus";
 
 /** Compact warning banner plus a details dialog for observable shelf health. */
 export function ShelfHealthWarningBanner({
@@ -14,6 +14,10 @@ export function ShelfHealthWarningBanner({
     const detailsRef = useRef<HTMLButtonElement>(null);
     const closeRef = useRef<HTMLButtonElement>(null);
     useShelfDialogFocus(open ? detailsRef.current : null, closeRef);
+    const closeDetails = (): void => {
+        setOpen(false);
+        restoreShelfDialogFocus(detailsRef.current);
+    };
     if (!warnings.length) return null;
     const summary =
         warnings.length === 1
@@ -52,10 +56,10 @@ export function ShelfHealthWarningBanner({
                     justify="center"
                     bg="rgba(0, 0, 0, 0.45)"
                     onMouseDown={(event) => {
-                        if (event.currentTarget === event.target) setOpen(false);
+                        if (event.currentTarget === event.target) closeDetails();
                     }}
                     onKeyDown={(event) => {
-                        if (event.key === "Escape") setOpen(false);
+                        if (event.key === "Escape") closeDetails();
                     }}
                 >
                     <Flex
@@ -83,7 +87,7 @@ export function ShelfHealthWarningBanner({
                                 ref={closeRef}
                                 variant="secondary"
                                 size="sm"
-                                onClick={() => setOpen(false)}
+                                onClick={closeDetails}
                             >
                                 {t("shelf.health.close")}
                             </Button>
