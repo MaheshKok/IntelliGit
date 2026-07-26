@@ -1,12 +1,18 @@
 // Toolbar with commit-view Git and file actions.
 
 import React, { useCallback, useMemo, useState } from "react";
-import { Button, Flex, IconButton, Tooltip } from "@chakra-ui/react";
+import { Button, Flex, Tooltip } from "@chakra-ui/react";
 import { IoMdRefresh } from "react-icons/io";
 import { LuEye } from "react-icons/lu";
 import { getSettings } from "../../shared/settings";
-import { CollapseAllIconGlyph, ExpandAllIconGlyph } from "../../shared/components/Icons";
+import {
+    CollapseAllIconGlyph,
+    ExpandAllIconGlyph,
+    ShowDiffIconGlyph,
+} from "../../shared/components/Icons";
 import { ContextMenu, type MenuItem } from "../../shared/components/ContextMenu";
+import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
+import { SPIN_KEYFRAMES } from "../../shared/components/iconStyles";
 import { t } from "../../shared/i18n";
 
 interface Props {
@@ -25,8 +31,6 @@ interface Props {
     showAbortMerge: boolean;
     onAbortMerge: () => void;
 }
-
-const SPIN_KEYFRAMES = `@keyframes intelligit-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`;
 
 /**
  * Renders commit-panel toolbar actions without owning repository state.
@@ -95,7 +99,7 @@ export function Toolbar({
             w="100%"
         >
             {isRefreshing && <style>{SPIN_KEYFRAMES}</style>}
-            <ToolbarButton
+            <ToolbarIconButton
                 label={isRefreshing ? t("common.refreshing") : t("common.refresh")}
                 onClick={onRefresh}
                 color="#4ec7d6"
@@ -103,13 +107,18 @@ export function Toolbar({
                 disabled={isRefreshing}
                 icon={<IoMdRefresh size={16} />}
             />
-            <ToolbarButton label={t("common.rollback")} onClick={onRollback} color="#b8adff">
-                <path
-                    fill="currentColor"
-                    d="M2.5 2l3.068 3.069L4.856 5.78l.707-.707L3.594 3.1H7A4.505 4.505 0 0 1 11.5 7.609 4.505 4.505 0 0 1 7 12.109H3.5v1H7a5.506 5.506 0 0 0 5.5-5.5A5.506 5.506 0 0 0 7 2.109H3.594l1.97-1.97-.708-.707L1.788 2.5z"
-                />
-            </ToolbarButton>
-            <ToolbarButton
+            <ToolbarIconButton
+                label={t("common.rollback")}
+                onClick={onRollback}
+                color="#b8adff"
+                icon={toolbarIcon(
+                    <path
+                        fill="currentColor"
+                        d="M2.5 2l3.068 3.069L4.856 5.78l.707-.707L3.594 3.1H7A4.505 4.505 0 0 1 11.5 7.609 4.505 4.505 0 0 1 7 12.109H3.5v1H7a5.506 5.506 0 0 0 5.5-5.5A5.506 5.506 0 0 0 7 2.109H3.594l1.97-1.97-.708-.707L1.788 2.5z"
+                    />,
+                )}
+            />
+            <ToolbarIconButton
                 label={t("common.viewOptions")}
                 onClick={handleOpenViewMenu}
                 color="#8fd5ff"
@@ -125,43 +134,50 @@ export function Toolbar({
                     onClose={() => setViewMenuPosition(null)}
                 />
             )}
-            <ToolbarButton label={t("common.stashChanges")} onClick={onStash} color="#ea8fb3">
-                <path
-                    fill="currentColor"
-                    d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"
-                />
-            </ToolbarButton>
+            <ToolbarIconButton
+                label={t("common.stashChanges")}
+                onClick={onStash}
+                color="#ea8fb3"
+                icon={toolbarIcon(
+                    <path
+                        fill="currentColor"
+                        d="M14.5 1h-13A1.5 1.5 0 0 0 0 2.5v2A1.5 1.5 0 0 0 1 5.95V13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5V5.95A1.5 1.5 0 0 0 16 4.5v-2A1.5 1.5 0 0 0 14.5 1zM14 13.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V6h12v7.5zm1-9a.5.5 0 0 1-.5.5h-13a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 .5.5v2zM6 9h4v1H6V9z"
+                    />,
+                )}
+            />
             {onOpenShelfMenu ? (
-                <ToolbarButton
+                <ToolbarIconButton
                     label={t("shelf.action.toolbar")}
                     onClick={onOpenShelfMenu}
                     color="#ea8fb3"
-                >
-                    <path
-                        fill="currentColor"
-                        d="M1.5 3.5h13v9h-13zM3 1.5h10v2H3zm1.5 5h7v1h-7zm-2 4h11v1h-11z"
-                    />
-                </ToolbarButton>
-            ) : null}
-            <ToolbarButton label={t("common.showDiffPreview")} onClick={onShowDiff} color="#8fd5ff">
-                <path
-                    fill="currentColor"
-                    d="M2 3.5A1.5 1.5 0 0 1 3.5 2h5.586a1.5 1.5 0 0 1 1.06.44l2.415 2.414A1.5 1.5 0 0 1 13 5.914V12.5a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 2 12.5v-9zm1.5-.5a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V5.914L9.086 2.5H3.5zM7 7V5h1v2h2v1H8v2H7V8H5V7h2z"
+                    icon={toolbarIcon(
+                        <path
+                            fill="currentColor"
+                            d="M1.5 3.5h13v9h-13zM3 1.5h10v2H3zm1.5 5h7v1h-7zm-2 4h11v1h-11z"
+                        />,
+                    )}
                 />
-            </ToolbarButton>
-            <ToolbarButton label={t("common.expandAll")} onClick={onExpandAll} color="#f3b1cf">
-                <ExpandAllIconGlyph />
-            </ToolbarButton>
-            <ToolbarButton label={t("common.collapseAll")} onClick={onCollapseAll} color="#f3b1cf">
-                <CollapseAllIconGlyph />
-            </ToolbarButton>
+            ) : null}
+            <ToolbarIconButton
+                label={t("common.showDiffPreview")}
+                onClick={onShowDiff}
+                color="#8fd5ff"
+                icon={toolbarIcon(<ShowDiffIconGlyph />)}
+            />
+            <ToolbarIconButton
+                label={t("common.expandAll")}
+                onClick={onExpandAll}
+                color="#f3b1cf"
+                icon={toolbarIcon(<ExpandAllIconGlyph />)}
+            />
+            <ToolbarIconButton
+                label={t("common.collapseAll")}
+                onClick={onCollapseAll}
+                color="#f3b1cf"
+                icon={toolbarIcon(<CollapseAllIconGlyph />)}
+            />
             {showAbortMerge ? (
-                <ToolbarButton
-                    label={t("merge.action.abortMerge")}
-                    onClick={onAbortMerge}
-                    showLabel
-                    prominent
-                >
+                <ToolbarButton label={t("merge.action.abortMerge")} onClick={onAbortMerge}>
                     <path fill="currentColor" d="M4 4h8v8H4z" />
                 </ToolbarButton>
             ) : null}
@@ -184,61 +200,24 @@ function CheckMark(): React.ReactElement {
     );
 }
 
+function toolbarIcon(glyph: React.ReactNode): React.ReactElement {
+    return (
+        <svg width="16" height="16" viewBox="0 0 16 16">
+            {glyph}
+        </svg>
+    );
+}
+
 function ToolbarButton({
     label,
     onClick,
-    color,
-    spin,
-    disabled,
-    showLabel,
-    prominent,
-    icon,
     children,
 }: {
     label: string;
     onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-    color?: string;
-    spin?: boolean;
-    disabled?: boolean;
-    showLabel?: boolean;
-    prominent?: boolean;
-    icon?: React.ReactElement<{
-        "aria-hidden"?: boolean;
-        focusable?: string | boolean;
-        style?: React.CSSProperties;
-    }>;
     children?: React.ReactNode;
 }): React.ReactElement {
-    const { hoverDelay, tooltipsEnabled, iconStyle } = getSettings();
-    const resolvedColor = disabled
-        ? "var(--vscode-disabledForeground)"
-        : iconStyle === "standard"
-          ? "var(--vscode-icon-foreground)"
-          : (color ?? undefined);
-    // Prominent (danger) buttons let the variant own every color — border, tint,
-    // text, and glyph — so the icon inherits the button's currentColor.
-    const svgStyle: React.CSSProperties = {
-        ...(resolvedColor && !prominent ? { color: resolvedColor } : {}),
-        ...(spin
-            ? {
-                  animation: "intelligit-spin 0.8s linear infinite",
-                  transformBox: "fill-box",
-                  transformOrigin: "center",
-                  willChange: "transform",
-              }
-            : {}),
-    };
-    const renderedIcon = icon ? (
-        React.cloneElement(icon, {
-            "aria-hidden": true,
-            focusable: "false",
-            style: { ...svgStyle, ...(icon.props.style ?? {}) },
-        })
-    ) : (
-        <svg width="16" height="16" viewBox="0 0 16 16" style={svgStyle}>
-            {children}
-        </svg>
-    );
+    const { hoverDelay, tooltipsEnabled } = getSettings();
     return (
         <Tooltip
             label={label}
@@ -247,46 +226,19 @@ function ToolbarButton({
             openDelay={hoverDelay}
             isDisabled={!tooltipsEnabled}
         >
-            {showLabel ? (
-                <Button
-                    variant={prominent ? "danger" : "toolbarGhost"}
-                    size="sm"
-                    onClick={disabled ? undefined : onClick}
-                    isDisabled={disabled}
-                    _disabled={{
-                        bg: "rgba(255,255,255,0.03)",
-                        color: "var(--vscode-disabledForeground)",
-                        cursor: "default",
-                        opacity: 0.55,
-                    }}
-                    data-refreshing={spin ? "true" : undefined}
-                    leftIcon={renderedIcon}
-                    minW="auto"
-                    h="26px"
-                    px="8px"
-                    fontSize="12px"
-                    fontWeight={600}
-                    color={prominent ? undefined : resolvedColor}
-                >
-                    {label}
-                </Button>
-            ) : (
-                <IconButton
-                    aria-label={label}
-                    variant="toolbarGhost"
-                    size="sm"
-                    onClick={disabled ? undefined : onClick}
-                    isDisabled={disabled}
-                    _disabled={{
-                        bg: "rgba(255,255,255,0.03)",
-                        color: "var(--vscode-disabledForeground)",
-                        cursor: "default",
-                        opacity: 0.55,
-                    }}
-                    data-refreshing={spin ? "true" : undefined}
-                    icon={renderedIcon}
-                />
-            )}
+            <Button
+                variant="danger"
+                size="sm"
+                onClick={onClick}
+                leftIcon={toolbarIcon(children)}
+                minW="auto"
+                h="26px"
+                px="8px"
+                fontSize="12px"
+                fontWeight={600}
+            >
+                {label}
+            </Button>
         </Tooltip>
     );
 }

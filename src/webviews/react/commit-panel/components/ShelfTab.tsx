@@ -1,20 +1,22 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Button, Flex } from "@chakra-ui/react";
 import type {
     OutboundMessage,
     PerEntryResult,
     ShelfEntry,
+    ShelfFileView,
     ShelfMutationStatus,
 } from "../../../protocol/commitPanelMessages";
-import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
+import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { ContextMenu } from "../../shared/components/ContextMenu";
+import { ChangesFileTree } from "../../shared/components/ChangesFileTree";
 import { t } from "../../shared/i18n";
+import { directoryKey, toggleMember } from "../../shared/treeExpansion";
 import { ShelfList } from "./ShelfList";
 import { resultMessage, statusMessage } from "./ShelfMessages";
 import { type ShelfContextAction } from "./ShelfRow";
 import { ShelfToolbar } from "./ShelfToolbar";
 import { UnshelveDialog, type UnshelveDialogSubmit } from "./UnshelveDialog";
-import { ShelfFileTree } from "./ShelfFileTree";
 import { CleanUpDialog } from "./CleanUpDialog";
 import {
     RenameStructuralDialog,
@@ -184,14 +186,24 @@ function nextRequestId(): string {
     shelfRequestSequence += 1;
     return `shelf-mutation-${shelfRequestSequence}`;
 }
-/** Composite key so two expanded shelves cannot share one directory's collapse state. */
-function directoryKey(shelfId: string, dirPath: string): string {
-    return `${shelfId}\n${dirPath}`;
-}
-function toggleMember(current: ReadonlySet<string>, key: string): Set<string> {
-    const next = new Set(current);
-    if (!next.delete(key)) next.add(key);
-    return next;
+type ShelfDisplayFile = WorkingFile & { shelfEntry: ShelfFileView };
+type CachedShelfDisplayFiles = {
+    source: ShelfEntry["files"];
+    files: ShelfDisplayFile[];
+};
+
+function displayFile(entry: ShelfFileView): ShelfDisplayFile {
+    const block = entry.worktreeBlock ?? entry.indexBlock;
+    const status = block?.status === "T" ? "M" : (block?.status ?? (entry.untracked ? "?" : "M"));
+    return {
+        path: block?.path ?? entry.changeId,
+        status,
+        staged: entry.indexBlock !== undefined,
+        additions: 0,
+        deletions: 0,
+        icon: entry.icon,
+        shelfEntry: entry,
+    };
 }
 /** Standalone Shelf surface. Parent owns host messages and authoritative snapshots. */
 /** The shelf file row that currently owns the tab's single selection. */
@@ -278,6 +290,23 @@ export function ShelfTab({
     > | null>(null);
     const displayedSelectedShelfId = selectionOverride ?? selectedShelfId;
     const selectedFile = liveFileSelection(fileSelection, shelves, expandedShelfIds);
+    const shelfDisplayFilesCacheRef = useRef<Map<string, CachedShelfDisplayFiles>>(new Map());
+    const shelfDisplayFilesById = useMemo(() => {
+        const next = new Map<string, CachedShelfDisplayFiles>();
+        for (const shelf of shelves) {
+            const cached = shelfDisplayFilesCacheRef.current.get(shelf.id);
+            next.set(
+                shelf.id,
+                cached?.source === shelf.files
+                    ? cached
+                    : { source: shelf.files, files: shelf.files.map(displayFile) },
+            );
+        }
+        return next;
+    }, [shelves]);
+    useEffect(() => {
+        shelfDisplayFilesCacheRef.current = shelfDisplayFilesById;
+    }, [shelfDisplayFilesById]);
     const selectedShelf = useMemo(
         () => shelves.find((shelf) => shelf.id === displayedSelectedShelfId) ?? null,
         [displayedSelectedShelfId, shelves],
@@ -592,38 +621,67 @@ export function ShelfTab({
                 renameError={renameError}
                 onSelect={selectShelf}
                 onToggleExpand={toggleShelfExpansion}
-                renderSubtree={(shelf) => (
-                    <ShelfFileTree
-                        entries={shelf.files}
-                        groupByDir={groupByDir}
-                        depth={0}
-                        selectedChangeId={
-                            selectedFile?.shelfId === shelf.id ? selectedFile.changeId : null
-                        }
-                        isDirectoryCollapsed={(path) =>
-                            collapsedDirectories.has(directoryKey(shelf.id, path))
-                        }
-                        onToggleDirectory={(path) => toggleDirectory(shelf.id, path)}
-                        folderIcon={folderIcon}
-                        folderExpandedIcon={folderExpandedIcon}
-                        folderIconsByName={folderIconsByName}
-                        onFileSelect={(entry) =>
-                            setFileSelection({ shelfId: shelf.id, changeId: entry.changeId })
-                        }
-                        onFileActivate={(entry) =>
-                            onShowDiff({
-                                type: "shelfDiff",
-                                shelfId: shelf.id,
-                                expectedGeneration: shelf.generation,
-                                changeId: entry.changeId,
-                            })
-                        }
-                        onContextMenu={(entry, x, y, target) =>
-                            openContextMenu(shelf, x, y, target, entry.changeId)
-                        }
-                        onDragStart={shelfFileDragStart(onShelfEntryDragStart, shelf)}
-                    />
-                )}
+                renderSubtree={(shelf) => {
+                    const onDragStart = shelfFileDragStart(onShelfEntryDragStart, shelf);
+                    return (
+                        <ChangesFileTree
+                            files={shelfDisplayFilesById.get(shelf.id)?.files ?? []}
+                            groupByDir={groupByDir}
+                            depth={0}
+                            selectedId={
+                                selectedFile?.shelfId === shelf.id ? selectedFile.changeId : null
+                            }
+                            getId={(file) => file.shelfEntry.changeId}
+                            isDirectoryCollapsed={(path) =>
+                                collapsedDirectories.has(directoryKey(shelf.id, path))
+                            }
+                            onToggleDirectory={(path) => toggleDirectory(shelf.id, path)}
+                            folderIcon={folderIcon}
+                            folderExpandedIcon={folderExpandedIcon}
+                            folderIconsByName={folderIconsByName}
+                            onSelect={(file) => {
+                                const entry = file.shelfEntry;
+                                setFileSelection({ shelfId: shelf.id, changeId: entry.changeId });
+                                onShowDiff({
+                                    type: "shelfDiff",
+                                    shelfId: shelf.id,
+                                    expectedGeneration: shelf.generation,
+                                    changeId: entry.changeId,
+                                });
+                            }}
+                            onActivate={(file) => {
+                                const entry = file.shelfEntry;
+                                onShowDiff({
+                                    type: "shelfDiff",
+                                    shelfId: shelf.id,
+                                    expectedGeneration: shelf.generation,
+                                    changeId: entry.changeId,
+                                });
+                            }}
+                            onContextMenu={(file, x, y, target) => {
+                                const entry = file.shelfEntry;
+                                setFileSelection({ shelfId: shelf.id, changeId: entry.changeId });
+                                openContextMenu(shelf, x, y, target, entry.changeId);
+                            }}
+                            onDragStart={
+                                onDragStart
+                                    ? (event, file) => onDragStart(event, file.shelfEntry)
+                                    : undefined
+                            }
+                            dataAttributes={(file) => ({ "shelf-file": file.shelfEntry.changeId })}
+                            emptyState={
+                                <Box
+                                    px="12px"
+                                    py="6px"
+                                    fontSize="12px"
+                                    color="var(--intelligit-pycharm-muted)"
+                                >
+                                    {t("shelf.filePane.empty")}
+                                </Box>
+                            }
+                        />
+                    );
+                }}
                 onContextMenu={(shelf, x, y, target) => openContextMenu(shelf, x, y, target)}
                 onRenameSubmit={(shelf, name) => {
                     const requestId = nextRequestId();

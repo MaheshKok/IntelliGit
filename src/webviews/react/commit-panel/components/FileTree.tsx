@@ -3,8 +3,8 @@
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { Box } from "@chakra-ui/react";
-import { SectionHeader } from "./SectionHeader";
-import { TreeEntries } from "./FileTreeEntries";
+import { SectionHeader } from "../../shared/components/SectionHeader";
+import { FileTreeRows } from "../../shared/components/FileTreeRows";
 import { useFileTree, collectAllDirPaths } from "../hooks/useFileTree";
 import { useFileDrag } from "../hooks/useFileDrag";
 import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
@@ -54,6 +54,13 @@ interface TreeRenderOptions {
     folderExpandedIcon?: ThemeTreeIcon;
     folderIconsByName?: ThemeFolderIconMap;
 }
+
+const COMMIT_PANEL_INDENT_METRICS = Object.freeze({
+    indentStep: 18,
+    indentBase: 20,
+    guideBase: 28,
+    sectionGuideLeft: 17,
+});
 
 interface FileSectionProps {
     label: string;
@@ -143,6 +150,99 @@ function FileSection({
     onFileDragEnd,
     checkboxVisibility = "visible",
 }: FileSectionProps): React.ReactElement {
+    const isDirectoryExpanded = useCallback(
+        (path: string) => expandedDirs.has(path),
+        [expandedDirs],
+    );
+    const fileRowKey = useCallback(
+        (file: WorkingFile) => `${file.path}:${file.staged ? "staged" : "unstaged"}`,
+        [],
+    );
+    const fileWiring = useCallback(
+        (file: WorkingFile, depth: number) => {
+            const isRootRow = depth === 0;
+            return {
+                isSelected: false,
+                onSelect: () => undefined,
+                onSelectWithEvent: (event: React.MouseEvent<HTMLElement>) =>
+                    onFileClick(event, file),
+                vscodeContext: JSON.stringify({
+                    webviewSection: "file",
+                    filePath: file.path,
+                    webviewIgnoredFile: file.status === "!",
+                    preventDefaultContextMenuItems: true,
+                }),
+                draggable:
+                    file.status === "?" ||
+                    (isRootRow && file.status !== "!" && Boolean(onShelfFileDragStart)),
+                onFileDragStart: (event: React.DragEvent<HTMLElement>) => {
+                    onFileDragStart?.(event, file);
+                    if (isRootRow) onShelfFileDragStart?.(event, file);
+                },
+                onFileDragEnd,
+                isDragSelected: file.status === "?" && dragSelectedPaths.has(file.path),
+                isChecked: checkedPaths.has(file.path),
+                onToggleCheck: onToggleFile,
+                checkboxVisibility,
+            };
+        },
+        [
+            checkboxVisibility,
+            checkedPaths,
+            dragSelectedPaths,
+            onFileClick,
+            onFileDragEnd,
+            onFileDragStart,
+            onShelfFileDragStart,
+            onToggleFile,
+        ],
+    );
+    const folderWiring = useCallback(
+        (folder: { descendantFiles?: WorkingFile[] }) => {
+            const descendantFiles = folder.descendantFiles ?? [];
+            return {
+                isAllChecked: getAllChecked(descendantFiles),
+                isSomeChecked: getSomeChecked(descendantFiles),
+                onToggleFolderCheck: () => onToggleFolder(descendantFiles),
+                checkboxVisibility,
+            };
+        },
+        [checkboxVisibility, getAllChecked, getSomeChecked, onToggleFolder],
+    );
+    const fileWiringsByFile = useMemo(() => {
+        const wirings = new Map<WorkingFile, ReturnType<typeof fileWiring>>();
+        const collect = (treeEntries: TreeEntry[], depth: number): void => {
+            for (const entry of treeEntries) {
+                if (entry.type === "file") wirings.set(entry.file, fileWiring(entry.file, depth));
+                else collect(entry.children, depth + 1);
+            }
+        };
+        collect(entries, 0);
+        return wirings;
+    }, [entries, fileWiring]);
+    const folderWiringsByPath = useMemo(() => {
+        const wirings = new Map<string, ReturnType<typeof folderWiring>>();
+        const collect = (treeEntries: TreeEntry[]): void => {
+            for (const entry of treeEntries) {
+                if (entry.type === "folder") {
+                    wirings.set(entry.path, folderWiring(entry));
+                    collect(entry.children);
+                }
+            }
+        };
+        collect(entries);
+        return wirings;
+    }, [entries, folderWiring]);
+    const cachedFileWiring = useCallback(
+        (file: WorkingFile, depth: number) =>
+            fileWiringsByFile.get(file) ?? fileWiring(file, depth),
+        [fileWiring, fileWiringsByFile],
+    );
+    const cachedFolderWiring = useCallback(
+        (folder: { path: string; descendantFiles?: WorkingFile[] }) =>
+            folderWiringsByPath.get(folder.path) ?? folderWiring(folder),
+        [folderWiring, folderWiringsByPath],
+    );
     return (
         <>
             <SectionHeader
@@ -150,34 +250,30 @@ function FileSection({
                 count={count}
                 stats={stats}
                 isOpen={isOpen}
-                isAllChecked={getAllChecked(files)}
-                isSomeChecked={getSomeChecked(files)}
                 onToggleOpen={onToggleOpen}
-                onToggleCheck={onToggleCheck}
-                isDragOver={isDragOver}
-                checkboxVisibility={checkboxVisibility}
+                checkbox={{
+                    isAllChecked: getAllChecked(files),
+                    isSomeChecked: getSomeChecked(files),
+                    onToggle: onToggleCheck,
+                    visibility: checkboxVisibility,
+                }}
+                drag={{ isOver: isDragOver }}
             />
             {isOpen && (
-                <TreeEntries
+                <FileTreeRows
                     entries={entries}
                     depth={0}
-                    groupByDir={treeOptions.groupByDir}
                     folderIcon={treeOptions.folderIcon}
                     folderExpandedIcon={treeOptions.folderExpandedIcon}
                     folderIconsByName={treeOptions.folderIconsByName}
-                    expandedDirs={expandedDirs}
-                    checkedPaths={checkedPaths}
-                    dragSelectedPaths={dragSelectedPaths}
-                    onToggleFile={onToggleFile}
-                    onToggleFolder={onToggleFolder}
-                    isAllChecked={getAllChecked}
-                    isSomeChecked={getSomeChecked}
-                    onToggleDir={onToggleDir}
-                    onFileClick={onFileClick}
-                    onFileDragStart={onFileDragStart}
-                    onShelfFileDragStart={onShelfFileDragStart}
-                    onFileDragEnd={onFileDragEnd}
-                    checkboxVisibility={checkboxVisibility}
+                    isDirectoryExpanded={isDirectoryExpanded}
+                    onToggleDirectory={onToggleDir}
+                    showParentPath={!treeOptions.groupByDir}
+                    indentMetrics={COMMIT_PANEL_INDENT_METRICS}
+                    rowVariant="commit-panel"
+                    fileWiring={cachedFileWiring}
+                    fileRowKey={fileRowKey}
+                    folderWiring={cachedFolderWiring}
                 />
             )}
         </>

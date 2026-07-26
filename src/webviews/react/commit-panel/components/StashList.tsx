@@ -1,21 +1,12 @@
 // Stash tree rows and the file subtree rendered beneath an expanded row.
 
-import React, { useMemo } from "react";
+import React from "react";
 import { Box, Flex } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
-import type { StashEntry, ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
-import { buildFileTree, type TreeEntry } from "../../shared/fileTree";
+import type { StashEntry, WorkingFile } from "../../../../types";
 import { ChevronIcon } from "../../shared/components/Icons";
-import { FileTreeRows, ENTRY_ROW_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 import { formatDateTime } from "../../shared/date";
-
-type StashFileContextMenuHandler = (
-    path: string,
-    x: number,
-    y: number,
-    returnFocusTarget: HTMLElement,
-) => void;
 
 /** State and callbacks for the keyboard-navigable stash row tree. */
 export interface StashListProps {
@@ -244,77 +235,6 @@ function adjacentStashIndex(
         return stashes[Math.min(stashes.length - 1, currentPosition + 1)]?.index ?? null;
     }
     return null;
-}
-
-/** Props for the file rows nested beneath one expanded stash row. */
-export interface StashFileTreeProps {
-    files: WorkingFile[];
-    groupByDir: boolean;
-    /** Indent level of the file rows; one level deeper than the owning stash row. */
-    depth: number;
-    selectedFilePath: string | null;
-    isDirectoryCollapsed: (path: string) => boolean;
-    folderIcon?: ThemeTreeIcon;
-    folderExpandedIcon?: ThemeTreeIcon;
-    folderIconsByName?: ThemeFolderIconMap;
-    onToggleDirectory: (path: string) => void;
-    onFileSelect: (path: string) => void;
-    onFileActivate: (path: string) => void;
-    onFileContextMenu: StashFileContextMenuHandler;
-}
-
-/** Read-only file rows for one stash; activation always opens that file's stash diff. */
-export function StashFileTree({
-    files,
-    groupByDir,
-    depth,
-    selectedFilePath,
-    isDirectoryCollapsed,
-    folderIcon,
-    folderExpandedIcon,
-    folderIconsByName,
-    onToggleDirectory,
-    onFileSelect,
-    onFileActivate,
-    onFileContextMenu,
-}: StashFileTreeProps): React.ReactElement {
-    const tree = useMemo<TreeEntry<WorkingFile>[]>(
-        () =>
-            groupByDir
-                ? buildFileTree(files)
-                : files.map((file) => ({ type: "file" as const, file })),
-        [files, groupByDir],
-    );
-
-    if (files.length === 0) {
-        return (
-            <Box px="12px" py="6px" fontSize="12px" color="var(--intelligit-pycharm-muted)">
-                {t("stash.noFiles")}
-            </Box>
-        );
-    }
-    return (
-        <FileTreeRows
-            entries={tree}
-            depth={depth}
-            ariaLevel={depth + 2}
-            sectionGuideLeft={ENTRY_ROW_GUIDE_LEFT}
-            showParentPath={!groupByDir}
-            folderIcon={folderIcon}
-            folderExpandedIcon={folderExpandedIcon}
-            folderIconsByName={folderIconsByName}
-            isDirectoryExpanded={(path) => !isDirectoryCollapsed(path)}
-            onToggleDirectory={onToggleDirectory}
-            fileWiring={(file) => ({
-                isSelected: selectedFilePath === file.path,
-                onSelect: () => onFileSelect(file.path),
-                onActivate: () => onFileActivate(file.path),
-                onContextMenu: (x, y, returnFocusTarget) =>
-                    onFileContextMenu(file.path, x, y, returnFocusTarget),
-                dataAttributes: { "stash-file": file.path },
-            })}
-        />
-    );
 }
 
 /** Renders a semantic branch tag icon and adjacent plain branch label. */

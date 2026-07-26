@@ -1,13 +1,15 @@
 // Neutral file-pane toolbar between the stash list and selected-file pane.
 
 import React from "react";
-import { Box, Flex, IconButton, Tooltip } from "@chakra-ui/react";
+import { Box, Flex } from "@chakra-ui/react";
 import {
     CollapseAllIconGlyph,
     ExpandAllIconGlyph,
     GroupByDirectoryIconGlyph,
+    ShowDiffIconGlyph,
 } from "../../shared/components/Icons";
 import { RefreshButton } from "../../shared/components/RefreshButton";
+import { ToolbarIconButton } from "../../shared/components/ToolbarIconButton";
 import { t } from "../../shared/i18n";
 
 /** Props for selected-stash file-pane toolbar controls. */
@@ -15,8 +17,6 @@ export interface StashToolbarProps {
     selectedIndex: number | null;
     groupByDir: boolean;
     canExpandOrCollapse: boolean;
-    hoverDelay: number;
-    tooltipsEnabled: boolean;
     isRefreshing: boolean;
     onRefresh: () => void;
     onShowStashDiff: () => void;
@@ -30,8 +30,6 @@ export function StashToolbar({
     selectedIndex,
     groupByDir,
     canExpandOrCollapse,
-    hoverDelay,
-    tooltipsEnabled,
     isRefreshing,
     onRefresh,
     onShowStashDiff,
@@ -49,87 +47,43 @@ export function StashToolbar({
             flexShrink={0}
         >
             <RefreshButton isRefreshing={isRefreshing} onRefresh={onRefresh} />
-            <StashToolbarButton
+            <ToolbarIconButton
                 label={t("common.showDiff")}
                 onClick={onShowStashDiff}
-                isDisabled={selectedIndex === null}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
-            >
-                <path
-                    fill="currentColor"
-                    d="M2.5 1.5h4v13h-4v-13zm7 0h4v13h-4v-13zM5.25 4.75 7.5 7 5.25 9.25l-.7-.7L5.6 7 4.55 5.45l.7-.7zm5.5 0 .7.7L10.4 7l1.05 1.55-.7.7L8.5 7l2.25-2.25z"
-                />
-            </StashToolbarButton>
-            <StashToolbarButton
+                disabled={selectedIndex === null}
+                presentation="stash"
+                icon={icon(<ShowDiffIconGlyph />)}
+            />
+            <ToolbarIconButton
                 label={groupByDir ? t("common.ungroupFiles") : t("common.groupByDirectory")}
                 onClick={onToggleGroupBy}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
-            >
-                <GroupByDirectoryIconGlyph />
-            </StashToolbarButton>
+                presentation="stash"
+                icon={icon(<GroupByDirectoryIconGlyph />)}
+            />
             <Box flex={1} />
-            <StashToolbarButton
+            <ToolbarIconButton
                 label={t("common.expandAll")}
                 onClick={onExpandAll}
-                isDisabled={!canExpandOrCollapse}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
-            >
-                <ExpandAllIconGlyph />
-            </StashToolbarButton>
-            <StashToolbarButton
+                disabled={!canExpandOrCollapse}
+                presentation="stash"
+                icon={icon(<ExpandAllIconGlyph />)}
+            />
+            <ToolbarIconButton
                 label={t("common.collapseAll")}
                 onClick={onCollapseAll}
-                isDisabled={!canExpandOrCollapse}
-                hoverDelay={hoverDelay}
-                tooltipsEnabled={tooltipsEnabled}
-            >
-                <CollapseAllIconGlyph />
-            </StashToolbarButton>
+                disabled={!canExpandOrCollapse}
+                presentation="stash"
+                icon={icon(<CollapseAllIconGlyph />)}
+            />
         </Flex>
     );
 }
 
-/** Renders one theme-neutral stash toolbar icon button. */
-function StashToolbarButton({
-    label,
-    onClick,
-    isDisabled,
-    hoverDelay,
-    tooltipsEnabled,
-    children,
-}: {
-    label: string;
-    onClick: () => void;
-    isDisabled?: boolean;
-    hoverDelay: number;
-    tooltipsEnabled: boolean;
-    children: React.ReactNode;
-}): React.ReactElement {
+/** Keeps the stash toolbar's 16px standard-color SVG wrapper intact. */
+function icon(glyph: React.ReactNode): React.ReactElement {
     return (
-        <Tooltip label={label} fontSize="11px" openDelay={hoverDelay} isDisabled={!tooltipsEnabled}>
-            <IconButton
-                aria-label={label}
-                icon={
-                    <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        aria-hidden
-                        style={{ color: "var(--vscode-icon-foreground)" }}
-                    >
-                        {children}
-                    </svg>
-                }
-                variant="toolbarGhost"
-                size="sm"
-                minW="26px"
-                h="26px"
-                onClick={onClick}
-                isDisabled={isDisabled}
-            />
-        </Tooltip>
+        <svg width="16" height="16" viewBox="0 0 16 16">
+            {glyph}
+        </svg>
     );
 }

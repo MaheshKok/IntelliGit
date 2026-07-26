@@ -1,7 +1,7 @@
 // Custom checkbox styled to match VS Code's native checkboxes.
 // Replaces Chakra's Checkbox to guarantee white borders on dark backgrounds.
 
-import React, { useRef, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 interface Props {
     isChecked: boolean;
@@ -61,6 +61,10 @@ const INDETERMINATE_MARK_STYLE: React.CSSProperties = {
     background: CHECK_COLOR,
     borderRadius: 1,
 };
+const CHECKBOX_FOCUS_STYLE: React.CSSProperties = {
+    outline: "2px solid var(--vscode-focusBorder, var(--intelligit-pycharm-blue))",
+    outlineOffset: "2px",
+};
 
 function VscCheckboxInner({
     isChecked,
@@ -71,6 +75,7 @@ function VscCheckboxInner({
     ariaLabel,
 }: Props): React.ReactElement {
     const inputRef = useRef<HTMLInputElement>(null);
+    const [isFocused, setIsFocused] = useState(false);
 
     useEffect(() => {
         if (inputRef.current) {
@@ -79,6 +84,10 @@ function VscCheckboxInner({
     }, [isIndeterminate]);
 
     const filled = isChecked || isIndeterminate;
+    const shellStyle = {
+        ...(filled ? CHECKBOX_FILLED_STYLE : CHECKBOX_UNCHECKED_STYLE),
+        ...(isFocused ? CHECKBOX_FOCUS_STYLE : {}),
+    };
 
     return (
         <span style={CHECKBOX_CONTAINER_STYLE}>
@@ -93,9 +102,11 @@ function VscCheckboxInner({
                     e.stopPropagation();
                     onChange();
                 }}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setIsFocused(false)}
                 style={CHECKBOX_INPUT_STYLE}
             />
-            <span style={filled ? CHECKBOX_FILLED_STYLE : CHECKBOX_UNCHECKED_STYLE}>
+            <span data-focused={isFocused ? "true" : undefined} style={shellStyle}>
                 {isChecked && !isIndeterminate && (
                     <svg width="9" height="9" viewBox="0 0 12 12">
                         <path

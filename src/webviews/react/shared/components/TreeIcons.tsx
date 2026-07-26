@@ -54,7 +54,7 @@ function ThemeGlyphIcon({
  * URI or glyph character, it takes precedence over the default file icon.
  * Otherwise the generic `FileIcon` SVG is used with the status-appropriate color.
  */
-export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactElement {
+function TreeFileIconInner({ status, icon }: TreeFileIconProps): React.ReactElement {
     const color =
         status === "D"
             ? "var(--vscode-disabledForeground)"
@@ -97,6 +97,9 @@ export function TreeFileIcon({ status, icon }: TreeFileIconProps): React.ReactEl
         </Box>
     );
 }
+
+/** Memoized shared file icon used by file tree rows. */
+export const TreeFileIcon = React.memo(TreeFileIconInner);
 
 /**
  * Resolves a folder tree icon that reflects the expanded/collapsed state.

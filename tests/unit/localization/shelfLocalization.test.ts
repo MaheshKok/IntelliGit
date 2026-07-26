@@ -17,7 +17,6 @@ const shelfWebviewComponents = [
     "ShelveDialog.tsx",
     "ShelfList.tsx",
     "ShelfRow.tsx",
-    "ShelfFileTree.tsx",
     "TabBar.tsx",
     "Toolbar.tsx",
     "CleanUpDialog.tsx",
