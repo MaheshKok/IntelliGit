@@ -215,3 +215,108 @@ VERDICT: OK
 typecheck 0 (3.6s) · lint:strict 0 (9.4s) · react-doctor 0 (7.3s) ·
 test 0 (28.5s) · deps:check:strict 0 (0.7s) · format:check 0 (2.0s) —
 ALL GREEN. Phase 2 ACCEPTED; root commits.
+
+#### Phase 2 commit
+
+6172ceb5db3e98f140854303e600d40090d76787
+`refactor(webview): shared ChangesFileTree + treeExpansion, fix shared-layer inversion`
+22 files ±(594/502); StatusBadge recorded as rename (90% similarity).
+Post-commit gate: tree clean (porcelain 0), HEAD advanced 408efe52 → 6172ceb5.
+
+### Phase 3 — Round 1 — Codex build (gpt-5.6-terra/high)
+
+BASE_HEAD 6172ceb5db3e98f140854303e600d40090d76787
+SID(prev) 019f9bfc-044c-7100-9476-516a4015bc99 → SID(new)
+019f9c1d-8da0-7210-b164-ef4f82b2d01f (fresh session). Heartbeat armed
+(watch 600s). Work order: p3-build.md — ADDITIVE FileTreeRows capabilities
+(checkbox tri-state per FileRow/FolderRow contracts, drag wiring, isCurrent,
+metrics prop with commit-tree constants expressible), VscCheckbox → shared,
+export TreeFolderRow/TreeFileRow/TreeIndentGuides, new unit tests incl.
+no-options default-markup-unchanged proof; existing tests ZERO modifications
+except VscCheckbox import paths.
+Telemetry: PEAK=139895 LAST=139895 PCT=54% NONRESUMABLE=no
+Run: RC=0, OUT non-empty (4256B), thread.started seen. Diff 7 M + 1 D + 2 new
+±(302/271); FileTreeRows.tsx reworked to 533L with extracted subcomponents.
+Codex report: 9/9 DONE; RED-first (4 intended failures → GREEN); focused
+72 tests/6 files, typecheck, lint:strict, knip, format green. Deviation:
+react-doctor exit 0 with 94 pre-existing repo-wide optional warnings (same as
+Phase 2 baseline).
+
+#### Verifier Gate-5 report (FRESH opus, fable-method; condensed, verdict intact)
+
+HEAD == BASE_HEAD; scope exactly 7 M + 1 D + 2 untracked; no lockfile diff;
+verifier made zero writes to this worktree (experiments in throwaway detached
+worktrees, removed after). Gates run by verifier: FULL test 126 files/1900,
+focused 6 files/72, drag suites 22/22 unmodified, typecheck, lint:strict
+(complexity ≤25 despite +420 lines), react-doctor, deps:check:strict,
+format:check — all exit 0.
+Additive parity PROVEN independently: rendered the new test's fixture against
+BASE_HEAD FileTreeRows in a detached worktree — byte-identical innerHTML incl.
+emotion classes; mutation-tested (GUIDE_STEP_FROM_PARENT 10→11 → test FAILS,
+real regression detector); resolveIndentMetrics identity proven (BASE slope-1
+forms ≡ DEFAULT+(s−16)); both consumers pass none of the new options → every
+new branch inert. isCurrent "ARIA-only" claim CONFIRMED correct (BASE FileRow
+keys bg/color off isDragSelected, aria-current only for isCurrent).
+Deliverables 2-6, 8, 9 DONE (ui-smoke diff exactly the 1-line import swap).
+Deliverable 1 NOT-DONE — checkbox SEMANTICS diverge from FileRow:
+MAJOR-1 click leak — FileTreeRows.tsx:466 bare onClick={onSelect}; BASE
+FileRow.tsx:153-156 guards INPUT targets; measured: checkbox click fires BOTH
+onToggleCheck AND onSelect (folder row has the guard — asymmetry = oversight).
+MAJOR-2 Space hijack — keydown :282-286 preventDefaults Space on any target;
+measured on focused checkbox: defaultPrevented=true, rowSelect=1,
+checkToggle=0 — checkbox keyboard-dead (BASE FileRow has no Space handler).
+MAJOR-3 ~12 JSDoc/rationale comments deleted (geometry derivation
+CHEVRON_HALF/GUIDE_STEP_FROM_PARENT/ENTRY_ROW_GUIDE_LEFT now bare magics;
+VscCheckbox export JSDoc) — deletion not additive.
+MINOR ×4 — hidden-mode spacer skipped when onToggleCheck absent; dead
+`highlighted` field; aria-hidden added to spacers vs BASE; VscCheckbox move
+included gratuitous restyling.
+Test blind spot: capability test never asserts onSelect/onToggleDirectory NOT
+fired (exactly where both MAJORs live); no keyboard coverage.
+Material risk: additively safe TODAY (no consumer passes onToggleCheck), but
+Phase 4 would ship checkbox-click-opens-diff + keyboard-dead checkbox.
+VERDICT: REJECT
+
+#### Claude's verdict (root)
+
+HEAD gate restated by root: BASE_HEAD 6172ceb5db3e98f140854303e600d40090d76787
+== HEAD 6172ceb5db3e98f140854303e600d40090d76787 via `git rev-parse HEAD`.
+Root spot-read: FileTreeRows.tsx signatures (533L, clean decomposition:
+TreeFileCheckbox/TreeFileLabel/TreeFileStats/useTreeFileRowInteractions;
+TreeIndentMetrics + resolveIndentMetrics legacy compat). REJECT CONFIRMED —
+the two measured behavior defects are exactly the Phase-4 drop-in contract,
+and comment deletion violates the additive constraint. Not reviewer-scale
+(behavior fixes + keyboard test coverage) → Codex fix round 1.
+Routing (binding, helpers.py route fix 1): EFFORT=high MODE=fresh.
+
+### Phase 3 — Fix round 1 — Codex (gpt-5.6-terra/high, fresh session)
+
+BASE_HEAD unchanged 6172ceb5db3e98f140854303e600d40090d76787 (tree carries
+Phase 3 diff uncommitted).
+SID(prev) 019f9c1d-8da0-7210-b164-ef4f82b2d01f → SID(new)
+019f9c3b-5670-78a2-841a-91094c330c14 (fresh session). Heartbeat armed
+(watch 600s). Work order: p3-fix1.md — self-contained defect list (MAJOR 1-3 +
+MINOR 4a-d verbatim with file:lines + measured evidence), RED-first negative
+click assertions + keyboard tests, comment restoration diffed from
+`git show HEAD:`, VscCheckbox pure-move revert; existing tests untouched;
+capability test file extendable.
+Fix telemetry: PEAK=121949 LAST=121949 PCT=47% NONRESUMABLE=no.
+
+**Codex fix report (condensed):** all 7 findings FIXED — (1) MAJOR click-leak: file row onClick guarded by shared `isCheckboxInput()` (tagName INPUT), matching FolderRow and BASE FileRow.tsx:153-156; RED evidence "expected spy to not be called... actually called 1 times" → GREEN. (2) MAJOR Space hijack: keydown exempts checkbox targets — native toggle restored; RED defaultPrevented=true/rowSelect=1 → GREEN defaultPrevented=false/rowSelect=0. (3) MAJOR comments: rationale comments restored (indent-geometry derivation, VscCheckbox JSDoc), verified against HEAD. (4a) hidden-mode 14px spacer reserved before the toggle-wiring check; (4b) dead `highlighted` field removed; (4c) spacers carry no aria-hidden (BASE markup parity); (4d) VscCheckbox reverted to a byte-identical move (diff vs `git show HEAD:` exit 0). Deviation noted by Codex: the Phase-3-local spacer assertion tightened from "aria-hidden allowed" to "none" — verifier judged acceptable, net-positive.
+
+**Round verifier re-verification (same lane via SendMessage): VERDICT: ACCEPT.** All 7 re-measured at the REJECT's layer with positive controls: checkbox click → fileSelect=0 (control: row click still selects); Space on checkbox → defaultPrevented=false, rowSelect=0 (controls: row Space rowSelect=1 defaultPrevented=true; row Enter activate=1); restored comments TRUE vs code and measured render; byte-parity snapshot UNCHANGED and passing (not re-baselined); focused 7 files green; FULL suite 126 files / 1902 tests green; existing-test edits still exactly the 1-line ui-smoke import swap. 2 NEW MINOR, non-blocking: NEW-1 keydown guard swallowed ALL keys from a checkbox target incl. Enter — BASE FileRow.tsx:61-75 fires onActivate on Enter with no target guard; NEW-2 folder-row hidden-slot reservation had no direct test.
+
+**Root verdict: ACCEPT** — fix round 1 closes the REJECT. NEW-MINOR triage (root edits, reviewer-scale, RED-first):
+- NEW-1 FIXED by root: the divergence is a strict-parity break that would surface in Phase 4's byte-for-byte gate, so it is fixed now rather than noted. Guard narrowed to the Space branch only in useTreeFileRowInteractions (FileTreeRows.tsx) — Enter and context-menu keys stay row-level from any target, per the BASE contract. RED first: new test "routes Enter from the checkbox to row activation, matching FileRow" failed pre-fix (defaultPrevented=false, activate=0), GREEN post-fix.
+- NEW-2 FIXED by root: new test "reserves the hidden folder checkbox slot" mirrors the file-row one (14px×14px spacer before the folder icon, no aria-hidden) — green immediately (coverage gap, not new behavior).
+Root-edit evidence: capabilities test 7→9 tests; focused battery 7 files / 80 tests green (3+13+4+3+9+24+24); typecheck and lint:strict clean; test file prettier-written after edits. Root edits flagged to the final pre-commit verifier — root does not self-certify.
+
+#### Final pre-commit verifier (fresh general-purpose, opus) — VERDICT: OK
+
+HEAD gate 6172ceb5 exact; scope = the expected 10 paths exactly. ROOT EDIT 1 confirmed: (a) shared keydown matches BASE handleFileRowKeyDown (FileRow.tsx:60-80) — Enter and context-menu unguarded row-level, Space absent in BASE / checkbox-exempt in shared; (b) Space guard intact at FileTreeRows.tsx:319, MAJOR-2 not regressed, empirically green; (c) function diff vs BASE is exactly the Space guard + comment, a boolean-equivalent merge of two early returns (`if(A)return; if(B)return;` ≡ `if(A||B)return;`, both operands side-effect-free), and an el→element rename — nothing else (checked against BASE rather than the uncommitted intermediate, a stronger check). ROOT EDIT 2 confirmed: Enter test genuinely RED vs the pre-edit guard (two independent discriminating assertions, plus onSelect-not-called pins the `onActivate ?? onSelect` precedence); folder-slot test targets the real hidden spacer (without it, previousElementSibling would be the 16px chevron svg, not 14×14); byte-parity snapshot literal untouched (prettier never reformats template-literal contents; literal contains no checkbox markup — genuinely pre-extension, not re-baselined). Stronger parity evidence: `git diff tests/` = exactly 1 changed line repo-wide under tests/ (the ui-smoke import swap), so every BASE-era suite is unmodified AND green; resolveIndentMetrics legacy conversion re-derived exact for ALL inputs (indentBase = L+2, guideBase = L+10 ≡ BASE formulas; stash/shelf L=22 → 24/32 mathematically identical). Standing checks: focused 7 files / 80 tests; typecheck / lint:strict / knip / prettier exit 0/0/0/0; VscCheckbox move `diff -u` vs HEAD exit 0 byte-for-byte; consumers = 4 files × 1 import line each; spec deliverables all verified at the code layer (verifier notes the spec section numbers 4 deliverables; the work order's 9 was the expanded form). Beyond brief: verifier also ran react-doctor (exit 0), format:check (exit 0), and the FULL suite — 126 files / 1904 tests green (= 1902 + root's 2; arithmetic confirms no hidden changes). Findings, none blocking: MINOR latent — `isCheckboxInput` (FileTreeRows.tsx:577-579) matches any `tagName === "INPUT"`, not specifically `type="checkbox"`; name is broader than the check, but the behavior is byte-identical to the BASE FileRow.tsx:154 guard, so narrowing it would diverge from BASE — accepted-and-noted, added to the surface-to-human list. MINOR cosmetic — root's claim said tests were "appended"; they were inserted beside related tests (better placement, imprecise claim). SectionHeader.tsx edit judged NOT a Non-goals violation (it is the mandated VscCheckbox import swap). Nothing blocks the commit.
+
+Root: both MINORs accepted-and-noted. Proceeding to root proof run + commit.
+
+#### Proof + commit
+
+Root proof run (run-proof.py → p3-proof.log), all 6 gates exit 0: typecheck 0 (3.8s); lint:strict 0 (9.4s); react-doctor 0 (7.4s — 94 pre-existing optional warnings, unchanged repo baseline); test 0 — 126 files / 1904 tests passed (28.8s); deps:check:strict 0 (0.7s); format:check 0 (2.0s).

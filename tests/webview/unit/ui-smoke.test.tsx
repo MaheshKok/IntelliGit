@@ -25,7 +25,7 @@ import { IndentGuides } from "../../../src/webviews/react/commit-panel/component
 import { SectionHeader } from "../../../src/webviews/react/commit-panel/components/SectionHeader";
 import { TabBar } from "../../../src/webviews/react/commit-panel/components/TabBar";
 import { Toolbar } from "../../../src/webviews/react/commit-panel/components/Toolbar";
-import { VscCheckbox } from "../../../src/webviews/react/commit-panel/components/VscCheckbox";
+import { VscCheckbox } from "../../../src/webviews/react/shared/components/VscCheckbox";
 import { CommitChecksButton } from "../../../src/webviews/react/commit-list/CommitChecksPopover";
 import { StatusBadge } from "../../../src/webviews/react/shared/components/StatusBadge";
 import { TreeFileIcon } from "../../../src/webviews/react/shared/components/TreeIcons";

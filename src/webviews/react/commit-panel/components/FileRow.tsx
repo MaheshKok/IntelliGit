@@ -3,7 +3,7 @@
 
 import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
-import { VscCheckbox } from "./VscCheckbox";
+import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import { StatusBadge } from "../../shared/components/StatusBadge";
 import { TreeFileIcon } from "../../shared/components/TreeIcons";

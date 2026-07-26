@@ -5,7 +5,7 @@ import React from "react";
 import { Flex, Box } from "@chakra-ui/react";
 import { SYSTEM_FONT_STACK } from "../../../../utils/constants";
 import type { ThemeFolderIconMap, ThemeTreeIcon } from "../../../../types";
-import { VscCheckbox } from "./VscCheckbox";
+import { VscCheckbox } from "../../shared/components/VscCheckbox";
 import { IndentGuides, INDENT_BASE, INDENT_STEP } from "./IndentGuides";
 import { TreeFolderIcon } from "../../shared/components/TreeIcons";
 import { ChevronIcon } from "../../shared/components/Icons";
