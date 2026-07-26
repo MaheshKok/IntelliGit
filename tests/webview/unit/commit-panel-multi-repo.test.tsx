@@ -311,6 +311,9 @@ describe("commit panel multi-repository view", () => {
         expect(
             document.querySelectorAll('[data-testid="repository-accordion-content"]'),
         ).toHaveLength(0);
+        expect(
+            document.querySelectorAll('[data-testid="repository-accordion-guide"]'),
+        ).toHaveLength(0);
         expect(document.querySelector('[data-testid="tabbar"]')).toBeTruthy();
         expect(
             document.querySelector('[data-testid="commit-files"][data-root="/repo-a"]')
@@ -338,6 +341,11 @@ describe("commit panel multi-repository view", () => {
             expect(row(root).querySelector('[data-testid="repository-accordion-content"]')).toBe(
                 content,
             );
+            const guide = row(root).querySelector<HTMLElement>(
+                '[data-testid="repository-accordion-guide"]',
+            );
+            expect(guide).not.toBeNull();
+            expect(window.getComputedStyle(guide as HTMLElement).left).toBe("17px");
         }
     });
 

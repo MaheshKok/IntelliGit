@@ -10,6 +10,7 @@ import { StashUnstashDialog } from "./StashUnstashDialog";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { ChangesFileTree } from "../../shared/components/ChangesFileTree";
+import { COMMIT_PANEL_SECTION_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 import { directoryKey, toggleMember } from "../../shared/treeExpansion";
 
@@ -355,6 +356,7 @@ export function StashTab({
                 files={files}
                 groupByDir={groupByDir}
                 depth={0}
+                sectionGuideLeft={COMMIT_PANEL_SECTION_GUIDE_LEFT}
                 selectedId={fileSelection.stashHash === stash.hash ? fileSelection.path : null}
                 getId={(file) => file.path}
                 isDirectoryCollapsed={(path) =>

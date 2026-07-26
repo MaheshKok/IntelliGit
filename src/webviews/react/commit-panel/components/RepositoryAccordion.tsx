@@ -7,6 +7,10 @@ import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
 import { ShelfTab } from "./ShelfTab";
 import { isActiveShelf } from "./ShelfList";
+import {
+    COMMIT_PANEL_INDENT_GUIDE_COLOR,
+    COMMIT_PANEL_SECTION_GUIDE_LEFT,
+} from "../../shared/components/FileTreeRows";
 import { useCheckedFiles } from "../hooks/useCheckedFiles";
 import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
@@ -348,7 +352,7 @@ export function RepositoryAccordion({
                 minH="32px"
                 px="8px"
                 py="4px"
-                bg="var(--intelligit-pycharm-header)"
+                bg="var(--intelligit-pycharm-panel)"
                 color="var(--intelligit-pycharm-foreground)"
                 textAlign="left"
                 transition="background-color 120ms ease-out"
@@ -439,7 +443,20 @@ export function RepositoryAccordion({
                     h={isOnlyRepository ? "100%" : "520px"}
                     minH={isOnlyRepository ? 0 : "360px"}
                     overflow="hidden"
+                    position="relative"
                 >
+                    <Box
+                        aria-hidden
+                        data-testid="repository-accordion-guide"
+                        position="absolute"
+                        top={0}
+                        bottom={0}
+                        left={`${COMMIT_PANEL_SECTION_GUIDE_LEFT}px`}
+                        w="1px"
+                        bg={COMMIT_PANEL_INDENT_GUIDE_COLOR}
+                        pointerEvents="none"
+                        zIndex={1}
+                    />
                     <Box
                         data-testid="repository-accordion-content"
                         data-repository-root={repository.root}
@@ -447,7 +464,7 @@ export function RepositoryAccordion({
                         minW={0}
                         minH={0}
                         overflow="hidden"
-                        pl="12px"
+                        pl="19px"
                     >
                         <TabBar
                             stashCount={repository.stashes.length}

@@ -43,7 +43,7 @@ export function StashToolbar({
             gap="2px"
             minH="30px"
             px="6px"
-            bg="var(--intelligit-pycharm-header)"
+            bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >

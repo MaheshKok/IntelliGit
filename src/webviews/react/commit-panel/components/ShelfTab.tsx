@@ -10,6 +10,7 @@ import type {
 import type { ThemeFolderIconMap, ThemeTreeIcon, WorkingFile } from "../../../../types";
 import { ContextMenu } from "../../shared/components/ContextMenu";
 import { ChangesFileTree } from "../../shared/components/ChangesFileTree";
+import { COMMIT_PANEL_SECTION_GUIDE_LEFT } from "../../shared/components/FileTreeRows";
 import { t } from "../../shared/i18n";
 import { directoryKey, toggleMember } from "../../shared/treeExpansion";
 import { ShelfList } from "./ShelfList";
@@ -628,6 +629,7 @@ export function ShelfTab({
                             files={shelfDisplayFilesById.get(shelf.id)?.files ?? []}
                             groupByDir={groupByDir}
                             depth={0}
+                            sectionGuideLeft={COMMIT_PANEL_SECTION_GUIDE_LEFT}
                             selectedId={
                                 selectedFile?.shelfId === shelf.id ? selectedFile.changeId : null
                             }

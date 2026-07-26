@@ -21,6 +21,8 @@ export interface ChangesFileTreeProps<F extends TreeRowFile> {
     onDragStart?: (event: React.DragEvent<HTMLElement>, file: F) => void;
     dataAttributes: (file: F) => Record<string, string> | undefined;
     emptyState?: React.ReactNode;
+    /** Outer guide anchor; entry trees retain the 22px default unless overridden. */
+    sectionGuideLeft?: number;
 }
 
 /** Generic changes-tree adapter; callers own domain identity, actions, and empty UI. */
@@ -28,6 +30,7 @@ export function ChangesFileTree<F extends TreeRowFile>({
     files,
     groupByDir,
     depth,
+    sectionGuideLeft = ENTRY_ROW_GUIDE_LEFT,
     selectedId,
     getId,
     isDirectoryCollapsed,
@@ -78,7 +81,7 @@ export function ChangesFileTree<F extends TreeRowFile>({
             entries={tree}
             depth={depth}
             ariaLevel={depth + 2}
-            sectionGuideLeft={ENTRY_ROW_GUIDE_LEFT}
+            sectionGuideLeft={sectionGuideLeft}
             showParentPath={!groupByDir}
             folderIcon={folderIcon}
             folderExpandedIcon={folderExpandedIcon}

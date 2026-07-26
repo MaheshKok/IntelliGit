@@ -91,7 +91,7 @@ export function Toolbar({
             gap="2px"
             px="6px"
             minH="30px"
-            bg="var(--intelligit-pycharm-header)"
+            bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
             w="100%"

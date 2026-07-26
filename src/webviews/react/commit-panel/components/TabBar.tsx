@@ -103,7 +103,7 @@ export function TabBar({
         >
             <Flex
                 data-testid="commit-panel-tab-row"
-                bg="var(--intelligit-pycharm-header)"
+                bg="var(--intelligit-pycharm-panel)"
                 borderBottom="1px solid var(--intelligit-pycharm-border)"
                 flexShrink={0}
                 align="stretch"

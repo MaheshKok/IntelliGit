@@ -69,7 +69,7 @@ export function ShelfToolbar({
             minH="30px"
             px="6px"
             gap="2px"
-            bg="var(--intelligit-pycharm-header)"
+            bg="var(--intelligit-pycharm-panel)"
             borderBottom="1px solid var(--intelligit-pycharm-border)"
             flexShrink={0}
         >
