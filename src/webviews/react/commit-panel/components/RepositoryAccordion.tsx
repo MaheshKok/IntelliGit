@@ -59,10 +59,13 @@ function savedObjectByRepository(saved: SavedWebviewState, key: string): Record<
 }
 
 function branchSummary(repository: RepositoryCommitPanelState): string | null {
-    if (!repository.currentBranchName) return null;
-    return repository.currentBranchUpstream
-        ? `${repository.currentBranchName} → ${repository.currentBranchUpstream}`
-        : repository.currentBranchName;
+    return repository.currentBranchName;
+}
+
+/** Uses the Worktrees section's short-name convention while retaining repository labels unchanged. */
+function displayRepositoryLabel(repository: RepositoryCommitPanelState): string {
+    if (repository.kind !== "worktree") return repository.label;
+    return repository.label.split(/[\\/]/).filter(Boolean).pop() ?? repository.label;
 }
 
 function repositoryScope(root: string): { repositoryRoot?: string } {
@@ -101,6 +104,7 @@ export function RepositoryAccordion({
         onMessage: (message) => vscode.postMessage(message),
     });
     const summary = branchSummary(repository);
+    const displayLabel = displayRepositoryLabel(repository);
     const canCommit = canRunCommitAction(
         repository.isAmend,
         checkedPaths.size,
@@ -386,7 +390,7 @@ export function RepositoryAccordion({
                     )}
                 </Box>
                 <Box as="span" flexShrink={0} fontSize="13px" fontWeight={600}>
-                    {repository.label}
+                    {displayLabel}
                 </Box>
                 {summary ? (
                     <Flex

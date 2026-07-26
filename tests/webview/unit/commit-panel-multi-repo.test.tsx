@@ -377,6 +377,33 @@ describe("commit panel multi-repository view", () => {
         expect(row("/repo-b").textContent).toContain("Repo B");
     });
 
+    it("renders a worktree's short name before its local branch", async () => {
+        await renderApp();
+        await sendHostMessage({
+            type: "setRepositories",
+            repositories: [
+                { root: "/repo-a", label: "Repo A", kind: "repository", changedFileCount: 1 },
+                {
+                    root: "/repo-b",
+                    label: ".claude/worktrees/dry-components",
+                    kind: "worktree",
+                    changedFileCount: 1,
+                },
+            ],
+            activeRepositoryRoot: "/repo-a",
+        });
+        await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
+        await sendHostMessage(
+            snapshot("/repo-b", ".claude/worktrees/dry-components", "src/b.ts"),
+        );
+
+        const text = header("/repo-b").textContent ?? "";
+        expect(text).toContain("dry-components");
+        expect(text).not.toContain(".claude/worktrees/dry-components");
+        expect(text.indexOf("dry-components")).toBeLessThan(text.indexOf("feature"));
+        expect(text).not.toContain("origin/feature");
+    });
+
     it("renders each native repository kind icon immediately after its chevron", async () => {
         await renderApp();
         await hydrateTwoRepositories();
