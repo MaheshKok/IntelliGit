@@ -44,6 +44,7 @@ export interface CommitTabProps {
     onPush: () => void;
     canPush: boolean;
     pushLabel: string;
+    currentBranchAhead?: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
     groupByDir: boolean;

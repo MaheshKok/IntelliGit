@@ -221,6 +221,7 @@ export function RepositoryAccordion({
             onPush={handlePush}
             canPush={canPush}
             pushLabel={pushLabel}
+            currentBranchAhead={repository.currentBranchAhead}
             currentBranchName={repository.currentBranchName}
             currentBranchUpstream={repository.currentBranchUpstream}
             folderIcon={repository.folderIcon}
@@ -412,16 +413,6 @@ export function RepositoryAccordion({
                         >
                             {summary}
                         </Box>
-                        {repository.currentBranchAhead > 0 ? (
-                            <Box as="span" flexShrink={0} color="var(--intelligit-pycharm-added)">
-                                ↑{repository.currentBranchAhead}
-                            </Box>
-                        ) : null}
-                        {repository.currentBranchBehind > 0 ? (
-                            <Box as="span" flexShrink={0} color="var(--intelligit-pycharm-deleted)">
-                                ↓{repository.currentBranchBehind}
-                            </Box>
-                        ) : null}
                     </Flex>
                 ) : (
                     <Box as="span" flex={1} />

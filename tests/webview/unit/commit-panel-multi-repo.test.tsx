@@ -393,15 +393,22 @@ describe("commit panel multi-repository view", () => {
             activeRepositoryRoot: "/repo-a",
         });
         await sendHostMessage(snapshot("/repo-a", "Repo A", "src/a.ts"));
-        await sendHostMessage(
-            snapshot("/repo-b", ".claude/worktrees/dry-components", "src/b.ts"),
-        );
+        const worktreeSnapshot = snapshot(
+            "/repo-b",
+            ".claude/worktrees/dry-components",
+            "src/b.ts",
+        ) as Record<string, unknown>;
+        worktreeSnapshot.currentBranchAhead = 1;
+        worktreeSnapshot.currentBranchBehind = 1;
+        await sendHostMessage(worktreeSnapshot);
 
         const text = header("/repo-b").textContent ?? "";
         expect(text).toContain("dry-components");
         expect(text).not.toContain(".claude/worktrees/dry-components");
         expect(text.indexOf("dry-components")).toBeLessThan(text.indexOf("feature"));
         expect(text).not.toContain("origin/feature");
+        expect(text).not.toContain("↑1");
+        expect(text).not.toContain("↓1");
     });
 
     it("renders each native repository kind icon immediately after its chevron", async () => {

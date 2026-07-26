@@ -128,6 +128,7 @@ function CommitTabLayout({
                     canCommit={props.canCommit}
                     canPush={props.canPush}
                     pushLabel={props.pushLabel}
+                    currentBranchAhead={props.currentBranchAhead}
                     currentBranchName={props.currentBranchName}
                     currentBranchUpstream={props.currentBranchUpstream}
                 />

@@ -17,6 +17,7 @@ interface Props {
     canCommit: boolean;
     canPush: boolean;
     pushLabel: string;
+    currentBranchAhead?: number;
     currentBranchName: string | null;
     currentBranchUpstream: string | null;
 }
@@ -54,6 +55,7 @@ export function CommitArea({
     canCommit,
     canPush,
     pushLabel,
+    currentBranchAhead = 0,
     currentBranchName,
     currentBranchUpstream,
 }: Props): React.ReactElement {
@@ -155,6 +157,11 @@ export function CommitArea({
                     sx={isPushVisuallyDisabled ? disabledButtonStyles : undefined}
                 >
                     {t(pushLabel)}
+                    {currentBranchAhead > 0 ? (
+                        <Box as="span" data-testid="push-ahead-count" ml="4px">
+                            ↑{currentBranchAhead}
+                        </Box>
+                    ) : null}
                 </Button>
             </Flex>
         </Flex>
