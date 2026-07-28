@@ -313,5 +313,6 @@
     "stash.dialog.invalidBranch": "有効なブランチ名を入力してください。",
     "stash.fileAction.openDiff": "差分を開く",
     "stash.fileAction.editSource": "ソースを編集",
-    "stash.fileAction.cherryPickSelectedChanges": "選択した変更をチェリーピック"
+    "stash.fileAction.cherryPickSelectedChanges": "選択した変更をチェリーピック",
+    "a11y.resizeRepositoryColumn": "リポジトリ列のサイズを変更"
 }

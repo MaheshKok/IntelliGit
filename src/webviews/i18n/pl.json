@@ -334,5 +334,6 @@
     "stash.dialog.invalidBranch": "Wprowadź prawidłową nazwę gałęzi.",
     "stash.fileAction.openDiff": "Otwórz różnice",
     "stash.fileAction.editSource": "Edytuj źródło",
-    "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick wybranych zmian"
+    "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick wybranych zmian",
+    "a11y.resizeRepositoryColumn": "Zmień rozmiar kolumny repozytorium"
 }

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import { Box, Flex } from "@chakra-ui/react";
-import { VscRepo, VscRepoForked } from "react-icons/vsc";
+import { VscRepo } from "react-icons/vsc";
 import { TabBar } from "./TabBar";
 import { CommitTab } from "./CommitTab";
 import { StashTab } from "./StashTab";
@@ -16,7 +16,7 @@ import { useCheckedFiles } from "../hooks/useCheckedFiles";
 import { useShelfDrag } from "../hooks/useShelfDrag";
 import { getVsCodeApi } from "../hooks/useVsCodeApi";
 import { canRunCommitAction } from "../commitEligibility";
-import { ChevronIcon } from "../../shared/components/Icons";
+import { ChevronIcon, WorktreeSmallIcon } from "../../shared/components/Icons";
 import { t } from "../../shared/i18n";
 import type { CommitPanelAction, RepositoryCommitPanelState } from "../types";
 
@@ -386,12 +386,7 @@ export function RepositoryAccordion({
                     color="var(--vscode-descriptionForeground)"
                 >
                     {repository.kind === "worktree" ? (
-                        <VscRepoForked
-                            size={16}
-                            aria-hidden
-                            focusable="false"
-                            style={{ color: "var(--vscode-descriptionForeground)" }}
-                        />
+                        <WorktreeSmallIcon color="var(--vscode-descriptionForeground)" />
                     ) : (
                         <VscRepo
                             size={16}

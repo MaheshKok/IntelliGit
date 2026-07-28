@@ -91,11 +91,14 @@ import {
 import { abortMergeWithConfirmation } from "./mergeAbort";
 import { ShelfConflictEditorPanel } from "./ShelfConflictEditorPanel";
 interface PersistedColumnWidths {
+    repositoryWidth: number;
     branchWidth: number;
     graphWidth: number;
     infoWidth: number;
     commitPanelWidth: number;
 }
+
+const DEFAULT_REPOSITORY_COLUMN_WIDTH = 168;
 
 interface UndockedRepositoryData {
     branches: Branch[];
@@ -118,13 +121,15 @@ interface UndockedViewProviderOptions {
 /**
  * Reads persisted undocked column widths while tolerating older payload shapes.
  *
- * Older workspaces may not contain `graphWidth`; in that case the previous `infoWidth` value is
- * used as a compatible fallback. Non-finite or incomplete payloads are rejected so stale memento
- * data cannot push invalid layout sizes into the webview.
+ * Older workspaces may not contain `graphWidth` or `repositoryWidth`; compatible
+ * fallbacks preserve the former four widths without rejecting the whole layout.
+ * Non-finite or incomplete payloads are rejected so stale memento data cannot
+ * push invalid layout sizes into the webview.
  */
 function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | undefined {
     if (!value || typeof value !== "object") return undefined;
     const saved = value as Record<string, unknown>;
+    const repositoryWidth = saved.repositoryWidth;
     const branchWidth = saved.branchWidth;
     const graphWidth = saved.graphWidth;
     const infoWidth = saved.infoWidth;
@@ -140,6 +145,10 @@ function migratePersistedColumnWidths(value: unknown): PersistedColumnWidths | u
         return undefined;
     }
     return {
+        repositoryWidth:
+            typeof repositoryWidth === "number" && Number.isFinite(repositoryWidth)
+                ? repositoryWidth
+                : DEFAULT_REPOSITORY_COLUMN_WIDTH,
         branchWidth,
         graphWidth:
             typeof graphWidth === "number" && Number.isFinite(graphWidth) ? graphWidth : infoWidth,
@@ -913,6 +922,7 @@ export class UndockedViewProvider {
                 break;
             case "columnWidths":
                 await this.workspaceState?.update(UndockedViewProvider.COLUMN_WIDTHS_KEY, {
+                    repositoryWidth: assertNumber(msg.repositoryWidth, "repositoryWidth"),
                     branchWidth: assertNumber(msg.branchWidth, "branchWidth"),
                     graphWidth: assertNumber(msg.graphWidth, "graphWidth"),
                     infoWidth: assertNumber(msg.infoWidth, "infoWidth"),
@@ -1598,6 +1608,7 @@ export class UndockedViewProvider {
         );
         if (
             saved &&
+            Number.isFinite(saved.repositoryWidth) &&
             Number.isFinite(saved.branchWidth) &&
             Number.isFinite(saved.graphWidth) &&
             Number.isFinite(saved.infoWidth) &&
@@ -1605,6 +1616,7 @@ export class UndockedViewProvider {
         ) {
             this.postToWebview({
                 type: "columnWidths",
+                repositoryWidth: saved.repositoryWidth,
                 branchWidth: saved.branchWidth,
                 graphWidth: saved.graphWidth,
                 infoWidth: saved.infoWidth,

@@ -327,5 +327,6 @@
     "stash.dialog.invalidBranch": "Saisissez un nom de branche valide.",
     "stash.fileAction.openDiff": "Ouvrir les différences",
     "stash.fileAction.editSource": "Modifier la source",
-    "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick des modifications sélectionnées"
+    "stash.fileAction.cherryPickSelectedChanges": "Cherry-pick des modifications sélectionnées",
+    "a11y.resizeRepositoryColumn": "Redimensionner la colonne du dépôt"
 }

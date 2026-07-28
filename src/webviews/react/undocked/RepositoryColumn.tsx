@@ -5,18 +5,20 @@ import { Box } from "@chakra-ui/react";
 import type { RepositoryViewIdentity } from "../../protocol/undockedMessages";
 
 interface RepositoryColumnProps {
+    width: number;
     repositories: RepositoryViewIdentity[];
     selectedRepositoryRoot: string | null;
     onSelectRepository: (root: string) => void;
 }
 
 /**
- * Renders known repositories as a fixed selector column.
+ * Renders known repositories as a resizable selector column.
  *
  * The column never moves with the commit-panel side setting; it only emits roots
  * that came from host repository hydration.
  */
 export function RepositoryColumn({
+    width,
     repositories,
     selectedRepositoryRoot,
     onSelectRepository,
@@ -24,12 +26,11 @@ export function RepositoryColumn({
     return (
         <Box
             data-testid="undocked-repository-section"
-            width="168px"
+            style={{ width: `${width}px` }}
             flexShrink={0}
             overflowY="auto"
             overflowX="hidden"
             bg="var(--vscode-sideBar-background)"
-            borderRight="1px solid var(--vscode-panel-border)"
         >
             {repositories.map((repository) => {
                 const isSelected = repository.root === selectedRepositoryRoot;

@@ -411,7 +411,7 @@ describe("commit panel multi-repository view", () => {
         expect(text).not.toContain("↓1");
     });
 
-    it("renders each direct 16px Codicon repository kind icon immediately after its chevron", async () => {
+    it("renders repository and worktree icons immediately after their chevrons", async () => {
         await renderApp();
         await hydrateTwoRepositories();
 
@@ -439,10 +439,10 @@ describe("commit panel multi-repository view", () => {
         const worktreeGlyphs = worktreeIcon?.querySelectorAll<SVGElement>("svg");
         expect(worktreeGlyphs).toHaveLength(1);
         const worktreeGlyph = worktreeGlyphs?.[0];
-        expect(worktreeGlyph?.getAttribute("width")).toBe("16");
-        expect(worktreeGlyph?.getAttribute("height")).toBe("16");
-        expect(worktreeGlyph?.getAttribute("viewBox")).toBe("0 0 16 16");
-        expect(worktreeGlyph?.getAttribute("fill")).toBe("currentColor");
+        expect(worktreeGlyph?.getAttribute("width")).toBe("14");
+        expect(worktreeGlyph?.getAttribute("height")).toBe("14");
+        expect(worktreeGlyph?.getAttribute("viewBox")).toBe("0 0 10 10");
+        expect(worktreeGlyph?.querySelector("path")?.getAttribute("fill")).toBe("currentColor");
         expect(worktreeGlyph?.style.color).toBe("var(--vscode-descriptionForeground)");
     });
 

@@ -896,7 +896,7 @@ describe("UndockedApp integration", () => {
         }));
     }
 
-    it("uses equal first-open section widths, preserves total width while dragging, and persists resized widths", async () => {
+    it("accounts for the repository selector, preserves total width while dragging, and persists resized widths", async () => {
         vi.resetModules();
         vi.useFakeTimers();
         Object.defineProperty(window, "innerWidth", {
@@ -918,6 +918,7 @@ describe("UndockedApp integration", () => {
             return Number.parseFloat(element.style.width);
         };
         const sectionIds = [
+            "undocked-repository-section",
             "undocked-commit-panel-section",
             "undocked-branch-section",
             "undocked-graph-section",
@@ -925,8 +926,8 @@ describe("UndockedApp integration", () => {
         ];
         const initialWidths = sectionIds.map(widthOf);
 
-        expect(initialWidths).toEqual(initialWidths.map(() => 297));
-        expect(initialWidths.reduce((total, width) => total + width, 0)).toBe(1188);
+        expect(initialWidths).toEqual([168, 254, 254, 254, 254]);
+        expect(initialWidths.reduce((total, width) => total + width, 0) + 16).toBe(1200);
         expect(vscode.postMessage).toHaveBeenCalledWith({ type: "ready" });
 
         Object.defineProperty(window, "innerWidth", {
@@ -938,8 +939,27 @@ describe("UndockedApp integration", () => {
         });
         await flush();
 
-        expect(sectionIds.map(widthOf)).toEqual(sectionIds.map(() => 447));
-        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1788);
+        expect(widthOf("undocked-repository-section")).toBeCloseTo(253.14, 2);
+        for (const sectionId of sectionIds.slice(1)) {
+            expect(widthOf(sectionId)).toBeCloseTo(382.72, 2);
+        }
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0) + 16).toBe(1800);
+
+        act(() => {
+            document.querySelector('[data-testid="undocked-repository-divider"]')?.dispatchEvent(
+                new MouseEvent("mousedown", {
+                    bubbles: true,
+                    cancelable: true,
+                    clientX: 400,
+                }),
+            );
+            document.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 420 }));
+            document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+
+        expect(widthOf("undocked-repository-section")).toBeCloseTo(273.14, 2);
+        expect(widthOf("undocked-commit-panel-section")).toBeCloseTo(362.72, 2);
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0) + 16).toBe(1800);
 
         act(() => {
             document.querySelector('[data-testid="undocked-branch-divider"]')?.dispatchEvent(
@@ -953,9 +973,9 @@ describe("UndockedApp integration", () => {
             document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
         });
 
-        expect(widthOf("undocked-branch-section")).toBe(497);
-        expect(widthOf("undocked-graph-section")).toBe(397);
-        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBe(1788);
+        expect(widthOf("undocked-branch-section")).toBeCloseTo(432.72, 2);
+        expect(widthOf("undocked-graph-section")).toBeCloseTo(332.72, 2);
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0) + 16).toBe(1800);
 
         act(() => {
             vi.advanceTimersByTime(350);
@@ -963,12 +983,57 @@ describe("UndockedApp integration", () => {
 
         expect(vscode.postMessage).toHaveBeenCalledWith({
             type: "columnWidths",
-            branchWidth: 497,
-            graphWidth: 397,
-            infoWidth: 447,
-            commitPanelWidth: 447,
+            repositoryWidth: expect.closeTo(273.14, 2),
+            branchWidth: expect.closeTo(432.72, 2),
+            graphWidth: expect.closeTo(332.72, 2),
+            infoWidth: expect.closeTo(382.72, 2),
+            commitPanelWidth: expect.closeTo(362.72, 2),
         });
         vi.useRealTimers();
+    });
+
+    it("resizes the repository selector against the branch column on the right-side commit layout", async () => {
+        vi.resetModules();
+        Object.defineProperty(window, "innerWidth", {
+            configurable: true,
+            value: 1200,
+        });
+
+        installVsCodeMock();
+        createRootHost();
+        mockUndockedChildren();
+
+        await import("../../../src/webviews/react/UndockedApp");
+        await flush();
+
+        act(() => {
+            window.dispatchEvent(
+                new MessageEvent("message", {
+                    data: { type: "settings", commitWindowPosition: "right" },
+                }),
+            );
+        });
+        await flush();
+
+        const widthOf = (testId: string): number => {
+            const element = document.querySelector(`[data-testid="${testId}"]`) as HTMLElement;
+            if (!element) throw new Error(`missing ${testId}`);
+            return Number.parseFloat(element.style.width);
+        };
+        const divider = document.querySelector(
+            '[data-testid="undocked-repository-divider"]',
+        ) as HTMLButtonElement;
+
+        expect(divider).not.toBeNull();
+        act(() => {
+            divider.dispatchEvent(
+                new KeyboardEvent("keydown", { bubbles: true, key: "ArrowRight" }),
+            );
+        });
+
+        expect(widthOf("undocked-repository-section")).toBe(184);
+        expect(widthOf("undocked-branch-section")).toBe(238);
+        expect(widthOf("undocked-commit-panel-section")).toBe(254);
     });
 
     it("migrates legacy persisted section widths without graphWidth", async () => {
@@ -996,20 +1061,24 @@ describe("UndockedApp integration", () => {
             return Number.parseFloat(element.style.width);
         };
         const sectionIds = [
+            "undocked-repository-section",
             "undocked-commit-panel-section",
             "undocked-branch-section",
             "undocked-graph-section",
             "undocked-info-section",
         ];
 
-        expect(widthOf("undocked-branch-section")).toBeCloseTo(384.27, 2);
-        expect(widthOf("undocked-graph-section")).toBeCloseTo(291.87, 2);
-        expect(widthOf("undocked-info-section")).toBeCloseTo(291.87, 2);
+        expect(widthOf("undocked-repository-section")).toBeGreaterThanOrEqual(120);
+        expect(widthOf("undocked-branch-section")).toBeGreaterThanOrEqual(220);
+        expect(widthOf("undocked-graph-section")).toBeGreaterThanOrEqual(220);
+        expect(widthOf("undocked-info-section")).toBeGreaterThanOrEqual(220);
         expect(widthOf("undocked-commit-panel-section")).toBe(220);
-        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0)).toBeCloseTo(
-            1188,
+        expect(sectionIds.map(widthOf).reduce((total, width) => total + width, 0) + 16).toBeCloseTo(
+            1200,
             5,
         );
+        const initialBranchGraphTotal =
+            widthOf("undocked-branch-section") + widthOf("undocked-graph-section");
 
         act(() => {
             document.querySelector('[data-testid="undocked-branch-divider"]')?.dispatchEvent(
@@ -1031,6 +1100,7 @@ describe("UndockedApp integration", () => {
             .map(([message]) => message as { type?: string })
             .find((message) => message.type === "columnWidths") as
             | {
+                  repositoryWidth: number;
                   branchWidth: number;
                   graphWidth: number;
                   infoWidth: number;
@@ -1038,10 +1108,26 @@ describe("UndockedApp integration", () => {
               }
             | undefined;
 
-        expect(columnWidthMessage?.branchWidth).toBeCloseTo(434.27, 2);
-        expect(columnWidthMessage?.graphWidth).toBeCloseTo(241.87, 2);
-        expect(columnWidthMessage?.infoWidth).toBeCloseTo(291.87, 2);
-        expect(columnWidthMessage?.commitPanelWidth).toBe(220);
+        expect(
+            widthOf("undocked-branch-section") + widthOf("undocked-graph-section"),
+        ).toBeCloseTo(initialBranchGraphTotal, 5);
+        expect(columnWidthMessage?.repositoryWidth).toBeCloseTo(
+            widthOf("undocked-repository-section"),
+            5,
+        );
+        expect(columnWidthMessage?.branchWidth).toBeCloseTo(
+            widthOf("undocked-branch-section"),
+            5,
+        );
+        expect(columnWidthMessage?.graphWidth).toBeCloseTo(
+            widthOf("undocked-graph-section"),
+            5,
+        );
+        expect(columnWidthMessage?.infoWidth).toBeCloseTo(widthOf("undocked-info-section"), 5);
+        expect(columnWidthMessage?.commitPanelWidth).toBeCloseTo(
+            widthOf("undocked-commit-panel-section"),
+            5,
+        );
         vi.useRealTimers();
     });
 });

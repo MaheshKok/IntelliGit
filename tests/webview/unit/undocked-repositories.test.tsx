@@ -4,6 +4,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { ChakraProvider } from "@chakra-ui/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { installWebviewI18n } from "../../helpers/webviewI18nTestUtils";
 
 let reactRoot: Root | undefined;
 let postMessage: ReturnType<typeof vi.fn>;
@@ -79,6 +80,7 @@ describe("undocked repository selector", () => {
         await render(
             <ChakraProvider>
                 <RepositoryColumn
+                    width={168}
                     repositories={[
                         { root: "/repo-a", label: "Repo A" },
                         { root: "/repo-b", label: "Repo B" },
@@ -142,5 +144,65 @@ describe("undocked repository selector", () => {
             type: "selectRepository",
             repositoryRoot: "/repo-b",
         });
+    });
+
+    it("renders a Dock action in the existing transport row only when requested", async () => {
+        installWebviewI18n();
+        const onDock = vi.fn();
+        const { TabBar } = await import(
+            "../../../src/webviews/react/commit-panel/components/TabBar"
+        );
+
+        await render(
+            <ChakraProvider>
+                <TabBar
+                    stashCount={0}
+                    onSync={vi.fn()}
+                    onFetch={vi.fn()}
+                    onPull={vi.fn()}
+                    onPush={vi.fn()}
+                    onDock={onDock}
+                    commitContent={<div>Commit content</div>}
+                    stashContent={<div>Stash content</div>}
+                />
+            </ChakraProvider>,
+        );
+
+        const tabRow = document.querySelector('[data-testid="commit-panel-tab-row"]');
+        const labels = Array.from(tabRow?.querySelectorAll("button") ?? []).map(
+            (button) => button.getAttribute("aria-label"),
+        );
+
+        const dockButton = Array.from(tabRow?.querySelectorAll("button") ?? []).find(
+            (button) => button.getAttribute("aria-label") === "Dock IntelliGit",
+        );
+        expect(labels.filter((label) => label === "Dock IntelliGit")).toHaveLength(1);
+        expect(labels.indexOf("Dock IntelliGit")).toBeGreaterThan(labels.indexOf("Push"));
+        expect(dockButton?.getAttribute("title")).toBe("Dock IntelliGit");
+        click(dockButton ?? null);
+        expect(onDock).toHaveBeenCalledTimes(1);
+    });
+
+    it("omits Dock from the normal docked TabBar", async () => {
+        installWebviewI18n();
+        const { TabBar } = await import(
+            "../../../src/webviews/react/commit-panel/components/TabBar"
+        );
+
+        await render(
+            <ChakraProvider>
+                <TabBar
+                    stashCount={0}
+                    onSync={vi.fn()}
+                    onFetch={vi.fn()}
+                    onPull={vi.fn()}
+                    onPush={vi.fn()}
+                    commitContent={<div>Commit content</div>}
+                    stashContent={<div>Stash content</div>}
+                />
+            </ChakraProvider>,
+        );
+
+        expect(document.querySelector('[aria-label="Dock IntelliGit"]')).toBeNull();
     });
 });
