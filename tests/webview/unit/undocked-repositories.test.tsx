@@ -178,7 +178,7 @@ describe("undocked repository selector", () => {
         );
         expect(labels.filter((label) => label === "Dock IntelliGit")).toHaveLength(1);
         expect(labels.indexOf("Dock IntelliGit")).toBeGreaterThan(labels.indexOf("Push"));
-        expect(dockButton?.getAttribute("title")).toBe("Dock IntelliGit");
+        expect(dockButton?.getAttribute("title")).toBeNull();
         click(dockButton ?? null);
         expect(onDock).toHaveBeenCalledTimes(1);
     });

@@ -2,7 +2,7 @@ const FALLBACK_SECTION_WIDTH = 300;
 const DEFAULT_REPOSITORY_WIDTH = 168;
 const DIVIDER_WIDTH = 4;
 const SECTION_COUNT = 5;
-const TOTAL_DIVIDER_WIDTH = 4 * DIVIDER_WIDTH;
+const TOTAL_DIVIDER_WIDTH = (SECTION_COUNT - 1) * DIVIDER_WIDTH;
 const SECTION_WIDTH_KEYS = [
     "repositoryWidth",
     "branchWidth",
@@ -12,9 +12,9 @@ const SECTION_WIDTH_KEYS = [
 ] as const;
 
 /** Minimum preferred width for each main undocked section before proportional shrinking. */
-export const MIN_SECTION_WIDTH = 220;
+const MIN_SECTION_WIDTH = 220;
 /** Minimum usable width for the repository/worktree selector. */
-export const MIN_REPOSITORY_WIDTH = 120;
+const MIN_REPOSITORY_WIDTH = 120;
 
 /** Widths for the five resizable undocked sections, excluding divider pixels. */
 export interface SectionWidths {
@@ -80,7 +80,7 @@ function sumWidths(widths: SectionWidths): number {
 }
 
 /** Returns a pane's base minimum before it is scaled for a narrow viewport. */
-function baseMinimumWidth(key: SectionWidthKey): number {
+export function baseMinimumWidth(key: SectionWidthKey): number {
     return key === "repositoryWidth" ? MIN_REPOSITORY_WIDTH : MIN_SECTION_WIDTH;
 }
 

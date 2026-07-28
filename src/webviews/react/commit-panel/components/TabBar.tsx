@@ -278,7 +278,7 @@ function GitActionButton({
         >
             <IconButton
                 aria-label={label}
-                title={title}
+                title={tooltipsEnabled ? undefined : title}
                 aria-disabled={disabled || undefined}
                 isDisabled={disabled}
                 variant="toolbarGhost"
