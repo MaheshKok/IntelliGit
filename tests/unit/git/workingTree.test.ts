@@ -1,13 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkingTreeStatus, planRollbackFiles } from "../../../src/git/workingTree";
+import {
+    parseAlreadyStagedDeletedPaths,
+    parseWorkingTreeStatus,
+    planRollbackFiles,
+} from "../../../src/git/workingTree";
 
 describe("parseWorkingTreeStatus", () => {
+    it("surfaces the rename source path on its destination row", () => {
+        expect(parseWorkingTreeStatus("R  renamed.ts\0original.ts\0")).toEqual([
+            {
+                path: "renamed.ts",
+                sourcePath: "original.ts",
+                status: "R",
+                staged: true,
+                additions: 0,
+                deletions: 0,
+            },
+        ]);
+    });
+
     it("keeps staged-add deletions while suppressing duplicate staged-add modifications", () => {
         expect(parseWorkingTreeStatus("AM new.ts\0AD removed.ts\0")).toEqual([
             { path: "new.ts", status: "A", staged: true, additions: 0, deletions: 0 },
             { path: "removed.ts", status: "A", staged: true, additions: 0, deletions: 0 },
             { path: "removed.ts", status: "D", staged: false, additions: 0, deletions: 0 },
         ]);
+    });
+});
+
+describe("parseAlreadyStagedDeletedPaths", () => {
+    it("treats the source of a staged rename as already deleted from the index", () => {
+        expect(parseAlreadyStagedDeletedPaths("R  renamed.ts\0original.ts\0")).toEqual(
+            new Set(["original.ts"]),
+        );
     });
 });
 

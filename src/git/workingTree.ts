@@ -112,6 +112,8 @@ export function parseAlreadyStagedDeletedPaths(status: string): Set<string> {
         if (!path) continue;
 
         if (isRenameOrCopy(index, worktree) && i + 1 < entries.length) {
+            const sourcePath = entries[i + 1];
+            if (index === "R" && sourcePath) alreadyStagedDeleted.add(sourcePath);
             i += 1;
         }
 
@@ -187,10 +189,10 @@ function toWorkingFiles(entry: PorcelainStatusEntry): WorkingFile[] {
     const unstagedStatus = mapStatusCode(entry.worktree);
 
     if (hasStaged && stagedStatus) {
-        files.push(createWorkingFile(entry.path, stagedStatus, true));
+        files.push(createWorkingFile(entry.path, stagedStatus, true, entry.sourcePath));
     }
     if (hasUnstaged && unstagedStatus && !(entry.index === "A" && unstagedStatus === "M")) {
-        files.push(createWorkingFile(entry.path, unstagedStatus, false));
+        files.push(createWorkingFile(entry.path, unstagedStatus, false, entry.sourcePath));
     }
 
     return files;
@@ -235,13 +237,16 @@ function applyRollbackEntry(plan: MutableRollbackPlan, entry: PorcelainStatusEnt
     }
 }
 
+/** Creates a normalized commit-panel working-file row with an optional rename or copy source. */
 function createWorkingFile(
     path: string,
     status: WorkingFile["status"],
     staged: boolean,
+    sourcePath?: string,
 ): WorkingFile {
     return {
         path,
+        ...(sourcePath ? { sourcePath } : {}),
         status,
         staged,
         additions: 0,

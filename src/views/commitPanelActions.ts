@@ -576,14 +576,57 @@ export async function commitSelectedFromPanel(
         showTimedWarningMessage(vscode.l10n.t("Select files to commit."));
         return;
     }
-    if (paths.length > 0) {
-        await gitOps.stageFiles(paths);
+    const statusSnapshot = await gitOps.getStatus({ withStats: false });
+    const sourcePathByDestination = new Map(
+        statusSnapshot.flatMap((file) =>
+            file.status === "R" && file.sourcePath ? [[file.path, file.sourcePath] as const] : [],
+        ),
+    );
+    const commitPaths = Array.from(
+        new Set(
+            paths.flatMap((filePath) => {
+                const sourcePath = sourcePathByDestination.get(filePath);
+                return sourcePath ? [filePath, sourcePath] : [filePath];
+            }),
+        ),
+    );
+    const hasCaseOnlyRename = paths.some((filePath) => {
+        const sourcePath = sourcePathByDestination.get(filePath);
+        return (
+            sourcePath !== undefined &&
+            sourcePath !== filePath &&
+            sourcePath.toLowerCase() === filePath.toLowerCase()
+        );
+    });
+    const stagedButUncheckedPaths = hasCaseOnlyRename
+        ? Array.from(
+              new Set(
+                  statusSnapshot.flatMap((file) => {
+                      if (!file.staged || commitPaths.includes(file.path)) return [];
+                      return file.status === "R" && file.sourcePath
+                          ? [file.path, file.sourcePath]
+                          : [file.path];
+                  }),
+              ),
+          )
+        : [];
+    if (commitPaths.length > 0) {
+        await gitOps.stageFiles(commitPaths);
     }
     const progressTitle = push
         ? vscode.l10n.t("Committing and pushing...")
         : vscode.l10n.t("Committing...");
     await runWithNotificationProgress(progressTitle, async () => {
-        await gitOps.commit(message, amend);
+        if (!hasCaseOnlyRename) {
+            await gitOps.commit(message, amend, commitPaths);
+            return;
+        }
+        await gitOps.withIndexSnapshot(async () => {
+            if (stagedButUncheckedPaths.length > 0) {
+                await gitOps.unstageFiles(stagedButUncheckedPaths);
+            }
+            await gitOps.commit(message, amend);
+        });
     });
     if (push) {
         try {

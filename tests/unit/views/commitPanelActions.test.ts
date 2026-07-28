@@ -276,8 +276,9 @@ describe("runGitOperationFromPanel", () => {
             paths: ["src/a.ts"],
         });
 
+        expect(gitOps.getStatus).toHaveBeenCalledWith({ withStats: false });
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: publish selected", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: publish selected", false, ["src/a.ts"]);
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
         expect(deps.publishBranch).toHaveBeenCalledTimes(1);
         expect(vscodeMock.commands.executeCommand).not.toHaveBeenCalled();
@@ -298,8 +299,9 @@ describe("runGitOperationFromPanel", () => {
             paths: ["src/a.ts"],
         });
 
+        expect(gitOps.getStatus).toHaveBeenCalledWith({ withStats: false });
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: partial commit", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: partial commit", false, ["src/a.ts"]);
         expect(gitOps.hasUncommittedChanges).not.toHaveBeenCalled();
         expect(gitOps.push).toHaveBeenCalledTimes(1);
         expect(vscodeMock.window.showWarningMessage).not.toHaveBeenCalledWith(
@@ -321,8 +323,36 @@ describe("runGitOperationFromPanel", () => {
             }),
         ).rejects.toThrow("push failed");
 
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: push rejection", false, ["src/a.ts"]);
         expect(deps.postCommitted).toHaveBeenCalledTimes(1);
+    });
+
+    it("stages and commits both sides of a checked rename", async () => {
+        const gitOps = makeGitOps();
+        const deps = makeDeps(gitOps);
+        vi.mocked(gitOps.getStatus).mockResolvedValueOnce([
+            {
+                path: "src/renamed.ts",
+                sourcePath: "src/original.ts",
+                status: "R",
+                staged: false,
+                additions: 0,
+                deletions: 0,
+            },
+        ]);
+
+        await commitSelectedFromPanel(deps, {
+            message: "feat: rename",
+            amend: false,
+            push: false,
+            paths: ["src/renamed.ts"],
+        });
+
+        expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/renamed.ts", "src/original.ts"]);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: rename", false, [
+            "src/renamed.ts",
+            "src/original.ts",
+        ]);
     });
 });
 

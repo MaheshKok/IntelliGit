@@ -1,3 +1,5 @@
+import { access, copyFile, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { GitExecutor } from "./executor";
 import type {
@@ -565,7 +567,26 @@ export class GitOps {
         return result.length > 0;
     }
 
-    /** Stages literal repository paths, skipping files already staged as deletions to avoid re-adding them. */
+    /**
+     * Returns whether Git requires the current repository index to be committed as a whole.
+     *
+     * The marker probe resolves linked-worktree `gitdir:` files before checking merge, sequencer,
+     * and rebase state. It reads the filesystem on every call so callers never act on stale state.
+     */
+    async hasWholeIndexOperationInProgress(): Promise<boolean> {
+        const gitDir = await resolveGitDir(await this.getRepositoryRoot());
+        const statePaths = [
+            "MERGE_HEAD",
+            "CHERRY_PICK_HEAD",
+            "REVERT_HEAD",
+            "rebase-merge",
+            "rebase-apply",
+        ].map((statePath) => path.join(gitDir, statePath));
+        const states = await Promise.all(statePaths.map(pathExists));
+        return states.some(Boolean);
+    }
+
+    /** Stages literal repository paths, including selected deletions and rename sources. */
     async stageFiles(paths: string[]): Promise<void> {
         if (paths.length === 0) return;
         const pathsToStage = await this.excludeAlreadyStagedDeletedPaths(paths);
@@ -597,10 +618,109 @@ export class GitOps {
         if (paths.length === 0) return;
         await this.executor.run(withLiteralPathspecs(["reset", "HEAD", "--", ...paths]));
     }
-    /** Creates or amends a commit with the caller-provided message and returns Git output. */
-    async commit(message: string, amend: boolean = false): Promise<string> {
+    /**
+     * Runs an index-mutating operation while restoring the exact original index on success or failure.
+     * The index path is Git-resolved so linked worktrees snapshot their own index rather than a guessed `.git` path.
+     * A restore failure is surfaced as a distinct error rather than masking the operation's own
+     * outcome: the operation's error (or success) always stays the primary signal.
+     */
+    async withIndexSnapshot<T>(operation: () => Promise<T>): Promise<T> {
+        const repoRoot = await this.getRepositoryRoot();
+        const reportedIndexPath = (
+            await this.executor.run(["rev-parse", "--git-path", "index"])
+        ).trim();
+        const indexPath = path.isAbsolute(reportedIndexPath)
+            ? reportedIndexPath
+            : path.resolve(repoRoot, reportedIndexPath);
+        const snapshotDirectory = await mkdtemp(path.join(tmpdir(), "intelligit-index-"));
+
+        try {
+            const snapshotPath = path.join(snapshotDirectory, "index");
+            await copyFile(indexPath, snapshotPath);
+
+            const outcome = await operation().then(
+                (value) => ({ succeeded: true as const, value }),
+                (error: unknown) => ({ succeeded: false as const, error }),
+            );
+
+            try {
+                await this.restoreIndexSnapshot(snapshotPath, indexPath);
+            } catch (restoreError) {
+                if (!outcome.succeeded) {
+                    throw new Error(
+                        `The Git operation failed (${getErrorMessage(outcome.error)}), and restoring the Git index snapshot also failed (${getErrorMessage(restoreError)}). The index may be left with the commit's temporary unstaging applied.`,
+                        { cause: outcome.error },
+                    );
+                }
+                throw new Error(
+                    `The commit succeeded, but restoring the Git index snapshot failed (${getErrorMessage(restoreError)}). The index may be left with the commit's temporary unstaging applied.`,
+                    { cause: restoreError },
+                );
+            }
+
+            if (!outcome.succeeded) throw outcome.error;
+            return outcome.value;
+        } finally {
+            await rm(snapshotDirectory, { recursive: true, force: true });
+        }
+    }
+
+    /**
+     * Restores a snapshotted index atomically: the snapshot is written to an exclusively created
+     * `<index>.lock` file and then renamed onto the index, so a concurrent reader such as
+     * `git status` never observes a partially written file.
+     *
+     * An existing `.lock` file means another Git process is currently writing the index; this is
+     * retried briefly since that window is normally sub-second. If contention persists past the
+     * retry budget, restoring the user's index takes priority over strict atomicity, so this
+     * falls back to a direct, non-atomic copy rather than failing the restore outright.
+     */
+    private async restoreIndexSnapshot(snapshotPath: string, indexPath: string): Promise<void> {
+        const lockPath = `${indexPath}.lock`;
+        const maxAttempts = 3;
+        const retryDelayMs = 50;
+        const snapshotBytes = await readFile(snapshotPath);
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                await writeFile(lockPath, snapshotBytes, { flag: "wx" });
+            } catch (error) {
+                if (!isLockAlreadyExistsError(error)) throw error;
+                if (attempt < maxAttempts - 1) {
+                    await new Promise<void>((resolve) => setTimeout(resolve, retryDelayMs));
+                    continue;
+                }
+                // Lock contention persisted past the retry window, so another Git process is
+                // still writing the index. Restoring the user's index takes priority over strict
+                // atomicity here, so fall back to a direct copy instead of failing the restore.
+                await copyFile(snapshotPath, indexPath);
+                return;
+            }
+            try {
+                await rename(lockPath, indexPath);
+                return;
+            } catch (renameError) {
+                await rm(lockPath, { force: true });
+                throw renameError;
+            }
+        }
+    }
+
+    /**
+     * Creates or amends a commit, limiting panel-owned path requests while preserving whole-index Git states.
+     *
+     * Omitting `paths` keeps existing callers' bare-commit behavior intact. Passing an empty array for an
+     * amend request makes a message-only amend, and a whole-index operation always keeps Git's bare commit.
+     */
+    async commit(message: string, amend: boolean = false, paths?: string[]): Promise<string> {
         const args = ["commit", "-m", message];
         if (amend) args.push("--amend");
+        if (paths === undefined) return this.executor.run(args);
+        if (await this.hasWholeIndexOperationInProgress()) return this.executor.run(args);
+        if (paths.length > 0) {
+            return this.executor.run(withLiteralPathspecs([...args, "--only", "--", ...paths]));
+        }
+        if (amend) args.push("--only");
         return this.executor.run(args);
     }
     /**
@@ -1226,6 +1346,39 @@ function isNoUpstreamPushError(err: unknown): boolean {
 }
 function withLiteralPathspecs(args: string[]): string[] {
     return ["--literal-pathspecs", ...args];
+}
+
+/** Resolves the repository Git directory, including linked-worktree `gitdir:` pointer files. */
+async function resolveGitDir(repoRoot: string): Promise<string> {
+    const dotGit = path.join(repoRoot, ".git");
+    try {
+        if ((await stat(dotGit)).isFile()) {
+            const content = (await readFile(dotGit, "utf8")).trim();
+            const match = content.match(/^gitdir:\s*(.+)$/);
+            if (match)
+                return path.isAbsolute(match[1]) ? match[1] : path.resolve(repoRoot, match[1]);
+        }
+    } catch {
+        // Fall through to the standard repository Git directory.
+    }
+    return dotGit;
+}
+
+/** Returns whether a Git operation-state marker currently exists. */
+async function pathExists(filePath: string): Promise<boolean> {
+    try {
+        await access(filePath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** Returns whether an `fs` error indicates the target path already exists (e.g. `EEXIST` from an exclusive create). */
+function isLockAlreadyExistsError(error: unknown): boolean {
+    return (
+        typeof error === "object" && error !== null && "code" in error && error.code === "EEXIST"
+    );
 }
 
 /** Returns whether Git reported a path absent from an otherwise valid treeish. */

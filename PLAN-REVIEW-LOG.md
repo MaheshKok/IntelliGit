@@ -167,3 +167,60 @@ VERDICT: REVISE
 ## Resolution
 
 Six rounds total (5 in-protocol + 1 user-authorized sign-off), all verdicts REVISE — no convergence claim is made. Cumulative: 40 findings — 36 FIXED as proposed, 3 FIXED with a modified mechanism (R2#2 validation-not-mirror, R5#1 superseded-skip persistence, R5#4 race-and-discard cancellation), 1 MINOR fixed, 0 unaddressed. The trend inverted at the end: R6 found no defects in the untouched plan body — all four findings targeted the text my R5 revision added, and R6's own fixes (lease, slot, non-persisting fence terminal) were adopted verbatim, so the remaining unreviewed delta is small and mechanical. Codex's last recorded verdict remains REVISE; the post-R6 revision is unreviewed. Per the user's Round-6 arbitration ("sign-off, then build"), the loop ends here and the build gate follows.
+
+---
+
+## Act 3 — Build
+
+Protocol: claudex-build. Builder: Codex `gpt-5.6-terra`, SANDBOX=danger-full-access, approval_policy=never, fresh session per round. Reviewer+committer: Claude (Fable). Fix ladder: high → xhigh → Claude takeover (MAX_FIX_ROUNDS=2). SEAL_MODE=shadow.
+BASE_HEAD: f3e00af9dcd5a9e54da2002afdab020994631e3c
+SKILL-SHA 6735c5a3efe9 SKILL.md · cf85c8260269 helpers.py · db9282d4db13 verify.py
+Gates (.claudex-gates.json): lint, typecheck, format [round+accept]; knip, suite [accept]. PROOF_CMD: `npm run -s test`. Pre-commit hook additionally runs build/depcruise/l10n on every phase commit.
+Phase plan (sized for predicted peak 45–50% of the builder window):
+  P1 Commit accuracy — Approach 6 + `sourcePath` surfacing + shared whole-index predicate — launch xhigh
+  P2 Diff assembly — Approach 2 — launch high
+  P3 Generator — Approach 1 — launch high
+  P4 Generation coordinator module — Approach 3 core — launch xhigh
+  P5 Host wiring, both providers — Approach 3 remainder + operation-state transport — launch xhigh
+  P6 Webview state + UI + l10n — Approaches 4–5 — launch high
+
+Deviation note (launch): initial P1 dispatch was denied three times by the Bash permission layer — root cause was the `| grep thread.started` pipeline segment matching the user's `Bash(grep:*)` deny rule, not the sandbox flag. Relaunched with the stream redirected to file and no grep segment; SANDBOX stays `danger-full-access` (skill default).
+
+### Phase 1 — Commit accuracy (Approach 6 + sourcePath + whole-index predicate)
+
+Round 1 (build): Codex gpt-5.6-terra @ xhigh, fresh session. SID: 019faa83-6c5f-7e40-96cf-c35bf395c925
+Round 1 result: RC=0, HEAD unmoved at BASE_HEAD. Telemetry: PEAK=158059 LAST=158059 PCT=61% NONRESUMABLE=no (over the 50% sizing target — watch P4/P5). Codex report: 6/6 deliverables DONE, focused vitest 78/78, honest RED→GREEN (16 intended failures first), typecheck green, no deviations, SUBAGENTS_SPAWNED: 0. Files: operations.ts, workingTree.ts, types.ts, commitPanelActions.ts + 5 test files.
+Phase verifier (general-purpose @ opus, fable-method): VERDICT: DEFECTS — 2 REQUIRED, 2 MINOR. Verifier independently re-ran the suite (78/78), typecheck, and proved the new regression suite fails 3/8 against BASE_HEAD (real guard, not tautology).
+  V1 REQUIRED operations.ts:632 — case-only rename (`git mv File.txt file.txt`) now hard-fails: `--only` rebuilds temp index from HEAD → `fatal: will not add file alias` (git exit 128), no commit created; BASE_HEAD committed it fine (changed set `D File.txt` + `A file.txt`). Functional regression on case-insensitive filesystems (macOS default).
+  V2 REQUIRED commitPanelActions.ts:580-591 — destination→source expansion filters on `sourcePath` presence, not `status === "R"`: with `status.renames=copies`, a checked COPY destination (status C) sweeps its unchecked source and that source's unstaged edits into the commit — the exact bug class Approach 6 exists to fix. Spec (PLAN.md:20,:47) says rename map only.
+  V3 MINOR operations.ts:593 — unrequested `git add --all` change; probed behavior-neutral on git ≥ 2.0 but scope creep that rewrote 3 test expectations. Revert.
+  V4 MINOR operations.ts:1263 — hand-rolled resolveGitDir duplicates RefreshService.resolveGitDir; spec named that exact pattern, so kept; consolidation deferred to P5 where coordinator watchers reuse the same resolution. NO CHANGE this phase.
+  Builder claims 1–6: all CONFIRMED (claim 4 mechanics confirmed, scope defective → V2).
+Round gates deferred to the post-fix tree (running them now would race the fix writer; two logic defects already known).
+Routing: fix round 1 — V1 + V2 + V3; V4 no-change with rationale above.
+Fix round 1: Codex gpt-5.6-terra @ high (helpers.py route: EFFORT=high MODE=fresh), fresh session. SID chain: 019faa83-6c5f-7e40-96cf-c35bf395c925 → 019faa9a-3beb-7463-afcf-0a40ccdcfc1c. Work order: V1 probe-first (candidate A `-c core.ignorecase=false`, fallback B manual index scoping), V2 expand only `status === "R"`, V3 revert `add --all`; each with pinned regression tests.
+Fix round 1 result: RC=0, HEAD unmoved. Telemetry: PEAK=121751 LAST=121751 PCT=47% NONRESUMABLE=no. Report: 3/3 FIXED, honest probe transcript — candidate A (`core.ignorecase=false` + `--only`) REFUTED by its own probe (changed set `A file.txt` only, no `D` half), candidate B (manual index scoping: reset staged-but-unchecked → bare commit → re-add) implemented. RED 2 → GREEN focused 80/80, typecheck green.
+Round gates (post-fix tree): lint OK 9.9s, typecheck OK 3.7s, format FAIL(1) 2.1s — prettier violation in touched files, folded into fix round 2.
+Phase verifier round 2 (general-purpose @ opus, fable-method, fix-delta scope): VERDICT: DEFECTS — 2 CRITICAL, 1 REQUIRED, 1 MINOR. FIX 2 and FIX 3 CONFIRMED (copy exclusion R-gated and probed; `add --` revert probed incl. deletions). FIX 1 REFUTED:
+  F1 CRITICAL commitPanelActions.ts:615,621 — restore path is `git add` from the WORKTREE: unchecked file staged as X with worktree Y gets its staged blob clobbered X→Y (probed via `git show :seed.txt` before/after; also on staged additions; failure path identically lossy). Staged content is user state — data loss.
+  F2 CRITICAL commitPanelActions.ts:598-601 — unstage set collects only rename DESTINATIONS; an unchecked staged rename's source deletion stays staged and rides into the bare commit (probed: changed set gained `D seed.txt`; user's rename left split across a foreign commit).
+  F3 REQUIRED tests/integration/extension/view-providers.integration.test.ts — full suite 1953/1958: 5 failures; 4 assert the old 2-arg `commit(message, false)` (now 3-arg with paths), 1 getStatus mock-chain count shifted by the new snapshot call. From round 1 (only focused suites ran); tests mirror the old call shape — expectations must move to the new spec-correct shape.
+  F4 MINOR commitPanelActions.ts:593-597 — case-only detection compares ALL pairs in the commit set, not just rename pairs; unrelated same-name-different-case additions take the bare fallback needlessly, widening F1/F2 exposure.
+Routing: fix round 2 @ xhigh (ladder's last Codex rung). Mechanism directive: replace worktree-roundtrip restore with full-fidelity index snapshot/restore (`git rev-parse --git-path index` → copy aside → restore in finally; probe-first, per-entry `ls-files -s`/`update-index` plan as fallback), unstage set gains R sources, integration expectations updated, detection narrowed to rename pairs, prettier fixed.
+Fix round 2: Codex gpt-5.6-terra @ xhigh (helpers.py route: EFFORT=xhigh MODE=fresh), fresh session. SID chain: … → 019faa9a-3beb-7463-afcf-0a40ccdcfc1c → 019faaad-1d12-7611-8715-795de0f91a7a. Mandatory probes (a)–(f) in the work order incl. staged-content fidelity, rename preservation, failure rollback. After this round the ladder ends — any remaining defect goes to Claude takeover.
+Fix round 2 result: RC=0, HEAD unmoved. Telemetry: PEAK=131668 LAST=131668 PCT=50% NONRESUMABLE=no. Report: 4/4 + FORMAT FIXED; Candidate A implemented (index byte-snapshot via `git rev-parse --git-path index`, restore in finally); probes a–f PASS; RED 3 intended failures → GREEN focused 83/83, integration 114/114, format green, typecheck green. Logged deviation: unit rollback regression injects GitOps.commit rejection (their real-hook attempt resolved empty — see the pre-existing executor finding below).
+Phase verifier round 3 (general-purpose @ opus, fable-method, fix-2 delta): VERDICT: ACCEPT. FIX 1–4 all CONFIRMED by independent probes: byte-exact restore under a REAL rejecting hook (Q13), linked-worktree index isolation (Q6), unchecked staged rename fully preserved and excluded (Q1/Q2), detection narrowing (Q3/Q4), integration expectations MOVED not weakened (exact-arg assertions kept, 114/114), new regressions judged real guards not tautologies. Residual MINORs:
+  M1 operations.ts:641 — restore failure replaces the operation's error (surfaced but original lost; user not told index may be mid-state).
+  M2 operations.ts:633 — mkdtemp before try: temp dir leaks if the initial snapshot copy throws.
+  M3 operations.ts:641 — restore is non-atomic copyFile onto the live index without index.lock; sub-ms torn-read window vs concurrent status (transient error, not data loss).
+  M4 = round-1 V4 (resolveGitDir duplication) — unchanged, still deferred to P5.
+  M5 operations.ts:625 — withIndexSnapshot lacks a direct unit test (covered indirectly).
+  PRE-EXISTING (outside delta, flagged for routing): src/git/executor.ts:71-81 — non-zero git exit with EMPTY stderr RESOLVES instead of rejecting; probed: silent failing pre-commit hook → panel reports "Committed successfully." with HEAD unmoved. Predates the phase (executor untouched), affects every git call, and explains the fix-2 deviation. Routed as interstitial fix cycle P1.5 after the P1 commit (blast-radius audit required — some call sites may rely on resolve-on-nonzero).
+Accept-stage gates (deterministic, post-fix-2 tree): lint OK 9.8s, typecheck OK 3.7s, format OK 2.1s, knip OK 0.9s, suite OK 30.7s — GATES GREEN warn=0.
+Routing: fixup lane (general-purpose @ sonnet) for M1+M2+M3+M5 before the phase commit; M4 deferred to P5 as logged.
+Fixup lane result: 4/4 FIXED — operation error kept primary via `cause` on restore failure (distinct success/failure wording), mkdtemp+initial copy inside the protected region, atomic restore via exclusive `<index>.lock` write + rename with 3×50ms contention retry and direct-copy fallback, direct withIndexSnapshot unit tests (a)–(e) with real repos/no fs mocks. Verified: focused 88 tests green, typecheck, format:check, lint:strict all green. Residual note logged: restored index inherits default file mode via rename (no practical effect; git index is 644).
+Acceptance: first accept-gates rerun went suite-RED on the fixup's own leak test — cross-worker flake (asserted global tmpdir diff while parallel workers create snapshot dirs; direct suite run 1966/1966 green). Claude fixed the test in place: bounded retry loop (50×100ms) so only a genuinely persistent leak fails; `expect.poll` unavailable on this vitest. Re-run: 14/14 + typecheck green.
+Pre-commit detect_changes: GitNexus MCP not exposed this session; codebase-memory detect_changes(HEAD) run instead — 10 changed files, impacted symbols exactly the planned commit-flow/git-layer surface (GitOps incl. hasWholeIndexOperationInProgress/withIndexSnapshot/restoreIndexSnapshot, workingTree parse chain, commitPanelActions commit path, WorkingFile type, tests). No unexpected blast radius.
+Final accept gates: lint OK 10.0s, typecheck OK 3.9s, format OK 2.2s, knip OK 0.9s, suite OK 31.0s — GATES GREEN warn=0.
+Seal (SEAL_MODE=shadow): check → MALFORMED (no prior seal, expected on first phase); write → SEAL WRITTEN files=11 green=True.
+Phase 1 ACCEPTED. Rounds: 1 build + 2 fix + 1 fixup lane; verifier rounds: 3 (DEFECTS, DEFECTS, ACCEPT). Committing.

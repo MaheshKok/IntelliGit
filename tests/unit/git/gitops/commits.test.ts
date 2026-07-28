@@ -361,6 +361,23 @@ describe("GitOps", () => {
             ]);
         });
 
+        it("does not restage the deleted source of an already staged rename", async () => {
+            const executor = createMockExecutor({
+                "status --porcelain=v1 -z -- renamed/to.ts renamed/from.ts":
+                    "R  renamed/to.ts\0renamed/from.ts\0",
+            });
+            const ops = new GitOps(executor);
+
+            await ops.stageFiles(["renamed/to.ts", "renamed/from.ts"]);
+
+            expect(executor.run).toHaveBeenCalledWith([
+                "--literal-pathspecs",
+                "add",
+                "--",
+                "renamed/to.ts",
+            ]);
+        });
+
         it("skips empty paths array", async () => {
             const executor = createMockExecutor({});
             const ops = new GitOps(executor);

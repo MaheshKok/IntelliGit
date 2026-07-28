@@ -1949,7 +1949,7 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
         expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/a.ts"]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false, ["src/a.ts"]);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
         expect(gitOps.commit).toHaveBeenCalledWith("feat: push", false);
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
@@ -5737,6 +5737,9 @@ describe("view providers integration", () => {
             .mockResolvedValueOnce([
                 { path: "src/d.ts", status: "M", staged: false, additions: 4, deletions: 0 },
             ])
+            .mockResolvedValueOnce([
+                { path: "src/d.ts", status: "M", staged: false, additions: 4, deletions: 0 },
+            ])
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([
                 { path: "src/e.ts", status: "D", staged: false, additions: 0, deletions: 5 },
@@ -5806,7 +5809,7 @@ describe("view providers integration", () => {
             expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts"]);
             expect(gitOps.unstageFiles).toHaveBeenCalledWith(["src/b.ts"]);
             expect(gitOps.commit).toHaveBeenCalledWith("feat: commit", false);
-            expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false);
+            expect(gitOps.commit).toHaveBeenCalledWith("feat: selected", false, ["src/d.ts"]);
             expect(gitOps.commitAndPush).not.toHaveBeenCalled();
             expect(gitOps.push).toHaveBeenCalled();
             expect(gitOps.rollbackAll).toHaveBeenCalled();
@@ -6249,7 +6252,10 @@ describe("view providers integration", () => {
         expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/changed1.ts", "src/changed2.ts"]);
         expect(gitOps.commit).toHaveBeenCalledTimes(1);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: selective", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: selective", false, [
+            "src/changed1.ts",
+            "src/changed2.ts",
+        ]);
         expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
         provider.dispose();
     });
@@ -6274,7 +6280,10 @@ describe("view providers integration", () => {
             "src/changed.ts",
             "src/new-unversioned.ts",
         ]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: mixed", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: mixed", false, [
+            "src/changed.ts",
+            "src/new-unversioned.ts",
+        ]);
         expect(showInformationMessage).toHaveBeenCalledWith("Committed successfully.");
         provider.dispose();
     });
@@ -6298,7 +6307,10 @@ describe("view providers integration", () => {
 
         expect(gitOps.stageFiles).toHaveBeenCalledTimes(1);
         expect(gitOps.stageFiles).toHaveBeenCalledWith(["src/a.ts", "src/b.ts"]);
-        expect(gitOps.commit).toHaveBeenCalledWith("feat: subset push", false);
+        expect(gitOps.commit).toHaveBeenCalledWith("feat: subset push", false, [
+            "src/a.ts",
+            "src/b.ts",
+        ]);
         expect(gitOps.commitAndPush).not.toHaveBeenCalled();
         expect(gitOps.push).toHaveBeenCalledTimes(1);
         expect(showInformationMessage).toHaveBeenCalledWith("Pushed successfully.");
